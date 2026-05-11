@@ -3,6 +3,9 @@ package main
 import (
 	"database/sql"
 	"encoding/json"
+	"html/template"
+	"log"
+	"net/http"
 	"os"
 	"path/filepath"
 	"strconv"
@@ -17,6 +20,10 @@ type Book struct {
 	PubDate     string  `json:"pubdate"`
 	Path        string  `json:"path"`
 	UUID        string  `json:"uuid"`
+}
+
+type PageData struct {
+	Title string
 }
 
 func writePage(page int, books []Book) error {
@@ -34,7 +41,49 @@ func writePage(page int, books []Book) error {
 }
 
 func main() {
+	generatePages()
+	serveLibraryHttp()
+}
 
+func serveLibraryHttp() {
+	tmpl := template.Must(
+		template.ParseFiles("templates/index.html"),
+	)
+
+	// homepage
+	http.HandleFunc("/", func(w http.ResponseWriter, r *http.Request) {
+		data := PageData{
+			Title: "My Calibre Library",
+		}
+
+		err := tmpl.Execute(w, data)
+		if err != nil {
+			http.Error(w, err.Error(), 500)
+		}
+	})
+
+	// serve generated json pages
+	http.Handle(
+		"/pages/",
+		http.StripPrefix(
+			"/pages/",
+			http.FileServer(http.Dir("./pages")),
+		),
+	)
+
+	// serve css/js
+	http.Handle(
+		"/static/",
+		http.StripPrefix(
+			"/static/",
+			http.FileServer(http.Dir("./static")),
+		),
+	)
+
+	log.Println("Listening on :8080")
+	log.Fatal(http.ListenAndServe(":8080", nil))
+}
+func generatePages() {
 	db, err := sql.Open("sqlite3", "/data/CALIBRE/Calibre/E-Books/metadata.db")
 	defer func(db *sql.DB) {
 		err := db.Close()
