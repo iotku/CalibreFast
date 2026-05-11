@@ -137,9 +137,9 @@ window.addEventListener("DOMContentLoaded", () => {
 
             cover.addEventListener("error", () => {
                 const canvas = generateCoverText(book);
-                const wrapper = img.parentElement;
+                const wrapper = cover.parentElement;
 
-                img.remove();
+                cover.remove();
                 wrapper.appendChild(canvas);
             });
 
