@@ -86,10 +86,6 @@ window.addEventListener("DOMContentLoaded", () => {
         ctx.fillText(line, x, y);
     }
 
-    function attachCoverFallback(img, book) {
-
-    }
-
     function hashString(str) {
         let h = 0;
         for (let i = 0; i < str.length; i++) {
@@ -105,6 +101,59 @@ window.addEventListener("DOMContentLoaded", () => {
     }
 
 
+    const queue = [];
+    const inQueue = new Set();
+    const loaded = new Set();
+
+    const MAX_CONCURRENT = 50;
+    let active = 0;
+
+    function enqueue(img) {
+        if (inQueue.has(img)) return;
+        inQueue.add(img);
+        // NEWEST FIRST
+        queue.unshift(img);
+        processQueue();
+    }
+
+    function processQueue() {
+        while (active < MAX_CONCURRENT && queue.length > 0) {
+            const img = queue.shift();
+            inQueue.delete(img);
+
+            active++;
+
+            const controller = new AbortController();
+
+            fetch(img.dataset.src, { signal: controller.signal })
+                .then(r => r.blob())
+                .then(blob => {
+                    img.src = URL.createObjectURL(blob);
+                    loaded.add(img.dataset.id);
+                })
+                .catch(() => {})
+                .finally(() => {
+                    active--;
+                    processQueue();
+                });
+        }
+    }
+
+    const coverObserver = new IntersectionObserver((entries) => {
+        for (const entry of entries) {
+            if (!entry.isIntersecting) continue;
+
+            const img = entry.target;
+            const id = img.dataset.id; // uuid is best
+            if (loaded.has(id)) continue;
+
+            enqueue(img);
+        }
+    }, {
+        rootMargin: "800px"
+    });
+
+
     function renderBooks(books) {
         for (const book of books) {
             const el = document.createElement("div");
@@ -115,7 +164,7 @@ window.addEventListener("DOMContentLoaded", () => {
             el.innerHTML = `
     <a href="/book/${book.uuid}">
     <div class="cover-wrapper" style="background:${colorFromBook(book)}">
-        <img src="/cover/${book.uuid}" class="book-cover" fetchpriority="low" />
+        <img class="book-cover" fetchpriority="low" />
     </div>
     </a>
     
@@ -135,6 +184,9 @@ window.addEventListener("DOMContentLoaded", () => {
 
             const cover = el.querySelector(".book-cover");
 
+            cover.dataset.src = `/cover-thumb/${book.uuid}`;
+            cover.dataset.id = book.uuid; // ✅ REQUIRED
+            coverObserver.observe(cover);
             cover.addEventListener("error", () => {
                 const canvas = generateCoverText(book);
                 const wrapper = cover.parentElement;
@@ -194,7 +246,7 @@ window.addEventListener("DOMContentLoaded", () => {
             currentPage++;
 
             // preload next 3 pages
-            preloadPages(currentPage, 3);
+            await preloadPages(currentPage, 3);
         } catch (err) {
             console.error(err);
         } finally {

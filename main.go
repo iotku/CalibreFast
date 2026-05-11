@@ -5,6 +5,8 @@ import (
 	"encoding/json"
 	"flag"
 	"html/template"
+	"image"
+	"image/jpeg"
 	"log"
 	"net/http"
 	"os"
@@ -104,6 +106,55 @@ func coverHandler(w http.ResponseWriter, r *http.Request) {
 	http.ServeContent(w, r, "cover.jpg", fileModTime(f), f)
 }
 
+func coverThumbHandler(w http.ResponseWriter, r *http.Request) {
+	uuid := strings.TrimPrefix(r.URL.Path, "/cover-thumb/")
+	path, ok := coverIndex.Load(uuid)
+	if !ok {
+		http.NotFound(w, r)
+		return
+	}
+
+	filePath := filepath.Join(baseDir, path.(string), "cover.jpg")
+
+	f, err := os.Open(filePath)
+	if err != nil {
+		http.NotFound(w, r)
+		return
+	}
+	defer f.Close()
+
+	img, _, err := image.Decode(f)
+	if err != nil {
+		http.NotFound(w, r)
+		return
+	}
+
+	thumb := resizeToWidth(img, 300)
+
+	w.Header().Set("Content-Type", "image/jpeg")
+	jpeg.Encode(w, thumb, &jpeg.Options{Quality: 75})
+}
+
+func resizeToWidth(img image.Image, width int) image.Image {
+	bounds := img.Bounds()
+
+	scale := float64(width) / float64(bounds.Dx())
+	height := int(float64(bounds.Dy()) * scale)
+
+	dst := image.NewRGBA(image.Rect(0, 0, width, height))
+
+	for y := 0; y < height; y++ {
+		for x := 0; x < width; x++ {
+			srcX := int(float64(x) / scale)
+			srcY := int(float64(y) / scale)
+
+			dst.Set(x, y, img.At(srcX, srcY))
+		}
+	}
+
+	return dst
+}
+
 // Why do we even need this lol
 func fileModTime(f *os.File) (t time.Time) {
 	stat, err := f.Stat()
@@ -150,6 +201,7 @@ func serveLibraryHttp() {
 
 	//server cover getter
 	http.HandleFunc("/cover/", coverHandler)
+	http.HandleFunc("/cover-thumb/", coverThumbHandler)
 
 	// server get formats
 	http.HandleFunc("/formats/", formatsHandler)
