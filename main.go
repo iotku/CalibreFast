@@ -106,18 +106,18 @@ func fileModTime(f *os.File) (t time.Time) {
 	return stat.ModTime()
 }
 
-func serveLibraryHttp() {
-	tmpl := template.Must(
-		template.ParseFiles("templates/index.html"),
-	)
+var templates = template.Must(
+	template.ParseGlob("templates/*.html"),
+)
 
+func serveLibraryHttp() {
 	// homepage
 	http.HandleFunc("/", func(w http.ResponseWriter, r *http.Request) {
 		data := PageData{
 			Title: "My Calibre Library",
 		}
 
-		err := tmpl.Execute(w, data)
+		err := templates.ExecuteTemplate(w, "index.html", data)
 		if err != nil {
 			http.Error(w, err.Error(), 500)
 		}
@@ -150,6 +150,9 @@ func serveLibraryHttp() {
 	// Downloads
 	http.HandleFunc("/download/", downloadHandler)
 
+	// Book Display
+	http.HandleFunc("/book/", bookHandler)
+
 	log.Println("Listening on :8080")
 	log.Fatal(http.ListenAndServe(":8080", nil))
 }
@@ -166,7 +169,7 @@ func generatePages() {
 		panic(err)
 	}
 
-	// create pagenated entries as json for each book in metadata.db (50 books/page)
+	// create paginated entries as json for each book in metadata.db (50 books/page)
 	rows, err := db.Query("SELECT title, author_sort, series_index, pubdate, path, uuid FROM books ORDER BY timestamp DESC")
 	if err != nil {
 		panic(err)

@@ -78,3 +78,51 @@ h1 {
     color: #888;
     font-size: 13px;
 }
+
+.book-page {
+    display: flex;
+    gap: 2rem;
+    max-width: 1200px;
+    margin: auto;
+    padding: 2rem;
+}
+
+.book-page-cover img {
+    width: 320px;
+    border-radius: 12px;
+}
+
+.book-page-info {
+    flex: 1;
+}
+
+.meta-row {
+    margin-bottom: 1rem;
+}
+
+.description {
+    margin-top: 2rem;
+    line-height: 1.6;
+}
+
+.download-section {
+    margin-top: 2rem;
+    display: flex;
+    gap: 1rem;
+}
+
+.download-btn {
+    padding: 0.75rem 1rem;
+    background: #222;
+    color: white;
+    text-decoration: none;
+    border-radius: 8px;
+}
+
+.tag {
+    display: inline-block;
+    padding: 0.25rem 0.5rem;
+    background: #eee;
+    border-radius: 999px;
+    margin-right: 0.5rem;
+}

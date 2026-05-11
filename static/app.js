@@ -46,7 +46,9 @@ window.addEventListener("DOMContentLoaded", () => {
 
 
             el.innerHTML = `
-<img src="/cover/${book.uuid}" class="book-cover" />
+    <a href="/book/${book.uuid}">
+        <img src="/cover/${book.uuid}" class="book-cover" />
+    </a>
     
     <div class="book-info">
     <div class="formats"></div>
