@@ -16,7 +16,13 @@
 
     <div class="book-page-info">
         <h1>{{ .Title }}</h1>
-
+        <div class="download-section">
+            {{ range .Formats }}
+            <a class="download-btn" href="/download/{{ $.UUID }}/{{ . }}">
+                Download {{ . }}
+            </a>
+            {{ end }}
+        </div>
         <div class="meta-row">
             <strong>Author:</strong>
             {{ range .Authors }}
@@ -48,14 +54,6 @@
 
         <div class="description">
             {{ .Description }}
-        </div>
-
-        <div class="download-section">
-            {{ range .Formats }}
-            <a class="download-btn" href="/download/{{ $.UUID }}/{{ . }}">
-                Download {{ . }}
-            </a>
-            {{ end }}
         </div>
     </div>
 
