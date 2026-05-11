@@ -248,7 +248,7 @@ func resolveFormats(uuid, baseDir, path string) []string {
 			continue
 		}
 		switch filepath.Ext(e.Name()) {
-		case ".epub", ".pdf", ".mobi", ".azw3":
+		case ".epub", ".pdf", ".mobi", ".azw3", ".djvu":
 			formats = append(formats, e.Name())
 		}
 	}
