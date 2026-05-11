@@ -62,10 +62,12 @@ func main() {
 
 var baseDir string
 
-var coverIndex sync.Map  // map[string]string
-var formatCache sync.Map // map[string][]string
-
+var coverIndex sync.Map               // map[string]string
+var formatCache sync.Map              // map[string][]string
+var imageSem = make(chan struct{}, 1) // only 2 HDD reads at once
 func coverHandler(w http.ResponseWriter, r *http.Request) {
+	imageSem <- struct{}{}        // acquire slot
+	defer func() { <-imageSem }() // release slot
 	// uuid comes from URL: /cover/{uuid}
 	uuid := filepath.Base(r.URL.Path)
 
