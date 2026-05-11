@@ -38,6 +38,73 @@ window.addEventListener("DOMContentLoaded", () => {
         }
     }
 
+    function generateCoverText(book) {
+        const canvas = document.createElement("canvas");
+        canvas.className = "cover-text";
+
+        canvas.width = 200;
+        canvas.height = 300;
+
+        const ctx = canvas.getContext("2d");
+
+        const scale = Math.min(window.devicePixelRatio || 1, 3);
+        canvas.width *= scale;
+        canvas.height *= scale;
+        ctx.scale(scale, scale);
+
+        ctx.fillStyle = "white";
+        ctx.textAlign = "center";
+
+        // title
+        ctx.font = "bold 16px sans-serif";
+        wrapText(ctx, book.title, 100, 120, 180, 20);
+
+        // author
+        ctx.font = "12px sans-serif";
+        ctx.fillText(book.author_sort || "", 100, 260);
+
+        return canvas;
+    }
+
+    function wrapText(ctx, text, x, y, maxWidth, lineHeight) {
+        const words = (text || "").split(" ");
+        let line = "";
+
+        for (let i = 0; i < words.length; i++) {
+            const test = line + words[i] + " ";
+            const width = ctx.measureText(test).width;
+
+            if (width > maxWidth && i > 0) {
+                ctx.fillText(line, x, y);
+                line = words[i] + " ";
+                y += lineHeight;
+            } else {
+                line = test;
+            }
+        }
+
+        ctx.fillText(line, x, y);
+    }
+
+    function attachCoverFallback(img, book) {
+
+    }
+
+    function hashString(str) {
+        let h = 0;
+        for (let i = 0; i < str.length; i++) {
+            h = (h << 5) - h + str.charCodeAt(i);
+            h |= 0;
+        }
+        return Math.abs(h);
+    }
+
+    function colorFromBook(book) {
+        const h = hashString(book.uuid);
+        return `hsl(${h % 360}, 55%, 35%)`;
+    }
+
+
     function renderBooks(books) {
         for (const book of books) {
             const el = document.createElement("div");
@@ -47,7 +114,9 @@ window.addEventListener("DOMContentLoaded", () => {
 
             el.innerHTML = `
     <a href="/book/${book.uuid}">
+    <div class="cover-wrapper" style="background:${colorFromBook(book)}">
         <img src="/cover/${book.uuid}" class="book-cover" />
+    </div>
     </a>
     
     <div class="book-info">
@@ -63,6 +132,17 @@ window.addEventListener("DOMContentLoaded", () => {
         </div>
     </div>
 `;
+
+            const cover = el.querySelector(".book-cover");
+
+            cover.addEventListener("error", () => {
+                const canvas = generateCoverText(book);
+                const wrapper = img.parentElement;
+
+                img.remove();
+                wrapper.appendChild(canvas);
+            });
+
 
             el.addEventListener("mouseenter", async () => {
                 if (el.dataset.loaded) return;

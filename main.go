@@ -11,6 +11,7 @@ import (
 	"path/filepath"
 	"strconv"
 	"strings"
+	"sync"
 	"time"
 
 	_ "github.com/mattn/go-sqlite3"
@@ -60,8 +61,9 @@ func main() {
 }
 
 var baseDir string
-var coverIndex = make(map[string]string)
-var formatCache = make(map[string][]string)
+
+var coverIndex sync.Map  // map[string]string
+var formatCache sync.Map // map[string][]string
 
 func coverHandler(w http.ResponseWriter, r *http.Request) {
 	// uuid comes from URL: /cover/{uuid}
@@ -72,10 +74,13 @@ func coverHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	bookPath := coverIndex[uuid]
+	bookPath, ok := coverIndex.Load(uuid)
+	if !ok {
+		http.Error(w, "book not found", http.StatusNotFound)
+	}
 
 	// Build safe path
-	coverPath := filepath.Join(baseDir, bookPath, "cover.jpg")
+	coverPath := filepath.Join(baseDir, bookPath.(string), "cover.jpg")
 
 	// prevent path traversal escape (extra safety)
 	coverPath, err := filepath.Abs(coverPath)
@@ -202,7 +207,7 @@ func generatePages() {
 		}
 
 		// cache cover path
-		coverIndex[book.UUID] = book.Path
+		coverIndex.Store(book.UUID, book.Path)
 
 		// add book to the arrays
 		books = append(books, book)
@@ -229,8 +234,8 @@ func generatePages() {
 
 func resolveFormats(uuid, baseDir, path string) []string {
 	// check cache first
-	if f, ok := formatCache[uuid]; ok {
-		return f
+	if f, ok := formatCache.Load(uuid); ok {
+		return f.([]string)
 	}
 
 	full := filepath.Join(baseDir, path)
@@ -254,7 +259,7 @@ func resolveFormats(uuid, baseDir, path string) []string {
 	}
 
 	// store in cache
-	formatCache[uuid] = formats
+	formatCache.Store(uuid, formats)
 
 	return formats
 }
@@ -262,13 +267,13 @@ func resolveFormats(uuid, baseDir, path string) []string {
 func formatsHandler(w http.ResponseWriter, r *http.Request) {
 	uuid := filepath.Base(r.URL.Path)
 
-	path, ok := coverIndex[uuid]
+	path, ok := coverIndex.Load(uuid)
 	if !ok {
 		http.NotFound(w, r)
 		return
 	}
 
-	files := resolveFormats(uuid, baseDir, path)
+	files := resolveFormats(uuid, baseDir, path.(string))
 
 	// convert to UI-friendly format list
 	formats := extractFormats(files)
@@ -298,15 +303,17 @@ func downloadHandler(w http.ResponseWriter, r *http.Request) {
 	uuid := parts[2]
 	format := parts[3] // epub, pdf, mobi
 
-	path, ok := coverIndex[uuid]
+	value, ok := coverIndex.Load(uuid)
+	path, ok2 := value.(string)
 	if !ok {
 		http.NotFound(w, r)
 		return
 	}
 
 	// ensure cache exists (lazy init)
-	files, ok := formatCache[uuid]
-	if !ok {
+	value, ok = formatCache.Load(uuid)
+	files, ok2 := value.([]string) // typecast
+	if !ok || !ok2 {
 		files = resolveFormats(uuid, baseDir, path)
 		if len(files) == 0 {
 			http.NotFound(w, r)
