@@ -48,6 +48,7 @@ func writePage(page int, books []Book) error {
 
 func main() {
 	flag.StringVar(&baseDir, "basedir", "", "path to Calibre library root")
+	flag.StringVar(&cacheDir, "cachedir", "", "path to cache location")
 	flag.Parse()
 	if baseDir == "" {
 		log.Fatal("missing -basedir")
@@ -63,6 +64,7 @@ func main() {
 }
 
 var baseDir string
+var cacheDir string
 
 var coverIndex sync.Map               // map[string]string
 var formatCache sync.Map              // map[string][]string
@@ -105,18 +107,38 @@ func coverHandler(w http.ResponseWriter, r *http.Request) {
 
 	http.ServeContent(w, r, "cover.jpg", fileModTime(f), f)
 }
+func ensureDir(path string) error {
+	return os.MkdirAll(filepath.Dir(path), 0755)
+}
 
 func coverThumbHandler(w http.ResponseWriter, r *http.Request) {
 	uuid := strings.TrimPrefix(r.URL.Path, "/cover-thumb/")
+
 	path, ok := coverIndex.Load(uuid)
 	if !ok {
 		http.NotFound(w, r)
 		return
 	}
 
-	filePath := filepath.Join(baseDir, path.(string), "cover.jpg")
+	thumbPath := filepath.Join(cacheDir, "covers", "thumb", uuid+".jpg")
+	if err := ensureDir(thumbPath); err != nil {
+		println(err.Error())
+	}
 
-	f, err := os.Open(filePath)
+	// 1. FAST PATH: already cached
+	if f, err := os.Open(thumbPath); err == nil {
+		defer f.Close()
+		w.Header().Set("Content-Type", "image/jpeg")
+		w.Header().Set("Cache-Control", "public, max-age=86400, immutable")
+		w.Header().Set("X-Cache-Hit", "true")
+		http.ServeContent(w, r, "thumb.jpg", time.Time{}, f)
+		return
+	}
+
+	// 2. SLOW PATH: generate
+	origPath := filepath.Join(baseDir, path.(string), "cover.jpg")
+
+	f, err := os.Open(origPath)
 	if err != nil {
 		http.NotFound(w, r)
 		return
@@ -131,7 +153,15 @@ func coverThumbHandler(w http.ResponseWriter, r *http.Request) {
 
 	thumb := resizeToWidth(img, 300)
 
+	out, err := os.Create(thumbPath)
+	if err == nil {
+		jpeg.Encode(out, thumb, &jpeg.Options{Quality: 75})
+		out.Close()
+	}
+
 	w.Header().Set("Content-Type", "image/jpeg")
+	w.Header().Set("Cache-Control", "public, max-age=86400, immutable")
+	w.Header().Set("X-Cache-Hit", "false")
 	jpeg.Encode(w, thumb, &jpeg.Options{Quality: 75})
 }
 
