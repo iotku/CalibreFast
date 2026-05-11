@@ -44,11 +44,43 @@ window.addEventListener("DOMContentLoaded", () => {
 
             el.className = "book";
 
+
             el.innerHTML = `
-                <h2>${book.title}</h2>
-                <p>${book.author_sort}</p>
-                <p>${book.pubdate}</p>
-            `;
+<img src="/cover/${book.uuid}" class="book-cover" />
+    
+    <div class="book-info">
+    <div class="formats"></div>
+        <h2>${book.title}</h2>
+
+        <div class="book-author">
+            ${book.author_sort}
+        </div>
+
+        <div class="book-date">
+            ${book.pubdate}
+        </div>
+    </div>
+`;
+
+            el.addEventListener("mouseenter", async () => {
+                if (el.dataset.loaded) return;
+
+                const res = await fetch(`/formats/${book.uuid}`);
+                const formats = await res.json();
+                if (!Array.isArray(formats)) {
+                    return;
+                }
+
+                const container = el.querySelector(".formats");
+
+                container.innerHTML = formats.map(f =>
+                    `<button onclick="window.location='/download/${book.uuid}/${f}'">
+            ${f.toUpperCase()}
+        </button>`
+                ).join("");
+
+                el.dataset.loaded = "true";
+            });
 
             booksDiv.appendChild(el);
         }
