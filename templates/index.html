@@ -1,5 +1,5 @@
 <!doctype html>
-<html>
+<html lang="en">
 <head>
     <meta charset="utf-8">
     <title>{{ .Title }}</title>
@@ -9,7 +9,11 @@
 <body>
 
 <h1>{{ .Title }}</h1>
-
+<div id="pager">
+    <button id="prev-page">Prev</button>
+    <span id="page-label"></span>
+    <button id="next-page">Next</button>
+</div>
 <div id="books"></div>
 <div id="load-more" style="height: 1px;"></div>
 

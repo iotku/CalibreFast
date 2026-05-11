@@ -2,10 +2,46 @@ window.addEventListener("DOMContentLoaded", () => {
     const booksDiv = document.getElementById("books");
     const loadMoreEl = document.getElementById("load-more");
 
-    let currentPage = 0;
+    const params = new URLSearchParams(window.location.search);
+
+    let currentPage = parseInt(params.get("page") || "0", 10);
+
+    if (isNaN(currentPage) || currentPage < 0) {
+        currentPage = 0;
+    }
     let loading = false;
     let done = false;
+    // Scroll to top of page on initial load
+    window.history.scrollRestoration = "manual";
+    window.scrollTo(0, 0);
 
+    const pageLabel = document.getElementById("page-label");
+
+    function updatePageLabel() {
+        pageLabel.textContent = `Page ${currentPage}`;
+    }
+    document.getElementById("next-page")
+        .addEventListener("click", async () => {
+
+            booksDiv.innerHTML = "";
+
+            done = false;
+
+            await loadNextPage();
+        });
+    document.getElementById("prev-page")
+        .addEventListener("click", async () => {
+
+            if (currentPage <= 1) return;
+
+            currentPage -= 2;
+
+            booksDiv.innerHTML = "";
+
+            done = false;
+
+            await loadNextPage();
+        });
     // prefetched pages cache
     const pageCache = new Map();
 
@@ -103,8 +139,6 @@ window.addEventListener("DOMContentLoaded", () => {
 
     const queue = [];
     const inQueue = new Set();
-    const loaded = new Set();
-
     const MAX_CONCURRENT = 50;
     let active = 0;
 
@@ -129,7 +163,9 @@ window.addEventListener("DOMContentLoaded", () => {
                 .then(r => r.blob())
                 .then(blob => {
                     img.src = URL.createObjectURL(blob);
-                    loaded.add(img.dataset.id);
+                    img.onload = () => { // TODO: Do we really need to add an onload handler here?
+                        img.classList.add("loaded"); // add loaded class for transition
+                    };
                 })
                 .catch(() => {})
                 .finally(() => {
@@ -144,8 +180,7 @@ window.addEventListener("DOMContentLoaded", () => {
             if (!entry.isIntersecting) continue;
 
             const img = entry.target;
-            const id = img.dataset.id; // uuid is best
-            if (loaded.has(id)) continue;
+            if (img.src) continue;
 
             enqueue(img);
         }
@@ -164,7 +199,7 @@ window.addEventListener("DOMContentLoaded", () => {
             el.innerHTML = `
     <a href="/book/${book.uuid}">
     <div class="cover-wrapper" style="background:${colorFromBook(book)}">
-        <img class="book-cover" fetchpriority="low" />
+        <img class="book-cover" fetchpriority="low" alt="${book.title}"/>
     </div>
     </a>
     
@@ -244,6 +279,7 @@ window.addEventListener("DOMContentLoaded", () => {
             );
 
             currentPage++;
+            updatePageLabel();
 
             // preload next 3 pages
             await preloadPages(currentPage, 3);
