@@ -233,14 +233,9 @@ func resolveFormats(uuid, baseDir, path string) []string {
 		if e.IsDir() {
 			continue
 		}
-
 		switch filepath.Ext(e.Name()) {
-		case ".epub":
-			formats = append(formats, "epub")
-		case ".pdf":
-			formats = append(formats, "pdf")
-		case ".mobi":
-			formats = append(formats, "mobi")
+		case ".epub", ".pdf", ".mobi":
+			formats = append(formats, e.Name())
 		}
 	}
 
@@ -261,51 +256,80 @@ func formatsHandler(w http.ResponseWriter, r *http.Request) {
 
 	baseDir := "/data/CALIBRE/Calibre/E-Books"
 
-	formats := resolveFormats(uuid, baseDir, path)
+	files := resolveFormats(uuid, baseDir, path)
+
+	// convert to UI-friendly format list
+	formats := extractFormats(files)
 
 	w.Header().Set("Content-Type", "application/json")
 	json.NewEncoder(w).Encode(formats)
 }
 
+func extractFormats(files []string) []string {
+	formats := make([]string, 0, len(files))
+
+	for _, f := range files {
+		ext := strings.TrimPrefix(filepath.Ext(f), ".")
+		formats = append(formats, ext)
+	}
+
+	return formats
+}
+
 func downloadHandler(w http.ResponseWriter, r *http.Request) {
 	parts := strings.Split(r.URL.Path, "/")
 	if len(parts) < 4 {
-		http.Error(w, "bad request", 400)
+		http.Error(w, "bad request", http.StatusBadRequest)
 		return
 	}
 
 	uuid := parts[2]
-	format := parts[3]
+	format := parts[3] // epub, pdf, mobi
 
 	path, ok := coverIndex[uuid]
 	if !ok {
-		println("download: " + uuid + " not found")
 		http.NotFound(w, r)
 		return
 	}
 
 	baseDir := "/data/CALIBRE/Calibre/E-Books"
 
-	// ensure cache exists (lazy fallback)
-	formats := resolveFormats(uuid, baseDir, path)
-	if len(formats) == 0 {
-		println("download: " + uuid + " not found resolve fmts")
+	// ensure cache exists (lazy init)
+	files, ok := formatCache[uuid]
+	if !ok {
+		files = resolveFormats(uuid, baseDir, path)
+		if len(files) == 0 {
+			http.NotFound(w, r)
+			return
+		}
+	}
+
+	// find matching file by extension
+	var target string
+	for _, f := range files {
+		if strings.TrimPrefix(filepath.Ext(f), ".") == format {
+			target = f
+			break
+		}
+	}
+
+	if target == "" {
 		http.NotFound(w, r)
 		return
 	}
 
-	file := filepath.Join(baseDir, path, "book."+format)
+	fullPath := filepath.Join(baseDir, path, target)
 
-	if _, err := os.Stat(file); err != nil {
-		println("download: " + uuid + " not found file stat")
+	// safety check
+	if _, err := os.Stat(fullPath); err != nil {
 		http.NotFound(w, r)
 		return
 	}
 
 	w.Header().Set(
 		"Content-Disposition",
-		`attachment; filename="book.`+format+`"`,
+		`attachment; filename="`+target+`"`,
 	)
 
-	http.ServeFile(w, r, file)
+	http.ServeFile(w, r, fullPath)
 }
