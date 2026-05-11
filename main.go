@@ -154,7 +154,7 @@ func serveLibraryHttp() {
 	log.Fatal(http.ListenAndServe(":8080", nil))
 }
 func generatePages() {
-	db, err := sql.Open("sqlite3", "/data/CALIBRE/Calibre/E-Books/metadata.db")
+	db, err := sql.Open("sqlite3", filepath.Join(baseDir, "metadata.db"))
 	defer func(db *sql.DB) {
 		err := db.Close()
 		if err != nil {
