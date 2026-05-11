@@ -2,7 +2,7 @@
 <html>
 <head>
     <meta charset="utf-8">
-    <title>{{ .Metadata.Metadata.Title }}</title>
+    <title>{{ .Title }}</title>
 
     <link rel="stylesheet" href="/static/style.css">
 </head>
@@ -15,39 +15,39 @@
     </div>
 
     <div class="book-page-info">
-        <h1>{{ .Metadata.Metadata.Title }}</h1>
+        <h1>{{ .Title }}</h1>
 
         <div class="meta-row">
             <strong>Author:</strong>
-            {{ range .Metadata.Metadata.Creators }}
+            {{ range .Authors }}
             {{ . }}
             {{ end }}
         </div>
 
         <div class="meta-row">
             <strong>Publisher:</strong>
-            {{ .Metadata.Metadata.Publisher }}
+            {{ .Publisher }}
         </div>
 
         <div class="meta-row">
             <strong>Date:</strong>
-            {{ .Metadata.Metadata.Date }}
+            {{ .Date }}
         </div>
 
         <div class="meta-row">
             <strong>Language:</strong>
-            {{ .Metadata.Metadata.Language }}
+            {{ .Language }}
         </div>
 
         <div class="meta-row">
             <strong>Tags:</strong>
-            {{ range .Metadata.Metadata.Subjects }}
+            {{ range .Tags }}
             <span class="tag">{{ . }}</span>
             {{ end }}
         </div>
 
         <div class="description">
-            {{ .Metadata.Metadata.Description }}
+            {{ .Description }}
         </div>
 
         <div class="download-section">

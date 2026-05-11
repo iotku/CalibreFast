@@ -122,7 +122,8 @@ h1 {
 .tag {
     display: inline-block;
     padding: 0.25rem 0.5rem;
-    background: #eee;
+    background: #252525;
     border-radius: 999px;
     margin-right: 0.5rem;
+    margin-bottom: 0.5rem;
 }

@@ -2,15 +2,36 @@ package main
 
 import (
 	"bytes"
+	"html/template"
 	"net/http"
 	"path/filepath"
 	"strings"
+
+	"github.com/microcosm-cc/bluemonday"
 )
 
+var descriptionPolicy = func() *bluemonday.Policy {
+	p := bluemonday.UGCPolicy()
+
+	p.RequireNoFollowOnLinks(true)
+	p.RequireNoReferrerOnLinks(true)
+	p.RequireCrossOriginAnonymous(true)
+
+	return p
+}()
+
 type BookPageData struct {
-	UUID     string
-	Metadata *OPF
-	Formats  []string
+	UUID string
+
+	Title       string
+	Authors     []string
+	Description template.HTML
+	Publisher   string
+	Date        string
+	Language    string
+	Tags        []string
+
+	Formats []string
 }
 
 func bookHandler(w http.ResponseWriter, r *http.Request) {
@@ -44,11 +65,23 @@ func bookHandler(w http.ResponseWriter, r *http.Request) {
 	}
 
 	data := BookPageData{
-		UUID:     uuid,
-		Metadata: opf,
-		Formats:  formats,
-	}
+		UUID: uuid,
 
+		Title:     opf.Metadata.Title,
+		Authors:   opf.Metadata.Creators,
+		Publisher: opf.Metadata.Publisher,
+		Date:      opf.Metadata.Date,
+		Language:  opf.Metadata.Language,
+		Tags:      opf.Metadata.Subjects,
+
+		Description: template.HTML(
+			descriptionPolicy.Sanitize(
+				opf.Metadata.Description,
+			),
+		),
+
+		Formats: formats,
+	}
 	// render into buffer first
 	var buf bytes.Buffer
 
