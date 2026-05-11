@@ -3,6 +3,7 @@ package main
 import (
 	"database/sql"
 	"encoding/json"
+	"flag"
 	"html/template"
 	"log"
 	"net/http"
@@ -43,10 +44,22 @@ func writePage(page int, books []Book) error {
 }
 
 func main() {
+	flag.StringVar(&baseDir, "basedir", "", "path to Calibre library root")
+	flag.Parse()
+	if baseDir == "" {
+		log.Fatal("missing -basedir")
+	}
+
+	dbPath := filepath.Join(baseDir, "metadata.db")
+
+	if _, err := os.Stat(dbPath); err != nil {
+		log.Fatal("metadata.db not found at: ", dbPath)
+	}
 	generatePages()
 	serveLibraryHttp()
 }
 
+var baseDir string
 var coverIndex = make(map[string]string)
 var formatCache = make(map[string][]string)
 
@@ -62,8 +75,6 @@ func coverHandler(w http.ResponseWriter, r *http.Request) {
 	bookPath := coverIndex[uuid]
 
 	// Build safe path
-	baseDir := "/data/CALIBRE/Calibre/E-Books"
-
 	coverPath := filepath.Join(baseDir, bookPath, "cover.jpg")
 
 	// prevent path traversal escape (extra safety)
@@ -254,8 +265,6 @@ func formatsHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	baseDir := "/data/CALIBRE/Calibre/E-Books"
-
 	files := resolveFormats(uuid, baseDir, path)
 
 	// convert to UI-friendly format list
@@ -291,8 +300,6 @@ func downloadHandler(w http.ResponseWriter, r *http.Request) {
 		http.NotFound(w, r)
 		return
 	}
-
-	baseDir := "/data/CALIBRE/Calibre/E-Books"
 
 	// ensure cache exists (lazy init)
 	files, ok := formatCache[uuid]
