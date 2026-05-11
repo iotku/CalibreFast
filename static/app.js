@@ -115,7 +115,7 @@ window.addEventListener("DOMContentLoaded", () => {
             el.innerHTML = `
     <a href="/book/${book.uuid}">
     <div class="cover-wrapper" style="background:${colorFromBook(book)}">
-        <img src="/cover/${book.uuid}" class="book-cover" />
+        <img src="/cover/${book.uuid}" class="book-cover" fetchpriority="low" />
     </div>
     </a>
     
