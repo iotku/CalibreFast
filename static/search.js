@@ -10,11 +10,8 @@ window.addEventListener("DOMContentLoaded", () => {
     const loadMoreEl = document.getElementById("load-more");
     const status = document.getElementById("search-status");
 
-    async function fetchSearchPage(q, from, to, page, signal) {
-        const params = new URLSearchParams({q, page});
-        if (from) params.set("from", `${from}-01-01`);
-        if (to) params.set("to", `${to}-12-31`);
-
+    async function fetchSearchPage(q, page, signal) {
+        const params = new URLSearchParams({ q, page });
         const res = await fetch(`/api/search?${params}`, { signal });
         if (!res.ok) return null;
         return res.json();
@@ -25,9 +22,7 @@ window.addEventListener("DOMContentLoaded", () => {
         loading = true;
 
         try {
-            const books = await fetchSearchPage(
-                lastQuery.q, lastQuery.from, lastQuery.to, currentPage, signal
-            );
+            const books = await fetchSearchPage(lastQuery.q, currentPage, signal);
             if (signal?.aborted) return;
             if (!books || books.length === 0) {
                 done = true;
@@ -49,31 +44,23 @@ window.addEventListener("DOMContentLoaded", () => {
     document.getElementById("search-form").addEventListener("submit", (e) => {
         e.preventDefault();
     });
-    function newSearch(q, from, to) {
+
+    function newSearch(q) {
         if (loadAbortController) loadAbortController.abort();
         loadAbortController = new AbortController();
         abortImageQueue();
-
         booksDiv.innerHTML = "";
         done = false;
         currentPage = 1;
-        lastQuery = {q, from, to};
-
-        // update URL so search is bookmarkable/shareable
-        const params = new URLSearchParams({q});
-        if (from) params.set("from", from);
-        if (to) params.set("to", to);
-        history.replaceState(null, "", `?${params}`);
-
+        lastQuery = { q };
+        history.replaceState(null, "", `?q=${encodeURIComponent(q)}`);
         loadNextPage(loadAbortController.signal);
     }
 
     document.getElementById("search-btn").addEventListener("click", () => {
-        const q = document.getElementById("search-input").value.trim();
-        const from = document.getElementById("date-from").value;
-        const to = document.getElementById("date-to").value;
+        const q = document.getElementById("search-input").value.trim(); // 👈 missing this line
         if (!q) return;
-        newSearch(q, from, to);
+        newSearch(q);
     });
 
     document.getElementById("search-input").addEventListener("keydown", (e) => {
@@ -95,8 +82,6 @@ window.addEventListener("DOMContentLoaded", () => {
         const q = params.get("q");
         if (q) {
             document.getElementById("search-input").value = q;
-            document.getElementById("date-from").value = params.get("from") ?? "";
-            document.getElementById("date-to").value = params.get("to") ?? "";
             newSearch(q, params.get("from"), params.get("to"));
         }
     });
@@ -105,10 +90,6 @@ window.addEventListener("DOMContentLoaded", () => {
     const q = params.get("q");
     if (q) {
         document.getElementById("search-input").value = q;
-        const from = params.get("from") ?? "";
-        const to = params.get("to") ?? "";
-        document.getElementById("date-from").value = from;
-        document.getElementById("date-to").value = to;
-        newSearch(q, from, to);
+        newSearch(q);
     }
 });

@@ -99,37 +99,19 @@ func searchHandler(w http.ResponseWriter, r *http.Request) {
 	like := "%" + q + "%"
 	offset := (page - 1) * 50
 
-	// build optional date clauses
-	fromClause := "NULL"
-	toClause := "NULL"
-	args := []any{like, like, like}
+	query := "SELECT DISTINCT b.uuid, b.title, COALESCE(a.sort, a.name, '') as author_sort, b.pubdate, b.path FROM books b LEFT JOIN books_authors_link bal ON bal.book = b.id LEFT JOIN authors a ON a.id = bal.author WHERE (b.title LIKE ? OR a.name LIKE ? OR a.sort LIKE ?) ORDER BY b.sort LIMIT 50 OFFSET ?"
+	args := []any{like, like, like, offset}
 
 	if fromYear != "" {
-		fromClause = "?"
+		query += " AND DATE(b.pubdate) >= DATE(?)"
 		args = append(args, fromYear+"-01-01")
 	}
 	if toYear != "" {
-		toClause = "?"
+		query += " AND DATE(b.pubdate) <= DATE(?)"
 		args = append(args, toYear+"-12-31")
 	}
+
 	args = append(args, offset)
-
-	query := `
-        SELECT DISTINCT
-            b.uuid,
-            b.title,
-            COALESCE(a.sort, a.name, '') as author_sort,
-            b.pubdate,
-            b.path
-        FROM books b
-        LEFT JOIN books_authors_link bal ON bal.book = b.id
-        LEFT JOIN authors a ON a.id = bal.author
-        WHERE (b.title LIKE ? OR a.name LIKE ? OR a.sort LIKE ?)
-          AND (` + fromClause + ` IS NULL OR DATE(b.pubdate) >= DATE(` + fromClause + `))
-          AND (` + toClause + ` IS NULL OR DATE(b.pubdate) <= DATE(` + toClause + `))
-        ORDER BY b.sort
-        LIMIT 50 OFFSET ?`
-
 	rows, err := searchDB.Query(query, args...)
 	if err != nil {
 		log.Println("search error:", err)
@@ -144,9 +126,8 @@ func searchHandler(w http.ResponseWriter, r *http.Request) {
 		if err := rows.Scan(&b.UUID, &b.Title, &b.AuthorSort, &b.PubDate, &b.Path); err != nil {
 			continue
 		}
-		// populate coverIndex lazily so cover-thumb works for search results
 		coverIndex.Store(b.UUID, b.Path)
-		b.Path = "" // don't leak filesystem path to client
+		b.Path = ""
 		books = append(books, b)
 	}
 
