@@ -236,19 +236,59 @@ window.addEventListener("keydown", (e) => {
 export async function openBookModal(uuid) {
     modalBody.innerHTML = "Loading...";
     modal.classList.add("open");
+
     const res = await fetch(`/book/${uuid}`);
     modalBody.innerHTML = await res.text();
 
-    // inject read button if epub is available
     const formatsRes = await fetch(`/formats/${uuid}`);
     const formats = await formatsRes.json();
-    if (Array.isArray(formats) && formats.includes("epub")) {
+
+    if (!Array.isArray(formats)) return;
+
+    const btnContainer = document.createElement("div");
+    btnContainer.style.cssText = `
+        display:flex;
+        flex-direction:column;
+        gap:8px;
+        margin-top:1rem;
+        width:100%;
+    `;
+
+    for (const format of formats) {
+        let href = null;
+        let label = null;
+
+        if (format === "epub") {
+            href = `/read?uuid=${uuid}`;
+            label = "Read EPUB";
+        } else if (format === "pdf") {
+            href = `/view/${uuid}/pdf`;
+            label = "Read PDF";
+        }
+
+        if (!label) continue;
+
         const btn = document.createElement("button");
-        btn.textContent = "Read";
-        btn.style.cssText = "height:44px; padding:0 24px; margin-top:1rem;";
+        btn.textContent = label;
+        btn.style.cssText = `
+            height:44px;
+            width:100%;
+        `;
+
         btn.addEventListener("click", () => {
-            window.location.href = `/read?uuid=${uuid}`;
+            if (format === "epub") {
+                window.location.href = href;
+            } else {
+                window.open(href, "_blank");
+            }
         });
-        modalBody.appendChild(btn);
+
+        btnContainer.appendChild(btn);
+    }
+
+    const readButtons = modalBody.querySelector("#read-buttons");
+
+    if (readButtons && btnContainer.children.length > 0) {
+        readButtons.appendChild(btnContainer);
     }
 }

@@ -342,8 +342,52 @@ func serveLibraryHttp() {
 
 	http.HandleFunc("/epub/", epubFileHandler)
 
+	http.HandleFunc("/view/", viewHandler)
+
 	log.Println("Listening on :8080")
 	log.Fatal(http.ListenAndServe(":8080", nil))
+}
+
+func viewHandler(w http.ResponseWriter, r *http.Request) {
+	parts := strings.Split(r.URL.Path, "/")
+	if len(parts) < 4 {
+		http.Error(w, "bad request", http.StatusBadRequest)
+		return
+	}
+
+	uuid := parts[2]
+	format := parts[3]
+
+	if format != "pdf" {
+		http.Error(w, "only pdf supported", http.StatusBadRequest)
+		return
+	}
+
+	bookPath, ok := coverIndex.Load(uuid)
+	if !ok {
+		http.NotFound(w, r)
+		return
+	}
+
+	files := resolveFormats(uuid, baseDir, bookPath.(string))
+	var target string
+	for _, f := range files {
+		if strings.TrimPrefix(filepath.Ext(f), ".") == format {
+			target = f
+			break
+		}
+	}
+
+	if target == "" {
+		http.NotFound(w, r)
+		return
+	}
+
+	fullPath := filepath.Join(baseDir, bookPath.(string), target)
+
+	w.Header().Set("Content-Type", "application/pdf")
+	w.Header().Set("Content-Disposition", `inline; filename="`+target+`"`)
+	http.ServeFile(w, r, fullPath)
 }
 
 func epubFileHandler(w http.ResponseWriter, r *http.Request) {
