@@ -29,8 +29,6 @@ window.addEventListener("DOMContentLoaded", () => {
 
     let currentPage = parseInt(params.get("page") || "1", 10);
 
-    let visiblePage = currentPage;
-
     if (isNaN(currentPage) || currentPage < 1) {
         currentPage = 1;
     }
@@ -45,38 +43,31 @@ window.addEventListener("DOMContentLoaded", () => {
 
     const pageLabel = document.getElementById("page-label");
 
-    function updatePageLabel() {
-        history.replaceState(null, "", `?page=${visiblePage}`);
-        pageLabel.textContent = `Page ${visiblePage}`;
-        document.getElementById("next-page").disabled =
-            currentPage > totalPages;
-        document.getElementById("prev-page").disabled =
-            currentPage <= 2;
+    function updatePageLabel(overridePage) {
+        const page = overridePage ?? getVisiblePage();
+        history.replaceState(null, "", `?page=${page}`);
+        pageLabel.textContent = `Page ${page}`;
+        document.getElementById("next-page").disabled = currentPage > totalPages;
+        document.getElementById("prev-page").disabled = page <= 1;
     }
+
     document.getElementById("next-page").addEventListener("click", async () => {
+        const page = getVisiblePage();
         booksDiv.innerHTML = "";
         done = false;
-
-        visiblePage = visiblePage + 1;
-        currentPage = visiblePage;
-
+        currentPage = page + 1;
         await loadNextPage();
-
-        updatePageLabel();
+        updatePageLabel(page + 1);
     });
 
     document.getElementById("prev-page").addEventListener("click", async () => {
-        if (visiblePage <= 1) return;
-
+        const page = getVisiblePage();
+        if (page <= 1) return;
         booksDiv.innerHTML = "";
         done = false;
-
-        visiblePage = Math.max(1, visiblePage - 1);
-        currentPage = visiblePage;
-
+        currentPage = page - 1;
         await loadNextPage();
-
-        updatePageLabel();
+        updatePageLabel(page - 1);
     });
 
     if (totalPages && currentPage > totalPages) {
@@ -216,33 +207,21 @@ window.addEventListener("DOMContentLoaded", () => {
         }
     }
 
-    window.addEventListener("scroll", () => {
-        computeCurrentPage();
-    });
-
-    function computeCurrentPage() {
+    function getVisiblePage() {
         const pages = document.querySelectorAll(".page");
-
-        let current = visiblePage
+        const headerHeight = document.querySelector(".top-bar").offsetHeight;
+        let current = null;
 
         for (const page of pages) {
             const rect = page.getBoundingClientRect();
-
-            // page has crossed into "active region"
-            if (rect.top <= 100) { // TODO: Probably should make this the header height
+            if (rect.top <= headerHeight + 5) {
                 current = parseInt(page.dataset.page, 10);
             } else {
-                // since pages are ordered, we can stop early
                 break;
             }
         }
 
-        if (current === visiblePage) return;
-
-        visiblePage = current;
-
-        updatePageLabel();
-
+        return current ?? parseInt(document.querySelector(".page")?.dataset.page, 10) ?? 1;
     }
 
     const coverObserver = new IntersectionObserver((entries) => {
@@ -258,6 +237,13 @@ window.addEventListener("DOMContentLoaded", () => {
         rootMargin: "800px"
     });
 
+    window.addEventListener("scroll", () => updatePageLabel());
+    window.addEventListener("scrollend", () => updatePageLabel());
+    window.addEventListener("keydown", (e) => {
+        if (e.key === "Home" || e.key === "End") {
+            updatePageLabel();
+        }
+    });
 
     function renderBooks(books, pageNumber) {
         const pageEl = document.createElement("div");
@@ -355,9 +341,7 @@ window.addEventListener("DOMContentLoaded", () => {
             loading = false;
         }
 
-        requestAnimationFrame(() => {
-            computeCurrentPage();
-        });
+            updatePageLabel();
     }
 
     const observer = new IntersectionObserver(
@@ -375,9 +359,6 @@ window.addEventListener("DOMContentLoaded", () => {
 
     // initial load
     loadNextPage().then(() => {
-        requestAnimationFrame(() => {
-            updatePageLabel();      // 👈 key line
-            computeCurrentPage();   // optional safety pass
-        });
+            updatePageLabel();
     });
 });
