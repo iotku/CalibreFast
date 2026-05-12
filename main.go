@@ -28,6 +28,12 @@ type Book struct {
 	UUID        string  `json:"uuid"`
 }
 
+type LibraryInfo struct {
+	TotalPages int `json:"total_pages"`
+}
+
+var totalPages = 0
+
 type PageData struct {
 	Title string
 }
@@ -220,6 +226,12 @@ func serveLibraryHttp() {
 		),
 	)
 
+	http.HandleFunc("/library-info", func(w http.ResponseWriter, r *http.Request) {
+		json.NewEncoder(w).Encode(LibraryInfo{
+			TotalPages: totalPages,
+		})
+	})
+
 	// serve css/js
 	http.Handle(
 		"/static/",
@@ -270,7 +282,7 @@ func generatePages() {
 			panic(err)
 		}
 	}(rows)
-	page := 0
+	page := 1
 	booksPerPage := 50
 	books := make([]Book, 0, booksPerPage)
 
@@ -314,6 +326,8 @@ func generatePages() {
 			panic(err)
 		}
 	}
+
+	totalPages = page
 }
 
 func resolveFormats(uuid, baseDir, path string) []string {

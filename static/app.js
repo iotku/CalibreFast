@@ -1,13 +1,29 @@
 window.addEventListener("DOMContentLoaded", () => {
+    let totalPages = null;
+    async function loadLibraryInfo() {
+        const res = await fetch("/library-info");
+        const info = await res.json();
+
+        totalPages = info.total_pages;
+        document.getElementById("next-page").disabled =
+            currentPage > totalPages;
+        document.getElementById("prev-page").disabled =
+            currentPage <= 2;
+    }
+    loadLibraryInfo()
+
     const booksDiv = document.getElementById("books");
     const loadMoreEl = document.getElementById("load-more");
 
     const params = new URLSearchParams(window.location.search);
 
-    let currentPage = parseInt(params.get("page") || "0", 10);
+    let currentPage = parseInt(params.get("page") || "1", 10);
 
-    if (isNaN(currentPage) || currentPage < 0) {
-        currentPage = 0;
+    if (isNaN(currentPage) || currentPage < 1) {
+        currentPage = 1;
+    }
+    if (totalPages && currentPage > totalPages) {
+        currentPage = totalPages;
     }
     let loading = false;
     let done = false;
@@ -18,7 +34,11 @@ window.addEventListener("DOMContentLoaded", () => {
     const pageLabel = document.getElementById("page-label");
 
     function updatePageLabel() {
-        pageLabel.textContent = `Page ${currentPage}`;
+        pageLabel.textContent = `Page ${currentPage - 1}`;
+        document.getElementById("next-page").disabled =
+            currentPage > totalPages;
+        document.getElementById("prev-page").disabled =
+            currentPage <= 2;
     }
     document.getElementById("next-page")
         .addEventListener("click", async () => {
@@ -32,7 +52,8 @@ window.addEventListener("DOMContentLoaded", () => {
     document.getElementById("prev-page")
         .addEventListener("click", async () => {
 
-            if (currentPage <= 1) return;
+            if (currentPage <= 2) return;
+            if (currentPage > totalPages) currentPage = totalPages+1;
 
             currentPage -= 2;
 
@@ -42,6 +63,11 @@ window.addEventListener("DOMContentLoaded", () => {
 
             await loadNextPage();
         });
+
+    if (totalPages && currentPage > totalPages) {
+        done = true;
+        return;
+    }
     // prefetched pages cache
     const pageCache = new Map();
 
