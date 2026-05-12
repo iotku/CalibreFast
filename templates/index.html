@@ -11,10 +11,11 @@
 <header class="top-bar">
     <h1 class="title">{{ .Title }}</h1>
 
-    <div id="pager">
-        <button id="prev-page">Prev</button>
-        <span id="page-label"></span>
-        <button id="next-page">Next</button>
+    <div style="display:inline-flex; align-items:center; gap:8px;">
+        <button id="prev-page" aria-label="Previous page">&lt;Prev</button>
+        <label for="page-input">Page</label><input id="page-input" type="number" min="1" value="1" style="width:56px; text-align:center;" />
+        <span>of <span id="total-pages">—</span></span>
+        <button id="next-page" aria-label="Next page">Next&gt;</button>
     </div>
 </header>
 <div id="book-modal" class="modal-overlay">

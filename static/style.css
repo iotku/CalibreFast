@@ -200,3 +200,8 @@ h1 {
     font-size: 1.2rem;
     cursor: pointer;
 }
+
+#prev-page, #next-page {
+    min-width: 44px;
+    min-height: 44px;
+}
