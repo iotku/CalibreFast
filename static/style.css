@@ -208,6 +208,7 @@ h1 {
 
 .reader-page {
     overflow: hidden;
+    background-color: wheat;
 }
 
 #reader-container {
