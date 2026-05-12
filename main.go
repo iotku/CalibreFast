@@ -157,18 +157,18 @@ func coverThumbHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	thumb := resizeToWidth(img, 300)
+	thumb := resizeToWidth(img, 600)
 
 	out, err := os.Create(thumbPath)
 	if err == nil {
-		jpeg.Encode(out, thumb, &jpeg.Options{Quality: 75})
+		jpeg.Encode(out, thumb, &jpeg.Options{Quality: 85})
 		out.Close()
 	}
 
 	w.Header().Set("Content-Type", "image/jpeg")
 	w.Header().Set("Cache-Control", "public, max-age=86400, immutable")
 	w.Header().Set("X-Cache-Hit", "false")
-	jpeg.Encode(w, thumb, &jpeg.Options{Quality: 75})
+	jpeg.Encode(w, thumb, &jpeg.Options{Quality: 85})
 }
 
 func resizeToWidth(img image.Image, width int) image.Image {

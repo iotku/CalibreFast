@@ -229,8 +229,7 @@ window.addEventListener("DOMContentLoaded", () => {
             const rect = page.getBoundingClientRect();
 
             // page has crossed into "active region"
-            if (rect.top <= 100) {
-                console.log("new page" + parseInt(page.dataset.page, 10));
+            if (rect.top <= 100) { // TODO: Probably should make this the header height
                 current = parseInt(page.dataset.page, 10);
             } else {
                 // since pages are ordered, we can stop early
