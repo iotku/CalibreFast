@@ -3,19 +3,20 @@
 <head>
     <meta charset="utf-8">
     <title>{{ .Title }}</title>
-
     <link rel="stylesheet" href="/static/style.css">
 </head>
 <body>
-
 <header class="top-bar">
-    <h1 class="title">{{ .Title }}</h1>
-
+    <div style="display:inline-flex; align-items:center; gap:12px;">
+        <h1 class="title">{{ .Title }}</h1>
+        <a href="/search" class="search-link" aria-label="Search library">&#128269;</a>
+    </div>
     <div style="display:inline-flex; align-items:center; gap:8px;">
-        <button id="prev-page" aria-label="Previous page">&lt;Prev</button>
-        <label for="page-input">Page</label><input id="page-input" type="number" min="1" value="1" style="width:56px; text-align:center;" />
+        <button id="prev-page" aria-label="Previous page">&lsaquo;</button>
+        <label for="page-input">Page</label>
+        <input id="page-input" type="number" min="1" value="1" style="width:56px; text-align:center;" />
         <span>of <span id="total-pages">—</span></span>
-        <button id="next-page" aria-label="Next page">Next&gt;</button>
+        <button id="next-page" aria-label="Next page">&rsaquo;</button>
     </div>
 </header>
 <div id="book-modal" class="modal-overlay">
@@ -26,8 +27,7 @@
 </div>
 <div id="books"></div>
 <div id="load-more" style="height: 1px;"></div>
-
-<script src="/static/app.js"></script>
-
+<script type="module" src="/static/shared.js"></script>
+<script type="module" src="/static/app.js"></script>
 </body>
 </html>

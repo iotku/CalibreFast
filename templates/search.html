@@ -1,0 +1,36 @@
+<!doctype html>
+<html lang="en">
+<head>
+    <meta charset="utf-8">
+    <title>Search — {{ .Title }}</title>
+    <link rel="stylesheet" href="/static/style.css">
+</head>
+<body>
+<header class="top-bar">
+    <div style="display:inline-flex; align-items:center; gap:12px;">
+        <a href="/" class="search-link" aria-label="Back to library">&#8592;</a>
+        <h1 class="title">Search</h1>
+    </div>
+    <div style="display:inline-flex; align-items:center; gap:8px;">
+        <input id="search-input" type="search" placeholder="Title or author…"
+               style="height:44px; font-size:16px; padding:0 12px; min-width:180px;" />
+        <input id="date-from" type="number" placeholder="From year" min="1000" max="2099"
+               style="height:44px; font-size:16px; width:100px; text-align:center;" />
+        <input id="date-to" type="number" placeholder="To year" min="1000" max="2099"
+               style="height:44px; font-size:16px; width:100px; text-align:center;" />
+        <button id="search-btn" style="height:44px; padding:0 16px;">Search</button>
+    </div>
+</header>
+<div id="book-modal" class="modal-overlay">
+    <div class="modal-content">
+        <button id="modal-close">✕</button>
+        <div id="modal-body"></div>
+    </div>
+</div>
+<p id="search-status" style="text-align:center; color: var(--color-muted); padding: 2rem 0;"></p>
+<div id="books"></div>
+<div id="load-more" style="height:1px;"></div>
+<script type="module" src="/static/shared.js"></script>
+<script type="module" src="/static/search.js"></script>
+</body>
+</html>
