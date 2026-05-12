@@ -216,3 +216,26 @@ export function renderBooks(books, pageNumber) {
     }
     booksDiv.appendChild(pageEl);
 }
+
+// shared.js
+const modal = document.getElementById("book-modal");
+const modalBody = document.getElementById("modal-body");
+
+document.getElementById("modal-close").addEventListener("click", () => {
+    modal.classList.remove("open");
+});
+
+modal.addEventListener("click", (e) => {
+    if (e.target === modal) modal.classList.remove("open");
+});
+
+window.addEventListener("keydown", (e) => {
+    if (e.key === "Escape") modal.classList.remove("open");
+});
+
+export async function openBookModal(uuid) {
+    modalBody.innerHTML = "Loading...";
+    modal.classList.add("open");
+    const res = await fetch(`/book/${uuid}`);
+    modalBody.innerHTML = await res.text();
+}

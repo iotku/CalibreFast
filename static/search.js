@@ -76,6 +76,7 @@ window.addEventListener("DOMContentLoaded", () => {
     );
     observer.observe(loadMoreEl);
 
+    
 // restore search from URL on load (so back button works)
     window.addEventListener("DOMContentLoaded", () => {
         const params = new URLSearchParams(window.location.search);
