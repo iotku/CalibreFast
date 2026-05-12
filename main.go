@@ -293,7 +293,7 @@ func serveLibraryHttp() {
 	// homepage
 	http.HandleFunc("/", func(w http.ResponseWriter, r *http.Request) {
 		data := PageData{
-			Title: "My Calibre Library",
+			Title: "Library",
 		}
 
 		err := templates.ExecuteTemplate(w, "index.html", data)

@@ -1,4 +1,4 @@
-import { renderBooks, abortImageQueue, getVisiblePage } from "./shared.js";
+import { renderBooks, abortImageQueue } from "./shared.js";
 
 let currentPage = 1;
 let loading = false;
@@ -97,4 +97,15 @@ window.addEventListener("DOMContentLoaded", () => {
             newSearch(q, params.get("from"), params.get("to"));
         }
     });
+
+    const params = new URLSearchParams(window.location.search);
+    const q = params.get("q");
+    if (q) {
+        document.getElementById("search-input").value = q;
+        const from = params.get("from") ?? "";
+        const to = params.get("to") ?? "";
+        document.getElementById("date-from").value = from;
+        document.getElementById("date-to").value = to;
+        newSearch(q, from, to);
+    }
 });
