@@ -12,10 +12,10 @@ CalibreFast reads directly from your Calibre `metadata.db` and serves your libra
 
 - Paginated book grid with infinite scroll
 - Fast cover thumbnails with lazy loading and a prefetch queue
-- Search by title or author, optionally filtered by year range
+- Search by title or author
 - Download books in any format Calibre has (EPUB, PDF, MOBI, AZW3, DJVU)
 - Book detail popup on click
-- Keyboard and touch friendly
+- Keyboard and touch friendly (?)
 
 ## What it is not
 

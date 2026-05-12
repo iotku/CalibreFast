@@ -46,6 +46,9 @@ window.addEventListener("DOMContentLoaded", () => {
         }
     }
 
+    document.getElementById("search-form").addEventListener("submit", (e) => {
+        e.preventDefault();
+    });
     function newSearch(q, from, to) {
         if (loadAbortController) loadAbortController.abort();
         loadAbortController = new AbortController();
