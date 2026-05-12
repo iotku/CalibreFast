@@ -29,6 +29,8 @@ window.addEventListener("DOMContentLoaded", () => {
 
     let currentPage = parseInt(params.get("page") || "1", 10);
 
+    let visiblePage = currentPage;
+
     if (isNaN(currentPage) || currentPage < 1) {
         currentPage = 1;
     }
@@ -44,34 +46,38 @@ window.addEventListener("DOMContentLoaded", () => {
     const pageLabel = document.getElementById("page-label");
 
     function updatePageLabel() {
-        pageLabel.textContent = `Page ${currentPage - 1}`;
+        history.replaceState(null, "", `?page=${visiblePage}`);
+        pageLabel.textContent = `Page ${visiblePage}`;
         document.getElementById("next-page").disabled =
             currentPage > totalPages;
         document.getElementById("prev-page").disabled =
             currentPage <= 2;
     }
-    document.getElementById("next-page")
-        .addEventListener("click", async () => {
+    document.getElementById("next-page").addEventListener("click", async () => {
+        booksDiv.innerHTML = "";
+        done = false;
 
-            booksDiv.innerHTML = "";
+        visiblePage = visiblePage + 1;
+        currentPage = visiblePage;
 
-            done = false;
+        await loadNextPage();
 
-            await loadNextPage();
-        });
-    document.getElementById("prev-page")
-        .addEventListener("click", async () => {
+        updatePageLabel();
+    });
 
-            if (currentPage <= 2) return;
-            if (currentPage > totalPages) currentPage = totalPages+1;
+    document.getElementById("prev-page").addEventListener("click", async () => {
+        if (visiblePage <= 1) return;
 
-            currentPage -= 2;
+        booksDiv.innerHTML = "";
+        done = false;
 
-            booksDiv.innerHTML = "";
+        visiblePage = Math.max(1, visiblePage - 1);
+        currentPage = visiblePage;
 
-            done = false;
-            await loadNextPage();
-        });
+        await loadNextPage();
+
+        updatePageLabel();
+    });
 
     if (totalPages && currentPage > totalPages) {
         done = true;
@@ -210,6 +216,36 @@ window.addEventListener("DOMContentLoaded", () => {
         }
     }
 
+    window.addEventListener("scroll", () => {
+        computeCurrentPage();
+    });
+
+    function computeCurrentPage() {
+        const pages = document.querySelectorAll(".page");
+
+        let current = visiblePage
+
+        for (const page of pages) {
+            const rect = page.getBoundingClientRect();
+
+            // page has crossed into "active region"
+            if (rect.top <= 100) {
+                console.log("new page" + parseInt(page.dataset.page, 10));
+                current = parseInt(page.dataset.page, 10);
+            } else {
+                // since pages are ordered, we can stop early
+                break;
+            }
+        }
+
+        if (current === visiblePage) return;
+
+        visiblePage = current;
+
+        updatePageLabel();
+
+    }
+
     const coverObserver = new IntersectionObserver((entries) => {
         for (const entry of entries) {
             if (!entry.isIntersecting) continue;
@@ -224,11 +260,10 @@ window.addEventListener("DOMContentLoaded", () => {
     });
 
 
-    function renderBooks(books) {
+    function renderBooks(books, pageNumber) {
         const pageEl = document.createElement("div");
         pageEl.className = "page";
-        pageEl.dataset.page = currentPage;
-        booksDiv.appendChild(pageEl);
+        pageEl.dataset.page = pageNumber;
         for (const book of books) {
             const el = document.createElement("div");
 
@@ -289,9 +324,10 @@ window.addEventListener("DOMContentLoaded", () => {
 
                 el.dataset.loaded = "true";
             });
-
             pageEl.appendChild(el);
+
         }
+        booksDiv.appendChild(pageEl);
     }
 
     async function loadNextPage() {
@@ -309,16 +345,8 @@ window.addEventListener("DOMContentLoaded", () => {
                 return;
             }
 
-            renderBooks(books);
-            // update URL without reload
-            history.replaceState(
-                null,
-                "",
-                `?page=${currentPage}`
-            );
-
+            renderBooks(books, currentPage);
             currentPage++;
-            updatePageLabel();
 
             // preload next 3 pages
             await preloadPages(currentPage, 3);
@@ -327,6 +355,10 @@ window.addEventListener("DOMContentLoaded", () => {
         } finally {
             loading = false;
         }
+
+        requestAnimationFrame(() => {
+            computeCurrentPage();
+        });
     }
 
     const observer = new IntersectionObserver(
@@ -343,5 +375,10 @@ window.addEventListener("DOMContentLoaded", () => {
     observer.observe(loadMoreEl);
 
     // initial load
-    loadNextPage();
+    loadNextPage().then(() => {
+        requestAnimationFrame(() => {
+            updatePageLabel();      // 👈 key line
+            computeCurrentPage();   // optional safety pass
+        });
+    });
 });
