@@ -50,8 +50,8 @@ window.addEventListener("DOMContentLoaded", () => {
         document.getElementById("prev-page").disabled = page <= 1;
     }
 
-
     let loadAbortController = null;
+    let imageAbortController = new AbortController();
 
     document.getElementById("page-input").addEventListener("change", async (e) => {
         let target = parseInt(e.target.value, 10);
@@ -62,6 +62,8 @@ window.addEventListener("DOMContentLoaded", () => {
         // cancel any in-flight load
         if (loadAbortController) {
             loadAbortController.abort();
+            loadAbortController = new AbortController();
+            abortImageQueue();
         }
         loadAbortController = new AbortController();
         const signal = loadAbortController.signal;
@@ -76,22 +78,42 @@ window.addEventListener("DOMContentLoaded", () => {
         updatePageLabel(target);
     });
 
+    let imageGeneration = 0;
+
+    function abortImageQueue() {
+        imageGeneration++;
+        imageAbortController.abort();
+        imageAbortController = new AbortController();
+        queue.length = 0;
+        inQueue.clear();
+    }
+
     document.getElementById("next-page").addEventListener("click", async () => {
         const page = getVisiblePage();
+        if (loadAbortController) loadAbortController.abort();
+        loadAbortController = new AbortController();
+        abortImageQueue();
+
         booksDiv.innerHTML = "";
         done = false;
         currentPage = page + 1;
-        await loadNextPage();
+        await loadNextPage(loadAbortController.signal);
+        if (loadAbortController.signal.aborted) return;
         updatePageLabel(page + 1);
     });
 
     document.getElementById("prev-page").addEventListener("click", async () => {
         const page = getVisiblePage();
         if (page <= 1) return;
+        if (loadAbortController) loadAbortController.abort();
+        loadAbortController = new AbortController();
+        abortImageQueue();
+
         booksDiv.innerHTML = "";
         done = false;
         currentPage = page - 1;
-        await loadNextPage();
+        await loadNextPage(loadAbortController.signal);
+        if (loadAbortController.signal.aborted) return;
         updatePageLabel(page - 1);
     });
 
@@ -201,26 +223,25 @@ window.addEventListener("DOMContentLoaded", () => {
     }
 
     function processQueue() {
+        const signal = imageAbortController.signal;
+        const generation = imageGeneration;
+
         while (active < MAX_CONCURRENT && queue.length > 0) {
             const img = queue.shift();
             inQueue.delete(img);
-
             active++;
 
-            const controller = new AbortController();
-
-            fetch(img.dataset.src, { signal: controller.signal })
+            fetch(img.dataset.src, { signal })
                 .then(r => r.blob())
                 .then(blob => {
+                    if (imageGeneration !== generation) return; // stale, discard
                     img.src = URL.createObjectURL(blob);
-                    img.onload = () => { // TODO: Do we really need to add an onload handler here?
-                        img.classList.add("loaded"); // add loaded class for transition
-                    };
+                    img.onload = () => img.classList.add("loaded");
                 })
                 .catch(() => {})
                 .finally(() => {
                     active--;
-                    processQueue();
+                    if (imageGeneration === generation) processQueue();
                 });
         }
     }
