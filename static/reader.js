@@ -1,6 +1,6 @@
 const params = new URLSearchParams(window.location.search);
 const uuid = params.get("uuid");
-
+document.cookie = `reader-uuid=${uuid}; path=/`; // TODO this is cursed
 if (!uuid) {
     document.body.innerHTML = "<p>No book specified.</p>";
     throw new Error("missing uuid");
@@ -52,35 +52,45 @@ book.ready.then(() => {
             }
         });
     });
-
-    // table of contents
-    book.navigation.getContents().then((toc) => {
-        const list = document.getElementById("toc-list");
-        function renderToc(items, el) {
-            for (const item of items) {
-                const li = document.createElement("li");
-                li.style.padding = "6px 0";
-                const a = document.createElement("a");
-                a.textContent = item.label.trim();
-                a.href = "#";
-                a.style.color = "var(--color-text)";
-                a.style.textDecoration = "none";
-                a.addEventListener("click", (e) => {
-                    e.preventDefault();
-                    rendition.display(item.href);
-                    document.getElementById("toc-sidebar").style.display = "none";
-                });
-                li.appendChild(a);
-                if (item.subitems?.length) {
-                    const sub = document.createElement("ul");
-                    sub.style.paddingLeft = "1rem";
-                    renderToc(item.subitems, sub);
-                    li.appendChild(sub);
-                }
-                el.appendChild(li);
+    function renderToc(items, el) {
+        for (const item of items) {
+            const li = document.createElement("li");
+            li.style.padding = "6px 0";
+            const a = document.createElement("a");
+            a.textContent = item.label.trim();
+            a.href = "#";
+            a.style.color = "var(--color-text)";
+            a.style.textDecoration = "none";
+            a.addEventListener("click", (e) => {
+                e.preventDefault();
+                rendition.display(item.href);
+                document.getElementById("toc-sidebar").style.display = "none";
+            });
+            li.appendChild(a);
+            if (item.subitems?.length) {
+                const sub = document.createElement("ul");
+                sub.style.paddingLeft = "1rem";
+                renderToc(item.subitems, sub);
+                li.appendChild(sub);
             }
+            el.appendChild(li);
         }
+    }
+
+    book.ready.then(() => {
+        const toc = book.navigation.toc;
+        const list = document.getElementById("toc-list");
         renderToc(toc, list);
+
+        book.locations.generate(1024).then(() => {
+            rendition.on("relocated", (loc) => {
+                if (loc?.start?.cfi) {
+                    localStorage.setItem(`reader-cfi-${uuid}`, loc.start.cfi);
+                    const pct = Math.round(book.locations.percentageFromCfi(loc.start.cfi) * 100);
+                    progressLabel.textContent = `${pct}%`;
+                }
+            });
+        });
     });
 });
 
