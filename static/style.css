@@ -205,3 +205,15 @@ h1 {
     min-width: 44px;
     min-height: 44px;
 }
+
+.reader-page {
+    overflow: hidden;
+}
+
+#reader-container {
+    position: fixed;
+    top: var(--topbar-height, 56px);
+    left: 0;
+    right: 0;
+    bottom: 0;
+}

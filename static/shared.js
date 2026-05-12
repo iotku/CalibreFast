@@ -238,4 +238,17 @@ export async function openBookModal(uuid) {
     modal.classList.add("open");
     const res = await fetch(`/book/${uuid}`);
     modalBody.innerHTML = await res.text();
+
+    // inject read button if epub is available
+    const formatsRes = await fetch(`/formats/${uuid}`);
+    const formats = await formatsRes.json();
+    if (Array.isArray(formats) && formats.includes("epub")) {
+        const btn = document.createElement("button");
+        btn.textContent = "Read";
+        btn.style.cssText = "height:44px; padding:0 24px; margin-top:1rem;";
+        btn.addEventListener("click", () => {
+            window.location.href = `/read?uuid=${uuid}`;
+        });
+        modalBody.appendChild(btn);
+    }
 }

@@ -1,12 +1,14 @@
 package main
 
 import (
+	"archive/zip"
 	"database/sql"
 	"encoding/json"
 	"flag"
 	"html/template"
 	"image"
 	"image/jpeg"
+	"io"
 	"log"
 	"net/http"
 	"os"
@@ -271,6 +273,8 @@ var templates = template.Must(
 )
 
 func serveLibraryHttp() {
+	//mime.AddExtensionType(".js", "application/javascript")
+	//mime.AddExtensionType(".css", "text/css")
 	// homepage
 	http.HandleFunc("/", func(w http.ResponseWriter, r *http.Request) {
 		data := PageData{
@@ -329,9 +333,106 @@ func serveLibraryHttp() {
 
 	http.HandleFunc("/api/search", searchHandler)
 
+	http.HandleFunc("/read", func(w http.ResponseWriter, r *http.Request) {
+		err := templates.ExecuteTemplate(w, "reader.html", PageData{Title: "My Calibre Library"})
+		if err != nil {
+			http.Error(w, err.Error(), 500)
+		}
+	})
+
+	http.HandleFunc("/epub/", epubFileHandler)
+
 	log.Println("Listening on :8080")
 	log.Fatal(http.ListenAndServe(":8080", nil))
 }
+
+func epubFileHandler(w http.ResponseWriter, r *http.Request) {
+	// /epub/{uuid}/{path...}
+	parts := strings.SplitN(strings.TrimPrefix(r.URL.Path, "/epub/"), "/", 2)
+	if len(parts) < 2 {
+		http.Error(w, "bad request", http.StatusBadRequest)
+		return
+	}
+	uuid := parts[0]
+	innerPath := parts[1]
+
+	bookPath, ok := coverIndex.Load(uuid)
+	if !ok {
+		http.NotFound(w, r)
+		return
+	}
+
+	// find the epub file
+	files := resolveFormats(uuid, baseDir, bookPath.(string))
+	var epubFile string
+	for _, f := range files {
+		if strings.HasSuffix(f, ".epub") {
+			epubFile = filepath.Join(baseDir, bookPath.(string), f)
+			break
+		}
+	}
+	if epubFile == "" {
+		http.NotFound(w, r)
+		return
+	}
+
+	// open the zip
+	zr, err := zip.OpenReader(epubFile)
+	if err != nil {
+		http.Error(w, "failed to open epub", 500)
+		return
+	}
+	defer zr.Close()
+
+	// find the requested file inside the zip
+	for _, f := range zr.File {
+		if f.Name == innerPath {
+			rc, err := f.Open()
+			if err != nil {
+				http.Error(w, "failed to read file", 500)
+				return
+			}
+			defer rc.Close()
+
+			// set content type based on extension
+			ext := filepath.Ext(innerPath)
+			switch ext {
+			case ".html", ".xhtml":
+				w.Header().Set("Content-Type", "application/xhtml+xml")
+			case ".css":
+				w.Header().Set("Content-Type", "text/css")
+			case ".js":
+				w.Header().Set("Content-Type", "application/javascript")
+			case ".png":
+				w.Header().Set("Content-Type", "image/png")
+			case ".jpg", ".jpeg":
+				w.Header().Set("Content-Type", "image/jpeg")
+			case ".gif":
+				w.Header().Set("Content-Type", "image/gif")
+			case ".svg":
+				w.Header().Set("Content-Type", "image/svg+xml")
+			case ".ttf":
+				w.Header().Set("Content-Type", "font/ttf")
+			case ".otf":
+				w.Header().Set("Content-Type", "font/otf")
+			case ".woff":
+				w.Header().Set("Content-Type", "font/woff")
+			case ".woff2":
+				w.Header().Set("Content-Type", "font/woff2")
+			case ".xml", ".opf", ".ncx":
+				w.Header().Set("Content-Type", "application/xml")
+			default:
+				w.Header().Set("Content-Type", "application/octet-stream")
+			}
+
+			io.Copy(w, rc)
+			return
+		}
+	}
+
+	http.NotFound(w, r)
+}
+
 func generatePages() {
 	db, err := sql.Open("sqlite3", filepath.Join(baseDir, "metadata.db"))
 	defer func(db *sql.DB) {
