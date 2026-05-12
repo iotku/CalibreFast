@@ -289,6 +289,14 @@ window.addEventListener("DOMContentLoaded", () => {
                 wrapper.appendChild(canvas);
             });
 
+            // replace the <a href="/book/${book.uuid}"> wrapper with:
+            const coverLink = el.querySelector("a");
+            coverLink.removeAttribute("href");
+            coverLink.addEventListener("click", (e) => {
+                e.preventDefault();
+                openBookModal(book.uuid);
+            });
+
 
             el.addEventListener("mouseenter", async () => {
                 if (el.dataset.loaded) return;
@@ -361,4 +369,27 @@ window.addEventListener("DOMContentLoaded", () => {
     loadNextPage().then(() => {
             updatePageLabel();
     });
+
+    const modal = document.getElementById("book-modal");
+    const modalBody = document.getElementById("modal-body");
+
+    document.getElementById("modal-close").addEventListener("click", () => {
+        modal.classList.remove("open");
+    });
+
+    modal.addEventListener("click", (e) => {
+        if (e.target === modal) modal.classList.remove("open"); // click outside to close
+    });
+
+    window.addEventListener("keydown", (e) => {
+        if (e.key === "Escape") modal.classList.remove("open");
+    });
+
+    async function openBookModal(uuid) {
+        modalBody.innerHTML = "Loading...";
+        modal.classList.add("open");
+
+        const res = await fetch(`/book/${uuid}`);
+        modalBody.innerHTML = await res.text();
+    }
 });
