@@ -1,4 +1,14 @@
+function syncHeaderOffset() {
+    const header = document.querySelector(".top-bar");
+
+    const height = header.offsetHeight + 5;
+
+    document.body.style.paddingTop = `${height}px`;
+}
+
 window.addEventListener("DOMContentLoaded", () => {
+    syncHeaderOffset();
+
     let totalPages = null;
     async function loadLibraryInfo() {
         const res = await fetch("/library-info");
@@ -60,7 +70,6 @@ window.addEventListener("DOMContentLoaded", () => {
             booksDiv.innerHTML = "";
 
             done = false;
-
             await loadNextPage();
         });
 
@@ -216,6 +225,10 @@ window.addEventListener("DOMContentLoaded", () => {
 
 
     function renderBooks(books) {
+        const pageEl = document.createElement("div");
+        pageEl.className = "page";
+        pageEl.dataset.page = currentPage;
+        booksDiv.appendChild(pageEl);
         for (const book of books) {
             const el = document.createElement("div");
 
@@ -246,7 +259,7 @@ window.addEventListener("DOMContentLoaded", () => {
             const cover = el.querySelector(".book-cover");
 
             cover.dataset.src = `/cover-thumb/${book.uuid}`;
-            cover.dataset.id = book.uuid; // ✅ REQUIRED
+            cover.dataset.id = book.uuid;
             coverObserver.observe(cover);
             cover.addEventListener("error", () => {
                 const canvas = generateCoverText(book);
@@ -277,7 +290,7 @@ window.addEventListener("DOMContentLoaded", () => {
                 el.dataset.loaded = "true";
             });
 
-            booksDiv.appendChild(el);
+            pageEl.appendChild(el);
         }
     }
 

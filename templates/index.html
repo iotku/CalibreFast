@@ -8,12 +8,16 @@
 </head>
 <body>
 
-<h1>{{ .Title }}</h1>
-<div id="pager">
-    <button id="prev-page">Prev</button>
-    <span id="page-label"></span>
-    <button id="next-page">Next</button>
-</div>
+<header class="top-bar">
+    <h1 class="title">{{ .Title }}</h1>
+
+    <div id="pager">
+        <button id="prev-page">Prev</button>
+        <span id="page-label"></span>
+        <button id="next-page">Next</button>
+    </div>
+</header>
+
 <div id="books"></div>
 <div id="load-more" style="height: 1px;"></div>
 

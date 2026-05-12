@@ -10,7 +10,7 @@ h1 {
     margin-bottom: 24px;
 }
 
-#books {
+.page {
     display: grid;
 
     /* responsive grid */
@@ -85,6 +85,26 @@ h1 {
 .book-date {
     color: #888;
     font-size: 13px;
+}
+
+.top-bar {
+    position: fixed;
+    top: 0;
+    left: 0;
+    right: 0;
+
+    z-index: 1000;
+
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+
+    padding: 6px 12px;
+
+    background: rgba(20, 20, 20, 0.85);
+    backdrop-filter: blur(10px);
+
+    border-bottom: 1px solid rgba(255, 255, 255, 0.08);
 }
 
 .book-page {
