@@ -68,6 +68,7 @@ func writePage(page int, books []Book) error {
 func main() {
 	flag.StringVar(&baseDir, "basedir", "", "path to Calibre library root")
 	flag.StringVar(&cacheDir, "cachedir", "", "path to cache location")
+	flag.StringVar(&hostport, "port", "8080", "port to listen on")
 	flag.Parse()
 	if baseDir == "" {
 		log.Fatal("missing -basedir")
@@ -139,6 +140,7 @@ func searchHandler(w http.ResponseWriter, r *http.Request) {
 
 var baseDir string
 var cacheDir string
+var hostport string
 
 var coverIndex sync.Map               // map[string]string
 var formatCache sync.Map              // map[string][]string
@@ -344,8 +346,8 @@ func serveLibraryHttp() {
 
 	http.HandleFunc("/view/", viewHandler)
 
-	log.Println("Listening on :8080")
-	log.Fatal(http.ListenAndServe(":8080", nil))
+	log.Println("Listening on :" + hostport)
+	log.Fatal(http.ListenAndServe(":"+hostport, nil))
 }
 
 func viewHandler(w http.ResponseWriter, r *http.Request) {
