@@ -1,3 +1,7 @@
+:root {
+    --topbar-height: 56px; /* match your actual header height */
+}
+
 body {
     margin: 0;
     padding: 24px;
@@ -16,7 +20,7 @@ h1 {
     gap: 24px;
 
     max-width: 1600px;
-    margin: 0 auto;
+    margin: var(--topbar-height) auto 0;
 }
 
 .page {
@@ -108,7 +112,7 @@ h1 {
     align-items: center;
 
     padding: 6px 12px;
-
+    height: var(--topbar-height);
     background: rgba(20, 20, 20, 0.85);
     backdrop-filter: blur(10px);
 

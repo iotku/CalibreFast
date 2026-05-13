@@ -1,4 +1,3 @@
-export const pageCache = new Map();
 export let imageGeneration = 0;
 export let imageAbortController = new AbortController();
 export const queue = [];

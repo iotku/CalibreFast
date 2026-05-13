@@ -1,8 +1,6 @@
 import { renderBooks, abortImageQueue, getVisiblePage, booksDiv } from "/static/shared.js";
 
 window.addEventListener("DOMContentLoaded", () => {
-    syncHeaderOffset();
-
     let totalPages = null;
     async function loadLibraryInfo() {
         const res = await fetch("/library-info");
