@@ -1,6 +1,6 @@
 const params = new URLSearchParams(window.location.search);
 const uuid = params.get("uuid");
-document.cookie = `reader-uuid=${uuid}; path=/`; // TODO this is cursed
+
 if (!uuid) {
     document.body.innerHTML = "<p>No book specified.</p>";
     throw new Error("missing uuid");

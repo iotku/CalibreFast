@@ -5,6 +5,7 @@ import (
 	"database/sql"
 	"encoding/json"
 	"flag"
+	"fmt"
 	"html/template"
 	"image"
 	"image/jpeg"
@@ -12,6 +13,7 @@ import (
 	"log"
 	"net/http"
 	"os"
+	"path"
 	"path/filepath"
 	"strconv"
 	"strings"
@@ -392,6 +394,48 @@ func viewHandler(w http.ResponseWriter, r *http.Request) {
 	http.ServeFile(w, r, fullPath)
 }
 
+func rewriteEpubURLs(content, base string) string {
+	// rewrite href="..." and src="..." that are relative (don't start with http/https/#//)
+	attrs := []string{"src", "href"}
+	for _, attr := range attrs {
+		// find all attr="value" occurrences
+		prefix := attr + `="`
+		result := strings.Builder{}
+		remaining := content
+		for {
+			idx := strings.Index(remaining, prefix)
+			if idx == -1 {
+				result.WriteString(remaining)
+				break
+			}
+			result.WriteString(remaining[:idx+len(prefix)])
+			remaining = remaining[idx+len(prefix):]
+
+			// find closing quote
+			end := strings.Index(remaining, `"`)
+			if end == -1 {
+				result.WriteString(remaining)
+				break
+			}
+			url := remaining[:end]
+			remaining = remaining[end:]
+
+			// only rewrite relative URLs
+			if !strings.HasPrefix(url, "http") &&
+				!strings.HasPrefix(url, "#") &&
+				!strings.HasPrefix(url, "//") &&
+				!strings.HasPrefix(url, "data:") &&
+				url != "" {
+				result.WriteString(base + url)
+			} else {
+				result.WriteString(url)
+			}
+		}
+		content = result.String()
+	}
+	return content
+}
+
 func epubFileHandler(w http.ResponseWriter, r *http.Request) {
 	// /epub/{uuid}/{path...}
 	parts := strings.SplitN(strings.TrimPrefix(r.URL.Path, "/epub/"), "/", 2)
@@ -444,7 +488,20 @@ func epubFileHandler(w http.ResponseWriter, r *http.Request) {
 			ext := filepath.Ext(innerPath)
 			switch ext {
 			case ".html", ".xhtml":
+				content, err := io.ReadAll(rc)
+				if err != nil {
+					http.Error(w, "read error", 500)
+					return
+				}
+
+				// get the directory of the current file within the epub
+				fileDir := path.Dir(innerPath) // e.g. "OPS" for "OPS/chapter1.xhtml"
+				base := fmt.Sprintf("/epub/%s/%s/", uuid, fileDir)
+
+				s := rewriteEpubURLs(string(content), base)
 				w.Header().Set("Content-Type", "application/xhtml+xml")
+				w.Write([]byte(s))
+				return
 			case ".css":
 				w.Header().Set("Content-Type", "text/css")
 			case ".js":
@@ -467,6 +524,9 @@ func epubFileHandler(w http.ResponseWriter, r *http.Request) {
 				w.Header().Set("Content-Type", "font/woff2")
 			case ".xml", ".opf", ".ncx":
 				w.Header().Set("Content-Type", "application/xml")
+			case ".xpgt":
+				w.WriteHeader(http.StatusNoContent)
+				return
 			default:
 				w.Header().Set("Content-Type", "application/octet-stream")
 			}
