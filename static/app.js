@@ -1,13 +1,5 @@
 import { renderBooks, abortImageQueue, getVisiblePage, booksDiv } from "/static/shared.js";
 
-function syncHeaderOffset() {
-    const header = document.querySelector(".top-bar");
-
-    const height = header.offsetHeight + 5;
-
-    document.body.style.paddingTop = `${height}px`;
-}
-
 window.addEventListener("DOMContentLoaded", () => {
     syncHeaderOffset();
 

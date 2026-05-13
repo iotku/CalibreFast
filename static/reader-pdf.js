@@ -28,6 +28,7 @@ async function renderPage(pageNum) {
 
     canvas.width = viewport.width;
     canvas.height = viewport.height;
+    canvas.style.marginTop = document.querySelector(".top-bar").offsetHeight + "px";
 
     await page.render({ canvasContext: ctx, viewport }).promise;
 
@@ -69,3 +70,17 @@ document.getElementById("font-down").addEventListener("click", () => {
     localStorage.setItem("pdf-scale", scale);
     renderPage(currentPage);
 });
+
+function availableHeight() {
+    return window.innerHeight - document.querySelector(".top-bar").offsetHeight - 16;
+}
+
+async function fitToHeight() {
+    const page = await pdf.getPage(currentPage);
+    const viewport = page.getViewport({ scale: 1 });
+    scale = availableHeight() / viewport.height;
+    localStorage.setItem("pdf-scale", scale);
+    renderPage(currentPage);
+}
+
+document.getElementById("fit-btn").addEventListener("click", fitToHeight);

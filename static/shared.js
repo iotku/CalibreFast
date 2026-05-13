@@ -139,6 +139,7 @@ export function getVisiblePage() {
 
     return current ?? parseInt(document.querySelector(".page")?.dataset.page, 10) ?? 1;
 }
+
 export function renderBooks(books, pageNumber) {
     const pageEl = document.createElement("div");
     pageEl.className = "page";
