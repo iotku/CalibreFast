@@ -223,6 +223,18 @@ h1 {
     bottom: 0;
 }
 
+#pdf-container {
+    position: fixed;
+    top: var(--topbar-height);
+    left: 0;
+    right: 0;
+    bottom: 0;
+    overflow: auto;
+    display: flex;
+    justify-content: center;
+    align-items: flex-start;
+}
+
 #pdf-canvas {
-    margin-top: var(--topbar-height, 56px);
+    display: block;
 }
