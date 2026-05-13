@@ -1,0 +1,26 @@
+<!doctype html>
+<html lang="en">
+<head>
+    <meta charset="utf-8">
+    <title>Reader — {{ .Title }}</title>
+    <link rel="stylesheet" href="/static/style.css">
+</head>
+<body class="reader-page">
+<header class="top-bar">
+    <button onclick="history.back()" style="height:44px;">&#8592; Back</button>
+    <div style="position:absolute; left:50%; transform:translateX(-50%); display:inline-flex; align-items:center; gap:8px;">
+        <button id="prev-btn" style="height:44px; width:44px;">&#8249;</button>
+        <span id="progress-label" style="font-size:14px; min-width:100px; text-align:center;">— / —</span>
+        <button id="next-btn" style="height:44px; width:44px;">&#8250;</button>
+    </div>
+    <div style="display:inline-flex; align-items:center; gap:8px;">
+        <button id="font-down" style="height:44px; width:44px;">A-</button>
+        <button id="font-up" style="height:44px; width:44px;">A+</button>
+    </div>
+</header>
+<canvas id="pdf-canvas" style="display:block; margin:0 auto;"></canvas>
+<script src=" https://cdn.jsdelivr.net/npm/pdfjs-dist@5.7.284/wasm/openjpeg_nowasm_fallback.min.js "></script>
+<link href=" https://cdn.jsdelivr.net/npm/pdfjs-dist@5.7.284/web/pdf_viewer.min.css " rel="stylesheet">
+<script type="module" src="/static/reader-pdf.js"></script>
+</body>
+</html>

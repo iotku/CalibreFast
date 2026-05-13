@@ -262,7 +262,7 @@ export async function openBookModal(uuid) {
             href = `/read?uuid=${uuid}`;
             label = "Read EPUB";
         } else if (format === "pdf") {
-            href = `/view/${uuid}/pdf`;
+            href = `/read-pdf?uuid=${uuid}`;
             label = "Read PDF";
         }
 
@@ -276,11 +276,7 @@ export async function openBookModal(uuid) {
         `;
 
         btn.addEventListener("click", () => {
-            if (format === "epub") {
-                window.location.href = href;
-            } else {
-                window.open(href, "_blank");
-            }
+            window.location.href = href;
         });
 
         btnContainer.appendChild(btn);

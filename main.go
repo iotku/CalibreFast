@@ -344,6 +344,14 @@ func serveLibraryHttp() {
 		}
 	})
 
+	// TODO Can we combine this with the /read endpoint?
+	http.HandleFunc("/read-pdf", func(w http.ResponseWriter, r *http.Request) {
+		err := templates.ExecuteTemplate(w, "reader-pdf.html", PageData{Title: "My Calibre Library"})
+		if err != nil {
+			http.Error(w, err.Error(), 500)
+		}
+	})
+
 	http.HandleFunc("/epub/", epubFileHandler)
 
 	http.HandleFunc("/view/", viewHandler)
