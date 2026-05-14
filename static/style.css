@@ -1,8 +1,9 @@
 :root {
-    --topbar-height: 56px;
+    --topbar-height: 48px;
     --topbar-padding: 6px;
-    --topbar-total: calc(var(--topbar-height) + var(--topbar-padding) * 2);
+    --topbar-total: calc(var(--topbar-height) * 2 + var(--topbar-padding) * 2);
 }
+
 body {
     margin: 0;
     padding: 24px;
@@ -109,19 +110,67 @@ h1 {
     top: 0;
     left: 0;
     right: 0;
-
     z-index: 1000;
-
     display: flex;
-    justify-content: space-between;
     align-items: center;
-
+    justify-content: space-between;
     padding: var(--topbar-padding) 12px;
-    height: var(--topbar-height);
     background: rgba(20, 20, 20, 0.85);
     backdrop-filter: blur(10px);
-
     border-bottom: 1px solid rgba(255, 255, 255, 0.08);
+    flex-wrap: wrap;
+    gap: 4px;
+}
+
+.top-bar-left {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    flex: 1;
+    min-width: 0;
+}
+
+.top-bar-center {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    flex: 1;
+    min-width: 0;
+}
+
+.top-bar-right {
+    display: flex;
+    align-items: center;
+    justify-content: flex-end;
+    gap: 8px;
+    flex: 1;
+    min-width: 0;
+}
+
+:root {
+    --topbar-height: 48px;
+    --topbar-padding: 6px;
+    --topbar-total: calc(var(--topbar-height) + var(--topbar-padding) * 2);
+}
+
+/* when sections can't fit side by side, each takes full width */
+@media (max-width: 1100px) {
+    .top-bar-left,
+    .top-bar-center,
+    .top-bar-right {
+        flex: 1 1 100%;
+        justify-content: center;
+        min-height: var(--topbar-height);
+    }
+
+    .top-bar-center input {
+        width: 100%;
+        box-sizing: border-box;
+    }
+
+    :root {
+        --topbar-total: calc(var(--topbar-height) * 3 + var(--topbar-padding) * 2 + 8px);
+    }
 }
 
 .book-page {
@@ -280,4 +329,3 @@ h1 {
     background: #333;
     color: #fff;
 }
-

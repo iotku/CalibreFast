@@ -8,19 +8,19 @@
 </head>
 <body>
 <header class="top-bar">
-    <h1 class="title">{{ .Title }}</h1>
-
-    <form id="search-form" action="/search" method="get"
-          style="position:absolute; left:50%; transform:translateX(-50%);">
-        <input name="q" type="search" placeholder="Search…"
-               style="height:44px; font-size:16px; padding:0 12px; width:300px;" />
-    </form>
-
-    <div style="display:inline-flex; align-items:center; gap:8px;">
-
-        <a href="/authors" style="color:#eee; text-decoration:none;">Authors</a>
-        <a href="/publishers" style="color:#eee; text-decoration:none;">Publishers</a>
-        <a href="/tags" style="color:#eee; text-decoration:none;">Tags</a>
+    <div class="top-bar-left">
+        <h1 class="title">{{ .Title }}</h1>
+        <a href="/authors" class="meta-link">Authors</a>
+        <a href="/publishers" class="meta-link">Publishers</a>
+        <a href="/tags" class="meta-link">Tags</a>
+    </div>
+    <div class="top-bar-center">
+        <form id="search-form" action="/search" method="get">
+            <input name="q" type="search" placeholder="Search…"
+                   style="height:44px; font-size:16px; padding:0 12px; width:300px;" />
+        </form>
+    </div>
+    <div class="top-bar-right">
         <button id="prev-page" aria-label="Previous page">&lsaquo;</button>
         <label for="page-input">Page</label>
         <input id="page-input" type="number" min="1" value="1" style="width:56px; text-align:center;" />
