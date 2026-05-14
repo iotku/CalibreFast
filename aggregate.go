@@ -55,38 +55,43 @@ func filteredBooksHandler(w http.ResponseWriter, r *http.Request, category strin
 	switch category {
 	case "author":
 		query = `
-            SELECT DISTINCT b.uuid, b.title,
-                COALESCE(a.sort, a.name, '') as author_sort,
-                b.pubdate, b.path
-            FROM books b
-            JOIN books_authors_link bal ON bal.book = b.id
-            JOIN authors a ON a.id = bal.author
-            WHERE a.name = ?
-            ORDER BY b.sort LIMIT 50 OFFSET ?`
+        SELECT b.uuid, b.title,
+            GROUP_CONCAT(a2.sort, ', ') as author_sort,
+            b.pubdate, b.path
+        FROM books b
+        JOIN books_authors_link bal ON bal.book = b.id
+        JOIN authors a ON a.id = bal.author
+        JOIN books_authors_link bal2 ON bal2.book = b.id
+        JOIN authors a2 ON a2.id = bal2.author
+        WHERE a.name = ?
+        GROUP BY b.id
+        ORDER BY b.sort LIMIT 50 OFFSET ?`
 	case "publisher":
 		query = `
-            SELECT DISTINCT b.uuid, b.title,
-                COALESCE(a.sort, a.name, '') as author_sort,
-                b.pubdate, b.path
-            FROM books b
-            JOIN books_publishers_link bpl ON bpl.book = b.id
-            JOIN publishers p ON p.id = bpl.publisher
-            LEFT JOIN books_authors_link bal ON bal.book = b.id
-            LEFT JOIN authors a ON a.id = bal.author
-            WHERE p.name = ?
-            ORDER BY b.sort LIMIT 50 OFFSET ?`
+        SELECT b.uuid, b.title,
+            GROUP_CONCAT(a.sort, ', ') as author_sort,
+            b.pubdate, b.path
+        FROM books b
+        JOIN books_publishers_link bpl ON bpl.book = b.id
+        JOIN publishers p ON p.id = bpl.publisher
+        LEFT JOIN books_authors_link bal ON bal.book = b.id
+        LEFT JOIN authors a ON a.id = bal.author
+        WHERE p.name = ?
+        GROUP BY b.id
+        ORDER BY b.sort LIMIT 50 OFFSET ?`
 	case "tag":
 		query = `
-            SELECT DISTINCT b.uuid, b.title,
-                COALESCE(a.sort, a.name, '') as author_sort,
-                b.pubdate, b.path
-            FROM books b
-            JOIN books_tags_link btl ON btl.book = b.id
-            JOIN tags t ON t.id = btl.tag
-            LEFT JOIN books_authors_link bal ON bal.book = b.id
-            LEFT JOIN authors a ON a.id = bal.author
-            WHERE t.name = ?
-            ORDER BY b.sort LIMIT 50 OFFSET ?`
+        SELECT b.uuid, b.title,
+            GROUP_CONCAT(a.sort, ', ') as author_sort,
+            b.pubdate, b.path
+        FROM books b
+        JOIN books_tags_link btl ON btl.book = b.id
+        JOIN tags t ON t.id = btl.tag
+        LEFT JOIN books_authors_link bal ON bal.book = b.id
+        LEFT JOIN authors a ON a.id = bal.author
+        WHERE t.name = ?
+        GROUP BY b.id
+        ORDER BY b.sort LIMIT 50 OFFSET ?`
 	default:
 		http.Error(w, "unknown category", http.StatusBadRequest)
 		return
