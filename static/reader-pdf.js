@@ -83,7 +83,7 @@ async function init() {
     currentPage = Math.min(currentPage, pdf.numPages);
     await renderToc();
     if (fitToggle.checked) {
-        await fitToHeight();
+        await fitToScale();
     } else {
         renderPage(currentPage);
     }
@@ -126,10 +126,13 @@ function availableHeight() {
 const fitToggle = document.getElementById("fit-toggle");
 fitToggle.checked = localStorage.getItem("pdf-fit") === "true";
 
-async function fitToHeight() {
+async function fitToScale() {
     const page = await pdf.getPage(currentPage);
     const viewport = page.getViewport({ scale: 1 });
-    scale = availableHeight() / viewport.height;
+    const divisor = lastWasDual ? 2 : 1;
+    const heightScale = availableHeight() / viewport.height;
+    const widthScale = (window.innerWidth / divisor - 8) / viewport.width;
+    scale = Math.min(heightScale, widthScale);
     localStorage.setItem("pdf-scale", scale);
     await renderPage(currentPage);
 }
@@ -137,7 +140,7 @@ async function fitToHeight() {
 async function applyFit() {
     if (fitToggle.checked) {
         localStorage.setItem("pdf-fit", "true");
-        await fitToHeight();
+        await fitToScale();
     } else {
         localStorage.setItem("pdf-fit", "false");
     }
@@ -147,7 +150,7 @@ fitToggle.addEventListener("change", applyFit);
 
 // resize handler — only refit if fit mode is active
 window.addEventListener("resize", () => {
-    if (fitToggle.checked && pdf) fitToHeight();
+    if (fitToggle.checked && pdf) fitToScale();
 });
 
 // disable zoom buttons when fit is active since fit overrides scale
