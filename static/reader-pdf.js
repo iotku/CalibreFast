@@ -28,7 +28,6 @@ async function renderPage(pageNum) {
 
     canvas.width = viewport.width;
     canvas.height = viewport.height;
-    canvas.style.marginTop = document.querySelector(".top-bar").offsetHeight + "px";
 
     await page.render({ canvasContext: ctx, viewport }).promise;
 
@@ -72,7 +71,7 @@ document.getElementById("font-down").addEventListener("click", () => {
 });
 
 function availableHeight() {
-    return window.innerHeight - document.querySelector(".top-bar").offsetHeight - 16;
+    return window.innerHeight - document.querySelector(".top-bar").offsetHeight;
 }
 
 async function fitToHeight() {

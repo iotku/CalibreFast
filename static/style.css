@@ -1,7 +1,8 @@
 :root {
-    --topbar-height: 56px; /* match your actual header height */
+    --topbar-height: 56px;
+    --topbar-padding: 6px;
+    --topbar-total: calc(var(--topbar-height) + var(--topbar-padding) * 2);
 }
-
 body {
     margin: 0;
     padding: 24px;
@@ -20,7 +21,7 @@ h1 {
     gap: 24px;
 
     max-width: 1600px;
-    margin: var(--topbar-height) auto 0;
+    margin: var(--topbar-total) auto 0;
 }
 
 .page {
@@ -111,7 +112,7 @@ h1 {
     justify-content: space-between;
     align-items: center;
 
-    padding: 6px 12px;
+    padding: var(--topbar-padding) 12px;
     height: var(--topbar-height);
     background: rgba(20, 20, 20, 0.85);
     backdrop-filter: blur(10px);
@@ -217,7 +218,7 @@ h1 {
 
 #reader-container {
     position: fixed;
-    top: var(--topbar-height, 56px);
+    top: var(--topbar-total, 56px);
     left: 0;
     right: 0;
     bottom: 0;
@@ -225,7 +226,7 @@ h1 {
 
 #pdf-container {
     position: fixed;
-    top: var(--topbar-height);
+    top: var(--topbar-total);
     left: 0;
     right: 0;
     bottom: 0;
