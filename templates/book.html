@@ -27,13 +27,13 @@
         <div class="meta-row">
             <strong>Author:</strong>
             {{ range .Authors }}
-            {{ . }}
+            <a href="/author/{{ . }}" class="meta-link">{{ . }}</a>
             {{ end }}
         </div>
 
         <div class="meta-row">
             <strong>Publisher:</strong>
-            {{ .Publisher }}
+            <a href="/publisher/{{ .Publisher }}" class="meta-link">{{ .Publisher }}</a>
         </div>
 
         <div class="meta-row">
@@ -49,7 +49,7 @@
         <div class="meta-row">
             <strong>Tags:</strong>
             {{ range .Tags }}
-            <span class="tag">{{ . }}</span>
+            <a href="/tag/{{ . }}" class="tag meta-link">{{ . }}</a>
             {{ end }}
         </div>
 

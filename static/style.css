@@ -239,3 +239,40 @@ h1 {
 #pdf-canvas {
     display: block;
 }
+
+#aggregate-grid {
+    padding: calc(var(--topbar-total) + 1rem) 2rem 2rem;
+    max-width: 1200px;
+    margin: 0 auto;
+    line-height: 2;
+}
+
+.meta-link {
+    color: #aaa;
+    text-decoration: none;
+    border-bottom: 1px solid rgba(255,255,255,0.15);
+    transition: color 0.15s, border-color 0.15s;
+}
+
+.meta-link:hover {
+    color: #fff;
+    border-bottom-color: rgba(255,255,255,0.5);
+}
+
+.tag {
+    display: inline-block;
+    padding: 0.25rem 0.6rem;
+    background: #252525;
+    border-radius: 999px;
+    margin-right: 0.4rem;
+    margin-bottom: 0.4rem;
+    font-size: 13px;
+    color: #aaa;
+    text-decoration: none;
+    transition: background 0.15s, color 0.15s;
+}
+
+.tag:hover {
+    background: #333;
+    color: #fff;
+}

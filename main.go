@@ -351,7 +351,65 @@ func serveLibraryHttp() {
 	http.HandleFunc("/epub/", epubFileHandler)
 
 	http.HandleFunc("/view/", viewHandler)
+	http.HandleFunc("/api/authors", func(w http.ResponseWriter, r *http.Request) {
+		aggregateHandler(w, r, `
+        SELECT a.name, COUNT(bal.book) as count
+        FROM authors a
+        JOIN books_authors_link bal ON bal.author = a.id
+        GROUP BY a.id
+        ORDER BY count DESC`)
+	})
 
+	http.HandleFunc("/api/publishers", func(w http.ResponseWriter, r *http.Request) {
+		aggregateHandler(w, r, `
+        SELECT p.name, COUNT(bpl.book) as count
+        FROM publishers p
+        JOIN books_publishers_link bpl ON bpl.publisher = p.id
+        GROUP BY p.id
+        ORDER BY count DESC`)
+	})
+
+	http.HandleFunc("/api/tags", func(w http.ResponseWriter, r *http.Request) {
+		aggregateHandler(w, r, `
+        SELECT t.name, COUNT(btl.book) as count
+        FROM tags t
+        JOIN books_tags_link btl ON btl.tag = t.id
+        GROUP BY t.id
+        ORDER BY count DESC`)
+	})
+
+	// page routes
+	for _, page := range []string{"authors", "publishers", "tags"} {
+		p := page
+		http.HandleFunc("/"+p, func(w http.ResponseWriter, r *http.Request) {
+			err := templates.ExecuteTemplate(w, "aggregate.html", PageData{Title: "My Calibre Library"})
+			if err != nil {
+				http.Error(w, err.Error(), 500)
+			}
+		})
+	}
+
+	http.HandleFunc("/author/", func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Query().Get("api") == "1" {
+			filteredBooksHandler(w, r, "author")
+			return
+		}
+		templates.ExecuteTemplate(w, "filtered.html", PageData{Title: "My Calibre Library"})
+	})
+	http.HandleFunc("/publisher/", func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Query().Get("api") == "1" {
+			filteredBooksHandler(w, r, "publisher")
+			return
+		}
+		templates.ExecuteTemplate(w, "filtered.html", PageData{Title: "My Calibre Library"})
+	})
+	http.HandleFunc("/tag/", func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Query().Get("api") == "1" {
+			filteredBooksHandler(w, r, "tag")
+			return
+		}
+		templates.ExecuteTemplate(w, "filtered.html", PageData{Title: "My Calibre Library"})
+	})
 	log.Println("Listening on :" + hostport)
 	log.Fatal(http.ListenAndServe(":"+hostport, nil))
 }

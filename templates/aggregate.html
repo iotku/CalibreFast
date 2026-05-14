@@ -1,0 +1,19 @@
+<!doctype html>
+<html lang="en">
+<head>
+    <meta charset="utf-8">
+    <title>{{ .Title }}</title>
+    <link rel="stylesheet" href="/static/style.css">
+</head>
+<body>
+<header class="top-bar">
+    <button onclick="history.back()" style="height:44px;">&#8592; Back</button>
+    <div style="position:absolute; left:50%; transform:translateX(-50%);">
+        <h1 id="page-title" class="title"></h1>
+    </div>
+    <div></div>
+</header>
+<div id="aggregate-grid"></div>
+<script type="module" src="/static/aggregate.js"></script>
+</body>
+</html>
