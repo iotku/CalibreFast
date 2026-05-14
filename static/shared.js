@@ -3,21 +3,18 @@ export let imageAbortController = new AbortController();
 export const queue = [];
 export const inQueue = new Set();
 export let active = 0;
-export const MAX_CONCURRENT = 50;
+export const MAX_CONCURRENT = 8;
 
 export const booksDiv = document.getElementById("books");
+
 const coverObserver = new IntersectionObserver((entries) => {
     for (const entry of entries) {
         if (!entry.isIntersecting) continue;
-
         const img = entry.target;
         if (img.src) continue;
-
         enqueue(img);
     }
-}, {
-    rootMargin: "800px"
-});
+}, { rootMargin: "800px" });
 
 export function abortImageQueue() {
     imageGeneration++;
@@ -26,7 +23,6 @@ export function abortImageQueue() {
     queue.length = 0;
     inQueue.clear();
 }
-
 
 export function enqueue(img) {
     if (inQueue.has(img)) return;
@@ -157,16 +153,17 @@ export function renderBooks(books, pageNumber) {
     </a>
     
     <div class="book-info">
-    <div class="formats"></div>
         <h2>${book.title}</h2>
 
         <div class="book-author">
             ${book.author_sort}
         </div>
-
+<!--
         <div class="book-date">
             ${book.pubdate}
         </div>
+        -->
+        <div class="formats"></div>
     </div>
 `;
 
@@ -191,26 +188,26 @@ export function renderBooks(books, pageNumber) {
             openBookModal(book.uuid);
         });
 
-
-        el.addEventListener("mouseenter", async () => {
-            if (el.dataset.loaded) return;
-
-            const res = await fetch(`/formats/${book.uuid}`);
-            const formats = await res.json();
-            if (!Array.isArray(formats)) {
-                return;
-            }
-
-            const container = el.querySelector(".formats");
-
-            container.innerHTML = formats.map(f =>
-                `<button onclick="window.location='/download/${book.uuid}/${f}'">
-            ${f.toUpperCase()}
-        </button>`
-            ).join("");
-
-            el.dataset.loaded = "true";
-        });
+        //
+        // el.addEventListener("mouseenter", async () => {
+        //     if (el.dataset.loaded) return;
+        //
+        //     const res = await fetch(`/formats/${book.uuid}`);
+        //     const formats = await res.json();
+        //     if (!Array.isArray(formats)) {
+        //         return;
+        //     }
+        //
+        //     const container = el.querySelector(".formats");
+        //
+        //     container.innerHTML = formats.map(f =>
+        //         `<button onclick="window.location='/download/${book.uuid}/${f}'">
+        //     ${f.toUpperCase()}
+        // </button>`
+        //     ).join("");
+        //
+        //     el.dataset.loaded = "true";
+        // });
         pageEl.appendChild(el);
 
     }

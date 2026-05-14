@@ -33,21 +33,27 @@ window.addEventListener("DOMContentLoaded", () => {
     window.history.scrollRestoration = "manual";
     window.scrollTo(0, 0);
 
+    let updateScheduled = false;
+
+    function scheduleUpdatePageLabel(overridePage) {
+        if (updateScheduled) return;
+        updateScheduled = true;
+        requestAnimationFrame(() => {
+            updateScheduled = false;
+            updatePageLabel(overridePage);
+        });
+    }
+
+    let lastReplacedPage = null;
     function updatePageLabel(overridePage) {
         const page = overridePage ?? getVisiblePage();
-        const modalOpen = modal.classList.contains("open");
-        const currentState = history.state ?? {};
+        if (isNaN(page)) return;
 
-        history.replaceState(
-            { ...currentState, page },
-            "",
-            `?page=${page}`
-        );
-
-        // if modal was open, ensure its state is still on top
-        if (modalOpen && !currentState.modal) {
-            history.pushState({ ...currentState, modal: currentState.modal, page }, "");
+        if (page !== lastReplacedPage) {
+            lastReplacedPage = page;
+            history.replaceState({ ...history.state, page }, "", `?page=${page}`);
         }
+
         document.getElementById("page-input").value = page;
         document.getElementById("next-page").disabled = currentPage > totalPages;
         document.getElementById("prev-page").disabled = page <= 1;
@@ -78,7 +84,7 @@ window.addEventListener("DOMContentLoaded", () => {
         await loadNextPage(signal);
 
         if (signal.aborted) return; // a newer load took over, bail out
-        updatePageLabel(target);
+        scheduleUpdatePageLabel(target);
     });
 
     let imageGeneration = 0;
@@ -94,7 +100,7 @@ window.addEventListener("DOMContentLoaded", () => {
         currentPage = page + 1;
         await loadNextPage(loadAbortController.signal);
         if (loadAbortController.signal.aborted) return;
-        updatePageLabel(page + 1);
+        scheduleUpdatePageLabel(page + 1);
     });
 
     document.getElementById("prev-page").addEventListener("click", async () => {
@@ -109,7 +115,7 @@ window.addEventListener("DOMContentLoaded", () => {
         currentPage = page - 1;
         await loadNextPage(loadAbortController.signal);
         if (loadAbortController.signal.aborted) return;
-        updatePageLabel(page - 1);
+        scheduleUpdatePageLabel(page - 1);
     });
 
     if (totalPages && currentPage > totalPages) {
@@ -141,16 +147,12 @@ window.addEventListener("DOMContentLoaded", () => {
         }
     }
 
-    window.addEventListener("scroll", () => updatePageLabel());
-    window.addEventListener("scrollend", () => updatePageLabel());
+    window.addEventListener("scroll", () => scheduleUpdatePageLabel());
     window.addEventListener("keydown", (e) => {
         if (e.key === "Home" || e.key === "End") {
-            updatePageLabel();
+            scheduleUpdatePageLabel();
         }
     });
-
-
-
 
     async function loadNextPage(signal) {
         if (loading || done) return;
@@ -192,11 +194,10 @@ window.addEventListener("DOMContentLoaded", () => {
 
     // initial load
     loadNextPage().then(() => {
-            updatePageLabel();
+            scheduleUpdatePageLabel();
     });
 
     const modal = document.getElementById("book-modal");
-    const modalBody = document.getElementById("modal-body");
 
     document.getElementById("modal-close").addEventListener("click", () => {
         modal.classList.remove("open");

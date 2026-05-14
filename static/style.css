@@ -31,7 +31,7 @@ h1 {
 
 .page {
     display: grid;
-    grid-template-columns: repeat(5, 1fr);
+    grid-template-columns: repeat(6, 1fr);
     gap: 10px;
     width: 100%;
 
@@ -85,13 +85,13 @@ h1 {
 .book h2 {
     margin: 0 0 8px 0;
 
-    font-size: 18px;
-    line-height: 1.25;
+    font-size: 1.1rem;
+    line-height: 1.15;
 }
 
 .book-author {
     color: #bbb;
-    font-size: 14px;
+    font-size: 0.8rem;
 
     margin-bottom: 8px;
 }
@@ -161,6 +161,11 @@ h1 {
         flex: 1 1 100%;
         justify-content: center;
         min-height: var(--topbar-height);
+    }
+
+    .page {
+        grid-template-columns: repeat(4, 1fr);
+        gap: 5px;
     }
 
     .top-bar-center input {
