@@ -219,3 +219,30 @@ document.getElementById("toc-btn").addEventListener("click", () => {
     const sidebar = document.getElementById("toc-sidebar");
     sidebar.style.display = sidebar.style.display === "none" ? "block" : "none";
 });
+
+// scroll to navigate
+document.getElementById("pdf-container").addEventListener("wheel", (e) => {
+    e.preventDefault();
+    if (e.deltaY > 0) {
+        // scroll down = next
+        if (currentPage < pdf?.numPages) renderPage(Math.min(pdf.numPages, currentPage + (effectiveDualSync() ? 2 : 1)));
+    } else {
+        // scroll up = prev
+        if (currentPage > 1) renderPage(Math.max(1, currentPage - (effectiveDualSync() ? 2 : 1)));
+    }
+}, { passive: false });
+
+// click left/right half to navigate
+document.getElementById("pdf-container").addEventListener("click", (e) => {
+    const mid = window.innerWidth / 2;
+    if (e.clientX < mid) {
+        if (currentPage > 1) renderPage(Math.max(1, currentPage - (effectiveDualSync() ? 2 : 1)));
+    } else {
+        if (currentPage < pdf?.numPages) renderPage(Math.min(pdf.numPages, currentPage + (effectiveDualSync() ? 2 : 1)));
+    }
+});
+
+let lastWasDual = false; // updated each renderPage
+function effectiveDualSync() {
+    return lastWasDual;
+}

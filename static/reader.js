@@ -94,16 +94,44 @@ book.ready.then(() => {
     });
 });
 
+function safePrev() {
+    rendition.prev().catch((e) => {
+        if (!e?.message?.includes("No Section Found")) console.error(e);
+    });
+}
+
+function safeNext() {
+    rendition.next().catch((e) => {
+        if (!e?.message?.includes("No Section Found")) console.error(e);
+    });
+}
+
 // prev/next
-document.getElementById("prev-btn").addEventListener("click", () => rendition.prev());
-document.getElementById("next-btn").addEventListener("click", () => rendition.next());
+// replace existing prev/next button listeners
+document.getElementById("prev-btn").addEventListener("click", safePrev);
+document.getElementById("next-btn").addEventListener("click", safeNext);
 
 // keyboard nav
 window.addEventListener("keydown", (e) => {
-    if (e.key === "ArrowLeft") rendition.prev();
-    if (e.key === "ArrowRight") rendition.next();
+    if (e.key === "ArrowLeft") safePrev();
+    if (e.key === "ArrowRight") safeNext();
     if (e.key === "Escape") document.getElementById("toc-sidebar").style.display = "none";
 });
+
+// scroll to navigate
+rendition.on("rendered", (section, view) => {
+    view.document.addEventListener("wheel", (e) => {
+        e.preventDefault();
+        if (e.deltaY > 0) safeNext(); else safePrev();
+    }, { passive: false });
+});
+
+// click left/right half
+document.getElementById("reader-container").addEventListener("click", (e) => {
+    if (e.clientX < window.innerWidth / 2) safePrev(); else safeNext();
+});
+
+// TODO: click handler
 
 // font size
 document.getElementById("font-up").addEventListener("click", () => {
