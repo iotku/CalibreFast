@@ -40,6 +40,7 @@ async function renderPage(pageNum) {
 async function init() {
     pdf = await pdfjsLib.getDocument(`/download/${uuid}/pdf`).promise;
     currentPage = Math.min(currentPage, pdf.numPages);
+    await renderToc();
     if (fitToggle.checked) {
         await fitToHeight();
     } else {
@@ -122,6 +123,55 @@ document.getElementById("font-down").addEventListener("click", () => {
     renderPage(currentPage);
 });
 
+async function renderToc() {
+    const outline = await pdf.getOutline();
+    const list = document.getElementById("toc-list");
 
+    if (!outline || outline.length === 0) {
+        list.innerHTML = "<li style='color:#888'>No outline available.</li>";
+        return;
+    }
 
-document.getElementById("fit-btn").addEventListener("click", fitToHeight);
+    async function buildToc(items, el) {
+        for (const item of items) {
+            const li = document.createElement("li");
+            li.style.padding = "6px 0";
+
+            const a = document.createElement("a");
+            a.textContent = item.title;
+            a.href = "#";
+            a.style.cssText = "color:var(--color-text, #eee); text-decoration:none; display:block;";
+
+            a.addEventListener("click", async (e) => {
+                e.preventDefault();
+                if (item.dest) {
+                    const dest = typeof item.dest === "string"
+                        ? await pdf.getDestination(item.dest)
+                        : item.dest;
+
+                    const pageIndex = await pdf.getPageIndex(dest[0]);
+                    renderPage(pageIndex + 1); // pdf.js is 0-indexed
+                }
+                document.getElementById("toc-sidebar").style.display = "none";
+            });
+
+            li.appendChild(a);
+
+            if (item.items?.length) {
+                const sub = document.createElement("ul");
+                sub.style.paddingLeft = "1rem";
+                await buildToc(item.items, sub);
+                li.appendChild(sub);
+            }
+
+            el.appendChild(li);
+        }
+    }
+
+    await buildToc(outline, list);
+}
+
+document.getElementById("toc-btn").addEventListener("click", () => {
+    const sidebar = document.getElementById("toc-sidebar");
+    sidebar.style.display = sidebar.style.display === "none" ? "block" : "none";
+});

@@ -14,6 +14,7 @@
         <button id="next-btn" style="height:44px; width:44px;">&#8250;</button>
     </div>
     <div style="display:inline-flex; align-items:center; gap:8px;">
+        <button id="toc-btn" style="height:44px; padding:0 12px;">Contents</button>
         <button id="font-down" style="height:44px; width:44px;">A-</button>
         <label style="display:inline-flex; align-items:center; gap:6px; height:44px; cursor:pointer;">
             <input type="checkbox" id="fit-toggle" style="width:18px; height:18px;" />
@@ -22,6 +23,10 @@
         <button id="font-up" style="height:44px; width:44px;">A+</button>
     </div>
 </header>
+<div id="toc-sidebar" style="display:none; position:fixed; top:var(--topbar-total); left:0; bottom:0; width:280px; background:rgba(20,20,20,0.97); z-index:999; overflow-y:auto; padding:16px;">
+    <h2 style="margin-bottom:1rem;">Contents</h2>
+    <ul id="toc-list" style="list-style:none; padding:0; margin:0;"></ul>
+</div>
 <div id="pdf-container">
     <canvas id="pdf-canvas"></canvas>
 </div>
