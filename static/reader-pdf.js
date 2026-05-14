@@ -10,30 +10,71 @@ if (!uuid) {
     throw new Error("missing uuid");
 }
 
-const canvas = document.getElementById("pdf-canvas");
-const ctx = canvas.getContext("2d");
 const progressLabel = document.getElementById("progress-label");
 
 let pdf = null;
 let currentPage = parseInt(localStorage.getItem(`pdf-page-${uuid}`) || "1");
 let scale = parseFloat(localStorage.getItem("pdf-scale") || "1.5");
 let rendering = false;
+const dualToggle = document.getElementById("dual-toggle");
+dualToggle.checked = localStorage.getItem("pdf-dual") === "true";
+
+dualToggle.addEventListener("change", () => {
+    localStorage.setItem("pdf-dual", dualToggle.checked);
+    renderPage(currentPage);
+});
+
+function isDual() { return dualToggle.checked; }
+async function isWideEnough() {
+    const page = await pdf.getPage(currentPage);
+    const viewport = page.getViewport({ scale });
+    return window.innerWidth >= viewport.width * 2 + 4; // +4 for the gap
+}
+
+async function effectiveDual() {
+    return dualToggle.checked && await isWideEnough();
+}
+async function drawPage(pageNum, canvas) {
+    if (pageNum < 1 || pageNum > pdf.numPages) return;
+    const page = await pdf.getPage(pageNum);
+    const viewport = page.getViewport({ scale });
+    canvas.width = viewport.width;
+    canvas.height = viewport.height;
+    await page.render({ canvasContext: canvas.getContext("2d"), viewport }).promise;
+}
 
 async function renderPage(pageNum) {
     if (rendering) return;
     rendering = true;
 
-    const page = await pdf.getPage(pageNum);
-    const viewport = page.getViewport({ scale });
+    const container = document.getElementById("pdf-container");
+    container.innerHTML = "";
 
-    canvas.width = viewport.width;
-    canvas.height = viewport.height;
+    if (await effectiveDual()) {
+        const wrapper = document.createElement("div");
+        wrapper.style.cssText = "display:flex; gap:4px; justify-content:center; align-items:flex-start;";
 
-    await page.render({ canvasContext: ctx, viewport }).promise;
+        const left = document.createElement("canvas");
+        const right = document.createElement("canvas");
+        wrapper.appendChild(left);
+        wrapper.appendChild(right);
+        container.appendChild(wrapper);
+
+        await Promise.all([
+            drawPage(pageNum, left),
+            drawPage(pageNum + 1, right),
+        ]);
+
+        progressLabel.textContent = `${pageNum}-${Math.min(pageNum + 1, pdf.numPages)} / ${pdf.numPages}`;
+    } else {
+        const canvas = document.createElement("canvas");
+        container.appendChild(canvas);
+        await drawPage(pageNum, canvas);
+        progressLabel.textContent = `${pageNum} / ${pdf.numPages}`;
+    }
 
     currentPage = pageNum;
     localStorage.setItem(`pdf-page-${uuid}`, currentPage);
-    progressLabel.textContent = `${currentPage} / ${pdf.numPages}`;
     rendering = false;
 }
 
@@ -50,19 +91,22 @@ async function init() {
 
 init();
 
+// update prev/next to step by 2 in dual mode
 document.getElementById("prev-btn").addEventListener("click", () => {
-    if (currentPage > 1) renderPage(currentPage - 1);
+    const step = isDual() ? 2 : 1;
+    if (currentPage > 1) renderPage(Math.max(1, currentPage - step));
 });
 
 document.getElementById("next-btn").addEventListener("click", () => {
-    if (currentPage < pdf?.numPages) renderPage(currentPage + 1);
+    const step = isDual() ? 2 : 1;
+    if (currentPage < pdf?.numPages) renderPage(Math.min(pdf.numPages, currentPage + step));
 });
 
 window.addEventListener("keydown", (e) => {
-    if (e.key === "ArrowLeft" && currentPage > 1) renderPage(currentPage - 1);
-    if (e.key === "ArrowRight" && currentPage < pdf?.numPages) renderPage(currentPage + 1);
+    const step = isDual() ? 2 : 1;
+    if (e.key === "ArrowLeft" && currentPage > 1) renderPage(Math.max(1, currentPage - step));
+    if (e.key === "ArrowRight" && currentPage < pdf?.numPages) renderPage(Math.min(pdf.numPages, currentPage + step));
 });
-
 document.getElementById("font-up").addEventListener("click", () => {
     scale = Math.min(scale + 0.25, 4);
     localStorage.setItem("pdf-scale", scale);
@@ -87,7 +131,7 @@ async function fitToHeight() {
     const viewport = page.getViewport({ scale: 1 });
     scale = availableHeight() / viewport.height;
     localStorage.setItem("pdf-scale", scale);
-    renderPage(currentPage);
+    await renderPage(currentPage);
 }
 
 async function applyFit() {
