@@ -135,83 +135,47 @@ export function getVisiblePage() {
     return current ?? parseInt(document.querySelector(".page")?.dataset.page, 10) ?? 1;
 }
 
-export function renderBooks(books, pageNumber) {
+export function renderBooks(books, pageNumber, container = booksDiv) {
     const pageEl = document.createElement("div");
     pageEl.className = "page";
     pageEl.dataset.page = pageNumber;
     for (const book of books) {
         const el = document.createElement("div");
-
         el.className = "book";
-
-
         el.innerHTML = `
     <a href="/book/${book.uuid}">
     <div class="cover-wrapper" style="background:${colorFromBook(book)}">
-        <img class="book-cover" fetchpriority="low" alt="${book.title}"/>
+        <img class="book-cover" fetchpriority="low" />
     </div>
     </a>
     
     <div class="book-info">
         <h2>${book.title}</h2>
-
         <div class="book-author">
             ${book.author_sort}
         </div>
-<!--
-        <div class="book-date">
-            ${book.pubdate}
-        </div>
-        -->
         <div class="formats"></div>
     </div>
 `;
-
         const cover = el.querySelector(".book-cover");
-
         cover.dataset.src = `/cover-thumb/${book.uuid}`;
         cover.dataset.id = book.uuid;
         coverObserver.observe(cover);
         cover.addEventListener("error", () => {
             const canvas = generateCoverText(book);
             const wrapper = cover.parentElement;
-
             cover.remove();
             wrapper.appendChild(canvas);
         });
-
-        // replace the <a href="/book/${book.uuid}"> wrapper with:
         const coverLink = el.querySelector("a");
         coverLink.removeAttribute("href");
         coverLink.addEventListener("click", (e) => {
             e.preventDefault();
             openBookModal(book.uuid);
         });
-
-        //
-        // el.addEventListener("mouseenter", async () => {
-        //     if (el.dataset.loaded) return;
-        //
-        //     const res = await fetch(`/formats/${book.uuid}`);
-        //     const formats = await res.json();
-        //     if (!Array.isArray(formats)) {
-        //         return;
-        //     }
-        //
-        //     const container = el.querySelector(".formats");
-        //
-        //     container.innerHTML = formats.map(f =>
-        //         `<button onclick="window.location='/download/${book.uuid}/${f}'">
-        //     ${f.toUpperCase()}
-        // </button>`
-        //     ).join("");
-        //
-        //     el.dataset.loaded = "true";
-        // });
         pageEl.appendChild(el);
-
     }
-    booksDiv.appendChild(pageEl);
+    container.appendChild(pageEl);
 }
 
 // shared.js

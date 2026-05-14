@@ -60,7 +60,6 @@ window.addEventListener("DOMContentLoaded", () => {
     }
 
     let loadAbortController = null;
-    let imageAbortController = new AbortController();
 
     document.getElementById("page-input").addEventListener("change", async (e) => {
         let target = parseInt(e.target.value, 10);
@@ -86,8 +85,6 @@ window.addEventListener("DOMContentLoaded", () => {
         if (signal.aborted) return; // a newer load took over, bail out
         scheduleUpdatePageLabel(target);
     });
-
-    let imageGeneration = 0;
 
     document.getElementById("next-page").addEventListener("click", async () => {
         const page = getVisiblePage();
@@ -147,7 +144,61 @@ window.addEventListener("DOMContentLoaded", () => {
         }
     }
 
-    window.addEventListener("scroll", () => scheduleUpdatePageLabel());
+    const KEEP_PAGES = 3; // pages above and below current to keep in DOM
+    const pageHeights = new Map(); // page -> px height before removal
+
+    function removeFarPages() {
+        const visible = getVisiblePage();
+        if (isNaN(visible)) return;
+
+        document.querySelectorAll("[data-page]").forEach(el => {
+            const p = parseInt(el.dataset.page, 10);
+            if (Math.abs(p - visible) <= KEEP_PAGES) return;
+
+            // Save height so placeholder keeps scroll position stable
+            pageHeights.set(p, el.offsetHeight);
+
+            const placeholder = document.createElement("div");
+            placeholder.dataset.pagePlaceholder = p;
+            placeholder.style.height = el.offsetHeight + "px";
+            placeholder.style.containIntrinsicSize = `auto ${el.offsetHeight}px`;
+            el.replaceWith(placeholder);
+        });
+    }
+
+    async function restorePlaceholder(placeholder, signal) {
+        const page = parseInt(placeholder.dataset.pagePlaceholder, 10);
+        const books = await fetchPage(page, signal); // hits cache, no network
+        if (signal?.aborted || !books) return;
+
+        const tempDiv = document.createElement("div");
+        renderBooks(books, page, tempDiv); // see note below
+        const restored = tempDiv.firstElementChild;
+        placeholder.replaceWith(restored);
+    }
+
+    // Observe placeholders coming into view
+    const restoreObserver = new IntersectionObserver(entries => {
+        for (const entry of entries) {
+            if (entry.isIntersecting && entry.target.dataset.pagePlaceholder) {
+                restoreObserver.unobserve(entry.target);
+                restorePlaceholder(entry.target, loadAbortController?.signal);
+            }
+        }
+    }, { rootMargin: "800px" });
+
+
+
+    window.addEventListener("scroll", () => {
+        scheduleUpdatePageLabel();
+        removeFarPages();
+
+        // Watch any new placeholders
+        document.querySelectorAll("[data-page-placeholder]").forEach(el => {
+            restoreObserver.observe(el);
+        });
+    });
+
     window.addEventListener("keydown", (e) => {
         if (e.key === "Home" || e.key === "End") {
             scheduleUpdatePageLabel();
