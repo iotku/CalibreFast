@@ -222,20 +222,29 @@ const modal = document.getElementById("book-modal");
 const modalBody = document.getElementById("modal-body");
 
 document.getElementById("modal-close").addEventListener("click", () => {
-    modal.classList.remove("open");
+    history.back();
 });
 
 modal.addEventListener("click", (e) => {
-    if (e.target === modal) modal.classList.remove("open");
+    if (e.target === modal) history.back();
 });
 
 window.addEventListener("keydown", (e) => {
-    if (e.key === "Escape") modal.classList.remove("open");
+    if (e.key === "Escape" && modal.classList.contains("open")) history.back();
 });
 
+window.addEventListener("popstate", () => {
+    console.log("popstate", window.history.state);
+    document.body.classList.remove("no-scroll");
+    if (modal.classList.contains("open")) {
+        modal.classList.remove("open");
+    }
+});
 export async function openBookModal(uuid) {
+    document.body.classList.add("no-scroll"); // popstate trigger removes
     modalBody.innerHTML = "Loading...";
     modal.classList.add("open");
+    history.pushState({ modal: uuid }, "");
 
     const res = await fetch(`/book/${uuid}`);
     modalBody.innerHTML = await res.text();

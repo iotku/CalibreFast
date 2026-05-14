@@ -11,6 +11,10 @@ body {
     color: #eee;
 }
 
+body.no-scroll {
+    overflow: hidden;
+}
+
 h1 {
     margin-bottom: 24px;
 }
@@ -276,3 +280,4 @@ h1 {
     background: #333;
     color: #fff;
 }
+

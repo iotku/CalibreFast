@@ -35,7 +35,19 @@ window.addEventListener("DOMContentLoaded", () => {
 
     function updatePageLabel(overridePage) {
         const page = overridePage ?? getVisiblePage();
-        history.replaceState(null, "", `?page=${page}`);
+        const modalOpen = modal.classList.contains("open");
+        const currentState = history.state ?? {};
+
+        history.replaceState(
+            { ...currentState, page },
+            "",
+            `?page=${page}`
+        );
+
+        // if modal was open, ensure its state is still on top
+        if (modalOpen && !currentState.modal) {
+            history.pushState({ ...currentState, modal: currentState.modal, page }, "");
+        }
         document.getElementById("page-input").value = page;
         document.getElementById("next-page").disabled = currentPage > totalPages;
         document.getElementById("prev-page").disabled = page <= 1;
@@ -197,12 +209,4 @@ window.addEventListener("DOMContentLoaded", () => {
     window.addEventListener("keydown", (e) => {
         if (e.key === "Escape") modal.classList.remove("open");
     });
-
-    async function openBookModal(uuid) {
-        modalBody.innerHTML = "Loading...";
-        modal.classList.add("open");
-
-        const res = await fetch(`/book/${uuid}`);
-        modalBody.innerHTML = await res.text();
-    }
 });
