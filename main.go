@@ -5,21 +5,23 @@ import (
 	"encoding/json"
 	"flag"
 	"html/template"
-	"image"
-	"image/jpeg"
 	"log"
 	"net/http"
 	"os"
 	"path/filepath"
 	"strconv"
 	"strings"
-	"sync"
 	"time"
 
 	_ "github.com/mattn/go-sqlite3"
 )
 
 var searchDB *sql.DB
+var SiteTitle = "Library"
+
+var baseDir string
+var cacheDir string
+var hostport string
 
 func initSearchDB() {
 	var err error
@@ -103,6 +105,7 @@ func searchHandler(w http.ResponseWriter, r *http.Request) {
 	query := "SELECT DISTINCT b.uuid, b.title, COALESCE(a.sort, a.name, '') as author_sort, b.pubdate, b.path FROM books b LEFT JOIN books_authors_link bal ON bal.book = b.id LEFT JOIN authors a ON a.id = bal.author WHERE (b.title LIKE ? OR a.name LIKE ? OR a.sort LIKE ?) ORDER BY b.sort LIMIT 50 OFFSET ?"
 	args := []any{like, like, like, offset}
 
+	// TODO: I don't expect this actually works
 	if fromYear != "" {
 		query += " AND DATE(b.pubdate) >= DATE(?)"
 		args = append(args, fromYear+"-01-01")
@@ -111,6 +114,7 @@ func searchHandler(w http.ResponseWriter, r *http.Request) {
 		query += " AND DATE(b.pubdate) <= DATE(?)"
 		args = append(args, toYear+"-12-31")
 	}
+	// TODO: END TODO
 
 	args = append(args, offset)
 	rows, err := searchDB.Query(query, args...)
@@ -136,129 +140,6 @@ func searchHandler(w http.ResponseWriter, r *http.Request) {
 	json.NewEncoder(w).Encode(books)
 }
 
-var baseDir string
-var cacheDir string
-var hostport string
-
-var coverIndex sync.Map               // map[string]string
-var formatCache sync.Map              // map[string][]string
-var imageSem = make(chan struct{}, 1) // only 2 HDD reads at once
-func coverHandler(w http.ResponseWriter, r *http.Request) {
-	imageSem <- struct{}{}        // acquire slot
-	defer func() { <-imageSem }() // release slot
-	// uuid comes from URL: /cover/{uuid}
-	uuid := filepath.Base(r.URL.Path)
-
-	if uuid == "" {
-		http.Error(w, "missing uuid", http.StatusBadRequest)
-		return
-	}
-
-	bookPath, ok := coverIndex.Load(uuid)
-	if !ok {
-		http.Error(w, "book not found", http.StatusNotFound)
-	}
-
-	// Build safe path
-	coverPath := filepath.Join(baseDir, bookPath.(string), "cover.jpg")
-
-	// prevent path traversal escape (extra safety)
-	coverPath, err := filepath.Abs(coverPath)
-	if err != nil {
-		http.Error(w, "invalid path", 500)
-		return
-	}
-
-	// ensure file exists
-	f, err := os.Open(coverPath)
-	if err != nil {
-		http.NotFound(w, r)
-		return
-	}
-	defer f.Close()
-	w.Header().Set("Cache-Control", "public, max-age=86400, immutable")
-	w.Header().Set("Content-Type", "image/jpeg")
-
-	http.ServeContent(w, r, "cover.jpg", fileModTime(f), f)
-}
-func ensureDir(path string) error {
-	return os.MkdirAll(filepath.Dir(path), 0755)
-}
-
-func coverThumbHandler(w http.ResponseWriter, r *http.Request) {
-	uuid := strings.TrimPrefix(r.URL.Path, "/cover-thumb/")
-
-	path, ok := coverIndex.Load(uuid)
-	if !ok {
-		http.NotFound(w, r)
-		return
-	}
-
-	thumbPath := filepath.Join(cacheDir, "covers", "thumb", uuid+".jpg")
-	if err := ensureDir(thumbPath); err != nil {
-		println(err.Error())
-	}
-
-	// 1. FAST PATH: already cached
-	if f, err := os.Open(thumbPath); err == nil {
-		defer f.Close()
-		w.Header().Set("Content-Type", "image/jpeg")
-		w.Header().Set("Cache-Control", "public, max-age=86400, immutable")
-		w.Header().Set("X-Cache-Hit", "true")
-		http.ServeContent(w, r, "thumb.jpg", time.Time{}, f)
-		return
-	}
-
-	// 2. SLOW PATH: generate
-	origPath := filepath.Join(baseDir, path.(string), "cover.jpg")
-
-	f, err := os.Open(origPath)
-	if err != nil {
-		http.NotFound(w, r)
-		return
-	}
-	defer f.Close()
-
-	img, _, err := image.Decode(f)
-	if err != nil {
-		http.NotFound(w, r)
-		return
-	}
-
-	thumb := resizeToWidth(img, 600)
-
-	out, err := os.Create(thumbPath)
-	if err == nil {
-		jpeg.Encode(out, thumb, &jpeg.Options{Quality: 85})
-		out.Close()
-	}
-
-	w.Header().Set("Content-Type", "image/jpeg")
-	w.Header().Set("Cache-Control", "public, max-age=86400, immutable")
-	w.Header().Set("X-Cache-Hit", "false")
-	jpeg.Encode(w, thumb, &jpeg.Options{Quality: 85})
-}
-
-func resizeToWidth(img image.Image, width int) image.Image {
-	bounds := img.Bounds()
-
-	scale := float64(width) / float64(bounds.Dx())
-	height := int(float64(bounds.Dy()) * scale)
-
-	dst := image.NewRGBA(image.Rect(0, 0, width, height))
-
-	for y := 0; y < height; y++ {
-		for x := 0; x < width; x++ {
-			srcX := int(float64(x) / scale)
-			srcY := int(float64(y) / scale)
-
-			dst.Set(x, y, img.At(srcX, srcY))
-		}
-	}
-
-	return dst
-}
-
 // Why do we even need this lol
 func fileModTime(f *os.File) (t time.Time) {
 	stat, err := f.Stat()
@@ -273,9 +154,6 @@ var templates = template.Must(
 )
 
 func serveLibraryHttp() {
-	//mime.AddExtensionType(".js", "application/javascript")
-	//mime.AddExtensionType(".css", "text/css")
-	// homepage
 	http.HandleFunc("/", func(w http.ResponseWriter, r *http.Request) {
 		data := PageData{
 			Title: "Library",
@@ -325,7 +203,7 @@ func serveLibraryHttp() {
 	http.HandleFunc("/book/", bookHandler)
 
 	http.HandleFunc("/search", func(w http.ResponseWriter, r *http.Request) {
-		err := templates.ExecuteTemplate(w, "search.html", PageData{Title: "My Calibre Library"})
+		err := templates.ExecuteTemplate(w, "search.html", PageData{Title: SiteTitle})
 		if err != nil {
 			http.Error(w, err.Error(), 500)
 		}
@@ -334,15 +212,15 @@ func serveLibraryHttp() {
 	http.HandleFunc("/api/search", searchHandler)
 
 	http.HandleFunc("/read", func(w http.ResponseWriter, r *http.Request) {
-		err := templates.ExecuteTemplate(w, "reader.html", PageData{Title: "My Calibre Library"})
+		err := templates.ExecuteTemplate(w, "reader.html", PageData{Title: SiteTitle})
 		if err != nil {
 			http.Error(w, err.Error(), 500)
 		}
 	})
 
-	// TODO Can we combine this with the /read endpoint?
+	// TODO: Can we combine this with the /read endpoint?
 	http.HandleFunc("/read-pdf", func(w http.ResponseWriter, r *http.Request) {
-		err := templates.ExecuteTemplate(w, "reader-pdf.html", PageData{Title: "My Calibre Library"})
+		err := templates.ExecuteTemplate(w, "reader-pdf.html", PageData{Title: SiteTitle})
 		if err != nil {
 			http.Error(w, err.Error(), 500)
 		}
@@ -382,7 +260,7 @@ func serveLibraryHttp() {
 	for _, page := range []string{"authors", "publishers", "tags"} {
 		p := page
 		http.HandleFunc("/"+p, func(w http.ResponseWriter, r *http.Request) {
-			err := templates.ExecuteTemplate(w, "aggregate.html", PageData{Title: "My Calibre Library"})
+			err := templates.ExecuteTemplate(w, "aggregate.html", PageData{Title: SiteTitle})
 			if err != nil {
 				http.Error(w, err.Error(), 500)
 			}
@@ -394,21 +272,21 @@ func serveLibraryHttp() {
 			filteredBooksHandler(w, r, "author")
 			return
 		}
-		templates.ExecuteTemplate(w, "filtered.html", PageData{Title: "My Calibre Library"})
+		templates.ExecuteTemplate(w, "filtered.html", PageData{Title: SiteTitle})
 	})
 	http.HandleFunc("/publisher/", func(w http.ResponseWriter, r *http.Request) {
 		if r.URL.Query().Get("api") == "1" {
 			filteredBooksHandler(w, r, "publisher")
 			return
 		}
-		templates.ExecuteTemplate(w, "filtered.html", PageData{Title: "My Calibre Library"})
+		templates.ExecuteTemplate(w, "filtered.html", PageData{Title: SiteTitle})
 	})
 	http.HandleFunc("/tag/", func(w http.ResponseWriter, r *http.Request) {
 		if r.URL.Query().Get("api") == "1" {
 			filteredBooksHandler(w, r, "tag")
 			return
 		}
-		templates.ExecuteTemplate(w, "filtered.html", PageData{Title: "My Calibre Library"})
+		templates.ExecuteTemplate(w, "filtered.html", PageData{Title: SiteTitle})
 	})
 	log.Println("Listening on :" + hostport)
 	log.Fatal(http.ListenAndServe(":"+hostport, nil))
@@ -539,7 +417,6 @@ func resolveFormats(uuid, baseDir, path string) []string {
 
 	entries, err := os.ReadDir(full)
 	if err != nil {
-		//println("resolvefmt: " + err.Error())
 		return []string{}
 	}
 
