@@ -2,6 +2,7 @@ package main
 
 import (
 	"encoding/json"
+	"fmt"
 	"log"
 	"net/http"
 	"strconv"
@@ -14,8 +15,25 @@ type AggregateItem struct {
 	Slug  string `json:"slug"`
 }
 
-func aggregateHandler(w http.ResponseWriter, r *http.Request, query string) {
+func aggregateHandler(w http.ResponseWriter, r *http.Request, category string) {
+	switch category {
+	case "authors", "publishers", "tags":
+		// valid
+	default:
+		http.Error(w, "invalid category", http.StatusBadRequest)
+		return
+	}
+	linkCol := strings.TrimSuffix(category, "s")
+
+	query := fmt.Sprintf(`
+        SELECT c.name, COUNT(l.book) AS count
+        FROM %s c
+        JOIN books_%s_link l ON l.%s = c.id
+        GROUP BY c.id
+        ORDER BY count DESC
+    `, category, category, linkCol)
 	rows, err := searchDB.Query(query)
+
 	if err != nil {
 		log.Println("aggregate error:", err)
 		http.Error(w, "query failed", 500)
@@ -45,62 +63,45 @@ func filteredBooksHandler(w http.ResponseWriter, r *http.Request, category strin
 	}
 	name := parts[2]
 
-	page, _ := strconv.Atoi(r.URL.Query().Get("page"))
-	if page < 1 {
-		page = 1
-	}
-	offset := (page - 1) * 50
-
-	var query string
 	switch category {
-	case "author":
-		query = `
-        SELECT b.uuid, b.title,
-            GROUP_CONCAT(a2.sort, ', ') as author_sort,
-            b.pubdate, b.path
-        FROM books b
-        JOIN books_authors_link bal ON bal.book = b.id
-        JOIN authors a ON a.id = bal.author
-        JOIN books_authors_link bal2 ON bal2.book = b.id
-        JOIN authors a2 ON a2.id = bal2.author
-        WHERE a.name = ?
-        GROUP BY b.id
-        ORDER BY b.sort LIMIT 50 OFFSET ?`
-	case "publisher":
-		query = `
-        SELECT b.uuid, b.title,
-            GROUP_CONCAT(a.sort, ', ') as author_sort,
-            b.pubdate, b.path
-        FROM books b
-        JOIN books_publishers_link bpl ON bpl.book = b.id
-        JOIN publishers p ON p.id = bpl.publisher
-        LEFT JOIN books_authors_link bal ON bal.book = b.id
-        LEFT JOIN authors a ON a.id = bal.author
-        WHERE p.name = ?
-        GROUP BY b.id
-        ORDER BY b.sort LIMIT 50 OFFSET ?`
-	case "tag":
-		query = `
-        SELECT b.uuid, b.title,
-            GROUP_CONCAT(a.sort, ', ') as author_sort,
-            b.pubdate, b.path
-        FROM books b
-        JOIN books_tags_link btl ON btl.book = b.id
-        JOIN tags t ON t.id = btl.tag
-        LEFT JOIN books_authors_link bal ON bal.book = b.id
-        LEFT JOIN authors a ON a.id = bal.author
-        WHERE t.name = ?
-        GROUP BY b.id
-        ORDER BY b.sort LIMIT 50 OFFSET ?`
+	case "author", "publisher", "tag":
+	// valid
 	default:
 		http.Error(w, "unknown category", http.StatusBadRequest)
 		return
 	}
 
+	page, _ := strconv.Atoi(r.URL.Query().Get("page"))
+	if page < 1 {
+		page = 1
+	}
+	offset := (page - 1) * 30 // TODO: Remove magic number, should match query LIMIT
+
+	var query string
+	table := category + "s"
+	linkCol := category
+	query = fmt.Sprintf(`
+		SELECT b.uuid, b.title,
+			GROUP_CONCAT(DISTINCT a.sort) AS author_sort,
+			b.pubdate, b.path
+		FROM books b
+		JOIN books_%s_link x ON x.book = b.id
+		JOIN %s t ON t.id = x.%s
+		LEFT JOIN books_authors_link bal ON bal.book = b.id
+		LEFT JOIN authors a ON a.id = bal.author
+		WHERE t.name = ?
+		GROUP BY b.id
+		ORDER BY b.sort
+		LIMIT 30 OFFSET ?`,
+		table,
+		table,
+		linkCol,
+	)
+
 	rows, err := searchDB.Query(query, name, offset)
 	if err != nil {
 		log.Println("filtered books error:", err)
-		http.Error(w, "query failed", 500)
+		http.Error(w, "query failed", http.StatusInternalServerError)
 		return
 	}
 	defer rows.Close()

@@ -229,31 +229,17 @@ func serveLibraryHttp() {
 	http.HandleFunc("/epub/", epubFileHandler)
 
 	http.HandleFunc("/view/", viewHandler)
+
 	http.HandleFunc("/api/authors", func(w http.ResponseWriter, r *http.Request) {
-		aggregateHandler(w, r, `
-        SELECT a.name, COUNT(bal.book) as count
-        FROM authors a
-        JOIN books_authors_link bal ON bal.author = a.id
-        GROUP BY a.id
-        ORDER BY count DESC`)
+		aggregateHandler(w, r, "authors")
 	})
 
 	http.HandleFunc("/api/publishers", func(w http.ResponseWriter, r *http.Request) {
-		aggregateHandler(w, r, `
-        SELECT p.name, COUNT(bpl.book) as count
-        FROM publishers p
-        JOIN books_publishers_link bpl ON bpl.publisher = p.id
-        GROUP BY p.id
-        ORDER BY count DESC`)
+		aggregateHandler(w, r, "publishers")
 	})
 
 	http.HandleFunc("/api/tags", func(w http.ResponseWriter, r *http.Request) {
-		aggregateHandler(w, r, `
-        SELECT t.name, COUNT(btl.book) as count
-        FROM tags t
-        JOIN books_tags_link btl ON btl.tag = t.id
-        GROUP BY t.id
-        ORDER BY count DESC`)
+		aggregateHandler(w, r, "tags")
 	})
 
 	// page routes
