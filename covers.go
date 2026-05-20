@@ -1,14 +1,18 @@
 package main
 
 import (
+	"bytes"
 	"image"
 	"image/jpeg"
+	"log"
 	"net/http"
 	"os"
 	"path/filepath"
 	"strings"
 	"sync"
 	"time"
+
+	"golang.org/x/image/draw"
 )
 
 var coverIndex sync.Map               // map[string]string
@@ -74,7 +78,7 @@ func coverThumbHandler(w http.ResponseWriter, r *http.Request) {
 		println(err.Error())
 	}
 
-	// 1. FAST PATH: already cached
+	// FAST PATH: already cached
 	if f, err := os.Open(thumbPath); err == nil {
 		defer func(f *os.File) {
 			logErr(f.Close(), "failed to close thumb "+thumbPath)
@@ -86,7 +90,7 @@ func coverThumbHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// 2. SLOW PATH: generate
+	// SLOW PATH: generate
 	origPath := filepath.Join(baseDir, path.(string), "cover.jpg")
 
 	f, err := os.Open(origPath)
@@ -105,17 +109,26 @@ func coverThumbHandler(w http.ResponseWriter, r *http.Request) {
 	}
 
 	thumb := resizeToWidth(img, 600)
-
-	out, err := os.Create(thumbPath)
-	if err == nil {
-		logErr(jpeg.Encode(out, thumb, &jpeg.Options{Quality: 85}), "failed to encode thumbnail to "+thumbPath)
-		logErr(out.Close(), "failed to close thumbnail at "+thumbPath)
+	var buf bytes.Buffer
+	err = jpeg.Encode(&buf, thumb, &jpeg.Options{Quality: 85})
+	if err != nil {
+		http.Error(w, "encode failed", http.StatusInternalServerError)
+		log.Println("failed to encode cover jpg at " + thumbPath)
+		return
 	}
+
+	data := buf.Bytes()
+
+	// Write to file
+	go func(data []byte, path string) {
+		logErr(os.WriteFile(path, data, 0644),
+			"failed to write thumbnail "+path)
+	}(append([]byte(nil), data...), thumbPath)
 
 	w.Header().Set("Content-Type", "image/jpeg")
 	w.Header().Set("Cache-Control", "public, max-age=86400, immutable")
 	w.Header().Set("X-Cache-Hit", "false")
-	logErr(jpeg.Encode(w, thumb, &jpeg.Options{Quality: 85}), "failed to encode thumbnail to "+thumbPath)
+	_, _ = w.Write(data)
 }
 
 func resizeToWidth(img image.Image, width int) image.Image {
@@ -126,14 +139,14 @@ func resizeToWidth(img image.Image, width int) image.Image {
 
 	dst := image.NewRGBA(image.Rect(0, 0, width, height))
 
-	for y := 0; y < height; y++ {
-		for x := 0; x < width; x++ {
-			srcX := int(float64(x) / scale)
-			srcY := int(float64(y) / scale)
-
-			dst.Set(x, y, img.At(srcX, srcY))
-		}
-	}
+	draw.NearestNeighbor.Scale(
+		dst,
+		dst.Bounds(),
+		img,
+		bounds,
+		draw.Over,
+		nil,
+	)
 
 	return dst
 }
