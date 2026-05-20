@@ -102,7 +102,20 @@ func searchHandler(w http.ResponseWriter, r *http.Request) {
 	like := "%" + q + "%"
 	offset := (page - 1) * 50
 
-	query := "SELECT DISTINCT b.uuid, b.title, COALESCE(a.sort, a.name, '') as author_sort, b.pubdate, b.path FROM books b LEFT JOIN books_authors_link bal ON bal.book = b.id LEFT JOIN authors a ON a.id = bal.author WHERE (b.title LIKE ? OR a.name LIKE ? OR a.sort LIKE ?) ORDER BY b.sort LIMIT 50 OFFSET ?"
+	query := `
+SELECT 
+    b.uuid, 
+    b.title, 
+    GROUP_CONCAT(COALESCE(a.sort, a.name, ''), ' & ') as author_sort,
+    b.pubdate, 
+    b.path 
+FROM books b 
+LEFT JOIN books_authors_link bal ON bal.book = b.id 
+LEFT JOIN authors a ON a.id = bal.author 
+WHERE (b.title LIKE ? OR a.name LIKE ? OR a.sort LIKE ?) 
+GROUP BY b.uuid, b.title, b.pubdate, b.path
+ORDER BY b.sort 
+LIMIT 50 OFFSET ?`
 	args := []any{like, like, like, offset}
 
 	// TODO: I don't expect this actually works
