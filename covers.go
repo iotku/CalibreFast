@@ -46,7 +46,10 @@ func coverHandler(w http.ResponseWriter, r *http.Request) {
 		http.NotFound(w, r)
 		return
 	}
-	defer f.Close()
+	defer func(f *os.File) {
+		logErr(f.Close(), "failed to close cover.jpg at "+coverPath)
+	}(f)
+
 	w.Header().Set("Cache-Control", "public, max-age=86400, immutable")
 	w.Header().Set("Content-Type", "image/jpeg")
 
@@ -73,7 +76,9 @@ func coverThumbHandler(w http.ResponseWriter, r *http.Request) {
 
 	// 1. FAST PATH: already cached
 	if f, err := os.Open(thumbPath); err == nil {
-		defer f.Close()
+		defer func(f *os.File) {
+			logErr(f.Close(), "failed to close thumb "+thumbPath)
+		}(f)
 		w.Header().Set("Content-Type", "image/jpeg")
 		w.Header().Set("Cache-Control", "public, max-age=86400, immutable")
 		w.Header().Set("X-Cache-Hit", "true")
@@ -89,7 +94,9 @@ func coverThumbHandler(w http.ResponseWriter, r *http.Request) {
 		http.NotFound(w, r)
 		return
 	}
-	defer f.Close()
+	defer func(f *os.File) {
+		logErr(f.Close(), "failed to close original cover.jpg at "+origPath)
+	}(f)
 
 	img, _, err := image.Decode(f)
 	if err != nil {
@@ -101,14 +108,14 @@ func coverThumbHandler(w http.ResponseWriter, r *http.Request) {
 
 	out, err := os.Create(thumbPath)
 	if err == nil {
-		jpeg.Encode(out, thumb, &jpeg.Options{Quality: 85})
-		out.Close()
+		logErr(jpeg.Encode(out, thumb, &jpeg.Options{Quality: 85}), "failed to encode thumbnail to "+thumbPath)
+		logErr(out.Close(), "failed to close thumbnail at "+thumbPath)
 	}
 
 	w.Header().Set("Content-Type", "image/jpeg")
 	w.Header().Set("Cache-Control", "public, max-age=86400, immutable")
 	w.Header().Set("X-Cache-Hit", "false")
-	jpeg.Encode(w, thumb, &jpeg.Options{Quality: 85})
+	logErr(jpeg.Encode(w, thumb, &jpeg.Options{Quality: 85}), "failed to encode thumbnail to "+thumbPath)
 }
 
 func resizeToWidth(img image.Image, width int) image.Image {

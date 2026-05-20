@@ -1,6 +1,7 @@
 package main
 
 import (
+	"database/sql"
 	"encoding/json"
 	"fmt"
 	"log"
@@ -15,7 +16,7 @@ type AggregateItem struct {
 	Slug  string `json:"slug"`
 }
 
-func aggregateHandler(w http.ResponseWriter, r *http.Request, category string) {
+func aggregateHandler(w http.ResponseWriter, category string) {
 	switch category {
 	case "authors", "publishers", "tags":
 		// valid
@@ -39,7 +40,9 @@ func aggregateHandler(w http.ResponseWriter, r *http.Request, category string) {
 		http.Error(w, "query failed", 500)
 		return
 	}
-	defer rows.Close()
+	defer func(rows *sql.Rows) {
+		logErr(rows.Close(), "failed to close rows in aggregateHandler")
+	}(rows)
 
 	items := make([]AggregateItem, 0)
 	for rows.Next() {
@@ -52,7 +55,7 @@ func aggregateHandler(w http.ResponseWriter, r *http.Request, category string) {
 	}
 
 	w.Header().Set("Content-Type", "application/json")
-	json.NewEncoder(w).Encode(items)
+	logErr(json.NewEncoder(w).Encode(items), "failed to encode items json in aggregateHandler")
 }
 
 func filteredBooksHandler(w http.ResponseWriter, r *http.Request, category string) {
@@ -104,19 +107,12 @@ func filteredBooksHandler(w http.ResponseWriter, r *http.Request, category strin
 		http.Error(w, "query failed", http.StatusInternalServerError)
 		return
 	}
-	defer rows.Close()
+	defer func(rows *sql.Rows) {
+		logErr(rows.Close(), "failed to close rows in filteredBooksHandler")
+	}(rows)
 
-	books := make([]Book, 0)
-	for rows.Next() {
-		var b Book
-		if err := rows.Scan(&b.UUID, &b.Title, &b.AuthorSort, &b.PubDate, &b.Path); err != nil {
-			continue
-		}
-		coverIndex.Store(b.UUID, b.Path)
-		b.Path = ""
-		books = append(books, b)
+	err = encodeBooksJsonFromRows(rows, w)
+	if err != nil {
+		log.Println("filtered books error:", err)
 	}
-
-	w.Header().Set("Content-Type", "application/json")
-	json.NewEncoder(w).Encode(books)
 }

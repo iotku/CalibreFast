@@ -21,7 +21,7 @@ var SiteTitle = "Library"
 
 var baseDir string
 var cacheDir string
-var hostport string
+var hostPort string
 
 func initSearchDB() {
 	var err error
@@ -68,7 +68,7 @@ func writePage(page int, books []Book) error {
 func main() {
 	flag.StringVar(&baseDir, "basedir", "", "path to Calibre library root")
 	flag.StringVar(&cacheDir, "cachedir", "", "path to cache location")
-	flag.StringVar(&hostport, "port", "8080", "port to listen on")
+	flag.StringVar(&hostPort, "port", "8080", "port to listen on")
 	flag.Parse()
 	if baseDir == "" {
 		log.Fatal("missing -basedir")
@@ -96,9 +96,6 @@ func searchHandler(w http.ResponseWriter, r *http.Request) {
 		page = 1
 	}
 
-	fromYear := r.URL.Query().Get("from")
-	toYear := r.URL.Query().Get("to")
-
 	like := "%" + q + "%"
 	offset := (page - 1) * 50
 
@@ -118,17 +115,6 @@ ORDER BY b.sort
 LIMIT 50 OFFSET ?`
 	args := []any{like, like, like, offset}
 
-	// TODO: I don't expect this actually works
-	if fromYear != "" {
-		query += " AND DATE(b.pubdate) >= DATE(?)"
-		args = append(args, fromYear+"-01-01")
-	}
-	if toYear != "" {
-		query += " AND DATE(b.pubdate) <= DATE(?)"
-		args = append(args, toYear+"-12-31")
-	}
-	// TODO: END TODO
-
 	args = append(args, offset)
 	rows, err := searchDB.Query(query, args...)
 	if err != nil {
@@ -136,8 +122,17 @@ LIMIT 50 OFFSET ?`
 		http.Error(w, "search failed", http.StatusInternalServerError)
 		return
 	}
-	defer rows.Close()
+	defer func(rows *sql.Rows) {
+		logErr(rows.Close(), "could not close rows in searchHandler")
+	}(rows)
+	err = encodeBooksJsonFromRows(rows, w)
+	if err != nil {
+		panic("failed to encode books json: " + err.Error())
+		return
+	}
+}
 
+func encodeBooksJsonFromRows(rows *sql.Rows, w http.ResponseWriter) error {
 	books := make([]Book, 0)
 	for rows.Next() {
 		var b Book
@@ -150,7 +145,7 @@ LIMIT 50 OFFSET ?`
 	}
 
 	w.Header().Set("Content-Type", "application/json")
-	json.NewEncoder(w).Encode(books)
+	return json.NewEncoder(w).Encode(books)
 }
 
 // Why do we even need this lol
@@ -188,9 +183,9 @@ func serveLibraryHttp() {
 	)
 
 	http.HandleFunc("/library-info", func(w http.ResponseWriter, r *http.Request) {
-		json.NewEncoder(w).Encode(LibraryInfo{
+		logErr(json.NewEncoder(w).Encode(LibraryInfo{
 			TotalPages: totalPages,
-		})
+		}), "could not encode library info")
 	})
 
 	// serve css/js
@@ -244,15 +239,15 @@ func serveLibraryHttp() {
 	http.HandleFunc("/view/", viewHandler)
 
 	http.HandleFunc("/api/authors", func(w http.ResponseWriter, r *http.Request) {
-		aggregateHandler(w, r, "authors")
+		aggregateHandler(w, "authors")
 	})
 
 	http.HandleFunc("/api/publishers", func(w http.ResponseWriter, r *http.Request) {
-		aggregateHandler(w, r, "publishers")
+		aggregateHandler(w, "publishers")
 	})
 
 	http.HandleFunc("/api/tags", func(w http.ResponseWriter, r *http.Request) {
-		aggregateHandler(w, r, "tags")
+		aggregateHandler(w, "tags")
 	})
 
 	// page routes
@@ -261,7 +256,7 @@ func serveLibraryHttp() {
 		http.HandleFunc("/"+p, func(w http.ResponseWriter, r *http.Request) {
 			err := templates.ExecuteTemplate(w, "aggregate.html", PageData{Title: SiteTitle})
 			if err != nil {
-				http.Error(w, err.Error(), 500)
+				http.Error(w, err.Error(), http.StatusInternalServerError)
 			}
 		})
 	}
@@ -271,24 +266,30 @@ func serveLibraryHttp() {
 			filteredBooksHandler(w, r, "author")
 			return
 		}
-		templates.ExecuteTemplate(w, "filtered.html", PageData{Title: SiteTitle})
+		logErr(templates.ExecuteTemplate(w, "filtered.html", PageData{Title: SiteTitle}), "failed to execute author filtered template")
 	})
 	http.HandleFunc("/publisher/", func(w http.ResponseWriter, r *http.Request) {
 		if r.URL.Query().Get("api") == "1" {
 			filteredBooksHandler(w, r, "publisher")
 			return
 		}
-		templates.ExecuteTemplate(w, "filtered.html", PageData{Title: SiteTitle})
+		logErr(templates.ExecuteTemplate(w, "filtered.html", PageData{Title: SiteTitle}), "failed to execute publisher filtered template")
 	})
 	http.HandleFunc("/tag/", func(w http.ResponseWriter, r *http.Request) {
 		if r.URL.Query().Get("api") == "1" {
 			filteredBooksHandler(w, r, "tag")
 			return
 		}
-		templates.ExecuteTemplate(w, "filtered.html", PageData{Title: SiteTitle})
+		logErr(templates.ExecuteTemplate(w, "filtered.html", PageData{Title: SiteTitle}), "failed to execute tag filtered template")
 	})
-	log.Println("Listening on :" + hostport)
-	log.Fatal(http.ListenAndServe(":"+hostport, nil))
+	log.Println("Listening on :" + hostPort)
+	log.Fatal(http.ListenAndServe(":"+hostPort, nil))
+}
+
+func logErr(err error, why string) {
+	if err != nil {
+		log.Println(why + " :: " + err.Error())
+	}
 }
 
 func viewHandler(w http.ResponseWriter, r *http.Request) {
@@ -419,7 +420,7 @@ func resolveFormats(uuid, baseDir, path string) []string {
 		return []string{}
 	}
 
-	formats := []string{}
+	var formats []string
 
 	for _, e := range entries {
 		if e.IsDir() {
@@ -452,7 +453,7 @@ func formatsHandler(w http.ResponseWriter, r *http.Request) {
 	formats := extractFormats(files)
 
 	w.Header().Set("Content-Type", "application/json")
-	json.NewEncoder(w).Encode(formats)
+	logErr(json.NewEncoder(w).Encode(formats), "failed to encode formats json")
 }
 
 func extractFormats(files []string) []string {

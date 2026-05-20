@@ -88,7 +88,9 @@ func epubFileHandler(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "failed to open epub", 500)
 		return
 	}
-	defer zr.Close()
+	defer func(zr *zip.ReadCloser) {
+		logErr(zr.Close(), "failed to close zip.ReadCloser in epubFileHandler")
+	}(zr)
 
 	// find the requested file inside the zip
 	for _, f := range zr.File {
@@ -98,7 +100,9 @@ func epubFileHandler(w http.ResponseWriter, r *http.Request) {
 				http.Error(w, "failed to read file", 500)
 				return
 			}
-			defer rc.Close()
+			defer func(rc io.ReadCloser) {
+				logErr(rc.Close(), "failed to close zip.ReadCloser in epubFileHandler")
+			}(rc)
 
 			// set content type based on extension
 			ext := filepath.Ext(innerPath)
