@@ -47,12 +47,15 @@
             {{ .Language }}
         </div>
 
+        {{if .Tags}}
         <div class="meta-row">
-            <strong>Tags:</strong>
+<!--            <strong>Tags:</strong>-->
             {{ range .Tags }}
             <a href="/tag/{{ . }}" class="tag meta-link">{{ . }}</a>
             {{ end }}
         </div>
+        {{ else }}
+        {{ end }}
 
         <div class="description">
             {{ .Description }}
