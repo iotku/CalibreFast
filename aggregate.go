@@ -34,7 +34,6 @@ func aggregateHandler(w http.ResponseWriter, category string) {
         ORDER BY count DESC
     `, category, category, linkCol)
 	rows, err := searchDB.Query(query)
-
 	if err != nil {
 		log.Println("aggregate error:", err)
 		http.Error(w, "query failed", 500)
@@ -83,7 +82,8 @@ func filteredBooksHandler(w http.ResponseWriter, r *http.Request, category strin
 	var query string
 	table := category + "s"
 	linkCol := category
-	query = fmt.Sprintf(`
+	query = fmt.Sprintf(
+		`
 		SELECT b.uuid, b.title,
 			GROUP_CONCAT(DISTINCT a.sort) AS author_sort,
 			b.pubdate, b.path
@@ -111,7 +111,7 @@ func filteredBooksHandler(w http.ResponseWriter, r *http.Request, category strin
 		logErr(rows.Close(), "failed to close rows in filteredBooksHandler")
 	}(rows)
 
-	err = encodeBooksJsonFromRows(rows, w)
+	err = encodeBooksJSONFromRows(rows, w)
 	if err != nil {
 		log.Println("filtered books error:", err)
 	}

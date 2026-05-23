@@ -42,10 +42,9 @@ func rewriteEpubURLs(content, base string) string {
 				!strings.HasPrefix(url, "//") &&
 				!strings.HasPrefix(url, "data:") &&
 				url != "" {
-				result.WriteString(base + url)
-			} else {
-				result.WriteString(url)
+				result.WriteString(base)
 			}
+			result.WriteString(url)
 		}
 		content = result.String()
 	}

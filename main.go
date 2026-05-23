@@ -16,12 +16,16 @@ import (
 	_ "github.com/mattn/go-sqlite3"
 )
 
-var searchDB *sql.DB
-var SiteTitle = "Library"
+var (
+	searchDB  *sql.DB
+	SiteTitle = "Library"
+)
 
-var baseDir string
-var cacheDir string
-var hostPort string
+var (
+	baseDir  string
+	cacheDir string
+	hostPort string
+)
 
 func initSearchDB() {
 	var err error
@@ -62,7 +66,7 @@ func writePage(page int, books []Book) error {
 		"page"+strconv.Itoa(page)+".json",
 	)
 
-	return os.WriteFile(filename, data, 0644)
+	return os.WriteFile(filename, data, 0o644)
 }
 
 func main() {
@@ -81,7 +85,7 @@ func main() {
 	}
 	generatePages()
 	initSearchDB()
-	serveLibraryHttp()
+	serveLibraryHTTP()
 }
 
 func searchHandler(w http.ResponseWriter, r *http.Request) {
@@ -125,13 +129,13 @@ LIMIT 50 OFFSET ?`
 	defer func(rows *sql.Rows) {
 		logErr(rows.Close(), "could not close rows in searchHandler")
 	}(rows)
-	err = encodeBooksJsonFromRows(rows, w)
+	err = encodeBooksJSONFromRows(rows, w)
 	if err != nil {
 		panic("failed to encode books json: " + err.Error())
 	}
 }
 
-func encodeBooksJsonFromRows(rows *sql.Rows, w http.ResponseWriter) error {
+func encodeBooksJSONFromRows(rows *sql.Rows, w http.ResponseWriter) error {
 	books := make([]Book, 0)
 	for rows.Next() {
 		var b Book
@@ -160,7 +164,7 @@ var templates = template.Must(
 	template.ParseGlob("templates/*.html"),
 )
 
-func serveLibraryHttp() {
+func serveLibraryHTTP() {
 	http.HandleFunc("/", func(w http.ResponseWriter, r *http.Request) {
 		data := PageData{
 			Title: "Library",
@@ -196,7 +200,7 @@ func serveLibraryHttp() {
 		),
 	)
 
-	//server cover getter
+	// server cover getter
 	http.HandleFunc("/cover/", coverHandler)
 	http.HandleFunc("/cover-thumb/", coverThumbHandler)
 
@@ -373,7 +377,6 @@ func generatePages() {
 			&book.Path,
 			&book.UUID,
 		)
-
 		if err != nil {
 			panic(err)
 		}
@@ -483,7 +486,7 @@ func downloadHandler(w http.ResponseWriter, r *http.Request) {
 	format := parts[3] // epub, pdf, mobi
 
 	value, ok := coverIndex.Load(uuid)
-	path, ok2 := value.(string)
+	path, _ := value.(string) // TODO: Maybe we should check ok value here too
 	if !ok {
 		http.NotFound(w, r)
 		return
