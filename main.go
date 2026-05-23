@@ -128,7 +128,6 @@ LIMIT 50 OFFSET ?`
 	err = encodeBooksJsonFromRows(rows, w)
 	if err != nil {
 		panic("failed to encode books json: " + err.Error())
-		return
 	}
 }
 
@@ -407,12 +406,14 @@ func generatePages() {
 	totalPages = page
 }
 
+// resolveFormats returns a []string of filepaths to matching e-book formats
 func resolveFormats(uuid, baseDir, path string) []string {
 	// check cache first
 	if f, ok := formatCache.Load(uuid); ok {
 		return f.([]string)
 	}
 
+	// check baseDir in filesystem for e-book matching formats
 	full := filepath.Join(baseDir, path)
 
 	entries, err := os.ReadDir(full)
@@ -421,13 +422,10 @@ func resolveFormats(uuid, baseDir, path string) []string {
 	}
 
 	var formats []string
-
 	for _, e := range entries {
 		if e.IsDir() {
 			continue
-		}
-		switch filepath.Ext(e.Name()) {
-		case ".epub", ".pdf", ".mobi", ".azw3", ".djvu":
+		} else if hasBookExt(e.Name()) {
 			formats = append(formats, e.Name())
 		}
 	}
@@ -436,6 +434,13 @@ func resolveFormats(uuid, baseDir, path string) []string {
 	formatCache.Store(uuid, formats)
 
 	return formats
+}
+
+// hasBookExt takes a filepath and returns true if the extension matches
+// a well known e-book format (e.g. .epub, .pdf, .mobi, etc)
+func hasBookExt(path string) bool {
+	ext := filepath.Ext(path)
+	return ext == ".epub" || ext == ".pdf" || ext == ".mobi" || ext == ".azw3" || ext == ".djvu"
 }
 
 func formatsHandler(w http.ResponseWriter, r *http.Request) {

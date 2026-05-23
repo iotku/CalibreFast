@@ -18,6 +18,7 @@ import (
 var coverIndex sync.Map               // map[string]string
 var formatCache sync.Map              // map[string][]string
 var imageSem = make(chan struct{}, 8) // only n HDD reads at once
+
 func coverHandler(w http.ResponseWriter, r *http.Request) {
 	imageSem <- struct{}{}        // acquire slot
 	defer func() { <-imageSem }() // release slot
