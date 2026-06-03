@@ -289,39 +289,14 @@ func mergeMeta(metas []*UploadedBookMeta) *UploadedBookMeta {
 }
 
 // --- Calibre DB insertion ---
-
-var titleSortRE = regexp.MustCompile(`(?i)^(a|an|the)\s+`)
-
-func titleSort(title string) string {
-	title = strings.TrimSpace(title)
-
-	m := titleSortRE.FindStringSubmatch(title)
-	if m == nil {
-		return title
-	}
-
-	article := strings.TrimSpace(m[1])
-	rest := strings.TrimSpace(title[len(m[0]):])
-
-	if rest == "" {
-		return title
-	}
-
-	article = strings.ToUpper(article[:1]) + strings.ToLower(article[1:])
-
-	return rest + ", " + article
-}
-
-func calibreDateTime(t time.Time) string {
-	return t.UTC().Format("2006-01-02 15:04:05.000000-07:00")
-}
+// TODO: Move to database.go
 
 // insertBookIntoCalibreDB inserts a book and all its formats into metadata.db,
 // following Calibre's schema exactly so the library remains Calibre-compatible.
-func insertBookIntoCalibreDB(db *sql.DB, meta *UploadedBookMeta, formats []formatEntry) (bookID int64, bookPath string, retErr error) {
+func insertBookIntoCalibreDB(db *sql.DB, meta *UploadedBookMeta, formats []formatEntry) (bookID int64, bookUUID string, bookPath string, retErr error) {
 	tx, err := db.Begin()
 	if err != nil {
-		return 0, "", fmt.Errorf("begin tx: %w", err)
+		return 0, "", "", fmt.Errorf("begin tx: %w", err)
 	}
 	defer func() {
 		if retErr != nil {
@@ -329,12 +304,11 @@ func insertBookIntoCalibreDB(db *sql.DB, meta *UploadedBookMeta, formats []forma
 		}
 	}()
 
-	bookUUID := uuid.New().String()
+	bookUUID = uuid.New().String()
 	now := calibreDateTime(time.Now())
 
 	authorDir := sanitizePath(meta.Authors[0])
 	titleDir := sanitizePath(meta.Title)
-	bookPath = authorDir + "/" + titleDir // TODO: We should add the ID to the end of the bookPath, but we only find that out after we add this
 
 	authorSort := authorSortKey(meta.Authors[0])
 	res, err := tx.Exec(`
@@ -346,7 +320,7 @@ func insertBookIntoCalibreDB(db *sql.DB, meta *UploadedBookMeta, formats []forma
 		now,
 		meta.PubDate,
 		meta.SeriesIdx,
-		bookPath,
+		"", // We need the bookID to create the full path, we update that later
 		bookUUID,
 		now,
 	)
@@ -357,6 +331,15 @@ func insertBookIntoCalibreDB(db *sql.DB, meta *UploadedBookMeta, formats []forma
 	bookID, err = res.LastInsertId()
 	if err != nil {
 		retErr = fmt.Errorf("last insert id: %w", err)
+		return
+	}
+
+	// Update the bookPath now that we have the database incremented ID
+	bookPath = authorDir + "/" + titleDir + " (" + strconv.Itoa(int(bookID)) + ")"
+	res, err = tx.Exec(`UPDATE books SET path = ? WHERE id = ?`, bookPath, bookID)
+	if err != nil {
+		retErr = fmt.Errorf("update bookPath: %w", err)
+		println("failed to update bookpath:", retErr)
 		return
 	}
 
@@ -438,7 +421,7 @@ func insertBookIntoCalibreDB(db *sql.DB, meta *UploadedBookMeta, formats []forma
 		return
 	}
 
-	return bookID, bookPath, nil
+	return bookID, bookUUID, bookPath, nil
 }
 
 type formatEntry struct {
@@ -679,8 +662,16 @@ func processUploadGroup(files []*multipart.FileHeader) UploadResult {
 
 	merged := mergeMeta(metas)
 
-	destDir := filepath.Join(baseDir, sanitizePath(merged.Authors[0]), sanitizePath(merged.Title))
+	// Try to insert into database first
+	bookID, bookUUID, bookPath, err := insertBookIntoCalibreDB(calibreDB, merged, entries)
+	if err != nil {
+		return UploadResult{Error: "failed to insert into database: " + err.Error()}
+	}
+
+	destDir := filepath.Join(baseDir, bookPath) // NOTE: bookPath is santisized in insertBookIntoCalibre DB
 	if err := os.MkdirAll(destDir, 0o755); err != nil {
+		logErr(deleteBookFromCalibreDB(calibreDB, bookID), "couldn't delete book "+strconv.FormatInt(bookID, 10)+"from calibreDB")
+
 		cleanupTemps(entries)
 		return UploadResult{Error: "failed to create book directory: " + err.Error()}
 	}
@@ -705,20 +696,8 @@ func processUploadGroup(files []*multipart.FileHeader) UploadResult {
 		entries[i].TempPath = ""
 	}
 
-	bookID, bookPath, err := insertBookIntoCalibreDB(searchDB, merged, entries)
-	if err != nil {
-		for _, e := range entries {
-			os.Remove(filepath.Join(destDir, e.Filename))
-		}
-		os.Remove(destDir)
-		return UploadResult{Error: "failed to insert into database: " + err.Error()}
-	}
-	_ = bookID
-
-	var newUUID string
-	searchDB.QueryRow(`SELECT uuid FROM books WHERE path = ?`, bookPath).Scan(&newUUID)
-	if newUUID != "" {
-		coverIndex.Store(newUUID, bookPath)
+	if bookUUID != "" {
+		coverIndex.Store(bookUUID, bookPath)
 	}
 
 	formats := make([]string, 0, len(entries))
@@ -730,7 +709,7 @@ func processUploadGroup(files []*multipart.FileHeader) UploadResult {
 		Title:   merged.Title,
 		Authors: merged.Authors,
 		Formats: formats,
-		UUID:    newUUID,
+		UUID:    bookUUID,
 	}
 }
 
@@ -760,7 +739,7 @@ func cleanupTemps(entries []formatEntry) {
 // TODO: I would just want to prepend the new books (we don't actually care if page1 becomes more than 30 books, it'll be regenerated on the next run)
 // generatePage1 rewrites pages/page1.json with the 30 most recently added books.
 func generatePage1() {
-	rows, err := searchDB.Query(`
+	rows, err := calibreDB.Query(`
 		SELECT title, author_sort, series_index, pubdate, path, uuid
 		FROM books
 		ORDER BY timestamp DESC

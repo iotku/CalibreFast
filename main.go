@@ -19,7 +19,7 @@ import (
 )
 
 var (
-	searchDB  *sql.DB
+	calibreDB *sql.DB
 	SiteTitle = "Library"
 )
 
@@ -29,7 +29,7 @@ var (
 	hostPort string
 )
 
-func initSearchDB() {
+func initCalibreDB() {
 	sql.Register("sqlite3_calibre",
 		&sqlite3.SQLiteDriver{
 			ConnectHook: func(conn *sqlite3.SQLiteConn) error {
@@ -47,11 +47,11 @@ func initSearchDB() {
 			},
 		})
 	var err error
-	searchDB, err = sql.Open("sqlite3_calibre", filepath.Join(baseDir, "metadata.db"))
+	calibreDB, err = sql.Open("sqlite3_calibre", filepath.Join(baseDir, "metadata.db"))
 	if err != nil {
 		log.Fatal("failed to open search db: ", err)
 	}
-	searchDB.SetMaxOpenConns(1) // sqlite doesn't like concurrent writers, reads are fine with 1
+	calibreDB.SetMaxOpenConns(1) // sqlite doesn't like concurrent writers, reads are fine with 1
 }
 
 type Book struct {
@@ -102,7 +102,7 @@ func main() {
 		log.Fatal("metadata.db not found at: ", dbPath)
 	}
 	generatePages()
-	initSearchDB()
+	initCalibreDB()
 	serveLibraryHTTP()
 }
 
@@ -122,23 +122,23 @@ func searchHandler(w http.ResponseWriter, r *http.Request) {
 	offset := (page - 1) * 50
 
 	query := `
-SELECT 
-    b.uuid, 
-    b.title, 
+SELECT
+    b.uuid,
+    b.title,
     GROUP_CONCAT(COALESCE(a.sort, a.name, ''), ' & ') as author_sort,
-    b.pubdate, 
-    b.path 
-FROM books b 
-LEFT JOIN books_authors_link bal ON bal.book = b.id 
-LEFT JOIN authors a ON a.id = bal.author 
-WHERE (b.title LIKE ? OR a.name LIKE ? OR a.sort LIKE ?) 
+    b.pubdate,
+    b.path
+FROM books b
+LEFT JOIN books_authors_link bal ON bal.book = b.id
+LEFT JOIN authors a ON a.id = bal.author
+WHERE (b.title LIKE ? OR a.name LIKE ? OR a.sort LIKE ?)
 GROUP BY b.uuid, b.title, b.pubdate, b.path
-ORDER BY b.sort 
+ORDER BY b.sort
 LIMIT 50 OFFSET ?`
 	args := []any{like, like, like, offset}
 
 	args = append(args, offset)
-	rows, err := searchDB.Query(query, args...)
+	rows, err := calibreDB.Query(query, args...)
 	if err != nil {
 		log.Println("search error:", err)
 		http.Error(w, "search failed", http.StatusInternalServerError)

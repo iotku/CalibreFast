@@ -33,7 +33,7 @@ func aggregateHandler(w http.ResponseWriter, category string) {
         GROUP BY c.id
         ORDER BY count DESC
     `, category, category, linkCol)
-	rows, err := searchDB.Query(query)
+	rows, err := calibreDB.Query(query)
 	if err != nil {
 		log.Println("aggregate error:", err)
 		http.Error(w, "query failed", 500)
@@ -101,7 +101,7 @@ func filteredBooksHandler(w http.ResponseWriter, r *http.Request, category strin
 		linkCol,
 	)
 
-	rows, err := searchDB.Query(query, name, offset)
+	rows, err := calibreDB.Query(query, name, offset)
 	if err != nil {
 		log.Println("filtered books error:", err)
 		http.Error(w, "query failed", http.StatusInternalServerError)
