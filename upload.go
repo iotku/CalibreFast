@@ -38,37 +38,6 @@ type UploadedBookMeta struct {
 }
 
 // --- EPUB metadata extraction ---
-
-// opfPackage is the minimal OPF/DC structure we care about.
-type opfPackage struct {
-	XMLName  xml.Name    `xml:"package"`
-	Metadata opfMetadata `xml:"metadata"`
-}
-
-type opfMetadata struct {
-	Titles      []string     `xml:"title"`
-	Creators    []opfCreator `xml:"creator"`
-	Publisher   []string     `xml:"publisher"`
-	Date        []string     `xml:"date"`
-	Language    []string     `xml:"language"`
-	Subjects    []string     `xml:"subject"`
-	Identifiers []string     `xml:"identifier"`
-	Meta        []opfMeta    `xml:"meta"`
-}
-
-type opfCreator struct {
-	Name   string `xml:",chardata"`
-	Role   string `xml:"role,attr"`
-	FileAs string `xml:"file-as,attr"`
-}
-
-type opfMeta struct {
-	Name     string `xml:"name,attr"`
-	Content  string `xml:"content,attr"`
-	Property string `xml:"property,attr"` // EPUB3
-	Value    string `xml:",chardata"`
-}
-
 func extractEPUBMeta(r io.ReaderAt, size int64, filename string) (*UploadedBookMeta, error) {
 	zr, err := zip.NewReader(r, size)
 	if err != nil {
@@ -128,7 +97,7 @@ func extractEPUBMeta(r io.ReaderAt, size int64, filename string) (*UploadedBookM
 		return nil, fmt.Errorf("could not read OPF file")
 	}
 
-	var pkg opfPackage
+	var pkg OPF
 	if err := xml.Unmarshal(opfData, &pkg); err != nil {
 		return nil, fmt.Errorf("failed to parse OPF: %w", err)
 	}
@@ -136,22 +105,22 @@ func extractEPUBMeta(r io.ReaderAt, size int64, filename string) (*UploadedBookM
 	m := pkg.Metadata
 	meta := &UploadedBookMeta{Format: "epub", FileName: filename}
 
-	if len(m.Titles) > 0 {
-		meta.Title = strings.TrimSpace(m.Titles[0])
+	if len(m.Title) > 0 {
+		meta.Title = strings.TrimSpace(m.Title)
 	}
 	for _, c := range m.Creators {
-		if name := strings.TrimSpace(c.Name); name != "" {
+		if name := strings.TrimSpace(c); name != "" {
 			meta.Authors = append(meta.Authors, name)
 		}
 	}
 	if len(m.Publisher) > 0 {
-		meta.Publisher = strings.TrimSpace(m.Publisher[0])
+		meta.Publisher = strings.TrimSpace(m.Publisher)
 	}
 	if len(m.Date) > 0 {
-		meta.PubDate = normalizeDate(m.Date[0])
+		meta.PubDate = normalizeDate(m.Date)
 	}
 	if len(m.Language) > 0 {
-		meta.Language = strings.TrimSpace(m.Language[0])
+		meta.Language = strings.TrimSpace(m.Language)
 	}
 	for _, s := range m.Subjects {
 		if t := strings.TrimSpace(s); t != "" {
