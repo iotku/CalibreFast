@@ -1,0 +1,640 @@
+{{define "upload.html"}}
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>{{.Title}}</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link href="https://fonts.googleapis.com/css2?family=Playfair+Display:wght@400;700&family=IBM+Plex+Mono:wght@400;500&family=IBM+Plex+Sans:wght@300;400;500&display=swap" rel="stylesheet">
+  <style>
+    :root {
+      --bg:        #0f0f0e;
+      --surface:   #181816;
+      --border:    #2a2a27;
+      --accent:    #c8a96e;
+      --accent-dim:#7a6340;
+      --text:      #e8e4dc;
+      --muted:     #6b6760;
+      --success:   #5a8a5e;
+      --error:     #8a4a4a;
+      --drag-bg:   #1c1c1a;
+      --drag-bdr:  #c8a96e;
+      --radius:    4px;
+      --mono:      'IBM Plex Mono', monospace;
+      --sans:      'IBM Plex Sans', sans-serif;
+      --serif:     'Playfair Display', Georgia, serif;
+    }
+
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+    body {
+      background: var(--bg);
+      color: var(--text);
+      font-family: var(--sans);
+      font-weight: 300;
+      min-height: 100vh;
+      padding: 0 0 4rem;
+    }
+
+    /* ── Header ── */
+    header {
+      display: flex;
+      align-items: baseline;
+      gap: 1.5rem;
+      padding: 2rem 2.5rem 1.5rem;
+      border-bottom: 1px solid var(--border);
+    }
+    header a {
+      font-family: var(--serif);
+      font-size: 1.4rem;
+      color: var(--accent);
+      text-decoration: none;
+      letter-spacing: 0.02em;
+    }
+    header a:hover { color: var(--text); }
+    header span {
+      font-family: var(--mono);
+      font-size: 0.7rem;
+      color: var(--muted);
+      letter-spacing: 0.12em;
+      text-transform: uppercase;
+    }
+
+    /* ── Main layout ── */
+    main {
+      max-width: 760px;
+      margin: 3rem auto;
+      padding: 0 2rem;
+    }
+
+    h1 {
+      font-family: var(--serif);
+      font-size: 2.2rem;
+      font-weight: 400;
+      color: var(--text);
+      margin-bottom: 0.4rem;
+      letter-spacing: -0.01em;
+    }
+    .subtitle {
+      font-family: var(--mono);
+      font-size: 0.72rem;
+      color: var(--muted);
+      letter-spacing: 0.1em;
+      text-transform: uppercase;
+      margin-bottom: 2.5rem;
+    }
+
+    /* ── Drop Zone ── */
+    #drop-zone {
+      border: 1px dashed var(--border);
+      border-radius: var(--radius);
+      background: var(--surface);
+      padding: 3.5rem 2rem;
+      text-align: center;
+      cursor: pointer;
+      transition: border-color 0.15s, background 0.15s;
+      position: relative;
+      overflow: hidden;
+    }
+    #drop-zone::before {
+      content: '';
+      position: absolute;
+      inset: 0;
+      background: radial-gradient(ellipse at 50% 0%, rgba(200,169,110,0.04) 0%, transparent 70%);
+      pointer-events: none;
+    }
+    #drop-zone.drag-over {
+      border-color: var(--drag-bdr);
+      background: var(--drag-bg);
+    }
+    #drop-zone.drag-over::before {
+      background: radial-gradient(ellipse at 50% 0%, rgba(200,169,110,0.1) 0%, transparent 70%);
+    }
+
+    .drop-icon {
+      width: 48px;
+      height: 48px;
+      margin: 0 auto 1.2rem;
+      opacity: 0.35;
+      transition: opacity 0.15s;
+    }
+    #drop-zone.drag-over .drop-icon { opacity: 0.7; }
+
+    .drop-label {
+      font-family: var(--mono);
+      font-size: 0.8rem;
+      color: var(--muted);
+      letter-spacing: 0.08em;
+      margin-bottom: 0.5rem;
+    }
+    .drop-label strong {
+      color: var(--accent);
+      font-weight: 500;
+    }
+    .drop-formats {
+      font-family: var(--mono);
+      font-size: 0.65rem;
+      color: var(--accent-dim);
+      letter-spacing: 0.1em;
+      text-transform: uppercase;
+      margin-top: 0.8rem;
+    }
+
+    #file-input {
+      position: absolute;
+      inset: 0;
+      opacity: 0;
+      cursor: pointer;
+    }
+
+    /* ── Staging area ── */
+    #staging {
+      margin-top: 1.5rem;
+      display: none;
+    }
+    #staging.visible { display: block; }
+
+    .staging-header {
+      display: flex;
+      justify-content: space-between;
+      align-items: baseline;
+      margin-bottom: 0.8rem;
+    }
+    .staging-header h2 {
+      font-family: var(--mono);
+      font-size: 0.72rem;
+      font-weight: 500;
+      color: var(--muted);
+      letter-spacing: 0.12em;
+      text-transform: uppercase;
+    }
+    .btn-clear {
+      font-family: var(--mono);
+      font-size: 0.65rem;
+      color: var(--muted);
+      background: none;
+      border: none;
+      cursor: pointer;
+      letter-spacing: 0.08em;
+      text-decoration: underline;
+      text-underline-offset: 3px;
+    }
+    .btn-clear:hover { color: var(--error); }
+
+    #file-list {
+      list-style: none;
+      display: flex;
+      flex-direction: column;
+      gap: 2px;
+    }
+    .file-item {
+      display: flex;
+      align-items: center;
+      gap: 0.75rem;
+      padding: 0.55rem 0.75rem;
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: var(--radius);
+      font-family: var(--mono);
+      font-size: 0.78rem;
+    }
+    .file-ext {
+      font-size: 0.6rem;
+      font-weight: 500;
+      letter-spacing: 0.1em;
+      text-transform: uppercase;
+      padding: 2px 5px;
+      border-radius: 2px;
+      flex-shrink: 0;
+    }
+    .ext-epub  { background: rgba(90,138,94,0.2);  color: #7aba7e; border: 1px solid rgba(90,138,94,0.3); }
+    .ext-pdf   { background: rgba(138,74,74,0.2);  color: #ba7a7a; border: 1px solid rgba(138,74,74,0.3); }
+    .ext-mobi  { background: rgba(74,110,138,0.2); color: #7aaaba; border: 1px solid rgba(74,110,138,0.3); }
+    .ext-azw3  { background: rgba(110,90,138,0.2); color: #aa8aba; border: 1px solid rgba(110,90,138,0.3); }
+    .ext-djvu  { background: rgba(138,120,74,0.2); color: #baa87a; border: 1px solid rgba(138,120,74,0.3); }
+    .ext-other { background: rgba(80,80,80,0.2);   color: #909090; border: 1px solid rgba(80,80,80,0.3); }
+
+    .file-name {
+      flex: 1;
+      color: var(--text);
+      white-space: nowrap;
+      overflow: hidden;
+      text-overflow: ellipsis;
+    }
+    .file-size {
+      color: var(--muted);
+      flex-shrink: 0;
+      font-size: 0.68rem;
+    }
+    .file-remove {
+      background: none;
+      border: none;
+      cursor: pointer;
+      color: var(--muted);
+      font-size: 1rem;
+      line-height: 1;
+      padding: 0 0 0 0.25rem;
+      flex-shrink: 0;
+      opacity: 0.4;
+      transition: opacity 0.1s, color 0.1s;
+    }
+    .file-remove:hover { opacity: 1; color: var(--error); }
+
+    /* ── Submit ── */
+    .upload-actions {
+      margin-top: 1.2rem;
+      display: flex;
+      gap: 0.75rem;
+      align-items: center;
+    }
+    #btn-upload {
+      font-family: var(--mono);
+      font-size: 0.78rem;
+      font-weight: 500;
+      letter-spacing: 0.1em;
+      text-transform: uppercase;
+      background: var(--accent);
+      color: var(--bg);
+      border: none;
+      padding: 0.65rem 1.5rem;
+      border-radius: var(--radius);
+      cursor: pointer;
+      transition: background 0.15s, opacity 0.15s;
+    }
+    #btn-upload:hover:not(:disabled) { background: #dfc07d; }
+    #btn-upload:disabled { opacity: 0.35; cursor: not-allowed; }
+
+    #upload-status {
+      font-family: var(--mono);
+      font-size: 0.72rem;
+      color: var(--muted);
+      letter-spacing: 0.05em;
+    }
+
+    /* ── Progress bar ── */
+    #progress-wrap {
+      margin-top: 1rem;
+      display: none;
+    }
+    #progress-wrap.visible { display: block; }
+    #progress-track {
+      height: 2px;
+      background: var(--border);
+      border-radius: 1px;
+      overflow: hidden;
+    }
+    #progress-bar {
+      height: 100%;
+      background: var(--accent);
+      width: 0%;
+      transition: width 0.3s ease;
+    }
+
+    /* ── Results ── */
+    #results {
+      margin-top: 2rem;
+      display: none;
+    }
+    #results.visible { display: block; }
+
+    .results-header {
+      font-family: var(--mono);
+      font-size: 0.72rem;
+      font-weight: 500;
+      color: var(--muted);
+      letter-spacing: 0.12em;
+      text-transform: uppercase;
+      margin-bottom: 0.8rem;
+    }
+
+    .result-item {
+      display: grid;
+      grid-template-columns: auto 1fr auto;
+      align-items: start;
+      gap: 0.75rem;
+      padding: 0.9rem 1rem;
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: var(--radius);
+      margin-bottom: 2px;
+      animation: slide-in 0.2s ease;
+    }
+    @keyframes slide-in {
+      from { opacity: 0; transform: translateY(4px); }
+      to   { opacity: 1; transform: translateY(0); }
+    }
+    .result-item.success { border-left: 2px solid var(--success); }
+    .result-item.error   { border-left: 2px solid var(--error); }
+
+    .result-status-icon {
+      font-size: 0.85rem;
+      margin-top: 1px;
+    }
+    .result-body {}
+    .result-title {
+      font-family: var(--serif);
+      font-size: 1rem;
+      color: var(--text);
+      line-height: 1.3;
+    }
+    .result-meta {
+      font-family: var(--mono);
+      font-size: 0.65rem;
+      color: var(--muted);
+      margin-top: 0.2rem;
+      letter-spacing: 0.04em;
+    }
+    .result-formats {
+      display: flex;
+      gap: 4px;
+      margin-top: 0.4rem;
+    }
+    .result-error {
+      font-family: var(--mono);
+      font-size: 0.72rem;
+      color: #ba7a7a;
+    }
+    .result-link {
+      font-family: var(--mono);
+      font-size: 0.65rem;
+      color: var(--accent);
+      text-decoration: none;
+      align-self: center;
+      opacity: 0.7;
+      transition: opacity 0.1s;
+      white-space: nowrap;
+    }
+    .result-link:hover { opacity: 1; }
+
+    /* ── Upload again link ── */
+    #upload-again {
+      display: none;
+      margin-top: 1.5rem;
+    }
+    #upload-again.visible { display: block; }
+    #upload-again a {
+      font-family: var(--mono);
+      font-size: 0.72rem;
+      color: var(--accent);
+      text-decoration: underline;
+      text-underline-offset: 3px;
+      cursor: pointer;
+    }
+  </style>
+</head>
+<body>
+
+<header>
+  <a href="/">{{.Title}}</a>
+  <span>/ upload</span>
+</header>
+
+<main>
+  <h1>Add books</h1>
+  <p class="subtitle">epub · pdf · mobi · azw3 · djvu</p>
+
+  <!-- Drop zone -->
+  <div id="drop-zone">
+    <input type="file" id="file-input" multiple accept=".epub,.pdf,.mobi,.azw3,.djvu">
+    <svg class="drop-icon" viewBox="0 0 48 48" fill="none" xmlns="http://www.w3.org/2000/svg">
+      <rect x="8" y="6" width="22" height="28" rx="2" stroke="currentColor" stroke-width="1.5"/>
+      <rect x="14" y="12" width="22" height="28" rx="2" stroke="currentColor" stroke-width="1.5"/>
+      <path d="M28 30 L28 42 M28 42 L24 38 M28 42 L32 38" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/>
+    </svg>
+    <p class="drop-label"><strong>Drop files here</strong> or click to browse</p>
+    <p class="drop-label">Multiple formats of the same book will be combined automatically</p>
+    <p class="drop-formats">epub · pdf · mobi · azw3 · djvu</p>
+  </div>
+
+  <!-- Staging -->
+  <div id="staging">
+    <div class="staging-header">
+      <h2>Queued — <span id="file-count">0</span> file(s)</h2>
+      <button class="btn-clear" id="btn-clear">Clear all</button>
+    </div>
+    <ul id="file-list"></ul>
+    <div class="upload-actions">
+      <button id="btn-upload" disabled>Upload to library</button>
+      <span id="upload-status"></span>
+    </div>
+    <div id="progress-wrap">
+      <div id="progress-track"><div id="progress-bar"></div></div>
+    </div>
+  </div>
+
+  <!-- Results -->
+  <div id="results">
+    <p class="results-header">Results</p>
+    <div id="results-list"></div>
+  </div>
+
+  <div id="upload-again">
+    <a id="upload-again-link">↑ Add more books</a>
+  </div>
+</main>
+
+<script>
+(function () {
+  const dropZone    = document.getElementById('drop-zone');
+  const fileInput   = document.getElementById('file-input');
+  const staging     = document.getElementById('staging');
+  const fileList    = document.getElementById('file-list');
+  const fileCount   = document.getElementById('file-count');
+  const btnUpload   = document.getElementById('btn-upload');
+  const btnClear    = document.getElementById('btn-clear');
+  const uploadStatus= document.getElementById('upload-status');
+  const progressWrap= document.getElementById('progress-wrap');
+  const progressBar = document.getElementById('progress-bar');
+  const results     = document.getElementById('results');
+  const resultsList = document.getElementById('results-list');
+  const uploadAgain = document.getElementById('upload-again');
+  const uploadAgainLink = document.getElementById('upload-again-link');
+
+  // DataTransfer-backed file list so we can add/remove files
+  let stagedFiles = [];
+
+  // ── Drag & drop ──
+  dropZone.addEventListener('dragover', e => { e.preventDefault(); dropZone.classList.add('drag-over'); });
+  dropZone.addEventListener('dragleave', () => dropZone.classList.remove('drag-over'));
+  dropZone.addEventListener('drop', e => {
+    e.preventDefault();
+    dropZone.classList.remove('drag-over');
+    addFiles(Array.from(e.dataTransfer.files));
+  });
+  fileInput.addEventListener('change', () => {
+    addFiles(Array.from(fileInput.files));
+    fileInput.value = '';
+  });
+
+  btnClear.addEventListener('click', () => {
+    stagedFiles = [];
+    renderFileList();
+  });
+
+  uploadAgainLink.addEventListener('click', () => {
+    stagedFiles = [];
+    renderFileList();
+    resultsList.innerHTML = '';
+    results.classList.remove('visible');
+    uploadAgain.classList.remove('visible');
+    uploadStatus.textContent = '';
+    progressWrap.classList.remove('visible');
+    progressBar.style.width = '0%';
+  });
+
+  function addFiles(incoming) {
+    const allowed = ['.epub', '.pdf', '.mobi', '.azw3', '.djvu'];
+    for (const f of incoming) {
+      const ext = f.name.slice(f.name.lastIndexOf('.')).toLowerCase();
+      if (!allowed.includes(ext)) continue;
+      // Deduplicate by name+size
+      const dup = stagedFiles.some(s => s.name === f.name && s.size === f.size);
+      if (!dup) stagedFiles.push(f);
+    }
+    renderFileList();
+  }
+
+  function renderFileList() {
+    fileList.innerHTML = '';
+    fileCount.textContent = stagedFiles.length;
+    btnUpload.disabled = stagedFiles.length === 0;
+
+    if (stagedFiles.length === 0) {
+      staging.classList.remove('visible');
+      return;
+    }
+    staging.classList.add('visible');
+
+    for (let i = 0; i < stagedFiles.length; i++) {
+      const f = stagedFiles[i];
+      const ext = f.name.slice(f.name.lastIndexOf('.') + 1).toLowerCase();
+      const li = document.createElement('li');
+      li.className = 'file-item';
+      li.innerHTML = `
+        <span class="file-ext ext-${['epub','pdf','mobi','azw3','djvu'].includes(ext) ? ext : 'other'}">${ext}</span>
+        <span class="file-name" title="${escHtml(f.name)}">${escHtml(f.name)}</span>
+        <span class="file-size">${fmtSize(f.size)}</span>
+        <button class="file-remove" data-idx="${i}" title="Remove">×</button>
+      `;
+      fileList.appendChild(li);
+    }
+
+    fileList.querySelectorAll('.file-remove').forEach(btn => {
+      btn.addEventListener('click', () => {
+        const idx = parseInt(btn.dataset.idx, 10);
+        stagedFiles.splice(idx, 1);
+        renderFileList();
+      });
+    });
+  }
+
+  // ── Upload ──
+  btnUpload.addEventListener('click', () => {
+    if (stagedFiles.length === 0) return;
+    doUpload();
+  });
+
+  async function doUpload() {
+    btnUpload.disabled = true;
+    uploadStatus.textContent = 'Uploading…';
+    progressWrap.classList.add('visible');
+    progressBar.style.width = '10%';
+
+    const fd = new FormData();
+    for (const f of stagedFiles) {
+      fd.append('books', f, f.name);
+    }
+
+    try {
+      // Use XHR for progress events
+      const response = await uploadXHR(fd, p => {
+        progressBar.style.width = (10 + p * 80) + '%';
+      });
+      progressBar.style.width = '95%';
+      uploadStatus.textContent = 'Processing…';
+
+      const data = JSON.parse(response);
+      progressBar.style.width = '100%';
+
+      renderResults(data);
+      stagedFiles = [];
+      renderFileList();
+      uploadStatus.textContent = '';
+    } catch (err) {
+      uploadStatus.textContent = 'Error: ' + err.message;
+      btnUpload.disabled = false;
+    }
+  }
+
+  function uploadXHR(fd, onProgress) {
+    return new Promise((resolve, reject) => {
+      const xhr = new XMLHttpRequest();
+      xhr.open('POST', '/upload');
+      xhr.upload.addEventListener('progress', e => {
+        if (e.lengthComputable) onProgress(e.loaded / e.total);
+      });
+      xhr.addEventListener('load', () => {
+        if (xhr.status >= 200 && xhr.status < 300) resolve(xhr.responseText);
+        else reject(new Error(`HTTP ${xhr.status}: ${xhr.statusText}`));
+      });
+      xhr.addEventListener('error', () => reject(new Error('Network error')));
+      xhr.send(fd);
+    });
+  }
+
+  function renderResults(items) {
+    results.classList.add('visible');
+    uploadAgain.classList.add('visible');
+
+    for (const item of items) {
+      const div = document.createElement('div');
+      if (item.error) {
+        div.className = 'result-item error';
+        div.innerHTML = `
+          <span class="result-status-icon">✕</span>
+          <div class="result-body">
+            <div class="result-error">${escHtml(item.error)}</div>
+          </div>
+          <span></span>
+        `;
+      } else {
+        const fmtBadges = (item.formats || []).map(f => {
+          const cls = ['epub','pdf','mobi','azw3','djvu'].includes(f) ? f : 'other';
+          return `<span class="file-ext ext-${cls}">${f}</span>`;
+        }).join('');
+        const authors = (item.authors || []).join(', ');
+        const bookLink = item.uuid ? `/book/${item.uuid}` : null;
+        div.className = 'result-item success';
+        div.innerHTML = `
+          <span class="result-status-icon">✓</span>
+          <div class="result-body">
+            <div class="result-title">${escHtml(item.title || 'Untitled')}</div>
+            <div class="result-meta">${escHtml(authors)}</div>
+            <div class="result-formats">${fmtBadges}</div>
+          </div>
+          ${bookLink ? `<a class="result-link" href="${bookLink}">View →</a>` : '<span></span>'}
+        `;
+      }
+      resultsList.appendChild(div);
+    }
+  }
+
+  function fmtSize(bytes) {
+    if (bytes < 1024) return bytes + ' B';
+    if (bytes < 1024 * 1024) return (bytes / 1024).toFixed(0) + ' KB';
+    return (bytes / (1024 * 1024)).toFixed(1) + ' MB';
+  }
+
+  function escHtml(s) {
+    return String(s)
+      .replace(/&/g, '&amp;')
+      .replace(/</g, '&lt;')
+      .replace(/>/g, '&gt;')
+      .replace(/"/g, '&quot;');
+  }
+})();
+</script>
+</body>
+</html>
+{{end}}

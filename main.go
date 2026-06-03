@@ -13,6 +13,8 @@ import (
 	"strings"
 	"time"
 
+	"github.com/google/uuid"
+	"github.com/mattn/go-sqlite3"
 	_ "github.com/mattn/go-sqlite3"
 )
 
@@ -28,8 +30,24 @@ var (
 )
 
 func initSearchDB() {
+	sql.Register("sqlite3_calibre",
+		&sqlite3.SQLiteDriver{
+			ConnectHook: func(conn *sqlite3.SQLiteConn) error {
+				if err := conn.RegisterFunc("title_sort", titleSort, true); err != nil {
+					return err
+				}
+
+				if err := conn.RegisterFunc("uuid4", func() string {
+					return uuid.New().String()
+				}, true); err != nil {
+					return err
+				}
+
+				return nil
+			},
+		})
 	var err error
-	searchDB, err = sql.Open("sqlite3", filepath.Join(baseDir, "metadata.db"))
+	searchDB, err = sql.Open("sqlite3_calibre", filepath.Join(baseDir, "metadata.db"))
 	if err != nil {
 		log.Fatal("failed to open search db: ", err)
 	}
@@ -209,6 +227,9 @@ func serveLibraryHTTP() {
 
 	// Downloads
 	http.HandleFunc("/download/", downloadHandler)
+
+	// Uploads
+	http.HandleFunc("/upload", uploadHandler)
 
 	// Book Display
 	http.HandleFunc("/book/", bookHandler)
