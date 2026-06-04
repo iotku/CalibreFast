@@ -24,6 +24,12 @@ func TestLoadOPF(t *testing.T) {
 		t.Errorf("got %#v\nwant %#v", actual.Metadata.Creators, expectedAuthors)
 	}
 
+	// Test Publisher
+	expectedPublisher := "Pocket Books"
+	if actual.Metadata.Publisher != expectedPublisher {
+		t.Errorf("got %#v\nwant %#v", actual.Metadata.Publisher, expectedPublisher)
+	}
+
 	// Test Language
 	expectedLang := "eng"
 	if actual.Metadata.Language != expectedLang {
