@@ -141,13 +141,13 @@ func extractEPUBMeta(r io.ReaderAt, size int64, filename string) (*UploadedBookM
 		}
 	}
 	for _, id := range m.Identifiers {
-		if strings.Contains(strings.ToLower(id), "isbn") || isISBN(id) {
-			meta.Identifier = strings.TrimSpace(id)
+		if strings.Contains(strings.ToLower(id.Value), "isbn") || isISBN(id.Value) {
+			meta.Identifier = strings.TrimSpace(id.Value)
 			break
 		}
 	}
 	if meta.Identifier == "" && len(m.Identifiers) > 0 {
-		meta.Identifier = strings.TrimSpace(m.Identifiers[0])
+		meta.Identifier = strings.TrimSpace(m.Identifiers[0].Value) // TODO: Maybe we can have multiple identifiers....
 	}
 
 	return meta, nil
