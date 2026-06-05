@@ -60,7 +60,7 @@ func TestLoadOPF(t *testing.T) {
 	if len(actual.Metadata.Identifiers) != len(expectedIdentifiers) {
 		t.Fatalf(
 			"expected %d identifiers, got %d",
-			len(expected),
+			len(expectedIdentifiers),
 			len(actual.Metadata.Identifiers),
 		)
 	}
