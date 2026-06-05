@@ -101,4 +101,37 @@ func TestLoadOPF(t *testing.T) {
 	}
 }
 
-// TestSaveOPF
+func TestSaveOPF(t *testing.T) {
+	var testOPF = &OPF{
+		Metadata: OPFMetadata{
+			Title:       "The Go Programming Language",
+			Description: "A comprehensive introduction to the Go programming language by its creators.",
+			Publisher:   "Addison-Wesley Professional",
+			Date:        "2015-10-26",
+			Language:    "en",
+			Identifiers: []opfIdentifier{
+				{Scheme: "UUID", Value: "7a1b2c3d-4e5f-6789-abcd-ef0123456789"},
+				{Scheme: "ISBN", Value: "978-0134190440"},
+			},
+			Subjects: []string{
+				"Computer Programming",
+				"Go (Programming language)",
+			},
+			Creators: []string{
+				"Alan A. A. Donovan",
+				"Brian W. Kernighan",
+			},
+			Meta: []opfMeta{
+				{Name: "calibre:series", Content: "Addison-Wesley Professional Computing Series"},
+				{Name: "calibre:series_index", Content: "1"},
+				{Name: "calibre:rating", Content: "10"},
+				{Name: "calibre:timestamp", Content: "2015-10-26T00:00:00+00:00"},
+			},
+		},
+	}
+
+	err := saveOPF(testOPF, "testout.opf")
+	if err != nil {
+		t.Fatal(err)
+	}
+}

@@ -54,3 +54,99 @@ func loadOPF(path string) (*OPF, error) {
 
 	return &opf, nil
 }
+
+func saveOPF(opf *OPF, path string) error {
+	f, err := os.Create(path)
+	if err != nil {
+		return err
+	}
+	defer f.Close()
+
+	f.WriteString(`<?xml version='1.0' encoding='utf-8'?>` + "\n")
+
+	enc := xml.NewEncoder(f)
+	enc.Indent("", "    ")
+
+	// <package>
+	enc.EncodeToken(xml.StartElement{
+		Name: xml.Name{Space: "http://www.idpf.org/2007/opf", Local: "package"},
+		Attr: []xml.Attr{
+			{Name: xml.Name{Local: "unique-identifier"}, Value: "uuid_id"},
+			{Name: xml.Name{Local: "version"}, Value: "2.0"},
+		},
+	})
+
+	// <metadata>
+	enc.EncodeToken(xml.StartElement{Name: xml.Name{Local: "metadata"}, Attr: []xml.Attr{
+		{Name: xml.Name{Local: "xmlns:dc"}, Value: "http://purl.org/dc/elements/1.1/"},
+		{Name: xml.Name{Local: "xmlns:opf"}, Value: "http://www.idpf.org/2007/opf"},
+	}})
+
+	writeDC := func(local, value string) {
+		if value == "" {
+			return
+		}
+		start := xml.StartElement{Name: xml.Name{Local: "dc:" + local}}
+		enc.EncodeToken(start)
+		enc.EncodeToken(xml.CharData(value))
+		enc.EncodeToken(xml.EndElement{Name: start.Name})
+	}
+
+	writeDC("title", opf.Metadata.Title)
+	writeDC("description", opf.Metadata.Description)
+	writeDC("publisher", opf.Metadata.Publisher)
+	writeDC("date", opf.Metadata.Date)
+	writeDC("language", opf.Metadata.Language)
+
+	for i, id := range opf.Metadata.Identifiers {
+		start := xml.StartElement{
+			Name: xml.Name{Local: "dc:identifier"},
+			Attr: []xml.Attr{
+				{Name: xml.Name{Local: "opf:scheme"}, Value: id.Scheme},
+			},
+		}
+		if i == 0 {
+			start.Attr = append(start.Attr, xml.Attr{
+				Name:  xml.Name{Local: "id"},
+				Value: "uuid_id",
+			})
+		}
+		enc.EncodeToken(start)
+		enc.EncodeToken(xml.CharData(id.Value))
+		enc.EncodeToken(xml.EndElement{Name: start.Name})
+	}
+
+	for _, s := range opf.Metadata.Subjects {
+		writeDC("subject", s)
+	}
+	for _, c := range opf.Metadata.Creators {
+		writeDC("creator", c)
+	}
+
+	for _, m := range opf.Metadata.Meta {
+		attrs := []xml.Attr{}
+		if m.Name != "" {
+			attrs = append(attrs, xml.Attr{Name: xml.Name{Local: "name"}, Value: m.Name})
+		}
+		if m.Content != "" {
+			attrs = append(attrs, xml.Attr{Name: xml.Name{Local: "content"}, Value: m.Content})
+		}
+		if m.Property != "" {
+			attrs = append(attrs, xml.Attr{Name: xml.Name{Local: "property"}, Value: m.Property})
+		}
+		if m.FileAs != "" {
+			attrs = append(attrs, xml.Attr{Name: xml.Name{Local: "file-as"}, Value: m.FileAs})
+		}
+		start := xml.StartElement{Name: xml.Name{Local: "meta"}, Attr: attrs}
+		enc.EncodeToken(start)
+		if m.Value != "" {
+			enc.EncodeToken(xml.CharData(m.Value))
+		}
+		enc.EncodeToken(xml.EndElement{Name: start.Name})
+	}
+
+	enc.EncodeToken(xml.EndElement{Name: xml.Name{Local: "metadata"}})
+	enc.EncodeToken(xml.EndElement{Name: xml.Name{Space: "http://www.idpf.org/2007/opf", Local: "package"}})
+
+	return enc.Flush()
+}
