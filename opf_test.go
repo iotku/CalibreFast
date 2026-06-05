@@ -108,7 +108,7 @@ func TestSaveOPF(t *testing.T) {
 			Description: "A comprehensive introduction to the Go programming language by its creators.",
 			Publisher:   "Addison-Wesley Professional",
 			Date:        "2015-10-26",
-			Language:    "en",
+			Language:    "eng",
 			Identifiers: []opfIdentifier{
 				{Scheme: "UUID", Value: "7a1b2c3d-4e5f-6789-abcd-ef0123456789"},
 				{Scheme: "ISBN", Value: "978-0134190440"},
@@ -130,7 +130,7 @@ func TestSaveOPF(t *testing.T) {
 		},
 	}
 
-	err := saveOPF(testOPF, "testout.opf")
+	err := writeOPF(testOPF, "testout.opf")
 	if err != nil {
 		t.Fatal(err)
 	}

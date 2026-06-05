@@ -508,6 +508,35 @@ func processUploadGroup(files []*multipart.FileHeader) UploadResult {
 		return UploadResult{Error: "failed to create book directory: " + err.Error()}
 	}
 
+	// Write metadata.opf
+	opfPath := filepath.Join(destDir, "metadata.opf")
+	var bookOPF = &OPF{
+		Metadata: OPFMetadata{
+			Title:       merged.Title,
+			Description: "", // TODO: merged.Description
+			Publisher:   merged.Publisher,
+			Date:        merged.PubDate,
+			Language:    merged.Language,
+			Identifiers: []opfIdentifier{
+				{Scheme: "UUID", Value: bookUUID},
+				{Scheme: "ISBN", Value: merged.Identifier},
+			},
+			Subjects: merged.Tags,
+			Creators: merged.Authors,
+			Meta:     []opfMeta{
+				// {Name: "calibre:series", Content: "Addison-Wesley Professional Computing Series"},
+				// {Name: "calibre:series_index", Content: "1"},
+				// {Name: "calibre:rating", Content: "10"},
+				// {Name: "calibre:timestamp", Content: "2015-10-26T00:00:00+00:00"},
+			},
+		},
+	}
+	if err := writeOPF(bookOPF, opfPath); err != nil {
+		logErr(deleteBookFromCalibreDB(calibreDB, bookID), "couldn't delete book "+strconv.FormatInt(bookID, 10)+" from calibreDB")
+		cleanupTemps(entries)
+		return UploadResult{Error: "failed to write metadata.opf: " + err.Error()}
+	}
+
 	baseName := sanitizePath(merged.Title)
 	for i := range entries {
 		dest := filepath.Join(destDir, baseName+"."+entries[i].Ext)

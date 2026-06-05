@@ -55,7 +55,7 @@ func loadOPF(path string) (*OPF, error) {
 	return &opf, nil
 }
 
-func saveOPF(opf *OPF, path string) error {
+func writeOPF(opf *OPF, path string) error {
 	f, err := os.Create(path)
 	if err != nil {
 		return err
