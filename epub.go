@@ -3,6 +3,7 @@ package main
 import (
 	"archive/zip"
 	"fmt"
+	"html"
 	"io"
 	"net/http"
 	"path"
@@ -42,7 +43,7 @@ func rewriteEpubURLs(content, base string) string {
 				!strings.HasPrefix(url, "//") &&
 				!strings.HasPrefix(url, "data:") &&
 				url != "" {
-				result.WriteString(base)
+				result.WriteString(html.EscapeString(base))
 			}
 			result.WriteString(url)
 		}
