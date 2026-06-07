@@ -511,12 +511,30 @@
       const ext = f.name.slice(f.name.lastIndexOf('.') + 1).toLowerCase();
       const li = document.createElement('li');
       li.className = 'file-item';
-      li.innerHTML = `
-        <span class="file-ext ext-${['epub','pdf','mobi','azw3','djvu'].includes(ext) ? ext : 'other'}">${ext}</span>
-        <span class="file-name" title="${escHtml(f.name)}">${escHtml(f.name)}</span>
-        <span class="file-size">${fmtSize(f.size)}</span>
-        <button class="file-remove" data-idx="${i}" title="Remove">×</button>
-      `;
+
+      const extSpan = document.createElement('span');
+      extSpan.className = `file-ext ext-${['epub','pdf','mobi','azw3','djvu'].includes(ext) ? ext : 'other'}`;
+      extSpan.textContent = ext;
+
+      const nameSpan = document.createElement('span');
+      nameSpan.className = 'file-name';
+      nameSpan.title = f.name;
+      nameSpan.textContent = f.name;
+
+      const sizeSpan = document.createElement('span');
+      sizeSpan.className = 'file-size';
+      sizeSpan.textContent = fmtSize(f.size);
+
+      const removeBtn = document.createElement('button');
+      removeBtn.className = 'file-remove';
+      removeBtn.dataset.idx = String(i);
+      removeBtn.title = 'Remove';
+      removeBtn.textContent = '×';
+
+      li.appendChild(extSpan);
+      li.appendChild(nameSpan);
+      li.appendChild(sizeSpan);
+      li.appendChild(removeBtn);
       fileList.appendChild(li);
     }
 
