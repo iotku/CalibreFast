@@ -8,6 +8,7 @@ import (
 	"net/http"
 	"os"
 	"path/filepath"
+	"regexp"
 	"strings"
 	"sync"
 	"time"
@@ -61,12 +62,28 @@ func coverHandler(w http.ResponseWriter, r *http.Request) {
 	http.ServeContent(w, r, "cover.jpg", fileModTime(f), f)
 }
 
+var uuidComponentRe = regexp.MustCompile(`^[a-fA-F0-9-]+$`)
+
+func isSafeUUIDComponent(s string) bool {
+	if s == "" {
+		return false
+	}
+	if strings.Contains(s, "/") || strings.Contains(s, "\\") || strings.Contains(s, "..") {
+		return false
+	}
+	return uuidComponentRe.MatchString(s)
+}
+
 func ensureDir(path string) error {
 	return os.MkdirAll(filepath.Dir(path), 0755)
 }
 
 func coverThumbHandler(w http.ResponseWriter, r *http.Request) {
 	uuid := strings.TrimPrefix(r.URL.Path, "/cover-thumb/")
+	if !isSafeUUIDComponent(uuid) {
+		http.Error(w, "invalid cover id", http.StatusBadRequest)
+		return
+	}
 
 	path, ok := coverIndex.Load(uuid)
 	if !ok {
