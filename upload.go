@@ -24,17 +24,9 @@ import (
 
 // UploadedBookMeta holds all metadata we can extract from an ebook file.
 type UploadedBookMeta struct {
-	Title      string
-	Authors    []string
-	Publisher  string
-	PubDate    string // RFC3339
-	Language   string
-	Tags       []string
-	Series     string
-	SeriesIdx  float64
-	Identifier string // ISBN or similar
-	Format     string // "epub" | "pdf" | ...
-	FileName   string // original filename
+	OPFMetadata
+	Format   string // "epub" | "pdf" | ...
+	FileName string // original filename
 }
 
 // --- EPUB metadata extraction ---
@@ -103,52 +95,7 @@ func extractEPUBMeta(r io.ReaderAt, size int64, filename string) (*UploadedBookM
 	}
 
 	m := pkg.Metadata
-	meta := &UploadedBookMeta{Format: "epub", FileName: filename}
-
-	if len(m.Title) > 0 {
-		meta.Title = strings.TrimSpace(m.Title)
-	}
-	for _, c := range m.Creators {
-		if name := strings.TrimSpace(c); name != "" {
-			meta.Authors = append(meta.Authors, name)
-		}
-	}
-	if len(m.Publisher) > 0 {
-		meta.Publisher = strings.TrimSpace(m.Publisher)
-	}
-	if len(m.Date) > 0 {
-		meta.PubDate = normalizeDate(m.Date)
-	}
-	if len(m.Language) > 0 {
-		meta.Language = strings.TrimSpace(m.Language)
-	}
-	for _, s := range m.Subjects {
-		if t := strings.TrimSpace(s); t != "" {
-			meta.Tags = append(meta.Tags, t)
-		}
-	}
-	for _, mv := range m.Meta {
-		switch mv.Name {
-		case "calibre:series":
-			meta.Series = mv.Content
-		case "calibre:series_index":
-			if v, err := strconv.ParseFloat(mv.Content, 64); err == nil {
-				meta.SeriesIdx = v
-			}
-		}
-		if mv.Property == "belongs-to-collection" {
-			meta.Series = strings.TrimSpace(mv.Value)
-		}
-	}
-	for _, id := range m.Identifiers {
-		if strings.Contains(strings.ToLower(id.Value), "isbn") || isISBN(id.Value) {
-			meta.Identifier = strings.TrimSpace(id.Value)
-			break
-		}
-	}
-	if meta.Identifier == "" && len(m.Identifiers) > 0 {
-		meta.Identifier = strings.TrimSpace(m.Identifiers[0].Value) // TODO: Maybe we can have multiple identifiers....
-	}
+	meta := &UploadedBookMeta{OPFMetadata: m, Format: "epub", FileName: filename}
 
 	return meta, nil
 }
@@ -190,9 +137,6 @@ func extractPDFMeta(data []byte, filename string) *UploadedBookMeta {
 }
 
 // --- Metadata merging ---
-
-// mergeMeta picks the best fields across multiple UploadedBookMeta values.
-// EPUB metadata takes priority over PDF; first non-empty value wins per field.
 func mergeMeta(metas []*UploadedBookMeta) *UploadedBookMeta {
 	if len(metas) == 0 {
 		return &UploadedBookMeta{Title: "Unknown", Authors: []string{"Unknown"}}
@@ -210,29 +154,32 @@ func mergeMeta(metas []*UploadedBookMeta) *UploadedBookMeta {
 
 	merged := &UploadedBookMeta{}
 	for _, m := range sorted {
-		if merged.Title == "" && m.Title != "" {
+		if len(m.Title) > len(merged.Title) {
 			merged.Title = m.Title
 		}
-		if len(merged.Authors) == 0 && len(m.Authors) > 0 {
+		if len(m.Authors) > len(merged.Authors) {
 			merged.Authors = m.Authors
 		}
-		if merged.Publisher == "" && m.Publisher != "" {
+		if len(m.Publisher) > len(merged.Publisher) {
 			merged.Publisher = m.Publisher
 		}
-		if merged.PubDate == "" && m.PubDate != "" {
+		if len(m.PubDate) > len(merged.PubDate) {
 			merged.PubDate = m.PubDate
 		}
-		if merged.Language == "" && m.Language != "" {
+		if len(m.Language) > len(merged.Language) {
 			merged.Language = m.Language
 		}
-		if len(merged.Tags) == 0 && len(m.Tags) > 0 {
+		if len(m.Tags) > len(merged.Tags) {
 			merged.Tags = m.Tags
 		}
-		if merged.Series == "" && m.Series != "" {
+		if len(m.Description) > len(merged.Description) {
+			merged.Description = m.Description
+		}
+		if m.Series != "" && (merged.Series == "" || len(m.Series) > len(merged.Series)) {
 			merged.Series = m.Series
 			merged.SeriesIdx = m.SeriesIdx
 		}
-		if merged.Identifier == "" && m.Identifier != "" {
+		if len(m.Identifier) > len(merged.Identifier) {
 			merged.Identifier = m.Identifier
 		}
 	}
@@ -252,7 +199,6 @@ func mergeMeta(metas []*UploadedBookMeta) *UploadedBookMeta {
 	if merged.SeriesIdx == 0 && merged.Series != "" {
 		merged.SeriesIdx = 1.0
 	}
-
 	return merged
 }
 
