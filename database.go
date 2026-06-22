@@ -54,10 +54,11 @@ func insertBookIntoCalibreDB(db *sql.DB, meta *UploadedBookMeta, formats []forma
 	bookUUID = uuid.New().String()
 	now := calibreDateTime(time.Now())
 
-	authorDir := sanitizePath(meta.Authors[0])
+	authorDir := sanitizePath(meta.Creators[0])
 	titleDir := sanitizePath(meta.Title)
 
-	authorSort := authorSortKey(meta.Authors[0])
+	authorSort := authorSortKey(meta.Creators[0])
+	seriesIndex := meta.getMeta("calibre:series_index")
 	res, err := tx.Exec(`
 		INSERT INTO books (title, sort, author_sort, timestamp, pubdate, series_index, path, uuid, has_cover, last_modified)
 		VALUES (?, ?, ?, ?, ?, ?, ?, ?, 0, ?)`,
@@ -65,8 +66,8 @@ func insertBookIntoCalibreDB(db *sql.DB, meta *UploadedBookMeta, formats []forma
 		meta.Title,
 		authorSort,
 		now,
-		meta.PubDate,
-		meta.SeriesIdx,
+		meta.Date,
+		seriesIndex,
 		"", // We need the bookID to create the full path, we update that later
 		bookUUID,
 		now,
@@ -90,7 +91,7 @@ func insertBookIntoCalibreDB(db *sql.DB, meta *UploadedBookMeta, formats []forma
 		return
 	}
 
-	for _, authorName := range meta.Authors {
+	for _, authorName := range meta.Creators {
 		authorID, aErr := upsertAuthor(tx, authorName)
 		if aErr != nil {
 			retErr = fmt.Errorf("upsert author %q: %w", authorName, aErr)
@@ -128,7 +129,7 @@ func insertBookIntoCalibreDB(db *sql.DB, meta *UploadedBookMeta, formats []forma
 		}
 	}
 
-	for _, tag := range meta.Tags {
+	for _, tag := range meta.Subjects {
 		tagID, tErr := upsertSimpleEntity(tx, "tags", tag)
 		if tErr != nil {
 			retErr = fmt.Errorf("upsert tag %q: %w", tag, tErr)
@@ -140,8 +141,9 @@ func insertBookIntoCalibreDB(db *sql.DB, meta *UploadedBookMeta, formats []forma
 		}
 	}
 
-	if meta.Series != "" {
-		seriesID, sErr := upsertSimpleEntity(tx, "series", meta.Series)
+	seriesName := meta.getMeta("calibre:series")
+	if seriesName != "" {
+		seriesID, sErr := upsertSimpleEntity(tx, "series", seriesName)
 		if sErr != nil {
 			retErr = fmt.Errorf("upsert series: %w", sErr)
 			return
@@ -158,8 +160,11 @@ func insertBookIntoCalibreDB(db *sql.DB, meta *UploadedBookMeta, formats []forma
 			tx.Exec(`INSERT OR IGNORE INTO books_languages_link (book, lang_code) VALUES (?, ?)`, bookID, langID)
 		}
 	}
-	if meta.Identifier != "" {
-		idType, idVal := parseIdentifier(meta.Identifier)
+	for _, id := range meta.Identifiers {
+		if id.Value == "" {
+			continue
+		}
+		idType, idVal := parseIdentifier(id)
 		tx.Exec(`INSERT OR IGNORE INTO identifiers (book, type, val) VALUES (?, ?, ?)`, bookID, idType, idVal)
 	}
 
