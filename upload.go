@@ -101,9 +101,12 @@ func extractEPUBMeta(r io.ReaderAt, size int64, filename string) (*UploadedBookM
 }
 
 // --- PDF metadata extraction via pdfcpu ---
-
-func extractPDFMeta(data []byte, filename string) *UploadedBookMeta {
-	meta := &UploadedBookMeta{Format: "pdf", FileName: filename}
+func extractPDFMeta(data []byte, filename string) *OPF {
+	opf := &OPF{
+		Metadata: OPFMetadata{},
+	}
+	meta := &opf.Metadata
+	meta.Language = "und" // undetermined; caller can override
 
 	info, err := pdfapi.PDFInfo(bytes.NewReader(data), filename, nil, false, nil)
 	if err != nil {
@@ -111,35 +114,35 @@ func extractPDFMeta(data []byte, filename string) *UploadedBookMeta {
 	} else {
 		meta.Title = strings.TrimSpace(info.Title)
 		if info.Author != "" {
-			meta.Authors = []string{strings.TrimSpace(info.Author)}
+			meta.Creators = []string{strings.TrimSpace(info.Author)}
 		}
-		// PDF Info dict has no dedicated publisher field; Subject is occasionally
-		// used for it, but more often it's genuine subject matter — leave it as tags.
 		if info.Subject != "" {
-			meta.Tags = []string{strings.TrimSpace(info.Subject)}
+			meta.Subjects = []string{strings.TrimSpace(info.Subject)}
 		}
-		meta.PubDate = normalizeDate(info.CreationDate)
-		// Keywords come back as []string directly from pdfcpu
+		meta.Date = normalizeDate(info.CreationDate)
 		if len(info.Keywords) > 0 {
-			meta.Tags = append(meta.Tags, info.Keywords...)
+			meta.Subjects = append(meta.Subjects, info.Keywords...)
 		}
 	}
 
-	// Fallbacks
-	if len(meta.Authors) == 0 {
-		meta.Authors = []string{"Unknown"}
+	if len(meta.Creators) == 0 {
+		meta.Creators = []string{"Unknown"}
 	}
 	if meta.Title == "" {
 		meta.Title = strings.TrimSuffix(filename, filepath.Ext(filename))
 	}
-
-	return meta
+	return opf
 }
 
 // --- Metadata merging ---
 func mergeMeta(metas []*UploadedBookMeta) *UploadedBookMeta {
 	if len(metas) == 0 {
-		return &UploadedBookMeta{Title: "Unknown", Authors: []string{"Unknown"}}
+		return &UploadedBookMeta{
+			OPFMetadata: OPFMetadata{
+				Title:    "Unknown",
+				Creators: []string{"Unknown"},
+			},
+		}
 	}
 
 	// Stable sort: epub first, everything else after
@@ -157,48 +160,51 @@ func mergeMeta(metas []*UploadedBookMeta) *UploadedBookMeta {
 		if len(m.Title) > len(merged.Title) {
 			merged.Title = m.Title
 		}
-		if len(m.Authors) > len(merged.Authors) {
-			merged.Authors = m.Authors
+		if len(m.Creators) > len(merged.Creators) {
+			merged.Creators = m.Creators
 		}
 		if len(m.Publisher) > len(merged.Publisher) {
 			merged.Publisher = m.Publisher
 		}
-		if len(m.PubDate) > len(merged.PubDate) {
-			merged.PubDate = m.PubDate
+		if len(m.Date) > len(merged.Date) {
+			merged.Date = m.Date
 		}
 		if len(m.Language) > len(merged.Language) {
 			merged.Language = m.Language
 		}
-		if len(m.Tags) > len(merged.Tags) {
-			merged.Tags = m.Tags
+		if len(m.Subjects) > len(merged.Subjects) {
+			merged.Subjects = m.Subjects
 		}
 		if len(m.Description) > len(merged.Description) {
 			merged.Description = m.Description
 		}
-		if m.Series != "" && (merged.Series == "" || len(m.Series) > len(merged.Series)) {
-			merged.Series = m.Series
-			merged.SeriesIdx = m.SeriesIdx
+		// TODO: confirm series and seriesIdx is in meta
+		if len(m.Meta) > len(merged.Meta) {
+			merged.Meta = m.Meta
 		}
-		if len(m.Identifier) > len(merged.Identifier) {
-			merged.Identifier = m.Identifier
+		if len(m.Identifiers) > len(merged.Identifiers) {
+			merged.Identifiers = m.Identifiers
 		}
 	}
 
 	if merged.Title == "" {
 		merged.Title = "Unknown"
 	}
-	if len(merged.Authors) == 0 {
-		merged.Authors = []string{"Unknown"}
+	if len(merged.Creators) == 0 {
+		merged.Creators = []string{"Unknown"}
 	}
 	if merged.Language == "" {
 		merged.Language = "und"
 	}
-	if merged.PubDate == "" {
-		merged.PubDate = "0101-01-01 00:00:00+00:00"
+	if merged.Date == "" {
+		merged.Date = "0101-01-01 00:00:00+00:00"
 	}
-	if merged.SeriesIdx == 0 && merged.Series != "" {
-		merged.SeriesIdx = 1.0
-	}
+	// TODO: do we really want to set a series idx at all if there is none?
+	// if merged.SeriesIdx == 0 && merged.Series != "" {
+	// 	merged.SeriesIdx = 1.0
+	// }
+	//
+	// TODO: should we set a default empty SUBJECT (tags) array?
 	return merged
 }
 
@@ -248,14 +254,18 @@ func upsertLanguage(tx *sql.Tx, lang string) (int64, error) {
 	return id, err
 }
 
-func parseIdentifier(id string) (string, string) {
-	if idx := strings.Index(id, ":"); idx >= 0 {
-		return strings.ToLower(id[:idx]), id[idx+1:]
+func parseIdentifier(identifier opfIdentifier) (string, string) {
+	scheme := strings.ToLower(strings.TrimSpace(identifier.Scheme))
+	value := strings.TrimSpace(identifier.Value)
+	// normalize common schemes
+	switch scheme {
+	case "isbn":
+		return "isbn", strings.ReplaceAll(value, "-", "")
+	case "uuid":
+		return "uuid", value
+	default:
+		return scheme, value
 	}
-	if isISBN(id) {
-		return "isbn", id
-	}
-	return "other", id
 }
 
 var isbnRe = regexp.MustCompile(`^(?:97[89])?\d{9}[\dXx]$`)
@@ -374,7 +384,7 @@ func groupFilesByStem(files []*multipart.FileHeader) map[string][]*multipart.Fil
 	return groups
 }
 
-func processUploadGroup(files []*multipart.FileHeader) UploadResult {
+func processUploadGroup(files []*multipart.FileHeader) UploadResult { // TODO: How does this determine pairs, does this actually work at all?
 	var metas []*UploadedBookMeta
 	var entries []formatEntry
 
@@ -400,18 +410,26 @@ func processUploadGroup(files []*multipart.FileHeader) UploadResult {
 			if err != nil {
 				log.Printf("upload: epub meta extraction failed for %s: %v", fh.Filename, err)
 				meta = &UploadedBookMeta{
-					Title:    strings.TrimSuffix(fh.Filename, filepath.Ext(fh.Filename)),
-					Authors:  []string{"Unknown"},
+					OPFMetadata: OPFMetadata{
+						Title:    strings.TrimSuffix(fh.Filename, filepath.Ext(fh.Filename)),
+						Creators: []string{"Unknown"},
+					},
 					Format:   "epub",
 					FileName: fh.Filename,
 				}
 			}
 		case "pdf":
-			meta = extractPDFMeta(data, fh.Filename)
+			meta = &UploadedBookMeta{ // TODO check for extractPDFMeta failure
+				OPFMetadata: extractPDFMeta(data, fh.Filename).Metadata,
+				Format:      "pdf",
+				FileName:    fh.Filename,
+			}
 		default:
 			meta = &UploadedBookMeta{
-				Title:    strings.TrimSuffix(fh.Filename, filepath.Ext(fh.Filename)),
-				Authors:  []string{"Unknown"},
+				OPFMetadata: OPFMetadata{
+					Title:    strings.TrimSuffix(fh.Filename, filepath.Ext(fh.Filename)),
+					Creators: []string{"Unknown"},
+				},
 				Format:   ext,
 				FileName: fh.Filename,
 			}
@@ -457,24 +475,20 @@ func processUploadGroup(files []*multipart.FileHeader) UploadResult {
 	// Write metadata.opf
 	opfPath := filepath.Join(destDir, "metadata.opf")
 	var bookOPF = &OPF{
-		Metadata: OPFMetadata{
+		Metadata: OPFMetadata{ // TODO: Can we get things to a state where we can just pass in `merged` directly?
 			Title:       merged.Title,
-			Description: "", // TODO: merged.Description
+			Description: merged.Description, // TODO: merged.Description
 			Publisher:   merged.Publisher,
-			Date:        merged.PubDate,
+			Date:        merged.Date,
 			Language:    merged.Language,
-			Identifiers: []opfIdentifier{
-				{Scheme: "UUID", Value: bookUUID},
-				{Scheme: "ISBN", Value: merged.Identifier},
-			},
-			Subjects: merged.Tags,
-			Creators: merged.Authors,
-			Meta:     []opfMeta{
-				// {Name: "calibre:series", Content: "Addison-Wesley Professional Computing Series"},
-				// {Name: "calibre:series_index", Content: "1"},
-				// {Name: "calibre:rating", Content: "10"},
-				// {Name: "calibre:timestamp", Content: "2015-10-26T00:00:00+00:00"},
-			},
+			Identifiers: merged.Identifiers,
+			Subjects:    merged.Subjects,
+			Creators:    merged.Creators,
+			Meta:        merged.Meta,
+			// {Name: "calibre:series", Content: "Addison-Wesley Professional Computing Series"},
+			// {Name: "calibre:series_index", Content: "1"},
+			// {Name: "calibre:rating", Content: "10"},
+			// {Name: "calibre:timestamp", Content: "2015-10-26T00:00:00+00:00"},
 		},
 	}
 	if err := writeOPF(bookOPF, opfPath); err != nil {
@@ -514,7 +528,7 @@ func processUploadGroup(files []*multipart.FileHeader) UploadResult {
 
 	return UploadResult{
 		Title:   merged.Title,
-		Authors: merged.Authors,
+		Authors: merged.Creators,
 		Formats: formats,
 		UUID:    bookUUID,
 	}

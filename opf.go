@@ -150,3 +150,13 @@ func writeOPF(opf *OPF, path string) error {
 
 	return enc.Flush()
 }
+
+// getMeta returns the content value for a named meta entry, or "" if not found.
+func (m *OPFMetadata) getMeta(name string) string {
+	for _, meta := range m.Meta {
+		if meta.Name == name {
+			return meta.Content
+		}
+	}
+	return ""
+}
