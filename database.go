@@ -59,6 +59,10 @@ func insertBookIntoCalibreDB(db *sql.DB, meta *UploadedBookMeta, formats []forma
 
 	authorSort := authorSortKey(meta.Creators[0])
 	seriesIndex := meta.getMeta("calibre:series_index")
+	if seriesIndex == "" {
+		seriesIndex = "1.0"
+	}
+
 	res, err := tx.Exec(`
 		INSERT INTO books (title, sort, author_sort, timestamp, pubdate, series_index, path, uuid, has_cover, last_modified)
 		VALUES (?, ?, ?, ?, ?, ?, ?, ?, 0, ?)`,
