@@ -58,7 +58,7 @@ func insertBookIntoCalibreDB(db *sql.DB, meta *UploadedBookMeta, formats []forma
 	titleDir := sanitizePath(meta.Title)
 
 	authorSort := authorSortKey(meta.Creators[0])
-	seriesIndex := meta.getMeta("calibre:series_index")
+	seriesIndex := meta.getMeta("calibre:series_index") // TODO: do we actually set this anywhere?
 	if seriesIndex == "" {
 		seriesIndex = "1.0"
 	}

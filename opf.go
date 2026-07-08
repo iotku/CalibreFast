@@ -123,6 +123,11 @@ func writeOPF(opf *OPF, path string) error {
 		writeDC("creator", c)
 	}
 
+	/* NOTE: xml marshaling doesn't support self-closing elements, but Calibre uses them.
+	   (e.g. <meta name="..." content="..."/> instead of <meta name="..." content="..."></meta>)
+	   in the future, we might want to rewrite the xml to self-close,
+	   but I don't think any decoders really care about the difference
+	*/
 	for _, m := range opf.Metadata.Meta {
 		attrs := []xml.Attr{}
 		if m.Name != "" {
