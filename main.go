@@ -153,6 +153,8 @@ LIMIT 50 OFFSET ?`
 	}
 }
 
+// encodeBooksJSONFromRows runs for dynamic operations that hit the database to
+// retrieve lists of books and encode them as JSON.
 func encodeBooksJSONFromRows(rows *sql.Rows, w http.ResponseWriter) error {
 	books := make([]Book, 0)
 	for rows.Next() {
@@ -161,7 +163,6 @@ func encodeBooksJSONFromRows(rows *sql.Rows, w http.ResponseWriter) error {
 			continue
 		}
 		coverIndex.Store(b.UUID, b.Path)
-		b.Path = ""
 		books = append(books, b)
 	}
 
