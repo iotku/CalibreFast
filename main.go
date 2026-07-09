@@ -332,7 +332,7 @@ func viewHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	bookPath, ok := coverIndex.Load(uuid)
+	bookPath, ok := uuidPathIndex.Load(uuid)
 	if !ok {
 		http.NotFound(w, r)
 		return
@@ -359,6 +359,7 @@ func viewHandler(w http.ResponseWriter, r *http.Request) {
 	http.ServeFile(w, r, fullPath)
 }
 
+// generatePages reads the Calibre metadata.db and generates paginated JSON files for the library main view.
 func generatePages() {
 	db, err := sql.Open("sqlite3", filepath.Join(baseDir, "metadata.db"))
 	defer func(db *sql.DB) {
@@ -404,7 +405,7 @@ func generatePages() {
 		}
 
 		// cache cover path
-		coverIndex.Store(book.UUID, book.Path)
+		uuidPathIndex.Store(book.UUID, book.Path)
 
 		// add book to the arrays
 		books = append(books, book)
@@ -471,7 +472,7 @@ func hasBookExt(path string) bool {
 func formatsHandler(w http.ResponseWriter, r *http.Request) {
 	uuid := filepath.Base(r.URL.Path)
 
-	path, ok := coverIndex.Load(uuid)
+	path, ok := uuidPathIndex.Load(uuid)
 	if !ok {
 		http.NotFound(w, r)
 		return
@@ -507,7 +508,7 @@ func downloadHandler(w http.ResponseWriter, r *http.Request) {
 	uuid := parts[2]
 	format := parts[3] // epub, pdf, mobi
 
-	value, ok := coverIndex.Load(uuid)
+	value, ok := uuidPathIndex.Load(uuid)
 	path, _ := value.(string) // TODO: Maybe we should check ok value here too
 	if !ok {
 		http.NotFound(w, r)

@@ -62,7 +62,7 @@ func epubFileHandler(w http.ResponseWriter, r *http.Request) {
 	uuid := parts[0]
 	innerPath := parts[1]
 
-	bookPath, ok := coverIndex.Load(uuid)
+	bookPath, ok := uuidPathIndex.Load(uuid)
 	if !ok {
 		http.NotFound(w, r)
 		return

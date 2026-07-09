@@ -477,7 +477,7 @@ func processUploadGroup(files []*multipart.FileHeader) UploadResult { // TODO: H
 	var bookOPF = &OPF{
 		Metadata: OPFMetadata{ // TODO: Can we get things to a state where we can just pass in `merged` directly?
 			Title:       merged.Title,
-			Description: merged.Description, // TODO: merged.Description
+			Description: merged.Description,
 			Publisher:   merged.Publisher,
 			Date:        merged.Date,
 			Language:    merged.Language,
@@ -518,7 +518,7 @@ func processUploadGroup(files []*multipart.FileHeader) UploadResult { // TODO: H
 	}
 
 	if bookUUID != "" {
-		coverIndex.Store(bookUUID, bookPath)
+		uuidPathIndex.Store(bookUUID, bookPath)
 	}
 
 	formats := make([]string, 0, len(entries))
@@ -577,7 +577,7 @@ func generatePage1() {
 		if err := rows.Scan(&b.Title, &b.AuthorSort, &b.SeriesIndex, &b.PubDate, &b.Path, &b.UUID); err != nil {
 			continue
 		}
-		coverIndex.Store(b.UUID, b.Path)
+		uuidPathIndex.Store(b.UUID, b.Path)
 		books = append(books, b)
 	}
 

@@ -16,8 +16,9 @@ import (
 	"golang.org/x/image/draw"
 )
 
-var coverIndex sync.Map               // map[string]string
-var formatCache sync.Map              // map[string][]string
+var uuidPathIndex sync.Map // map[string]string uuid -> relative path to book dir
+var formatCache sync.Map   // map[string][]string uuid -> list of formats and their paths relative to the baseDir
+// TODO: Performance, maybe this can be increased?
 var imageSem = make(chan struct{}, 8) // only n HDD reads at once
 
 func coverHandler(w http.ResponseWriter, r *http.Request) {
@@ -31,7 +32,7 @@ func coverHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	bookPath, ok := coverIndex.Load(uuid)
+	bookPath, ok := uuidPathIndex.Load(uuid)
 	if !ok {
 		http.Error(w, "book not found", http.StatusNotFound)
 	}
@@ -85,7 +86,7 @@ func coverThumbHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	path, ok := coverIndex.Load(uuid)
+	path, ok := uuidPathIndex.Load(uuid)
 	if !ok {
 		http.NotFound(w, r)
 		return

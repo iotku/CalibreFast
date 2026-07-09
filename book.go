@@ -38,7 +38,7 @@ type BookPageData struct {
 func bookHandler(w http.ResponseWriter, r *http.Request) {
 	uuid := filepath.Base(r.URL.Path)
 
-	value, ok := coverIndex.Load(uuid)
+	value, ok := uuidPathIndex.Load(uuid)
 	path, ok2 := value.(string)
 	if !ok || !ok2 {
 		http.NotFound(w, r)
