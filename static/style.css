@@ -46,18 +46,16 @@ h1 {
     max-height: 100%;
 
     transition:
-            transform 0.15s ease,
-            box-shadow 0.15s ease;
+        transform 0.15s ease,
+        box-shadow 0.15s ease;
 
-    box-shadow:
-            0 2px 8px rgba(0,0,0,0.35);
+    box-shadow: 0 2px 8px rgba(0, 0, 0, 0.35);
 }
 
 .book:hover {
     transform: translateY(-2px);
 
-    box-shadow:
-            0 6px 18px rgba(0,0,0,0.45);
+    box-shadow: 0 6px 18px rgba(0, 0, 0, 0.45);
 }
 .cover-wrapper {
     width: 100%;
@@ -174,7 +172,9 @@ h1 {
     }
 
     :root {
-        --topbar-total: calc(var(--topbar-height) * 3 + var(--topbar-padding) * 2 + 8px);
+        --topbar-total: calc(
+            var(--topbar-height) * 3 + var(--topbar-padding) * 2 + 8px
+        );
     }
 }
 
@@ -231,7 +231,7 @@ h1 {
     display: none;
     position: fixed;
     inset: 0;
-    background: rgba(0,0,0,0.6);
+    background: rgba(0, 0, 0, 0.6);
     z-index: 1000;
     align-items: center;
     justify-content: center;
@@ -264,7 +264,8 @@ h1 {
     cursor: pointer;
 }
 
-#prev-page, #next-page {
+#prev-page,
+#next-page {
     min-width: 44px;
     min-height: 44px;
 }
@@ -308,13 +309,15 @@ h1 {
 .meta-link {
     color: #aaa;
     text-decoration: none;
-    border-bottom: 1px solid rgba(255,255,255,0.15);
-    transition: color 0.15s, border-color 0.15s;
+    border-bottom: 1px solid rgba(255, 255, 255, 0.15);
+    transition:
+        color 0.15s,
+        border-color 0.15s;
 }
 
 .meta-link:hover {
     color: #fff;
-    border-bottom-color: rgba(255,255,255,0.5);
+    border-bottom-color: rgba(255, 255, 255, 0.5);
 }
 
 .tag {
@@ -327,10 +330,32 @@ h1 {
     font-size: 13px;
     color: #aaa;
     text-decoration: none;
-    transition: background 0.15s, color 0.15s;
+    transition:
+        background 0.15s,
+        color 0.15s;
 }
 
 .tag:hover {
     background: #333;
     color: #fff;
+}
+.title-row {
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+    flex-wrap: wrap;
+}
+
+.title-row h1 {
+    margin: 0;
+}
+
+.icon-link {
+    display: inline-flex;
+    color: inherit;
+    opacity: 0.55;
+}
+
+.icon-link:hover {
+    opacity: 1;
 }

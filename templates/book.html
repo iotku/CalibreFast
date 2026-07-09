@@ -1,68 +1,107 @@
 <!doctype html>
 <html>
-<head>
-    <meta charset="utf-8">
-    <title>{{ .Title }}</title>
-
-    <link rel="stylesheet" href="/static/style.css">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-</head>
-<body>
-
-<div class="book-page">
-
-    <div class="book-page-cover">
-        <img src="/cover/{{ .UUID }}" />
-        <div id="read-buttons"></div>
-    </div>
-
-    <div class="book-page-info">
-        <h1>{{ .Title }}</h1>
-        <div class="download-section">
-            {{ range .Formats }}
-            <a class="download-btn" href="/download/{{ $.UUID }}/{{ . }}">
-                Download {{ . }}
-            </a>
-            {{ end }}
+    <head>
+        <meta charset="utf-8" />
+        <title>{{ .Title }}</title>
+        <link rel="stylesheet" href="/static/style.css" />
+        <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    </head>
+    <body>
+        <div class="book-page">
+            <div class="book-page-cover">
+                <img src="/cover/{{ .UUID }}" />
+                <div id="read-buttons"></div>
+            </div>
+            <div class="book-page-info">
+                <div class="title-row">
+                    <h1>{{ .Title }}</h1>
+                    <a
+                        href="/book/get/{{ .UUID }}"
+                        class="icon-link"
+                        title="Permalink"
+                        aria-label="Permalink"
+                    >
+                        <svg
+                            viewBox="0 0 24 24"
+                            width="18"
+                            height="18"
+                            fill="none"
+                            stroke="currentColor"
+                            stroke-width="2"
+                            stroke-linecap="round"
+                            stroke-linejoin="round"
+                        >
+                            <path
+                                d="M10 13a5 5 0 0 0 7.07 0l2.83-2.83a5 5 0 0 0-7.07-7.07l-1.5 1.5"
+                            />
+                            <path
+                                d="M14 11a5 5 0 0 0-7.07 0l-2.83 2.83a5 5 0 0 0 7.07 7.07l1.5-1.5"
+                            />
+                        </svg>
+                    </a>
+                    <a
+                        href="/book/edit/{{ .UUID }}"
+                        class="icon-link"
+                        title="Edit metadata"
+                        aria-label="Edit metadata"
+                    >
+                        <svg
+                            viewBox="0 0 24 24"
+                            width="18"
+                            height="18"
+                            fill="none"
+                            stroke="currentColor"
+                            stroke-width="2"
+                            stroke-linecap="round"
+                            stroke-linejoin="round"
+                        >
+                            <path d="M12 20h9" />
+                            <path
+                                d="M16.5 3.5a2.121 2.121 0 0 1 3 3L7 19l-4 1 1-4Z"
+                            />
+                        </svg>
+                    </a>
+                </div>
+                <div class="download-section">
+                    {{ range .Formats }}
+                    <a
+                        class="download-btn"
+                        href="/download/{{ $.UUID }}/{{ . }}"
+                    >
+                        Download {{ . }}
+                    </a>
+                    {{ end }}
+                </div>
+                <div class="meta-row">
+                    <strong>Author:</strong>
+                    {{ range .Authors }}
+                    <a href="/author/{{ . }}" class="meta-link">{{ . }}</a>
+                    {{ end }}
+                </div>
+                <div class="meta-row">
+                    <strong>Publisher:</strong>
+                    <a href="/publisher/{{ .Publisher }}" class="meta-link"
+                        >{{ .Publisher }}</a
+                    >
+                </div>
+                <div class="meta-row">
+                    <strong>Date:</strong>
+                    {{ .Date }}
+                </div>
+                <div class="meta-row">
+                    <strong>Language:</strong>
+                    {{ .Language }}
+                </div>
+                {{if .Tags}}
+                <div class="meta-row">
+                    <!--            <strong>Tags:</strong>-->
+                    {{ range .Tags }}
+                    <a href="/tag/{{ . }}" class="tag meta-link">{{ . }}</a>
+                    {{ end }}
+                </div>
+                {{ else }} {{ end }}
+                <div class="description">{{ .Description }}</div>
+            </div>
         </div>
-        <div class="meta-row">
-            <strong>Author:</strong>
-            {{ range .Authors }}
-            <a href="/author/{{ . }}" class="meta-link">{{ . }}</a>
-            {{ end }}
-        </div>
-
-        <div class="meta-row">
-            <strong>Publisher:</strong>
-            <a href="/publisher/{{ .Publisher }}" class="meta-link">{{ .Publisher }}</a>
-        </div>
-
-        <div class="meta-row">
-            <strong>Date:</strong>
-            {{ .Date }}
-        </div>
-
-        <div class="meta-row">
-            <strong>Language:</strong>
-            {{ .Language }}
-        </div>
-
-        {{if .Tags}}
-        <div class="meta-row">
-<!--            <strong>Tags:</strong>-->
-            {{ range .Tags }}
-            <a href="/tag/{{ . }}" class="tag meta-link">{{ . }}</a>
-            {{ end }}
-        </div>
-        {{ else }}
-        {{ end }}
-
-        <div class="description">
-            {{ .Description }}
-        </div>
-    </div>
-
-</div>
-
-</body>
+    </body>
 </html>
