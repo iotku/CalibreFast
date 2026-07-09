@@ -17,10 +17,13 @@ import (
 	"regexp"
 	"strconv"
 	"strings"
+	"sync"
 	"time"
 
 	pdfapi "github.com/pdfcpu/pdfcpu/pkg/api"
 )
+
+var bookMetadataCache sync.Map // Key: SessionID (string), Value: []UploadedBookMeta
 
 // UploadedBookMeta holds all metadata we can extract from an ebook file.
 type UploadedBookMeta struct {
@@ -463,6 +466,9 @@ func processUploadGroup(files []*multipart.FileHeader) UploadResult { // TODO: H
 	if err != nil {
 		return UploadResult{Error: "failed to insert into database: " + err.Error()}
 	}
+
+	// Store all the metadatas for each format so we can retrieve them later to present to the user to select
+	bookMetadataCache.Store(bookUUID, metas)
 
 	destDir := filepath.Join(baseDir, bookPath) // NOTE: bookPath is santisized in insertBookIntoCalibre DB
 	if err := os.MkdirAll(destDir, 0o755); err != nil {

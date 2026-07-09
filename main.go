@@ -51,7 +51,8 @@ func initCalibreDB() {
 	if err != nil {
 		log.Fatal("failed to open search db: ", err)
 	}
-	calibreDB.SetMaxOpenConns(1) // sqlite doesn't like concurrent writers, reads are fine with 1
+	// TODO: Performance, maybe we can increase this later
+	calibreDB.SetMaxOpenConns(1) // supposedly, sqlite doesn't like concurrent writers, reads are fine with 1
 }
 
 type Book struct {
@@ -59,7 +60,7 @@ type Book struct {
 	AuthorSort  string  `json:"author_sort"`
 	SeriesIndex float64 `json:"series_index"`
 	PubDate     string  `json:"pubdate"`
-	Path        string  `json:"path"`
+	Path        string  `json:"path"` // e.g "Author Name/Book Title" not direct link to specific file format
 	UUID        string  `json:"uuid"`
 }
 
@@ -71,6 +72,10 @@ var totalPages = 0
 
 type PageData struct {
 	Title string
+}
+
+type EditBookPageData struct { // TODO I Hate this
+	UUID string
 }
 
 func writePage(page int, books []Book) error {
@@ -162,7 +167,7 @@ func encodeBooksJSONFromRows(rows *sql.Rows, w http.ResponseWriter) error {
 		if err := rows.Scan(&b.UUID, &b.Title, &b.AuthorSort, &b.PubDate, &b.Path); err != nil {
 			continue
 		}
-		coverIndex.Store(b.UUID, b.Path)
+		uuidPathIndex.Store(b.UUID, b.Path)
 		books = append(books, b)
 	}
 
@@ -220,8 +225,8 @@ func serveLibraryHTTP() {
 	)
 
 	// server cover getter
-	http.HandleFunc("/cover/", coverHandler)
-	http.HandleFunc("/cover-thumb/", coverThumbHandler)
+	http.HandleFunc("/cover/", coverHandler)            // Full cover image
+	http.HandleFunc("/cover-thumb/", coverThumbHandler) // Thumbnail cover image
 
 	// server get formats
 	http.HandleFunc("/formats/", formatsHandler)
@@ -232,8 +237,27 @@ func serveLibraryHTTP() {
 	// Uploads
 	http.HandleFunc("/upload", uploadHandler)
 
+	// Invidiaul Book metadata editor
+	http.HandleFunc("/book/edit/{uuid}", func(w http.ResponseWriter, r *http.Request) {
+		uuid := r.PathValue("uuid") // Automatically extracts "some-uuid-123"
+		// ... logic continues
+		if uuid == "" {
+			http.Error(w, "Missing UUID", http.StatusBadRequest)
+			return
+		}
+
+		err := templates.ExecuteTemplate(w, "book-edit.html", EditBookPageData{UUID: uuid})
+		if err != nil {
+			http.Error(w, err.Error(), 500)
+		}
+	})
+
+	// TODO: Rename this to something sensible
+	// Get metadata for a book
+	http.HandleFunc("/metadata/{uuid}", GetOptionsForBook)
+
 	// Book Display
-	http.HandleFunc("/book/", bookHandler)
+	http.HandleFunc("/book/get/", bookHandler)
 
 	http.HandleFunc("/search", func(w http.ResponseWriter, r *http.Request) {
 		err := templates.ExecuteTemplate(w, "search.html", PageData{Title: SiteTitle})
@@ -263,6 +287,7 @@ func serveLibraryHTTP() {
 
 	http.HandleFunc("/view/", viewHandler)
 
+	// Aggregate API routes search database for authors, publishers, and tags
 	http.HandleFunc("/api/authors", func(w http.ResponseWriter, r *http.Request) {
 		aggregateHandler(w, "authors")
 	})
@@ -317,6 +342,48 @@ func logErr(err error, why string) {
 	}
 }
 
+// TODO: rename this to something more sensible, like GetMetadataForBook
+func GetOptionsForBook(w http.ResponseWriter, r *http.Request) {
+	uuid := r.PathValue("uuid")
+	if uuid == "" {
+		http.Error(w, "Missing UUID", http.StatusBadRequest)
+		return
+	}
+
+	path, ok := uuidPathIndex.Load(uuid)
+	if !ok {
+		http.Error(w, "No metadata found for this UUID", http.StatusNotFound)
+		return
+	}
+
+	var metas []*UploadedBookMeta
+
+	// Always try to include the current on-disk merged metadata.
+	opf, err := loadOPF(baseDir + "/" + path.(string) + "/metadata.opf")
+	if err == nil {
+		metas = append(metas, &UploadedBookMeta{
+			OPFMetadata: opf.Metadata,
+			Format:      "current",
+			FileName:    "",
+		})
+	}
+
+	// If there are cached per-format options from an upload, include those too.
+	if val, ok := bookMetadataCache.Load(uuid); ok {
+		cached := val.([]*UploadedBookMeta)
+		metas = append(metas, cached...)
+	}
+
+	if len(metas) == 0 {
+		http.Error(w, "No metadata found for this UUID", http.StatusNotFound)
+		return
+	}
+
+	w.Header().Set("content-type", "application/json")
+	json.NewEncoder(w).Encode(metas)
+}
+
+// viewHandler serves the PDF version of a book for inline viewing in the browser.
 func viewHandler(w http.ResponseWriter, r *http.Request) {
 	parts := strings.Split(r.URL.Path, "/")
 	if len(parts) < 4 {
