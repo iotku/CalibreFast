@@ -1,0 +1,152 @@
+<!doctype html>
+<html lang="en">
+    <head>
+        <meta charset="UTF-8" />
+        <title>Edit Book Metadata</title>
+        <style>
+            body {
+                font-family: sans-serif;
+                max-width: 800px;
+                margin: 40px auto;
+                line-height: 1.6;
+            }
+            .source-card {
+                border: 1px solid #ccc;
+                padding: 15px;
+                border-radius: 8px;
+                margin-bottom: 10px;
+                cursor: pointer;
+                transition: background 0.2s;
+            }
+            .source-card:hover {
+                border-color: #007bff;
+            }
+            .source-card_selected {
+                border: 2px solid #007bff;
+                background: #f0f7ff;
+            }
+            .badge {
+                padding: 4px 8px;
+                border-radius: 4px;
+                font-size: 12px;
+                font-weight: bold;
+            }
+            .badge-epub {
+                background: #e3f2fd;
+                color: #0d47a1;
+            }
+            .badge-pdf {
+                background: #fbe9e7;
+                color: #bf360c;
+            }
+            form {
+                margin-top: 30px;
+                border-top: 1px solid #eee;
+                padding-top: 20px;
+            }
+            .field-group {
+                margin-bottom: 15px;
+            }
+            label {
+                display: block;
+                font-weight: bold;
+            }
+            .meta-field {
+                margin-bottom: 0.75rem;
+            }
+            .meta-field legend {
+                font-weight: 600;
+            }
+            .meta-input {
+                width: 100%;
+                box-sizing: border-box;
+            }
+            .meta-source-buttons {
+                margin-top: 0.25rem;
+            }
+            .meta-source-btn {
+                border: 1px solid #999;
+                border-radius: 4px;
+                padding: 2px 8px;
+                margin: 2px 4px 2px 0;
+                font-size: 0.85em;
+                cursor: pointer;
+                background: #eee;
+            }
+            .meta-source-btn.meta-source-match {
+                background: #c8f0c8;
+                border-color: #4caf50;
+            }
+            .meta-source-btn.meta-source-diff {
+                background: #fff3b0;
+                border-color: #e0b800;
+            }
+        </style>
+    </head>
+    <body>
+        <form id="metadata-form" data-uuid="{{.UUID}}">
+            <fieldset class="meta-field">
+                <legend>Title</legend>
+                <input type="text" name="title" class="meta-input" />
+                <div class="meta-source-buttons" data-field="title"></div>
+            </fieldset>
+
+            <fieldset class="meta-field">
+                <legend>Author(s)</legend>
+                <input type="text" name="creators" class="meta-input" />
+                <div class="meta-source-buttons" data-field="creators"></div>
+            </fieldset>
+
+            <fieldset class="meta-field">
+                <legend>Description</legend>
+                <textarea
+                    name="description"
+                    class="meta-input"
+                    rows="4"
+                ></textarea>
+                <div class="meta-source-buttons" data-field="description"></div>
+            </fieldset>
+
+            <fieldset class="meta-field">
+                <legend>Publisher</legend>
+                <input type="text" name="publisher" class="meta-input" />
+                <div class="meta-source-buttons" data-field="publisher"></div>
+            </fieldset>
+
+            <fieldset class="meta-field">
+                <legend>Date</legend>
+                <input type="text" name="date" class="meta-input" />
+                <div class="meta-source-buttons" data-field="date"></div>
+            </fieldset>
+
+            <fieldset class="meta-field">
+                <legend>Language</legend>
+                <input type="text" name="language" class="meta-input" />
+                <div class="meta-source-buttons" data-field="language"></div>
+            </fieldset>
+
+            <fieldset class="meta-field">
+                <legend>Subjects</legend>
+                <input type="text" name="subjects" class="meta-input" />
+                <div class="meta-source-buttons" data-field="subjects"></div>
+            </fieldset>
+
+            <fieldset class="meta-field">
+                <legend>Identifiers</legend>
+                <input type="text" name="identifiers" class="meta-input" />
+                <div class="meta-source-buttons" data-field="identifiers"></div>
+            </fieldset>
+
+            <button type="submit">Apply</button>
+        </form>
+
+        <script type="module">
+            import { mountMetadataEditor } from "/static/metadata.js";
+
+            const form = document.getElementById("metadata-form");
+            mountMetadataEditor(form.dataset.uuid, form).catch((err) => {
+                console.error(err);
+            });
+        </script>
+    </body>
+</html>
