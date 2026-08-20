@@ -35,7 +35,7 @@ function sourceLabel(meta) {
 
 export async function fetchMetas(uuid) {
   const res = await fetch(`/metadata/${uuid}`);
-  if (!res.ok) throw new Error(`failed to load metadata: ${res.status}`);
+  if (!res.ok) throw new Error(`Failed to load metadata: HTTP ${res.status}`);
   return res.json();
 }
 
@@ -62,12 +62,13 @@ function populateField(form, current, metas, key, kind) {
     btn.type = "button";
     btn.className = "meta-source-btn";
     btn.textContent = sourceLabel(meta);
-    btn.title = value;
+    btn.title = `Click to use from ${meta.Format}: "${value}"`;
     btn.dataset.value = value;
 
     btn.addEventListener("click", () => {
       input.value = value;
       input.dispatchEvent(new Event("input", { bubbles: true }));
+      input.focus();
     });
 
     buttonRow.appendChild(btn);
@@ -75,10 +76,11 @@ function populateField(form, current, metas, key, kind) {
   });
 
   // green if a source's value matches what's currently typed in the field,
-  // yellow otherwise — recomputed live so manual edits fall out of "current"
+  // yellow/gold otherwise — recomputed live so manual edits fall out of "current"
   const updateHighlights = () => {
+    const currentVal = input.value.trim();
     for (const btn of buttons) {
-      const matches = btn.dataset.value === input.value;
+      const matches = btn.dataset.value.trim() === currentVal;
       btn.classList.toggle("meta-source-match", matches);
       btn.classList.toggle("meta-source-diff", !matches);
     }
@@ -89,7 +91,7 @@ function populateField(form, current, metas, key, kind) {
 }
 
 export function populateMetadataForm(form, metas) {
-  const current = metas.find((m) => m.Format === "current") || null;
+  const current = metas.find((m) => m.Format === "current") || metas[0] || null;
   for (const { key, kind } of FIELDS) {
     populateField(form, current, metas, key, kind);
   }
@@ -110,29 +112,74 @@ export async function applyValues(uuid, values) {
     headers: { "content-type": "application/json" },
     body: JSON.stringify(values),
   });
-  if (!res.ok) throw new Error(`failed to apply metadata: ${res.status}`);
+  if (!res.ok) {
+    const text = await res.text();
+    throw new Error(text || `HTTP ${res.status}`);
+  }
   return res.json();
 }
 
-// form must already exist in the DOM (see metadata_form.html) with inputs
-// named per FIELDS and a `.meta-source-buttons[data-field="key"]` container
-// next to each one.
+// form must already exist in the DOM with inputs named per FIELDS
+// and a `.meta-source-buttons[data-field="key"]` container next to each one.
 export async function mountMetadataEditor(uuid, form) {
-  const metas = await fetchMetas(uuid);
-  populateMetadataForm(form, metas);
+  const statusEl = document.getElementById("edit-status");
+  const saveBtn = document.getElementById("btn-save") || form.querySelector('button[type="submit"]');
+  const headerTitle = document.getElementById("edit-header-title");
 
-  form.addEventListener("submit", async (e) => {
-    e.preventDefault();
-    const values = collectValues(form);
-    try {
-      await applyValues(uuid, values);
-      form.dispatchEvent(
-        new CustomEvent("metadata-applied", { detail: values }),
-      );
-    } catch (err) {
-      console.error(err);
+  try {
+    const metas = await fetchMetas(uuid);
+    populateMetadataForm(form, metas);
+
+    const current = metas.find((m) => m.Format === "current") || metas[0];
+    if (current && headerTitle) {
+      headerTitle.textContent = current.Title || "Untitled Book";
     }
-  });
 
-  return metas;
+    form.addEventListener("submit", async (e) => {
+      e.preventDefault();
+      const values = collectValues(form);
+
+      if (saveBtn) {
+        saveBtn.disabled = true;
+        saveBtn.textContent = "Applying Changes…";
+      }
+      if (statusEl) {
+        statusEl.className = "edit-status pending";
+        statusEl.textContent = "Saving metadata to Calibre library…";
+      }
+
+      try {
+        const result = await applyValues(uuid, values);
+        if (statusEl) {
+          statusEl.className = "edit-status success";
+          statusEl.innerHTML = `✓ Metadata applied successfully! <a href="/book/get/${uuid}" class="status-link">View updated book →</a>`;
+        }
+        if (headerTitle && values.title) {
+          headerTitle.textContent = values.title;
+        }
+        form.dispatchEvent(
+          new CustomEvent("metadata-applied", { detail: result }),
+        );
+      } catch (err) {
+        console.error("Apply metadata failed:", err);
+        if (statusEl) {
+          statusEl.className = "edit-status error";
+          statusEl.textContent = `✕ Failed to apply metadata: ${err.message || err}`;
+        }
+      } finally {
+        if (saveBtn) {
+          saveBtn.disabled = false;
+          saveBtn.textContent = "Apply Changes";
+        }
+      }
+    });
+
+    return metas;
+  } catch (err) {
+    console.error("Failed to load metadata options:", err);
+    if (statusEl) {
+      statusEl.className = "edit-status error";
+      statusEl.textContent = `Failed to load book metadata: ${err.message || err}`;
+    }
+  }
 }

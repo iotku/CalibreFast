@@ -84,6 +84,10 @@ func writePage(page int, books []Book) error {
 		return err
 	}
 
+	if err := os.MkdirAll("pages", 0o755); err != nil {
+		return err
+	}
+
 	filename := filepath.Join(
 		"pages",
 		"page"+strconv.Itoa(page)+".json",
@@ -237,10 +241,9 @@ func serveLibraryHTTP() {
 	// Uploads
 	http.HandleFunc("/upload", uploadHandler)
 
-	// Invidiaul Book metadata editor
+	// Individual Book metadata editor
 	http.HandleFunc("/book/edit/{uuid}", func(w http.ResponseWriter, r *http.Request) {
-		uuid := r.PathValue("uuid") // Automatically extracts "some-uuid-123"
-		// ... logic continues
+		uuid := r.PathValue("uuid")
 		if uuid == "" {
 			http.Error(w, "Missing UUID", http.StatusBadRequest)
 			return
@@ -252,9 +255,11 @@ func serveLibraryHTTP() {
 		}
 	})
 
-	// TODO: Rename this to something sensible
-	// Get metadata for a book
+	// Get metadata options for a book
 	http.HandleFunc("/metadata/{uuid}", GetOptionsForBook)
+
+	// Apply updated metadata to a book
+	http.HandleFunc("/metadata/{uuid}/apply", applyMetadataHandler)
 
 	// Book Display
 	http.HandleFunc("/book/get/", bookHandler)
@@ -342,7 +347,22 @@ func logErr(err error, why string) {
 	}
 }
 
-// TODO: rename this to something more sensible, like GetMetadataForBook
+func resolveBookPath(uuid string) (string, error) {
+	if val, ok := uuidPathIndex.Load(uuid); ok {
+		if path, ok2 := val.(string); ok2 && path != "" {
+			return path, nil
+		}
+	}
+	var path string
+	err := calibreDB.QueryRow("SELECT path FROM books WHERE uuid = ?", uuid).Scan(&path)
+	if err != nil {
+		return "", err
+	}
+	uuidPathIndex.Store(uuid, path)
+	return path, nil
+}
+
+// GetOptionsForBook retrieves available metadata options for a book (current merged + upload cached).
 func GetOptionsForBook(w http.ResponseWriter, r *http.Request) {
 	uuid := r.PathValue("uuid")
 	if uuid == "" {
@@ -350,8 +370,8 @@ func GetOptionsForBook(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	path, ok := uuidPathIndex.Load(uuid)
-	if !ok {
+	path, err := resolveBookPath(uuid)
+	if err != nil {
 		http.Error(w, "No metadata found for this UUID", http.StatusNotFound)
 		return
 	}
@@ -359,7 +379,7 @@ func GetOptionsForBook(w http.ResponseWriter, r *http.Request) {
 	var metas []*UploadedBookMeta
 
 	// Always try to include the current on-disk merged metadata.
-	opf, err := loadOPF(baseDir + "/" + path.(string) + "/metadata.opf")
+	opf, err := loadOPF(filepath.Join(baseDir, path, "metadata.opf"))
 	if err == nil {
 		metas = append(metas, &UploadedBookMeta{
 			OPFMetadata: opf.Metadata,
@@ -381,6 +401,156 @@ func GetOptionsForBook(w http.ResponseWriter, r *http.Request) {
 
 	w.Header().Set("content-type", "application/json")
 	json.NewEncoder(w).Encode(metas)
+}
+
+type ApplyMetadataRequest struct {
+	Title       string `json:"title"`
+	Creators    string `json:"creators"`
+	Description string `json:"description"`
+	Publisher   string `json:"publisher"`
+	Date        string `json:"date"`
+	Language    string `json:"language"`
+	Subjects    string `json:"subjects"`
+	Identifiers string `json:"identifiers"`
+}
+
+func parseCreatorsString(s string) []string {
+	s = strings.TrimSpace(s)
+	if s == "" {
+		return []string{"Unknown"}
+	}
+	var raw []string
+	if strings.Contains(s, ",") {
+		raw = strings.Split(s, ",")
+	} else if strings.Contains(s, " & ") {
+		raw = strings.Split(s, " & ")
+	} else {
+		raw = []string{s}
+	}
+	creators := make([]string, 0, len(raw))
+	for _, a := range raw {
+		trimmed := strings.TrimSpace(a)
+		if trimmed != "" {
+			creators = append(creators, trimmed)
+		}
+	}
+	if len(creators) == 0 {
+		return []string{"Unknown"}
+	}
+	return creators
+}
+
+func parseSubjectsString(s string) []string {
+	s = strings.TrimSpace(s)
+	if s == "" {
+		return []string{}
+	}
+	raw := strings.Split(s, ",")
+	subjects := make([]string, 0, len(raw))
+	for _, sub := range raw {
+		trimmed := strings.TrimSpace(sub)
+		if trimmed != "" {
+			subjects = append(subjects, trimmed)
+		}
+	}
+	return subjects
+}
+
+func parseIdentifiersString(s string) []opfIdentifier {
+	s = strings.TrimSpace(s)
+	if s == "" {
+		return []opfIdentifier{}
+	}
+	items := strings.FieldsFunc(s, func(r rune) bool {
+		return r == ',' || r == '\n' || r == ';'
+	})
+	identifiers := make([]opfIdentifier, 0, len(items))
+	for _, item := range items {
+		trimmed := strings.TrimSpace(item)
+		if trimmed == "" {
+			continue
+		}
+		if idx := strings.IndexAny(trimmed, ":="); idx != -1 {
+			scheme := strings.TrimSpace(trimmed[:idx])
+			val := strings.TrimSpace(trimmed[idx+1:])
+			if scheme != "" && val != "" {
+				identifiers = append(identifiers, opfIdentifier{
+					Scheme: scheme,
+					Value:  val,
+				})
+			}
+		} else if isISBN(trimmed) {
+			identifiers = append(identifiers, opfIdentifier{
+				Scheme: "isbn",
+				Value:  trimmed,
+			})
+		}
+	}
+	return identifiers
+}
+
+func applyMetadataHandler(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodPost {
+		http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
+		return
+	}
+	uuid := r.PathValue("uuid")
+	if uuid == "" {
+		http.Error(w, "Missing UUID", http.StatusBadRequest)
+		return
+	}
+
+	var req ApplyMetadataRequest
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		http.Error(w, "Invalid JSON payload: "+err.Error(), http.StatusBadRequest)
+		return
+	}
+
+	title := strings.TrimSpace(req.Title)
+	if title == "" {
+		title = "Unknown"
+	}
+
+	meta := OPFMetadata{
+		Title:       title,
+		Creators:    parseCreatorsString(req.Creators),
+		Description: strings.TrimSpace(req.Description),
+		Publisher:   strings.TrimSpace(req.Publisher),
+		Date:        normalizeDate(req.Date),
+		Language:    strings.TrimSpace(req.Language),
+		Subjects:    parseSubjectsString(req.Subjects),
+		Identifiers: parseIdentifiersString(req.Identifiers),
+	}
+
+	bookPath, err := updateBookInCalibreDB(calibreDB, baseDir, uuid, &meta)
+	if err != nil {
+		log.Println("apply metadata error:", err)
+		http.Error(w, "Failed to update metadata: "+err.Error(), http.StatusInternalServerError)
+		return
+	}
+
+	// Update cached format options if present
+	if val, ok := bookMetadataCache.Load(uuid); ok {
+		cached := val.([]*UploadedBookMeta)
+		var updated []*UploadedBookMeta
+		for _, m := range cached {
+			if m.Format != "current" {
+				updated = append(updated, m)
+			}
+		}
+		bookMetadataCache.Store(uuid, updated)
+	}
+
+	// Refresh page1.json cache
+	generatePage1()
+
+	w.Header().Set("Content-Type", "application/json")
+	json.NewEncoder(w).Encode(map[string]any{
+		"success": true,
+		"uuid":    uuid,
+		"path":    bookPath,
+		"title":   meta.Title,
+	})
 }
 
 // viewHandler serves the PDF version of a book for inline viewing in the browser.

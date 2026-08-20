@@ -2,150 +2,545 @@
 <html lang="en">
     <head>
         <meta charset="UTF-8" />
-        <title>Edit Book Metadata</title>
+        <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+        <title>Edit Metadata — CalibreFast</title>
+        <link rel="stylesheet" href="/static/style.css" />
+        <link rel="preconnect" href="https://fonts.googleapis.com" />
+        <link
+            href="https://fonts.googleapis.com/css2?family=Playfair+Display:wght@400;700&family=IBM+Plex+Mono:wght@400;500&family=IBM+Plex+Sans:wght@300;400;500;600&display=swap"
+            rel="stylesheet"
+        />
         <style>
+            :root {
+                --bg: #0f0f0e;
+                --surface: #181816;
+                --surface-hover: #222220;
+                --border: #2a2a27;
+                --accent: #c8a96e;
+                --accent-dim: #7a6340;
+                --accent-hover: #dfc07d;
+                --text: #e8e4dc;
+                --muted: #8a857c;
+                --success: #5a8a5e;
+                --success-bg: rgba(90, 138, 94, 0.18);
+                --error: #ba7a7a;
+                --error-bg: rgba(186, 122, 122, 0.18);
+                --radius: 8px;
+                --mono: "IBM Plex Mono", monospace;
+                --sans: "IBM Plex Sans", -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+                --serif: "Playfair Display", Georgia, serif;
+            }
+
             body {
-                font-family: sans-serif;
-                max-width: 800px;
-                margin: 40px auto;
-                line-height: 1.6;
+                background: var(--bg);
+                color: var(--text);
+                font-family: var(--sans);
+                font-weight: 300;
+                min-height: 100vh;
+                margin: 0;
+                padding: 0 0 5rem;
             }
-            .source-card {
-                border: 1px solid #ccc;
-                padding: 15px;
-                border-radius: 8px;
-                margin-bottom: 10px;
+
+            /* ── Top Bar ── */
+            .edit-top-bar {
+                position: sticky;
+                top: 0;
+                z-index: 1000;
+                display: flex;
+                align-items: center;
+                justify-content: space-between;
+                padding: 12px 24px;
+                background: rgba(15, 15, 14, 0.9);
+                backdrop-filter: blur(12px);
+                border-bottom: 1px solid var(--border);
+            }
+
+            .edit-top-bar-left {
+                display: flex;
+                align-items: center;
+                gap: 12px;
+            }
+
+            .nav-btn {
+                background: var(--surface);
+                color: var(--text);
+                border: 1px solid var(--border);
+                border-radius: var(--radius);
+                padding: 8px 14px;
+                font-family: var(--mono);
+                font-size: 0.78rem;
                 cursor: pointer;
-                transition: background 0.2s;
+                transition: all 0.15s ease;
+                display: inline-flex;
+                align-items: center;
+                gap: 6px;
+                text-decoration: none;
             }
-            .source-card:hover {
-                border-color: #007bff;
+
+            .nav-btn:hover {
+                background: var(--surface-hover);
+                border-color: var(--accent);
+                color: #fff;
             }
-            .source-card_selected {
-                border: 2px solid #007bff;
-                background: #f0f7ff;
+
+            .breadcrumbs {
+                display: flex;
+                align-items: center;
+                gap: 8px;
+                font-family: var(--mono);
+                font-size: 0.75rem;
+                color: var(--muted);
             }
-            .badge {
-                padding: 4px 8px;
+
+            .breadcrumbs a {
+                color: var(--muted);
+                text-decoration: none;
+                transition: color 0.15s;
+            }
+
+            .breadcrumbs a:hover {
+                color: var(--text);
+            }
+
+            .breadcrumbs .current {
+                color: var(--accent);
+            }
+
+            /* ── Main Container ── */
+            .edit-container {
+                max-width: 880px;
+                margin: 2rem auto 0;
+                padding: 0 1.5rem;
+            }
+
+            /* ── Book Preview Banner ── */
+            .book-banner {
+                display: flex;
+                gap: 1.5rem;
+                align-items: center;
+                background: var(--surface);
+                border: 1px solid var(--border);
+                border-radius: var(--radius);
+                padding: 1.25rem 1.5rem;
+                margin-bottom: 2rem;
+            }
+
+            .book-banner-cover {
+                width: 72px;
+                height: 104px;
                 border-radius: 4px;
-                font-size: 12px;
-                font-weight: bold;
+                object-fit: cover;
+                background: #222;
+                border: 1px solid rgba(255, 255, 255, 0.08);
+                flex-shrink: 0;
+                box-shadow: 0 4px 12px rgba(0, 0, 0, 0.4);
             }
-            .badge-epub {
-                background: #e3f2fd;
-                color: #0d47a1;
+
+            .book-banner-info {
+                flex: 1;
+                min-width: 0;
             }
-            .badge-pdf {
-                background: #fbe9e7;
-                color: #bf360c;
+
+            .book-banner-title {
+                font-family: var(--serif);
+                font-size: 1.4rem;
+                color: var(--text);
+                margin: 0 0 0.4rem 0;
+                line-height: 1.25;
+                white-space: nowrap;
+                overflow: hidden;
+                text-overflow: ellipsis;
             }
-            form {
-                margin-top: 30px;
-                border-top: 1px solid #eee;
-                padding-top: 20px;
+
+            .book-banner-meta {
+                display: flex;
+                align-items: center;
+                gap: 10px;
+                font-family: var(--mono);
+                font-size: 0.72rem;
+                color: var(--muted);
             }
-            .field-group {
-                margin-bottom: 15px;
+
+            .uuid-badge {
+                padding: 2px 6px;
+                background: rgba(255, 255, 255, 0.04);
+                border: 1px solid var(--border);
+                border-radius: 4px;
+                font-size: 0.68rem;
+                letter-spacing: 0.04em;
             }
-            label {
-                display: block;
-                font-weight: bold;
+
+            .banner-hint {
+                font-size: 0.75rem;
+                color: var(--muted);
+                margin-top: 0.5rem;
+                line-height: 1.4;
             }
+
+            /* ── Form Grid ── */
+            .form-grid {
+                display: grid;
+                grid-template-columns: repeat(2, 1fr);
+                gap: 1.25rem;
+            }
+
+            .col-span-2 {
+                grid-column: span 2;
+            }
+
+            @media (max-width: 700px) {
+                .form-grid {
+                    grid-template-columns: 1fr;
+                }
+                .col-span-2 {
+                    grid-column: span 1;
+                }
+                .book-banner {
+                    flex-direction: column;
+                    text-align: center;
+                    gap: 1rem;
+                }
+                .book-banner-meta {
+                    justify-content: center;
+                }
+            }
+
+            /* ── Field Cards ── */
             .meta-field {
-                margin-bottom: 0.75rem;
+                background: var(--surface);
+                border: 1px solid var(--border);
+                border-radius: var(--radius);
+                padding: 1rem 1.2rem;
+                margin: 0;
+                display: flex;
+                flex-direction: column;
+                transition: border-color 0.15s ease;
             }
+
+            .meta-field:focus-within {
+                border-color: rgba(200, 169, 110, 0.4);
+            }
+
             .meta-field legend {
-                font-weight: 600;
+                font-family: var(--mono);
+                font-size: 0.72rem;
+                font-weight: 500;
+                letter-spacing: 0.1em;
+                text-transform: uppercase;
+                color: var(--accent);
+                padding: 0 4px;
+                margin-bottom: 6px;
             }
+
             .meta-input {
+                background: #111;
+                border: 1px solid #333;
+                border-radius: 6px;
+                color: var(--text);
+                font-family: var(--sans);
+                font-size: 0.95rem;
+                padding: 10px 12px;
+                box-sizing: border-box;
+                width: 100%;
+                transition: all 0.15s ease;
+            }
+
+            .meta-input:focus {
+                outline: none;
+                border-color: var(--accent);
+                box-shadow: 0 0 0 2px rgba(200, 169, 110, 0.15);
+                background: #141414;
+            }
+
+            textarea.meta-input {
+                font-family: var(--sans);
+                line-height: 1.5;
+                min-height: 130px;
+                resize: vertical;
+            }
+
+            /* ── Source Buttons ── */
+            .meta-source-buttons {
+                display: flex;
+                flex-wrap: wrap;
+                gap: 6px;
+                margin-top: 8px;
+                min-height: 24px;
+            }
+
+            .meta-source-btn {
+                background: rgba(255, 255, 255, 0.04);
+                border: 1px solid rgba(255, 255, 255, 0.12);
+                border-radius: 4px;
+                color: var(--muted);
+                font-family: var(--mono);
+                font-size: 0.7rem;
+                padding: 3px 8px;
+                cursor: pointer;
+                transition: all 0.15s ease;
+                display: inline-flex;
+                align-items: center;
+                gap: 4px;
+            }
+
+            .meta-source-btn:hover {
+                border-color: var(--accent);
+                color: var(--text);
+                transform: translateY(-1px);
+            }
+
+            .meta-source-btn.meta-source-match {
+                background: var(--success-bg);
+                border-color: rgba(90, 138, 94, 0.5);
+                color: #7aba7e;
+            }
+
+            .meta-source-btn.meta-source-match::before {
+                content: "✓";
+                font-size: 0.65rem;
+                font-weight: bold;
+            }
+
+            .meta-source-btn.meta-source-diff {
+                background: rgba(200, 169, 110, 0.12);
+                border-color: rgba(200, 169, 110, 0.4);
+                color: var(--accent-hover);
+            }
+
+            .meta-source-btn.meta-source-diff::before {
+                content: "✎";
+                font-size: 0.65rem;
+            }
+
+            /* ── Action Bar ── */
+            .edit-actions {
+                margin-top: 2rem;
+                padding: 1.5rem 0 0;
+                border-top: 1px solid var(--border);
+                display: flex;
+                align-items: center;
+                justify-content: space-between;
+                flex-wrap: wrap;
+                gap: 1rem;
+            }
+
+            .action-buttons {
+                display: flex;
+                align-items: center;
+                gap: 12px;
+            }
+
+            .btn-primary {
+                font-family: var(--mono);
+                font-size: 0.8rem;
+                font-weight: 500;
+                letter-spacing: 0.08em;
+                text-transform: uppercase;
+                background: var(--accent);
+                color: var(--bg);
+                border: none;
+                border-radius: var(--radius);
+                padding: 12px 28px;
+                cursor: pointer;
+                transition: all 0.15s ease;
+                display: inline-flex;
+                align-items: center;
+                gap: 8px;
+            }
+
+            .btn-primary:hover:not(:disabled) {
+                background: var(--accent-hover);
+                box-shadow: 0 4px 12px rgba(200, 169, 110, 0.25);
+            }
+
+            .btn-primary:disabled {
+                opacity: 0.45;
+                cursor: not-allowed;
+            }
+
+            .btn-secondary {
+                font-family: var(--mono);
+                font-size: 0.8rem;
+                letter-spacing: 0.05em;
+                background: transparent;
+                color: var(--muted);
+                border: 1px solid var(--border);
+                border-radius: var(--radius);
+                padding: 11px 20px;
+                cursor: pointer;
+                text-decoration: none;
+                transition: all 0.15s ease;
+            }
+
+            .btn-secondary:hover {
+                border-color: #666;
+                color: var(--text);
+                background: var(--surface);
+            }
+
+            /* ── Status Banner ── */
+            .edit-status {
+                font-family: var(--mono);
+                font-size: 0.78rem;
+                display: none;
+                align-items: center;
+                gap: 8px;
+                padding: 10px 14px;
+                border-radius: var(--radius);
                 width: 100%;
                 box-sizing: border-box;
             }
-            .meta-source-buttons {
-                margin-top: 0.25rem;
+
+            .edit-status.pending {
+                display: flex;
+                background: rgba(200, 169, 110, 0.1);
+                border: 1px solid rgba(200, 169, 110, 0.3);
+                color: var(--accent);
             }
-            .meta-source-btn {
-                border: 1px solid #999;
-                border-radius: 4px;
-                padding: 2px 8px;
-                margin: 2px 4px 2px 0;
-                font-size: 0.85em;
-                cursor: pointer;
-                background: #eee;
+
+            .edit-status.success {
+                display: flex;
+                background: var(--success-bg);
+                border: 1px solid rgba(90, 138, 94, 0.4);
+                color: #8ada8e;
             }
-            .meta-source-btn.meta-source-match {
-                background: #c8f0c8;
-                border-color: #4caf50;
+
+            .edit-status.error {
+                display: flex;
+                background: var(--error-bg);
+                border: 1px solid rgba(186, 122, 122, 0.4);
+                color: #e59999;
             }
-            .meta-source-btn.meta-source-diff {
-                background: #fff3b0;
-                border-color: #e0b800;
+
+            .status-link {
+                color: var(--accent);
+                text-decoration: underline;
+                margin-left: auto;
+                font-weight: 500;
             }
         </style>
     </head>
     <body>
-        <form id="metadata-form" data-uuid="{{.UUID}}">
-            <fieldset class="meta-field">
-                <legend>Title</legend>
-                <input type="text" name="title" class="meta-input" />
-                <div class="meta-source-buttons" data-field="title"></div>
-            </fieldset>
+        <header class="edit-top-bar">
+            <div class="edit-top-bar-left">
+                <button onclick="history.back()" class="nav-btn" aria-label="Back">
+                    ← Back
+                </button>
+                <div class="breadcrumbs">
+                    <a href="/">Library</a>
+                    <span>/</span>
+                    <a href="/book/get/{{.UUID}}">Book</a>
+                    <span>/</span>
+                    <span class="current">Edit Metadata</span>
+                </div>
+            </div>
+            <div>
+                <a href="/book/get/{{.UUID}}" class="nav-btn">
+                    View Book →
+                </a>
+            </div>
+        </header>
 
-            <fieldset class="meta-field">
-                <legend>Author(s)</legend>
-                <input type="text" name="creators" class="meta-input" />
-                <div class="meta-source-buttons" data-field="creators"></div>
-            </fieldset>
+        <main class="edit-container">
+            <!-- Book Preview Banner -->
+            <div class="book-banner">
+                <img
+                    src="/cover-thumb/{{.UUID}}"
+                    alt="Book Cover"
+                    class="book-banner-cover"
+                    onerror="this.style.display='none'"
+                />
+                <div class="book-banner-info">
+                    <h1 class="book-banner-title" id="edit-header-title">Loading book…</h1>
+                    <div class="book-banner-meta">
+                        <span>UUID:</span>
+                        <span class="uuid-badge">{{.UUID}}</span>
+                    </div>
+                    <p class="banner-hint">
+                        Tip: Click the format pills (e.g. <strong>current</strong>, <strong>epub</strong>, <strong>pdf</strong>) under each field to autofill values from that metadata source. Green indicates an exact match.
+                    </p>
+                </div>
+            </div>
 
-            <fieldset class="meta-field">
-                <legend>Description</legend>
-                <textarea
-                    name="description"
-                    class="meta-input"
-                    rows="4"
-                ></textarea>
-                <div class="meta-source-buttons" data-field="description"></div>
-            </fieldset>
+            <!-- Status Banner -->
+            <div id="edit-status" class="edit-status"></div>
 
-            <fieldset class="meta-field">
-                <legend>Publisher</legend>
-                <input type="text" name="publisher" class="meta-input" />
-                <div class="meta-source-buttons" data-field="publisher"></div>
-            </fieldset>
+            <!-- Metadata Edit Form -->
+            <form id="metadata-form" data-uuid="{{.UUID}}">
+                <div class="form-grid">
+                    <fieldset class="meta-field col-span-2">
+                        <legend>Title</legend>
+                        <input type="text" name="title" class="meta-input" placeholder="e.g. The Go Programming Language" />
+                        <div class="meta-source-buttons" data-field="title"></div>
+                    </fieldset>
 
-            <fieldset class="meta-field">
-                <legend>Date</legend>
-                <input type="text" name="date" class="meta-input" />
-                <div class="meta-source-buttons" data-field="date"></div>
-            </fieldset>
+                    <fieldset class="meta-field col-span-2">
+                        <legend>Author(s)</legend>
+                        <input type="text" name="creators" class="meta-input" placeholder="e.g. Alan A. A. Donovan, Brian W. Kernighan" />
+                        <div class="meta-source-buttons" data-field="creators"></div>
+                    </fieldset>
 
-            <fieldset class="meta-field">
-                <legend>Language</legend>
-                <input type="text" name="language" class="meta-input" />
-                <div class="meta-source-buttons" data-field="language"></div>
-            </fieldset>
+                    <fieldset class="meta-field">
+                        <legend>Publisher</legend>
+                        <input type="text" name="publisher" class="meta-input" placeholder="e.g. Addison-Wesley" />
+                        <div class="meta-source-buttons" data-field="publisher"></div>
+                    </fieldset>
 
-            <fieldset class="meta-field">
-                <legend>Subjects</legend>
-                <input type="text" name="subjects" class="meta-input" />
-                <div class="meta-source-buttons" data-field="subjects"></div>
-            </fieldset>
+                    <fieldset class="meta-field">
+                        <legend>Publication Date</legend>
+                        <input type="text" name="date" class="meta-input" placeholder="e.g. 2015-10-26" />
+                        <div class="meta-source-buttons" data-field="date"></div>
+                    </fieldset>
 
-            <fieldset class="meta-field">
-                <legend>Identifiers</legend>
-                <input type="text" name="identifiers" class="meta-input" />
-                <div class="meta-source-buttons" data-field="identifiers"></div>
-            </fieldset>
+                    <fieldset class="meta-field">
+                        <legend>Language</legend>
+                        <input type="text" name="language" class="meta-input" placeholder="e.g. eng" />
+                        <div class="meta-source-buttons" data-field="language"></div>
+                    </fieldset>
 
-            <button type="submit">Apply</button>
-        </form>
+                    <fieldset class="meta-field">
+                        <legend>Subjects / Tags</legend>
+                        <input type="text" name="subjects" class="meta-input" placeholder="e.g. Computer Science, Programming, Go" />
+                        <div class="meta-source-buttons" data-field="subjects"></div>
+                    </fieldset>
+
+                    <fieldset class="meta-field col-span-2">
+                        <legend>Identifiers</legend>
+                        <input type="text" name="identifiers" class="meta-input" placeholder="e.g. isbn: 9780134190440, google: pO6mDQAAQBAJ" />
+                        <div class="meta-source-buttons" data-field="identifiers"></div>
+                    </fieldset>
+
+                    <fieldset class="meta-field col-span-2">
+                        <legend>Description</legend>
+                        <textarea
+                            name="description"
+                            class="meta-input"
+                            rows="6"
+                            placeholder="Book synopsis or description..."
+                        ></textarea>
+                        <div class="meta-source-buttons" data-field="description"></div>
+                    </fieldset>
+                </div>
+
+                <div class="edit-actions">
+                    <div class="action-buttons">
+                        <button type="submit" id="btn-save" class="btn-primary">
+                            Apply Changes
+                        </button>
+                        <button type="button" onclick="history.back()" class="btn-secondary">
+                            Cancel
+                        </button>
+                    </div>
+                </div>
+            </form>
+        </main>
 
         <script type="module">
             import { mountMetadataEditor } from "/static/metadata.js";
 
             const form = document.getElementById("metadata-form");
             mountMetadataEditor(form.dataset.uuid, form).catch((err) => {
-                console.error(err);
+                console.error("Error mounting metadata editor:", err);
             });
         </script>
     </body>
