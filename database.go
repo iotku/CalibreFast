@@ -63,14 +63,17 @@ func insertBookIntoCalibreDB(db *sql.DB, meta *UploadedBookMeta, formats []forma
 		seriesIndex = "1.0"
 	}
 
+	pubDate := normalizeDate(meta.Date)
+	tSort := titleSort(meta.Title)
+
 	res, err := tx.Exec(`
 		INSERT INTO books (title, sort, author_sort, timestamp, pubdate, series_index, path, uuid, has_cover, last_modified)
 		VALUES (?, ?, ?, ?, ?, ?, ?, ?, 0, ?)`,
 		meta.Title,
-		meta.Title,
+		tSort,
 		authorSort,
 		now,
-		meta.Date,
+		pubDate,
 		seriesIndex,
 		"", // We need the bookID to create the full path, we update that later
 		bookUUID,

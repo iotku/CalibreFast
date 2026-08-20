@@ -522,3 +522,55 @@ func TestApplyMetadataHandler_HTTP(t *testing.T) {
 	}
 }
 
+func TestNormalizeDate(t *testing.T) {
+	tests := []struct {
+		input    string
+		expected string
+	}{
+		{
+			input:    "2016-05-15 00:00:00+00:00",
+			expected: "2016-05-15 00:00:00+00:00",
+		},
+		{
+			input:    "D:20251006114506+00'00'",
+			expected: "2025-10-06 11:45:06+00:00",
+		},
+		{
+			input:    "2025-11-14 00:00:00.000000",
+			expected: "2025-11-14 00:00:00+00:00",
+		},
+		{
+			input:    "2025-11-14 00:00:00.000000+00:00",
+			expected: "2025-11-14 00:00:00+00:00",
+		},
+		{
+			input:    "2016-05-15",
+			expected: "2016-05-15 00:00:00+00:00",
+		},
+		{
+			input:    "2016-05-15T00:00:00Z",
+			expected: "2016-05-15 00:00:00+00:00",
+		},
+		{
+			input:    "2016-05-15T14:30:00+00:00",
+			expected: "2016-05-15 14:30:00+00:00",
+		},
+		{
+			input:    "2016",
+			expected: "2016-01-01 00:00:00+00:00",
+		},
+		{
+			input:    "",
+			expected: "0101-01-01 00:00:00+00:00",
+		},
+	}
+
+	for _, tt := range tests {
+		got := normalizeDate(tt.input)
+		if got != tt.expected {
+			t.Errorf("normalizeDate(%q) = %q, want %q", tt.input, got, tt.expected)
+		}
+	}
+}
+
+

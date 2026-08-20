@@ -6,7 +6,6 @@ import (
 	"net/http"
 	"path/filepath"
 	"strings"
-	"time"
 
 	"github.com/microcosm-cc/bluemonday"
 )
@@ -66,7 +65,7 @@ func bookHandler(w http.ResponseWriter, r *http.Request) {
 	}
 
 	formattedDate := opf.Metadata.Date
-	if t, err := time.Parse(time.RFC3339, opf.Metadata.Date); err == nil {
+	if t, err := parseAnyDate(opf.Metadata.Date); err == nil {
 		formattedDate = t.Format("January 2, 2006")
 	}
 

@@ -303,23 +303,72 @@ func sanitizePath(s string) string {
 	return strings.TrimSpace(b.String())
 }
 
-func normalizeDate(s string) string {
+func parseAnyDate(s string) (time.Time, error) {
 	s = strings.TrimSpace(s)
-	formats := []string{
+	if s == "" {
+		return time.Time{}, errors.New("empty date string")
+	}
+
+	clean := s
+	// Handle PDF date prefix "D:" or "d:"
+	if strings.HasPrefix(clean, "D:") || strings.HasPrefix(clean, "d:") {
+		clean = clean[2:]
+	}
+	// Remove PDF timezone apostrophes e.g. +00'00' or -05'00'
+	if strings.Contains(clean, "'") {
+		clean = strings.ReplaceAll(clean, "'", "")
+	}
+
+	layouts := []string{
+		"2006-01-02 15:04:05.000000-07:00",
+		"2006-01-02 15:04:05.000000",
+		"2006-01-02 15:04:05-07:00",
+		"2006-01-02 15:04:05",
+		time.RFC3339Nano,
 		time.RFC3339,
-		"2006-01-02T15:04:05Z",
+		"2006-01-02T15:04:05Z07:00",
 		"2006-01-02T15:04:05",
 		"2006-01-02",
+		"2006-01",
 		"2006",
 		"January 2, 2006",
+		"2 January 2006",
+		"Jan 2, 2006",
 		"Jan 2006",
+		"20060102150405-0700",
+		"20060102150405Z0700",
+		"20060102150405Z",
+		"20060102150405",
+		"20060102",
 	}
-	for _, f := range formats {
-		if t, err := time.Parse(f, s); err == nil {
-			return t.UTC().Format(time.RFC3339)
+
+	for _, layout := range layouts {
+		if t, err := time.Parse(layout, clean); err == nil {
+			return t, nil
 		}
 	}
-	return s
+
+	if clean != s {
+		for _, layout := range layouts {
+			if t, err := time.Parse(layout, s); err == nil {
+				return t, nil
+			}
+		}
+	}
+
+	return time.Time{}, fmt.Errorf("unable to parse date %q", s)
+}
+
+func normalizeDate(s string) string {
+	s = strings.TrimSpace(s)
+	if s == "" {
+		return "0101-01-01 00:00:00+00:00"
+	}
+	t, err := parseAnyDate(s)
+	if err != nil {
+		return s
+	}
+	return t.UTC().Format("2006-01-02 15:04:05-07:00")
 }
 
 // --- HTTP handler ---
