@@ -26,97 +26,152 @@ func setupTestDB(t *testing.T) (*sql.DB, string) {
 	}
 
 	schema := `
+	CREATE TABLE authors (
+		id INTEGER PRIMARY KEY,
+		name TEXT NOT NULL COLLATE NOCASE,
+		sort TEXT COLLATE NOCASE,
+		link TEXT NOT NULL DEFAULT "",
+		UNIQUE(name)
+	);
 	CREATE TABLE books (
 		id INTEGER PRIMARY KEY AUTOINCREMENT,
-		title TEXT NOT NULL DEFAULT 'Unknown',
-		sort TEXT,
-		author_sort TEXT,
+		title TEXT NOT NULL DEFAULT 'Unknown' COLLATE NOCASE,
+		sort TEXT COLLATE NOCASE,
 		timestamp TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
 		pubdate TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
 		series_index REAL NOT NULL DEFAULT 1.0,
-		isbn TEXT DEFAULT "",
-		lccn TEXT DEFAULT "",
+		author_sort TEXT COLLATE NOCASE,
 		path TEXT NOT NULL DEFAULT "",
-		flags INTEGER NOT NULL DEFAULT 1,
 		uuid TEXT,
 		has_cover BOOL DEFAULT 0,
 		last_modified TIMESTAMP NOT NULL DEFAULT "2000-01-01 00:00:00+00:00"
 	);
-	CREATE TABLE authors (
-		id INTEGER PRIMARY KEY AUTOINCREMENT,
-		name TEXT NOT NULL UNIQUE,
-		sort TEXT,
-		link TEXT NOT NULL DEFAULT ""
-	);
 	CREATE TABLE books_authors_link (
-		id INTEGER PRIMARY KEY AUTOINCREMENT,
+		id INTEGER PRIMARY KEY,
 		book INTEGER NOT NULL,
 		author INTEGER NOT NULL,
 		UNIQUE(book, author)
 	);
-	CREATE TABLE tags (
-		id INTEGER PRIMARY KEY AUTOINCREMENT,
-		name TEXT NOT NULL UNIQUE
-	);
-	CREATE TABLE books_tags_link (
-		id INTEGER PRIMARY KEY AUTOINCREMENT,
-		book INTEGER NOT NULL,
-		tag INTEGER NOT NULL,
-		UNIQUE(book, tag)
-	);
-	CREATE TABLE publishers (
-		id INTEGER PRIMARY KEY AUTOINCREMENT,
-		name TEXT NOT NULL UNIQUE,
-		sort TEXT
-	);
-	CREATE TABLE books_publishers_link (
-		id INTEGER PRIMARY KEY AUTOINCREMENT,
-		book INTEGER NOT NULL,
-		publisher INTEGER NOT NULL,
-		UNIQUE(book, publisher)
-	);
-	CREATE TABLE series (
-		id INTEGER PRIMARY KEY AUTOINCREMENT,
-		name TEXT NOT NULL UNIQUE,
-		sort TEXT
-	);
-	CREATE TABLE books_series_link (
-		id INTEGER PRIMARY KEY AUTOINCREMENT,
-		book INTEGER NOT NULL,
-		series INTEGER NOT NULL,
-		UNIQUE(book, series)
-	);
-	CREATE TABLE languages (
-		id INTEGER PRIMARY KEY AUTOINCREMENT,
-		lang_code TEXT NOT NULL UNIQUE
-	);
 	CREATE TABLE books_languages_link (
-		id INTEGER PRIMARY KEY AUTOINCREMENT,
+		id INTEGER PRIMARY KEY,
 		book INTEGER NOT NULL,
 		lang_code INTEGER NOT NULL,
 		item_order INTEGER NOT NULL DEFAULT 0,
 		UNIQUE(book, lang_code)
 	);
-	CREATE TABLE identifiers (
-		id INTEGER PRIMARY KEY AUTOINCREMENT,
+	CREATE TABLE books_publishers_link (
+		id INTEGER PRIMARY KEY,
 		book INTEGER NOT NULL,
-		type TEXT NOT NULL DEFAULT "isbn",
-		val TEXT NOT NULL,
-		UNIQUE(book, type)
-	);
-	CREATE TABLE comments (
-		id INTEGER PRIMARY KEY AUTOINCREMENT,
-		book INTEGER NOT NULL,
-		text TEXT NOT NULL,
+		publisher INTEGER NOT NULL,
 		UNIQUE(book)
 	);
-	CREATE TABLE data (
-		id INTEGER PRIMARY KEY AUTOINCREMENT,
+	CREATE TABLE books_ratings_link (
+		id INTEGER PRIMARY KEY,
 		book INTEGER NOT NULL,
-		format TEXT NOT NULL,
-		uncompressed_size INTEGER NOT NULL,
-		name TEXT NOT NULL
+		rating INTEGER NOT NULL,
+		UNIQUE(book, rating)
 	);
+	CREATE TABLE books_series_link (
+		id INTEGER PRIMARY KEY,
+		book INTEGER NOT NULL,
+		series INTEGER NOT NULL,
+		UNIQUE(book)
+	);
+	CREATE TABLE books_tags_link (
+		id INTEGER PRIMARY KEY,
+		book INTEGER NOT NULL,
+		tag INTEGER NOT NULL,
+		UNIQUE(book, tag)
+	);
+	CREATE TABLE comments (
+		id INTEGER PRIMARY KEY,
+		book INTEGER NOT NULL,
+		text TEXT NOT NULL COLLATE NOCASE,
+		UNIQUE(book)
+	);
+	CREATE TABLE identifiers (
+		id INTEGER PRIMARY KEY,
+		book INTEGER NOT NULL,
+		type TEXT NOT NULL DEFAULT "isbn" COLLATE NOCASE,
+		val TEXT NOT NULL COLLATE NOCASE,
+		UNIQUE(book, type)
+	);
+	CREATE TABLE languages (
+		id INTEGER PRIMARY KEY,
+		lang_code TEXT NOT NULL COLLATE NOCASE,
+		link TEXT NOT NULL DEFAULT '',
+		UNIQUE(lang_code)
+	);
+	CREATE TABLE publishers (
+		id INTEGER PRIMARY KEY,
+		name TEXT NOT NULL COLLATE NOCASE,
+		sort TEXT COLLATE NOCASE,
+		link TEXT NOT NULL DEFAULT '',
+		UNIQUE(name)
+	);
+	CREATE TABLE ratings (
+		id INTEGER PRIMARY KEY,
+		rating INTEGER CHECK(rating > -1 AND rating < 11),
+		link TEXT NOT NULL DEFAULT '',
+		UNIQUE(rating)
+	);
+	CREATE TABLE series (
+		id INTEGER PRIMARY KEY,
+		name TEXT NOT NULL COLLATE NOCASE,
+		sort TEXT COLLATE NOCASE,
+		link TEXT NOT NULL DEFAULT '',
+		UNIQUE(name)
+	);
+	CREATE TABLE tags (
+		id INTEGER PRIMARY KEY,
+		name TEXT NOT NULL COLLATE NOCASE,
+		link TEXT NOT NULL DEFAULT '',
+		UNIQUE(name)
+	);
+	CREATE TABLE data (
+		id INTEGER PRIMARY KEY,
+		book INTEGER NOT NULL,
+		format TEXT NOT NULL COLLATE NOCASE,
+		uncompressed_size INTEGER NOT NULL,
+		name TEXT NOT NULL,
+		UNIQUE(book, format)
+	);
+
+	CREATE TRIGGER fkc_delete_on_authors
+	BEFORE DELETE ON authors
+	BEGIN
+		SELECT CASE
+			WHEN (SELECT COUNT(id) FROM books_authors_link WHERE author=OLD.id) > 0
+			THEN RAISE(ABORT, 'Foreign key violation: authors is still referenced')
+		END;
+	END;
+
+	CREATE TRIGGER fkc_delete_on_publishers
+	BEFORE DELETE ON publishers
+	BEGIN
+		SELECT CASE
+			WHEN (SELECT COUNT(id) FROM books_publishers_link WHERE publisher=OLD.id) > 0
+			THEN RAISE(ABORT, 'Foreign key violation: publishers is still referenced')
+		END;
+	END;
+
+	CREATE TRIGGER fkc_delete_on_tags
+	BEFORE DELETE ON tags
+	BEGIN
+		SELECT CASE
+			WHEN (SELECT COUNT(id) FROM books_tags_link WHERE tag=OLD.id) > 0
+			THEN RAISE(ABORT, 'Foreign key violation: tags is still referenced')
+		END;
+	END;
+
+	CREATE TRIGGER fkc_delete_on_languages
+	BEFORE DELETE ON languages
+	BEGIN
+		SELECT CASE
+			WHEN (SELECT COUNT(id) FROM books_languages_link WHERE lang_code=OLD.id) > 0
+			THEN RAISE(ABORT, 'Foreign key violation: language is still referenced')
+		END;
+	END;
 	`
 	if _, err := db.Exec(schema); err != nil {
 		t.Fatalf("failed to create schema: %v", err)

@@ -269,14 +269,6 @@ func updateBookInCalibreDB(db *sql.DB, baseDir string, bookUUID string, meta *OP
 		pubDate = "0101-01-01 00:00:00+00:00"
 	}
 
-	var isbnVal string
-	for _, id := range meta.Identifiers {
-		if strings.EqualFold(id.Scheme, "isbn") {
-			_, isbnVal = parseIdentifier(id)
-			break
-		}
-	}
-
 	// 1. Update books table
 	_, err = tx.Exec(`
 		UPDATE books SET
@@ -284,16 +276,13 @@ func updateBookInCalibreDB(db *sql.DB, baseDir string, bookUUID string, meta *OP
 			sort = ?,
 			author_sort = ?,
 			pubdate = ?,
-			last_modified = ?,
-			isbn = CASE WHEN ? != '' THEN ? ELSE isbn END
+			last_modified = ?
 		WHERE id = ?`,
 		meta.Title,
 		tSort,
 		authorSort,
 		pubDate,
 		now,
-		isbnVal,
-		isbnVal,
 		bookID,
 	)
 	if err != nil {
