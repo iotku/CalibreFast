@@ -313,6 +313,99 @@
                 font-size: 0.65rem;
             }
 
+            /* ── Identifiers ── */
+            .identifiers-container {
+                display: flex;
+                flex-direction: column;
+                gap: 8px;
+                margin-top: 4px;
+            }
+
+            .identifier-row {
+                display: flex;
+                gap: 8px;
+                align-items: center;
+            }
+
+            .isbn-row .identifier-type-label {
+                width: 140px;
+                flex-shrink: 0;
+                box-sizing: border-box;
+                font-family: var(--mono);
+                font-size: 0.78rem;
+                font-weight: 500;
+                letter-spacing: 0.08em;
+                color: var(--accent);
+                background: rgba(255, 255, 255, 0.04);
+                border: 1px solid var(--border);
+                border-radius: 6px;
+                padding: 10px 12px;
+                display: flex;
+                align-items: center;
+                justify-content: center;
+            }
+
+            .custom-identifier-row .identifier-type-input {
+                width: 140px;
+                flex-shrink: 0;
+                font-family: var(--mono);
+                font-size: 0.85rem;
+            }
+
+            .identifier-val-input {
+                flex: 1;
+            }
+
+            .btn-remove-id {
+                background: transparent;
+                border: 1px solid transparent;
+                color: var(--muted);
+                font-size: 1.25rem;
+                line-height: 1;
+                cursor: pointer;
+                padding: 6px 10px;
+                border-radius: 4px;
+                transition: all 0.15s ease;
+                flex-shrink: 0;
+            }
+
+            .btn-remove-id:hover {
+                color: var(--error);
+                background: var(--error-bg);
+                border-color: rgba(186, 122, 122, 0.3);
+            }
+
+            .identifiers-bottom-row {
+                display: flex;
+                align-items: center;
+                justify-content: space-between;
+                gap: 12px;
+                margin-top: 10px;
+                flex-wrap: wrap;
+            }
+
+            .btn-add-id {
+                font-family: var(--mono);
+                font-size: 0.75rem;
+                letter-spacing: 0.04em;
+                padding: 6px 12px;
+                background: rgba(255, 255, 255, 0.04);
+                border: 1px dashed var(--border);
+                color: var(--accent);
+                border-radius: 6px;
+                cursor: pointer;
+                transition: all 0.15s ease;
+                display: inline-flex;
+                align-items: center;
+                gap: 6px;
+            }
+
+            .btn-add-id:hover {
+                background: rgba(200, 169, 110, 0.12);
+                border-color: var(--accent);
+                color: var(--accent-hover);
+            }
+
             /* ── Action Bar ── */
             .edit-actions {
                 margin-top: 2rem;
@@ -507,8 +600,26 @@
 
                     <fieldset class="meta-field col-span-2">
                         <legend>Identifiers</legend>
-                        <input type="text" name="identifiers" class="meta-input" placeholder="e.g. isbn: 9780134190440, google: pO6mDQAAQBAJ" />
-                        <div class="meta-source-buttons" data-field="identifiers"></div>
+                        <div class="identifiers-container">
+                            <!-- Always present: ISBN Row -->
+                            <div class="identifier-row isbn-row">
+                                <div class="identifier-type-label">ISBN</div>
+                                <input
+                                    type="text"
+                                    name="identifier_isbn"
+                                    class="meta-input identifier-val-input"
+                                    placeholder="e.g. 9780134190440"
+                                />
+                            </div>
+                            <!-- Dynamic Other Identifier Rows -->
+                            <div id="custom-identifiers-list" class="identifiers-container" style="margin-top:0;"></div>
+                        </div>
+                        <div class="identifiers-bottom-row">
+                            <button type="button" id="btn-add-identifier" class="btn-add-id">
+                                + Add Identifier
+                            </button>
+                            <div class="meta-source-buttons" data-field="identifiers"></div>
+                        </div>
                     </fieldset>
 
                     <fieldset class="meta-field col-span-2">

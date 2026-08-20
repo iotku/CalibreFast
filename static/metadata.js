@@ -90,18 +90,178 @@ function populateField(form, current, metas, key, kind) {
   updateHighlights();
 }
 
+function createCustomIdentifierRow(scheme = "", value = "", onChange = null) {
+  const row = document.createElement("div");
+  row.className = "identifier-row custom-identifier-row";
+
+  const typeInput = document.createElement("input");
+  typeInput.type = "text";
+  typeInput.className = "meta-input identifier-type-input";
+  typeInput.placeholder = "Type (e.g. google, amazon, calibre, uuid)";
+  typeInput.value = scheme;
+
+  const valInput = document.createElement("input");
+  valInput.type = "text";
+  valInput.className = "meta-input identifier-val-input";
+  valInput.placeholder = "Identifier value";
+  valInput.value = value;
+
+  const removeBtn = document.createElement("button");
+  removeBtn.type = "button";
+  removeBtn.className = "btn-remove-id";
+  removeBtn.title = "Remove identifier";
+  removeBtn.textContent = "×";
+  removeBtn.addEventListener("click", () => {
+    row.remove();
+    if (onChange) onChange();
+  });
+
+  if (onChange) {
+    typeInput.addEventListener("input", onChange);
+    valInput.addEventListener("input", onChange);
+  }
+
+  row.appendChild(typeInput);
+  row.appendChild(valInput);
+  row.appendChild(removeBtn);
+
+  return row;
+}
+
+function populateIdentifiers(form, current, metas) {
+  const isbnInput = form.querySelector('[name="identifier_isbn"]');
+  const customList = form.querySelector("#custom-identifiers-list");
+  const buttonRow = form.querySelector(
+    '.meta-source-buttons[data-field="identifiers"]',
+  );
+  const addBtn = form.querySelector("#btn-add-identifier");
+
+  if (!isbnInput || !customList || !buttonRow) return;
+
+  const buttons = [];
+
+  function getCurrentIdentifiersNormalized() {
+    const items = [];
+    const isbn = isbnInput.value.trim();
+    if (isbn) items.push(`isbn: ${isbn.toLowerCase()}`);
+    for (const row of customList.querySelectorAll(".custom-identifier-row")) {
+      const type = row.querySelector(".identifier-type-input")?.value.trim();
+      const val = row.querySelector(".identifier-val-input")?.value.trim();
+      if (type && val) {
+        items.push(`${type.toLowerCase()}: ${val}`);
+      }
+    }
+    return items.sort().join(", ");
+  }
+
+  function getSourceIdentifiersNormalized(meta) {
+    return (meta.Identifiers || [])
+      .map((id) => `${(id.Scheme || "").trim().toLowerCase()}: ${(id.Value || "").trim()}`)
+      .filter((s) => s !== ":")
+      .sort()
+      .join(", ");
+  }
+
+  const updateHighlights = () => {
+    const cur = getCurrentIdentifiersNormalized();
+    for (const btn of buttons) {
+      const srcNorm = btn.dataset.normalized;
+      const matches = srcNorm === cur;
+      btn.classList.toggle("meta-source-match", matches);
+      btn.classList.toggle("meta-source-diff", !matches);
+    }
+  };
+
+  function setIdentifiersFromList(ids) {
+    customList.replaceChildren();
+    isbnInput.value = "";
+    for (const id of ids || []) {
+      const scheme = (id.Scheme || "").trim();
+      const val = (id.Value || "").trim();
+      if (scheme.toLowerCase() === "isbn") {
+        isbnInput.value = val;
+      } else if (scheme || val) {
+        const row = createCustomIdentifierRow(scheme, val, updateHighlights);
+        customList.appendChild(row);
+      }
+    }
+    updateHighlights();
+  }
+
+  if (current) {
+    setIdentifiersFromList(current.Identifiers || []);
+  }
+
+  if (addBtn && !addBtn.dataset.bound) {
+    addBtn.dataset.bound = "true";
+    addBtn.addEventListener("click", () => {
+      const row = createCustomIdentifierRow("", "", updateHighlights);
+      customList.appendChild(row);
+      row.querySelector(".identifier-type-input")?.focus();
+    });
+  }
+
+  isbnInput.addEventListener("input", updateHighlights);
+
+  buttonRow.replaceChildren();
+  metas.forEach((meta) => {
+    const ids = meta.Identifiers || [];
+    if (ids.length === 0 && meta.Format !== "current") return;
+
+    const norm = getSourceIdentifiersNormalized(meta);
+    const displayVal = ids.map((id) => `${id.Scheme}: ${id.Value}`).join(", ");
+
+    const btn = document.createElement("button");
+    btn.type = "button";
+    btn.className = "meta-source-btn";
+    btn.textContent = sourceLabel(meta);
+    btn.title = `Click to use from ${meta.Format}: "${displayVal}"`;
+    btn.dataset.normalized = norm;
+
+    btn.addEventListener("click", () => {
+      setIdentifiersFromList(ids);
+    });
+
+    buttonRow.appendChild(btn);
+    buttons.push(btn);
+  });
+
+  updateHighlights();
+}
+
 export function populateMetadataForm(form, metas) {
   const current = metas.find((m) => m.Format === "current") || metas[0] || null;
   for (const { key, kind } of FIELDS) {
-    populateField(form, current, metas, key, kind);
+    if (kind === "identifiers") {
+      populateIdentifiers(form, current, metas);
+    } else {
+      populateField(form, current, metas, key, kind);
+    }
   }
 }
 
 export function collectValues(form) {
   const values = {};
-  for (const { key } of FIELDS) {
-    const input = form.querySelector(`[name="${key}"]`);
-    if (input) values[key] = input.value;
+  for (const { key, kind } of FIELDS) {
+    if (kind === "identifiers") {
+      const parts = [];
+      const isbnInput = form.querySelector('[name="identifier_isbn"]');
+      if (isbnInput && isbnInput.value.trim()) {
+        parts.push(`isbn: ${isbnInput.value.trim()}`);
+      }
+      const customRows = form.querySelectorAll(".custom-identifier-row");
+      for (const row of customRows) {
+        const type = row.querySelector(".identifier-type-input")?.value.trim();
+        const val = row.querySelector(".identifier-val-input")?.value.trim();
+        if (type && val) {
+          parts.push(`${type}: ${val}`);
+        }
+      }
+      values[key] = parts.join(", ");
+    } else {
+      const input = form.querySelector(`[name="${key}"]`);
+      if (input) values[key] = input.value;
+    }
   }
   return values;
 }
