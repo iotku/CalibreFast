@@ -23,7 +23,8 @@ import (
 	pdfapi "github.com/pdfcpu/pdfcpu/pkg/api"
 )
 
-var bookMetadataCache sync.Map // Key: SessionID (string), Value: []UploadedBookMeta
+var bookMetadataCache sync.Map  // Key: SessionID (string), Value: []UploadedBookMeta
+const undefinedLanguage = "und" // ISO 639-2 code for undetermined language
 
 // UploadedBookMeta holds all metadata we can extract from an ebook file.
 type UploadedBookMeta struct {
@@ -109,7 +110,7 @@ func extractPDFMeta(data []byte, filename string) *OPF {
 		Metadata: OPFMetadata{},
 	}
 	meta := &opf.Metadata
-	meta.Language = "und" // undetermined; caller can override
+	meta.Language = undefinedLanguage // undetermined; caller can override
 
 	info, err := pdfapi.PDFInfo(bytes.NewReader(data), filename, nil, false, nil)
 	if err != nil {
@@ -172,7 +173,7 @@ func mergeMeta(metas []*UploadedBookMeta) *UploadedBookMeta {
 		if len(m.Date) > len(merged.Date) {
 			merged.Date = m.Date
 		}
-		if len(m.Language) > len(merged.Language) {
+		if m.Language != undefinedLanguage && len(m.Language) > len(merged.Language) {
 			merged.Language = m.Language
 		}
 		if len(m.Subjects) > len(merged.Subjects) {
@@ -197,7 +198,7 @@ func mergeMeta(metas []*UploadedBookMeta) *UploadedBookMeta {
 		merged.Creators = []string{"Unknown"}
 	}
 	if merged.Language == "" {
-		merged.Language = "und"
+		merged.Language = undefinedLanguage
 	}
 	if merged.Date == "" {
 		merged.Date = "0101-01-01 00:00:00+00:00"
