@@ -74,8 +74,10 @@ type PageData struct {
 	Title string
 }
 
-type EditBookPageData struct { // TODO I Hate this
-	UUID string
+type EditBookPageData struct { // TODO I Hate this, these page structs are all over the place, we should unify them
+	UUID     string
+	Metadata *OPFMetadata
+	Date     string
 }
 
 func writePage(page int, books []Book) error {
@@ -249,7 +251,31 @@ func serveLibraryHTTP() {
 			return
 		}
 
-		err := templates.ExecuteTemplate(w, "book-edit.html", EditBookPageData{UUID: uuid})
+		bookPath, ok := uuidPathIndex.Load(uuid)
+		if !ok {
+			http.Error(w, "book not found", http.StatusNotFound)
+		}
+
+		opfPath := filepath.Join(baseDir, bookPath.(string), "metadata.opf")
+		existingOPF, err := loadOPF(opfPath)
+		if err != nil {
+			http.Error(w, "Failed to load metadata.opf: "+err.Error(), http.StatusInternalServerError)
+			return
+		}
+
+		date, err := time.Parse(time.RFC3339, existingOPF.Metadata.Date)
+		if err != nil {
+			http.Error(w, "Invalid date: "+err.Error(), http.StatusInternalServerError)
+			return // TODO: I think this is likely to happen too often, so should be handled gracefully
+		}
+
+		EditBookPageData := EditBookPageData{
+			UUID:     uuid,
+			Metadata: &existingOPF.Metadata,
+			Date:     date.Format("2006-01-02"),
+		}
+
+		err = templates.ExecuteTemplate(w, "book-edit.html", EditBookPageData)
 		if err != nil {
 			http.Error(w, err.Error(), 500)
 		}

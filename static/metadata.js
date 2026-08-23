@@ -3,7 +3,7 @@ const FIELDS = [
   { key: "creators", kind: "list" },
   { key: "description", kind: "string" },
   { key: "publisher", kind: "string" },
-  { key: "date", kind: "string" },
+  { key: "date", kind: "date" },
   { key: "language", kind: "string" },
   { key: "subjects", kind: "list" },
   { key: "identifiers", kind: "identifiers" },
@@ -20,6 +20,12 @@ function fieldValue(meta, key, kind) {
   switch (kind) {
     case "string":
       return meta[capitalize(key)] || "";
+    case "date": {
+      const value = meta[capitalize(key)] || "";
+      if (!value) return "";
+
+      return value.slice(0, 10); // TODO: This likely isn't resilient to bad time formats.
+    }
     case "list":
       return (meta[capitalize(key)] || []).join(", ");
     case "identifiers":

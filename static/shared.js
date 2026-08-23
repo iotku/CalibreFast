@@ -200,7 +200,6 @@ window.addEventListener("keydown", (e) => {
 });
 
 window.addEventListener("popstate", () => {
-  console.log("popstate", window.history.state);
   document.body.classList.remove("no-scroll");
   if (modal.classList.contains("open")) {
     modal.classList.remove("open");
