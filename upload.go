@@ -371,6 +371,19 @@ func normalizeDate(s string) string {
 	return t.UTC().Format("2006-01-02 15:04:05-07:00")
 }
 
+func normalizeDateOnly(s string) string {
+	if s == "" {
+		return ""
+	}
+
+	t, err := parseAnyDate(s)
+	if err != nil {
+		return s
+	}
+
+	return t.Format("2006-01-02")
+}
+
 // --- HTTP handler ---
 
 type UploadResult struct {

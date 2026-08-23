@@ -263,16 +263,16 @@ func serveLibraryHTTP() {
 			return
 		}
 
-		date, err := time.Parse(time.RFC3339, existingOPF.Metadata.Date)
+		parsedDate, err := parseAnyDate(existingOPF.Metadata.Date)
 		if err != nil {
-			http.Error(w, "Invalid date: "+err.Error(), http.StatusInternalServerError)
-			return // TODO: I think this is likely to happen too often, so should be handled gracefully
+			http.Error(w, "Failed to parse date: "+err.Error(), http.StatusInternalServerError)
+			return
 		}
 
 		EditBookPageData := EditBookPageData{
 			UUID:     uuid,
 			Metadata: &existingOPF.Metadata,
-			Date:     date.Format("2006-01-02"),
+			Date:     parsedDate.Format("2006-01-02"),
 		}
 
 		err = templates.ExecuteTemplate(w, "book-edit.html", EditBookPageData)
@@ -407,6 +407,7 @@ func GetOptionsForBook(w http.ResponseWriter, r *http.Request) {
 	// Always try to include the current on-disk merged metadata.
 	opf, err := loadOPF(filepath.Join(baseDir, path, "metadata.opf"))
 	if err == nil {
+		opf.Metadata.Date = normalizeDateOnly(opf.Metadata.Date)
 		metas = append(metas, &UploadedBookMeta{
 			OPFMetadata: opf.Metadata,
 			Format:      "current",

@@ -519,4 +519,3 @@ func updateBookInCalibreDB(db *sql.DB, baseDir string, bookUUID string, meta *OP
 
 	return bookPath, nil
 }
-

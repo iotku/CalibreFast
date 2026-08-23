@@ -21,10 +21,7 @@ function fieldValue(meta, key, kind) {
     case "string":
       return meta[capitalize(key)] || "";
     case "date": {
-      const value = meta[capitalize(key)] || "";
-      if (!value) return "";
-
-      return value.slice(0, 10); // TODO: This likely isn't resilient to bad time formats.
+      return meta[capitalize(key)] || "";
     }
     case "list":
       return (meta[capitalize(key)] || []).join(", ");
