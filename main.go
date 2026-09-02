@@ -11,6 +11,7 @@ import (
 	"path/filepath"
 	"strconv"
 	"strings"
+	"sync"
 	"time"
 
 	"github.com/google/uuid"
@@ -29,23 +30,31 @@ var (
 	hostPort string
 )
 
+var registerCalibreOnce sync.Once
+
+func registerCalibreDriver() {
+	registerCalibreOnce.Do(func() {
+		sql.Register("sqlite3_calibre",
+			&sqlite3.SQLiteDriver{
+				ConnectHook: func(conn *sqlite3.SQLiteConn) error {
+					if err := conn.RegisterFunc("title_sort", titleSort, true); err != nil {
+						return err
+					}
+
+					if err := conn.RegisterFunc("uuid4", func() string {
+						return uuid.New().String()
+					}, true); err != nil {
+						return err
+					}
+
+					return nil
+				},
+			})
+	})
+}
+
 func initCalibreDB() {
-	sql.Register("sqlite3_calibre",
-		&sqlite3.SQLiteDriver{
-			ConnectHook: func(conn *sqlite3.SQLiteConn) error {
-				if err := conn.RegisterFunc("title_sort", titleSort, true); err != nil {
-					return err
-				}
-
-				if err := conn.RegisterFunc("uuid4", func() string {
-					return uuid.New().String()
-				}, true); err != nil {
-					return err
-				}
-
-				return nil
-			},
-		})
+	registerCalibreDriver()
 	var err error
 	calibreDB, err = sql.Open("sqlite3_calibre", filepath.Join(baseDir, "metadata.db"))
 	if err != nil {

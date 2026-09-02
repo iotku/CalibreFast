@@ -14,13 +14,14 @@ import (
 )
 
 func setupTestDB(t *testing.T) (*sql.DB, string) {
+	registerCalibreDriver()
 	tempDir, err := os.MkdirTemp("", "calibre-test-*")
 	if err != nil {
 		t.Fatalf("failed to create temp dir: %v", err)
 	}
 
 	dbPath := filepath.Join(tempDir, "metadata.db")
-	db, err := sql.Open("sqlite3", dbPath)
+	db, err := sql.Open("sqlite3_calibre", dbPath)
 	if err != nil {
 		t.Fatalf("failed to open test db: %v", err)
 	}
@@ -137,6 +138,14 @@ func setupTestDB(t *testing.T) (*sql.DB, string) {
 		UNIQUE(book, format)
 	);
 
+	CREATE TRIGGER books_insert_trg AFTER INSERT ON books
+	BEGIN
+		UPDATE books
+		SET sort = title_sort(NEW.title),
+			uuid = uuid4()
+		WHERE id = NEW.id;
+	END;
+
 	CREATE TRIGGER fkc_delete_on_authors
 	BEFORE DELETE ON authors
 	BEGIN
@@ -178,6 +187,56 @@ func setupTestDB(t *testing.T) (*sql.DB, string) {
 	}
 
 	return db, tempDir
+}
+
+func TestInsertBookIntoCalibreDB_UUIDMatchesDatabase(t *testing.T) {
+	db, tempDir := setupTestDB(t)
+	defer os.RemoveAll(tempDir)
+	defer db.Close()
+
+	meta := &UploadedBookMeta{
+		OPFMetadata: OPFMetadata{
+			Title:    "Test Book With Multiple Formats",
+			Creators: []string{"Multi Author"},
+		},
+	}
+	formats := []formatEntry{
+		{Ext: "epub", Filename: "book.epub", Size: 1024},
+		{Ext: "pdf", Filename: "book.pdf", Size: 2048},
+	}
+
+	bookID, bookUUID, bookPath, err := insertBookIntoCalibreDB(db, meta, formats)
+	if err != nil {
+		t.Fatalf("insert book failed: %v", err)
+	}
+
+	if bookUUID == "" {
+		t.Fatalf("expected non-empty bookUUID")
+	}
+
+	// Verify that the returned bookUUID matches what is actually stored in the database
+	var dbUUID string
+	err = db.QueryRow("SELECT uuid FROM books WHERE id = ?", bookID).Scan(&dbUUID)
+	if err != nil {
+		t.Fatalf("failed to query uuid from books table: %v", err)
+	}
+
+	if bookUUID != dbUUID {
+		t.Errorf("returned bookUUID %q does not match database uuid %q", bookUUID, dbUUID)
+	}
+
+	// Verify that updateBookInCalibreDB succeeds with this returned bookUUID
+	fullBookDir := filepath.Join(tempDir, bookPath)
+	_ = os.MkdirAll(fullBookDir, 0755)
+
+	updateMeta := &OPFMetadata{
+		Title:    "Updated Multi Title",
+		Creators: []string{"Multi Author"},
+	}
+	_, err = updateBookInCalibreDB(db, tempDir, bookUUID, updateMeta)
+	if err != nil {
+		t.Fatalf("updateBookInCalibreDB failed with returned bookUUID: %v", err)
+	}
 }
 
 func TestUpdateBookInCalibreDB_OrphanAuthorCleanup(t *testing.T) {
@@ -572,5 +631,3 @@ func TestNormalizeDate(t *testing.T) {
 		}
 	}
 }
-
-

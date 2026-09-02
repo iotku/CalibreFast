@@ -98,6 +98,14 @@ func insertBookIntoCalibreDB(db *sql.DB, meta *UploadedBookMeta, formats []forma
 		return
 	}
 
+	// Fetch the actual UUID stored in the database. In a Calibre database,
+	// the `books_insert_trg` trigger overwrites the `uuid` column with `uuid4()`.
+	err = tx.QueryRow(`SELECT uuid FROM books WHERE id = ?`, bookID).Scan(&bookUUID)
+	if err != nil {
+		retErr = fmt.Errorf("fetch book uuid: %w", err)
+		return
+	}
+
 	for _, authorName := range meta.Creators {
 		authorID, aErr := upsertAuthor(tx, authorName)
 		if aErr != nil {
