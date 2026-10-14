@@ -8,6 +8,7 @@ import (
 	"net/http"
 	"path"
 	"path/filepath"
+	"strconv"
 	"strings"
 )
 
@@ -151,6 +152,8 @@ func epubFileHandler(w http.ResponseWriter, r *http.Request) {
 				w.Header().Set("Content-Type", "application/octet-stream")
 			}
 
+			w.Header().Set("X-Content-Type-Options", "nosniff")
+			w.Header().Set("Content-Disposition", "attachment; filename="+strconv.Quote(path.Base(innerPath)))
 			io.Copy(w, rc)
 			return
 		}
