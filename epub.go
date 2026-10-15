@@ -2,55 +2,55 @@ package main
 
 import (
 	"archive/zip"
-	"fmt"
-	"html"
 	"io"
 	"net/http"
+	"net/url"
 	"path"
 	"path/filepath"
+	"regexp"
 	"strconv"
 	"strings"
 )
 
-func rewriteEpubURLs(content, base string) string {
-	// rewrite href="..." and src="..." that are relative (don't start with http/https/#//)
-	attrs := []string{"src", "href"}
-	for _, attr := range attrs {
-		// find all attr="value" occurrences
-		prefix := attr + `="`
-		result := strings.Builder{}
-		remaining := content
-		for {
-			idx := strings.Index(remaining, prefix)
-			if idx == -1 {
-				result.WriteString(remaining)
-				break
-			}
-			result.WriteString(remaining[:idx+len(prefix)])
-			remaining = remaining[idx+len(prefix):]
+const maxMarkupSize = 16 << 20 // 16 MiB cap on html/xhtml we buffer for rewriting
 
-			// find closing quote
-			end := strings.Index(remaining, `"`)
-			if end == -1 {
-				result.WriteString(remaining)
-				break
-			}
-			url := remaining[:end]
-			remaining = remaining[end:]
+// Matches src="..." / href="..." (also xlink:href) with either quote style.
+var epubAttrRe = regexp.MustCompile(`(?i)\b(src|href)=(?:"([^"]*)"|'([^']*)')`)
 
-			// only rewrite relative URLs
-			if !strings.HasPrefix(url, "http") &&
-				!strings.HasPrefix(url, "#") &&
-				!strings.HasPrefix(url, "//") &&
-				!strings.HasPrefix(url, "data:") &&
-				url != "" {
-				result.WriteString(html.EscapeString(base))
-			}
-			result.WriteString(url)
+// rewriteEpubURLs rewrites relative and root-absolute references in markup to
+// absolute server paths under /epub/{uuid}/.
+//
+//	root: "/epub/{uuid}"   (what an epub-root-absolute "/OPS/x.png" maps onto)
+//	base: URL of the directory containing the current file, e.g. /epub/{uuid}/OPS/
+func rewriteEpubURLs(content, root string, base *url.URL) string {
+	return epubAttrRe.ReplaceAllStringFunc(content, func(m string) string {
+		sub := epubAttrRe.FindStringSubmatch(m)
+		attr := sub[1]
+		quote := string(m[len(attr)+1]) // char right after '='
+		val := sub[2]
+		if quote == "'" {
+			val = sub[3]
 		}
-		content = result.String()
-	}
-	return content
+
+		if val == "" || strings.HasPrefix(val, "#") {
+			return m
+		}
+		u, err := url.Parse(val)
+		if err != nil || u.IsAbs() || u.Host != "" { // http:, data:, mailto:, //host/...
+			return m
+		}
+
+		var out *url.URL
+		if strings.HasPrefix(u.Path, "/") {
+			c := *u
+			c.Path = root + u.Path
+			c.RawPath = ""
+			out = &c
+		} else {
+			out = base.ResolveReference(u)
+		}
+		return attr + "=" + quote + out.String() + quote
+	})
 }
 
 func epubFileHandler(w http.ResponseWriter, r *http.Request) {
@@ -105,56 +105,76 @@ func epubFileHandler(w http.ResponseWriter, r *http.Request) {
 				logErr(rc.Close(), "failed to close zip.ReadCloser in epubFileHandler")
 			}(rc)
 
+			// Everything from inside an epub is untrusted. Serve it in-origin but
+			// sandboxed: no scripts, opaque origin, no cookies/storage access, and
+			// subresources restricted to this server.
+			h := w.Header()
+			h.Set("X-Content-Type-Options", "nosniff")
+			h.Set("Content-Security-Policy",
+				"sandbox; default-src 'none'; img-src 'self' data:; media-src 'self'; "+
+					"style-src 'self' 'unsafe-inline'; font-src 'self'")
+
 			// set content type based on extension
 			ext := filepath.Ext(innerPath)
 			switch ext {
-			case ".html", ".xhtml":
-				content, err := io.ReadAll(rc)
+			case ".html", ".htm", ".xhtml":
+				if f.UncompressedSize64 > maxMarkupSize {
+					http.Error(w, "file too large", http.StatusRequestEntityTooLarge)
+					return
+				}
+				raw, err := io.ReadAll(io.LimitReader(rc, maxMarkupSize))
 				if err != nil {
 					http.Error(w, "read error", 500)
 					return
 				}
 
-				// get the directory of the current file within the epub
-				fileDir := path.Dir(innerPath) // e.g. "OPS" for "OPS/chapter1.xhtml"
-				base := fmt.Sprintf("/epub/%s/%s/", uuid, fileDir)
+				root := "/epub/" + url.PathEscape(uuid)
+				dir := path.Dir(f.Name) // zip entry name, not request input
+				basePath := root + "/"
+				if dir != "." {
+					basePath += dir + "/"
+				}
+				base := &url.URL{Path: basePath}
 
-				s := rewriteEpubURLs(string(content), base)
-				w.Header().Set("Content-Type", "application/xhtml+xml")
-				w.Write([]byte(s))
-				return
+				if ext == ".xhtml" {
+					h.Set("Content-Type", "application/xhtml+xml")
+				} else {
+					h.Set("Content-Type", "text/html")
+				}
+				_, _ = io.WriteString(w, rewriteEpubURLs(string(raw), root, base))
+
 			case ".css":
-				w.Header().Set("Content-Type", "text/css")
+				h.Set("Content-Type", "text/css")
 			case ".js":
-				w.Header().Set("Content-Type", "application/javascript")
+				h.Set("Content-Type", "application/javascript")
 			case ".png":
-				w.Header().Set("Content-Type", "image/png")
+				h.Set("Content-Type", "image/png")
 			case ".jpg", ".jpeg":
-				w.Header().Set("Content-Type", "image/jpeg")
+				h.Set("Content-Type", "image/jpeg")
 			case ".gif":
-				w.Header().Set("Content-Type", "image/gif")
+				h.Set("Content-Type", "image/gif")
 			case ".svg":
-				w.Header().Set("Content-Type", "image/svg+xml")
+				h.Set("Content-Type", "image/svg+xml")
 			case ".ttf":
-				w.Header().Set("Content-Type", "font/ttf")
+				h.Set("Content-Type", "font/ttf")
 			case ".otf":
-				w.Header().Set("Content-Type", "font/otf")
+				h.Set("Content-Type", "font/otf")
 			case ".woff":
-				w.Header().Set("Content-Type", "font/woff")
+				h.Set("Content-Type", "font/woff")
 			case ".woff2":
-				w.Header().Set("Content-Type", "font/woff2")
+				h.Set("Content-Type", "font/woff2")
 			case ".xml", ".opf", ".ncx":
-				w.Header().Set("Content-Type", "application/xml")
+				h.Set("Content-Type", "application/xml")
 			case ".xpgt":
 				w.WriteHeader(http.StatusNoContent)
 				return
 			default:
-				w.Header().Set("Content-Type", "application/octet-stream")
+				h.Set("Content-Type", "application/octet-stream")
 			}
 
-			w.Header().Set("X-Content-Type-Options", "nosniff")
-			w.Header().Set("Content-Disposition", "attachment; filename="+strconv.Quote(path.Base(innerPath)))
-			io.Copy(w, rc)
+			h.Set("X-Content-Type-Options", "nosniff")
+			h.Set("Content-Disposition", "attachment; filename="+strconv.Quote(path.Base(innerPath)))
+			_, _ = io.Copy(w, rc)
 			return
 		}
 	}
