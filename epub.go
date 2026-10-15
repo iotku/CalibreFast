@@ -109,19 +109,11 @@ func epubFileHandler(w http.ResponseWriter, r *http.Request) {
 			ext := filepath.Ext(innerPath)
 			switch ext {
 			case ".html", ".xhtml":
-				content, err := io.ReadAll(rc)
-				if err != nil {
-					http.Error(w, "read error", 500)
-					return
-				}
-
-				// get the directory of the current file within the epub
-				fileDir := path.Dir(innerPath) // e.g. "OPS" for "OPS/chapter1.xhtml"
-				base := fmt.Sprintf("/epub/%s/%s/", uuid, fileDir)
-
-				s := rewriteEpubURLs(string(content), base)
-				w.Header().Set("Content-Type", "application/xhtml+xml")
-				w.Write([]byte(s))
+				// Do not render uploaded HTML/XHTML in-origin. Force download to prevent XSS.
+				w.Header().Set("X-Content-Type-Options", "nosniff")
+				w.Header().Set("Content-Type", "application/octet-stream")
+				w.Header().Set("Content-Disposition", "attachment; filename="+strconv.Quote(path.Base(innerPath)))
+				io.Copy(w, rc)
 				return
 			case ".css":
 				w.Header().Set("Content-Type", "text/css")
