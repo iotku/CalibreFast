@@ -36,7 +36,7 @@
     </div>
 </div>
 <div id="books" hx-get="/api/books?page=1" hx-trigger="load" hx-swap="innerHTML"></div>
-<div id="load-more" style="height: 1px;" hx-get="/api/books?page=2" hx-trigger="revealed" hx-swap="beforeend" hx-include="#page-input"></div>
+<div id="load-more" style="height: 1px;" hx-trigger="revealed" hx-swap="afterend"></div>
 <script type="module" src="/static/shared.js"></script>
 <script type="module" src="/static/app-htmx.js"></script>
 </body>

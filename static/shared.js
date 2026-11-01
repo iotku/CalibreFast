@@ -19,15 +19,16 @@ export function setupCoverObserver() {
       for (const entry of entries) {
         if (!entry.isIntersecting) continue;
         const img = entry.target;
-        if (img.src) continue;
+        // Only load if we have a data-src and haven't loaded yet
+        if (img.src || !img.dataset.src) continue;
         enqueue(img);
       }
     },
     { rootMargin: "800px" },
   );
 
-  // Observe all book covers currently in the DOM
-  document.querySelectorAll(".book-cover").forEach(img => {
+  // Observe all book covers currently in the DOM that have data-src
+  document.querySelectorAll(".book-cover[data-src]").forEach(img => {
     coverObserver.observe(img);
   });
 }

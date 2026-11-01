@@ -15,15 +15,16 @@ window.addEventListener("DOMContentLoaded", () => {
 
     // Initialize HTMX event listeners and click handlers
     function setupHTMXListeners() {
-        // After HTMX loads new books, process images
+        // After HTMX loads new books, process images and attach handlers
         document.body.addEventListener("htmx:afterSwap", (e) => {
-            if (e.detail.target.id === "books" || e.detail.target.id === "load-more") {
-                // Process new cover images with intersection observer
+            // Check if this was a page load for books
+            if (e.detail.target.id === "books") {
                 setupCoverObserver();
+                attachBookCardHandlers();
             }
         });
 
-        // Attach click handlers to book cards for modal
+        // Attach click handlers to initial book cards
         attachBookCardHandlers();
     }
 
@@ -213,10 +214,31 @@ window.addEventListener("DOMContentLoaded", () => {
         }
     });
 
+    // Setup infinite scroll with load-more sentinel
+    function setupInfiniteScroll() {
+        const loadMore = document.getElementById("load-more");
+        
+        // Listen for successful loads and update the next page to fetch
+        document.body.addEventListener("htmx:afterSwap", (e) => {
+            if (e.detail.target.id === "books") {
+                // After books are swapped, update load-more to fetch the next page
+                const nextPage = currentPage + 1;
+                loadMore.setAttribute("hx-get", `/api/books?page=${nextPage}`);
+                
+                // Re-process HTMX on the load-more element
+                htmx.process(loadMore);
+            }
+        });
+
+        // Initial setup
+        loadMore.setAttribute("hx-get", `/api/books?page=2`);
+    }
+
     // Initialize on load
     loadLibraryInfo().then(() => {
         updatePageFromURL();
         setupHTMXListeners();
+        setupInfiniteScroll();
         // Initial image loading setup
         initImageQueue();
     });
