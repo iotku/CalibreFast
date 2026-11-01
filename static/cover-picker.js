@@ -271,6 +271,11 @@ async function renderPdfPages(uuid, strip, status, picker, onCoverSaved, autoSel
             canvas.width = scaledViewport.width;
             canvas.height = scaledViewport.height;
             canvas.title = `Page ${i}`;
+            canvas.style.height = "180px";
+            canvas.style.maxHeight = "180px";
+            canvas.style.width = "auto";
+            canvas.style.maxWidth = "140px";
+            canvas.style.objectFit = "contain";
 
             await page.render({
                 canvasContext: canvas.getContext("2d"),
@@ -405,6 +410,11 @@ function renderImageThumb(uuid, imgUrl, title, strip, picker, onCoverSaved, auto
     const canvas = document.createElement("canvas");
     canvas.title = title;
     canvas.style.cursor = "pointer";
+    canvas.style.height = "180px";
+    canvas.style.maxHeight = "180px";
+    canvas.style.width = "auto";
+    canvas.style.maxWidth = "140px";
+    canvas.style.objectFit = "contain";
     strip.appendChild(canvas);
 
     const status = picker.querySelector(".cover-pages-status");
@@ -469,6 +479,11 @@ function renderTextPageThumb(uuid, doc, title, strip, picker, onCoverSaved, auto
     canvas.height = 180;
     canvas.title = title;
     canvas.style.cursor = "pointer";
+    canvas.style.height = "180px";
+    canvas.style.maxHeight = "180px";
+    canvas.style.width = "auto";
+    canvas.style.maxWidth = "140px";
+    canvas.style.objectFit = "contain";
     const ctx = canvas.getContext("2d");
 
     ctx.fillStyle = "#fcfaf7";
