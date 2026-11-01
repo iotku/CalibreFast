@@ -463,9 +463,129 @@
                 text-underline-offset: 3px;
                 cursor: pointer;
             }
+
+            /* ── Cover Picker ── */
+            .cover-picker {
+                margin-top: 0.75rem;
+                padding: 0.75rem 1rem;
+                background: rgba(200, 169, 110, 0.04);
+                border: 1px solid var(--border);
+                border-radius: var(--radius);
+            }
+            .cover-picker-header {
+                display: flex;
+                align-items: center;
+                justify-content: space-between;
+                margin-bottom: 0.6rem;
+            }
+            .cover-picker-header h3 {
+                font-family: var(--mono);
+                font-size: 0.68rem;
+                font-weight: 500;
+                color: var(--muted);
+                letter-spacing: 0.1em;
+                text-transform: uppercase;
+                margin: 0;
+            }
+            .cover-picker-done {
+                font-family: var(--mono);
+                font-size: 0.65rem;
+                color: var(--success);
+                display: none;
+                align-items: center;
+                gap: 4px;
+            }
+            .cover-picker-done.visible { display: inline-flex; }
+
+            .cover-picker-actions {
+                display: flex;
+                gap: 0.5rem;
+                align-items: center;
+                flex-wrap: wrap;
+            }
+            .cover-picker-actions label,
+            .cover-picker-actions button {
+                font-family: var(--mono);
+                font-size: 0.72rem;
+                letter-spacing: 0.06em;
+                padding: 0.45rem 0.9rem;
+                border-radius: var(--radius);
+                cursor: pointer;
+                border: 1px solid var(--border);
+                background: var(--surface);
+                color: var(--text);
+                transition: border-color 0.15s, background 0.15s;
+            }
+            .cover-picker-actions label:hover,
+            .cover-picker-actions button:hover {
+                border-color: var(--accent-dim);
+                background: var(--drag-bg);
+            }
+            .cover-picker-actions label input[type="file"] {
+                display: none;
+            }
+            .cover-picker-actions button.active {
+                border-color: var(--accent);
+                background: rgba(200, 169, 110, 0.1);
+            }
+
+            .cover-pages {
+                display: none;
+                margin-top: 0.6rem;
+            }
+            .cover-pages.visible { display: block; }
+            .cover-pages-strip {
+                display: flex;
+                gap: 6px;
+                overflow-x: auto;
+                padding: 4px 0;
+            }
+            .cover-pages-strip canvas,
+            .cover-pages-strip .epub-page-thumb {
+                height: 180px;
+                max-height: 180px;
+                width: auto;
+                max-width: 140px;
+                object-fit: contain;
+                border: 2px solid transparent;
+                border-radius: 3px;
+                cursor: pointer;
+                transition: border-color 0.15s, box-shadow 0.15s;
+                flex-shrink: 0;
+                background: #222;
+            }
+            .cover-pages-strip canvas:hover,
+            .cover-pages-strip .epub-page-thumb:hover {
+                border-color: var(--accent-dim);
+            }
+            .cover-pages-strip canvas.selected,
+            .cover-pages-strip .epub-page-thumb.selected {
+                border-color: var(--accent);
+                box-shadow: 0 0 0 1px var(--accent);
+            }
+            .cover-pages-status {
+                font-family: var(--mono);
+                font-size: 0.65rem;
+                color: var(--muted);
+                margin-top: 0.4rem;
+            }
+
+            .result-cover-thumb {
+                width: 64px;
+                height: 92px;
+                max-width: 64px;
+                max-height: 92px;
+                object-fit: cover;
+                border-radius: 4px;
+                border: 1px solid rgba(255, 255, 255, 0.12);
+                background: #181816;
+                flex-shrink: 0;
+                box-shadow: 0 2px 8px rgba(0, 0, 0, 0.4);
+            }
         </style>
     </head>
     <body>
+        <script src="https://cdn.jsdelivr.net/npm/epubjs@0.3.93/dist/epub.min.js"></script>
         <header>
             <a href="/">{{.Title}}</a>
             <span>/ upload</span>
@@ -552,7 +672,9 @@
             </div>
         </main>
 
-        <script>
+        <script type="module">
+            import { buildCoverPicker } from "/static/cover-picker.js";
+
             (function () {
                 const dropZone = document.getElementById("drop-zone");
                 const fileInput = document.getElementById("file-input");
@@ -782,7 +904,10 @@
                                 : null;
                             div.className = "result-item success";
                             div.innerHTML = `
-          <span class="result-status-icon">✓</span>
+          <div style="display:flex; flex-direction:column; align-items:center; gap:8px;">
+            <span class="result-status-icon">✓</span>
+            <img class="result-cover-thumb" id="result-thumb-${item.uuid}" src="/cover-thumb/${item.uuid}" style="display:none; width:64px; height:92px; max-width:64px; max-height:92px; object-fit:cover; border-radius:4px; flex-shrink:0;" />
+          </div>
           <div class="result-body">
             <div class="result-title">${escHtml(item.title || "Untitled")}</div>
             <div class="result-meta">${escHtml(authors)}</div>
@@ -790,6 +915,18 @@
           </div>
           ${bookLink ? `<a class="result-link" href="${bookLink}">View →</a>` : "<span></span>"}
         `;
+
+                            // Add cover picker with autoSelectDefault: true
+                            if (item.uuid && item.formats && item.formats.length > 0) {
+                                const thumbImg = div.querySelector(`#result-thumb-${item.uuid}`);
+                                const picker = buildCoverPicker(item.uuid, item.formats, (uuid) => {
+                                    if (thumbImg) {
+                                        thumbImg.style.display = "block";
+                                        thumbImg.src = `/cover-thumb/${uuid}?t=${Date.now()}`;
+                                    }
+                                }, { autoSelectDefault: true });
+                                div.querySelector(".result-body").appendChild(picker);
+                            }
                         }
                         resultsList.appendChild(div);
                     }

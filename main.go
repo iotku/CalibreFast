@@ -84,9 +84,10 @@ type PageData struct {
 }
 
 type EditBookPageData struct { // TODO I Hate this, these page structs are all over the place, we should unify them
-	UUID     string
-	Metadata *OPFMetadata
-	Date     string
+	UUID         string
+	Metadata     *OPFMetadata
+	Date         string
+	CoverModTime int64
 }
 
 func writePage(page int, books []Book) error {
@@ -252,6 +253,11 @@ func serveLibraryHTTP() {
 	// Uploads
 	http.HandleFunc("/upload", uploadHandler)
 
+	// Cover upload and management
+	http.HandleFunc("/upload-cover/{uuid}", uploadCoverHandler)
+	http.HandleFunc("/cover-status/{uuid}", coverStatusHandler)
+	http.HandleFunc("/revert-cover/{uuid}", revertCoverHandler)
+
 	// Individual Book metadata editor
 	http.HandleFunc("/book/edit/{uuid}", func(w http.ResponseWriter, r *http.Request) {
 		uuid := r.PathValue("uuid")
@@ -262,7 +268,12 @@ func serveLibraryHTTP() {
 
 		bookPath, ok := uuidPathIndex.Load(uuid)
 		if !ok {
-			http.Error(w, "book not found", http.StatusNotFound)
+			var err error
+			bookPath, err = resolveBookPath(uuid)
+			if err != nil {
+				http.Error(w, "book not found", http.StatusNotFound)
+				return
+			}
 		}
 
 		opfPath := filepath.Join(baseDir, bookPath.(string), "metadata.opf")
@@ -278,10 +289,17 @@ func serveLibraryHTTP() {
 			return
 		}
 
+		coverStat, cErr := os.Stat(filepath.Join(baseDir, bookPath.(string), "cover.jpg"))
+		var coverModTime int64
+		if cErr == nil {
+			coverModTime = coverStat.ModTime().UnixNano()
+		}
+
 		EditBookPageData := EditBookPageData{
-			UUID:     uuid,
-			Metadata: &existingOPF.Metadata,
-			Date:     parsedDate.Format("2006-01-02"),
+			UUID:         uuid,
+			Metadata:     &existingOPF.Metadata,
+			Date:         parsedDate.Format("2006-01-02"),
+			CoverModTime: coverModTime,
 		}
 
 		err = templates.ExecuteTemplate(w, "book-edit.html", EditBookPageData)
