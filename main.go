@@ -89,6 +89,7 @@ type BooksFragmentData struct {
 	Books       []Book
 	HasNextPage bool
 	NextPage    int
+	PageNumber  int
 }
 
 type EditBookPageData struct { // TODO I Hate this, these page structs are all over the place, we should unify them
@@ -295,6 +296,7 @@ func serveLibraryHTTP() {
 			Books:       books,
 			HasNextPage: page < totalPages,
 			NextPage:    page + 1,
+			PageNumber:  page,
 		}
 
 		// If this is a navigation request (not infinite scroll), update the URL

@@ -57,13 +57,11 @@
         <div id="modal-body"></div>
     </div>
 </div>
-<div id="books">
-    <!-- Initial page load will be replaced by htmx -->
-    <div hx-get="/htmx-page?page={{ .CurrentPage }}" 
-         hx-trigger="load" 
-         hx-swap="outerHTML">
-        Loading...
-    </div>
+<div id="books" 
+     hx-get="/htmx-page?page={{ .CurrentPage }}" 
+     hx-trigger="load" 
+     hx-swap="innerHTML">
+    Loading...
 </div>
 <script type="module" src="/static/shared.js"></script>
 <script type="module" src="/static/app-htmx.js"></script>

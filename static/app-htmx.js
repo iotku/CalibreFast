@@ -25,40 +25,56 @@ function updateNavigation(page, totalPages) {
     }
 }
 
-// Re-initialize observers and handlers after htmx swaps content
-document.body.addEventListener('htmx:afterSwap', function(event) {
-    // Re-attach cover observers to new images
-    const newImages = event.detail.target.querySelectorAll('.book-cover');
-    newImages.forEach(img => {
-        coverObserver.observe(img);
-        
-        // Add error handler for fallback text covers
-        img.addEventListener("error", () => {
-            const bookUuid = img.dataset.id;
-            const bookTitle = img.closest('.book').querySelector('h2').textContent;
-            const bookAuthor = img.closest('.book').querySelector('.book-author').textContent;
+// Initialize books in a container
+function initializeBooksInContainer(container) {
+    // Attach cover observers to images
+    const images = container.querySelectorAll('.book-cover');
+    images.forEach(img => {
+        if (!img.dataset.observerAttached) {
+            coverObserver.observe(img);
+            img.dataset.observerAttached = 'true';
             
-            const canvas = generateCoverText({
-                uuid: bookUuid,
-                title: bookTitle,
-                author_sort: bookAuthor
+            // Add error handler for fallback text covers
+            img.addEventListener("error", () => {
+                const bookUuid = img.dataset.id;
+                const bookEl = img.closest('.book');
+                if (!bookEl) return;
+                
+                const bookTitle = bookEl.querySelector('h2')?.textContent || '';
+                const bookAuthor = bookEl.querySelector('.book-author')?.textContent || '';
+                
+                const canvas = generateCoverText({
+                    uuid: bookUuid,
+                    title: bookTitle,
+                    author_sort: bookAuthor
+                });
+                
+                const wrapper = img.parentElement;
+                img.remove();
+                wrapper.appendChild(canvas);
             });
-            
-            const wrapper = img.parentElement;
-            img.remove();
-            wrapper.appendChild(canvas);
-        });
+        }
     });
     
-    // Re-attach click handlers for book modals
-    const bookLinks = event.detail.target.querySelectorAll('[data-book-uuid]');
+    // Attach click handlers for book modals
+    const bookLinks = container.querySelectorAll('.book-link');
     bookLinks.forEach(link => {
-        link.addEventListener('click', (e) => {
-            e.preventDefault();
-            const uuid = link.dataset.bookUuid;
-            openBookModal(uuid);
-        });
+        if (!link.dataset.clickAttached) {
+            link.addEventListener('click', (e) => {
+                e.preventDefault();
+                const uuid = link.dataset.bookUuid;
+                if (uuid) {
+                    openBookModal(uuid);
+                }
+            });
+            link.dataset.clickAttached = 'true';
+        }
     });
+}
+
+// Re-initialize after htmx swaps content
+document.body.addEventListener('htmx:afterSwap', function(event) {
+    initializeBooksInContainer(event.detail.target);
 });
 
 // Update navigation when page changes (for next/prev/input)
@@ -77,6 +93,10 @@ document.body.addEventListener('htmx:beforeRequest', function(event) {
 
 // Handle initial page load
 window.addEventListener("DOMContentLoaded", () => {
+    // Scroll to top on initial load
+    window.history.scrollRestoration = "manual";
+    window.scrollTo(0, 0);
+    
     const modal = document.getElementById("book-modal");
     const totalPages = parseInt(document.getElementById('total-pages').textContent);
     const pageInput = document.getElementById('page-input');
@@ -95,4 +115,10 @@ window.addEventListener("DOMContentLoaded", () => {
     window.addEventListener("keydown", (e) => {
         if (e.key === "Escape") modal.classList.remove("open");
     });
+    
+    // Initialize any books already in the DOM
+    const booksContainer = document.getElementById('books');
+    if (booksContainer) {
+        initializeBooksInContainer(booksContainer);
+    }
 });

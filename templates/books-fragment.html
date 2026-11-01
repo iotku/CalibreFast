@@ -1,6 +1,7 @@
+<div class="page" data-page="{{ .PageNumber }}">
 {{ range $index, $book := .Books }}
 <div class="book" data-uuid="{{ $book.UUID }}">
-    <a href="#" data-book-uuid="{{ $book.UUID }}">
+    <a href="#" data-book-uuid="{{ $book.UUID }}" class="book-link">
         <div class="cover-wrapper" style="background:{{ colorFromBook $book }}">
             <img class="book-cover" 
                  data-src="/cover-thumb/{{ $book.UUID }}" 
@@ -15,6 +16,7 @@
     </div>
 </div>
 {{ end }}
+</div>
 {{ if .HasNextPage }}
 <div hx-get="/htmx-page?page={{ .NextPage }}" 
      hx-trigger="revealed" 
