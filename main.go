@@ -252,6 +252,9 @@ func serveLibraryHTTP() {
 	// Uploads
 	http.HandleFunc("/upload", uploadHandler)
 
+	// Cover upload (image file or page screenshot)
+	http.HandleFunc("/upload-cover/{uuid}", uploadCoverHandler)
+
 	// Individual Book metadata editor
 	http.HandleFunc("/book/edit/{uuid}", func(w http.ResponseWriter, r *http.Request) {
 		uuid := r.PathValue("uuid")
