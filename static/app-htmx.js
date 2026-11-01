@@ -34,9 +34,13 @@ function initializeBooksInContainer(container) {
     const images = container.querySelectorAll('.book-cover');
     console.log('[Init] Found', images.length, 'images to observe');
     
+    let newImagesCount = 0;
+    let alreadyAttachedCount = 0;
+    
     images.forEach((img, index) => {
         if (!img.dataset.observerAttached) {
-            console.log('[Init] Observing image', index, 'with data-src:', img.dataset.src);
+            newImagesCount++;
+            console.log('[Init] Observing NEW image', index, 'UUID:', img.dataset.id, 'data-src:', img.dataset.src);
             coverObserver.observe(img);
             img.dataset.observerAttached = 'true';
             
@@ -65,19 +69,30 @@ function initializeBooksInContainer(container) {
             const rect = img.getBoundingClientRect();
             const isVisible = rect.top < window.innerHeight + 800;
             if (isVisible) {
-                console.log('[Init] Image', index, 'is already visible, enqueueing immediately');
+                console.log('[Init] Image', index, 'is already visible (top:', rect.top, '), enqueueing immediately');
                 enqueue(img);
+            } else {
+                console.log('[Init] Image', index, 'is not yet visible (top:', rect.top, '), will wait for intersection');
             }
+        } else {
+            alreadyAttachedCount++;
+            console.log('[Init] Image', index, 'already has observer attached, skipping');
         }
     });
+    
+    console.log('[Init] Summary: New images:', newImagesCount, 'Already attached:', alreadyAttachedCount);
     
     // Attach click handlers for book modals
     const bookLinks = container.querySelectorAll('.book-link');
     console.log('[Init] Found', bookLinks.length, 'book links to attach handlers');
     
+    let newLinksCount = 0;
+    let alreadyAttachedLinksCount = 0;
+    
     bookLinks.forEach((link, index) => {
         if (!link.dataset.clickAttached) {
-            console.log('[Init] Attaching click handler to link', index, 'for UUID:', link.dataset.bookUuid);
+            newLinksCount++;
+            console.log('[Init] Attaching click handler to NEW link', index, 'for UUID:', link.dataset.bookUuid);
             link.addEventListener('click', (e) => {
                 e.preventDefault();
                 const uuid = link.dataset.bookUuid;
@@ -87,23 +102,48 @@ function initializeBooksInContainer(container) {
                 }
             });
             link.dataset.clickAttached = 'true';
+        } else {
+            alreadyAttachedLinksCount++;
         }
     });
+    
+    console.log('[Init] Links summary: New links:', newLinksCount, 'Already attached:', alreadyAttachedLinksCount);
 }
 
 // Re-initialize after htmx swaps content
 document.body.addEventListener('htmx:afterSwap', function(event) {
-    console.log('[htmx:afterSwap] Event fired for target:', event.detail.target);
-    initializeBooksInContainer(event.detail.target);
+    console.log('[htmx:afterSwap] Event fired');
+    console.log('[htmx:afterSwap] Target:', event.detail.target);
+    console.log('[htmx:afterSwap] Target ID:', event.detail.target.id);
     
-    // Extract page number from first .page element if it exists
-    const pageEl = event.detail.target.querySelector('.page');
-    if (pageEl) {
-        const pageNum = parseInt(pageEl.dataset.page);
+    // For infinite scroll (outerHTML), the new content replaces the trigger
+    // For navigation (innerHTML to #books), the content is inside #books
+    
+    // Wait a brief moment for DOM to settle, then scan entire #books container
+    setTimeout(() => {
+        const booksContainer = document.getElementById('books');
+        if (booksContainer) {
+            console.log('[htmx:afterSwap] Scanning entire #books container for uninitialized content');
+            initializeBooksInContainer(booksContainer);
+        }
+    }, 50);
+    
+    // Extract page number from visible page elements
+    const booksContainer = document.getElementById('books');
+    const pageElements = booksContainer?.querySelectorAll('.page') || [];
+    console.log('[htmx:afterSwap] Found', pageElements.length, 'page elements');
+    
+    if (pageElements.length > 0) {
+        // Get the last page number (most recently added)
+        const lastPage = pageElements[pageElements.length - 1];
+        const pageNum = parseInt(lastPage.dataset.page);
         if (!isNaN(pageNum)) {
             const totalPages = parseInt(document.getElementById('total-pages')?.textContent || '1');
-            console.log('[htmx:afterSwap] Found page element with page number:', pageNum);
-            updateNavigation(pageNum, totalPages);
+            console.log('[htmx:afterSwap] Last page number:', pageNum);
+            // Only update navigation for non-infinite-scroll operations
+            if (pageElements.length === 1) {
+                updateNavigation(pageNum, totalPages);
+            }
         }
     }
 });
