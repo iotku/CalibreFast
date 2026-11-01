@@ -5,8 +5,6 @@ export const inQueue = new Set();
 export let active = 0;
 export const MAX_CONCURRENT = 8;
 
-export const booksDiv = document.getElementById("books");
-
 export const coverObserver = new IntersectionObserver(
   (entries) => {
     for (const entry of entries) {
@@ -121,71 +119,87 @@ function hashString(str) {
   return Math.abs(h);
 }
 
-// Modal handling
-const modal = document.getElementById("book-modal");
-const modalBody = document.getElementById("modal-body");
+// Modal handling - initialize on DOMContentLoaded
+let modal = null;
+let modalBody = null;
 
-window.addEventListener("popstate", () => {
-  document.body.classList.remove("no-scroll");
-  if (modal.classList.contains("open")) {
-    modal.classList.remove("open");
-  }
+document.addEventListener('DOMContentLoaded', () => {
+    modal = document.getElementById("book-modal");
+    modalBody = document.getElementById("modal-body");
+    
+    window.addEventListener("popstate", () => {
+        document.body.classList.remove("no-scroll");
+        if (modal?.classList.contains("open")) {
+            modal.classList.remove("open");
+        }
+    });
 });
 
 export async function openBookModal(uuid) {
-  document.body.classList.add("no-scroll"); // popstate trigger removes
-  modalBody.innerHTML = "Loading...";
-  modal.classList.add("open");
-  history.pushState({ modal: uuid }, "");
-
-  const res = await fetch(`/book/get/${uuid}`);
-  modalBody.innerHTML = await res.text();
-
-  const formatsRes = await fetch(`/formats/${uuid}`);
-  const formats = await formatsRes.json(); // TODO: We should just get the formats directly in the template and avoid the extra fetch call
-
-  if (!Array.isArray(formats)) return;
-
-  const btnContainer = document.createElement("div");
-  btnContainer.style.cssText = `
-        display:flex;
-        flex-direction:column;
-        gap:8px;
-        margin-top:1rem;
-        width:100%;
-    `;
-
-  for (const format of formats) {
-    let href = null;
-    let label = null;
-
-    if (format === "epub") {
-      href = `/read?uuid=${uuid}`;
-      label = "Read EPUB";
-    } else if (format === "pdf") {
-      href = `/read-pdf?uuid=${uuid}`;
-      label = "Read PDF";
+    console.log('[Modal] Opening modal for UUID:', uuid);
+    if (!modal || !modalBody) {
+        console.error('[Modal] Modal elements not found!');
+        return;
     }
+    
+    document.body.classList.add("no-scroll"); // popstate trigger removes
+    modalBody.innerHTML = "Loading...";
+    modal.classList.add("open");
+    history.pushState({ modal: uuid }, "");
 
-    if (!label) continue;
+    try {
+        const res = await fetch(`/book/get/${uuid}`);
+        modalBody.innerHTML = await res.text();
 
-    const btn = document.createElement("button");
-    btn.textContent = label;
-    btn.style.cssText = `
-            height:44px;
+        const formatsRes = await fetch(`/formats/${uuid}`);
+        const formats = await formatsRes.json();
+
+        if (!Array.isArray(formats)) return;
+
+        const btnContainer = document.createElement("div");
+        btnContainer.style.cssText = `
+            display:flex;
+            flex-direction:column;
+            gap:8px;
+            margin-top:1rem;
             width:100%;
         `;
 
-    btn.addEventListener("click", () => {
-      window.location.href = href;
-    });
+        for (const format of formats) {
+            let href = null;
+            let label = null;
 
-    btnContainer.appendChild(btn);
-  }
+            if (format === "epub") {
+                href = `/read?uuid=${uuid}`;
+                label = "Read EPUB";
+            } else if (format === "pdf") {
+                href = `/read-pdf?uuid=${uuid}`;
+                label = "Read PDF";
+            }
 
-  const readButtons = modalBody.querySelector("#read-buttons");
+            if (!label) continue;
 
-  if (readButtons && btnContainer.children.length > 0) {
-    readButtons.appendChild(btnContainer);
-  }
+            const btn = document.createElement("button");
+            btn.textContent = label;
+            btn.style.cssText = `
+                height:44px;
+                width:100%;
+            `;
+
+            btn.addEventListener("click", () => {
+                window.location.href = href;
+            });
+
+            btnContainer.appendChild(btn);
+        }
+
+        const readButtons = modalBody.querySelector("#read-buttons");
+
+        if (readButtons && btnContainer.children.length > 0) {
+            readButtons.appendChild(btnContainer);
+        }
+    } catch (err) {
+        console.error('[Modal] Error loading modal content:', err);
+        modalBody.innerHTML = "Error loading book details";
+    }
 }
