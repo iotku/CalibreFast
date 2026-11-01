@@ -5,6 +5,7 @@
     <title>{{ .Title }}</title>
     <link rel="stylesheet" href="/static/style.css">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <script src="https://unpkg.com/htmx.org@4.0.0/dist/htmx.min.js"></script>
 </head>
 <body>
 <header class="top-bar">
@@ -34,9 +35,9 @@
         <div id="modal-body"></div>
     </div>
 </div>
-<div id="books"></div>
-<div id="load-more" style="height: 1px;"></div>
+<div id="books" hx-get="/api/books?page=1" hx-trigger="load" hx-swap="innerHTML"></div>
+<div id="load-more" style="height: 1px;" hx-get="/api/books?page=2" hx-trigger="revealed" hx-swap="beforeend" hx-include="#page-input"></div>
 <script type="module" src="/static/shared.js"></script>
-<script type="module" src="/static/app.js"></script>
+<script type="module" src="/static/app-htmx.js"></script>
 </body>
 </html>

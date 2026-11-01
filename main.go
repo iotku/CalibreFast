@@ -314,6 +314,21 @@ func serveLibraryHTTP() {
 	// Apply updated metadata to a book
 	http.HandleFunc("/metadata/{uuid}/apply", applyMetadataHandler)
 
+	// Book fragment for modal (HTMX)
+	http.HandleFunc("/book/fragment/{uuid}", func(w http.ResponseWriter, r *http.Request) {
+		uuid := r.PathValue("uuid")
+		if uuid == "" {
+			http.Error(w, "Missing UUID", http.StatusBadRequest)
+			return
+		}
+
+		w.Header().Set("Content-Type", "text/html")
+		if err := renderBookDetailFragment(w, uuid); err != nil {
+			http.Error(w, "Failed to load book: "+err.Error(), http.StatusInternalServerError)
+			return
+		}
+	})
+
 	// Book Display
 	http.HandleFunc("/book/get/", bookHandler)
 
@@ -356,6 +371,27 @@ func serveLibraryHTTP() {
 
 	http.HandleFunc("/api/tags", func(w http.ResponseWriter, r *http.Request) {
 		aggregateHandler(w, "tags")
+	})
+
+	// API endpoint for paginated book listings (HTMX)
+	http.HandleFunc("/api/books", func(w http.ResponseWriter, r *http.Request) {
+		page, _ := strconv.Atoi(r.URL.Query().Get("page"))
+		if page < 1 {
+			page = 1
+		}
+
+		books, err := getBooksForPage(page)
+		if err != nil {
+			http.Error(w, "failed to fetch books", http.StatusInternalServerError)
+			return
+		}
+
+		if len(books) == 0 {
+			return // no more pages
+		}
+
+		w.Header().Set("Content-Type", "text/html")
+		renderBooksPageFragment(w, books, page)
 	})
 
 	// page routes

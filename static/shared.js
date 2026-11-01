@@ -7,17 +7,34 @@ export const MAX_CONCURRENT = 8;
 
 export const booksDiv = document.getElementById("books");
 
-const coverObserver = new IntersectionObserver(
-  (entries) => {
-    for (const entry of entries) {
-      if (!entry.isIntersecting) continue;
-      const img = entry.target;
-      if (img.src) continue;
-      enqueue(img);
-    }
-  },
-  { rootMargin: "800px" },
-);
+let coverObserver = null;
+
+export function setupCoverObserver() {
+  if (coverObserver) {
+    coverObserver.disconnect();
+  }
+  
+  coverObserver = new IntersectionObserver(
+    (entries) => {
+      for (const entry of entries) {
+        if (!entry.isIntersecting) continue;
+        const img = entry.target;
+        if (img.src) continue;
+        enqueue(img);
+      }
+    },
+    { rootMargin: "800px" },
+  );
+
+  // Observe all book covers currently in the DOM
+  document.querySelectorAll(".book-cover").forEach(img => {
+    coverObserver.observe(img);
+  });
+}
+
+export function initImageQueue() {
+  setupCoverObserver();
+}
 
 export function abortImageQueue() {
   imageGeneration++;
