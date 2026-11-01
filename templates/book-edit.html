@@ -555,7 +555,7 @@
             <!-- Book Preview Banner -->
             <div class="book-banner">
                 <img
-                    src="/cover-thumb/{{.UUID}}"
+                    src="/cover-thumb/{{.UUID}}{{ if .CoverModTime }}?t={{ .CoverModTime }}{{ end }}"
                     alt="Book Cover"
                     class="book-banner-cover"
                     id="edit-cover-img"

@@ -11,7 +11,6 @@ import (
 	"regexp"
 	"strings"
 	"sync"
-	"time"
 
 	"golang.org/x/image/draw"
 )
@@ -93,6 +92,17 @@ func coverThumbHandler(w http.ResponseWriter, r *http.Request) {
 
 	path, ok := uuidPathIndex.Load(uuid)
 	if !ok {
+		var err error
+		path, err = resolveBookPath(uuid)
+		if err != nil {
+			http.NotFound(w, r)
+			return
+		}
+	}
+
+	origPath := filepath.Join(baseDir, path.(string), "cover.jpg")
+	origStat, err := os.Stat(origPath)
+	if err != nil {
 		http.NotFound(w, r)
 		return
 	}
@@ -102,21 +112,21 @@ func coverThumbHandler(w http.ResponseWriter, r *http.Request) {
 		println(err.Error())
 	}
 
-	// FAST PATH: already cached
-	if f, err := os.Open(thumbPath); err == nil {
-		defer func(f *os.File) {
-			logErr(f.Close(), "failed to close thumb "+thumbPath)
-		}(f)
-		w.Header().Set("Content-Type", "image/jpeg")
-		w.Header().Set("Cache-Control", "no-cache, must-revalidate")
-		w.Header().Set("X-Cache-Hit", "true")
-		http.ServeContent(w, r, "thumb.jpg", time.Time{}, f)
-		return
+	// FAST PATH: cached thumbnail exists AND is NOT older than original cover.jpg
+	if thumbStat, err := os.Stat(thumbPath); err == nil && !thumbStat.ModTime().Before(origStat.ModTime()) {
+		if f, err := os.Open(thumbPath); err == nil {
+			defer func(f *os.File) {
+				logErr(f.Close(), "failed to close thumb "+thumbPath)
+			}(f)
+			w.Header().Set("Content-Type", "image/jpeg")
+			w.Header().Set("Cache-Control", "no-cache, must-revalidate")
+			w.Header().Set("X-Cache-Hit", "true")
+			http.ServeContent(w, r, "thumb.jpg", thumbStat.ModTime(), f)
+			return
+		}
 	}
 
-	// SLOW PATH: generate
-	origPath := filepath.Join(baseDir, path.(string), "cover.jpg")
-
+	// SLOW PATH: generate fresh thumbnail directly from cover.jpg
 	f, err := os.Open(origPath)
 	if err != nil {
 		http.NotFound(w, r)
@@ -143,11 +153,12 @@ func coverThumbHandler(w http.ResponseWriter, r *http.Request) {
 
 	data := buf.Bytes()
 
-	// Write to file
-	go func(data []byte, path string) {
-		logErr(os.WriteFile(path, data, 0644),
-			"failed to write thumbnail "+path)
-	}(append([]byte(nil), data...), thumbPath)
+	// Write to cache file synchronously with current timestamp
+	if err := os.WriteFile(thumbPath, data, 0644); err != nil {
+		log.Printf("cover-thumb: failed to write thumbnail %s: %v", thumbPath, err)
+	} else {
+		_ = os.Chtimes(thumbPath, origStat.ModTime(), origStat.ModTime())
+	}
 
 	w.Header().Set("Content-Type", "image/jpeg")
 	w.Header().Set("Cache-Control", "no-cache, must-revalidate")
