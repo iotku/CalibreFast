@@ -9,10 +9,13 @@ export const coverObserver = new IntersectionObserver(
   (entries) => {
     console.log('[IntersectionObserver] Callback fired with', entries.length, 'entries');
     for (const entry of entries) {
-      console.log('[IntersectionObserver] Entry:', entry.target.dataset.id, 'isIntersecting:', entry.isIntersecting, 'has src:', !!entry.target.src);
+      console.log('[IntersectionObserver] Entry:', entry.target.dataset.id, 'isIntersecting:', entry.isIntersecting, 'has src:', !!entry.target.src, 'boundingClientRect.top:', entry.boundingClientRect.top);
       if (!entry.isIntersecting) continue;
       const img = entry.target;
-      if (img.src) continue;
+      if (img.src) {
+        console.log('[IntersectionObserver] Image already has src, skipping');
+        continue;
+      }
       console.log('[IntersectionObserver] Enqueueing image:', img.dataset.id);
       enqueue(img);
     }

@@ -67,7 +67,10 @@ function initializeBooksInContainer(container) {
             
             // Manually trigger the enqueue if image is already visible
             const rect = img.getBoundingClientRect();
-            const isVisible = rect.top < window.innerHeight + 800;
+            const windowHeight = window.innerHeight;
+            const threshold = windowHeight + 800;
+            const isVisible = rect.top < threshold;
+            console.log('[Init] Visibility check for image', index, '- rect.top:', rect.top, 'windowHeight:', windowHeight, 'threshold:', threshold, 'isVisible:', isVisible);
             if (isVisible) {
                 console.log('[Init] Image', index, 'is already visible (top:', rect.top, '), enqueueing immediately');
                 enqueue(img);
