@@ -13,6 +13,7 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
+	"time"
 )
 
 // uploadCoverHandler handles POST /upload-cover/{uuid}
@@ -130,6 +131,9 @@ func uploadCoverHandler(w http.ResponseWriter, r *http.Request) {
 	}
 	outFile.Close()
 
+	now := time.Now()
+	_ = os.Chtimes(coverPath, now, now)
+
 	// Update has_cover in the database
 	if _, err := calibreDB.Exec(`UPDATE books SET has_cover = 1 WHERE uuid = ?`, uuid); err != nil {
 		log.Printf("upload-cover: failed to set has_cover for %s: %v", uuid, err)
@@ -212,21 +216,21 @@ func revertCoverHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// Swap current cover and backup
+	// Swap current cover and backup so user can undo if desired
 	tempPath := filepath.Join(destDir, "cover_temp.jpg")
 	if _, err := os.Stat(coverPath); err == nil {
-		_ = os.Rename(coverPath, tempPath)
+		_ = copyFile(coverPath, tempPath)
 	}
-	if err := os.Rename(backupPath, coverPath); err != nil {
-		if _, err2 := os.Stat(tempPath); err2 == nil {
-			_ = os.Rename(tempPath, coverPath)
-		}
+	if err := copyFile(backupPath, coverPath); err != nil {
 		http.Error(w, "failed to restore backup cover: "+err.Error(), http.StatusInternalServerError)
 		return
 	}
 	if _, err := os.Stat(tempPath); err == nil {
 		_ = os.Rename(tempPath, backupPath)
 	}
+
+	now := time.Now()
+	_ = os.Chtimes(coverPath, now, now)
 
 	// Invalidate thumbnail cache
 	thumbPath := filepath.Join(cacheDir, "covers", "thumb", uuid+".jpg")

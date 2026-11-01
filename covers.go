@@ -34,7 +34,12 @@ func coverHandler(w http.ResponseWriter, r *http.Request) {
 
 	bookPath, ok := uuidPathIndex.Load(uuid)
 	if !ok {
-		http.Error(w, "book not found", http.StatusNotFound)
+		var err error
+		bookPath, err = resolveBookPath(uuid)
+		if err != nil {
+			http.Error(w, "book not found", http.StatusNotFound)
+			return
+		}
 	}
 
 	// Build safe path
@@ -57,7 +62,7 @@ func coverHandler(w http.ResponseWriter, r *http.Request) {
 		logErr(f.Close(), "failed to close cover.jpg at "+coverPath)
 	}(f)
 
-	w.Header().Set("Cache-Control", "public, max-age=86400, immutable")
+	w.Header().Set("Cache-Control", "no-cache, must-revalidate")
 	w.Header().Set("Content-Type", "image/jpeg")
 
 	http.ServeContent(w, r, "cover.jpg", fileModTime(f), f)
@@ -103,7 +108,7 @@ func coverThumbHandler(w http.ResponseWriter, r *http.Request) {
 			logErr(f.Close(), "failed to close thumb "+thumbPath)
 		}(f)
 		w.Header().Set("Content-Type", "image/jpeg")
-		w.Header().Set("Cache-Control", "public, max-age=86400, immutable")
+		w.Header().Set("Cache-Control", "no-cache, must-revalidate")
 		w.Header().Set("X-Cache-Hit", "true")
 		http.ServeContent(w, r, "thumb.jpg", time.Time{}, f)
 		return
@@ -145,7 +150,7 @@ func coverThumbHandler(w http.ResponseWriter, r *http.Request) {
 	}(append([]byte(nil), data...), thumbPath)
 
 	w.Header().Set("Content-Type", "image/jpeg")
-	w.Header().Set("Cache-Control", "public, max-age=86400, immutable")
+	w.Header().Set("Cache-Control", "no-cache, must-revalidate")
 	w.Header().Set("X-Cache-Hit", "false")
 	_, _ = w.Write(data)
 }

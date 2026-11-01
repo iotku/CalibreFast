@@ -9,7 +9,7 @@
     <body>
         <div class="book-page">
             <div class="book-page-cover">
-                <img src="/cover/{{ .UUID }}" />
+                <img src="/cover/{{ .UUID }}{{ if .CoverModTime }}?t={{ .CoverModTime }}{{ end }}" />
                 <div id="read-buttons"></div>
             </div>
             <div class="book-page-info">

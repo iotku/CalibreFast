@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"html/template"
 	"net/http"
+	"os"
 	"path/filepath"
 	"strings"
 
@@ -31,7 +32,8 @@ type BookPageData struct {
 	Language    string
 	Tags        []string
 
-	Formats []string
+	Formats      []string
+	CoverModTime int64
 }
 
 func bookHandler(w http.ResponseWriter, r *http.Request) {
@@ -69,6 +71,12 @@ func bookHandler(w http.ResponseWriter, r *http.Request) {
 		formattedDate = t.Format("January 2, 2006")
 	}
 
+	coverStat, cErr := os.Stat(filepath.Join(baseDir, path, "cover.jpg"))
+	var coverModTime int64
+	if cErr == nil {
+		coverModTime = coverStat.ModTime().UnixNano()
+	}
+
 	data := BookPageData{
 		UUID: uuid,
 
@@ -85,7 +93,8 @@ func bookHandler(w http.ResponseWriter, r *http.Request) {
 			),
 		),
 
-		Formats: formats,
+		Formats:      formats,
+		CoverModTime: coverModTime,
 	}
 	// render into buffer first
 	var buf bytes.Buffer
