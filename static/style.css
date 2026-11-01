@@ -458,3 +458,40 @@ h1 {
     color: var(--muted, #8a857c);
     margin-top: 0.4rem;
 }
+
+.cover-auto-save-hint {
+    font-family: var(--mono, monospace);
+    font-size: 0.72rem;
+    color: var(--accent, #c8a96e);
+    background: rgba(200, 169, 110, 0.08);
+    border: 1px solid rgba(200, 169, 110, 0.25);
+    border-radius: var(--radius, 4px);
+    padding: 7px 10px;
+    margin-bottom: 0.75rem;
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    line-height: 1.4;
+}
+
+.btn-revert-cover {
+    border-color: rgba(186, 122, 122, 0.45) !important;
+    color: #e59999 !important;
+    background: rgba(186, 122, 122, 0.12) !important;
+}
+.btn-revert-cover:hover {
+    border-color: #ba7a7a !important;
+    background: rgba(186, 122, 122, 0.22) !important;
+    color: #fff !important;
+}
+
+.result-cover-thumb {
+    width: 52px;
+    height: 74px;
+    object-fit: cover;
+    border-radius: 4px;
+    border: 1px solid rgba(255, 255, 255, 0.1);
+    background: #1e1e1e;
+    flex-shrink: 0;
+    box-shadow: 0 2px 6px rgba(0, 0, 0, 0.35);
+}

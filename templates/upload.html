@@ -887,7 +887,10 @@
                                 : null;
                             div.className = "result-item success";
                             div.innerHTML = `
-          <span class="result-status-icon">✓</span>
+          <div style="display:flex; flex-direction:column; align-items:center; gap:8px;">
+            <span class="result-status-icon">✓</span>
+            <img class="result-cover-thumb" id="result-thumb-${item.uuid}" src="/cover-thumb/${item.uuid}" style="display:none;" />
+          </div>
           <div class="result-body">
             <div class="result-title">${escHtml(item.title || "Untitled")}</div>
             <div class="result-meta">${escHtml(authors)}</div>
@@ -896,9 +899,15 @@
           ${bookLink ? `<a class="result-link" href="${bookLink}">View →</a>` : "<span></span>"}
         `;
 
-                            // Add cover picker
+                            // Add cover picker with autoSelectDefault: true
                             if (item.uuid && item.formats && item.formats.length > 0) {
-                                const picker = buildCoverPicker(item.uuid, item.formats);
+                                const thumbImg = div.querySelector(`#result-thumb-${item.uuid}`);
+                                const picker = buildCoverPicker(item.uuid, item.formats, (uuid) => {
+                                    if (thumbImg) {
+                                        thumbImg.style.display = "block";
+                                        thumbImg.src = `/cover-thumb/${uuid}?t=${Date.now()}`;
+                                    }
+                                }, { autoSelectDefault: true });
                                 div.querySelector(".result-body").appendChild(picker);
                             }
                         }

@@ -109,6 +109,12 @@ func uploadCoverHandler(w http.ResponseWriter, r *http.Request) {
 	// Save as cover.jpg
 	destDir := filepath.Join(baseDir, bookPath)
 	coverPath := filepath.Join(destDir, "cover.jpg")
+	backupPath := filepath.Join(destDir, "cover_backup.jpg")
+
+	// If cover.jpg already exists, back it up to cover_backup.jpg so it can be reverted
+	if _, err := os.Stat(coverPath); err == nil {
+		_ = copyFile(coverPath, backupPath)
+	}
 
 	outFile, err := os.Create(coverPath)
 	if err != nil {
@@ -135,6 +141,103 @@ func uploadCoverHandler(w http.ResponseWriter, r *http.Request) {
 		log.Printf("upload-cover: failed to remove thumbnail cache for %s: %v", uuid, err)
 	}
 
+	hasBackup := false
+	if _, err := os.Stat(backupPath); err == nil {
+		hasBackup = true
+	}
+
 	w.Header().Set("Content-Type", "application/json")
-	fmt.Fprintf(w, `{"success":true,"uuid":%q}`, uuid)
+	fmt.Fprintf(w, `{"success":true,"uuid":%q,"hasBackup":%t}`, uuid, hasBackup)
+}
+
+// coverStatusHandler handles GET /cover-status/{uuid}
+// Returns whether the book has an active cover and whether a previous backup cover exists.
+func coverStatusHandler(w http.ResponseWriter, r *http.Request) {
+	uuid := r.PathValue("uuid")
+	if uuid == "" || !isSafeUUIDComponent(uuid) {
+		http.Error(w, "missing or invalid UUID", http.StatusBadRequest)
+		return
+	}
+
+	bookPath, err := resolveBookPath(uuid)
+	if err != nil {
+		http.Error(w, "book not found", http.StatusNotFound)
+		return
+	}
+
+	destDir := filepath.Join(baseDir, bookPath)
+	coverPath := filepath.Join(destDir, "cover.jpg")
+	backupPath := filepath.Join(destDir, "cover_backup.jpg")
+
+	hasCover := false
+	if _, err := os.Stat(coverPath); err == nil {
+		hasCover = true
+	}
+
+	hasBackup := false
+	if _, err := os.Stat(backupPath); err == nil {
+		hasBackup = true
+	}
+
+	w.Header().Set("Content-Type", "application/json")
+	fmt.Fprintf(w, `{"hasCover":%t,"hasBackup":%t}`, hasCover, hasBackup)
+}
+
+// revertCoverHandler handles POST /revert-cover/{uuid}
+// Swaps cover.jpg with cover_backup.jpg so the user can restore their previous cover (and undo if desired).
+func revertCoverHandler(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodPost {
+		http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
+		return
+	}
+
+	uuid := r.PathValue("uuid")
+	if uuid == "" || !isSafeUUIDComponent(uuid) {
+		http.Error(w, "missing or invalid UUID", http.StatusBadRequest)
+		return
+	}
+
+	bookPath, err := resolveBookPath(uuid)
+	if err != nil {
+		http.Error(w, "book not found", http.StatusNotFound)
+		return
+	}
+
+	destDir := filepath.Join(baseDir, bookPath)
+	coverPath := filepath.Join(destDir, "cover.jpg")
+	backupPath := filepath.Join(destDir, "cover_backup.jpg")
+
+	if _, err := os.Stat(backupPath); err != nil {
+		http.Error(w, "no previous cover to revert to", http.StatusBadRequest)
+		return
+	}
+
+	// Swap current cover and backup
+	tempPath := filepath.Join(destDir, "cover_temp.jpg")
+	if _, err := os.Stat(coverPath); err == nil {
+		_ = os.Rename(coverPath, tempPath)
+	}
+	if err := os.Rename(backupPath, coverPath); err != nil {
+		if _, err2 := os.Stat(tempPath); err2 == nil {
+			_ = os.Rename(tempPath, coverPath)
+		}
+		http.Error(w, "failed to restore backup cover: "+err.Error(), http.StatusInternalServerError)
+		return
+	}
+	if _, err := os.Stat(tempPath); err == nil {
+		_ = os.Rename(tempPath, backupPath)
+	}
+
+	// Invalidate thumbnail cache
+	thumbPath := filepath.Join(cacheDir, "covers", "thumb", uuid+".jpg")
+	if err := os.Remove(thumbPath); err != nil && !os.IsNotExist(err) {
+		log.Printf("revert-cover: failed to remove thumbnail cache for %s: %v", uuid, err)
+	}
+
+	if _, err := calibreDB.Exec(`UPDATE books SET has_cover = 1 WHERE uuid = ?`, uuid); err != nil {
+		log.Printf("revert-cover: failed to set has_cover for %s: %v", uuid, err)
+	}
+
+	w.Header().Set("Content-Type", "application/json")
+	fmt.Fprintf(w, `{"success":true,"reverted":true,"hasBackup":true}`)
 }

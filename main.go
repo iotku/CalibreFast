@@ -252,8 +252,10 @@ func serveLibraryHTTP() {
 	// Uploads
 	http.HandleFunc("/upload", uploadHandler)
 
-	// Cover upload (image file or page screenshot)
+	// Cover upload and management
 	http.HandleFunc("/upload-cover/{uuid}", uploadCoverHandler)
+	http.HandleFunc("/cover-status/{uuid}", coverStatusHandler)
+	http.HandleFunc("/revert-cover/{uuid}", revertCoverHandler)
 
 	// Individual Book metadata editor
 	http.HandleFunc("/book/edit/{uuid}", func(w http.ResponseWriter, r *http.Request) {
