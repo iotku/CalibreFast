@@ -7,10 +7,13 @@ export const MAX_CONCURRENT = 8;
 
 export const coverObserver = new IntersectionObserver(
   (entries) => {
+    console.log('[IntersectionObserver] Callback fired with', entries.length, 'entries');
     for (const entry of entries) {
+      console.log('[IntersectionObserver] Entry:', entry.target.dataset.id, 'isIntersecting:', entry.isIntersecting, 'has src:', !!entry.target.src);
       if (!entry.isIntersecting) continue;
       const img = entry.target;
       if (img.src) continue;
+      console.log('[IntersectionObserver] Enqueueing image:', img.dataset.id);
       enqueue(img);
     }
   },
@@ -26,32 +29,50 @@ export function abortImageQueue() {
 }
 
 export function enqueue(img) {
+  console.log('[Enqueue] Called for image:', img.dataset.id, 'Already in queue:', inQueue.has(img));
   if (inQueue.has(img)) return;
   inQueue.add(img);
   // NEWEST FIRST
   queue.unshift(img);
+  console.log('[Enqueue] Added to queue. Queue length:', queue.length);
   processQueue();
 }
 
 export function processQueue() {
   const signal = imageAbortController.signal;
   const generation = imageGeneration;
+  
+  console.log('[ProcessQueue] Starting. Active:', active, 'Queue length:', queue.length, 'Max concurrent:', MAX_CONCURRENT);
 
   while (active < MAX_CONCURRENT && queue.length > 0) {
     const img = queue.shift();
     inQueue.delete(img);
     active++;
+    
+    console.log('[ProcessQueue] Fetching image:', img.dataset.id, 'from:', img.dataset.src);
 
     fetch(img.dataset.src, { signal })
-      .then((r) => r.blob())
-      .then((blob) => {
-        if (imageGeneration !== generation) return; // stale, discard
-        img.src = URL.createObjectURL(blob);
-        img.onload = () => img.classList.add("loaded");
+      .then((r) => {
+        console.log('[Fetch] Response received for:', img.dataset.id, 'status:', r.status);
+        return r.blob();
       })
-      .catch(() => {})
+      .then((blob) => {
+        if (imageGeneration !== generation) {
+          console.log('[Fetch] Stale generation, discarding:', img.dataset.id);
+          return;
+        }
+        img.src = URL.createObjectURL(blob);
+        img.onload = () => {
+          console.log('[Fetch] Image loaded successfully:', img.dataset.id);
+          img.classList.add("loaded");
+        };
+      })
+      .catch((err) => {
+        console.error('[Fetch] Error loading image:', img.dataset.id, err);
+      })
       .finally(() => {
         active--;
+        console.log('[ProcessQueue] Fetch complete. Active:', active);
         if (imageGeneration === generation) processQueue();
       });
   }
