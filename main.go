@@ -80,7 +80,15 @@ type LibraryInfo struct {
 var totalPages = 0
 
 type PageData struct {
-	Title string
+	Title       string
+	CurrentPage int
+	TotalPages  int
+}
+
+type BooksFragmentData struct {
+	Books       []Book
+	HasNextPage bool
+	NextPage    int
 }
 
 type EditBookPageData struct { // TODO I Hate this, these page structs are all over the place, we should unify them
@@ -200,17 +208,101 @@ func fileModTime(f *os.File) (t time.Time) {
 	return stat.ModTime()
 }
 
+// colorFromBook generates a consistent color based on the book's UUID
+func colorFromBook(book Book) string {
+	h := hashString(book.UUID)
+	return "hsl(" + strconv.Itoa(h%360) + ", 55%, 35%)"
+}
+
+// hashString creates a hash from a string for color generation
+func hashString(str string) int {
+	h := 0
+	for i := 0; i < len(str); i++ {
+		h = (h << 5) - h + int(str[i])
+	}
+	if h < 0 {
+		h = -h
+	}
+	return h
+}
+
 var templates = template.Must(
-	template.ParseGlob("templates/*.html"),
+	template.New("").Funcs(template.FuncMap{
+		"colorFromBook": colorFromBook,
+		"add":           func(a, b int) int { return a + b },
+		"sub":           func(a, b int) int { return a - b },
+		"gt":            func(a, b int) bool { return a > b },
+		"lt":            func(a, b int) bool { return a < b },
+		"ge":            func(a, b int) bool { return a >= b },
+		"le":            func(a, b int) bool { return a <= b },
+	}).ParseGlob("templates/*.html"),
 )
 
 func serveLibraryHTTP() {
 	http.HandleFunc("/", func(w http.ResponseWriter, r *http.Request) {
+		page := 1
+		if p := r.URL.Query().Get("page"); p != "" {
+			if parsed, err := strconv.Atoi(p); err == nil && parsed > 0 {
+				page = parsed
+			}
+		}
+		if page > totalPages {
+			page = totalPages
+		}
+
 		data := PageData{
-			Title: "Library",
+			Title:       "Library",
+			CurrentPage: page,
+			TotalPages:  totalPages,
 		}
 
 		err := templates.ExecuteTemplate(w, "index.html", data)
+		if err != nil {
+			http.Error(w, err.Error(), 500)
+		}
+	})
+
+	// htmx endpoint for loading book pages
+	http.HandleFunc("/htmx-page", func(w http.ResponseWriter, r *http.Request) {
+		page := 1
+		if p := r.URL.Query().Get("page"); p != "" {
+			if parsed, err := strconv.Atoi(p); err == nil && parsed > 0 {
+				page = parsed
+			}
+		}
+		if page < 1 {
+			page = 1
+		}
+		if page > totalPages {
+			page = totalPages
+		}
+
+		// Read the pre-generated JSON page
+		jsonPath := filepath.Join("pages", "page"+strconv.Itoa(page)+".json")
+		data, err := os.ReadFile(jsonPath)
+		if err != nil {
+			http.Error(w, "Page not found", http.StatusNotFound)
+			return
+		}
+
+		var books []Book
+		if err := json.Unmarshal(data, &books); err != nil {
+			http.Error(w, "Invalid page data", http.StatusInternalServerError)
+			return
+		}
+
+		fragmentData := BooksFragmentData{
+			Books:       books,
+			HasNextPage: page < totalPages,
+			NextPage:    page + 1,
+		}
+
+		// If this is a navigation request (not infinite scroll), update the URL
+		if r.Header.Get("HX-Request") == "true" {
+			w.Header().Set("HX-Push-Url", "/?page="+strconv.Itoa(page))
+		}
+
+		err = templates.ExecuteTemplate(w, "books-fragment.html", fragmentData)
 		if err != nil {
 			http.Error(w, err.Error(), 500)
 		}

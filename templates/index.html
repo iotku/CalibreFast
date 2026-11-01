@@ -5,6 +5,7 @@
     <title>{{ .Title }}</title>
     <link rel="stylesheet" href="/static/style.css">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <script src="https://unpkg.com/htmx.org@4.0.0/dist/htmx.min.js"></script>
 </head>
 <body>
 <header class="top-bar">
@@ -21,11 +22,33 @@
         </form>
     </div>
     <div class="top-bar-right">
-        <button id="prev-page" aria-label="Previous page">&lsaquo;</button>
+        <button hx-get="/htmx-page?page={{ if gt .CurrentPage 1 }}{{ sub .CurrentPage 1 }}{{ else }}1{{ end }}" 
+                hx-target="#books" 
+                hx-swap="innerHTML"
+                hx-push-url="true"
+                {{ if le .CurrentPage 1 }}disabled{{ end }}
+                aria-label="Previous page">&lsaquo;</button>
         <label for="page-input">Page</label>
-        <input id="page-input" type="number" min="1" value="1" style="width:56px; text-align:center;" />
-        <span>of <span id="total-pages">—</span></span>
-        <button id="next-page" aria-label="Next page">&rsaquo;</button>
+        <input id="page-input" 
+               type="number" 
+               min="1" 
+               max="{{ .TotalPages }}"
+               value="{{ .CurrentPage }}" 
+               style="width:56px; text-align:center;"
+               hx-get="/htmx-page"
+               hx-trigger="change"
+               hx-target="#books"
+               hx-swap="innerHTML"
+               hx-push-url="true"
+               hx-include="this"
+               name="page" />
+        <span>of <span id="total-pages">{{ .TotalPages }}</span></span>
+        <button hx-get="/htmx-page?page={{ if lt .CurrentPage .TotalPages }}{{ add .CurrentPage 1 }}{{ else }}{{ .TotalPages }}{{ end }}" 
+                hx-target="#books" 
+                hx-swap="innerHTML"
+                hx-push-url="true"
+                {{ if ge .CurrentPage .TotalPages }}disabled{{ end }}
+                aria-label="Next page">&rsaquo;</button>
     </div>
 </header>
 <div id="book-modal" class="modal-overlay">
@@ -34,9 +57,15 @@
         <div id="modal-body"></div>
     </div>
 </div>
-<div id="books"></div>
-<div id="load-more" style="height: 1px;"></div>
+<div id="books">
+    <!-- Initial page load will be replaced by htmx -->
+    <div hx-get="/htmx-page?page={{ .CurrentPage }}" 
+         hx-trigger="load" 
+         hx-swap="outerHTML">
+        Loading...
+    </div>
+</div>
 <script type="module" src="/static/shared.js"></script>
-<script type="module" src="/static/app.js"></script>
+<script type="module" src="/static/app-htmx.js"></script>
 </body>
 </html>

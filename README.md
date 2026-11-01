@@ -24,7 +24,9 @@ CalibreFast is a personal project of mine, and I built it to scratch my own itch
 
 CalibreFast reads directly from your Calibre `metadata.db` and serves your library as a snappy, paginated grid. Pages are pre-generated as static JSON at startup so browsing feels instant — no database round-trips while you scroll. Search hits the database directly with full title and author support.
 
-- Paginated book grid with infinite scroll
+Built with [htmx 4.0](https://four.htmx.org/) for dynamic page loading without complex JavaScript frameworks.
+
+- Paginated book grid with infinite scroll (powered by htmx)
 - Fast cover thumbnails with lazy loading and a prefetch queue
 - Search by title or author
 - Download books in any format Calibre has (EPUB, PDF, MOBI, AZW3, DJVU)
@@ -63,9 +65,11 @@ Then open [http://localhost:8080](http://localhost:8080).
 
 ## How it works
 
-On startup, CalibreFast queries `metadata.db` and writes paginated JSON files (`pages/page1.json`, `page2.json`, …) to disk. The frontend fetches these directly as static files — no database hit per page. Cover thumbnails are generated on first request and cached to disk.
+On startup, CalibreFast queries `metadata.db` and writes paginated JSON files (`pages/page1.json`, `page2.json`, …) to disk. The frontend uses [htmx 4.0](https://four.htmx.org/) to dynamically load these pages as HTML fragments — no database hit per page, and no complex JavaScript needed. Cover thumbnails are generated on first request and cached to disk.
 
 Search is the one exception: it queries SQLite directly, joining the `books` and `authors` tables with a `LIKE` filter.
+
+See [HTMX_MIGRATION.md](HTMX_MIGRATION.md) for details on the architecture and migration from bespoke JavaScript.
 
 ## Security
 

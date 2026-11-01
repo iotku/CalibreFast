@@ -1,0 +1,25 @@
+{{ range $index, $book := .Books }}
+<div class="book" data-uuid="{{ $book.UUID }}">
+    <a href="#" data-book-uuid="{{ $book.UUID }}">
+        <div class="cover-wrapper" style="background:{{ colorFromBook $book }}">
+            <img class="book-cover" 
+                 data-src="/cover-thumb/{{ $book.UUID }}" 
+                 data-id="{{ $book.UUID }}"
+                 fetchpriority="low" />
+        </div>
+    </a>
+    <div class="book-info">
+        <h2>{{ $book.Title }}</h2>
+        <div class="book-author">{{ $book.AuthorSort }}</div>
+        <div class="formats"></div>
+    </div>
+</div>
+{{ end }}
+{{ if .HasNextPage }}
+<div hx-get="/htmx-page?page={{ .NextPage }}" 
+     hx-trigger="revealed" 
+     hx-swap="outerHTML"
+     class="load-more-trigger"
+     style="height: 1px;">
+</div>
+{{ end }}

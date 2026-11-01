@@ -7,7 +7,7 @@ export const MAX_CONCURRENT = 8;
 
 export const booksDiv = document.getElementById("books");
 
-const coverObserver = new IntersectionObserver(
+export const coverObserver = new IntersectionObserver(
   (entries) => {
     for (const entry of entries) {
       if (!entry.isIntersecting) continue;
@@ -121,83 +121,9 @@ function hashString(str) {
   return Math.abs(h);
 }
 
-export function getVisiblePage() {
-  const pages = document.querySelectorAll(".page");
-  const headerHeight = document.querySelector(".top-bar").offsetHeight;
-  let current = null;
-
-  for (const page of pages) {
-    const rect = page.getBoundingClientRect();
-    if (rect.top <= headerHeight + 5) {
-      current = parseInt(page.dataset.page, 10);
-    } else {
-      break;
-    }
-  }
-
-  return (
-    current ?? parseInt(document.querySelector(".page")?.dataset.page, 10) ?? 1
-  );
-}
-
-export function renderBooks(books, pageNumber, container = booksDiv) {
-  const pageEl = document.createElement("div");
-  pageEl.className = "page";
-  pageEl.dataset.page = pageNumber;
-  for (const book of books) {
-    const el = document.createElement("div");
-    el.className = "book";
-    el.innerHTML = `
-    <a href="/book/get/${book.uuid}">
-    <div class="cover-wrapper" style="background:${colorFromBook(book)}">
-        <img class="book-cover" fetchpriority="low" />
-    </div>
-    </a>
-
-    <div class="book-info">
-        <h2>${book.title}</h2>
-        <div class="book-author">
-            ${book.author_sort}
-        </div>
-        <div class="formats"></div>
-    </div>
-`;
-    const cover = el.querySelector(".book-cover");
-    cover.dataset.src = `/cover-thumb/${book.uuid}`;
-    cover.dataset.id = book.uuid;
-    coverObserver.observe(cover);
-    cover.addEventListener("error", () => {
-      const canvas = generateCoverText(book);
-      const wrapper = cover.parentElement;
-      cover.remove();
-      wrapper.appendChild(canvas);
-    });
-    const coverLink = el.querySelector("a");
-    coverLink.removeAttribute("href");
-    coverLink.addEventListener("click", (e) => {
-      e.preventDefault();
-      openBookModal(book.uuid);
-    });
-    pageEl.appendChild(el);
-  }
-  container.appendChild(pageEl);
-}
-
-// shared.js
+// Modal handling
 const modal = document.getElementById("book-modal");
 const modalBody = document.getElementById("modal-body");
-
-document.getElementById("modal-close").addEventListener("click", () => {
-  history.back();
-});
-
-modal.addEventListener("click", (e) => {
-  if (e.target === modal) history.back();
-});
-
-window.addEventListener("keydown", (e) => {
-  if (e.key === "Escape" && modal.classList.contains("open")) history.back();
-});
 
 window.addEventListener("popstate", () => {
   document.body.classList.remove("no-scroll");
@@ -205,6 +131,7 @@ window.addEventListener("popstate", () => {
     modal.classList.remove("open");
   }
 });
+
 export async function openBookModal(uuid) {
   document.body.classList.add("no-scroll"); // popstate trigger removes
   modalBody.innerHTML = "Loading...";
