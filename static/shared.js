@@ -182,7 +182,9 @@ export function renderBooks(books, pageNumber, container = booksDiv) {
     const cover = el.querySelector(".book-cover");
     cover.dataset.src = `/cover-thumb/${book.uuid}`;
     cover.dataset.id = book.uuid;
-    coverObserver.observe(cover);
+    if (coverObserver) {
+      coverObserver.observe(cover);
+    }
     cover.addEventListener("error", () => {
       const canvas = generateCoverText(book);
       const wrapper = cover.parentElement;

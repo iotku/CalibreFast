@@ -13,7 +13,7 @@ window.addEventListener("DOMContentLoaded", () => {
         updatePageButtons();
     }
 
-    // Initialize HTMX event listeners
+    // Initialize HTMX event listeners and click handlers
     function setupHTMXListeners() {
         // After HTMX loads new books, process images
         document.body.addEventListener("htmx:afterSwap", (e) => {
@@ -22,6 +22,48 @@ window.addEventListener("DOMContentLoaded", () => {
                 setupCoverObserver();
             }
         });
+
+        // Attach click handlers to book cards for modal
+        attachBookCardHandlers();
+    }
+
+    function attachBookCardHandlers() {
+        // Remove existing handlers and re-attach (in case of new content from HTMX)
+        document.querySelectorAll(".book[data-book-uuid]").forEach(card => {
+            card.removeEventListener("click", handleBookCardClick);
+            card.addEventListener("click", handleBookCardClick);
+            card.style.cursor = "pointer";
+        });
+    }
+
+    async function handleBookCardClick(e) {
+        e.preventDefault();
+        e.stopPropagation();
+
+        const uuid = e.currentTarget.dataset.bookUuid;
+        if (!uuid) return;
+
+        document.body.classList.add("no-scroll");
+        const modal = document.getElementById("book-modal");
+        const modalBody = document.getElementById("modal-body");
+        
+        modalBody.innerHTML = "Loading...";
+        modal.classList.add("open");
+        history.pushState({ modal: uuid }, "");
+
+        try {
+            // Load book details via HTMX
+            const res = await fetch(`/book/fragment/${uuid}`);
+            if (!res.ok) throw new Error("Failed to load book");
+            
+            modalBody.innerHTML = await res.text();
+            
+            // Load formats and add read buttons
+            await loadFormatsAndAddButtons(uuid);
+        } catch (err) {
+            console.error("Failed to load book:", err);
+            modalBody.innerHTML = "Failed to load book details.";
+        }
     }
 
     // Track current page from URL
@@ -97,19 +139,6 @@ window.addEventListener("DOMContentLoaded", () => {
     // Modal management
     const modal = document.getElementById("book-modal");
     const modalBody = document.getElementById("modal-body");
-
-    // Open modal handler
-    window.openBookModal = function() {
-        document.body.classList.add("no-scroll");
-        modal.classList.add("open");
-        history.pushState({ modal: true }, "");
-
-        // Load formats and add read buttons
-        const bookUUID = modalBody.querySelector(".book-page")?.dataset?.uuid;
-        if (bookUUID) {
-            loadFormatsAndAddButtons(bookUUID);
-        }
-    };
 
     async function loadFormatsAndAddButtons(uuid) {
         try {

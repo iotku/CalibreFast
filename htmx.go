@@ -38,12 +38,10 @@ func readPageJSON(filename string) ([]Book, error) {
 // for HTMX to append to the page.
 func renderBooksPageFragment(w io.Writer, books []Book, pageNumber int) error {
 	const pageFragment = `<div class="page" data-page="{{ .PageNumber }}">
-{{ range .Books }}<div class="book">
-    <a href="#" hx-get="/book/fragment/{{ .UUID }}" hx-target="#modal-body" hx-on::after-swap="openBookModal()">
+{{ range .Books }}<div class="book" data-book-uuid="{{ .UUID }}">
     <div class="cover-wrapper" style="background:{{ colorFromBook .UUID }}">
         <img class="book-cover" data-src="/cover-thumb/{{ .UUID }}" fetchpriority="low" />
     </div>
-    </a>
 
     <div class="book-info">
         <h2>{{ .Title }}</h2>
@@ -105,7 +103,7 @@ func renderBookDetailFragment(w io.Writer, uuid string) error {
 		return err
 	}
 
-	const bookDetailFragment = `<div class="book-page">
+	const bookDetailFragment = `<div class="book-page" data-uuid="{{ .UUID }}">
     <div class="book-page-cover">
         <img src="/cover/{{ .UUID }}" alt="Cover" style="max-width: 100%;" />
     </div>
