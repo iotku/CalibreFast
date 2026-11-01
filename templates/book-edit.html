@@ -558,6 +558,7 @@
                     src="/cover-thumb/{{.UUID}}"
                     alt="Book Cover"
                     class="book-banner-cover"
+                    id="edit-cover-img"
                     onerror="this.style.display='none'"
                 />
                 <div class="book-banner-info">
@@ -571,6 +572,9 @@
                     </p>
                 </div>
             </div>
+
+            <!-- Cover Picker Container -->
+            <div id="cover-picker-section" style="margin-bottom: 2rem;"></div>
 
             <!-- Status Banner -->
             <div id="edit-status" class="edit-status"></div>
@@ -665,11 +669,24 @@
 
         <script type="module">
             import { mountMetadataEditor } from "/static/metadata.js";
+            import { mountCoverPicker } from "/static/cover-picker.js";
 
             const form = document.getElementById("metadata-form");
-            mountMetadataEditor(form.dataset.uuid, form).catch((err) => {
+            const uuid = form.dataset.uuid;
+            mountMetadataEditor(uuid, form).catch((err) => {
                 console.error("Error mounting metadata editor:", err);
             });
+
+            const coverSection = document.getElementById("cover-picker-section");
+            if (coverSection) {
+                mountCoverPicker(coverSection, uuid, null, () => {
+                    const img = document.getElementById("edit-cover-img");
+                    if (img) {
+                        img.style.display = "block";
+                        img.src = `/cover-thumb/${uuid}?t=${Date.now()}`;
+                    }
+                });
+            }
         </script>
     </body>
 </html>
