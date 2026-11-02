@@ -1,42 +1,61 @@
 <!doctype html>
 <html lang="en">
-<head>
-    <meta charset="utf-8">
-    <title>{{ .Title }}</title>
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <link rel="stylesheet" href="/static/style.css">
-    <script src="https://unpkg.com/htmx.org@4.0.0/dist/htmx.min.js"></script>
-    <script src="https://unpkg.com/htmx.org@4.0.0/dist/ext/hx-preload.js"></script>
-</head>
-<body>
-<header class="top-bar">
-    <div class="top-bar-left">
-        <h1 class="title">{{ .Title }}</h1>
-        <a href="/authors" class="meta-link">Authors</a>
-        <a href="/publishers" class="meta-link">Publishers</a>
-        <a href="/tags" class="meta-link">Tags</a>
-    </div>
-    <div class="top-bar-center">
-        <form id="search-form" action="/search" method="get">
-            <input name="q" type="search" placeholder="Search…" class="input-search" />
-        </form>
-    </div>
-    <div class="top-bar-right">
-        <button id="prev-page" class="btn-nav" aria-label="Previous page">&lsaquo;</button>
-        <label for="page-input">Page</label>
-        <input id="page-input" type="number" min="1" value="1" class="input-page" />
-        <span>of <span id="total-pages">—</span></span>
-        <button id="next-page" class="btn-nav" aria-label="Next page">&rsaquo;</button>
-    </div>
-</header>
-<div id="book-modal" class="modal-overlay">
-    <div class="modal-content">
-        <button id="modal-close">✕</button>
-        <div id="modal-body"></div>
-    </div>
-</div>
-<div id="books"></div>
-<div id="load-more" class="load-more-sentinel"></div>
-<script type="module" src="/static/app-htmx.js"></script>
-</body>
+    <head>
+        <meta charset="utf-8" />
+        <title>{{ .Title }}</title>
+        <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+        <link rel="stylesheet" href="/static/style.css" />
+        <script src="https://cdn.jsdelivr.net/npm/htmx.org@4.0.1/dist/htmx.min.js"></script>
+        <script src="https://cdn.jsdelivr.net/npm/htmx.org@4.0.1/dist/ext/hx-preload.js"></script>
+    </head>
+    <body>
+        <header class="top-bar">
+            <div class="top-bar-left">
+                <h1 class="title">{{ .Title }}</h1>
+                <a href="/authors" class="meta-link">Authors</a>
+                <a href="/publishers" class="meta-link">Publishers</a>
+                <a href="/tags" class="meta-link">Tags</a>
+            </div>
+            <div class="top-bar-center">
+                <form id="search-form" action="/search" method="get">
+                    <input
+                        name="q"
+                        type="search"
+                        placeholder="Search…"
+                        class="input-search"
+                    />
+                </form>
+            </div>
+            <div class="top-bar-right">
+                <button
+                    id="prev-page"
+                    class="btn-nav"
+                    aria-label="Previous page"
+                >
+                    &lsaquo;
+                </button>
+                <label for="page-input">Page</label>
+                <input
+                    id="page-input"
+                    type="number"
+                    min="1"
+                    value="1"
+                    class="input-page"
+                />
+                <span>of <span id="total-pages">—</span></span>
+                <button id="next-page" class="btn-nav" aria-label="Next page">
+                    &rsaquo;
+                </button>
+            </div>
+        </header>
+        <div id="book-modal" class="modal-overlay">
+            <div class="modal-content">
+                <button id="modal-close">✕</button>
+                <div id="modal-body"></div>
+            </div>
+        </div>
+        <div id="books" hx-preload="mouseover"></div>
+        <div id="load-more" class="load-more-sentinel"></div>
+        <script type="module" src="/static/app-htmx.js"></script>
+    </body>
 </html>
