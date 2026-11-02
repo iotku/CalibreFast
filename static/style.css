@@ -1,15 +1,74 @@
+/* ============================================
+   CSS Custom Properties (Dark Theme)
+   ============================================ */
 :root {
+    /* Layout & Spacing */
     --topbar-height: 48px;
     --topbar-padding: 6px;
-    --topbar-total: calc(var(--topbar-height) * 2 + var(--topbar-padding) * 2);
+    --topbar-total: calc(var(--topbar-height) + var(--topbar-padding) * 2);
+    --page-padding: 24px;
+    --gap-small: 4px;
+    --gap-medium: 8px;
+    --gap-large: 12px;
+    --gap-xlarge: 24px;
+    
+    /* Colors - Background */
+    --bg-primary: #111;
+    --bg-secondary: #1b1b1b;
+    --bg-surface: #222;
+    --bg-elevated: #252525;
+    --bg-topbar: rgba(20, 20, 20, 0.85);
+    --bg-modal: rgba(11, 11, 11, 0.75);
+    --bg-modal-overlay: rgba(0, 0, 0, 0.6);
+    
+    /* Colors - Text */
+    --text-primary: #eee;
+    --text-secondary: #bbb;
+    --text-muted: #888;
+    --text-link: #aaa;
+    
+    /* Colors - Borders */
+    --border-subtle: rgba(255, 255, 255, 0.08);
+    --border-light: rgba(255, 255, 255, 0.1);
+    --border-medium: rgba(255, 255, 255, 0.15);
+    
+    /* Shadows */
+    --shadow-small: 0 2px 8px rgba(0, 0, 0, 0.35);
+    --shadow-medium: 0 6px 18px rgba(0, 0, 0, 0.45);
+    --shadow-large: 0 2px 6px rgba(0, 0, 0, 0.35);
+    
+    /* Typography */
+    --font-family: sans-serif;
+    --font-size-small: 0.8rem;
+    --font-size-normal: 1rem;
+    --font-size-large: 1.1rem;
+    --font-size-ui: 16px;
+    --font-size-tiny: 13px;
+    
+    /* Transitions */
+    --transition-fast: 0.15s ease;
+    --transition-normal: 0.25s ease;
+    
+    /* Border Radius */
+    --radius-small: 4px;
+    --radius-medium: 8px;
+    --radius-large: 12px;
+    --radius-round: 999px;
+    
+    /* Interactive Elements */
+    --touch-target: 44px;
+    --input-padding: 0 12px;
 }
 
+/* ============================================
+   Base Styles
+   ============================================ */
 body {
     margin: 0;
-    padding: 24px;
-    font-family: sans-serif;
-    background: #111;
-    color: #eee;
+    padding: var(--page-padding);
+    font-family: var(--font-family);
+    background: var(--bg-primary);
+    color: var(--text-primary);
 }
 
 body.no-scroll {
@@ -17,14 +76,91 @@ body.no-scroll {
 }
 
 h1 {
-    margin-bottom: 24px;
+    margin-bottom: var(--gap-xlarge);
 }
 
+/* ============================================
+   Component Classes - Buttons
+   ============================================ */
+button, .btn {
+    cursor: pointer;
+    border: 1px solid var(--border-medium);
+    background: var(--bg-surface);
+    color: var(--text-primary);
+    transition: border-color var(--transition-fast), background var(--transition-fast);
+    font-family: var(--font-family);
+}
+
+button:hover, .btn:hover {
+    border-color: var(--border-medium);
+    background: var(--bg-elevated);
+}
+
+button:disabled, .btn:disabled {
+    opacity: 0.5;
+    cursor: not-allowed;
+}
+
+.btn-icon {
+    min-width: var(--touch-target);
+    min-height: var(--touch-target);
+    width: var(--touch-target);
+    height: var(--touch-target);
+    padding: 0;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+}
+
+.btn-standard {
+    height: var(--touch-target);
+    padding: var(--input-padding);
+}
+
+.btn-back {
+    height: var(--touch-target);
+    padding: var(--input-padding);
+}
+
+.btn-nav {
+    min-width: var(--touch-target);
+    min-height: var(--touch-target);
+}
+
+/* ============================================
+   Component Classes - Inputs
+   ============================================ */
+input[type="search"],
+input[type="text"],
+input[type="number"],
+.input-search,
+.input-page {
+    height: var(--touch-target);
+    font-size: var(--font-size-ui);
+    padding: var(--input-padding);
+    border: 1px solid var(--border-medium);
+    background: var(--bg-surface);
+    color: var(--text-primary);
+    font-family: var(--font-family);
+    border-radius: var(--radius-small);
+}
+
+.input-search {
+    width: 300px;
+}
+
+.input-page {
+    width: 56px;
+    text-align: center;
+}
+
+/* ============================================
+   Layout - Books Grid
+   ============================================ */
 #books {
     display: flex;
     flex-direction: column;
-    gap: 24px;
-
+    gap: var(--gap-xlarge);
     max-width: 1600px;
     margin: var(--topbar-total) auto 0;
 }
@@ -34,28 +170,28 @@ h1 {
     grid-template-columns: repeat(5, 1fr);
     gap: 10px;
     width: 100%;
-
     content-visibility: auto;
     contain-intrinsic-size: 800px;
 }
 
+/* ============================================
+   Component - Book Card
+   ============================================ */
+
 .book {
-    background: #1b1b1b;
-    border-radius: 12px;
+    background: var(--bg-secondary);
+    border-radius: var(--radius-large);
     overflow: hidden;
     max-height: 100%;
-
     transition:
-        transform 0.15s ease,
-        box-shadow 0.15s ease;
-
-    box-shadow: 0 2px 8px rgba(0, 0, 0, 0.35);
+        transform var(--transition-fast),
+        box-shadow var(--transition-fast);
+    box-shadow: var(--shadow-small);
 }
 
 .book:hover {
     transform: translateY(-2px);
-
-    box-shadow: 0 6px 18px rgba(0, 0, 0, 0.45);
+    box-shadow: var(--shadow-medium);
 }
 .cover-wrapper {
     width: 100%;
@@ -73,7 +209,7 @@ h1 {
     object-fit: cover;
     display: block;
     opacity: 0;
-    transition: opacity 0.25s ease;
+    transition: opacity var(--transition-normal);
 }
 
 .book-info {
@@ -81,17 +217,15 @@ h1 {
 }
 
 .book h2 {
-    margin: 0 0 8px 0;
-
-    font-size: 1.1rem;
+    margin: 0 0 var(--gap-medium) 0;
+    font-size: var(--font-size-large);
     line-height: 1.15;
 }
 
 .book-author {
-    color: #bbb;
-    font-size: 0.8rem;
-
-    margin-bottom: 8px;
+    color: var(--text-secondary);
+    font-size: var(--font-size-small);
+    margin-bottom: var(--gap-medium);
 }
 
 .book-cover.loaded {
@@ -99,10 +233,13 @@ h1 {
 }
 
 .book-date {
-    color: #888;
-    font-size: 13px;
+    color: var(--text-muted);
+    font-size: var(--font-size-tiny);
 }
 
+/* ============================================
+   Layout - Top Bar
+   ============================================ */
 .top-bar {
     position: fixed;
     top: 0;
@@ -112,18 +249,18 @@ h1 {
     display: flex;
     align-items: center;
     justify-content: space-between;
-    padding: var(--topbar-padding) 12px;
-    background: rgba(20, 20, 20, 0.85);
+    padding: var(--topbar-padding) var(--gap-large);
+    background: var(--bg-topbar);
     backdrop-filter: blur(10px);
-    border-bottom: 1px solid rgba(255, 255, 255, 0.08);
+    border-bottom: 1px solid var(--border-subtle);
     flex-wrap: wrap;
-    gap: 4px;
+    gap: var(--gap-small);
 }
 
 .top-bar-left {
     display: flex;
     align-items: center;
-    gap: 12px;
+    gap: var(--gap-large);
     flex: 1;
     min-width: 0;
 }
@@ -140,11 +277,26 @@ h1 {
     display: flex;
     align-items: center;
     justify-content: flex-end;
-    gap: 8px;
+    gap: var(--gap-medium);
     flex: 1;
     min-width: 0;
 }
 
+.top-bar-center-abs {
+    position: absolute;
+    left: 50%;
+    transform: translateX(-50%);
+}
+
+.top-bar-controls {
+    display: inline-flex;
+    align-items: center;
+    gap: var(--gap-medium);
+}
+
+/* ============================================
+   Responsive - Top Bar
+   ============================================ */
 :root {
     --topbar-height: 48px;
     --topbar-padding: 6px;
@@ -173,11 +325,14 @@ h1 {
 
     :root {
         --topbar-total: calc(
-            var(--topbar-height) * 3 + var(--topbar-padding) * 2 + 8px
+            var(--topbar-height) * 3 + var(--topbar-padding) * 2 + var(--gap-medium)
         );
     }
 }
 
+/* ============================================
+   Component - Book Detail Page
+   ============================================ */
 .book-page {
     display: flex;
     gap: 2rem;
@@ -188,7 +343,7 @@ h1 {
 
 .book-page-cover img {
     width: 320px;
-    border-radius: 12px;
+    border-radius: var(--radius-large);
 }
 
 .book-page-info {
@@ -212,26 +367,40 @@ h1 {
 
 .download-btn {
     padding: 0.75rem 1rem;
-    background: #222;
+    background: var(--bg-surface);
     color: white;
     text-decoration: none;
-    border-radius: 8px;
+    border-radius: var(--radius-medium);
 }
 
 .tag {
     display: inline-block;
-    padding: 0.25rem 0.5rem;
-    background: #252525;
-    border-radius: 999px;
-    margin-right: 0.5rem;
-    margin-bottom: 0.5rem;
+    padding: 0.25rem 0.6rem;
+    background: var(--bg-elevated);
+    border-radius: var(--radius-round);
+    margin-right: 0.4rem;
+    margin-bottom: 0.4rem;
+    font-size: var(--font-size-tiny);
+    color: var(--text-link);
+    text-decoration: none;
+    transition:
+        background var(--transition-fast),
+        color var(--transition-fast);
 }
 
+.tag:hover {
+    background: #333;
+    color: #fff;
+}
+
+/* ============================================
+   Component - Modal
+   ============================================ */
 .modal-overlay {
     display: none;
     position: fixed;
     inset: 0;
-    background: rgba(0, 0, 0, 0.6);
+    background: var(--bg-modal-overlay);
     z-index: 1000;
     align-items: center;
     justify-content: center;
@@ -242,9 +411,9 @@ h1 {
 }
 
 .modal-content {
-    background-color: rgba(11, 11, 11, 0.75);
+    background-color: var(--bg-modal);
     backdrop-filter: blur(10px);
-    border-radius: 8px;
+    border-radius: var(--radius-medium);
     padding: 2rem;
     max-width: 100%;
     min-width: 60%;
@@ -264,12 +433,21 @@ h1 {
     cursor: pointer;
 }
 
-#prev-page,
-#next-page {
-    min-width: 44px;
-    min-height: 44px;
+/* ============================================
+   Utility Classes
+   ============================================ */
+.load-more-sentinel {
+    height: 1px;
 }
 
+.status-message {
+    text-align: center;
+    padding: 2rem 0;
+}
+
+/* ============================================
+   Page-Specific - Readers
+   ============================================ */
 .reader-page {
     overflow: hidden;
     background-color: wheat;
@@ -299,6 +477,71 @@ h1 {
     display: block;
 }
 
+.reader-progress {
+    font-size: 14px;
+    min-width: 80px;
+    text-align: center;
+}
+
+.reader-progress-pdf {
+    font-size: 14px;
+    min-width: 100px;
+    text-align: center;
+}
+
+.toc-sidebar {
+    display: none;
+    position: fixed;
+    top: 0;
+    left: 0;
+    bottom: 0;
+    width: 280px;
+    background: rgba(20, 20, 20, 0.97);
+    z-index: 999;
+    overflow-y: auto;
+    padding: 80px 16px 16px;
+}
+
+.toc-sidebar-pdf {
+    display: none;
+    position: fixed;
+    top: var(--topbar-total);
+    left: 0;
+    bottom: 0;
+    width: 280px;
+    background: rgba(20, 20, 20, 0.97);
+    z-index: 999;
+    overflow-y: auto;
+    padding: 16px;
+}
+
+.toc-sidebar h2,
+.toc-sidebar-pdf h2 {
+    margin-bottom: 1rem;
+}
+
+.toc-list {
+    list-style: none;
+    padding: 0;
+    margin: 0;
+}
+
+.reader-label {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    height: var(--touch-target);
+    cursor: pointer;
+}
+
+.reader-checkbox {
+    width: 18px;
+    height: 18px;
+}
+
+/* ============================================
+   Page-Specific - Aggregate
+   ============================================ */
 #aggregate-grid {
     padding: calc(var(--topbar-total) + 1rem) 2rem 2rem;
     max-width: 1200px;
@@ -307,12 +550,12 @@ h1 {
 }
 
 .meta-link {
-    color: #aaa;
+    color: var(--text-link);
     text-decoration: none;
-    border-bottom: 1px solid rgba(255, 255, 255, 0.15);
+    border-bottom: 1px solid var(--border-medium);
     transition:
-        color 0.15s,
-        border-color 0.15s;
+        color var(--transition-fast),
+        border-color var(--transition-fast);
 }
 
 .meta-link:hover {
@@ -320,25 +563,6 @@ h1 {
     border-bottom-color: rgba(255, 255, 255, 0.5);
 }
 
-.tag {
-    display: inline-block;
-    padding: 0.25rem 0.6rem;
-    background: #252525;
-    border-radius: 999px;
-    margin-right: 0.4rem;
-    margin-bottom: 0.4rem;
-    font-size: 13px;
-    color: #aaa;
-    text-decoration: none;
-    transition:
-        background 0.15s,
-        color 0.15s;
-}
-
-.tag:hover {
-    background: #333;
-    color: #fff;
-}
 .title-row {
     display: flex;
     align-items: center;
@@ -360,7 +584,17 @@ h1 {
     opacity: 1;
 }
 
-/* ── Cover Picker ── */
+.cover-picker-section {
+    margin-bottom: 2rem;
+}
+
+.identifiers-list {
+    margin-top: 0;
+}
+
+/* ============================================
+   Component - Cover Picker
+   ============================================ */
 .cover-picker {
     margin-top: 0.75rem;
     padding: 0.85rem 1rem;
@@ -489,9 +723,27 @@ h1 {
     width: 52px;
     height: 74px;
     object-fit: cover;
-    border-radius: 4px;
-    border: 1px solid rgba(255, 255, 255, 0.1);
+    border-radius: var(--radius-small);
+    border: 1px solid var(--border-light);
     background: #1e1e1e;
     flex-shrink: 0;
-    box-shadow: 0 2px 6px rgba(0, 0, 0, 0.35);
+    box-shadow: var(--shadow-large);
+}
+
+.result-item-container {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: var(--gap-medium);
+}
+
+.result-thumb-hidden {
+    display: none;
+    width: 64px;
+    height: 92px;
+    max-width: 64px;
+    max-height: 92px;
+    object-fit: cover;
+    border-radius: var(--radius-small);
+    flex-shrink: 0;
 }

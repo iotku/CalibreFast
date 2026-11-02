@@ -3,34 +3,35 @@
 <head>
     <meta charset="utf-8">
     <title>Reader — {{ .Title }}</title>
-    <link rel="stylesheet" href="/static/style.css">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <link rel="stylesheet" href="/static/style.css">
+    <script src="https://unpkg.com/htmx.org@4.0.0/dist/htmx.min.js"></script>
 </head>
 <body class="reader-page">
 <header class="top-bar">
-    <button onclick="history.back()" style="height:44px;">&#8592; Back</button>
-    <div style="position:absolute; left:50%; transform:translateX(-50%); display:inline-flex; align-items:center; gap:8px;">
-        <button id="prev-btn" style="height:44px; width:44px;">&#8249;</button>
-        <span id="progress-label" style="font-size:14px; min-width:100px; text-align:center;">— / —</span>
-        <button id="next-btn" style="height:44px; width:44px;">&#8250;</button>
+    <button class="btn-back" onclick="history.back()">&#8592; Back</button>
+    <div class="top-bar-center-abs top-bar-controls">
+        <button id="prev-btn" class="btn-icon">&#8249;</button>
+        <span id="progress-label" class="reader-progress-pdf">— / —</span>
+        <button id="next-btn" class="btn-icon">&#8250;</button>
     </div>
-    <div style="display:inline-flex; align-items:center; gap:8px;">
-        <button id="toc-btn" style="height:44px; padding:0 12px;">Contents</button>
-        <label style="display:inline-flex; align-items:center; gap:6px; height:44px; cursor:pointer;">
-            <input type="checkbox" id="dual-toggle" style="width:18px; height:18px;" />
+    <div class="top-bar-controls">
+        <button id="toc-btn" class="btn-standard">Contents</button>
+        <label class="reader-label">
+            <input type="checkbox" id="dual-toggle" class="reader-checkbox" />
             Dual
         </label>
-        <button id="font-down" style="height:44px; width:44px;">A-</button>
-        <label style="display:inline-flex; align-items:center; gap:6px; height:44px; cursor:pointer;">
-            <input type="checkbox" id="fit-toggle" style="width:18px; height:18px;" />
+        <button id="font-down" class="btn-icon">A-</button>
+        <label class="reader-label">
+            <input type="checkbox" id="fit-toggle" class="reader-checkbox" />
             Fit
         </label>
-        <button id="font-up" style="height:44px; width:44px;">A+</button>
+        <button id="font-up" class="btn-icon">A+</button>
     </div>
 </header>
-<div id="toc-sidebar" style="display:none; position:fixed; top:var(--topbar-total); left:0; bottom:0; width:280px; background:rgba(20,20,20,0.97); z-index:999; overflow-y:auto; padding:16px;">
-    <h2 style="margin-bottom:1rem;">Contents</h2>
-    <ul id="toc-list" style="list-style:none; padding:0; margin:0;"></ul>
+<div id="toc-sidebar" class="toc-sidebar-pdf">
+    <h2>Contents</h2>
+    <ul id="toc-list" class="toc-list"></ul>
 </div>
 <div id="pdf-container">
     <canvas id="pdf-canvas"></canvas>

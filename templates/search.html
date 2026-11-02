@@ -3,20 +3,21 @@
 <head>
     <meta charset="utf-8">
     <title>Search — {{ .Title }}</title>
-    <link rel="stylesheet" href="/static/style.css">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <link rel="stylesheet" href="/static/style.css">
+    <script src="https://unpkg.com/htmx.org@4.0.0/dist/htmx.min.js"></script>
+    <script src="https://unpkg.com/htmx.org@4.0.0/dist/ext/hx-preload.js"></script>
 </head>
 <body>
 <header class="top-bar">
-    <div style="display:inline-flex; align-items:center; gap:12px;">
-        <button style="height:44px;" onclick="history.back()" aria-label="Back to library">&#8592; Back</button>
+    <div class="top-bar-controls">
+        <button class="btn-back" onclick="history.back()" aria-label="Back to library">&#8592; Back</button>
         <h1 class="title">Search</h1>
     </div>
 
-    <form id="search-form" style="position:absolute; left:50%; transform:translateX(-50%); display:inline-flex; align-items:center; gap:8px;">
-        <input id="search-input" type="search" placeholder="Title or author…"
-               style="height:44px; font-size:16px; padding:0 12px; width:300px;" />
-        <button type="button" id="search-btn" style="height:44px; padding:0 16px;">Search</button>
+    <form id="search-form" class="top-bar-center-abs top-bar-controls">
+        <input id="search-input" type="search" placeholder="Title or author…" class="input-search" />
+        <button type="button" id="search-btn" class="btn-standard">Search</button>
     </form>
 
     <div></div>
@@ -28,8 +29,8 @@
     </div>
 </div>
 <div id="books"></div>
-<div id="load-more" style="height:1px;"></div>
-<p id="search-status" style="text-align:center;"></p>
+<div id="load-more" class="load-more-sentinel"></div>
+<p id="search-status" class="status-message"></p>
 <script type="module" src="/static/shared.js"></script>
 <script type="module" src="/static/search.js"></script>
 </body>

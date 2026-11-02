@@ -904,9 +904,9 @@
                                 : null;
                             div.className = "result-item success";
                             div.innerHTML = `
-          <div style="display:flex; flex-direction:column; align-items:center; gap:8px;">
+          <div class="result-item-container">
             <span class="result-status-icon">✓</span>
-            <img class="result-cover-thumb" id="result-thumb-${item.uuid}" src="/cover-thumb/${item.uuid}" style="display:none; width:64px; height:92px; max-width:64px; max-height:92px; object-fit:cover; border-radius:4px; flex-shrink:0;" />
+            <img class="result-cover-thumb result-thumb-hidden" id="result-thumb-${item.uuid}" src="/cover-thumb/${item.uuid}" />
           </div>
           <div class="result-body">
             <div class="result-title">${escHtml(item.title || "Untitled")}</div>
@@ -921,7 +921,7 @@
                                 const thumbImg = div.querySelector(`#result-thumb-${item.uuid}`);
                                 const picker = buildCoverPicker(item.uuid, item.formats, (uuid) => {
                                     if (thumbImg) {
-                                        thumbImg.style.display = "block";
+                                        thumbImg.classList.remove('result-thumb-hidden');
                                         thumbImg.src = `/cover-thumb/${uuid}?t=${Date.now()}`;
                                     }
                                 }, { autoSelectDefault: true });

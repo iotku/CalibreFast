@@ -1,0 +1,197 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Utils Test - CalibreFast</title>
+    <link rel="stylesheet" href="/static/style.css">
+    <style>
+        body {
+            padding: 2rem;
+        }
+        .test-section {
+            margin-bottom: 2rem;
+            padding: 1rem;
+            background: var(--bg-secondary);
+            border-radius: var(--radius-medium);
+        }
+        .test-section h2 {
+            margin-top: 0;
+            color: var(--text-primary);
+        }
+        pre {
+            background: var(--bg-primary);
+            padding: 1rem;
+            border-radius: var(--radius-small);
+            overflow-x: auto;
+            color: var(--text-secondary);
+            font-size: 12px;
+        }
+        .test-output {
+            margin-top: 1rem;
+        }
+    </style>
+</head>
+<body>
+    <h1>CalibreFast Utils Test Page</h1>
+    
+    <div class="test-section">
+        <h2>Test 1: Hash String Function</h2>
+        <button id="test-hash">Run Test</button>
+        <div class="test-output">
+            <pre id="hash-output">Click button to run test</pre>
+        </div>
+    </div>
+    
+    <div class="test-section">
+        <h2>Test 2: Color Generation</h2>
+        <button id="test-color">Run Test</button>
+        <div class="test-output">
+            <pre id="color-output">Click button to run test</pre>
+        </div>
+    </div>
+    
+    <div class="test-section">
+        <h2>Test 3: Render Single Book Card</h2>
+        <button id="test-card">Run Test</button>
+        <div class="test-output">
+            <pre id="card-html-output">Click button to run test</pre>
+        </div>
+        <div id="card-visual-output" style="max-width: 300px;"></div>
+    </div>
+    
+    <div class="test-section">
+        <h2>Test 4: Render Books Page</h2>
+        <button id="test-page">Run Test</button>
+        <div class="test-output">
+            <pre id="page-html-output">Click button to run test</pre>
+        </div>
+        <div id="page-visual-output"></div>
+    </div>
+    
+    <div class="test-section">
+        <h2>Test 5: Generate Text Cover</h2>
+        <button id="test-cover">Run Test</button>
+        <div class="test-output">
+            <div id="cover-output"></div>
+        </div>
+    </div>
+
+    <script type="module">
+        import {
+            hashString,
+            colorFromBook,
+            renderBookCard,
+            renderBooksPage,
+            generateCoverText,
+            setupCoverLazyLoading,
+            setupBookClickHandlers
+        } from './utils.js';
+
+        // Sample book data
+        const sampleBook = {
+            uuid: "test-uuid-12345",
+            title: "The Go Programming Language",
+            author_sort: "Donovan, Alan A. A.; Kernighan, Brian W."
+        };
+
+        const sampleBooks = [
+            {
+                uuid: "book-1",
+                title: "Clean Code",
+                author_sort: "Martin, Robert C."
+            },
+            {
+                uuid: "book-2",
+                title: "Design Patterns",
+                author_sort: "Gamma, Erich; Helm, Richard; Johnson, Ralph; Vlissides, John"
+            },
+            {
+                uuid: "book-3",
+                title: "The Pragmatic Programmer",
+                author_sort: "Hunt, Andrew; Thomas, David"
+            }
+        ];
+
+        // Test 1: Hash String
+        document.getElementById('test-hash').addEventListener('click', () => {
+            const testStrings = ['test-uuid-12345', 'another-uuid', 'same-uuid', 'same-uuid'];
+            const results = testStrings.map(str => ({
+                input: str,
+                hash: hashString(str)
+            }));
+            
+            document.getElementById('hash-output').textContent = 
+                'Hash Results:\n' + 
+                JSON.stringify(results, null, 2) +
+                '\n\nNote: Same inputs produce same hashes (deterministic)';
+        });
+
+        // Test 2: Color Generation
+        document.getElementById('test-color').addEventListener('click', () => {
+            const colors = [sampleBook, ...sampleBooks].map(book => ({
+                uuid: book.uuid,
+                color: colorFromBook(book)
+            }));
+            
+            const colorPreview = colors.map(c => 
+                `<div style="display:inline-block; width:50px; height:50px; background:${c.color}; margin:5px; border-radius:4px;" title="${c.uuid}"></div>`
+            ).join('');
+            
+            document.getElementById('color-output').innerHTML = 
+                '<div style="color:var(--text-primary);">Color Swatches (hover for UUID):</div>' +
+                colorPreview +
+                '<pre style="margin-top:1rem;">' +
+                JSON.stringify(colors, null, 2) +
+                '</pre>';
+        });
+
+        // Test 3: Single Book Card
+        document.getElementById('test-card').addEventListener('click', () => {
+            const html = renderBookCard(sampleBook);
+            document.getElementById('card-html-output').textContent = html;
+            document.getElementById('card-visual-output').innerHTML = html;
+            
+            setupBookClickHandlers(
+                document.getElementById('card-visual-output'),
+                (uuid) => alert(`Book clicked: ${uuid}`)
+            );
+        });
+
+        // Test 4: Books Page
+        document.getElementById('test-page').addEventListener('click', () => {
+            const html = renderBooksPage(sampleBooks, 1);
+            document.getElementById('page-html-output').textContent = html;
+            document.getElementById('page-visual-output').innerHTML = html;
+            
+            setupBookClickHandlers(
+                document.getElementById('page-visual-output'),
+                (uuid) => alert(`Book clicked: ${uuid}`)
+            );
+        });
+
+        // Test 5: Text Cover
+        document.getElementById('test-cover').addEventListener('click', () => {
+            const canvas = generateCoverText(sampleBook);
+            const output = document.getElementById('cover-output');
+            output.innerHTML = '';
+            output.appendChild(canvas);
+            
+            output.insertAdjacentHTML('beforeend', 
+                '<p style="color:var(--text-secondary); margin-top:1rem;">Generated canvas-based cover for books without images</p>'
+            );
+        });
+
+        console.log('Utils test page loaded. All functions imported successfully.');
+        console.log('Available functions:', {
+            hashString,
+            colorFromBook,
+            renderBookCard,
+            renderBooksPage,
+            generateCoverText,
+            setupCoverLazyLoading,
+            setupBookClickHandlers
+        });
+    </script>
+</body>
+</html>
