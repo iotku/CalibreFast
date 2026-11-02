@@ -114,15 +114,17 @@ export function renderBookCard(book) {
 
     return `
 <div class="book">
-    <a href="/book/get/${uuid}" 
+    <a href="#" 
+       data-book-uuid="${uuid}"
        hx-get="/book/get/${uuid}"
        hx-target="#modal-body"
        hx-swap="innerHTML"
-       hx-push-url="/book/get/${uuid}"
        hx-on::before:request="
+           event.preventDefault();
            document.body.classList.add('no-scroll');
            document.getElementById('book-modal').classList.add('open');
            document.getElementById('modal-body').innerHTML = 'Loading...';
+           history.pushState({modal: '${uuid}'}, '', '/book/get/${uuid}');
        "
        class="book-link">
         <div class="cover-wrapper" style="background:${coverColor}">
