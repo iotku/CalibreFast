@@ -118,7 +118,12 @@ export function renderBookCard(book) {
        hx-get="/book/get/${uuid}"
        hx-target="#modal-body"
        hx-swap="innerHTML"
-       hx-push-url="true"
+       hx-push-url="/book/get/${uuid}"
+       hx-on::before:request="
+           document.body.classList.add('no-scroll');
+           document.getElementById('book-modal').classList.add('open');
+           document.getElementById('modal-body').innerHTML = 'Loading...';
+       "
        class="book-link">
         <div class="cover-wrapper" style="background:${coverColor}">
             <img class="book-cover" 
@@ -156,21 +161,15 @@ export function renderBooksPage(books, pageNumber) {
 
 /**
  * Setup book card click handlers for modal opening
- * Now uses htmx, so we just need to handle modal visibility
+ * Uses htmx to load content
  * @param {HTMLElement} container - Container element with book cards
  */
 export function setupBookClickHandlers(container) {
-    const bookLinks = container.querySelectorAll('.book-link');
-    bookLinks.forEach(link => {
-        link.addEventListener('click', (e) => {
-            e.preventDefault();
-            // Show modal immediately
-            const modal = document.getElementById("book-modal");
-            document.body.classList.add("no-scroll");
-            modal.classList.add("open");
-            // htmx will handle the content loading
-        });
-    });
+    // htmx handles everything via hx-on attributes in the HTML
+    // Just need to initialize htmx on new elements
+    if (typeof htmx !== 'undefined') {
+        htmx.process(container);
+    }
 }
 
 /**

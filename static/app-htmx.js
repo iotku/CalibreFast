@@ -228,11 +228,13 @@ function closeModal() {
 
 // Modal event handlers
 document.getElementById("modal-close").addEventListener("click", () => {
+    closeModal();
     history.back();
 });
 
 document.getElementById("book-modal").addEventListener("click", (e) => {
     if (e.target.id === "book-modal") {
+        closeModal();
         history.back();
     }
 });
@@ -240,6 +242,7 @@ document.getElementById("book-modal").addEventListener("click", (e) => {
 window.addEventListener("keydown", (e) => {
     const modal = document.getElementById("book-modal");
     if (e.key === "Escape" && modal.classList.contains("open")) {
+        closeModal();
         history.back();
     }
 });
