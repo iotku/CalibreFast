@@ -6,7 +6,9 @@
 import {
     renderBooksPage,
     setupBookClickHandlers,
-    setupCoverLazyLoading
+    setupCoverLazyLoading,
+    cancelFarImages,
+    abortImageQueue
 } from "./utils.js";
 
 // Global state
@@ -154,6 +156,7 @@ function setupInfiniteScrollSentinel() {
  */
 function setupScrollTracking() {
     let updateScheduled = false;
+    let lastVisiblePage = null;
     
     function scheduleUpdate() {
         if (updateScheduled) return;
@@ -161,6 +164,13 @@ function setupScrollTracking() {
         requestAnimationFrame(() => {
             updateScheduled = false;
             updatePageLabel();
+            
+            // Cancel far images on scroll
+            const visiblePage = getVisiblePage();
+            if (visiblePage !== lastVisiblePage) {
+                lastVisiblePage = visiblePage;
+                cancelFarImages(visiblePage, 2); // Keep 2 pages on each side
+            }
         });
     }
     
@@ -337,6 +347,9 @@ document.getElementById("page-input").addEventListener("change", async (e) => {
     target = Math.max(1, Math.min(target, totalPages));
     e.target.value = target;
     
+    // Abort pending image loads
+    abortImageQueue();
+    
     // Clear and reload
     document.getElementById("books").innerHTML = "";
     currentPage = target;
@@ -349,6 +362,9 @@ document.getElementById("next-page").addEventListener("click", async () => {
     const page = getVisiblePage();
     if (page >= totalPages) return;
     
+    // Abort pending image loads
+    abortImageQueue();
+    
     document.getElementById("books").innerHTML = "";
     currentPage = page + 1;
     
@@ -359,6 +375,9 @@ document.getElementById("next-page").addEventListener("click", async () => {
 document.getElementById("prev-page").addEventListener("click", async () => {
     const page = getVisiblePage();
     if (page <= 1) return;
+    
+    // Abort pending image loads
+    abortImageQueue();
     
     document.getElementById("books").innerHTML = "";
     currentPage = page - 1;

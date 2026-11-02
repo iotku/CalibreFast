@@ -76,6 +76,15 @@
             <div id="cover-output"></div>
         </div>
     </div>
+    
+    <div class="test-section">
+        <h2>Test 6: Image Queue with Priority</h2>
+        <button id="test-queue">Run Test</button>
+        <div class="test-output">
+            <pre id="queue-output">Click button to simulate priority loading</pre>
+        </div>
+        <div id="queue-visual" style="max-height: 400px; overflow-y: auto;"></div>
+    </div>
 
     <script type="module">
         import {
@@ -85,7 +94,9 @@
             renderBooksPage,
             generateCoverText,
             setupCoverLazyLoading,
-            setupBookClickHandlers
+            setupBookClickHandlers,
+            cancelFarImages,
+            abortImageQueue
         } from './utils.js';
 
         // Sample book data
@@ -182,6 +193,55 @@
             );
         });
 
+        // Test 6: Image Queue Priority
+        document.getElementById('test-queue').addEventListener('click', () => {
+            const output = document.getElementById('queue-output');
+            const visual = document.getElementById('queue-visual');
+            
+            output.textContent = 'Creating 3 pages of books (15 books total)...\n';
+            output.textContent += 'Priority: Page 2 (visible) > Page 1 > Page 3\n';
+            output.textContent += 'Scroll the container to see lazy loading in action\n';
+            output.textContent += 'Max 8 concurrent requests\n\n';
+            
+            // Create 3 pages
+            const allBooks = [];
+            for (let page = 1; page <= 3; page++) {
+                for (let i = 0; i < 5; i++) {
+                    allBooks.push({
+                        uuid: `page${page}-book${i}`,
+                        title: `Book ${i+1} from Page ${page}`,
+                        author_sort: `Author ${i+1}`
+                    });
+                }
+            }
+            
+            // Render all pages
+            visual.innerHTML = '';
+            for (let page = 1; page <= 3; page++) {
+                const pageBooks = allBooks.slice((page-1)*5, page*5);
+                const html = renderBooksPage(pageBooks, page);
+                visual.insertAdjacentHTML('beforeend', html);
+            }
+            
+            // Setup lazy loading
+            setupCoverLazyLoading(visual);
+            
+            // Simulate scroll to page 2 (middle)
+            setTimeout(() => {
+                const page2 = visual.querySelector('[data-page="2"]');
+                if (page2) {
+                    page2.scrollIntoView({ behavior: 'smooth', block: 'center' });
+                    output.textContent += '→ Scrolled to Page 2 (visible page gets priority)\n';
+                    
+                    // Cancel far images after a moment
+                    setTimeout(() => {
+                        cancelFarImages(2, 1); // Keep page 1-3, cancel others
+                        output.textContent += '→ Cancelled images far from Page 2\n';
+                    }, 1000);
+                }
+            }, 500);
+        });
+
         console.log('Utils test page loaded. All functions imported successfully.');
         console.log('Available functions:', {
             hashString,
@@ -190,7 +250,9 @@
             renderBooksPage,
             generateCoverText,
             setupCoverLazyLoading,
-            setupBookClickHandlers
+            setupBookClickHandlers,
+            cancelFarImages,
+            abortImageQueue
         });
     </script>
 </body>

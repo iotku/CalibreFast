@@ -169,7 +169,149 @@ export function setupBookClickHandlers(container, openModalCallback) {
 }
 
 /**
+ * Image Loading Queue Manager
+ * Prioritizes visible images and manages concurrent requests
+ */
+class ImageQueue {
+    constructor(maxConcurrent = 8) {
+        this.maxConcurrent = maxConcurrent;
+        this.queue = []; // Array of {img, priority, generation}
+        this.inQueue = new Set(); // Set of img elements
+        this.active = 0; // Number of active requests
+        this.generation = 0; // Increments when queue is aborted
+        this.abortController = new AbortController();
+    }
+
+    /**
+     * Abort all pending and active requests
+     */
+    abort() {
+        this.generation++;
+        this.abortController.abort();
+        this.abortController = new AbortController();
+        this.queue = [];
+        this.inQueue.clear();
+    }
+
+    /**
+     * Add image to queue with priority
+     * Higher priority = loads first
+     * @param {HTMLImageElement} img - Image element
+     * @param {number} priority - Priority (higher = sooner)
+     */
+    enqueue(img, priority = 0) {
+        if (this.inQueue.has(img)) {
+            // Update priority if already queued
+            const item = this.queue.find(q => q.img === img);
+            if (item && priority > item.priority) {
+                item.priority = priority;
+                // Re-sort queue
+                this.queue.sort((a, b) => b.priority - a.priority);
+            }
+            return;
+        }
+
+        this.inQueue.add(img);
+        this.queue.push({ img, priority, generation: this.generation });
+        
+        // Sort by priority (highest first)
+        this.queue.sort((a, b) => b.priority - a.priority);
+        
+        this.processQueue();
+    }
+
+    /**
+     * Process queued image loads
+     */
+    processQueue() {
+        const signal = this.abortController.signal;
+        const generation = this.generation;
+
+        while (this.active < this.maxConcurrent && this.queue.length > 0) {
+            const item = this.queue.shift();
+            const { img } = item;
+            
+            this.inQueue.delete(img);
+            this.active++;
+
+            const src = img.dataset.src;
+            if (!src) {
+                this.active--;
+                continue;
+            }
+
+            fetch(src, { signal })
+                .then(r => r.blob())
+                .then(blob => {
+                    if (generation !== this.generation) return; // Aborted
+                    
+                    img.src = URL.createObjectURL(blob);
+                    img.onload = () => img.classList.add('loaded');
+                })
+                .catch((err) => {
+                    if (err.name === 'AbortError') return;
+                    if (generation !== this.generation) return;
+                    
+                    // On error, generate text-based cover
+                    const bookCard = img.closest('.book');
+                    if (bookCard) {
+                        const wrapper = img.parentElement;
+                        const bookData = {
+                            title: bookCard.querySelector('h2')?.textContent || 'Unknown',
+                            author_sort: bookCard.querySelector('.book-author')?.textContent || '',
+                            uuid: img.dataset.id
+                        };
+                        const canvas = generateCoverText(bookData);
+                        img.remove();
+                        wrapper.appendChild(canvas);
+                    }
+                })
+                .finally(() => {
+                    this.active--;
+                    if (generation === this.generation) {
+                        this.processQueue();
+                    }
+                });
+        }
+    }
+
+    /**
+     * Remove images that are far from viewport
+     * @param {number} visiblePage - Currently visible page number
+     * @param {number} keepRange - Pages to keep around visible page
+     */
+    cancelFarImages(visiblePage, keepRange = 2) {
+        // Remove items from queue that are too far away
+        const oldLength = this.queue.length;
+        this.queue = this.queue.filter(item => {
+            const img = item.img;
+            const page = img.closest('.page');
+            if (!page) return true; // Keep if we can't determine page
+            
+            const pageNum = parseInt(page.dataset.page, 10);
+            if (isNaN(pageNum)) return true;
+            
+            const distance = Math.abs(pageNum - visiblePage);
+            if (distance > keepRange) {
+                this.inQueue.delete(img);
+                return false; // Remove from queue
+            }
+            return true; // Keep in queue
+        });
+        
+        if (oldLength !== this.queue.length) {
+            // Re-sort after filtering
+            this.queue.sort((a, b) => b.priority - a.priority);
+        }
+    }
+}
+
+// Global image queue instance
+const imageQueue = new ImageQueue(8);
+
+/**
  * Setup cover image lazy loading with IntersectionObserver
+ * Uses priority queue to load visible images first
  * @param {HTMLElement} container - Container element with book cards
  */
 export function setupCoverLazyLoading(container) {
@@ -178,40 +320,55 @@ export function setupCoverLazyLoading(container) {
     const observer = new IntersectionObserver(
         (entries) => {
             entries.forEach(entry => {
+                const img = entry.target;
+                
                 if (entry.isIntersecting) {
-                    const img = entry.target;
-                    const src = img.dataset.src;
-                    
-                    if (src && !img.src) {
-                        fetch(src)
-                            .then(r => r.blob())
-                            .then(blob => {
-                                img.src = URL.createObjectURL(blob);
-                                img.onload = () => img.classList.add('loaded');
-                            })
-                            .catch(() => {
-                                // On error, generate text-based cover
-                                const bookCard = img.closest('.book');
-                                if (bookCard) {
-                                    const wrapper = img.parentElement;
-                                    const bookData = {
-                                        title: bookCard.querySelector('h2').textContent,
-                                        author_sort: bookCard.querySelector('.book-author').textContent,
-                                        uuid: img.dataset.id
-                                    };
-                                    const canvas = generateCoverText(bookData);
-                                    img.remove();
-                                    wrapper.appendChild(canvas);
-                                }
-                            });
-                        
-                        observer.unobserve(img);
+                    // Image is visible - high priority
+                    if (!img.src && img.dataset.src) {
+                        imageQueue.enqueue(img, 100);
+                    }
+                } else if (entry.intersectionRatio === 0) {
+                    // Image is not visible at all - low priority
+                    if (!img.src && img.dataset.src) {
+                        imageQueue.enqueue(img, 1);
                     }
                 }
             });
         },
-        { rootMargin: "800px" }
+        { 
+            rootMargin: "800px",
+            threshold: [0, 0.1] // Detect when entering/leaving viewport
+        }
     );
     
-    images.forEach(img => observer.observe(img));
+    images.forEach(img => {
+        observer.observe(img);
+        
+        // Check if already in viewport
+        const rect = img.getBoundingClientRect();
+        const inViewport = rect.top < window.innerHeight && rect.bottom > 0;
+        
+        if (inViewport && !img.src && img.dataset.src) {
+            // Immediately queue visible images with high priority
+            imageQueue.enqueue(img, 100);
+        }
+    });
+}
+
+/**
+ * Cancel loading of images far from current viewport
+ * Call this when scrolling to prioritize nearby images
+ * @param {number} visiblePage - Currently visible page number
+ * @param {number} keepRange - Pages to keep around visible page (default: 2)
+ */
+export function cancelFarImages(visiblePage, keepRange = 2) {
+    imageQueue.cancelFarImages(visiblePage, keepRange);
+}
+
+/**
+ * Abort all pending image loads
+ * Use when navigating away or clearing content
+ */
+export function abortImageQueue() {
+    imageQueue.abort();
 }
