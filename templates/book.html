@@ -10,7 +10,19 @@
         <div class="book-page">
             <div class="book-page-cover">
                 <img src="/cover/{{ .UUID }}{{ if .CoverModTime }}?t={{ .CoverModTime }}{{ end }}" />
-                <div id="read-buttons"></div>
+                <div id="read-buttons">
+                    {{ range .Formats }}
+                        {{ if eq . "epub" }}
+                            <button class="btn-read" onclick="window.location.href='/read?uuid={{ $.UUID }}'">
+                                Read EPUB
+                            </button>
+                        {{ else if eq . "pdf" }}
+                            <button class="btn-read" onclick="window.location.href='/read-pdf?uuid={{ $.UUID }}'">
+                                Read PDF
+                            </button>
+                        {{ end }}
+                    {{ end }}
+                </div>
             </div>
             <div class="book-page-info">
                 <div class="title-row">

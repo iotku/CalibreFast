@@ -346,6 +346,20 @@ input[type="number"],
     border-radius: var(--radius-large);
 }
 
+#read-buttons {
+    display: flex;
+    flex-direction: column;
+    gap: var(--gap-medium);
+    margin-top: 1rem;
+    width: 100%;
+}
+
+.btn-read {
+    height: var(--touch-target);
+    width: 100%;
+    padding: var(--input-padding);
+}
+
 .book-page-info {
     flex: 1;
 }

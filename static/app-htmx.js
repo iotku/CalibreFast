@@ -71,7 +71,7 @@ async function loadInitialPage() {
         
         // Setup interactivity
         const booksDiv = document.getElementById("books");
-        setupBookClickHandlers(booksDiv, openBookModal);
+        setupBookClickHandlers(booksDiv);
         setupCoverLazyLoading(booksDiv);
         
         // Update UI
@@ -131,7 +131,7 @@ function setupInfiniteScrollSentinel() {
         booksDiv.appendChild(pageEl);
         
         // Setup interactivity for new content
-        setupBookClickHandlers(pageEl, openBookModal);
+        setupBookClickHandlers(pageEl);
         setupCoverLazyLoading(pageEl);
         
         currentPage = nextPage;
@@ -218,97 +218,6 @@ function updatePageLabel() {
 }
 
 /**
- * Update navigation button states
- */
-function updateNavigationButtons() {
-    const visiblePage = getVisiblePage();
-    document.getElementById("prev-page").disabled = visiblePage <= 1;
-    document.getElementById("next-page").disabled = currentPage >= window.totalPages;
-}
-
-/**
- * Open book modal
- * @param {string} uuid - Book UUID
- */
-function openBookModal(uuid) {
-    const modal = document.getElementById("book-modal");
-    const modalBody = document.getElementById("modal-body");
-    
-    // Show modal
-    document.body.classList.add("no-scroll");
-    modal.classList.add("open");
-    modalBody.innerHTML = "Loading...";
-    
-    // Push history state
-    history.pushState({ modal: uuid }, "");
-    
-    // Load book content
-    fetch(`/book/get/${uuid}`)
-        .then(r => r.text())
-        .then(html => {
-            modalBody.innerHTML = html;
-            return loadFormats(uuid);
-        })
-        .catch(err => {
-            console.error("Failed to load book:", err);
-            modalBody.innerHTML = "Failed to load book details.";
-        });
-}
-
-/**
- * Load book formats and create read buttons
- * @param {string} uuid - Book UUID
- */
-async function loadFormats(uuid) {
-    try {
-        const res = await fetch(`/formats/${uuid}`);
-        const formats = await res.json();
-        
-        if (!Array.isArray(formats)) return;
-        
-        const btnContainer = document.createElement("div");
-        btnContainer.style.cssText = `
-            display:flex;
-            flex-direction:column;
-            gap:8px;
-            margin-top:1rem;
-            width:100%;
-        `;
-        
-        for (const format of formats) {
-            let href = null;
-            let label = null;
-            
-            if (format === "epub") {
-                href = `/read?uuid=${uuid}`;
-                label = "Read EPUB";
-            } else if (format === "pdf") {
-                href = `/read-pdf?uuid=${uuid}`;
-                label = "Read PDF";
-            }
-            
-            if (!label) continue;
-            
-            const btn = document.createElement("button");
-            btn.textContent = label;
-            btn.style.cssText = `height:44px; width:100%;`;
-            btn.addEventListener("click", () => {
-                window.location.href = href;
-            });
-            
-            btnContainer.appendChild(btn);
-        }
-        
-        const readButtons = document.querySelector("#modal-body #read-buttons");
-        if (readButtons && btnContainer.children.length > 0) {
-            readButtons.appendChild(btnContainer);
-        }
-    } catch (err) {
-        console.error("Failed to load formats:", err);
-    }
-}
-
-/**
  * Close modal
  */
 function closeModal() {
@@ -338,6 +247,15 @@ window.addEventListener("keydown", (e) => {
 window.addEventListener("popstate", () => {
     closeModal();
 });
+
+/**
+ * Update navigation button states
+ */
+function updateNavigationButtons() {
+    const visiblePage = getVisiblePage();
+    document.getElementById("prev-page").disabled = visiblePage <= 1;
+    document.getElementById("next-page").disabled = currentPage >= window.totalPages;
+}
 
 // Navigation controls
 document.getElementById("page-input").addEventListener("change", async (e) => {

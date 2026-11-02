@@ -114,7 +114,12 @@ export function renderBookCard(book) {
 
     return `
 <div class="book">
-    <a href="#" data-book-uuid="${uuid}" class="book-link">
+    <a href="/book/get/${uuid}" 
+       hx-get="/book/get/${uuid}"
+       hx-target="#modal-body"
+       hx-swap="innerHTML"
+       hx-push-url="true"
+       class="book-link">
         <div class="cover-wrapper" style="background:${coverColor}">
             <img class="book-cover" 
                  data-src="/cover-thumb/${uuid}" 
@@ -151,19 +156,19 @@ export function renderBooksPage(books, pageNumber) {
 
 /**
  * Setup book card click handlers for modal opening
- * Attach this after inserting book cards into DOM
+ * Now uses htmx, so we just need to handle modal visibility
  * @param {HTMLElement} container - Container element with book cards
- * @param {Function} openModalCallback - Callback function(uuid)
  */
-export function setupBookClickHandlers(container, openModalCallback) {
+export function setupBookClickHandlers(container) {
     const bookLinks = container.querySelectorAll('.book-link');
     bookLinks.forEach(link => {
         link.addEventListener('click', (e) => {
             e.preventDefault();
-            const uuid = link.dataset.bookUuid;
-            if (uuid && openModalCallback) {
-                openModalCallback(uuid);
-            }
+            // Show modal immediately
+            const modal = document.getElementById("book-modal");
+            document.body.classList.add("no-scroll");
+            modal.classList.add("open");
+            // htmx will handle the content loading
         });
     });
 }
