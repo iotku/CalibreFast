@@ -16,44 +16,6 @@ window.totalPages = null;
 let currentPage = 1;
 let isInitialLoad = true;
 
-/**
- * Handle page load from htmx JSON response
- * Exposed globally for hx-on handlers
- */
-window.handlePageLoad = function(event) {
-    const xhr = event.detail.xhr;
-    const books = JSON.parse(xhr.responseText);
-    const pageNum = getCurrentPageFromUrl() || currentPage;
-    
-    // Abort old images
-    abortImageQueue();
-    
-    // Transform JSON to HTML
-    const html = renderBooksPage(books, pageNum);
-    const booksDiv = document.getElementById("books");
-    booksDiv.innerHTML = html;
-    
-    // Setup interactivity
-    setupBookClickHandlers(booksDiv, openBookModal);
-    setupCoverLazyLoading(booksDiv);
-    
-    // Update state
-    currentPage = pageNum;
-    document.getElementById("page-input").value = pageNum;
-    updateNavigationButtons();
-    
-    // Update URL
-    history.pushState({ page: pageNum }, "", `?page=${pageNum}`);
-    
-    // Scroll to top
-    window.scrollTo(0, 0);
-};
-
-function getCurrentPageFromUrl() {
-    const params = new URLSearchParams(window.location.search);
-    return parseInt(params.get("page")) || null;
-}
-
 // Initialize on DOM load
 window.addEventListener("DOMContentLoaded", async () => {
     // Load library info
@@ -375,4 +337,51 @@ window.addEventListener("keydown", (e) => {
 
 window.addEventListener("popstate", () => {
     closeModal();
+});
+
+// Navigation controls
+document.getElementById("page-input").addEventListener("change", async (e) => {
+    let target = parseInt(e.target.value, 10);
+    if (isNaN(target)) return;
+    
+    target = Math.max(1, Math.min(target, window.totalPages));
+    e.target.value = target;
+    
+    // Abort pending image loads
+    abortImageQueue();
+    
+    // Clear and reload
+    document.getElementById("books").innerHTML = "";
+    currentPage = target;
+    
+    await loadInitialPage();
+    window.scrollTo(0, 0);
+});
+
+document.getElementById("next-page").addEventListener("click", async () => {
+    const page = getVisiblePage();
+    if (page >= window.totalPages) return;
+    
+    // Abort pending image loads
+    abortImageQueue();
+    
+    document.getElementById("books").innerHTML = "";
+    currentPage = page + 1;
+    
+    await loadInitialPage();
+    window.scrollTo(0, 0);
+});
+
+document.getElementById("prev-page").addEventListener("click", async () => {
+    const page = getVisiblePage();
+    if (page <= 1) return;
+    
+    // Abort pending image loads
+    abortImageQueue();
+    
+    document.getElementById("books").innerHTML = "";
+    currentPage = page - 1;
+    
+    await loadInitialPage();
+    window.scrollTo(0, 0);
 });

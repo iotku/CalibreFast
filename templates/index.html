@@ -22,40 +22,11 @@
         </form>
     </div>
     <div class="top-bar-right">
-        <button id="prev-page" class="btn-nav" aria-label="Previous page"
-                hx-get="/pages/page1.json"
-                hx-target="#books"
-                hx-swap="innerHTML"
-                hx-on::before:request="
-                    const visible = parseInt(document.querySelector('[data-page]')?.dataset.page || 1);
-                    if (visible <= 1) { event.preventDefault(); return; }
-                    this.setAttribute('hx-get', '/pages/page' + (visible - 1) + '.json');
-                "
-                hx-on::after:request="window.handlePageLoad(event)">&lsaquo;</button>
+        <button id="prev-page" class="btn-nav" aria-label="Previous page">&lsaquo;</button>
         <label for="page-input">Page</label>
-        <input id="page-input" type="number" min="1" value="1" class="input-page" 
-               hx-get="/pages/page1.json"
-               hx-trigger="change"
-               hx-target="#books"
-               hx-swap="innerHTML"
-               hx-on::before:request="
-                   const page = Math.max(1, Math.min(parseInt(this.value), window.totalPages || 9999));
-                   this.value = page;
-                   this.setAttribute('hx-get', '/pages/page' + page + '.json');
-               "
-               hx-on::after:request="window.handlePageLoad(event)" />
+        <input id="page-input" type="number" min="1" value="1" class="input-page" />
         <span>of <span id="total-pages">—</span></span>
-        <button id="next-page" class="btn-nav" aria-label="Next page"
-                hx-get="/pages/page2.json"
-                hx-target="#books"
-                hx-swap="innerHTML"
-                hx-on::before:request="
-                    const visible = parseInt(document.querySelector('[data-page]')?.dataset.page || 1);
-                    const total = window.totalPages || 9999;
-                    if (visible >= total) { event.preventDefault(); return; }
-                    this.setAttribute('hx-get', '/pages/page' + (visible + 1) + '.json');
-                "
-                hx-on::after:request="window.handlePageLoad(event)">&rsaquo;</button>
+        <button id="next-page" class="btn-nav" aria-label="Next page">&rsaquo;</button>
     </div>
 </header>
 <div id="book-modal" class="modal-overlay">
