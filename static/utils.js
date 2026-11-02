@@ -124,7 +124,6 @@ export function renderBookCard(book) {
            document.body.classList.add('no-scroll');
            document.getElementById('book-modal').classList.add('open');
            document.getElementById('modal-body').innerHTML = 'Loading...';
-           history.pushState({modal: '${uuid}'}, '', '/book/get/${uuid}');
        "
        class="book-link">
         <div class="cover-wrapper" style="background:${coverColor}">
