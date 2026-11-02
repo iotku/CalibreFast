@@ -9,12 +9,12 @@
  * @returns {number} Hash value
  */
 export function hashString(str) {
-    let h = 0;
-    for (let i = 0; i < str.length; i++) {
-        h = (h << 5) - h + str.charCodeAt(i);
-        h |= 0;
-    }
-    return Math.abs(h);
+  let h = 0;
+  for (let i = 0; i < str.length; i++) {
+    h = (h << 5) - h + str.charCodeAt(i);
+    h |= 0;
+  }
+  return Math.abs(h);
 }
 
 /**
@@ -23,8 +23,8 @@ export function hashString(str) {
  * @returns {string} HSL color string
  */
 export function colorFromBook(book) {
-    const h = hashString(book.uuid);
-    return `hsl(${h % 360}, 55%, 35%)`;
+  const h = hashString(book.uuid);
+  return `hsl(${h % 360}, 55%, 35%)`;
 }
 
 /**
@@ -33,61 +33,52 @@ export function colorFromBook(book) {
  * @returns {HTMLCanvasElement} Canvas element with book info
  */
 export function generateCoverText(book) {
-    const canvas = document.createElement("canvas");
-    canvas.className = "cover-text";
-    canvas.width = 200;
-    canvas.height = 300;
+  const canvas = document.createElement("canvas");
+  canvas.className = "cover-text";
+  canvas.width = 200;
+  canvas.height = 300;
 
-    const ctx = canvas.getContext("2d");
-    const scale = Math.min(window.devicePixelRatio || 1, 3);
-    canvas.width *= scale;
-    canvas.height *= scale;
-    ctx.scale(scale, scale);
+  const ctx = canvas.getContext("2d");
+  const scale = Math.min(window.devicePixelRatio || 1, 3);
+  canvas.width *= scale;
+  canvas.height *= scale;
+  ctx.scale(scale, scale);
 
-    // Background filled with book color
-    ctx.fillStyle = colorFromBook(book);
-    ctx.fillRect(0, 0, 200, 300);
+  ctx.fillStyle = colorFromBook(book);
+  ctx.fillRect(0, 0, 200, 300);
 
-    ctx.fillStyle = "white";
-    ctx.textAlign = "center";
+  ctx.fillStyle = "white";
+  ctx.textAlign = "center";
 
-    // Title
-    ctx.font = "bold 16px sans-serif";
-    wrapText(ctx, book.title, 100, 120, 180, 20);
+  ctx.font = "bold 16px sans-serif";
+  wrapText(ctx, book.title, 100, 120, 180, 20);
 
-    // Author
-    ctx.font = "12px sans-serif";
-    ctx.fillText(book.author_sort || "", 100, 260);
+  ctx.font = "12px sans-serif";
+  ctx.fillText(book.author_sort || "", 100, 260);
 
-    return canvas;
+  return canvas;
 }
 
 /**
  * Wrap text to fit within a maximum width
- * @param {CanvasRenderingContext2D} ctx - Canvas context
- * @param {string} text - Text to wrap
- * @param {number} x - X position
- * @param {number} y - Y position
- * @param {number} maxWidth - Maximum width
- * @param {number} lineHeight - Line height
  */
 function wrapText(ctx, text, x, y, maxWidth, lineHeight) {
-    const words = (text || "").split(" ");
-    let line = "";
+  const words = (text || "").split(" ");
+  let line = "";
 
-    for (let i = 0; i < words.length; i++) {
-        const test = line + words[i] + " ";
-        const width = ctx.measureText(test).width;
+  for (let i = 0; i < words.length; i++) {
+    const test = line + words[i] + " ";
+    const width = ctx.measureText(test).width;
 
-        if (width > maxWidth && i > 0) {
-            ctx.fillText(line, x, y);
-            line = words[i] + " ";
-            y += lineHeight;
-        } else {
-            line = test;
-        }
+    if (width > maxWidth && i > 0) {
+      ctx.fillText(line, x, y);
+      line = words[i] + " ";
+      y += lineHeight;
+    } else {
+      line = test;
     }
-    ctx.fillText(line, x, y);
+  }
+  ctx.fillText(line, x, y);
 }
 
 /**
@@ -96,39 +87,29 @@ function wrapText(ctx, text, x, y, maxWidth, lineHeight) {
  * @returns {string} Escaped string
  */
 export function escapeHtml(str) {
-    const div = document.createElement('div');
-    div.textContent = str;
-    return div.innerHTML;
+  const div = document.createElement("div");
+  div.textContent = str;
+  return div.innerHTML;
 }
 
 /**
  * Render a single book card HTML
+ * Plain link to #book/<uuid>; modal logic lives in setupModal().
  * @param {Object} book - Book object
  * @returns {string} HTML string for book card
  */
 export function renderBookCard(book) {
-    const title = escapeHtml(book.title || "Untitled");
-    const author = escapeHtml(book.author_sort || "Unknown Author");
-    const coverColor = colorFromBook(book);
-    const uuid = escapeHtml(book.uuid);
+  const title = escapeHtml(book.title || "Untitled");
+  const author = escapeHtml(book.author_sort || "Unknown Author");
+  const coverColor = colorFromBook(book);
+  const uuid = escapeHtml(book.uuid);
 
-    return `
+  return `
 <div class="book">
-    <a href="#" 
-       data-book-uuid="${uuid}"
-       hx-get="/book/get/${uuid}"
-       hx-target="#modal-body"
-       hx-swap="innerHTML"
-       hx-on::before:request="
-           event.preventDefault();
-           document.body.classList.add('no-scroll');
-           document.getElementById('book-modal').classList.add('open');
-           document.getElementById('modal-body').innerHTML = 'Loading...';
-       "
-       class="book-link">
+    <a href="#book/${uuid}" class="book-link">
         <div class="cover-wrapper" style="background:${coverColor}">
-            <img class="book-cover" 
-                 data-src="/cover-thumb/${uuid}" 
+            <img class="book-cover"
+                 data-src="/cover-thumb/${uuid}"
                  data-id="${uuid}"
                  fetchpriority="low" />
         </div>
@@ -148,232 +129,326 @@ export function renderBookCard(book) {
  * @returns {string} HTML string for page container with books
  */
 export function renderBooksPage(books, pageNumber) {
-    if (!books || !Array.isArray(books) || books.length === 0) {
-        return '';
-    }
+  if (!books || !Array.isArray(books) || books.length === 0) {
+    return "";
+  }
 
-    const booksHtml = books.map(book => renderBookCard(book)).join('\n');
-    
-    return `
+  const booksHtml = books.map((book) => renderBookCard(book)).join("\n");
+
+  return `
 <div class="page" data-page="${pageNumber}">
     ${booksHtml}
 </div>`;
 }
 
+/* ------------------------------------------------------------------ */
+/* Modal (hash-driven)                                                 */
+/* ------------------------------------------------------------------ */
+
+const MODAL_ID = "book-modal";
+const BODY_ID = "modal-body";
+const HASH_PREFIX = "#book/";
+const CLOSE_SELECTOR = ".modal-close, [data-modal-close]";
+
+let modalInitialized = false;
+let openedViaNav = false; // true if the current modal entry was pushed by a click
+
+function modalEl() {
+  return document.getElementById(MODAL_ID);
+}
+function bodyEl() {
+  return document.getElementById(BODY_ID);
+}
+function isModalOpen() {
+  return modalEl()?.classList.contains("open");
+}
+
+function hashUuid() {
+  if (!location.hash.startsWith(HASH_PREFIX)) return null;
+  const raw = location.hash.slice(HASH_PREFIX.length);
+  if (!raw) return null;
+  try {
+    return decodeURIComponent(raw);
+  } catch {
+    return raw;
+  }
+}
+
+function showModal() {
+  bodyEl().innerHTML = "Loading...";
+  document.body.classList.add("no-scroll");
+  modalEl().classList.add("open");
+}
+
+function hideModal() {
+  document.body.classList.remove("no-scroll");
+  modalEl()?.classList.remove("open");
+  const body = bodyEl();
+  if (body) body.innerHTML = "";
+}
+
+function loadBook(uuid) {
+  showModal();
+  if (typeof htmx === "undefined") {
+    bodyEl().innerHTML = "htmx not loaded.";
+    return;
+  }
+  htmx.ajax("GET", `/book/get/${encodeURIComponent(uuid)}`, {
+    target: "#" + BODY_ID,
+    swap: "innerHTML",
+  });
+}
+
+/**
+ * Sync modal state to the URL hash.
+ */
+function syncFromHash() {
+  const uuid = hashUuid();
+  if (uuid) {
+    loadBook(uuid);
+  } else if (isModalOpen()) {
+    hideModal();
+    openedViaNav = false;
+  }
+}
+
+/**
+ * Close the modal. Goes back if the click pushed an entry,
+ * otherwise strips the hash in place (deep-link case).
+ */
+export function closeModal() {
+  if (!isModalOpen()) return;
+  if (openedViaNav) {
+    history.back(); // hashchange -> syncFromHash -> hideModal
+  } else {
+    history.replaceState(null, "", location.pathname + location.search);
+    hideModal();
+  }
+}
+
+/**
+ * One-time modal setup. Safe to call more than once.
+ * Expects #book-modal (overlay containing content) and #modal-body.
+ * Close buttons: .modal-close or [data-modal-close].
+ */
+export function setupModal() {
+  if (modalInitialized || !modalEl()) return;
+  modalInitialized = true;
+
+  // Mark that the next hash change came from a card click
+  document.addEventListener(
+    "click",
+    (e) => {
+      if (e.target.closest?.(".book-link")) openedViaNav = true;
+    },
+    true,
+  );
+
+  window.addEventListener("hashchange", syncFromHash);
+
+  // Close: X button or backdrop click
+  modalEl().addEventListener("click", (e) => {
+    if (e.target === modalEl() || e.target.closest(CLOSE_SELECTOR)) {
+      e.preventDefault();
+      closeModal();
+    }
+  });
+
+  // Close: Escape
+  document.addEventListener("keydown", (e) => {
+    if (e.key === "Escape") closeModal();
+  });
+
+  // Failed fetch
+  document.body.addEventListener("htmx:responseError", (e) => {
+    if (e.detail.target?.id === BODY_ID) bodyEl().innerHTML = "Failed to load book.";
+  });
+  document.body.addEventListener("htmx:sendError", (e) => {
+    if (e.detail.target?.id === BODY_ID) bodyEl().innerHTML = "Failed to load book.";
+  });
+
+  // Deep link on initial load
+  if (hashUuid()) {
+    openedViaNav = false;
+    syncFromHash();
+  }
+}
+
 /**
  * Setup book card click handlers for modal opening
- * Uses htmx to load content
  * @param {HTMLElement} container - Container element with book cards
  */
 export function setupBookClickHandlers(container) {
-    // htmx handles everything via hx-on attributes in the HTML
-    // Just need to initialize htmx on new elements
-    if (typeof htmx !== 'undefined') {
-        htmx.process(container);
-    }
+  setupModal();
 }
 
-/**
- * Image Loading Queue Manager
- * Prioritizes visible images and manages concurrent requests
- */
+/* ------------------------------------------------------------------ */
+/* Image loading queue                                                 */
+/* ------------------------------------------------------------------ */
+
 class ImageQueue {
-    constructor(maxConcurrent = 8) {
-        this.maxConcurrent = maxConcurrent;
-        this.queue = []; // Array of {img, priority, generation}
-        this.inQueue = new Set(); // Set of img elements
-        this.active = 0; // Number of active requests
-        this.generation = 0; // Increments when queue is aborted
-        this.abortController = new AbortController();
-    }
+  constructor(maxConcurrent = 8) {
+    this.maxConcurrent = maxConcurrent;
+    this.queue = [];
+    this.inQueue = new Set();
+    this.active = 0;
+    this.generation = 0;
+    this.abortController = new AbortController();
+  }
 
-    /**
-     * Abort all pending and active requests
-     */
-    abort() {
-        this.generation++;
-        this.abortController.abort();
-        this.abortController = new AbortController();
-        this.queue = [];
-        this.inQueue.clear();
-    }
+  abort() {
+    this.generation++;
+    this.abortController.abort();
+    this.abortController = new AbortController();
+    this.queue = [];
+    this.inQueue.clear();
+  }
 
-    /**
-     * Add image to queue with priority
-     * Higher priority = loads first
-     * @param {HTMLImageElement} img - Image element
-     * @param {number} priority - Priority (higher = sooner)
-     */
-    enqueue(img, priority = 0) {
-        if (this.inQueue.has(img)) {
-            // Update priority if already queued
-            const item = this.queue.find(q => q.img === img);
-            if (item && priority > item.priority) {
-                item.priority = priority;
-                // Re-sort queue
-                this.queue.sort((a, b) => b.priority - a.priority);
-            }
-            return;
-        }
-
-        this.inQueue.add(img);
-        this.queue.push({ img, priority, generation: this.generation });
-        
-        // Sort by priority (highest first)
+  enqueue(img, priority = 0) {
+    if (this.inQueue.has(img)) {
+      const item = this.queue.find((q) => q.img === img);
+      if (item && priority > item.priority) {
+        item.priority = priority;
         this.queue.sort((a, b) => b.priority - a.priority);
-        
-        this.processQueue();
+      }
+      return;
     }
 
-    /**
-     * Process queued image loads
-     */
-    processQueue() {
-        const signal = this.abortController.signal;
-        const generation = this.generation;
+    this.inQueue.add(img);
+    this.queue.push({ img, priority, generation: this.generation });
+    this.queue.sort((a, b) => b.priority - a.priority);
 
-        while (this.active < this.maxConcurrent && this.queue.length > 0) {
-            const item = this.queue.shift();
-            const { img } = item;
-            
-            this.inQueue.delete(img);
-            this.active++;
+    this.processQueue();
+  }
 
-            const src = img.dataset.src;
-            if (!src) {
-                this.active--;
-                continue;
-            }
+  processQueue() {
+    const signal = this.abortController.signal;
+    const generation = this.generation;
 
-            fetch(src, { signal })
-                .then(r => r.blob())
-                .then(blob => {
-                    if (generation !== this.generation) return; // Aborted
-                    
-                    img.src = URL.createObjectURL(blob);
-                    img.onload = () => img.classList.add('loaded');
-                })
-                .catch((err) => {
-                    if (err.name === 'AbortError') return;
-                    if (generation !== this.generation) return;
-                    
-                    // On error, generate text-based cover
-                    const bookCard = img.closest('.book');
-                    if (bookCard) {
-                        const wrapper = img.parentElement;
-                        const bookData = {
-                            title: bookCard.querySelector('h2')?.textContent || 'Unknown',
-                            author_sort: bookCard.querySelector('.book-author')?.textContent || '',
-                            uuid: img.dataset.id
-                        };
-                        const canvas = generateCoverText(bookData);
-                        img.remove();
-                        wrapper.appendChild(canvas);
-                    }
-                })
-                .finally(() => {
-                    this.active--;
-                    if (generation === this.generation) {
-                        this.processQueue();
-                    }
-                });
-        }
-    }
+    while (this.active < this.maxConcurrent && this.queue.length > 0) {
+      const item = this.queue.shift();
+      const { img } = item;
 
-    /**
-     * Remove images that are far from viewport
-     * @param {number} visiblePage - Currently visible page number
-     * @param {number} keepRange - Pages to keep around visible page
-     */
-    cancelFarImages(visiblePage, keepRange = 2) {
-        // Remove items from queue that are too far away
-        const oldLength = this.queue.length;
-        this.queue = this.queue.filter(item => {
-            const img = item.img;
-            const page = img.closest('.page');
-            if (!page) return true; // Keep if we can't determine page
-            
-            const pageNum = parseInt(page.dataset.page, 10);
-            if (isNaN(pageNum)) return true;
-            
-            const distance = Math.abs(pageNum - visiblePage);
-            if (distance > keepRange) {
-                this.inQueue.delete(img);
-                return false; // Remove from queue
-            }
-            return true; // Keep in queue
+      this.inQueue.delete(img);
+      this.active++;
+
+      const src = img.dataset.src;
+      if (!src) {
+        this.active--;
+        continue;
+      }
+
+      fetch(src, { signal })
+        .then((r) => r.blob())
+        .then((blob) => {
+          if (generation !== this.generation) return;
+
+          img.src = URL.createObjectURL(blob);
+          img.onload = () => img.classList.add("loaded");
+        })
+        .catch((err) => {
+          if (err.name === "AbortError") return;
+          if (generation !== this.generation) return;
+
+          const bookCard = img.closest(".book");
+          if (bookCard) {
+            const wrapper = img.parentElement;
+            const bookData = {
+              title: bookCard.querySelector("h2")?.textContent || "Unknown",
+              author_sort: bookCard.querySelector(".book-author")?.textContent || "",
+              uuid: img.dataset.id,
+            };
+            const canvas = generateCoverText(bookData);
+            img.remove();
+            wrapper.appendChild(canvas);
+          }
+        })
+        .finally(() => {
+          this.active--;
+          if (generation === this.generation) {
+            this.processQueue();
+          }
         });
-        
-        if (oldLength !== this.queue.length) {
-            // Re-sort after filtering
-            this.queue.sort((a, b) => b.priority - a.priority);
-        }
     }
+  }
+
+  cancelFarImages(visiblePage, keepRange = 2) {
+    const oldLength = this.queue.length;
+    this.queue = this.queue.filter((item) => {
+      const img = item.img;
+      const page = img.closest(".page");
+      if (!page) return true;
+
+      const pageNum = parseInt(page.dataset.page, 10);
+      if (isNaN(pageNum)) return true;
+
+      const distance = Math.abs(pageNum - visiblePage);
+      if (distance > keepRange) {
+        this.inQueue.delete(img);
+        return false;
+      }
+      return true;
+    });
+
+    if (oldLength !== this.queue.length) {
+      this.queue.sort((a, b) => b.priority - a.priority);
+    }
+  }
 }
 
-// Global image queue instance
 const imageQueue = new ImageQueue(8);
 
 /**
  * Setup cover image lazy loading with IntersectionObserver
- * Uses priority queue to load visible images first
  * @param {HTMLElement} container - Container element with book cards
  */
 export function setupCoverLazyLoading(container) {
-    const images = container.querySelectorAll('.book-cover[data-src]');
-    
-    const observer = new IntersectionObserver(
-        (entries) => {
-            entries.forEach(entry => {
-                const img = entry.target;
-                
-                if (entry.isIntersecting) {
-                    // Image is visible - high priority
-                    if (!img.src && img.dataset.src) {
-                        imageQueue.enqueue(img, 100);
-                    }
-                } else if (entry.intersectionRatio === 0) {
-                    // Image is not visible at all - low priority
-                    if (!img.src && img.dataset.src) {
-                        imageQueue.enqueue(img, 1);
-                    }
-                }
-            });
-        },
-        { 
-            rootMargin: "800px",
-            threshold: [0, 0.1] // Detect when entering/leaving viewport
-        }
-    );
-    
-    images.forEach(img => {
-        observer.observe(img);
-        
-        // Check if already in viewport
-        const rect = img.getBoundingClientRect();
-        const inViewport = rect.top < window.innerHeight && rect.bottom > 0;
-        
-        if (inViewport && !img.src && img.dataset.src) {
-            // Immediately queue visible images with high priority
+  const images = container.querySelectorAll(".book-cover[data-src]");
+
+  const observer = new IntersectionObserver(
+    (entries) => {
+      entries.forEach((entry) => {
+        const img = entry.target;
+
+        if (entry.isIntersecting) {
+          if (!img.src && img.dataset.src) {
             imageQueue.enqueue(img, 100);
+          }
+        } else if (entry.intersectionRatio === 0) {
+          if (!img.src && img.dataset.src) {
+            imageQueue.enqueue(img, 1);
+          }
         }
-    });
+      });
+    },
+    {
+      rootMargin: "800px",
+      threshold: [0, 0.1],
+    },
+  );
+
+  images.forEach((img) => {
+    observer.observe(img);
+
+    const rect = img.getBoundingClientRect();
+    const inViewport = rect.top < window.innerHeight && rect.bottom > 0;
+
+    if (inViewport && !img.src && img.dataset.src) {
+      imageQueue.enqueue(img, 100);
+    }
+  });
 }
 
 /**
  * Cancel loading of images far from current viewport
- * Call this when scrolling to prioritize nearby images
- * @param {number} visiblePage - Currently visible page number
- * @param {number} keepRange - Pages to keep around visible page (default: 2)
  */
 export function cancelFarImages(visiblePage, keepRange = 2) {
-    imageQueue.cancelFarImages(visiblePage, keepRange);
+  imageQueue.cancelFarImages(visiblePage, keepRange);
 }
 
 /**
  * Abort all pending image loads
- * Use when navigating away or clearing content
  */
 export function abortImageQueue() {
-    imageQueue.abort();
+  imageQueue.abort();
 }
