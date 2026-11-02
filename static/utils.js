@@ -153,6 +153,14 @@ const CLOSE_SELECTOR = ".modal-close, [data-modal-close]";
 let modalInitialized = false;
 let openedViaNav = false; // true if the current modal entry was pushed by a click
 
+// htmx restores history on popstate (state.htmx) by re-fetching the current
+// URL. The modal is a pure overlay driven by the hash, so htmx history is
+// unused: swallow popstate before htmx sees it. Registered at module load,
+// in the capture phase, so it runs ahead of htmx's own handler.
+window.addEventListener('popstate', (e) => {
+    e.stopImmediatePropagation();
+}, true);
+
 function modalEl() {
   return document.getElementById(MODAL_ID);
 }

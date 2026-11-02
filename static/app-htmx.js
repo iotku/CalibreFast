@@ -8,189 +8,243 @@ import {
     setupBookClickHandlers,
     setupCoverLazyLoading,
     cancelFarImages,
-    abortImageQueue
+    abortImageQueue,
 } from "./utils.js";
+
+const NAV_DEBOUNCE_MS = 150;
 
 // Global state
 window.totalPages = null;
-let currentPage = 1;
-let isInitialLoad = true;
+let currentPage = 1; // last page appended to the DOM
+let targetPage = 1; // page the UI says we're on / heading to
+let navigating = false; // a jump is pending or in flight
+let navToken = 0; // bumped on every nav request; stale results are dropped
+let navTimer = null;
+let navAbort = null;
+let loadingNext = false;
+let lastReplacedPage = null;
+let sentinelObserver = null;
 
-// Initialize on DOM load
+const $ = (id) => document.getElementById(id);
+
+function clampPage(n) {
+    const max = window.totalPages || Infinity;
+    return Math.max(1, Math.min(n, max));
+}
+
+/* ------------------------------------------------------------------ */
+/* Init                                                               */
+/* ------------------------------------------------------------------ */
+
 window.addEventListener("DOMContentLoaded", async () => {
-    // Load library info
     await loadLibraryInfo();
-    
-    // Get initial page from URL
+
     const params = new URLSearchParams(window.location.search);
     const urlPage = parseInt(params.get("page") || "1", 10);
-    currentPage = Math.max(1, Math.min(urlPage, window.totalPages || urlPage));
-    
-    // Disable scroll restoration (we manage it ourselves)
+    const start = clampPage(Number.isFinite(urlPage) ? urlPage : 1);
+
     window.history.scrollRestoration = "manual";
     window.scrollTo(0, 0);
-    
-    // Load initial page
-    await loadInitialPage();
-    
-    // Setup infinite scroll sentinel
+
+    await goToPage(start, ++navToken);
+
     setupInfiniteScrollSentinel();
-    
-    // Setup page label updates on scroll
     setupScrollTracking();
 });
 
-/**
- * Load library metadata (total pages)
- */
 async function loadLibraryInfo() {
     try {
         const res = await fetch("/library-info");
         const info = await res.json();
         window.totalPages = info.total_pages;
-        
-        document.getElementById("total-pages").textContent = window.totalPages;
+
+        $("total-pages").textContent = window.totalPages;
+        $("page-input").max = window.totalPages; // arrow keys clamp natively
         updateNavigationButtons();
     } catch (err) {
         console.error("Failed to load library info:", err);
     }
 }
 
-/**
- * Load the initial page of books
- */
-async function loadInitialPage() {
-    try {
-        const books = await fetchPage(currentPage);
-        if (!books || books.length === 0) {
-            return;
-        }
-        
-        const html = renderBooksPage(books, currentPage);
-        document.getElementById("books").innerHTML = html;
-        
-        // Setup interactivity
-        const booksDiv = document.getElementById("books");
-        setupBookClickHandlers(booksDiv);
-        setupCoverLazyLoading(booksDiv);
-        
-        // Update UI
-        document.getElementById("page-input").value = currentPage;
-        updateNavigationButtons();
-        
-        isInitialLoad = false;
-    } catch (err) {
-        console.error("Failed to load initial page:", err);
-    }
-}
+/* ------------------------------------------------------------------ */
+/* Fetching                                                           */
+/* ------------------------------------------------------------------ */
 
-/**
- * Fetch a page of books from JSON endpoint
- * @param {number} page - Page number to fetch
- * @returns {Promise<Array>} Array of book objects
- */
-async function fetchPage(page) {
+async function fetchPage(page, signal) {
+    if (!Number.isInteger(page) || page < 1) return null;
     try {
-        const res = await fetch(`/pages/page${page}.json`);
+        const res = await fetch(`/pages/page${page}.json`, { signal });
         if (!res.ok) return null;
         return await res.json();
     } catch (err) {
-        console.error(`Failed to fetch page ${page}:`, err);
+        if (err.name !== "AbortError") {
+            console.error(`Failed to fetch page ${page}:`, err);
+        }
         return null;
     }
 }
 
-/**
- * Setup infinite scroll with revealed trigger
- * Creates a sentinel element that loads next page when visible
- */
-function setupInfiniteScrollSentinel() {
-    const loadMore = document.getElementById("load-more");
-    
-    // Use htmx's revealed trigger via JavaScript API
-    // This fires once when element enters viewport
-    htmx.on(loadMore, "intersect", async (evt) => {
-        if (currentPage >= window.totalPages) {
-            return; // No more pages
-        }
-        
-        const nextPage = currentPage + 1;
-        const books = await fetchPage(nextPage);
-        
-        if (!books || books.length === 0) {
-            return;
-        }
-        
-        // Render and append new page
-        const html = renderBooksPage(books, nextPage);
-        const temp = document.createElement("div");
-        temp.innerHTML = html;
-        const pageEl = temp.firstElementChild;
-        
-        const booksDiv = document.getElementById("books");
-        booksDiv.appendChild(pageEl);
-        
-        // Setup interactivity for new content
-        setupBookClickHandlers(pageEl);
-        setupCoverLazyLoading(pageEl);
-        
-        currentPage = nextPage;
-        updateNavigationButtons();
-    });
-    
-    // Start observing
-    const observer = new IntersectionObserver(
-        (entries) => {
-            if (entries[0].isIntersecting) {
-                htmx.trigger(loadMore, "intersect");
-            }
-        },
-        { rootMargin: "1500px" }
-    );
-    
-    observer.observe(loadMore);
-}
+/* ------------------------------------------------------------------ */
+/* Navigation (jump to page)                                          */
+/* ------------------------------------------------------------------ */
 
 /**
- * Setup scroll tracking to update page number in URL
+ * Request a jump. Debounced; supersedes any pending/in-flight jump.
+ * @param {number} target
+ * @param {{syncInput?: boolean, delay?: number}} opts
  */
+function requestPage(
+    target,
+    { syncInput = true, delay = NAV_DEBOUNCE_MS } = {},
+) {
+    if (!Number.isFinite(target)) return;
+    const page = clampPage(target);
+
+    // Invalidate whatever was pending or in flight.
+    const token = ++navToken;
+    clearTimeout(navTimer);
+    navAbort?.abort();
+
+    targetPage = page;
+    if (syncInput) $("page-input").value = page;
+
+    // Landed back on what's already on screen: nothing to load.
+    if (page === getVisiblePage()) {
+        navigating = false;
+        updateNavigationButtons();
+        return;
+    }
+
+    navigating = true;
+    updateNavigationButtons();
+    navTimer = setTimeout(() => goToPage(page, token), delay);
+}
+
+async function goToPage(page, token) {
+    navAbort?.abort();
+    navAbort = new AbortController();
+
+    const books = await fetchPage(page, navAbort.signal);
+    if (token !== navToken) return; // superseded
+
+    navigating = false;
+
+    if (!books || books.length === 0) {
+        targetPage = getVisiblePage();
+        $("page-input").value = targetPage;
+        updateNavigationButtons();
+        return;
+    }
+
+    abortImageQueue();
+
+    currentPage = page;
+    targetPage = page;
+    lastReplacedPage = page;
+    loadingNext = false;
+
+    const booksDiv = $("books");
+    booksDiv.innerHTML = renderBooksPage(books, page);
+    setupBookClickHandlers(booksDiv);
+    setupCoverLazyLoading(booksDiv);
+
+    $("page-input").value = page;
+    history.replaceState({ page }, "", `?page=${page}`);
+    window.scrollTo(0, 0);
+    updateNavigationButtons();
+    rearmSentinel();
+}
+
+/* ------------------------------------------------------------------ */
+/* Infinite scroll                                                    */
+/* ------------------------------------------------------------------ */
+
+async function loadNext() {
+    if (navigating || loadingNext) return;
+    if (currentPage >= window.totalPages) return;
+
+    loadingNext = true;
+    const token = navToken;
+    const next = currentPage + 1;
+
+    try {
+        const books = await fetchPage(next);
+        if (token !== navToken || navigating || !books || books.length === 0)
+            return;
+
+        const temp = document.createElement("div");
+        temp.innerHTML = renderBooksPage(books, next);
+        const pageEl = temp.firstElementChild;
+
+        $("books").appendChild(pageEl);
+        setupBookClickHandlers(pageEl);
+        setupCoverLazyLoading(pageEl);
+
+        currentPage = next;
+        updateNavigationButtons();
+    } finally {
+        loadingNext = false;
+    }
+    rearmSentinel();
+}
+
+function setupInfiniteScrollSentinel() {
+    sentinelObserver = new IntersectionObserver(
+        (entries) => {
+            if (entries[0].isIntersecting) loadNext();
+        },
+        { rootMargin: "1500px" },
+    );
+    sentinelObserver.observe($("load-more"));
+}
+
+/** Re-observe so the callback fires again if the sentinel is still in range. */
+function rearmSentinel() {
+    if (!sentinelObserver) return;
+    const el = $("load-more");
+    sentinelObserver.unobserve(el);
+    sentinelObserver.observe(el);
+}
+
+/* ------------------------------------------------------------------ */
+/* Scroll tracking                                                    */
+/* ------------------------------------------------------------------ */
+
 function setupScrollTracking() {
     let updateScheduled = false;
     let lastVisiblePage = null;
-    
+
     function scheduleUpdate() {
         if (updateScheduled) return;
         updateScheduled = true;
         requestAnimationFrame(() => {
             updateScheduled = false;
+            if (navigating) return; // don't fight an in-progress jump
+
             updatePageLabel();
-            
-            // Cancel far images on scroll
+
             const visiblePage = getVisiblePage();
             if (visiblePage !== lastVisiblePage) {
                 lastVisiblePage = visiblePage;
-                cancelFarImages(visiblePage, 2); // Keep 2 pages on each side
+                cancelFarImages(visiblePage, 2);
             }
         });
     }
-    
+
     window.addEventListener("scroll", scheduleUpdate);
     window.addEventListener("keydown", (e) => {
-        if (e.key === "Home" || e.key === "End") {
-            scheduleUpdate();
-        }
+        if (e.key === "Home" || e.key === "End") scheduleUpdate();
     });
 }
 
-/**
- * Get the currently visible page number
- * @returns {number} Visible page number
- */
+/** Always returns a valid page number. */
 function getVisiblePage() {
     const pages = document.querySelectorAll(".page");
+    if (pages.length === 0) return currentPage;
+
     const headerHeight = document.querySelector(".top-bar").offsetHeight;
-    let current = null;
-    
+    let current = parseInt(pages[0].dataset.page, 10);
+
     for (const page of pages) {
         const rect = page.getBoundingClientRect();
         if (rect.top <= headerHeight + 5) {
@@ -199,40 +253,68 @@ function getVisiblePage() {
             break;
         }
     }
-    
-    return current ?? parseInt(document.querySelector(".page")?.dataset.page, 10) ?? 1;
+
+    return Number.isFinite(current) ? current : currentPage;
 }
 
-/**
- * Update page label and URL
- */
-let lastReplacedPage = null;
 function updatePageLabel() {
     const page = getVisiblePage();
-    if (isNaN(page) || page === lastReplacedPage) return;
-    
+    if (page === lastReplacedPage) return;
+
     lastReplacedPage = page;
-    document.getElementById("page-input").value = page;
+    targetPage = page;
+    $("page-input").value = page;
     history.replaceState({ page }, "", `?page=${page}`);
     updateNavigationButtons();
 }
 
-/**
- * Close modal
- */
+function updateNavigationButtons() {
+    $("prev-page").disabled = targetPage <= 1;
+    $("next-page").disabled = targetPage >= window.totalPages;
+}
+
+/* ------------------------------------------------------------------ */
+/* Controls                                                           */
+/* ------------------------------------------------------------------ */
+
+const pageInput = $("page-input");
+
+// Arrow keys / spinner / typing: debounced, only the final value loads.
+pageInput.addEventListener("input", () => {
+    const n = parseInt(pageInput.value, 10);
+    if (Number.isNaN(n)) return; // mid-edit (empty field)
+    requestPage(n, { syncInput: false });
+});
+
+// Blur / Enter: normalize whatever is in the field.
+pageInput.addEventListener("change", () => {
+    const n = parseInt(pageInput.value, 10);
+    if (Number.isNaN(n)) {
+        pageInput.value = targetPage;
+        return;
+    }
+    pageInput.value = clampPage(n);
+});
+
+$("next-page").addEventListener("click", () => requestPage(targetPage + 1));
+$("prev-page").addEventListener("click", () => requestPage(targetPage - 1));
+
+/* ------------------------------------------------------------------ */
+/* Modal                                                              */
+/* ------------------------------------------------------------------ */
+
 function closeModal() {
-    const modal = document.getElementById("book-modal");
+    const modal = $("book-modal");
     document.body.classList.remove("no-scroll");
     modal.classList.remove("open");
 }
 
-// Modal event handlers
-document.getElementById("modal-close").addEventListener("click", () => {
+$("modal-close").addEventListener("click", () => {
     closeModal();
     history.back();
 });
 
-document.getElementById("book-modal").addEventListener("click", (e) => {
+$("book-modal").addEventListener("click", (e) => {
     if (e.target.id === "book-modal") {
         closeModal();
         history.back();
@@ -240,8 +322,7 @@ document.getElementById("book-modal").addEventListener("click", (e) => {
 });
 
 window.addEventListener("keydown", (e) => {
-    const modal = document.getElementById("book-modal");
-    if (e.key === "Escape" && modal.classList.contains("open")) {
+    if (e.key === "Escape" && $("book-modal").classList.contains("open")) {
         closeModal();
         history.back();
     }
@@ -249,60 +330,4 @@ window.addEventListener("keydown", (e) => {
 
 window.addEventListener("popstate", () => {
     closeModal();
-});
-
-/**
- * Update navigation button states
- */
-function updateNavigationButtons() {
-    const visiblePage = getVisiblePage();
-    document.getElementById("prev-page").disabled = visiblePage <= 1;
-    document.getElementById("next-page").disabled = currentPage >= window.totalPages;
-}
-
-// Navigation controls
-document.getElementById("page-input").addEventListener("change", async (e) => {
-    let target = parseInt(e.target.value, 10);
-    if (isNaN(target)) return;
-    
-    target = Math.max(1, Math.min(target, window.totalPages));
-    e.target.value = target;
-    
-    // Abort pending image loads
-    abortImageQueue();
-    
-    // Clear and reload
-    document.getElementById("books").innerHTML = "";
-    currentPage = target;
-    
-    await loadInitialPage();
-    window.scrollTo(0, 0);
-});
-
-document.getElementById("next-page").addEventListener("click", async () => {
-    const page = getVisiblePage();
-    if (page >= window.totalPages) return;
-    
-    // Abort pending image loads
-    abortImageQueue();
-    
-    document.getElementById("books").innerHTML = "";
-    currentPage = page + 1;
-    
-    await loadInitialPage();
-    window.scrollTo(0, 0);
-});
-
-document.getElementById("prev-page").addEventListener("click", async () => {
-    const page = getVisiblePage();
-    if (page <= 1) return;
-    
-    // Abort pending image loads
-    abortImageQueue();
-    
-    document.getElementById("books").innerHTML = "";
-    currentPage = page - 1;
-    
-    await loadInitialPage();
-    window.scrollTo(0, 0);
 });
