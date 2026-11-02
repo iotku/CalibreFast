@@ -115,7 +115,11 @@ export function renderBookCard(book) {
     return `
 <div class="book">
     <a href="#" data-book-uuid="${uuid}" class="book-link">
-        <div class="cover-wrapper" style="background:${coverColor}">
+        <div class="cover-wrapper" style="background:${coverColor}" 
+             hx-get="/cover-thumb/${uuid}" 
+             hx-trigger="revealed, mouseenter once"
+             hx-swap="none"
+             hx-on::after:request="window.handleCoverPreload(this, event)">
             <img class="book-cover" 
                  data-src="/cover-thumb/${uuid}" 
                  data-id="${uuid}"
@@ -372,3 +376,23 @@ export function cancelFarImages(visiblePage, keepRange = 2) {
 export function abortImageQueue() {
     imageQueue.abort();
 }
+
+/**
+ * Handle cover preload from htmx
+ * Exposed globally for hx-on handlers
+ */
+window.handleCoverPreload = function(wrapper, event) {
+    const img = wrapper.querySelector('.book-cover');
+    if (!img || img.src) return; // Already loaded
+    
+    const xhr = event.detail.xhr;
+    if (!xhr || xhr.status !== 200) return;
+    
+    // Get blob from response
+    xhr.responseType = 'blob';
+    const blob = xhr.response;
+    
+    // Create object URL and set image
+    img.src = URL.createObjectURL(blob);
+    img.onload = () => img.classList.add('loaded');
+};
