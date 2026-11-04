@@ -5,7 +5,7 @@
 
 import { renderBooksPage, setupBookClickHandlers } from "./utils.js";
 
-const NAV_DEBOUNCE_MS = 150;
+const NAV_DEBOUNCE_MS = 0;
 
 // Global state
 window.totalPages = null;
@@ -139,6 +139,8 @@ async function goToPage(page, token) {
     lastReplacedPage = page;
     loadingNext = false;
 
+    updateCoverRequests();
+
     const booksDiv = $("books");
     booksDiv.innerHTML = renderBooksPage(books, page);
     setupBookClickHandlers(booksDiv);
@@ -176,6 +178,7 @@ async function loadNext() {
 
         currentPage = next;
         updateNavigationButtons();
+        updateCoverRequests();
     } finally {
         loadingNext = false;
     }
@@ -220,6 +223,7 @@ function setupScrollTracking() {
             const visiblePage = getVisiblePage();
             if (visiblePage !== lastVisiblePage) {
                 lastVisiblePage = visiblePage;
+                updateCoverRequests();
             }
         });
     }
@@ -227,6 +231,38 @@ function setupScrollTracking() {
     window.addEventListener("scroll", scheduleUpdate);
     window.addEventListener("keydown", (e) => {
         if (e.key === "Home" || e.key === "End") scheduleUpdate();
+    });
+}
+
+/**
+ * Cancel cover image requests more than two pages behind
+ * the current viewport. Restore their requests when they
+ * come back within range.
+ */
+function updateCoverRequests() {
+    const visiblePage = getVisiblePage();
+    const oldestAllowedPage = visiblePage - 2;
+
+    document.querySelectorAll(".page[data-page]").forEach((page) => {
+        const pageNumber = Number(page.dataset.page);
+        const images = page.querySelectorAll(".book-cover");
+
+        images.forEach((img) => {
+            // Already successfully loaded; nothing to do.
+            if (img.classList.contains("loaded")) return;
+
+            if (pageNumber < oldestAllowedPage) {
+                // Preserve the original URL before removing src.
+                if (img.hasAttribute("src")) {
+                    img.dataset.coverSrc = img.getAttribute("src");
+                    img.removeAttribute("src");
+                }
+            } else if (img.dataset.coverSrc) {
+                // Restore the request when scrolling back.
+                img.setAttribute("src", img.dataset.coverSrc);
+                delete img.dataset.coverSrc;
+            }
+        });
     });
 }
 
