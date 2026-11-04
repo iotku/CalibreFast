@@ -241,7 +241,7 @@ function setupScrollTracking() {
  */
 function updateCoverRequests() {
     const visiblePage = getVisiblePage();
-    const oldestAllowedPage = visiblePage - 2;
+    const oldestAllowedPage = visiblePage - 1;
 
     document.querySelectorAll(".page[data-page]").forEach((page) => {
         const pageNumber = Number(page.dataset.page);
