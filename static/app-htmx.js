@@ -3,13 +3,7 @@
  * Infinite scroll with JSON transformation
  */
 
-import {
-    renderBooksPage,
-    setupBookClickHandlers,
-    setupCoverLazyLoading,
-    cancelFarImages,
-    abortImageQueue,
-} from "./utils.js";
+import { renderBooksPage, setupBookClickHandlers } from "./utils.js";
 
 const NAV_DEBOUNCE_MS = 150;
 
@@ -73,7 +67,10 @@ async function loadLibraryInfo() {
 async function fetchPage(page, signal) {
     if (!Number.isInteger(page) || page < 1) return null;
     try {
-        const res = await fetch(`/pages/page${page}.json`, { signal });
+        const res = await fetch(`/pages/page${page}.json`, {
+            signal,
+            priority: "high",
+        });
         if (!res.ok) return null;
         return await res.json();
     } catch (err) {
@@ -93,6 +90,7 @@ async function fetchPage(page, signal) {
  * @param {number} target
  * @param {{syncInput?: boolean, delay?: number}} opts
  */
+
 function requestPage(
     target,
     { syncInput = true, delay = NAV_DEBOUNCE_MS } = {},
@@ -100,7 +98,6 @@ function requestPage(
     if (!Number.isFinite(target)) return;
     const page = clampPage(target);
 
-    // Invalidate whatever was pending or in flight.
     const token = ++navToken;
     clearTimeout(navTimer);
     navAbort?.abort();
@@ -108,10 +105,10 @@ function requestPage(
     targetPage = page;
     if (syncInput) $("page-input").value = page;
 
-    // Landed back on what's already on screen: nothing to load.
     if (page === getVisiblePage()) {
         navigating = false;
         updateNavigationButtons();
+        setupCoverLazyLoading($("books")); // resumes the queue, re-queues covers
         return;
     }
 
@@ -133,10 +130,9 @@ async function goToPage(page, token) {
         targetPage = getVisiblePage();
         $("page-input").value = targetPage;
         updateNavigationButtons();
+        setupCoverLazyLoading($("books")); // resumes the queue, re-queues covers
         return;
     }
-
-    abortImageQueue();
 
     currentPage = page;
     targetPage = page;
@@ -146,7 +142,6 @@ async function goToPage(page, token) {
     const booksDiv = $("books");
     booksDiv.innerHTML = renderBooksPage(books, page);
     setupBookClickHandlers(booksDiv);
-    setupCoverLazyLoading(booksDiv);
 
     $("page-input").value = page;
     history.replaceState({ page }, "", `?page=${page}`);
@@ -178,7 +173,6 @@ async function loadNext() {
 
         $("books").appendChild(pageEl);
         setupBookClickHandlers(pageEl);
-        setupCoverLazyLoading(pageEl);
 
         currentPage = next;
         updateNavigationButtons();
@@ -226,7 +220,6 @@ function setupScrollTracking() {
             const visiblePage = getVisiblePage();
             if (visiblePage !== lastVisiblePage) {
                 lastVisiblePage = visiblePage;
-                cancelFarImages(visiblePage, 2);
             }
         });
     }
