@@ -71,6 +71,7 @@ type Book struct {
 	PubDate     string  `json:"pubdate"`
 	Path        string  `json:"path"` // e.g "Author Name/Book Title" not direct link to specific file format
 	UUID        string  `json:"uuid"`
+	LastModified string `json:"last_modified"`
 }
 
 type LibraryInfo struct {
@@ -91,7 +92,7 @@ type EditBookPageData struct { // TODO I Hate this, these page structs are all o
 }
 
 func writePage(page int, books []Book) error {
-	data, err := json.MarshalIndent(books, "", "  ")
+	data, err := json.Marshal(books)
 	if err != nil {
 		return err
 	}
@@ -180,7 +181,7 @@ func encodeBooksJSONFromRows(rows *sql.Rows, w http.ResponseWriter) error {
 	books := make([]Book, 0)
 	for rows.Next() {
 		var b Book
-		if err := rows.Scan(&b.UUID, &b.Title, &b.AuthorSort, &b.PubDate, &b.Path); err != nil {
+		if err := rows.Scan(&b.UUID, &b.Title, &b.AuthorSort, &b.PubDate, &b.Path, &b.LastModified); err != nil {
 			continue
 		}
 		uuidPathIndex.Store(b.UUID, b.Path)
@@ -665,7 +666,7 @@ func generatePages() {
 	}
 
 	// create paginated entries as json for each book in metadata.db (50 books/page)
-	rows, err := db.Query("SELECT title, author_sort, series_index, pubdate, path, uuid FROM books ORDER BY timestamp DESC")
+	rows, err := db.Query("SELECT title, author_sort, series_index, pubdate, path, uuid, last_modified FROM books ORDER BY timestamp DESC")
 	if err != nil {
 		panic(err)
 	}
@@ -690,10 +691,15 @@ func generatePages() {
 			&book.PubDate,
 			&book.Path,
 			&book.UUID,
+			&book.LastModified,
 		)
 		if err != nil {
 			panic(err)
 		}
+
+		// Trunicate timestamps to seconds
+		t, _ := time.Parse(time.RFC3339Nano, book.LastModified) // We do have consistant times in the databse now right? right?
+		book.LastModified = t.Format("20060102150405") // cache-busters!
 
 		// cache cover path
 		uuidPathIndex.Store(book.UUID, book.Path)

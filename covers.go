@@ -119,7 +119,8 @@ func coverThumbHandler(w http.ResponseWriter, r *http.Request) {
 				logErr(f.Close(), "failed to close thumb "+thumbPath)
 			}(f)
 			w.Header().Set("Content-Type", "image/jpeg")
-			w.Header().Set("Cache-Control", "no-cache, must-revalidate")
+			// w.Header().Set("Cache-Control", "no-cache, must-revalidate") // Instead we will give unique ?t=modtime links for thumbnails like we do with the main images
+			w.Header().Set("Cache-Control", "public, max-age=31536000, immutable")
 			w.Header().Set("X-Cache-Hit", "true")
 			http.ServeContent(w, r, "thumb.jpg", thumbStat.ModTime(), f)
 			return
@@ -161,7 +162,8 @@ func coverThumbHandler(w http.ResponseWriter, r *http.Request) {
 	}
 
 	w.Header().Set("Content-Type", "image/jpeg")
-	w.Header().Set("Cache-Control", "no-cache, must-revalidate")
+	// w.Header().Set("Cache-Control", "no-cache, must-revalidate") // Instead we will give unique ?t=modtime links for thumbnails like we do with the main images
+	w.Header().Set("Cache-Control", "public, max-age=31536000, immutable")
 	w.Header().Set("X-Cache-Hit", "false")
 	_, _ = w.Write(data)
 }

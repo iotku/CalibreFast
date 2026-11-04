@@ -2,6 +2,7 @@ package main
 
 import (
 	"bytes"
+	"fmt"
 	"html/template"
 	"net/http"
 	"os"
@@ -51,6 +52,20 @@ func bookHandler(w http.ResponseWriter, r *http.Request) {
 		"metadata.opf",
 	)
 
+	opfStat, err := os.Stat(opfPath)
+	if err != nil {
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+		return
+	}
+
+	etag := fmt.Sprintf(`"%x"`, opfStat.ModTime().UnixNano())
+	w.Header().Set("ETag", etag)
+	w.Header().Set("Cache-Control", "private, max-age=30")
+	if r.Header.Get("If-None-Match") == etag {
+		w.WriteHeader(http.StatusNotModified)
+		return
+	}
+
 	opf, err := loadOPF(opfPath)
 	if err != nil {
 		http.Error(w, err.Error(), http.StatusInternalServerError)
@@ -70,6 +85,7 @@ func bookHandler(w http.ResponseWriter, r *http.Request) {
 	if t, err := parseAnyDate(opf.Metadata.Date); err == nil {
 		formattedDate = t.Format("January 2, 2006")
 	}
+
 
 	coverStat, cErr := os.Stat(filepath.Join(baseDir, path, "cover.jpg"))
 	var coverModTime int64
