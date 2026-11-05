@@ -4,7 +4,7 @@
  */
 
 import { renderBooksPage } from "./utils.js";
-import { setupBookClickHandlers, HASH_PREFIX } from "./modal.js";
+import { setupBookClickHandlers, loadBook, HASH_PREFIX } from "./modal.js";
 
 const NAV_DEBOUNCE_MS = 0;
 

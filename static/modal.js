@@ -56,7 +56,7 @@ function hideModal() {
     if (body) body.innerHTML = "";
 }
 
-function loadBook(uuid) {
+export function loadBook(uuid) {
     showModal();
     if (typeof htmx === "undefined") {
         bodyEl().innerHTML = "htmx not loaded.";
