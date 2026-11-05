@@ -7,6 +7,10 @@ const BODY_ID = "modal-body";
 export const HASH_PREFIX = "#book/";
 const CLOSE_SELECTOR = "#modal-close, [data-modal-close]";
 
+// Rendered from {{ .Title }} in index.html, so it follows a service rename.
+const BASE_TITLE = document.title;
+const TITLE_SEP = " – ";
+
 let modalInitialized = false;
 let openedViaNav = false; // true if the current modal entry was pushed by a click
 
@@ -32,6 +36,32 @@ function isModalOpen() {
     return modalEl()?.classList.contains("open");
 }
 
+/* ------------------------------------------------------------------ */
+/* Tab title                                                           */
+/* ------------------------------------------------------------------ */
+
+/**
+ * The book fragment sets its own <title>, which htmx applies. Whatever sets
+ * it, prefix it with the base title while the modal is open.
+ */
+function prefixTitle() {
+    if (!isModalOpen()) return;
+    const t = document.title;
+    if (!t || t.startsWith(BASE_TITLE)) return; // already prefixed (or base)
+    document.title = BASE_TITLE + TITLE_SEP + t;
+}
+
+const titleEl = document.querySelector("title");
+if (titleEl) {
+    new MutationObserver(prefixTitle).observe(titleEl, {
+        childList: true,
+        characterData: true,
+        subtree: true,
+    });
+}
+
+/* ------------------------------------------------------------------ */
+
 function hashUuid() {
     if (!location.hash.startsWith(HASH_PREFIX)) return null;
     const raw = location.hash.slice(HASH_PREFIX.length);
@@ -54,6 +84,7 @@ function hideModal() {
     modalEl()?.classList.remove("open");
     const body = bodyEl();
     if (body) body.innerHTML = "";
+    document.title = BASE_TITLE; // every close path ends here
 }
 
 export function loadBook(uuid) {

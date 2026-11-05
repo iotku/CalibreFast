@@ -6,7 +6,7 @@
     --topbar-height: 42px;
     --topbar-padding: 6px;
     --topbar-total: calc(var(--topbar-height) + var(--topbar-padding) * 2);
-    --page-padding: 24px;
+    --page-padding: clamp(12px, 1.5vw, 32px);
     --gap-small: 4px;
     --gap-medium: 8px;
     --gap-large: 12px;
@@ -166,7 +166,7 @@ input[type="number"],
     display: grid;
     grid-template-columns: repeat(6, 1fr);
     gap: 10px;
-    max-width: 1600px;
+    max-width: 2800px;
     margin: var(--topbar-total) auto 0;
 }
 
@@ -429,6 +429,13 @@ input[type="number"],
     flex-shrink: 0;
 }
 
+/* Wideboys */
+@media (min-width: 2000px) {
+    #books {
+        grid-template-columns: repeat(10, minmax(0, 1fr));
+    }
+}
+
 /* ============================================
    Tablet and Mobile
    ============================================ */
@@ -448,7 +455,7 @@ input[type="number"],
             "center center";
 
         gap: 8px 12px;
-        padding: 8px 16px;
+        padding: 6px var(--page-padding);
     }
 
     .top-bar-left {
