@@ -151,7 +151,7 @@ async function goToPage(page, token) {
         targetPage = getVisiblePage();
         $("page-input").value = targetPage;
         updateNavigationButtons();
-        setupCoverLazyLoading($("books")); // resumes the queue, re-queues covers
+        pumpCovers();
         return;
     }
 
@@ -161,11 +161,10 @@ async function goToPage(page, token) {
     loadingNext = false;
     prefetch.clear();
 
-    updateCoverRequests();
-
     const booksDiv = $("books");
     booksDiv.innerHTML = renderBooksPage(books, page);
     setupBookClickHandlers(booksDiv);
+    pumpCovers();
 
     $("page-input").value = page;
     history.replaceState({ page }, "", `?page=${page}`);
@@ -222,7 +221,7 @@ async function loadNext() {
 
             currentPage = next;
             updateNavigationButtons();
-            updateCoverRequests();
+            pumpCovers();
         }
     } finally {
         loadingNext = false;
@@ -268,7 +267,7 @@ function setupScrollTracking() {
             const visiblePage = getVisiblePage();
             if (visiblePage !== lastVisiblePage) {
                 lastVisiblePage = visiblePage;
-                updateCoverRequests();
+                pumpCovers();
                 loadNext();
             }
         });
@@ -280,36 +279,40 @@ function setupScrollTracking() {
     });
 }
 
+const MAX_COVERS_INFLIGHT = 4; // leave headroom under the 6-per-host limit
+const coversInflight = new Set();
+
 /**
- * Cancel cover image requests more than two pages behind
- * the current viewport. Restore their requests when they
- * come back within range.
+ * Start pending covers in DOM order (nearest the viewport first),
+ * keeping at most MAX_COVERS_INFLIGHT requests open. Each finished
+ * image pumps the queue again.
  */
-function updateCoverRequests() {
-    const visiblePage = getVisiblePage();
-    const oldestAllowedPage = visiblePage - 1;
+function pumpCovers() {
+    // Images removed by a page jump never fire load/error.
+    for (const img of coversInflight) {
+        if (!img.isConnected) coversInflight.delete(img);
+    }
 
-    document.querySelectorAll(".page[data-page]").forEach((page) => {
-        const pageNumber = Number(page.dataset.page);
-        const images = page.querySelectorAll(".book-cover");
+    const visible = getVisiblePage();
 
-        images.forEach((img) => {
-            // Already successfully loaded; nothing to do.
-            if (img.classList.contains("loaded")) return;
+    for (const img of document.querySelectorAll(".book-cover[data-src]")) {
+        if (coversInflight.size >= MAX_COVERS_INFLIGHT) break;
 
-            if (pageNumber < oldestAllowedPage) {
-                // Preserve the original URL before removing src.
-                if (img.hasAttribute("src")) {
-                    img.dataset.coverSrc = img.getAttribute("src");
-                    img.removeAttribute("src");
-                }
-            } else if (img.dataset.coverSrc) {
-                // Restore the request when scrolling back.
-                img.setAttribute("src", img.dataset.coverSrc);
-                delete img.dataset.coverSrc;
-            }
-        });
-    });
+        const pageNumber = Number(img.closest(".page")?.dataset.page);
+        if (pageNumber < visible - 1) continue; // behind the viewport, wait
+
+        const src = img.dataset.src;
+        delete img.dataset.src;
+        coversInflight.add(img);
+
+        const done = () => {
+            coversInflight.delete(img);
+            pumpCovers();
+        };
+        img.addEventListener("load", done, { once: true });
+        img.addEventListener("error", done, { once: true });
+        img.src = src;
+    }
 }
 
 /** Always returns a valid page number. */
