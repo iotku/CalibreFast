@@ -154,6 +154,7 @@ async function buildDocument(start) {
     }
     booksEl.replaceChildren(frag);
     realPages.add(start);
+    setupBookClickHandlers(first); // must run while attached to the document
 
     scrollToPage(start);
 }
@@ -203,9 +204,7 @@ function loadPageData(page) {
 function buildPageEl(books, page) {
     const temp = document.createElement("div");
     temp.innerHTML = renderBooksPage(books, page);
-    const el = temp.firstElementChild;
-    if (el) setupBookClickHandlers(el);
-    return el;
+    return temp.firstElementChild; // htmx processing happens after insertion
 }
 
 function makePlaceholder(n, height) {
@@ -258,6 +257,7 @@ function renderPage(n, books) {
     const above = before.bottom <= headerHeight();
     ph.replaceWith(el);
     realPages.add(n);
+    setupBookClickHandlers(el); // must run while attached to the document
 
     if (above) {
         const after = pageBounds(el);
