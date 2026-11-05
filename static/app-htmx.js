@@ -8,6 +8,8 @@ import { setupBookClickHandlers, loadBook, HASH_PREFIX } from "./modal.js";
 
 const NAV_DEBOUNCE_MS = 0;
 const BUFFER_PAGES = 2;
+const MAX_COVERS_INFLIGHT = 6 - BUFFER_PAGES; // leave headroom under the 6-per-host limit
+const coversInflight = new Set();
 const prefetch = new Map(); // page -> Promise<books|null>
 
 // Global state
@@ -65,7 +67,30 @@ window.addEventListener("DOMContentLoaded", async () => {
 
     setupInfiniteScrollSentinel();
     setupScrollTracking();
+    setupCoverStates($("books"));
 });
+
+export function setupCoverStates(container) {
+    container.addEventListener(
+        "load",
+        (e) => {
+            if (e.target.matches?.(".book-cover"))
+                e.target.classList.add("loaded");
+        },
+        true,
+    );
+
+    container.addEventListener(
+        "error",
+        (e) => {
+            const img = e.target;
+            if (!img.matches?.(".book-cover")) return;
+            img.parentElement?.classList.add("no-cover"); // placeholder stays visible
+            img.remove();
+        },
+        true,
+    );
+}
 
 async function loadLibraryInfo() {
     try {
@@ -278,9 +303,6 @@ function setupScrollTracking() {
         if (e.key === "Home" || e.key === "End") scheduleUpdate();
     });
 }
-
-const MAX_COVERS_INFLIGHT = 4; // leave headroom under the 6-per-host limit
-const coversInflight = new Set();
 
 /**
  * Start pending covers in DOM order (nearest the viewport first),

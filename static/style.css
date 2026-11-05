@@ -278,6 +278,58 @@ input[type="number"],
     }
 }
 
+.cover-wrapper {
+    position: relative;
+    aspect-ratio: 2 / 3;
+    overflow: hidden;
+}
+
+.book-cover {
+    position: absolute;
+    inset: 0;
+    width: 100%;
+    height: 100%;
+    object-fit: cover;
+    opacity: 0;
+    z-index: 1;
+    transition: opacity 0.15s;
+}
+.book-cover.loaded {
+    opacity: 1;
+}
+
+/* Book cover placeholder */
+
+.cover-placeholder {
+    position: absolute;
+    inset: 0;
+    display: flex;
+    flex-direction: column;
+    justify-content: space-between;
+    align-items: center;
+    padding: 12% 8%;
+    text-align: center;
+    color: #fff;
+    text-wrap: balance;
+}
+.ph-title {
+    font: bold 0.9rem/1.25 sans-serif;
+    margin-top: 25%;
+    display: -webkit-box;
+    -webkit-line-clamp: 5;
+    -webkit-box-orient: vertical;
+    overflow: hidden;
+}
+.ph-author {
+    font: 0.75rem sans-serif;
+    opacity: 0.85;
+}
+
+/* hide placeholder once the real cover is in */
+.book-cover.loaded ~ .cover-placeholder {
+    display: none;
+}
+
 /* ============================================
    Layout - Top Bar
    ============================================ */

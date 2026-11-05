@@ -102,21 +102,26 @@ export function renderBookCard(book) {
     const title = escapeHtml(book.title || "Untitled");
     const author = escapeHtml(book.author_sort || "Unknown Author");
     const uuid = escapeHtml(book.uuid);
+    const coverColor = colorFromBook(book);
 
     return `
 <div class="book" >
-<a href="#book/${uuid}" class="book-link"
-   hx-get="/book/get/${uuid}"
-   hx-target="#modal-body"
-   hx-swap="innerHTML"
-   hx-preload="mouseover"
->
-        <div class="cover-wrapper">
-            <img class="book-cover"
-                 data-src="/cover-thumb/${uuid}?t=${book.last_modified}"
-                 data-id="${uuid}"
-               />
-        </div>
+    <a href="#book/${uuid}" class="book-link"
+       hx-get="/book/get/${uuid}"
+       hx-target="#modal-body"
+       hx-swap="innerHTML"
+       hx-preload="mouseover"
+    >
+        <div class="cover-wrapper" style="background:${coverColor}">
+                <img class="book-cover"
+                    data-src="/cover-thumb/${uuid}?t=${book.last_modified}"
+                    data-id="${uuid}"
+                    fetchpriority="low" />
+                <div class="cover-placeholder">
+                    <span class="ph-title">${title}</span>
+                    <span class="ph-author">${author}</span>
+                </div>
+            </div>
     </a>
     <div class="book-info">
         <h2>${title}</h2>
