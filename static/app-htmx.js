@@ -306,7 +306,6 @@ function pumpCovers() {
         coversInflight.add(img);
 
         const done = () => {
-            coversInflight.delete(img);
             pumpCovers();
         };
         img.addEventListener("load", done, { once: true });
@@ -314,6 +313,14 @@ function pumpCovers() {
         img.src = src;
     }
 }
+
+function onCoverSettled(e) {
+    const img = e.target;
+    if (!img.classList?.contains("book-cover")) return;
+    if (coversInflight.delete(img)) pumpCovers();
+}
+document.addEventListener("load", onCoverSettled, true);
+document.addEventListener("error", onCoverSettled, true);
 
 /** Always returns a valid page number. */
 function getVisiblePage() {
@@ -324,8 +331,9 @@ function getVisiblePage() {
     let current = parseInt(pages[0].dataset.page, 10);
 
     for (const page of pages) {
-        const rect = page.getBoundingClientRect();
-        if (rect.top <= headerHeight + 5) {
+        const first = page.firstElementChild;
+        if (!first) continue;
+        if (first.getBoundingClientRect().top <= headerHeight + 5) {
             current = parseInt(page.dataset.page, 10);
         } else {
             break;

@@ -163,20 +163,15 @@ input[type="number"],
    Layout - Books Grid
    ============================================ */
 #books {
-    display: flex;
-    flex-direction: column;
-    gap: var(--gap-xlarge);
+    display: grid;
+    grid-template-columns: repeat(6, 1fr);
+    gap: 10px;
     max-width: 1600px;
     margin: var(--topbar-total) auto 0;
 }
 
 .page {
-    display: grid;
-    grid-template-columns: repeat(5, 1fr);
-    gap: 10px;
-    width: 100%;
-    content-visibility: auto;
-    contain-intrinsic-size: 800px;
+    display: contents;
 }
 
 /* ============================================
@@ -195,6 +190,8 @@ input[type="number"],
         box-shadow var(--transition-fast);
     cursor: pointer;
     isolation: isolate;
+    content-visibility: auto;
+    contain-intrinsic-size: auto 300px;
 }
 
 /* Cover */
@@ -204,16 +201,10 @@ input[type="number"],
     height: 100%;
     object-fit: cover;
     display: block;
-    opacity: 0;
     transition: opacity var(--transition-normal);
 }
 
-.book-cover.loaded {
-    opacity: 1;
-}
-
 /* Information overlay */
-
 .book-info {
     position: absolute;
     inset: 0;
@@ -441,7 +432,7 @@ input[type="number"],
         width: 100%;
     }
 
-    .page {
+    #books {
         grid-template-columns: repeat(3, 1fr);
         gap: 6px;
     }
@@ -498,7 +489,7 @@ input[type="number"],
         padding: 0 4px;
     }
 
-    .page {
+    #books {
         grid-template-columns: repeat(2, 1fr);
     }
 }
