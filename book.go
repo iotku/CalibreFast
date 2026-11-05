@@ -34,7 +34,7 @@ type BookPageData struct {
 	Tags        []string
 
 	Formats      []string
-	CoverModTime int64
+	ModTime string
 }
 
 func bookHandler(w http.ResponseWriter, r *http.Request) {
@@ -86,11 +86,9 @@ func bookHandler(w http.ResponseWriter, r *http.Request) {
 		formattedDate = t.Format("January 2, 2006")
 	}
 
-
-	coverStat, cErr := os.Stat(filepath.Join(baseDir, path, "cover.jpg"))
-	var coverModTime int64
-	if cErr == nil {
-		coverModTime = coverStat.ModTime().UnixNano()
+	modTime, ok := modTimeCache.Load(uuid) // cache-busting modtime for cover.jpg and cover-thumb.jpg
+	if !ok {
+		modTime = ""
 	}
 
 	data := BookPageData{
@@ -110,7 +108,7 @@ func bookHandler(w http.ResponseWriter, r *http.Request) {
 		),
 
 		Formats:      formats,
-		CoverModTime: coverModTime,
+		ModTime: modTime.(string), // cache-busting modtime for cover.jpg and cover-thumb.jpg
 	}
 	// render into buffer first
 	var buf bytes.Buffer

@@ -9,19 +9,38 @@
     <body>
         <div class="book-page">
             <div class="book-page-cover">
-                <img src="/cover/{{ .UUID }}{{ if .CoverModTime }}?t={{ .CoverModTime }}{{ end }}" />
+                <img
+                    class="thumbnail"
+                    alt="Cover"
+                    src="/cover-thumb/{{ .UUID }}{{ if .ModTime }}?t={{ .ModTime }}{{ end }}"
+                    data-full="/cover/{{ .UUID }}{{ if .ModTime }}?t={{ .ModTime }}{{ end }}"
+                    onload="
+                        const full = this.dataset.full;
+                        if (!full) return;
+                        delete this.dataset.full;
+                        const img = new Image();
+                        img.onload = () => {
+                            this.src = full;
+                        };
+                        img.src = full;
+                    "
+                />
                 <div id="read-buttons">
-                    {{ range .Formats }}
-                        {{ if eq . "epub" }}
-                            <button class="btn-read" onclick="window.location.href='/read?uuid={{ $.UUID }}'">
-                                Read EPUB
-                            </button>
-                        {{ else if eq . "pdf" }}
-                            <button class="btn-read" onclick="window.location.href='/read-pdf?uuid={{ $.UUID }}'">
-                                Read PDF
-                            </button>
-                        {{ end }}
-                    {{ end }}
+                    {{ range .Formats }} {{ if eq . "epub" }}
+                    <button
+                        class="btn-read"
+                        onclick="window.location.href='/read?uuid={{ $.UUID }}'"
+                    >
+                        Read EPUB
+                    </button>
+                    {{ else if eq . "pdf" }}
+                    <button
+                        class="btn-read"
+                        onclick="window.location.href='/read-pdf?uuid={{ $.UUID }}'"
+                    >
+                        Read PDF
+                    </button>
+                    {{ end }} {{ end }}
                 </div>
             </div>
             <div class="book-page-info">
@@ -106,7 +125,6 @@
                 </div>
                 {{if .Tags}}
                 <div class="meta-row">
-                    <!--            <strong>Tags:</strong>-->
                     {{ range .Tags }}
                     <a href="/tag/{{ . }}" class="tag meta-link">{{ . }}</a>
                     {{ end }}

@@ -16,6 +16,7 @@ import (
 )
 
 var uuidPathIndex sync.Map // map[string]string uuid -> relative path to book dir
+var modTimeCache sync.Map  // map[string]int64 uuid -> last modified time of book from calibre database, used for cache-busting cover.jpg and cover-thumb.jpg
 var formatCache sync.Map   // map[string][]string uuid -> list of formats and their paths relative to the baseDir
 // TODO: Performance, maybe this can be increased?
 var imageSem = make(chan struct{}, 8) // only n HDD reads at once
@@ -119,7 +120,6 @@ func coverThumbHandler(w http.ResponseWriter, r *http.Request) {
 				logErr(f.Close(), "failed to close thumb "+thumbPath)
 			}(f)
 			w.Header().Set("Content-Type", "image/jpeg")
-			// w.Header().Set("Cache-Control", "no-cache, must-revalidate") // Instead we will give unique ?t=modtime links for thumbnails like we do with the main images
 			w.Header().Set("Cache-Control", "public, max-age=31536000, immutable")
 			w.Header().Set("X-Cache-Hit", "true")
 			http.ServeContent(w, r, "thumb.jpg", thumbStat.ModTime(), f)
@@ -162,7 +162,6 @@ func coverThumbHandler(w http.ResponseWriter, r *http.Request) {
 	}
 
 	w.Header().Set("Content-Type", "image/jpeg")
-	// w.Header().Set("Cache-Control", "no-cache, must-revalidate") // Instead we will give unique ?t=modtime links for thumbnails like we do with the main images
 	w.Header().Set("Cache-Control", "public, max-age=31536000, immutable")
 	w.Header().Set("X-Cache-Hit", "false")
 	_, _ = w.Write(data)

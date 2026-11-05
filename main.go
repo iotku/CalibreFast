@@ -699,7 +699,11 @@ func generatePages() {
 
 		// Trunicate timestamps to seconds
 		t, _ := time.Parse(time.RFC3339Nano, book.LastModified) // We do have consistant times in the databse now right? right?
-		book.LastModified = t.Format("20060102150405") // cache-busters!
+		timeStr := t.Format("20060102150405") // Truncate to seconds for cache-busting
+		book.LastModified = timeStr // cache-busters!
+
+		// cache last Modified time for book from database
+		modTimeCache.Store(book.UUID, timeStr)
 
 		// cache cover path
 		uuidPathIndex.Store(book.UUID, book.Path)
