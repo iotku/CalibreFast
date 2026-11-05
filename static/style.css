@@ -208,6 +208,7 @@ input[type="number"],
 .book-info {
     position: absolute;
     inset: 0;
+    z-index: 2;
     display: flex;
     flex-direction: column;
     justify-content: flex-end;
@@ -317,17 +318,13 @@ input[type="number"],
     margin-top: 25%;
     display: -webkit-box;
     -webkit-line-clamp: 5;
+    line-clamp: 5;
     -webkit-box-orient: vertical;
     overflow: hidden;
 }
 .ph-author {
     font: 0.75rem sans-serif;
     opacity: 0.85;
-}
-
-/* hide placeholder once the real cover is in */
-.book-cover.loaded ~ .cover-placeholder {
-    display: none;
 }
 
 /* ============================================
