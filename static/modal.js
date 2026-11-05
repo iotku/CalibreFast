@@ -5,7 +5,7 @@
 const MODAL_ID = "book-modal";
 const BODY_ID = "modal-body";
 export const HASH_PREFIX = "#book/";
-const CLOSE_SELECTOR = ".modal-close, [data-modal-close]";
+const CLOSE_SELECTOR = "#modal-close, [data-modal-close]";
 
 let modalInitialized = false;
 let openedViaNav = false; // true if the current modal entry was pushed by a click
