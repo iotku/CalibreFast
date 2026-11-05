@@ -13,6 +13,8 @@ import { setupBookClickHandlers, loadBook, HASH_PREFIX } from "./modal.js";
 const KEEP_PAGES = 3; // real pages kept on each side of the visible page
 const FETCH_PAGES = 2; // only hit the network this far from the visible page
 const HISTORY_DEBOUNCE_MS = 300; // browsers throttle rapid history updates
+const FAST_SCROLL_PAGES_PER_SEC = 4; // faster than this: don't fetch/render yet
+const SETTLE_MS = 120; // quiet time before rendering after a fast scroll
 const MAX_COVERS_INFLIGHT = 6 - FETCH_PAGES; // headroom under the 6-per-host limit
 
 const coversInflight = new Set();
@@ -26,6 +28,9 @@ let targetPage = 1; // page the UI says we're on / heading to
 let lastLabelPage = null;
 let lastWidth = window.innerWidth;
 let keyScrolling = false;
+let badgeEl = null;
+let draggingScrollbar = false; // mouse held on the scrollbar, or a touch is active
+let badgeTimer = null;
 let historyTimer = null;
 let historyPage = null; // page waiting to be written to the URL
 
@@ -46,8 +51,50 @@ function injectStyles() {
     grid-column: 1 / -1; /* own full-width row if #books is a grid */
     flex: 0 0 100%; /* ...or a wrapping flex container */
     height: var(--page-h, 1000px);
+}
+
+#scroll-badge {
+    position: fixed;
+    right: 28px; /* clear of the scrollbar */
+    z-index: 900;
+    padding: 4px 10px;
+    border-radius: 999px;
+    background: var(--bg-elevated, #252525);
+    border: 1px solid var(--border-medium, rgba(255, 255, 255, 0.15));
+    box-shadow: var(--shadow-small, 0 2px 8px rgba(0, 0, 0, 0.35));
+    color: var(--text-primary, #eee);
+    font: 13px var(--font-family, sans-serif);
+    font-variant-numeric: tabular-nums;
+    white-space: nowrap;
+    pointer-events: none;
+    opacity: 0;
+    transition: opacity 0.15s;
+}
+#scroll-badge.visible {
+    opacity: 1;
 }`;
     document.head.appendChild(style);
+
+    badgeEl = document.createElement("div");
+    badgeEl.id = "scroll-badge";
+    document.body.appendChild(badgeEl);
+}
+
+/** Floating "page / total" label that rides alongside the scrollbar thumb. */
+function showScrollBadge(page) {
+    if (!badgeEl) return;
+    const root = document.documentElement;
+    const header = headerHeight();
+    const ratio =
+        window.scrollY / Math.max(1, root.scrollHeight - window.innerHeight);
+    const room = window.innerHeight - header - badgeEl.offsetHeight - 8;
+
+    badgeEl.textContent = `${page} / ${window.totalPages}`;
+    badgeEl.style.top = `${header + 4 + ratio * Math.max(0, room)}px`;
+    badgeEl.classList.add("visible");
+
+    clearTimeout(badgeTimer);
+    badgeTimer = setTimeout(() => badgeEl.classList.remove("visible"), 700);
 }
 
 /* ------------------------------------------------------------------ */
@@ -255,6 +302,7 @@ function renderPage(n, books) {
 
     const before = pageBounds(ph);
     const above = before.bottom <= headerHeight();
+    el.classList.add("appear"); // fade-in, see CSS
     ph.replaceWith(el);
     realPages.add(n);
     setupBookClickHandlers(el); // must run while attached to the document
@@ -434,6 +482,9 @@ function updateNavigationButtons() {
 
 function setupScrollTracking() {
     let scheduled = false;
+    let lastY = window.scrollY;
+    let lastT = performance.now();
+    let settleTimer = null;
 
     window.addEventListener(
         "scroll",
@@ -442,11 +493,56 @@ function setupScrollTracking() {
             scheduled = true;
             requestAnimationFrame(() => {
                 scheduled = false;
-                updatePageLabel(syncWindow());
+
+                const now = performance.now();
+                const y = window.scrollY;
+                const pxPerSec =
+                    (Math.abs(y - lastY) / (now - lastT || 1)) * 1000;
+                lastY = y;
+                lastT = now;
+                clearTimeout(settleTimer);
+
+                if (
+                    pageHeight &&
+                    pxPerSec / pageHeight > FAST_SCROLL_PAGES_PER_SEC
+                ) {
+                    // Flying past: keep the label live, but skip fetching and
+                    // rendering pages we're about to leave. Catch up once it settles.
+                    const visible = getVisiblePage();
+                    updatePageLabel(visible);
+                    if (draggingScrollbar) showScrollBadge(visible);
+                    settleTimer = setTimeout(
+                        () => updatePageLabel(syncWindow()),
+                        SETTLE_MS,
+                    );
+                } else {
+                    updatePageLabel(syncWindow());
+                }
             });
         },
         { passive: true },
     );
+
+    // The badge is a drag affordance: only show it while the scrollbar is held
+    // (or a finger is down), not for keys/wheel where the top bar already says it.
+    window.addEventListener(
+        "mousedown",
+        (e) => {
+            const root = document.documentElement;
+            const edge = Math.min(root.clientWidth, window.innerWidth - 16); // classic + overlay scrollbars
+            draggingScrollbar = e.button === 0 && e.clientX >= edge;
+        },
+        true,
+    );
+    const endDrag = () => (draggingScrollbar = false);
+    window.addEventListener("mouseup", endDrag, true);
+    window.addEventListener("dragend", endDrag, true);
+    window.addEventListener("blur", endDrag);
+    window.addEventListener("touchstart", () => (draggingScrollbar = true), {
+        passive: true,
+    });
+    window.addEventListener("touchend", endDrag, { passive: true });
+    window.addEventListener("touchcancel", endDrag, { passive: true });
 
     // Home/End step one page per press; auto-repeat is ignored.
     window.addEventListener("keydown", (e) => {
