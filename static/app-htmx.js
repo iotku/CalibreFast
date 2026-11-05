@@ -7,6 +7,8 @@ import { renderBooksPage } from "./utils.js";
 import { setupBookClickHandlers, loadBook, HASH_PREFIX } from "./modal.js";
 
 const NAV_DEBOUNCE_MS = 0;
+const BUFFER_PAGES = 2;
+const prefetch = new Map(); // page -> Promise<books|null>
 
 // Global state
 window.totalPages = null;
@@ -157,6 +159,7 @@ async function goToPage(page, token) {
     targetPage = page;
     lastReplacedPage = page;
     loadingNext = false;
+    prefetch.clear();
 
     updateCoverRequests();
 
@@ -174,30 +177,53 @@ async function goToPage(page, token) {
 /* ------------------------------------------------------------------ */
 /* Infinite scroll                                                    */
 /* ------------------------------------------------------------------ */
+function prefetchPage(page) {
+    if (page > window.totalPages || prefetch.has(page)) return;
+    prefetch.set(
+        page,
+        fetchPage(page).then((books) => {
+            if (!books) prefetch.delete(page); // allow retry
+            return books;
+        }),
+    );
+}
 
+/** Append pages until currentPage is BUFFER_PAGES ahead of the visible page. */
 async function loadNext() {
     if (navigating || loadingNext) return;
-    if (currentPage >= window.totalPages) return;
 
     loadingNext = true;
     const token = navToken;
-    const next = currentPage + 1;
 
     try {
-        const books = await fetchPage(next);
-        if (token !== navToken || navigating || !books || books.length === 0)
-            return;
+        while (
+            !navigating &&
+            token === navToken &&
+            currentPage < window.totalPages &&
+            currentPage < getVisiblePage() + BUFFER_PAGES
+        ) {
+            const next = currentPage + 1;
 
-        const temp = document.createElement("div");
-        temp.innerHTML = renderBooksPage(books, next);
-        const pageEl = temp.firstElementChild;
+            // Fire fetches for the whole window in parallel.
+            for (let i = 0; i < BUFFER_PAGES; i++) prefetchPage(next + i);
 
-        $("books").appendChild(pageEl);
-        setupBookClickHandlers(pageEl);
+            const books = await prefetch.get(next);
+            prefetch.delete(next);
 
-        currentPage = next;
-        updateNavigationButtons();
-        updateCoverRequests();
+            if (token !== navToken || navigating) return;
+            if (!books || books.length === 0) return;
+
+            const temp = document.createElement("div");
+            temp.innerHTML = renderBooksPage(books, next);
+            const pageEl = temp.firstElementChild;
+
+            $("books").appendChild(pageEl);
+            setupBookClickHandlers(pageEl);
+
+            currentPage = next;
+            updateNavigationButtons();
+            updateCoverRequests();
+        }
     } finally {
         loadingNext = false;
     }
@@ -243,6 +269,7 @@ function setupScrollTracking() {
             if (visiblePage !== lastVisiblePage) {
                 lastVisiblePage = visiblePage;
                 updateCoverRequests();
+                loadNext();
             }
         });
     }
