@@ -15,14 +15,13 @@
                 <a href="/authors" class="meta-link">Authors</a>
                 <a href="/publishers" class="meta-link">Publishers</a>
                 <a href="/tags" class="meta-link">Tags</a>
-            </div>
-            <div class="top-bar-center">
                 <form id="search-form" action="/search" method="get">
                     <input
                         name="q"
                         type="search"
                         placeholder="Search…"
                         class="input-search"
+                        aria-label="Search books"
                     />
                 </form>
             </div>
@@ -34,7 +33,6 @@
                 >
                     &lsaquo;
                 </button>
-                <label for="page-input">Page</label>
                 <input
                     id="page-input"
                     type="number"
@@ -42,19 +40,20 @@
                     value="1"
                     class="input-page"
                 />
-                <span>of <span id="total-pages">—</span></span>
+                <span>/ <span id="total-pages">—</span></span>
                 <button id="next-page" class="btn-nav" aria-label="Next page">
                     &rsaquo;
                 </button>
             </div>
         </header>
+        <div id="books"></div>
         <div id="book-modal" class="modal-overlay">
             <div class="modal-content">
                 <button id="modal-close">✕</button>
                 <div id="modal-body"></div>
             </div>
         </div>
-        <div id="books"></div>
+
         <div id="load-more" class="load-more-sentinel"></div>
         <script type="module" src="/static/app-htmx.js"></script>
     </body>
