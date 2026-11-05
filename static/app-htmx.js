@@ -3,7 +3,8 @@
  * Infinite scroll with JSON transformation
  */
 
-import { renderBooksPage, setupBookClickHandlers } from "./utils.js";
+import { renderBooksPage } from "./utils.js";
+import { setupBookClickHandlers, HASH_PREFIX } from "./modal.js";
 
 const NAV_DEBOUNCE_MS = 0;
 
@@ -37,10 +38,28 @@ window.addEventListener("DOMContentLoaded", async () => {
     const urlPage = parseInt(params.get("page") || "1", 10);
     const start = clampPage(Number.isFinite(urlPage) ? urlPage : 1);
 
+    // Make the hash-less URL the base history entry.
+    const initialHash = window.location.hash;
+    if (initialHash) {
+        history.replaceState(
+            history.state,
+            "",
+            window.location.pathname + window.location.search,
+        );
+    }
+
     window.history.scrollRestoration = "manual";
     window.scrollTo(0, 0);
 
     await goToPage(start, ++navToken);
+
+    // Re-add the hash as a new entry on top, then open the modal.
+    if (initialHash.startsWith(HASH_PREFIX)) {
+        const url = new URL(window.location.href);
+        url.hash = initialHash;
+        history.pushState({ page: currentPage, modal: true }, "", url);
+        loadBook(initialHash.substring(HASH_PREFIX.length));
+    }
 
     setupInfiniteScrollSentinel();
     setupScrollTracking();
@@ -327,36 +346,3 @@ pageInput.addEventListener("change", () => {
 
 $("next-page").addEventListener("click", () => requestPage(targetPage + 1));
 $("prev-page").addEventListener("click", () => requestPage(targetPage - 1));
-
-/* ------------------------------------------------------------------ */
-/* Modal                                                              */
-/* ------------------------------------------------------------------ */
-
-function closeModal() {
-    const modal = $("book-modal");
-    document.body.classList.remove("no-scroll");
-    modal.classList.remove("open");
-}
-
-$("modal-close").addEventListener("click", () => {
-    closeModal();
-    history.back();
-});
-
-$("book-modal").addEventListener("click", (e) => {
-    if (e.target.id === "book-modal") {
-        closeModal();
-        history.back();
-    }
-});
-
-window.addEventListener("keydown", (e) => {
-    if (e.key === "Escape" && $("book-modal").classList.contains("open")) {
-        closeModal();
-        history.back();
-    }
-});
-
-window.addEventListener("popstate", () => {
-    closeModal();
-});
