@@ -113,11 +113,9 @@ export function renderBookCard(book) {
 >
         <div class="cover-wrapper">
             <img class="book-cover"
-                 src="/cover-thumb/${uuid}?t=${book.last_modified}"
+                 data-src="/cover-thumb/${uuid}?t=${book.last_modified}"
                  data-id="${uuid}"
-                 loading="lazy"
-                 fetchpriority="low"
-                onload="this.classList.add('loaded')" />
+               />
         </div>
     </a>
     <div class="book-info">
