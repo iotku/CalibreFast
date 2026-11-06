@@ -43,43 +43,6 @@ function clampPage(n) {
     return Math.max(1, Math.min(n, max));
 }
 
-function injectStyles() {
-    const style = document.createElement("style");
-    style.textContent = `
-#books > .page.placeholder {
-    display: block;
-    grid-column: 1 / -1; /* own full-width row if #books is a grid */
-    flex: 0 0 100%; /* ...or a wrapping flex container */
-    height: var(--page-h, 1000px);
-}
-
-#scroll-badge {
-    position: fixed;
-    right: 28px; /* clear of the scrollbar */
-    z-index: 900;
-    padding: 4px 10px;
-    border-radius: 999px;
-    background: var(--bg-elevated, #252525);
-    border: 1px solid var(--border-medium, rgba(255, 255, 255, 0.15));
-    box-shadow: var(--shadow-small, 0 2px 8px rgba(0, 0, 0, 0.35));
-    color: var(--text-primary, #eee);
-    font: 13px var(--font-family, sans-serif);
-    font-variant-numeric: tabular-nums;
-    white-space: nowrap;
-    pointer-events: none;
-    opacity: 0;
-    transition: opacity 0.15s;
-}
-#scroll-badge.visible {
-    opacity: 1;
-}`;
-    document.head.appendChild(style);
-
-    badgeEl = document.createElement("div");
-    badgeEl.id = "scroll-badge";
-    document.body.appendChild(badgeEl);
-}
-
 /** Floating "page / total" label that rides alongside the scrollbar thumb. */
 function showScrollBadge(page) {
     if (!badgeEl) return;
@@ -102,7 +65,6 @@ function showScrollBadge(page) {
 /* ------------------------------------------------------------------ */
 
 window.addEventListener("DOMContentLoaded", async () => {
-    injectStyles();
     await loadLibraryInfo();
 
     const params = new URLSearchParams(window.location.search);
