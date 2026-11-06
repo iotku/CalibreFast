@@ -10,12 +10,13 @@
 import { renderBooksPage } from "./utils.js";
 import { setupBookClickHandlers, loadBook, HASH_PREFIX } from "./modal.js";
 
-const KEEP_PAGES = 3; // real pages kept on each side of the visible page
-const FETCH_PAGES = 2; // only hit the network this far from the visible page
+const KEEP_AHEAD = 5; // real pages kept in the scroll direction
+const KEEP_BEHIND = 3; // ...and the opposite way
+const MAX_PAGE_FETCHES = 2; // concurrent page-JSON requests
 const HISTORY_DEBOUNCE_MS = 300; // browsers throttle rapid history updates
 const FAST_SCROLL_PAGES_PER_SEC = 4; // faster than this: don't fetch/render yet
 const SETTLE_MS = 120; // quiet time before rendering after a fast scroll
-const MAX_COVERS_INFLIGHT = 6 - FETCH_PAGES; // headroom under the 6-per-host limit
+const MAX_COVERS_INFLIGHT = 6 - MAX_PAGE_FETCHES; // headroom under the 6-per-host limit
 
 const coversInflight = new Set();
 const pageCache = new Map(); // page -> books
@@ -28,7 +29,8 @@ let targetPage = 1; // page the UI says we're on / heading to
 let lastLabelPage = null;
 let lastWidth = window.innerWidth;
 let keyScrolling = false;
-let badgeEl = null;
+let scrollDir = 1; // 1 = down, -1 = up; biases the render window
+const badgeEl = document.getElementById("scroll-badge"); // in index.html
 let draggingScrollbar = false; // mouse held on the scrollbar, or a touch is active
 let badgeTimer = null;
 let historyTimer = null;
@@ -296,8 +298,14 @@ function syncWindow() {
     if (!window.totalPages || !pageHeight) return targetPage;
 
     const visible = getVisiblePage();
-    const lo = Math.max(1, visible - KEEP_PAGES);
-    const hi = Math.min(window.totalPages, visible + KEEP_PAGES);
+
+    // Window leans in the scroll direction so we stay ahead of the viewport.
+    const down = scrollDir > 0;
+    const lo = Math.max(1, visible - (down ? KEEP_BEHIND : KEEP_AHEAD));
+    const hi = Math.min(
+        window.totalPages,
+        visible + (down ? KEEP_AHEAD : KEEP_BEHIND),
+    );
 
     for (const n of [...realPages]) {
         if (n < lo || n > hi) evictPage(n);
@@ -305,27 +313,28 @@ function syncWindow() {
 
     // Stop fetching pages the user has already left behind.
     for (const [n, entry] of loading) {
-        if (Math.abs(n - visible) > FETCH_PAGES) {
+        if (n < lo || n > hi) {
             entry.ctrl.abort();
             loading.delete(n);
         }
     }
 
-    // Nearest pages first.
-    for (let d = 0; d <= KEEP_PAGES; d++) {
-        for (const n of d === 0 ? [visible] : [visible + d, visible - d]) {
-            if (n < lo || n > hi || realPages.has(n)) continue;
+    // Visible page first, then alternating ahead/behind, nearest first.
+    const order = [visible];
+    for (let d = 1; d <= KEEP_AHEAD; d++) {
+        order.push(visible + scrollDir * d, visible - scrollDir * d);
+    }
 
-            if (pageCache.has(n)) {
-                renderPage(n, pageCache.get(n));
-            } else if (d <= FETCH_PAGES) {
-                loadPageData(n).then((books) => {
-                    if (!books) return;
-                    if (Math.abs(n - getVisiblePage()) > KEEP_PAGES) return;
-                    renderPage(n, books);
-                    pumpCovers();
-                });
-            }
+    for (const n of order) {
+        if (n < lo || n > hi || realPages.has(n)) continue;
+
+        if (pageCache.has(n)) {
+            renderPage(n, pageCache.get(n));
+        } else if (!loading.has(n) && loading.size < MAX_PAGE_FETCHES) {
+            // On arrival, re-sync: renders it and starts the next fetch.
+            loadPageData(n).then((books) => {
+                if (books) syncWindow();
+            });
         }
     }
 
@@ -348,6 +357,7 @@ function scrollToPage(page, { syncInput = true } = {}) {
     if (syncInput) $("page-input").value = page;
 
     const delta = pageBounds(el).top - headerHeight();
+    if (delta) scrollDir = delta > 0 ? 1 : -1;
     window.scrollBy({ top: delta, behavior: "instant" });
 
     updatePageLabel(syncWindow());
@@ -460,6 +470,7 @@ function setupScrollTracking() {
                 const y = window.scrollY;
                 const pxPerSec =
                     (Math.abs(y - lastY) / (now - lastT || 1)) * 1000;
+                if (y !== lastY) scrollDir = y > lastY ? 1 : -1;
                 lastY = y;
                 lastT = now;
                 clearTimeout(settleTimer);
