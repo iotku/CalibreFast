@@ -185,9 +185,6 @@ input[type="number"],
     overflow: hidden;
     aspect-ratio: 1 / 1.4;
     box-shadow: var(--shadow-small);
-    transition:
-        transform var(--transition-fast),
-        box-shadow var(--transition-fast);
     cursor: pointer;
     isolation: isolate;
     content-visibility: auto;
@@ -201,7 +198,6 @@ input[type="number"],
     height: 100%;
     object-fit: cover;
     display: block;
-    transition: opacity var(--transition-normal);
 }
 
 /* Information overlay */
@@ -293,7 +289,7 @@ input[type="number"],
     object-fit: cover;
     opacity: 0;
     z-index: 1;
-    transition: opacity 0.15s;
+    transition: opacity 0.5s var(--transition-fast);
 }
 .book-cover.loaded {
     opacity: 1;
@@ -312,7 +308,13 @@ input[type="number"],
     text-align: center;
     color: #fff;
     text-wrap: balance;
+    transition: opacity ease-out 0.2s;
 }
+
+.cover-placeholder.loaded {
+    opacity: 0;
+}
+
 .ph-title {
     font: bold 0.9rem/1.25 sans-serif;
     margin-top: 25%;
@@ -436,6 +438,12 @@ input[type="number"],
     }
 }
 
+@media (min-width: 1800px) {
+    #books {
+        grid-template-columns: repeat(8, minmax(0, 1fr));
+    }
+}
+
 /* ============================================
    Tablet and Mobile
    ============================================ */
@@ -489,7 +497,7 @@ input[type="number"],
     }
 
     #books {
-        grid-template-columns: repeat(3, 1fr);
+        grid-template-columns: repeat(4, 1fr);
         gap: 6px;
     }
 }
