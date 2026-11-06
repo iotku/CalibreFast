@@ -1013,3 +1013,32 @@ input[type="number"],
     border-radius: var(--radius-small);
     flex-shrink: 0;
 }
+
+#books > .page.placeholder {
+    display: block;
+    grid-column: 1 / -1;
+    flex: 0 0 100%;
+    height: var(--page-h, 1000px);
+}
+
+#scroll-badge {
+    position: fixed;
+    right: 28px; /* clear of the scrollbar */
+    z-index: 900;
+    padding: 4px 10px;
+    border-radius: 999px;
+    background: var(--bg-elevated);
+    border: 1px solid var(--border-medium);
+    box-shadow: var(--shadow-small);
+    color: var(--text-primary);
+    font: 13px var(--font-family);
+    font-variant-numeric: tabular-nums;
+    white-space: nowrap;
+    pointer-events: none;
+    opacity: 0;
+    transition: opacity 0.15s;
+}
+
+#scroll-badge.visible {
+    opacity: 1;
+}
