@@ -40,9 +40,12 @@ export function attachSuggest(input, { category, multi = false, exclude = () => 
     list.setAttribute("role", "listbox");
     list.hidden = true;
 
-    const parent = input.parentElement;
-    if (getComputedStyle(parent).position === "static") parent.style.position = "relative";
-    input.after(list);
+    // Anchor the list to the input itself (a fieldset's legend skews offsets),
+    // so it opens directly under the box and covers whatever is below it.
+    const wrap = document.createElement("div");
+    wrap.className = "suggest-wrap";
+    input.replaceWith(wrap);
+    wrap.append(input, list);
 
     input.setAttribute("role", "combobox");
     input.setAttribute("aria-autocomplete", "list");
@@ -68,12 +71,6 @@ export function attachSuggest(input, { category, multi = false, exclude = () => 
         input.removeAttribute("aria-activedescendant");
         shown = [];
         active = -1;
-    }
-
-    function place() {
-        list.style.left = `${input.offsetLeft}px`;
-        list.style.top = `${input.offsetTop + input.offsetHeight + 4}px`;
-        list.style.width = `${input.offsetWidth}px`;
     }
 
     function setActive(i) {
@@ -110,6 +107,7 @@ export function attachSuggest(input, { category, multi = false, exclude = () => 
         if (!q || document.activeElement !== input) return close();
         const values = await loadValues(category);
         if (lower(token().trim()) !== q) return; // typed on meanwhile
+        if (document.activeElement !== input) return close(); // focus moved on meanwhile
 
         const taken = new Set(exclude().map(lower));
         if (multi) {
@@ -119,7 +117,7 @@ export function attachSuggest(input, { category, multi = false, exclude = () => 
         const contains = [];
         for (const v of values) {
             const val = lower(v.value);
-            if (taken.has(val) || val === q) continue;
+            if (taken.has(val)) continue; // exact matches stay listed
             const hay = [val, lower(v.label || "")];
             if (hay.some((h) => h.startsWith(q))) starts.push(v);
             else if (hay.some((h) => h.includes(q))) contains.push(v);
@@ -148,7 +146,6 @@ export function attachSuggest(input, { category, multi = false, exclude = () => 
             }),
         );
         active = -1;
-        place();
         list.hidden = false;
         input.setAttribute("aria-expanded", "true");
     }

@@ -518,8 +518,25 @@
             }
 
             /* Library autocomplete (authors, publisher, tags, languages) */
+            .suggest-wrap {
+                position: relative;
+                min-width: 0;
+            }
+
+            .chip-entry .suggest-wrap {
+                flex: 1;
+            }
+
+            .chip-entry .suggest-wrap .chip-text {
+                width: 100%;
+                box-sizing: border-box;
+            }
+
             .suggest-list {
                 position: absolute;
+                top: calc(100% + 2px);
+                left: 0;
+                right: 0;
                 z-index: 20;
                 max-height: 260px;
                 overflow-y: auto;
