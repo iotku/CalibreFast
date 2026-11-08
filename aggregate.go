@@ -94,6 +94,7 @@ type FilteredPageData struct {
 	Members     []string
 	Grouped     bool
 	GroupsError string // non-empty when grouping is read-only
+	Writable    bool   // server started with -allow-writes (shows the group editor)
 	PageURL     string // API base URL; template appends &page={n}
 	TotalPages  int
 }
@@ -425,6 +426,7 @@ func filteredPageHandler(c *category) http.HandlerFunc {
 			Grouped:     grouped,
 			PageURL:     c.href(value) + "?api=1",
 			TotalPages:  getFilteredTotal(c, name, members),
+			Writable:    allowWrites,
 		}
 		if groups.readOnly != nil {
 			data.GroupsError = groups.readOnly.Error()
@@ -526,5 +528,5 @@ func registerCategoryRoutes() {
 		logErr(json.NewEncoder(w).Encode(groups.snapshot()), "encode groups")
 	})
 	http.HandleFunc("GET /api/groups/{cat}/values", groupValuesHandler)
-	http.HandleFunc("PUT /api/groups/{cat}/{value...}", groupPutHandler)
+	http.HandleFunc("PUT /api/groups/{cat}/{value...}", requireWrites(groupPutHandler))
 }

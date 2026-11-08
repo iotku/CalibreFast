@@ -60,6 +60,8 @@ Then open [http://localhost:8080](http://localhost:8080).
 |------|-------------|
 | `-basedir` | Path to your Calibre library root (required) |
 | `-cachedir` | Path to store generated cover thumbnails |
+| `-port` | Port to listen on (default `8080`) |
+| `-allow-writes` | Allow changes to the library: metadata editing, uploads, covers and grouping. **Off by default** — there's no authentication, so without it the server refuses every write (HTTP 403) and hides the edit/group controls. Only enable on a trusted network. |
 
 ## How it works
 

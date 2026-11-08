@@ -13,10 +13,12 @@
     <div class="top-bar-left">
         <button class="btn-back" onclick="history.back()">&#8592; Back</button>
         <h1 class="title">{{ .Display }}{{ if .Sub }} <span class="title-sub">{{ .Sub }}</span>{{ end }}</h1>
+        {{ if .Writable }}
         <button type="button" id="group-toggle" class="btn-group-toggle" aria-expanded="false" aria-controls="group-panel"
                 title="Choose which {{ .Label }} values this page includes">
             {{ if .Grouped }}Group · {{ len .Members }}{{ else }}Group…{{ end }}
         </button>
+        {{ end }}
     </div>
     <div class="top-bar-right">
         <button id="prev-page" class="btn-nav" aria-label="Previous page">&lsaquo;</button>
@@ -25,6 +27,7 @@
         <button id="next-page" class="btn-nav" aria-label="Next page">&rsaquo;</button>
     </div>
 </header>
+{{ if .Writable }}
 <section id="group-panel" class="group-panel" hidden
          data-category="{{ .Category }}" data-key="{{ .Key }}" data-name="{{ .SuggestName }}" data-label="{{ .Label }}">
     <p class="group-hint">Books whose {{ .Label }} is any of these values are shown here.
@@ -55,6 +58,7 @@
         <button type="button" id="group-save" class="btn-standard btn-primary" {{ if .GroupsError }}disabled{{ end }}>Save grouping</button>
     </div>
 </section>
+{{ end }}
 <div id="books" data-page-url="{{ .PageURL }}&page={n}" data-total-pages="{{ .TotalPages }}"></div>
 <p id="status" class="status-message"></p>
 <div id="book-modal" class="modal-overlay">
@@ -65,6 +69,6 @@
 </div>
 <div id="scroll-badge"></div>
 <script type="module" src="/static/app-htmx.js"></script>
-<script type="module" src="/static/groups.js"></script>
+{{ if .Writable }}<script type="module" src="/static/groups.js"></script>{{ end }}
 </body>
 </html>

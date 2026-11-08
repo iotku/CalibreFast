@@ -28,7 +28,25 @@ var (
 	baseDir  string
 	cacheDir string
 	hostPort string
+
+	// allowWrites enables every operation that changes the library on disk
+	// (metadata edits, uploads, covers, groups). Off by default: there is no
+	// authentication, so anyone who can reach the server could otherwise
+	// modify the library.
+	allowWrites bool
 )
+
+// requireWrites refuses a handler unless the server was started with
+// -allow-writes. Enforced server-side; hiding the UI is only cosmetic.
+func requireWrites(h http.HandlerFunc) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		if !allowWrites {
+			http.Error(w, "This library is read-only. Restart the server with -allow-writes to enable editing, uploads and grouping.", http.StatusForbidden)
+			return
+		}
+		h(w, r)
+	}
+}
 
 var registerCalibreOnce sync.Once
 
@@ -114,7 +132,13 @@ func main() {
 	flag.StringVar(&baseDir, "basedir", "", "path to Calibre library root")
 	flag.StringVar(&cacheDir, "cachedir", "", "path to cache location")
 	flag.StringVar(&hostPort, "port", "8080", "port to listen on")
+	flag.BoolVar(&allowWrites, "allow-writes", false, "allow changes to the library (metadata edits, uploads, covers, groups); there is no authentication, so only enable on trusted networks")
 	flag.Parse()
+	if allowWrites {
+		log.Println("WARNING: -allow-writes is on; anyone who can reach this server can modify the library")
+	} else {
+		log.Println("read-only mode: start with -allow-writes to enable editing, uploads and grouping")
+	}
 	if baseDir == "" {
 		log.Fatal("missing -basedir")
 	}
@@ -267,15 +291,15 @@ func serveLibraryHTTP() {
 	http.HandleFunc("/download/", downloadHandler)
 
 	// Uploads
-	http.HandleFunc("/upload", uploadHandler)
+	http.HandleFunc("/upload", requireWrites(uploadHandler))
 
 	// Cover upload and management
-	http.HandleFunc("/upload-cover/{uuid}", uploadCoverHandler)
+	http.HandleFunc("/upload-cover/{uuid}", requireWrites(uploadCoverHandler))
 	http.HandleFunc("/cover-status/{uuid}", coverStatusHandler)
-	http.HandleFunc("/revert-cover/{uuid}", revertCoverHandler)
+	http.HandleFunc("/revert-cover/{uuid}", requireWrites(revertCoverHandler))
 
 	// Individual Book metadata editor
-	http.HandleFunc("/book/edit/{uuid}", func(w http.ResponseWriter, r *http.Request) {
+	http.HandleFunc("/book/edit/{uuid}", requireWrites(func(w http.ResponseWriter, r *http.Request) {
 		uuid := r.PathValue("uuid")
 		if uuid == "" {
 			http.Error(w, "Missing UUID", http.StatusBadRequest)
@@ -327,13 +351,13 @@ func serveLibraryHTTP() {
 		if err != nil {
 			http.Error(w, err.Error(), 500)
 		}
-	})
+	}))
 
 	// Get metadata options for a book
 	http.HandleFunc("/metadata/{uuid}", GetOptionsForBook)
 
 	// Apply updated metadata to a book
-	http.HandleFunc("/metadata/{uuid}/apply", applyMetadataHandler)
+	http.HandleFunc("/metadata/{uuid}/apply", requireWrites(applyMetadataHandler))
 
 	// Book Display
 	http.HandleFunc("/book/get/", bookHandler)

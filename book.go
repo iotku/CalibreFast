@@ -33,6 +33,8 @@ type BookPageData struct {
 	Languages   []BookLanguage
 	Tags        []string
 
+	Writable bool // server started with -allow-writes (shows the Edit button)
+
 	Formats []string
 	ModTime string
 }
@@ -59,7 +61,8 @@ func bookHandler(w http.ResponseWriter, r *http.Request) {
 	}
 
 	// Groups version: the language label depends on group names.
-	etag := fmt.Sprintf(`"%x-%x"`, opfStat.ModTime().UnixNano(), groups.currentVersion())
+	// Also varies with -allow-writes, which decides whether Edit is shown.
+	etag := fmt.Sprintf(`"%x-%x-%t"`, opfStat.ModTime().UnixNano(), groups.currentVersion(), allowWrites)
 	w.Header().Set("ETag", etag)
 	w.Header().Set("Cache-Control", "private, max-age=30")
 	if r.Header.Get("If-None-Match") == etag {
@@ -100,6 +103,7 @@ func bookHandler(w http.ResponseWriter, r *http.Request) {
 		Publisher: opf.Metadata.Publisher,
 		Date:      formattedDate,
 		Languages: bookLanguages(opf.Metadata.Languages),
+		Writable:  allowWrites,
 		Tags:      opf.Metadata.Subjects,
 
 		Description: template.HTML(

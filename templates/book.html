@@ -140,6 +140,7 @@
             {{ if .Description }}
             <div class="description">{{ .Description }}</div>
             {{ end }}
+            {{ if .Writable }}
             <div class="meta-row meta-edit-row">
                 <a class="btn-action btn-action-edit" href="/book/edit/{{ .UUID }}" title="Edit metadata">
                     <svg class="action-icon" viewBox="0 0 24 24" width="16" height="16" fill="none"
@@ -150,6 +151,7 @@
                     <span>Edit metadata</span>
                 </a>
             </div>
+            {{ end }}
         </div>
     </div>
 </body>
