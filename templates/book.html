@@ -32,6 +32,11 @@
                         </svg>
                     </a></h1>
             </div>
+            {{ if .Authors }}
+            <div class="book-authors">
+                by {{ range $i, $author := .Authors }}{{ if $i }}, {{ end }}<a href="/author/{{ $author }}" class="meta-link author-link">{{ $author }}</a>{{ end }}
+            </div>
+            {{ end }}
             <div class="book-actions">
                 <div id="read-buttons">
                     {{ range .Formats }} {{ if eq . "epub" }}
@@ -65,14 +70,6 @@
                     <span>Download {{ . }}</span>
                 </a>
                 {{ end }}
-                <a class="btn-action btn-action-edit" href="/book/edit/{{ .UUID }}" title="Edit metadata">
-                    <svg class="action-icon" viewBox="0 0 24 24" width="16" height="16" fill="none"
-                        stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-                        <path d="M12 20h9" />
-                        <path d="M16.5 3.5a2.121 2.121 0 0 1 3 3L7 19l-4 1 1-4Z" />
-                    </svg>
-                    <span>Edit metadata</span>
-                </a>
             </div>
         </div>
         <div class="book-page-cover">
@@ -114,22 +111,17 @@
             {{ end }}
         </div>
         <div class="book-page-info">
+            {{ if and .Publisher .Date }}
             <div class="meta-row">
-                <strong>Author:</strong>
-                {{ range .Authors }}
-                <a href="/author/{{ . }}" class="meta-link">{{ . }}</a>
-                {{ end }}
+                Published by <a href="/publisher/{{ .Publisher }}" class="meta-link">{{ .Publisher }}</a> on {{ .Date }}
             </div>
-            {{ if .Publisher }}
+            {{ else if .Publisher }}
             <div class="meta-row">
-                <strong>Publisher:</strong>
-                <a href="/publisher/{{ .Publisher }}" class="meta-link">{{ .Publisher }}</a>
+                Published by <a href="/publisher/{{ .Publisher }}" class="meta-link">{{ .Publisher }}</a>
             </div>
-            {{ end }}
-            {{ if .Date }}
+            {{ else if .Date }}
             <div class="meta-row">
-                <strong>Date:</strong>
-                {{ .Date }}
+                Published on {{ .Date }}
             </div>
             {{ end }}
             {{ if .Language }}
@@ -138,6 +130,16 @@
                 {{ .Language }}
             </div>
             {{ end }}
+            <div class="meta-row meta-edit-row">
+                <a class="btn-action btn-action-edit" href="/book/edit/{{ .UUID }}" title="Edit metadata">
+                    <svg class="action-icon" viewBox="0 0 24 24" width="16" height="16" fill="none"
+                        stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                        <path d="M12 20h9" />
+                        <path d="M16.5 3.5a2.121 2.121 0 0 1 3 3L7 19l-4 1 1-4Z" />
+                    </svg>
+                    <span>Edit metadata</span>
+                </a>
+            </div>
             {{ if .Tags }}
             <div class="meta-row">
                 {{ range .Tags }}
