@@ -1,4 +1,5 @@
 import { createChipInput, parseList } from "./chips.js";
+import { attachSuggest } from "./suggest.js";
 
 const FIELDS = [
   { key: "title", kind: "string" },
@@ -528,14 +529,29 @@ export async function mountMetadataEditor(uuid, form) {
   try {
     // Tags and languages are edited as chips over their (hidden) inputs.
     const chipInputs = [
-      ["subjects", "Add tags (comma separated)…"],
-      ["languages", "e.g. eng, fra, deu"],
+      ["subjects", "Add tags (comma separated)…", "tag"],
+      ["languages", "e.g. eng, fra, deu", "language"],
     ]
-      .map(([name, placeholder]) => {
+      .map(([name, placeholder, category]) => {
         const backing = form.querySelector(`[name="${name}"]`);
-        return backing && createChipInput(backing, { placeholder });
+        if (!backing) return null;
+        const chips = createChipInput(backing, { placeholder });
+        attachSuggest(chips.textInput, {
+          category,
+          multi: true,
+          exclude: chips.activeValues,
+          onPick: () => chips.commitPending(), // picking a suggestion adds it
+        });
+        return chips;
       })
       .filter(Boolean);
+
+    // Library-backed suggestions for the plain list/single-value fields.
+    const creatorsInput = form.querySelector('[name="creators"]');
+    if (creatorsInput) attachSuggest(creatorsInput, { category: "author", multi: true });
+    const publisherInput = form.querySelector('[name="publisher"]');
+    if (publisherInput) attachSuggest(publisherInput, { category: "publisher" });
+
     const commitPending = () => chipInputs.forEach((c) => c.commitPending());
 
     const metas = await fetchMetas(uuid);

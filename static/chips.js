@@ -281,6 +281,9 @@ export function createChipInput(backing, { placeholder = "", splitOn = ";" } = {
 
     /** Commit any half-typed text (call before reading the form). */
     root.commitPending = commitText;
+    /** Active chip values (for autocomplete exclusion). */
+    root.activeValues = () => active().map((c) => c.text);
+    root.textInput = text;
     render();
     return root;
 }

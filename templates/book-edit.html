@@ -517,6 +517,46 @@
                 margin: 0;
             }
 
+            /* Library autocomplete (authors, publisher, tags, languages) */
+            .suggest-list {
+                position: absolute;
+                z-index: 20;
+                max-height: 260px;
+                overflow-y: auto;
+                margin: 0;
+                padding: 4px;
+                box-sizing: border-box;
+                list-style: none;
+                background: var(--surface-hover);
+                border: 1px solid var(--border);
+                border-radius: 6px;
+                box-shadow: 0 10px 24px rgba(0, 0, 0, 0.5);
+            }
+
+            .suggest-list[hidden] {
+                display: none;
+            }
+
+            .suggest-list li {
+                padding: 6px 10px;
+                font-size: 0.9rem;
+                border-radius: 4px;
+                cursor: pointer;
+                overflow-wrap: anywhere;
+            }
+
+            .suggest-list li[aria-selected="true"],
+            .suggest-list li:hover {
+                background: rgba(200, 169, 110, 0.14);
+            }
+
+            .suggest-sub {
+                margin-left: 6px;
+                font-family: var(--mono);
+                font-size: 0.75rem;
+                color: var(--muted);
+            }
+
             /* ── Compare dialog ── */
             .compare-dialog {
                 width: min(760px, calc(100vw - 32px));
