@@ -444,20 +444,24 @@ func aggregatePageHandler(c *category) http.HandlerFunc {
 	}
 }
 
-// groupValuesHandler: GET /api/groups/{cat}/values — raw values for the
-// editor's suggestion list.
+// groupValuesHandler: GET /api/groups/{cat}/values — every value in the
+// library for the editor's suggestion list (the only source it offers).
 func groupValuesHandler(w http.ResponseWriter, r *http.Request) {
 	c := categoryByKey(r.PathValue("cat"))
 	if c == nil {
 		http.NotFound(w, r)
 		return
 	}
-	raw := queryRawItems(c)
-	names := make([]string, len(raw))
-	for i, it := range raw {
-		names[i] = it.Name
+	type value struct {
+		Value string `json:"value"`
+		Label string `json:"label,omitempty"` // e.g. "English" for "eng"
 	}
-	sort.Slice(names, func(i, j int) bool { return strings.ToLower(names[i]) < strings.ToLower(names[j]) })
+	raw := queryRawItems(c)
+	names := make([]value, len(raw))
+	for i, it := range raw {
+		names[i] = value{Value: it.Name, Label: it.Display}
+	}
+	sort.Slice(names, func(i, j int) bool { return strings.ToLower(names[i].Value) < strings.ToLower(names[j].Value) })
 	w.Header().Set("Content-Type", "application/json")
 	logErr(json.NewEncoder(w).Encode(names), "encode group values")
 }

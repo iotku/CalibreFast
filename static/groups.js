@@ -68,41 +68,115 @@ function init() {
         if (!saveBtn.hasAttribute("data-locked")) {
             saveBtn.disabled = !dirty();
         }
-        refreshSuggestions();
+        if (!suggestEl.hidden) refreshSuggestions();
     }
 
+    // Suggestions: only values that exist in the library ({value, label}).
+    const suggestEl = $("group-suggest");
+    const MAX_SUGGESTIONS = 50;
     let allValues = [];
-    function refreshSuggestions() {
-        const taken = new Set(members.map((m) => lower(m.value)));
-        $("group-values").replaceChildren(
-            ...allValues
-                .filter((v) => !taken.has(lower(v)))
-                .map((v) => Object.assign(document.createElement("option"), { value: v })),
-        );
+    let valuesPromise = null;
+    let shown = []; // values currently listed
+    let activeIdx = -1;
+
+    function loadValues() {
+        valuesPromise ??= fetch(`/api/groups/${encodeURIComponent(category)}/values`)
+            .then((res) => (res.ok ? res.json() : []))
+            .then((vals) => (allValues = vals))
+            .catch((err) => {
+                console.error("group values:", err);
+                valuesPromise = null; // allow a retry
+                return [];
+            });
+        return valuesPromise;
     }
 
-    async function loadValues() {
-        if (valuesLoaded) return;
-        valuesLoaded = true;
-        try {
-            const res = await fetch(`/api/groups/${encodeURIComponent(category)}/values`);
-            if (res.ok) allValues = await res.json();
-            refreshSuggestions();
-        } catch (err) {
-            console.error("group values:", err);
+    function matches(q) {
+        const taken = new Set(members.filter((m) => !m.removed).map((m) => lower(m.value)));
+        const starts = [];
+        const contains = [];
+        for (const v of allValues) {
+            if (taken.has(lower(v.value))) continue;
+            const hay = [lower(v.value), lower(v.label || "")];
+            if (hay.some((h) => h.startsWith(q))) starts.push(v);
+            else if (hay.some((h) => h.includes(q))) contains.push(v);
+            if (starts.length >= MAX_SUGGESTIONS) break;
         }
+        return starts.concat(contains).slice(0, MAX_SUGGESTIONS);
     }
 
-    function add() {
-        const v = addInput.value.trim();
-        if (!v) return;
-        const existing = members.find((m) => lower(m.value) === lower(v));
+    function closeSuggestions() {
+        suggestEl.hidden = true;
+        addInput.setAttribute("aria-expanded", "false");
+        addInput.removeAttribute("aria-activedescendant");
+        shown = [];
+        activeIdx = -1;
+    }
+
+    function setActive(i) {
+        activeIdx = i;
+        [...suggestEl.children].forEach((li, j) => {
+            li.setAttribute("aria-selected", String(j === i));
+            if (j === i) {
+                li.scrollIntoView({ block: "nearest" });
+                addInput.setAttribute("aria-activedescendant", li.id);
+            }
+        });
+    }
+
+    async function refreshSuggestions() {
+        const q = lower(addInput.value.trim());
+        if (!q || panel.hidden) return closeSuggestions();
+        await loadValues();
+        if (lower(addInput.value.trim()) !== q) return; // typed on meanwhile
+        shown = matches(q);
+        if (shown.length === 0) return closeSuggestions();
+        suggestEl.replaceChildren(
+            ...shown.map((v, i) => {
+                const li = document.createElement("li");
+                li.id = `group-suggest-${i}`;
+                li.setAttribute("role", "option");
+                li.textContent = v.label || v.value;
+                if (v.label && v.label !== v.value) {
+                    const sub = document.createElement("span");
+                    sub.className = "suggest-sub";
+                    sub.textContent = v.value;
+                    li.append(sub);
+                }
+                // mousedown so the input doesn't blur (and close the list) first
+                li.addEventListener("mousedown", (e) => {
+                    e.preventDefault();
+                    addValue(v.value);
+                });
+                return li;
+            }),
+        );
+        suggestEl.hidden = false;
+        addInput.setAttribute("aria-expanded", "true");
+        setActive(0);
+    }
+
+    function addValue(value) {
+        const existing = members.find((m) => lower(m.value) === lower(value));
         if (existing) existing.removed = false;
-        else members.push({ value: v, removed: false, added: true });
+        else members.push({ value, removed: false, added: true });
         addInput.value = "";
+        closeSuggestions();
         setStatus("");
         render();
         addInput.focus();
+    }
+
+    /** Add the highlighted suggestion, or an exact (case-insensitive) match. */
+    async function add() {
+        const typed = addInput.value.trim();
+        if (activeIdx >= 0 && shown[activeIdx]) return addValue(shown[activeIdx].value);
+        if (!typed) return;
+        await loadValues();
+        const t = lower(typed);
+        const hit = allValues.find((v) => lower(v.value) === t || lower(v.label || "") === t);
+        if (hit) return addValue(hit.value);
+        setStatus(`No ${panel.dataset.label} “${typed}” in the library.`, true);
     }
 
     function open(show) {
@@ -140,12 +214,27 @@ function init() {
 
     toggle.addEventListener("click", () => open(panel.hidden));
     $("group-add-btn").addEventListener("click", add);
+    addInput.addEventListener("input", () => {
+        setStatus("");
+        refreshSuggestions();
+    });
     addInput.addEventListener("keydown", (e) => {
-        if (e.key === "Enter") {
+        const open = !suggestEl.hidden && shown.length > 0;
+        if (e.key === "ArrowDown" && open) {
+            e.preventDefault();
+            setActive((activeIdx + 1) % shown.length);
+        } else if (e.key === "ArrowUp" && open) {
+            e.preventDefault();
+            setActive((activeIdx - 1 + shown.length) % shown.length);
+        } else if (e.key === "Enter") {
             e.preventDefault();
             add();
+        } else if (e.key === "Escape" && open) {
+            e.stopPropagation(); // close the list, not the whole panel
+            closeSuggestions();
         }
     });
+    addInput.addEventListener("blur", closeSuggestions);
     nameInput.addEventListener("input", render);
     $("group-cancel").addEventListener("click", () => {
         members = initial.map((value) => ({ value, removed: false, added: false }));

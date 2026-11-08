@@ -1619,3 +1619,46 @@ label.group-row span {
     color: var(--text-muted);
     font-family: var(--mono, ui-monospace, monospace);
 }
+
+.group-add-row {
+    position: relative;
+}
+
+.group-suggest {
+    position: absolute;
+    top: calc(100% + 4px);
+    left: 0;
+    right: 0;
+    z-index: 2;
+    max-height: 240px;
+    overflow-y: auto;
+    margin: 0;
+    padding: 4px;
+    list-style: none;
+    background: var(--bg-surface);
+    border: 1px solid var(--border-medium);
+    border-radius: var(--radius-small);
+    box-shadow: 0 8px 20px rgba(0, 0, 0, 0.45);
+}
+
+.group-suggest[hidden] {
+    display: none;
+}
+
+.group-suggest li {
+    padding: 6px 10px;
+    font-size: 0.9rem;
+    border-radius: 4px;
+    cursor: pointer;
+}
+
+.group-suggest li[aria-selected="true"],
+.group-suggest li:hover {
+    background: rgba(255, 255, 255, 0.08);
+}
+
+.group-suggest .suggest-sub {
+    margin-left: 6px;
+    font-size: 0.75rem;
+    color: var(--text-muted);
+}

@@ -33,14 +33,20 @@
     <ul class="group-members">
         {{ range .Members }}<li data-member="{{ . }}"></li>{{ end }}
     </ul>
-    <div class="group-row">
-        <input id="group-add" class="input-search" list="group-values" placeholder="Add a {{ .Label }}…" autocomplete="off" />
-        <datalist id="group-values"></datalist>
+    <div class="group-row group-add-row">
+        <!-- Suggestions come only from the library (custom list, not a
+             datalist, so browsers can't mix in saved form history). -->
+        <input id="group-add" class="input-search" type="text" placeholder="Add a {{ .Label }}…"
+               role="combobox" aria-autocomplete="list" aria-expanded="false" aria-controls="group-suggest"
+               autocomplete="off" autocorrect="off" autocapitalize="off" spellcheck="false"
+               data-1p-ignore data-lpignore="true" data-form-type="other" />
+        <ul id="group-suggest" class="group-suggest" role="listbox" hidden></ul>
         <button type="button" id="group-add-btn" class="btn-standard">Add</button>
     </div>
     <label class="group-row">
         <span>Display name</span>
-        <input id="group-name" class="input-search" value="{{ .SuggestName }}" />
+        <input id="group-name" class="input-search" type="text" value="{{ .SuggestName }}"
+               autocomplete="off" spellcheck="false" data-1p-ignore data-lpignore="true" data-form-type="other" />
     </label>
     {{ if .GroupsError }}<p class="group-error">{{ .GroupsError }}</p>{{ end }}
     <p id="group-status" class="group-status" role="status"></p>
