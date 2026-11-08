@@ -19,7 +19,7 @@ type OPFMetadata struct {
 	Description string          `xml:"http://purl.org/dc/elements/1.1/ description"`
 	Publisher   string          `xml:"http://purl.org/dc/elements/1.1/ publisher"`
 	Date        string          `xml:"http://purl.org/dc/elements/1.1/ date"`
-	Language    string          `xml:"http://purl.org/dc/elements/1.1/ language"`
+	Languages   []string        `xml:"http://purl.org/dc/elements/1.1/ language"` // in order; first is primary
 	Identifiers []opfIdentifier `xml:"http://purl.org/dc/elements/1.1/ identifier"`
 	Subjects    []string        `xml:"http://purl.org/dc/elements/1.1/ subject"`
 	Creators    []string        `xml:"http://purl.org/dc/elements/1.1/ creator"`
@@ -98,7 +98,9 @@ func writeOPF(opf *OPF, path string) error {
 	writeDC("description", opf.Metadata.Description)
 	writeDC("publisher", opf.Metadata.Publisher)
 	writeDC("date", opf.Metadata.Date)
-	writeDC("language", opf.Metadata.Language)
+	for _, l := range opf.Metadata.Languages {
+		writeDC("language", l)
+	}
 
 	// package@unique-identifier points at "uuid_id"; make sure exactly one
 	// identifier carries it without clobbering ids already present.
@@ -195,4 +197,29 @@ func (m *OPFMetadata) getMeta(name string) string {
 		}
 	}
 	return ""
+}
+
+// cleanLanguages trims, drops empties and "und", and de-duplicates
+// (case-insensitively) while keeping the original order.
+func cleanLanguages(in []string) []string {
+	seen := map[string]bool{}
+	out := make([]string, 0, len(in))
+	for _, l := range in {
+		l = strings.TrimSpace(l)
+		k := strings.ToLower(l)
+		if l == "" || k == undefinedLanguage || seen[k] {
+			continue
+		}
+		seen[k] = true
+		out = append(out, l)
+	}
+	return out
+}
+
+// parseLanguagesString splits the editor's "eng, fra" field. Language codes
+// never contain commas, semicolons or spaces, so this is lossless.
+func parseLanguagesString(s string) []string {
+	return cleanLanguages(strings.FieldsFunc(s, func(r rune) bool {
+		return r == ',' || r == ';' || r == ' ' || r == '\n' || r == '\t'
+	}))
 }

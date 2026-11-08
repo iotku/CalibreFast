@@ -25,14 +25,13 @@ var descriptionPolicy = func() *bluemonday.Policy {
 type BookPageData struct {
 	UUID string
 
-	Title        string
-	Authors      []string
-	Description  template.HTML
-	Publisher    string
-	Date         string
-	Language     string // raw code, used in the link
-	LanguageName string // group name or display name, e.g. "English"
-	Tags         []string
+	Title       string
+	Authors     []string
+	Description template.HTML
+	Publisher   string
+	Date        string
+	Languages   []BookLanguage
+	Tags        []string
 
 	Formats []string
 	ModTime string
@@ -96,13 +95,12 @@ func bookHandler(w http.ResponseWriter, r *http.Request) {
 	data := BookPageData{
 		UUID: uuid,
 
-		Title:        opf.Metadata.Title,
-		Authors:      opf.Metadata.Creators,
-		Publisher:    opf.Metadata.Publisher,
-		Date:         formattedDate,
-		Language:     opf.Metadata.Language,
-		LanguageName: languageLabel(opf.Metadata.Language),
-		Tags:         opf.Metadata.Subjects,
+		Title:     opf.Metadata.Title,
+		Authors:   opf.Metadata.Creators,
+		Publisher: opf.Metadata.Publisher,
+		Date:      formattedDate,
+		Languages: bookLanguages(opf.Metadata.Languages),
+		Tags:      opf.Metadata.Subjects,
 
 		Description: template.HTML(
 			descriptionPolicy.Sanitize(
@@ -124,4 +122,18 @@ func bookHandler(w http.ResponseWriter, r *http.Request) {
 
 	w.Header().Set("Content-Type", "text/html; charset=utf-8")
 	_, _ = buf.WriteTo(w)
+}
+
+// BookLanguage is one language tag in the book modal.
+type BookLanguage struct {
+	Code string // raw code, used in the link
+	Name string // group name or display name, e.g. "English"
+}
+
+func bookLanguages(codes []string) []BookLanguage {
+	out := []BookLanguage{}
+	for _, c := range cleanLanguages(codes) {
+		out = append(out, BookLanguage{Code: c, Name: languageLabel(c)})
+	}
+	return out
 }

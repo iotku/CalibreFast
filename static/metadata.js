@@ -4,7 +4,7 @@ const FIELDS = [
   { key: "description", kind: "string" },
   { key: "publisher", kind: "string" },
   { key: "date", kind: "date" },
-  { key: "language", kind: "string" },
+  { key: "languages", kind: "list" }, // several per book; order kept
   { key: "subjects", kind: "list" },
   { key: "identifiers", kind: "identifiers" },
 ];

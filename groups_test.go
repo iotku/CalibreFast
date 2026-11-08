@@ -93,7 +93,7 @@ func TestLanguageGroups_FilteredAndAggregate(t *testing.T) {
 
 	insert := func(title, lang string) int64 {
 		id, _, _, err := insertBookIntoCalibreDB(db, &UploadedBookMeta{
-			OPFMetadata: OPFMetadata{Title: title, Creators: []string{"A"}, Language: lang},
+			OPFMetadata: OPFMetadata{Title: title, Creators: []string{"A"}, Languages: []string{lang}},
 		}, nil)
 		if err != nil {
 			t.Fatalf("insert %s: %v", title, err)

@@ -1,6 +1,7 @@
 package main
 
 import (
+	"path/filepath"
 	"slices"
 	"testing"
 )
@@ -31,9 +32,9 @@ func TestLoadOPF(t *testing.T) {
 	}
 
 	// Test Language
-	expectedLang := "eng"
-	if actual.Metadata.Language != expectedLang {
-		t.Errorf("got %#v\nwant %#v", actual.Metadata.Language, expectedLang)
+	expectedLangs := []string{"eng"}
+	if !slices.Equal(actual.Metadata.Languages, expectedLangs) {
+		t.Errorf("got %#v\nwant %#v", actual.Metadata.Languages, expectedLangs)
 	}
 
 	// Test "Subjects"/tags
@@ -108,7 +109,7 @@ func TestSaveOPF(t *testing.T) {
 			Description: "A comprehensive introduction to the Go programming language by its creators.",
 			Publisher:   "Addison-Wesley Professional",
 			Date:        "2015-10-26",
-			Language:    "eng",
+			Languages:   []string{"eng"},
 			Identifiers: []opfIdentifier{
 				{Scheme: "UUID", Value: "7a1b2c3d-4e5f-6789-abcd-ef0123456789"},
 				{Scheme: "ISBN", Value: "978-0134190440"},
@@ -133,5 +134,20 @@ func TestSaveOPF(t *testing.T) {
 	err := writeOPF(testOPF, "testout.opf")
 	if err != nil {
 		t.Fatal(err)
+	}
+}
+
+func TestOPFMultipleLanguagesRoundTrip(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "metadata.opf")
+	in := &OPF{Metadata: OPFMetadata{Title: "T", Languages: []string{"eng", "fra", "deu"}}}
+	if err := writeOPF(in, path); err != nil {
+		t.Fatal(err)
+	}
+	out, err := loadOPF(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !slices.Equal(out.Metadata.Languages, in.Metadata.Languages) {
+		t.Errorf("got %v, want %v", out.Metadata.Languages, in.Metadata.Languages)
 	}
 }

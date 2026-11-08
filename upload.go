@@ -110,7 +110,7 @@ func extractPDFMeta(data []byte, filename string) *OPF {
 		Metadata: OPFMetadata{},
 	}
 	meta := &opf.Metadata
-	meta.Language = undefinedLanguage // undetermined; caller can override
+	meta.Languages = []string{undefinedLanguage} // undetermined; caller can override
 
 	info, err := pdfapi.PDFInfo(bytes.NewReader(data), filename, nil, false, nil)
 	if err != nil {
@@ -173,8 +173,9 @@ func mergeMeta(metas []*UploadedBookMeta) *UploadedBookMeta {
 		if len(m.Date) > len(merged.Date) {
 			merged.Date = m.Date
 		}
-		if m.Language != undefinedLanguage && len(m.Language) > len(merged.Language) {
-			merged.Language = m.Language
+		// Prefer the source declaring the most real (non-"und") languages.
+		if len(cleanLanguages(m.Languages)) > len(cleanLanguages(merged.Languages)) {
+			merged.Languages = m.Languages
 		}
 		if len(m.Subjects) > len(merged.Subjects) {
 			merged.Subjects = m.Subjects
@@ -197,8 +198,8 @@ func mergeMeta(metas []*UploadedBookMeta) *UploadedBookMeta {
 	if len(merged.Creators) == 0 {
 		merged.Creators = []string{"Unknown"}
 	}
-	if merged.Language == "" {
-		merged.Language = undefinedLanguage
+	if len(cleanLanguages(merged.Languages)) == 0 {
+		merged.Languages = []string{undefinedLanguage}
 	}
 	if merged.Date == "" {
 		merged.Date = "0101-01-01 00:00:00+00:00"
@@ -550,7 +551,7 @@ func processUploadGroup(files []*multipart.FileHeader) UploadResult { // TODO: H
 			Description: merged.Description,
 			Publisher:   merged.Publisher,
 			Date:        merged.Date,
-			Language:    merged.Language,
+			Languages:   merged.Languages,
 			Identifiers: merged.Identifiers,
 			Subjects:    merged.Subjects,
 			Creators:    merged.Creators,

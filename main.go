@@ -448,9 +448,19 @@ type ApplyMetadataRequest struct {
 	Description string         `json:"description"`
 	Publisher   string         `json:"publisher"`
 	Date        string         `json:"date"`
-	Language    string         `json:"language"`
+	Languages   *string        `json:"languages"` // "eng, fra"; nil = not sent
+	Language    string         `json:"language"`  // legacy single-language field
 	Subjects    string         `json:"subjects"`
 	Identifiers identifierList `json:"identifiers"`
+}
+
+// requestLanguages prefers the multi-language "languages" field and falls
+// back to the legacy single "language" field.
+func requestLanguages(req ApplyMetadataRequest) []string {
+	if req.Languages != nil {
+		return parseLanguagesString(*req.Languages)
+	}
+	return parseLanguagesString(req.Language)
 }
 
 // identifierList accepts a JSON array of {scheme, value, id} objects (lossless,
@@ -617,7 +627,7 @@ func applyMetadataHandler(w http.ResponseWriter, r *http.Request) {
 		Description: strings.TrimSpace(req.Description),
 		Publisher:   strings.TrimSpace(req.Publisher),
 		Date:        normalizeDate(req.Date),
-		Language:    strings.TrimSpace(req.Language),
+		Languages:   requestLanguages(req),
 		Subjects:    parseSubjectsString(req.Subjects),
 		Identifiers: req.Identifiers,
 	}

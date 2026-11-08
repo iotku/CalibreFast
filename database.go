@@ -170,9 +170,9 @@ func insertBookIntoCalibreDB(db *sql.DB, meta *UploadedBookMeta, formats []forma
 	}
 
 	// Language and identifier are best-effort; don't abort the whole insert on failure.
-	if meta.Language != "" && meta.Language != "und" {
-		if langID, lErr := upsertLanguage(tx, meta.Language); lErr == nil {
-			tx.Exec(`INSERT OR IGNORE INTO books_languages_link (book, lang_code) VALUES (?, ?)`, bookID, langID)
+	for i, lang := range cleanLanguages(meta.Languages) {
+		if langID, lErr := upsertLanguage(tx, lang); lErr == nil {
+			tx.Exec(`INSERT OR IGNORE INTO books_languages_link (book, lang_code, item_order) VALUES (?, ?, ?)`, bookID, langID, i)
 		}
 	}
 	for _, id := range meta.Identifiers {
@@ -458,17 +458,24 @@ func updateBookInCalibreDB(db *sql.DB, baseDir string, bookUUID string, meta *OP
 	}
 	rows.Close()
 
-	var newLangID int64
-	langTrimmed := strings.TrimSpace(meta.Language)
-	if langTrimmed != "" && langTrimmed != "und" {
-		newLangID, err = upsertLanguage(tx, langTrimmed)
-		if err == nil && newLangID > 0 {
-			tx.Exec(`INSERT OR IGNORE INTO books_languages_link (book, lang_code) VALUES (?, ?)`, bookID, newLangID)
+	// A book can have several languages; keep all of them, in order.
+	keepLang := map[int64]bool{}
+	for i, lang := range cleanLanguages(meta.Languages) {
+		langID, lErr := upsertLanguage(tx, lang)
+		if lErr != nil {
+			return "", fmt.Errorf("upsert language %q: %w", lang, lErr)
+		}
+		keepLang[langID] = true
+		if _, lErr = tx.Exec(`
+			INSERT INTO books_languages_link (book, lang_code, item_order) VALUES (?, ?, ?)
+			ON CONFLICT(book, lang_code) DO UPDATE SET item_order = excluded.item_order`,
+			bookID, langID, i); lErr != nil {
+			return "", fmt.Errorf("link language %q: %w", lang, lErr)
 		}
 	}
 
 	for _, oldID := range oldLangIDs {
-		if oldID != newLangID {
+		if !keepLang[oldID] {
 			tx.Exec(`DELETE FROM books_languages_link WHERE book = ? AND lang_code = ?`, bookID, oldID)
 			var count int
 			if cErr := tx.QueryRow(`SELECT COUNT(*) FROM books_languages_link WHERE lang_code = ?`, oldID).Scan(&count); cErr == nil && count == 0 {
@@ -521,7 +528,7 @@ func updateBookInCalibreDB(db *sql.DB, baseDir string, bookUUID string, meta *OP
 			existingOPF.Metadata.Creators = meta.Creators
 			existingOPF.Metadata.Publisher = meta.Publisher
 			existingOPF.Metadata.Date = meta.Date
-			existingOPF.Metadata.Language = meta.Language
+			existingOPF.Metadata.Languages = meta.Languages
 			existingOPF.Metadata.Subjects = meta.Subjects
 			existingOPF.Metadata.Description = meta.Description
 			existingOPF.Metadata.Identifiers = meta.Identifiers

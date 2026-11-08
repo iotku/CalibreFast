@@ -390,7 +390,7 @@ func TestUpdateBookInCalibreDB_TagsPublishersCommentsIdentifiers(t *testing.T) {
 			Subjects:    []string{"TagToDrop", "TagToKeep"},
 			Publisher:   "Old Publisher",
 			Description: "<p>Original Description</p>",
-			Language:    "eng",
+			Languages:   []string{"eng"},
 			Identifiers: []opfIdentifier{
 				{Scheme: "isbn", Value: "9781234567890"},
 			},
@@ -410,7 +410,7 @@ func TestUpdateBookInCalibreDB_TagsPublishersCommentsIdentifiers(t *testing.T) {
 		Subjects:    []string{"TagToKeep", "BrandNewTag"},
 		Publisher:   "New Publisher",
 		Description: "<p>Updated Description</p>",
-		Language:    "spa",
+		Languages:   []string{"spa"},
 		Identifiers: []opfIdentifier{
 			{Scheme: "isbn", Value: "9780987654321"},
 			{Scheme: "google", Value: "google-id-123"},
@@ -759,5 +759,97 @@ func TestApplyMetadataHandler_KeepsUnparseableDate(t *testing.T) {
 	post("1987-04-01") // an explicit new date still wins
 	if got := readDate(); !strings.HasPrefix(got, "1987-04-01") {
 		t.Errorf("explicit date not applied: got %q", got)
+	}
+}
+
+// A book with several languages must keep all of them (in order) through an
+// editor save, in both metadata.opf and Calibre's link table.
+func TestApplyMetadataHandler_MultipleLanguages(t *testing.T) {
+	db, tempDir := setupTestDB(t)
+	defer os.RemoveAll(tempDir)
+	defer db.Close()
+
+	origDB, origBaseDir := calibreDB, baseDir
+	calibreDB, baseDir = db, tempDir
+	defer func() { calibreDB, baseDir = origDB, origBaseDir }()
+
+	_, bookUUID, bookPath, err := insertBookIntoCalibreDB(db, &UploadedBookMeta{
+		OPFMetadata: OPFMetadata{Title: "Bilingual", Creators: []string{"A"}, Languages: []string{"eng", "fra"}},
+	}, nil)
+	if err != nil {
+		t.Fatalf("insert failed: %v", err)
+	}
+	dir := filepath.Join(tempDir, bookPath)
+	_ = os.MkdirAll(dir, 0755)
+
+	dbLangs := func() []string {
+		rows, err := db.Query(`
+			SELECT l.lang_code FROM books_languages_link x
+			JOIN languages l ON l.id = x.lang_code
+			JOIN books b ON b.id = x.book
+			WHERE b.uuid = ? ORDER BY x.item_order`, bookUUID)
+		if err != nil {
+			t.Fatal(err)
+		}
+		defer rows.Close()
+		var out []string
+		for rows.Next() {
+			var c string
+			_ = rows.Scan(&c)
+			out = append(out, c)
+		}
+		return out
+	}
+	if got := dbLangs(); !slices.Equal(got, []string{"eng", "fra"}) {
+		t.Fatalf("after insert: %v", got)
+	}
+
+	mux := http.NewServeMux()
+	mux.HandleFunc("POST /metadata/{uuid}/apply", applyMetadataHandler)
+	server := httptest.NewServer(mux)
+	defer server.Close()
+
+	post := func(body string) {
+		resp, err := http.Post(server.URL+"/metadata/"+bookUUID+"/apply", "application/json", strings.NewReader(body))
+		if err != nil {
+			t.Fatal(err)
+		}
+		resp.Body.Close()
+		if resp.StatusCode != http.StatusOK {
+			t.Fatalf("status %d", resp.StatusCode)
+		}
+	}
+	opfLangs := func() []string {
+		opf, err := loadOPF(filepath.Join(dir, "metadata.opf"))
+		if err != nil {
+			t.Fatal(err)
+		}
+		return opf.Metadata.Languages
+	}
+
+	// Reorder + add a third; duplicates and "und" are dropped.
+	post(`{"title":"Bilingual","creators":"A","languages":"fra, eng; deu, ENG, und"}`)
+	if got := dbLangs(); !slices.Equal(got, []string{"fra", "eng", "deu"}) {
+		t.Errorf("DB languages: %v", got)
+	}
+	if got := opfLangs(); !slices.Equal(got, []string{"fra", "eng", "deu"}) {
+		t.Errorf("OPF languages: %v", got)
+	}
+
+	// Removing one only unlinks that one.
+	post(`{"title":"Bilingual","creators":"A","languages":"fra, deu"}`)
+	if got := dbLangs(); !slices.Equal(got, []string{"fra", "deu"}) {
+		t.Errorf("after removal: %v", got)
+	}
+	var orphan int
+	_ = db.QueryRow(`SELECT COUNT(*) FROM languages WHERE lang_code = 'eng'`).Scan(&orphan)
+	if orphan != 0 {
+		t.Errorf("orphaned 'eng' language row not cleaned up")
+	}
+
+	// Legacy single-language payload still works.
+	post(`{"title":"Bilingual","creators":"A","language":"spa"}`)
+	if got := dbLangs(); !slices.Equal(got, []string{"spa"}) {
+		t.Errorf("legacy field: %v", got)
 	}
 }
