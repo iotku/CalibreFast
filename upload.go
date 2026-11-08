@@ -628,20 +628,20 @@ func cleanupTemps(entries []formatEntry) {
 }
 
 // TODO: I would just want to prepend the new books (we don't actually care if page1 becomes more than 30 books, it'll be regenerated on the next run)
-// generatePage1 rewrites pages/page1.json with the 30 most recently added books.
+// generatePage1 rewrites pages/page1.json with the booksPerPage most recently added books.
 func generatePage1() {
 	rows, err := calibreDB.Query(`
 		SELECT title, author_sort, series_index, pubdate, path, uuid, last_modified
 		FROM books
 		ORDER BY timestamp DESC
-		LIMIT 30`)
+		LIMIT ?`, booksPerPage)
 	if err != nil {
 		log.Println("generatePage1: query failed:", err)
 		return
 	}
 	defer rows.Close()
 
-	books := make([]Book, 0, 30)
+	books := make([]Book, 0, booksPerPage)
 	for rows.Next() {
 		var b Book
 		if err := rows.Scan(&b.Title, &b.AuthorSort, &b.SeriesIndex, &b.PubDate, &b.Path, &b.UUID, &b.LastModified); err != nil {

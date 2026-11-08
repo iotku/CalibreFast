@@ -144,7 +144,7 @@ func searchTotalPages(q string) int {
 		log.Println("search count error:", err)
 		return 0
 	}
-	return (count + filteredBooksPerPage - 1) / filteredBooksPerPage
+	return (count + booksPerPage - 1) / booksPerPage
 }
 
 func searchHandler(w http.ResponseWriter, r *http.Request) {
@@ -160,7 +160,7 @@ func searchHandler(w http.ResponseWriter, r *http.Request) {
 	}
 
 	like := "%" + q + "%"
-	offset := (page - 1) * filteredBooksPerPage
+	offset := (page - 1) * booksPerPage
 
 	query := `
 SELECT
@@ -174,7 +174,7 @@ GROUP BY b.id
 ORDER BY b.sort
 LIMIT ? OFFSET ?`
 
-	rows, err := calibreDB.Query(query, like, like, like, filteredBooksPerPage, offset)
+	rows, err := calibreDB.Query(query, like, like, like, booksPerPage, offset)
 	if err != nil {
 		log.Println("search error:", err)
 		http.Error(w, "search failed", http.StatusInternalServerError)
@@ -668,7 +668,6 @@ func generatePages() {
 		}
 	}(rows)
 	page := 1
-	booksPerPage := 120
 	books := make([]Book, 0, booksPerPage)
 
 	for rows.Next() {

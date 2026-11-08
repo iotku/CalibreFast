@@ -68,7 +68,9 @@ var (
 	filteredTotalCache sync.Map
 )
 
-const filteredBooksPerPage = 30
+// booksPerPage is the LCM of the grid column counts (10/8/6/4/2) so page
+// boundaries never leave gaps in the grid. Shared by every paginated view.
+const booksPerPage = 120
 
 // ---------------------------------------------------------------------------
 // Startup pre-loading
@@ -132,7 +134,7 @@ func preloadFilteredTotals() {
 			if err := rows.Scan(&name, &count); err != nil {
 				continue
 			}
-			totalPages := (count + filteredBooksPerPage - 1) / filteredBooksPerPage
+			totalPages := (count + booksPerPage - 1) / booksPerPage
 			if totalPages < 1 {
 				totalPages = 1
 			}
@@ -268,7 +270,7 @@ func filteredBooksHandler(w http.ResponseWriter, r *http.Request, category strin
 	if page < 1 {
 		page = 1
 	}
-	offset := (page - 1) * filteredBooksPerPage
+	offset := (page - 1) * booksPerPage
 
 	table := category + "s"
 	linkCol := category
@@ -291,7 +293,7 @@ func filteredBooksHandler(w http.ResponseWriter, r *http.Request, category strin
 		linkCol,
 	)
 
-	rows, err := calibreDB.Query(query, name, filteredBooksPerPage, offset)
+	rows, err := calibreDB.Query(query, name, booksPerPage, offset)
 	if err != nil {
 		log.Println("filtered books error:", err)
 		http.Error(w, "query failed", http.StatusInternalServerError)
@@ -372,5 +374,5 @@ func computeFilteredTotal(category, name string) int {
 	if err := calibreDB.QueryRow(query, name).Scan(&count); err != nil {
 		return 0
 	}
-	return (count + filteredBooksPerPage - 1) / filteredBooksPerPage
+	return (count + booksPerPage - 1) / booksPerPage
 }
