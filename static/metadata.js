@@ -1,3 +1,5 @@
+import { createChipInput, parseList } from "./chips.js";
+
 const FIELDS = [
   { key: "title", kind: "string" },
   { key: "creators", kind: "list" },
@@ -42,6 +44,28 @@ export async function fetchMetas(uuid) {
   return res.json();
 }
 
+/**
+ * "edited" source button: once the user changes a field, their latest edit is
+ * kept as its own source so they can flip to "current" (or a format) to look
+ * and come back without retyping.
+ */
+function makeEditedButton(onClick) {
+  const btn = document.createElement("button");
+  btn.type = "button";
+  btn.className = "meta-source-btn meta-source-edited";
+  btn.textContent = "edited";
+  btn.title = "Your changes to this field (click to restore them)";
+  btn.addEventListener("click", onClick);
+  return btn;
+}
+
+function insertEditedButton(buttonRow, btn) {
+  // right after "current" (the pre-existing metadata) when present
+  const first = buttonRow.firstElementChild;
+  if (first && first.dataset.format === "current") first.after(btn);
+  else buttonRow.prepend(btn);
+}
+
 function populateField(form, current, metas, key, kind) {
   const input = form.querySelector(`[name="${key}"]`);
   const buttonRow = form.querySelector(
@@ -49,12 +73,15 @@ function populateField(form, current, metas, key, kind) {
   );
   if (!input || !buttonRow) return;
 
-  if (current) {
-    input.value = fieldValue(current, key, kind);
-  }
+  let applying = false; // true while we set the value programmatically
+  const setValue = (v) => {
+    applying = true;
+    input.value = v;
+    input.dispatchEvent(new Event("input", { bubbles: true }));
+    applying = false;
+  };
 
   buttonRow.replaceChildren();
-
   const buttons = [];
 
   metas.forEach((meta) => {
@@ -67,19 +94,18 @@ function populateField(form, current, metas, key, kind) {
     btn.textContent = sourceLabel(meta);
     btn.title = `Click to use from ${meta.Format}: "${value}"`;
     btn.dataset.value = value;
+    btn.dataset.format = meta.Format;
 
     btn.addEventListener("click", () => {
-      input.value = value;
-      input.dispatchEvent(new Event("input", { bubbles: true }));
-      input.focus();
+      setValue(value);
+      if (input.type !== "hidden") input.focus();
     });
 
     buttonRow.appendChild(btn);
     buttons.push(btn);
   });
 
-  // green if a source's value matches what's currently typed in the field,
-  // yellow/gold otherwise — recomputed live so manual edits fall out of "current"
+  // green if a source's value matches what's in the field, gold otherwise
   const updateHighlights = () => {
     const currentVal = input.value.trim();
     for (const btn of buttons) {
@@ -89,7 +115,21 @@ function populateField(form, current, metas, key, kind) {
     }
   };
 
-  input.addEventListener("input", updateHighlights);
+  let editedBtn = null;
+  input.addEventListener("input", () => {
+    if (!applying) {
+      if (!editedBtn) {
+        editedBtn = makeEditedButton(() => setValue(editedBtn.dataset.value));
+        insertEditedButton(buttonRow, editedBtn);
+        buttons.push(editedBtn);
+      }
+      editedBtn.dataset.value = input.value;
+      editedBtn.title = `Your changes: "${input.value}" (click to restore)`;
+    }
+    updateHighlights();
+  });
+
+  if (current) setValue(fieldValue(current, key, kind));
   updateHighlights();
 }
 
@@ -199,6 +239,20 @@ function populateIdentifiers(form, current, metas) {
   }
 
   /** Remove click: soft-remove to the bottom; second click (Undo) restores. */
+  // "edited" source for identifiers: snapshot of the user's latest state.
+  let editedBtn = null;
+  let editedIds = null;
+  function userChanged() {
+    editedIds = readIdentifiers(form).map(({ scheme, value, id }) => ({ scheme, value, id }));
+    if (!editedBtn) {
+      editedBtn = makeEditedButton(() => setIdentifiers(editedIds, { keepMissing: true }));
+      insertEditedButton(buttonRow, editedBtn);
+      buttons.push(editedBtn);
+    }
+    editedBtn.dataset.normalized = normalize(editedIds);
+    updateHighlights();
+  }
+
   function toggleRemove(row) {
     if (row.classList.contains("removed")) {
       setRemoved(row, false);
@@ -212,13 +266,13 @@ function populateIdentifiers(form, current, metas) {
         customList.appendChild(row);
       }
     }
-    updateHighlights();
+    userChanged();
   }
 
   const makeRow = (scheme, value, id, removed = false) => {
     const row = createCustomIdentifierRow(scheme, value, {
       id,
-      onChange: updateHighlights,
+      onChange: userChanged,
       onRemove: toggleRemove,
     });
     if (removed) setRemoved(row, true);
@@ -276,7 +330,7 @@ function populateIdentifiers(form, current, metas) {
     });
   }
 
-  isbnInput.addEventListener("input", updateHighlights);
+  isbnInput.addEventListener("input", userChanged);
 
   buttonRow.replaceChildren();
   metas.forEach((meta) => {
@@ -291,6 +345,7 @@ function populateIdentifiers(form, current, metas) {
     btn.textContent = sourceLabel(meta);
     btn.title = `Click to use from ${meta.Format}: "${displayVal}"`;
     btn.dataset.normalized = normalize(ids);
+    btn.dataset.format = meta.Format;
 
     btn.addEventListener("click", () => setIdentifiers(ids, { keepMissing: true }));
 
@@ -339,6 +394,89 @@ export async function applyValues(uuid, values) {
   return res.json();
 }
 
+// ---------------------------------------------------------------------------
+// Compare: pre-existing ("current") metadata vs what's in the form now
+// ---------------------------------------------------------------------------
+
+const FIELD_LABELS = {
+  title: "Title",
+  creators: "Authors",
+  publisher: "Publisher",
+  date: "Publication date",
+  languages: "Languages",
+  subjects: "Tags",
+  identifiers: "Identifiers",
+  description: "Description",
+};
+
+function listDiff(before, after) {
+  const b = new Set(before.map((x) => x.toLowerCase()));
+  const a = new Set(after.map((x) => x.toLowerCase()));
+  const added = after.filter((x) => !b.has(x.toLowerCase()));
+  const removed = before.filter((x) => !a.has(x.toLowerCase()));
+  const reordered =
+    !added.length && !removed.length &&
+    before.map((x) => x.toLowerCase()).join("\n") !== after.map((x) => x.toLowerCase()).join("\n");
+  return { added, removed, reordered, before, after };
+}
+
+export function computeChanges(current, values) {
+  const changes = [];
+  for (const { key, kind } of FIELDS) {
+    const label = FIELD_LABELS[key] || key;
+    if (kind === "list") {
+      const d = listDiff(current?.[capitalize(key)] || [], parseList(values[key]));
+      if (d.added.length || d.removed.length || d.reordered) changes.push({ key, label, kind, ...d });
+    } else if (kind === "identifiers") {
+      const fmt = (scheme, value) => `${scheme || "(no type)"}: ${value}`;
+      const before = (current?.Identifiers || []).map((i) => fmt(i.Scheme, i.Value));
+      const after = (values.identifiers || []).map((i) => fmt(i.scheme, i.value));
+      const d = listDiff(before, after);
+      if (d.added.length || d.removed.length) changes.push({ key, label, kind: "list", ...d, reordered: false });
+    } else {
+      const before = (current ? fieldValue(current, key, kind) : "").trim();
+      const after = (values[key] || "").trim();
+      // An unparseable stored date shows as an empty date input and is kept
+      // by the server, so an empty field there isn't a change.
+      if (kind === "date" && !after && before && !/^\d{4}-\d{2}-\d{2}$/.test(before)) continue;
+      if (before !== after) changes.push({ key, label, kind: "string", before, after });
+    }
+  }
+  return changes;
+}
+
+function el(tag, cls, text) {
+  const e = document.createElement(tag);
+  if (cls) e.className = cls;
+  if (text !== undefined) e.textContent = text;
+  return e;
+}
+
+function renderChanges(changes) {
+  if (changes.length === 0) return [el("p", "compare-empty", "No changes from the current metadata.")];
+  return changes.map((c) => {
+    const row = el("section", "compare-row");
+    row.append(el("h3", "compare-field", c.label));
+    if (c.kind === "list") {
+      const items = el("div", "compare-items");
+      for (const x of c.removed) items.append(el("span", "compare-chip removed", x));
+      for (const x of c.added) items.append(el("span", "compare-chip added", x));
+      if (c.reordered) items.append(el("span", "compare-note", `Order: ${c.before.join(", ")} → ${c.after.join(", ")}`));
+      row.append(items);
+    } else {
+      const grid = el("div", "compare-grid");
+      grid.append(
+        el("span", "compare-label", "Before"),
+        el("div", "compare-before", c.before || "(empty)"),
+        el("span", "compare-label", "After"),
+        el("div", "compare-after", c.after || "(empty)"),
+      );
+      row.append(grid);
+    }
+    return row;
+  });
+}
+
 // form must already exist in the DOM with inputs named per FIELDS
 // and a `.meta-source-buttons[data-field="key"]` container next to each one.
 export async function mountMetadataEditor(uuid, form) {
@@ -347,8 +485,33 @@ export async function mountMetadataEditor(uuid, form) {
   const headerTitle = document.getElementById("edit-header-title");
 
   try {
+    // Tags and languages are edited as chips over their (hidden) inputs.
+    const chipInputs = [
+      ["subjects", "Add tags (comma separated)…"],
+      ["languages", "e.g. eng, fra, deu"],
+    ]
+      .map(([name, placeholder]) => {
+        const backing = form.querySelector(`[name="${name}"]`);
+        return backing && createChipInput(backing, { placeholder });
+      })
+      .filter(Boolean);
+    const commitPending = () => chipInputs.forEach((c) => c.commitPending());
+
     const metas = await fetchMetas(uuid);
     populateMetadataForm(form, metas);
+
+    const compareBtn = document.getElementById("btn-compare");
+    const compareDialog = document.getElementById("compare-dialog");
+    if (compareBtn && compareDialog) {
+      compareBtn.addEventListener("click", () => {
+        commitPending();
+        const current = metas.find((m) => m.Format === "current") || null;
+        document
+          .getElementById("compare-body")
+          .replaceChildren(...renderChanges(computeChanges(current, collectValues(form))));
+        compareDialog.showModal();
+      });
+    }
 
     const current = metas.find((m) => m.Format === "current") || metas[0];
     if (current && headerTitle) {
@@ -357,6 +520,7 @@ export async function mountMetadataEditor(uuid, form) {
 
     form.addEventListener("submit", async (e) => {
       e.preventDefault();
+      commitPending(); // half-typed tag/language text is never dropped
       const values = collectValues(form);
 
       if (saveBtn) {

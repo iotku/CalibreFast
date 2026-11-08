@@ -329,6 +329,223 @@
                 font-size: 0.65rem;
             }
 
+            /* "edited": the user's own changes as a source */
+            .meta-source-btn.meta-source-edited {
+                border-style: dashed;
+            }
+
+            /* ── Chip inputs (tags, languages) ── */
+            .chip-input {
+                background: var(--surface);
+                border: 1px solid var(--border);
+                border-radius: 6px;
+                padding: 6px;
+                cursor: text;
+            }
+
+            .chip-input:focus-within {
+                border-color: var(--accent);
+            }
+
+            .chip-list {
+                display: flex;
+                flex-wrap: wrap;
+                gap: 6px;
+                align-items: center;
+            }
+
+            .chip {
+                display: inline-flex;
+                align-items: center;
+                gap: 2px;
+                max-width: 100%;
+                padding: 3px 3px 3px 10px;
+                font-size: 0.85rem;
+                background: rgba(255, 255, 255, 0.05);
+                border: 1px solid var(--border);
+                border-radius: 999px;
+            }
+
+            .chip-label {
+                overflow-wrap: anywhere;
+            }
+
+            .chip.removed .chip-label {
+                text-decoration: line-through;
+                opacity: 0.45;
+            }
+
+            .chip-btn {
+                min-width: 26px;
+                height: 24px;
+                padding: 0 6px;
+                font-size: 0.72rem;
+                font-family: var(--mono);
+                color: var(--muted);
+                background: transparent;
+                border: none;
+                border-radius: 999px;
+                cursor: pointer;
+                flex-shrink: 0;
+            }
+
+            .chip-btn:hover {
+                color: var(--text);
+                background: rgba(255, 255, 255, 0.08);
+            }
+
+            .chip-btn.chip-split {
+                color: var(--accent);
+            }
+
+            .chip-text {
+                flex: 1 1 140px;
+                min-width: 120px;
+                height: 30px;
+                padding: 0 6px;
+                font: inherit;
+                color: var(--text);
+                background: transparent;
+                border: none;
+                outline: none;
+            }
+
+            .chip-tools {
+                display: flex;
+                justify-content: flex-end;
+            }
+
+            .chip-tool-btn {
+                margin-top: 6px;
+                padding: 4px 10px;
+                font-family: var(--mono);
+                font-size: 0.72rem;
+                color: var(--accent);
+                background: rgba(200, 169, 110, 0.1);
+                border: 1px dashed var(--accent-dim);
+                border-radius: 6px;
+                cursor: pointer;
+            }
+
+            .chip-tool-btn[hidden] {
+                display: none;
+            }
+
+            /* ── Compare dialog ── */
+            .compare-dialog {
+                width: min(760px, calc(100vw - 32px));
+                max-height: 85vh;
+                padding: 0;
+                color: var(--text);
+                background: var(--surface);
+                border: 1px solid var(--border);
+                border-radius: 10px;
+                box-shadow: 0 20px 50px rgba(0, 0, 0, 0.6);
+            }
+
+            .compare-dialog::backdrop {
+                background: rgba(0, 0, 0, 0.6);
+            }
+
+            .compare-header {
+                position: sticky;
+                top: 0;
+                display: flex;
+                align-items: center;
+                justify-content: space-between;
+                gap: 12px;
+                padding: 14px 18px;
+                background: var(--surface);
+                border-bottom: 1px solid var(--border);
+            }
+
+            .compare-header h2 {
+                margin: 0;
+                font-size: 1rem;
+            }
+
+            #compare-body {
+                padding: 6px 18px 18px;
+            }
+
+            .compare-row {
+                padding: 12px 0;
+                border-bottom: 1px solid var(--border);
+            }
+
+            .compare-field {
+                margin: 0 0 8px;
+                font-family: var(--mono);
+                font-size: 0.75rem;
+                letter-spacing: 0.08em;
+                text-transform: uppercase;
+                color: var(--accent);
+            }
+
+            .compare-grid {
+                display: grid;
+                grid-template-columns: auto minmax(0, 1fr);
+                gap: 6px 12px;
+            }
+
+            .compare-label {
+                font-size: 0.75rem;
+                color: var(--muted);
+            }
+
+            .compare-before,
+            .compare-after {
+                max-height: 180px;
+                overflow: auto;
+                white-space: pre-wrap;
+                overflow-wrap: anywhere;
+                font-size: 0.9rem;
+            }
+
+            .compare-before {
+                color: #d79a9a;
+                text-decoration: line-through;
+                text-decoration-color: rgba(215, 154, 154, 0.5);
+            }
+
+            .compare-after {
+                color: #8fc493;
+            }
+
+            .compare-items {
+                display: flex;
+                flex-wrap: wrap;
+                gap: 6px;
+            }
+
+            .compare-chip {
+                padding: 2px 10px;
+                font-size: 0.85rem;
+                border-radius: 999px;
+                border: 1px solid;
+            }
+
+            .compare-chip.added {
+                color: #8fc493;
+                border-color: rgba(90, 138, 94, 0.6);
+            }
+
+            .compare-chip.added::before {
+                content: "+ ";
+            }
+
+            .compare-chip.removed {
+                color: #d79a9a;
+                border-color: rgba(186, 122, 122, 0.5);
+                text-decoration: line-through;
+            }
+
+            .compare-note,
+            .compare-empty {
+                font-size: 0.85rem;
+                color: var(--muted);
+            }
+
             /* ── Identifiers ── */
             .identifiers-container {
                 display: flex;
@@ -652,7 +869,7 @@
                     </fieldset>
 
                     <fieldset class="meta-field">
-                        <legend>Subjects / Tags</legend>
+                        <legend>Tags</legend>
                         <input type="text" name="subjects" class="meta-input" placeholder="e.g. Computer Science, Programming, Go" />
                         <div class="meta-source-buttons" data-field="subjects"></div>
                     </fieldset>
@@ -698,12 +915,23 @@
                         <button type="submit" id="btn-save" class="btn-primary">
                             Apply Changes
                         </button>
+                        <button type="button" id="btn-compare" class="btn-secondary">
+                            Compare changes
+                        </button>
                         <button type="button" onclick="history.back()" class="btn-secondary">
                             Cancel
                         </button>
                     </div>
                 </div>
             </form>
+
+            <dialog id="compare-dialog" class="compare-dialog" aria-labelledby="compare-title">
+                <header class="compare-header">
+                    <h2 id="compare-title">Changes vs current metadata</h2>
+                    <form method="dialog"><button class="btn-secondary" aria-label="Close">Close</button></form>
+                </header>
+                <div id="compare-body"></div>
+            </dialog>
         </main>
 
         <script type="module">
