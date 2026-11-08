@@ -602,6 +602,29 @@
                 border-bottom: 1px solid var(--border);
             }
 
+            .compare-footer {
+                position: sticky;
+                bottom: 0;
+                display: flex;
+                align-items: center;
+                justify-content: flex-end;
+                flex-wrap: wrap;
+                gap: 10px;
+                padding: 12px 18px;
+                background: var(--surface);
+                border-top: 1px solid var(--border);
+            }
+
+            .compare-footer[hidden] {
+                display: none;
+            }
+
+            .compare-footer span {
+                margin-right: auto;
+                font-size: 0.85rem;
+                color: var(--muted);
+            }
+
             /* Matches the book modal's close button */
             .compare-close {
                 width: 36px;
@@ -1095,6 +1118,11 @@
                     <form method="dialog"><button class="compare-close" aria-label="Close">✕</button></form>
                 </header>
                 <div id="compare-body"></div>
+                <footer id="compare-leave-actions" class="compare-footer" hidden>
+                    <span>Apply these changes before leaving?</span>
+                    <form method="dialog"><button class="btn-secondary">Keep editing</button></form>
+                    <button type="button" id="compare-apply" class="btn-primary">Apply changes</button>
+                </footer>
             </dialog>
         </main>
 

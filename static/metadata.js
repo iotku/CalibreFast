@@ -578,15 +578,53 @@ export async function mountMetadataEditor(uuid, form) {
         const inside = e.clientX >= r.left && e.clientX <= r.right && e.clientY >= r.top && e.clientY <= r.bottom;
         if (!inside) compareDialog.close();
       });
-      compareBtn.addEventListener("click", () => {
-        commitPending();
-        const current = metas.find((m) => m.Format === "current") || null;
-        document
-          .getElementById("compare-body")
-          .replaceChildren(...renderChanges(computeChanges(current, collectValues(form))));
-        compareDialog.showModal();
-      });
+      compareBtn.addEventListener("click", () => openCompare({ leaving: false }));
     }
+
+    /**
+     * leaving: opened because the user cancelled the browser's "leave page?"
+     * prompt — title and footer ask whether to apply the unapplied changes.
+     */
+    function openCompare({ leaving }) {
+      if (!compareDialog) return;
+      commitPending();
+      const current = metas.find((m) => m.Format === "current") || null;
+      document
+        .getElementById("compare-body")
+        .replaceChildren(...renderChanges(computeChanges(current, collectValues(form))));
+      document.getElementById("compare-title").textContent = leaving
+        ? "You have unapplied changes"
+        : "Changes vs current metadata";
+      const footer = document.getElementById("compare-leave-actions");
+      if (footer) footer.hidden = !leaving;
+      if (!compareDialog.open) compareDialog.showModal();
+    }
+
+    document.getElementById("compare-apply")?.addEventListener("click", () => {
+      compareDialog.close();
+      form.requestSubmit(); // same path as Apply Changes
+    });
+
+    // -----------------------------------------------------------------------
+    // Unapplied-changes guard. "Dirty" = form differs from what was loaded or
+    // last applied, or there's half-typed text in a chip box.
+    // -----------------------------------------------------------------------
+    const snapshot = () => JSON.stringify(collectValues(form));
+    let baseline = snapshot();
+    let saving = false;
+    const isDirty = () =>
+      !saving &&
+      (chipInputs.some((c) => c.textInput.value.trim()) || snapshot() !== baseline);
+
+    window.addEventListener("beforeunload", (e) => {
+      if (!isDirty()) return;
+      e.preventDefault();
+      e.returnValue = ""; // older browsers need this to show the prompt
+      // Timers are paused while the browser's prompt is open. "Leave" unloads
+      // the page so this never runs; "Cancel" (stay) runs it and we show what
+      // would have been lost, offering to apply it.
+      setTimeout(() => openCompare({ leaving: true }), 100);
+    });
 
     const current = metas.find((m) => m.Format === "current") || metas[0];
     if (current && headerTitle) {
@@ -608,7 +646,9 @@ export async function mountMetadataEditor(uuid, form) {
       }
 
       try {
+        saving = true;
         const result = await applyValues(uuid, values);
+        baseline = JSON.stringify(values); // applied: nothing unsaved now
         if (statusEl) {
           statusEl.className = "edit-status success";
           statusEl.innerHTML = `✓ Metadata applied successfully! <a href="/book/get/${uuid}" class="status-link">View updated book →</a>`;
@@ -626,6 +666,7 @@ export async function mountMetadataEditor(uuid, form) {
           statusEl.textContent = `✕ Failed to apply metadata: ${err.message || err}`;
         }
       } finally {
+        saving = false; // a failed apply leaves the changes unsaved (guard back on)
         if (saveBtn) {
           saveBtn.disabled = false;
           saveBtn.textContent = "Apply Changes";
