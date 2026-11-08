@@ -7,7 +7,8 @@
  * it at the end with Undo; nothing is lost until the form is applied.
  *
  * Chips containing `splitOn` (";") get a Split button, and the field gets a
- * "Split all" button, for tags that were glued together with semicolons.
+ * "Split all" button, for tags that were glued together with semicolons. A
+ * split chip is replaced by its parts (no struck-through copy is kept).
  */
 
 const lower = (s) => s.toLowerCase();
@@ -108,10 +109,9 @@ export function createChipInput(backing, { placeholder = "", splitOn = ";" } = {
     function split(chip) {
         const at = chips.indexOf(chip);
         const parts = chip.text.split(splitOn).map((s) => s.trim()).filter(Boolean);
-        // Original stays recoverable (struck through, Undo) until applied.
+        // Replaced by its parts outright (no struck-through copy): the parts
+        // carry the same content, and "current" / Compare still show the original.
         chips.splice(at, 1);
-        chip.removed = true;
-        chips.push(chip);
         addItems(parts, at);
         render();
         emit();
