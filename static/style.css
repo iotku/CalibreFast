@@ -610,23 +610,87 @@ input[type="number"],
     display: block;
 }
 
-#read-buttons {
-    display: flex;
-    flex-direction: column;
-    gap: var(--gap-medium);
-    margin-top: 1rem;
-    width: 100%;
-}
-
-.btn-read {
-    height: var(--touch-target);
-    width: 100%;
-    padding: var(--input-padding);
-}
-
 .book-page-info {
     flex: 1;
     min-width: 0;
+}
+
+/* ============================================
+   Component - Book Actions (Read, Download, Edit)
+   ============================================ */
+.book-actions {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 0.6rem;
+    margin: 1.25rem 0 1.75rem 0;
+}
+
+#read-buttons {
+    display: contents;
+}
+
+.btn-action {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.45rem;
+    padding: 0.55rem 0.95rem;
+    background: var(--bg-surface);
+    color: var(--text-primary);
+    border: 1px solid var(--border-medium);
+    border-radius: var(--radius-medium);
+    font-size: 0.85rem;
+    font-weight: 500;
+    text-decoration: none;
+    line-height: 1;
+    min-height: 38px;
+    box-sizing: border-box;
+    cursor: pointer;
+    transition:
+        background var(--transition-fast),
+        border-color var(--transition-fast),
+        color var(--transition-fast),
+        transform var(--transition-fast);
+}
+
+.btn-action:hover {
+    background: var(--bg-elevated);
+    border-color: rgba(255, 255, 255, 0.25);
+    color: #fff;
+}
+
+.btn-action:active {
+    transform: scale(0.98);
+}
+
+.btn-action .action-icon {
+    flex-shrink: 0;
+    opacity: 0.8;
+}
+
+.btn-action:hover .action-icon {
+    opacity: 1;
+}
+
+.btn-action-primary {
+    background: rgba(200, 169, 110, 0.12);
+    border-color: rgba(200, 169, 110, 0.35);
+    color: var(--accent, #c8a96e);
+}
+
+.btn-action-primary:hover {
+    background: rgba(200, 169, 110, 0.22);
+    border-color: var(--accent, #c8a96e);
+    color: #fff;
+}
+
+.btn-action-primary .action-icon {
+    color: var(--accent, #c8a96e);
+    opacity: 1;
+}
+
+.btn-action-primary:hover .action-icon {
+    color: #fff;
 }
 
 .meta-row {
@@ -648,31 +712,6 @@ input[type="number"],
 .description pre {
     max-width: 100%;
     overflow-x: auto;
-}
-
-.download-section {
-    margin-bottom: 1.5rem;
-    display: flex;
-    flex-wrap: wrap;
-    gap: 0.75rem;
-}
-
-.download-btn {
-    padding: 0.65rem 1rem;
-    background: var(--bg-surface);
-    color: white;
-    text-decoration: none;
-    border-radius: var(--radius-medium);
-    display: inline-flex;
-    align-items: center;
-    justify-content: center;
-    min-height: var(--touch-target);
-    box-sizing: border-box;
-    transition: background var(--transition-fast);
-}
-
-.download-btn:hover {
-    background: var(--bg-elevated);
 }
 
 .tag {
@@ -826,43 +865,18 @@ input[type="number"],
         margin: 0 auto;
     }
 
-    #read-buttons {
-        width: 100%;
-        margin-top: 0.75rem;
-    }
-
-    .book-page-info {
-        width: 100%;
-    }
-
-    .title-row {
+    .book-actions {
         gap: 0.5rem;
-        margin-bottom: 0.5rem;
+        margin: 1rem 0 1.25rem 0;
     }
 
-    .title-row h1 {
-        font-size: 1.35rem;
-        line-height: 1.3;
-        word-break: break-word;
-    }
-
-    .icon-link {
-        min-width: 36px;
-        min-height: 36px;
-        padding: 6px;
-    }
-
-    .download-section {
-        margin-bottom: 1.25rem;
-        gap: 0.5rem;
-    }
-
-    .download-btn {
+    .btn-action {
         flex: 1 1 calc(50% - 0.5rem);
         min-width: 120px;
-        text-align: center;
-        font-size: var(--font-size-small);
+        justify-content: center;
+        min-height: var(--touch-target);
         padding: 0.6rem 0.75rem;
+        font-size: var(--font-size-small);
     }
 
     .meta-row {
@@ -890,7 +904,7 @@ input[type="number"],
         font-size: 1.2rem;
     }
 
-    .download-btn {
+    .btn-action {
         flex: 1 1 100%;
     }
 }
