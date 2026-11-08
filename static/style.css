@@ -610,10 +610,15 @@ input[type="number"],
     min-width: 0;
 }
 
-.book-page-cover {
+/* Left column: cover with the read/download actions underneath */
+.book-page-side {
     grid-area: cover;
     width: 280px;
-    flex-shrink: 0;
+    min-width: 0;
+}
+
+.book-page-cover {
+    width: 100%;
 }
 
 .book-page-cover img {
@@ -694,11 +699,10 @@ input[type="number"],
    Component - Book Actions (Read, Download, Edit)
    ============================================ */
 .book-actions {
-    display: flex;
-    flex-wrap: wrap;
-    align-items: center;
-    gap: 0.65rem;
-    margin: 1rem 0 0;
+    display: grid;
+    grid-template-columns: minmax(0, 1fr);
+    gap: 0.5rem;
+    margin-top: 1rem;
 }
 
 #read-buttons {
@@ -940,7 +944,7 @@ input[type="number"],
         padding: 0;
     }
 
-    /* 1. Header (Title + Read/Download/Edit actions) on top */
+    /* 1. Header (title + author) on top */
     .book-header {
         width: 100%;
         order: 1;
@@ -971,13 +975,11 @@ input[type="number"],
     }
 
     .book-actions {
-        gap: 0.5rem;
-        margin: 0.75rem 0 0;
+        grid-template-columns: repeat(2, minmax(0, 1fr));
+        margin-top: 1rem;
     }
 
     .btn-action {
-        flex: 1 1 calc(50% - 0.5rem);
-        min-width: 120px;
         justify-content: center;
         min-height: var(--touch-target, 44px);
         height: 44px;
@@ -985,7 +987,12 @@ input[type="number"],
         font-size: var(--font-size-small);
     }
 
-    /* 2. Cover below the actions */
+    /* 2. Cover, with the read/download actions under it */
+    .book-page-side {
+        width: 100%;
+        order: 2;
+    }
+
     .book-page-cover {
         width: 100%;
         max-width: 240px;
@@ -1033,8 +1040,8 @@ input[type="number"],
         font-size: 1.2rem;
     }
 
-    .btn-action {
-        flex: 1 1 100%;
+    .book-actions {
+        grid-template-columns: minmax(0, 1fr);
     }
 }
 
@@ -1050,10 +1057,19 @@ input[type="number"],
         row-gap: 1rem;
     }
 
-    .book-page-cover {
-        max-width: 160px;
+    .book-page-side {
+        width: 160px;
         grid-area: cover;
         order: unset;
+    }
+
+    .book-page-cover {
+        max-width: 160px;
+    }
+
+    .book-actions {
+        grid-template-columns: minmax(0, 1fr);
+        margin-top: 0.75rem;
     }
 
     .book-header {
