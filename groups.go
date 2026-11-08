@@ -29,6 +29,7 @@ type groupStore struct {
 	path     string
 	data     map[string][]Group // category key ("language") -> groups
 	readOnly error              // set when the file exists but couldn't be parsed
+	version  uint64             // bumped on every successful change (for ETags)
 }
 
 var groups = &groupStore{data: map[string][]Group{}}
@@ -234,8 +235,17 @@ func (s *groupStore) set(cat, key string, g Group) (Group, error) {
 		s.data[cat] = prev // don't report state we failed to persist
 		return Group{}, err
 	}
+	s.version++
 	if trivial {
 		return Group{}, nil
 	}
 	return g, nil
+}
+
+// currentVersion changes whenever groups change; part of page ETags whose
+// output depends on group names.
+func (s *groupStore) currentVersion() uint64 {
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+	return s.version
 }

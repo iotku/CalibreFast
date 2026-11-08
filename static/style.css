@@ -1610,3 +1610,12 @@ label.group-row span {
 .agg-group {
     font-style: italic;
 }
+
+/* Raw code next to a language display name, e.g. "English eng" */
+.title-sub,
+.agg-sub {
+    font-size: 0.6em;
+    font-weight: 400;
+    color: var(--text-muted);
+    font-family: var(--mono, ui-monospace, monospace);
+}

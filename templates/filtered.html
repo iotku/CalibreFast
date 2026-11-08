@@ -2,7 +2,7 @@
 <html lang="en">
 <head>
     <meta charset="utf-8">
-    <title>{{ .Name }} — {{ .Title }}</title>
+    <title>{{ .Display }} — {{ .Title }}</title>
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <link rel="stylesheet" href="/static/style.css">
     <script src="https://cdn.jsdelivr.net/npm/htmx.org@4.0.1/dist/htmx.min.js"></script>
@@ -12,7 +12,7 @@
 <header class="top-bar">
     <div class="top-bar-left">
         <button class="btn-back" onclick="history.back()">&#8592; Back</button>
-        <h1 class="title">{{ .Name }}</h1>
+        <h1 class="title">{{ .Display }}{{ if .Sub }} <span class="title-sub">{{ .Sub }}</span>{{ end }}</h1>
         <button type="button" id="group-toggle" class="btn-group-toggle" aria-expanded="false" aria-controls="group-panel"
                 title="Choose which {{ .Label }} values this page includes">
             {{ if .Grouped }}Group · {{ len .Members }}{{ else }}Group…{{ end }}
@@ -26,7 +26,7 @@
     </div>
 </header>
 <section id="group-panel" class="group-panel" hidden
-         data-category="{{ .Category }}" data-key="{{ .Key }}" data-name="{{ .Name }}" data-label="{{ .Label }}">
+         data-category="{{ .Category }}" data-key="{{ .Key }}" data-name="{{ .SuggestName }}" data-label="{{ .Label }}">
     <p class="group-hint">Books whose {{ .Label }} is any of these values are shown here.
         A value can belong to one group; adding it here moves it from any other.
         Books themselves are never changed.</p>
@@ -40,7 +40,7 @@
     </div>
     <label class="group-row">
         <span>Display name</span>
-        <input id="group-name" class="input-search" value="{{ .Name }}" />
+        <input id="group-name" class="input-search" value="{{ .SuggestName }}" />
     </label>
     {{ if .GroupsError }}<p class="group-error">{{ .GroupsError }}</p>{{ end }}
     <p id="group-status" class="group-status" role="status"></p>

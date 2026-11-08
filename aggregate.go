@@ -59,12 +59,14 @@ type AggregateItem struct {
 	Name    string   `json:"name"`
 	Count   int      `json:"count"`
 	Slug    string   `json:"slug"`
+	Display string   `json:"display,omitempty"` // human label when it differs from Name (languages)
 	Members []string `json:"members,omitempty"` // set when Name is a group
 }
 
 // AggregateDisplayItem is used by the server-rendered aggregate template.
 type AggregateDisplayItem struct {
-	Name     string
+	Name     string // label shown
+	Sub      string // raw value shown small when Name is a display name, e.g. "eng"
 	Href     string // path-escaped link, e.g. "/author/Terry%20Pratchett"
 	Count    int
 	Grouped  bool
@@ -82,7 +84,10 @@ type AggregatePageData struct {
 // FilteredPageData is passed to filtered.html.
 type FilteredPageData struct {
 	Title       string // site title
-	Name        string // display name: group name, or the raw value
+	Name        string // group name, or the raw value
+	Display     string // heading: Name, or a language's display name
+	Sub         string // raw value shown small next to Display when they differ
+	SuggestName string // default for the editor's display-name field
 	Category    string // category key, e.g. "language"
 	Label       string // "language"
 	Key         string // value from the URL (used to address the group)
@@ -205,6 +210,11 @@ func queryRawItems(c *category) []AggregateItem {
 			continue
 		}
 		item.Slug = item.Name
+		if c.Key == "language" {
+			if name, ok := languageDisplayName(item.Name); ok {
+				item.Display = name
+			}
+		}
 		items = append(items, item)
 	}
 	return items
@@ -261,8 +271,17 @@ func computeAggregateDisplay(c *category, items []AggregateItem) []AggregateDisp
 	display := make([]AggregateDisplayItem, len(items))
 	for i, item := range items {
 		ratio := float64(item.Count) / float64(maxCount)
+		label := item.Name
+		if item.Display != "" {
+			label = item.Display
+		}
+		sub := ""
+		if label != item.Name {
+			sub = item.Name
+		}
 		display[i] = AggregateDisplayItem{
-			Name:     item.Name,
+			Name:     label,
+			Sub:      sub,
 			Href:     c.href(item.Name),
 			Count:    item.Count,
 			Grouped:  len(item.Members) > 0,
@@ -381,16 +400,31 @@ func filteredPageHandler(c *category) http.HandlerFunc {
 			return
 		}
 		name, members, grouped := groups.resolve(c.Key, value)
+		display, suggest := name, name
+		if c.Key == "language" && !grouped {
+			if dn, ok := languageDisplayName(name); ok {
+				display = dn
+				// Grouping "en" with others defaults to "English", not "en (US)".
+				suggest, _ = languageDisplayName(strings.SplitN(strings.ReplaceAll(name, "_", "-"), "-", 2)[0])
+			}
+		}
+		sub := ""
+		if display != name {
+			sub = name
+		}
 		data := FilteredPageData{
-			Title:      SiteTitle,
-			Name:       name,
-			Category:   c.Key,
-			Label:      c.Label,
-			Key:        value,
-			Members:    members,
-			Grouped:    grouped,
-			PageURL:    c.href(value) + "?api=1",
-			TotalPages: getFilteredTotal(c, name, members),
+			Title:       SiteTitle,
+			Name:        name,
+			Display:     display,
+			Sub:         sub,
+			SuggestName: suggest,
+			Category:    c.Key,
+			Label:       c.Label,
+			Key:         value,
+			Members:     members,
+			Grouped:     grouped,
+			PageURL:     c.href(value) + "?api=1",
+			TotalPages:  getFilteredTotal(c, name, members),
 		}
 		if groups.readOnly != nil {
 			data.GroupsError = groups.readOnly.Error()

@@ -25,15 +25,16 @@ var descriptionPolicy = func() *bluemonday.Policy {
 type BookPageData struct {
 	UUID string
 
-	Title       string
-	Authors     []string
-	Description template.HTML
-	Publisher   string
-	Date        string
-	Language    string
-	Tags        []string
+	Title        string
+	Authors      []string
+	Description  template.HTML
+	Publisher    string
+	Date         string
+	Language     string // raw code, used in the link
+	LanguageName string // group name or display name, e.g. "English"
+	Tags         []string
 
-	Formats      []string
+	Formats []string
 	ModTime string
 }
 
@@ -58,7 +59,8 @@ func bookHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	etag := fmt.Sprintf(`"%x"`, opfStat.ModTime().UnixNano())
+	// Groups version: the language label depends on group names.
+	etag := fmt.Sprintf(`"%x-%x"`, opfStat.ModTime().UnixNano(), groups.currentVersion())
 	w.Header().Set("ETag", etag)
 	w.Header().Set("Cache-Control", "private, max-age=30")
 	if r.Header.Get("If-None-Match") == etag {
@@ -94,12 +96,13 @@ func bookHandler(w http.ResponseWriter, r *http.Request) {
 	data := BookPageData{
 		UUID: uuid,
 
-		Title:     opf.Metadata.Title,
-		Authors:   opf.Metadata.Creators,
-		Publisher: opf.Metadata.Publisher,
-		Date:      formattedDate,
-		Language:  opf.Metadata.Language,
-		Tags:      opf.Metadata.Subjects,
+		Title:        opf.Metadata.Title,
+		Authors:      opf.Metadata.Creators,
+		Publisher:    opf.Metadata.Publisher,
+		Date:         formattedDate,
+		Language:     opf.Metadata.Language,
+		LanguageName: languageLabel(opf.Metadata.Language),
+		Tags:         opf.Metadata.Subjects,
 
 		Description: template.HTML(
 			descriptionPolicy.Sanitize(
@@ -107,7 +110,7 @@ func bookHandler(w http.ResponseWriter, r *http.Request) {
 			),
 		),
 
-		Formats:      formats,
+		Formats: formats,
 		ModTime: modTime.(string), // cache-busting modtime for cover.jpg and cover-thumb.jpg
 	}
 	// render into buffer first
