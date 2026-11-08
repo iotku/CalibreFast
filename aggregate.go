@@ -3,19 +3,63 @@ package main
 import (
 	"database/sql"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"log"
 	"net/http"
 	"net/url"
+	"sort"
 	"strconv"
 	"strings"
 	"sync"
 )
 
+// ---------------------------------------------------------------------------
+// Category registry
+// ---------------------------------------------------------------------------
+
+// category describes one browsable Calibre link table.
+type category struct {
+	Key       string // singular id used in the groups store: "language"
+	Plural    string // aggregate page + JSON API path: "languages"
+	URLPrefix string // filtered page path: "lang" -> /lang/{value}
+	Title     string // aggregate page title
+	Label     string // singular, for UI text: "language"
+	Table     string // entity table
+	NameCol   string // display/value column in Table
+	LinkTable string // books_<x>_link
+	LinkCol   string // column in LinkTable referencing Table.id
+}
+
+var categories = []*category{
+	{"author", "authors", "author", "Authors", "author", "authors", "name", "books_authors_link", "author"},
+	{"publisher", "publishers", "publisher", "Publishers", "publisher", "publishers", "name", "books_publishers_link", "publisher"},
+	{"tag", "tags", "tag", "Tags", "tag", "tags", "name", "books_tags_link", "tag"},
+	{"language", "languages", "lang", "Languages", "language", "languages", "lang_code", "books_languages_link", "lang_code"},
+}
+
+func categoryByKey(key string) *category {
+	for _, c := range categories {
+		if c.Key == key {
+			return c
+		}
+	}
+	return nil
+}
+
+func (c *category) href(name string) string {
+	return "/" + c.URLPrefix + "/" + url.PathEscape(name)
+}
+
+// ---------------------------------------------------------------------------
+// Page data
+// ---------------------------------------------------------------------------
+
 type AggregateItem struct {
-	Name  string `json:"name"`
-	Count int    `json:"count"`
-	Slug  string `json:"slug"`
+	Name    string   `json:"name"`
+	Count   int      `json:"count"`
+	Slug    string   `json:"slug"`
+	Members []string `json:"members,omitempty"` // set when Name is a group
 }
 
 // AggregateDisplayItem is used by the server-rendered aggregate template.
@@ -23,24 +67,30 @@ type AggregateDisplayItem struct {
 	Name     string
 	Href     string // path-escaped link, e.g. "/author/Terry%20Pratchett"
 	Count    int
+	Grouped  bool
+	Members  string // "en, eng, en-US" when grouped
 	FontSize string // e.g. "14.5"
 	Opacity  string // e.g. "0.60"
 }
 
 // AggregatePageData is passed to aggregate.html for server-side rendering.
 type AggregatePageData struct {
-	Title      string // page title, e.g. "Authors"
-	LinkPrefix string // singular form for URLs, e.g. "author"
-	Items      []AggregateDisplayItem
+	Title string
+	Items []AggregateDisplayItem
 }
 
 // FilteredPageData is passed to filtered.html.
 type FilteredPageData struct {
-	Title      string // site title (for modal title prefix)
-	Name       string // entity name for display, e.g. "Terry Pratchett"
-	Category   string // "author" | "publisher" | "tag"
-	PageURL    string // API base URL; template appends &page={n}
-	TotalPages int
+	Title       string // site title
+	Name        string // display name: group name, or the raw value
+	Category    string // category key, e.g. "language"
+	Label       string // "language"
+	Key         string // value from the URL (used to address the group)
+	Members     []string
+	Grouped     bool
+	GroupsError string // non-empty when grouping is read-only
+	PageURL     string // API base URL; template appends &page={n}
+	TotalPages  int
 }
 
 // SearchPageData is passed to search.html.
@@ -51,20 +101,15 @@ type SearchPageData struct {
 }
 
 // ---------------------------------------------------------------------------
-// Caches — populated at startup, refreshed on book upload / metadata edits.
+// Caches — populated at startup, refreshed on book upload / metadata / group edits.
 // ---------------------------------------------------------------------------
 
 var (
-	// aggregateDisplayCache stores pre-computed display items for the
-	// server-rendered aggregate pages.  Key: "authors"|"publishers"|"tags".
+	// aggregateDisplayCache: plural ("authors") -> []AggregateDisplayItem
 	aggregateDisplayCache sync.Map
-
-	// aggregateJSONCache stores pre-serialised JSON for the /api/* aggregate
-	// endpoints.  Key: "authors"|"publishers"|"tags".
+	// aggregateJSONCache: plural -> pre-serialised []AggregateItem
 	aggregateJSONCache sync.Map
-
-	// filteredTotalCache stores per-entity total page counts.
-	// Key: "author/Name" → int (total_pages).
+	// filteredTotalCache: "key/lowercased resolved name" -> total pages
 	filteredTotalCache sync.Map
 )
 
@@ -72,144 +117,85 @@ var (
 // boundaries never leave gaps in the grid. Shared by every paginated view.
 const booksPerPage = 120
 
-// ---------------------------------------------------------------------------
-// Startup pre-loading
-// ---------------------------------------------------------------------------
+func pagesFor(count int) int { return (count + booksPerPage - 1) / booksPerPage }
 
-// preloadCaches populates aggregate and filtered-total caches at startup.
-// Called once after initCalibreDB, before serving requests.
+// preloadCaches populates the aggregate caches at startup.
 func preloadCaches() {
-	for _, category := range []string{"authors", "publishers", "tags"} {
-		refreshAggregateCache(category)
+	for _, c := range categories {
+		refreshAggregateCache(c)
 	}
-
-	preloadFilteredTotals()
-	log.Println("caches: aggregates and filtered totals pre-loaded")
+	log.Println("caches: aggregates pre-loaded")
 }
 
-// refreshAggregateCache rebuilds both the display cache and JSON cache for a
-// category.  Safe to call at any time.
-func refreshAggregateCache(category string) {
-	items := queryAggregateItems(category)
-
-	// JSON cache for /api/* endpoints.
-	data, err := json.Marshal(items)
-	if err == nil {
-		aggregateJSONCache.Store(category, data)
+func refreshAggregateCache(c *category) {
+	items := queryAggregateItems(c)
+	if data, err := json.Marshal(items); err == nil {
+		aggregateJSONCache.Store(c.Plural, data)
 	}
-
-	// Display cache for server-rendered template.
-	aggregateDisplayCache.Store(category, computeAggregateDisplay(category, items))
+	aggregateDisplayCache.Store(c.Plural, computeAggregateDisplay(c, items))
 }
 
-// refreshAllCaches rebuilds every cache.  Called after book upload / metadata
-// edit where the exact scope of changes is hard to predict.
+// refreshAllCaches rebuilds every cache. Called after book upload, metadata
+// edits and group edits, where the exact scope of changes is hard to predict.
 func refreshAllCaches() {
-	for _, category := range []string{"authors", "publishers", "tags"} {
-		refreshAggregateCache(category)
+	for _, c := range categories {
+		refreshAggregateCache(c)
 	}
 	filteredTotalCache.Clear()
-	preloadFilteredTotals()
-}
-
-func preloadFilteredTotals() {
-	for _, cat := range []string{"author", "publisher", "tag"} {
-		table := cat + "s"
-		linkCol := cat
-		query := fmt.Sprintf(`
-			SELECT t.name, COUNT(DISTINCT x.book)
-			FROM %s t
-			JOIN books_%s_link x ON x.%s = t.id
-			GROUP BY t.id
-		`, table, table, linkCol)
-
-		rows, err := calibreDB.Query(query)
-		if err != nil {
-			log.Printf("preloadFilteredTotals(%s): %v", cat, err)
-			continue
-		}
-		for rows.Next() {
-			var name string
-			var count int
-			if err := rows.Scan(&name, &count); err != nil {
-				continue
-			}
-			totalPages := (count + booksPerPage - 1) / booksPerPage
-			if totalPages < 1 {
-				totalPages = 1
-			}
-			filteredTotalCache.Store(cat+"/"+name, totalPages)
-		}
-		logErr(rows.Close(), "preloadFilteredTotals: close rows")
-	}
 }
 
 // ---------------------------------------------------------------------------
-// Display item computation
+// Queries
 // ---------------------------------------------------------------------------
 
-func computeAggregateDisplay(category string, items []AggregateItem) []AggregateDisplayItem {
-	prefix := "/" + strings.TrimSuffix(category, "s") + "/"
-	if len(items) == 0 {
-		return nil
-	}
-	maxCount := items[0].Count // items are sorted descending by count
-	if maxCount < 1 {
-		maxCount = 1
-	}
-	display := make([]AggregateDisplayItem, len(items))
-	for i, item := range items {
-		ratio := float64(item.Count) / float64(maxCount)
-		display[i] = AggregateDisplayItem{
-			Name:     item.Name,
-			Href:     prefix + url.PathEscape(item.Name),
-			Count:    item.Count,
-			FontSize: fmt.Sprintf("%.1f", 12+ratio*24),
-			Opacity:  fmt.Sprintf("%.2f", 0.4+ratio*0.6),
-		}
-	}
-	return display
+func placeholders(n int) string {
+	return strings.TrimSuffix(strings.Repeat("?,", n), ",")
 }
 
-func getAggregateDisplay(category string) []AggregateDisplayItem {
-	if val, ok := aggregateDisplayCache.Load(category); ok {
-		return val.([]AggregateDisplayItem)
+func toArgs(ss []string) []any {
+	out := make([]any, len(ss))
+	for i, s := range ss {
+		out[i] = s
 	}
-	// Cache miss — compute on the fly and cache.
-	items := queryAggregateItems(category)
-	display := computeAggregateDisplay(category, items)
-	aggregateDisplayCache.Store(category, display)
-	return display
+	return out
 }
 
-// ---------------------------------------------------------------------------
-// Database queries
-// ---------------------------------------------------------------------------
-
-func queryAggregateItems(category string) []AggregateItem {
-	switch category {
-	case "authors", "publishers", "tags":
-		// valid
-	default:
-		return nil
+// countBooks returns the number of distinct books linked to any of values.
+func countBooks(c *category, values []string) int {
+	if len(values) == 0 {
+		return 0
 	}
-	linkCol := strings.TrimSuffix(category, "s")
-
 	query := fmt.Sprintf(`
-		SELECT c.name, COUNT(l.book) AS count
-		FROM %s c
-		JOIN books_%s_link l ON l.%s = c.id
-		GROUP BY c.id
-		ORDER BY count DESC
-	`, category, category, linkCol)
+		SELECT COUNT(DISTINCT x.book)
+		FROM %s x
+		JOIN %s t ON t.id = x.%s
+		WHERE t.%s IN (%s)`,
+		c.LinkTable, c.Table, c.LinkCol, c.NameCol, placeholders(len(values)))
+	var n int
+	if err := calibreDB.QueryRow(query, toArgs(values)...).Scan(&n); err != nil {
+		log.Printf("countBooks(%s): %v", c.Key, err)
+		return 0
+	}
+	return n
+}
+
+// queryRawItems lists every value in the category with its book count.
+func queryRawItems(c *category) []AggregateItem {
+	query := fmt.Sprintf(`
+		SELECT t.%s, COUNT(x.book) AS count
+		FROM %s t
+		JOIN %s x ON x.%s = t.id
+		GROUP BY t.id
+		ORDER BY count DESC`,
+		c.NameCol, c.Table, c.LinkTable, c.LinkCol)
 
 	rows, err := calibreDB.Query(query)
 	if err != nil {
-		log.Println("queryAggregateItems error:", err)
+		log.Printf("queryRawItems(%s): %v", c.Key, err)
 		return nil
 	}
 	defer func(rows *sql.Rows) {
-		logErr(rows.Close(), "failed to close rows in queryAggregateItems")
+		logErr(rows.Close(), "failed to close rows in queryRawItems")
 	}(rows)
 
 	items := make([]AggregateItem, 0)
@@ -224,24 +210,113 @@ func queryAggregateItems(category string) []AggregateItem {
 	return items
 }
 
+// queryAggregateItems lists values with grouped ones collapsed into a single
+// entry per group, counting distinct books so overlaps aren't double-counted.
+func queryAggregateItems(c *category) []AggregateItem {
+	raw := queryRawItems(c)
+	gs := groups.all(c.Key)
+	if len(gs) == 0 {
+		return raw
+	}
+
+	memberOf := map[string]int{}
+	for i, g := range gs {
+		for _, m := range g.Members {
+			memberOf[strings.ToLower(m)] = i
+		}
+	}
+
+	items := make([]AggregateItem, 0, len(raw))
+	present := make([]bool, len(gs))
+	for _, it := range raw {
+		if i, ok := memberOf[strings.ToLower(it.Name)]; ok {
+			present[i] = true
+			continue
+		}
+		items = append(items, it)
+	}
+	for i, g := range gs {
+		if !present[i] {
+			continue // no books in any member: nothing to browse
+		}
+		items = append(items, AggregateItem{
+			Name:    g.Name,
+			Slug:    g.Name,
+			Count:   countBooks(c, g.Members),
+			Members: g.Members,
+		})
+	}
+	sort.SliceStable(items, func(i, j int) bool { return items[i].Count > items[j].Count })
+	return items
+}
+
+func computeAggregateDisplay(c *category, items []AggregateItem) []AggregateDisplayItem {
+	if len(items) == 0 {
+		return nil
+	}
+	maxCount := items[0].Count // sorted descending
+	if maxCount < 1 {
+		maxCount = 1
+	}
+	display := make([]AggregateDisplayItem, len(items))
+	for i, item := range items {
+		ratio := float64(item.Count) / float64(maxCount)
+		display[i] = AggregateDisplayItem{
+			Name:     item.Name,
+			Href:     c.href(item.Name),
+			Count:    item.Count,
+			Grouped:  len(item.Members) > 0,
+			Members:  strings.Join(item.Members, ", "),
+			FontSize: fmt.Sprintf("%.1f", 12+ratio*24),
+			Opacity:  fmt.Sprintf("%.2f", 0.4+ratio*0.6),
+		}
+	}
+	return display
+}
+
+func getAggregateDisplay(c *category) []AggregateDisplayItem {
+	if val, ok := aggregateDisplayCache.Load(c.Plural); ok {
+		return val.([]AggregateDisplayItem)
+	}
+	refreshAggregateCache(c)
+	val, _ := aggregateDisplayCache.Load(c.Plural)
+	items, _ := val.([]AggregateDisplayItem)
+	return items
+}
+
+// getFilteredTotal returns total pages for a resolved entity, cached.
+func getFilteredTotal(c *category, name string, members []string) int {
+	key := c.Key + "/" + strings.ToLower(name)
+	if val, ok := filteredTotalCache.Load(key); ok {
+		return val.(int)
+	}
+	total := pagesFor(countBooks(c, members))
+	filteredTotalCache.Store(key, total)
+	return total
+}
+
 // ---------------------------------------------------------------------------
 // HTTP handlers
 // ---------------------------------------------------------------------------
 
-// aggregateHandler serves the JSON API for /api/authors, /api/publishers,
-// /api/tags.  Serves from cache with long cache-control headers.
-func aggregateHandler(w http.ResponseWriter, category string) {
-	if data, ok := aggregateJSONCache.Load(category); ok {
-		w.Header().Set("Content-Type", "application/json")
-		w.Header().Set("Cache-Control", "max-age=3600, stale-while-revalidate=86400")
-		_, _ = w.Write(data.([]byte))
-		return
+// pathValue extracts the value after "/<prefix>/" (already URL-decoded).
+func pathValue(r *http.Request) string {
+	parts := strings.SplitN(r.URL.Path, "/", 3)
+	if len(parts) < 3 {
+		return ""
 	}
+	return parts[2]
+}
 
-	// Fallback: query (also populates the cache).
-	refreshAggregateCache(category)
-	data, _ := aggregateJSONCache.Load(category)
+// aggregateHandler serves /api/<plural> JSON from cache.
+func aggregateHandler(w http.ResponseWriter, c *category) {
+	data, ok := aggregateJSONCache.Load(c.Plural)
+	if !ok {
+		refreshAggregateCache(c)
+		data, _ = aggregateJSONCache.Load(c.Plural)
+	}
 	w.Header().Set("Content-Type", "application/json")
+	w.Header().Set("Cache-Control", "max-age=3600, stale-while-revalidate=86400")
 	if b, ok := data.([]byte); ok {
 		_, _ = w.Write(b)
 	} else {
@@ -249,22 +324,14 @@ func aggregateHandler(w http.ResponseWriter, category string) {
 	}
 }
 
-// filteredBooksHandler serves paginated books for a category entity.
-func filteredBooksHandler(w http.ResponseWriter, r *http.Request, category string) {
-	parts := strings.SplitN(r.URL.Path, "/", 3)
-	if len(parts) < 3 {
+// filteredBooksHandler serves a page of books for a value or its group.
+func filteredBooksHandler(w http.ResponseWriter, r *http.Request, c *category) {
+	value := pathValue(r)
+	if value == "" {
 		http.Error(w, "bad request", http.StatusBadRequest)
 		return
 	}
-	name := parts[2]
-
-	switch category {
-	case "author", "publisher", "tag":
-	// valid
-	default:
-		http.Error(w, "unknown category", http.StatusBadRequest)
-		return
-	}
+	_, members, _ := groups.resolve(c.Key, value)
 
 	page, _ := strconv.Atoi(r.URL.Query().Get("page"))
 	if page < 1 {
@@ -272,28 +339,23 @@ func filteredBooksHandler(w http.ResponseWriter, r *http.Request, category strin
 	}
 	offset := (page - 1) * booksPerPage
 
-	table := category + "s"
-	linkCol := category
-	query := fmt.Sprintf(
-		`
+	query := fmt.Sprintf(`
 		SELECT b.uuid, b.title,
 			GROUP_CONCAT(DISTINCT a.sort) AS author_sort,
 			b.pubdate, b.path, b.last_modified
 		FROM books b
-		JOIN books_%s_link x ON x.book = b.id
+		JOIN %s x ON x.book = b.id
 		JOIN %s t ON t.id = x.%s
 		LEFT JOIN books_authors_link bal ON bal.book = b.id
 		LEFT JOIN authors a ON a.id = bal.author
-		WHERE t.name = ?
+		WHERE t.%s IN (%s)
 		GROUP BY b.id
 		ORDER BY b.sort
 		LIMIT ? OFFSET ?`,
-		table,
-		table,
-		linkCol,
-	)
+		c.LinkTable, c.Table, c.LinkCol, c.NameCol, placeholders(len(members)))
 
-	rows, err := calibreDB.Query(query, name, booksPerPage, offset)
+	args := append(toArgs(members), booksPerPage, offset)
+	rows, err := calibreDB.Query(query, args...)
 	if err != nil {
 		log.Println("filtered books error:", err)
 		http.Error(w, "query failed", http.StatusInternalServerError)
@@ -303,56 +365,44 @@ func filteredBooksHandler(w http.ResponseWriter, r *http.Request, category strin
 		logErr(rows.Close(), "failed to close rows in filteredBooksHandler")
 	}(rows)
 
-	err = encodeBooksJSONFromRows(rows, w)
-	if err != nil {
-		log.Println("filtered books error:", err)
-	}
-}
-
-// getFilteredTotal returns total pages for an entity, cached.
-func getFilteredTotal(category, name string) int {
-	key := category + "/" + name
-	if val, ok := filteredTotalCache.Load(key); ok {
-		return val.(int)
-	}
-	total := computeFilteredTotal(category, name)
-	filteredTotalCache.Store(key, total)
-	return total
+	logErr(encodeBooksJSONFromRows(rows, w), "filtered books encode")
 }
 
 // filteredPageHandler serves the HTML shell (or the JSON API with ?api=1).
-func filteredPageHandler(category string) http.HandlerFunc {
+func filteredPageHandler(c *category) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		if r.URL.Query().Get("api") == "1" {
-			filteredBooksHandler(w, r, category)
+			filteredBooksHandler(w, r, c)
 			return
 		}
-		parts := strings.SplitN(r.URL.Path, "/", 3)
-		if len(parts) < 3 || parts[2] == "" {
+		value := pathValue(r)
+		if value == "" {
 			http.NotFound(w, r)
 			return
 		}
-		name := parts[2]
+		name, members, grouped := groups.resolve(c.Key, value)
 		data := FilteredPageData{
 			Title:      SiteTitle,
 			Name:       name,
-			Category:   category,
-			PageURL:    "/" + category + "/" + url.PathEscape(name) + "?api=1",
-			TotalPages: getFilteredTotal(category, name),
+			Category:   c.Key,
+			Label:      c.Label,
+			Key:        value,
+			Members:    members,
+			Grouped:    grouped,
+			PageURL:    c.href(value) + "?api=1",
+			TotalPages: getFilteredTotal(c, name, members),
+		}
+		if groups.readOnly != nil {
+			data.GroupsError = groups.readOnly.Error()
 		}
 		logErr(templates.ExecuteTemplate(w, "filtered.html", data), "failed to execute filtered template")
 	}
 }
 
 // aggregatePageHandler serves the server-rendered tag cloud.
-func aggregatePageHandler(category string) http.HandlerFunc {
-	title := strings.ToUpper(category[:1]) + category[1:]
+func aggregatePageHandler(c *category) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
-		data := AggregatePageData{
-			Title:      title,
-			LinkPrefix: strings.TrimSuffix(category, "s"),
-			Items:      getAggregateDisplay(category),
-		}
+		data := AggregatePageData{Title: c.Title, Items: getAggregateDisplay(c)}
 		w.Header().Set("Cache-Control", "no-cache")
 		if err := templates.ExecuteTemplate(w, "aggregate.html", data); err != nil {
 			http.Error(w, err.Error(), http.StatusInternalServerError)
@@ -360,19 +410,83 @@ func aggregatePageHandler(category string) http.HandlerFunc {
 	}
 }
 
-func computeFilteredTotal(category, name string) int {
-	table := category + "s"
-	linkCol := category
-	query := fmt.Sprintf(`
-		SELECT COUNT(DISTINCT x.book)
-		FROM books_%s_link x
-		JOIN %s t ON t.id = x.%s
-		WHERE t.name = ?
-	`, table, table, linkCol)
-
-	var count int
-	if err := calibreDB.QueryRow(query, name).Scan(&count); err != nil {
-		return 0
+// groupValuesHandler: GET /api/groups/{cat}/values — raw values for the
+// editor's suggestion list.
+func groupValuesHandler(w http.ResponseWriter, r *http.Request) {
+	c := categoryByKey(r.PathValue("cat"))
+	if c == nil {
+		http.NotFound(w, r)
+		return
 	}
-	return (count + booksPerPage - 1) / booksPerPage
+	raw := queryRawItems(c)
+	names := make([]string, len(raw))
+	for i, it := range raw {
+		names[i] = it.Name
+	}
+	sort.Slice(names, func(i, j int) bool { return strings.ToLower(names[i]) < strings.ToLower(names[j]) })
+	w.Header().Set("Content-Type", "application/json")
+	logErr(json.NewEncoder(w).Encode(names), "encode group values")
+}
+
+// groupPutHandler: PUT /api/groups/{cat}/{value...} with {"name","members"}
+// replaces the group that value resolves to. Empty members removes it.
+func groupPutHandler(w http.ResponseWriter, r *http.Request) {
+	c := categoryByKey(r.PathValue("cat"))
+	value := r.PathValue("value")
+	if c == nil || value == "" {
+		http.NotFound(w, r)
+		return
+	}
+	var g Group
+	if err := json.NewDecoder(r.Body).Decode(&g); err != nil {
+		http.Error(w, "invalid JSON: "+err.Error(), http.StatusBadRequest)
+		return
+	}
+	saved, err := groups.set(c.Key, value, g)
+	switch {
+	case errors.Is(err, errGroupNameTaken):
+		http.Error(w, err.Error(), http.StatusConflict)
+		return
+	case errors.Is(err, errGroupsReadOnly):
+		http.Error(w, err.Error(), http.StatusServiceUnavailable)
+		return
+	case err != nil:
+		log.Println("save groups:", err)
+		http.Error(w, "failed to save groups: "+err.Error(), http.StatusInternalServerError)
+		return
+	}
+	refreshAllCaches()
+
+	// Where the page should go next: the group, or the original value if the
+	// group was dissolved.
+	next := value
+	if saved.Name != "" {
+		next = saved.Name
+	} else if len(g.Members) > 0 {
+		next = cleanMembers(g.Members)[0]
+	}
+	w.Header().Set("Content-Type", "application/json")
+	logErr(json.NewEncoder(w).Encode(map[string]any{
+		"group": saved,
+		"url":   c.href(next),
+	}), "encode group")
+}
+
+// registerCategoryRoutes wires aggregate pages, filtered pages, JSON APIs and
+// the group editor API for every category.
+func registerCategoryRoutes() {
+	for _, c := range categories {
+		c := c
+		http.HandleFunc("/"+c.Plural, aggregatePageHandler(c))
+		http.HandleFunc("/"+c.URLPrefix+"/", filteredPageHandler(c))
+		http.HandleFunc("/api/"+c.Plural, func(w http.ResponseWriter, r *http.Request) {
+			aggregateHandler(w, c)
+		})
+	}
+	http.HandleFunc("GET /api/groups", func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		logErr(json.NewEncoder(w).Encode(groups.snapshot()), "encode groups")
+	})
+	http.HandleFunc("GET /api/groups/{cat}/values", groupValuesHandler)
+	http.HandleFunc("PUT /api/groups/{cat}/{value...}", groupPutHandler)
 }

@@ -126,6 +126,7 @@ func main() {
 	}
 	generatePages()
 	initCalibreDB()
+	groups = loadGroups(filepath.Join(baseDir, groupsFileName))
 	preloadCaches()
 	serveLibraryHTTP()
 }
@@ -370,24 +371,10 @@ func serveLibraryHTTP() {
 
 	http.HandleFunc("/view/", viewHandler)
 
-	// Aggregate API routes search database for authors, publishers, and tags
-	http.HandleFunc("/api/authors", func(w http.ResponseWriter, r *http.Request) {
-		aggregateHandler(w, "authors")
-	})
+	// authors/publishers/tags/languages: aggregate pages, filtered pages,
+	// JSON APIs and the group editor API
+	registerCategoryRoutes()
 
-	http.HandleFunc("/api/publishers", func(w http.ResponseWriter, r *http.Request) {
-		aggregateHandler(w, "publishers")
-	})
-
-	http.HandleFunc("/api/tags", func(w http.ResponseWriter, r *http.Request) {
-		aggregateHandler(w, "tags")
-	})
-
-	// page routes
-	for _, c := range []string{"authors", "publishers", "tags"} {
-		http.HandleFunc("/"+c, aggregatePageHandler(c))
-		http.HandleFunc("/"+strings.TrimSuffix(c, "s")+"/", filteredPageHandler(strings.TrimSuffix(c, "s")))
-	}
 	log.Println("Listening on :" + hostPort)
 	log.Fatal(http.ListenAndServe(":"+hostPort, nil))
 }

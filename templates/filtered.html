@@ -13,6 +13,10 @@
     <div class="top-bar-left">
         <button class="btn-back" onclick="history.back()">&#8592; Back</button>
         <h1 class="title">{{ .Name }}</h1>
+        <button type="button" id="group-toggle" class="btn-group-toggle" aria-expanded="false" aria-controls="group-panel"
+                title="Choose which {{ .Label }} values this page includes">
+            {{ if .Grouped }}Group · {{ len .Members }}{{ else }}Group…{{ end }}
+        </button>
     </div>
     <div class="top-bar-right">
         <button id="prev-page" class="btn-nav" aria-label="Previous page">&lsaquo;</button>
@@ -21,6 +25,30 @@
         <button id="next-page" class="btn-nav" aria-label="Next page">&rsaquo;</button>
     </div>
 </header>
+<section id="group-panel" class="group-panel" hidden
+         data-category="{{ .Category }}" data-key="{{ .Key }}" data-name="{{ .Name }}" data-label="{{ .Label }}">
+    <p class="group-hint">Books whose {{ .Label }} is any of these values are shown here.
+        A value can belong to one group; adding it here moves it from any other.
+        Books themselves are never changed.</p>
+    <ul class="group-members">
+        {{ range .Members }}<li data-member="{{ . }}"></li>{{ end }}
+    </ul>
+    <div class="group-row">
+        <input id="group-add" class="input-search" list="group-values" placeholder="Add a {{ .Label }}…" autocomplete="off" />
+        <datalist id="group-values"></datalist>
+        <button type="button" id="group-add-btn" class="btn-standard">Add</button>
+    </div>
+    <label class="group-row">
+        <span>Display name</span>
+        <input id="group-name" class="input-search" value="{{ .Name }}" />
+    </label>
+    {{ if .GroupsError }}<p class="group-error">{{ .GroupsError }}</p>{{ end }}
+    <p id="group-status" class="group-status" role="status"></p>
+    <div class="group-row group-actions">
+        <button type="button" id="group-cancel" class="btn-standard">Cancel</button>
+        <button type="button" id="group-save" class="btn-standard btn-primary" {{ if .GroupsError }}disabled{{ end }}>Save grouping</button>
+    </div>
+</section>
 <div id="books" data-page-url="{{ .PageURL }}&page={n}" data-total-pages="{{ .TotalPages }}"></div>
 <p id="status" class="status-message"></p>
 <div id="book-modal" class="modal-overlay">
@@ -31,5 +59,6 @@
 </div>
 <div id="scroll-badge"></div>
 <script type="module" src="/static/app-htmx.js"></script>
+<script type="module" src="/static/groups.js"></script>
 </body>
 </html>

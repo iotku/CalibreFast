@@ -16,7 +16,8 @@
 </header>
 <div id="aggregate-grid">
     {{- range .Items }}
-    <a class="agg-item" href="{{ .Href }}" style="font-size: {{ .FontSize }}px; --o: {{ .Opacity }}">{{ .Name }} ({{ .Count }})</a>
+    <a class="agg-item{{ if .Grouped }} agg-group{{ end }}" href="{{ .Href }}" style="font-size: {{ .FontSize }}px; --o: {{ .Opacity }}"
+       {{- if .Grouped }} title="Group: {{ .Members }}"{{ end }}>{{ .Name }} ({{ .Count }})</a>
     {{- else }}
     <p class="status-message">Nothing found.</p>
     {{- end }}
