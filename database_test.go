@@ -7,6 +7,7 @@ import (
 	"net/http/httptest"
 	"os"
 	"path/filepath"
+	"slices"
 	"strings"
 	"testing"
 
@@ -629,5 +630,134 @@ func TestNormalizeDate(t *testing.T) {
 		if got != tt.expected {
 			t.Errorf("normalizeDate(%q) = %q, want %q", tt.input, got, tt.expected)
 		}
+	}
+}
+
+// Identifiers are curated user data: scheme-less ones, values containing
+// separators, and OPF id attributes must all survive an editor save.
+func TestApplyMetadataHandler_PreservesIdentifiers(t *testing.T) {
+	db, tempDir := setupTestDB(t)
+	defer os.RemoveAll(tempDir)
+	defer db.Close()
+
+	origDB, origBaseDir := calibreDB, baseDir
+	calibreDB, baseDir = db, tempDir
+	defer func() { calibreDB, baseDir = origDB, origBaseDir }()
+
+	_, bookUUID, bookPath, err := insertBookIntoCalibreDB(db, &UploadedBookMeta{
+		OPFMetadata: OPFMetadata{Title: "Ids", Creators: []string{"A"}},
+	}, nil)
+	if err != nil {
+		t.Fatalf("insert failed: %v", err)
+	}
+	_ = os.MkdirAll(filepath.Join(tempDir, bookPath), 0755)
+
+	mux := http.NewServeMux()
+	mux.HandleFunc("POST /metadata/{uuid}/apply", applyMetadataHandler)
+	server := httptest.NewServer(mux)
+	defer server.Close()
+
+	payload := `{
+		"title": "Ids", "creators": "A",
+		"identifiers": [
+			{"scheme": "isbn", "value": "9781112223334"},
+			{"scheme": "uuid", "value": "` + bookUUID + `", "id": "uuid_id"},
+			{"scheme": "calibre", "value": "7", "id": "calibre_id"},
+			{"scheme": "", "value": "http://example.com/a,b;c"},
+			{"scheme": "", "value": "orphan-no-scheme"},
+			{"scheme": "", "value": ""}
+		]
+	}`
+	resp, err := http.Post(server.URL+"/metadata/"+bookUUID+"/apply", "application/json", strings.NewReader(payload))
+	if err != nil {
+		t.Fatalf("POST failed: %v", err)
+	}
+	resp.Body.Close()
+	if resp.StatusCode != http.StatusOK {
+		t.Fatalf("expected 200, got %d", resp.StatusCode)
+	}
+
+	opf, err := loadOPF(filepath.Join(tempDir, bookPath, "metadata.opf"))
+	if err != nil {
+		t.Fatalf("load opf: %v", err)
+	}
+	want := []opfIdentifier{
+		{Scheme: "isbn", Value: "9781112223334"},
+		{Scheme: "uuid", Value: bookUUID, ID: "uuid_id"},
+		{Scheme: "calibre", Value: "7", ID: "calibre_id"},
+		{Scheme: "", Value: "http://example.com/a,b;c"},
+		{Scheme: "", Value: "orphan-no-scheme"},
+	}
+	if !slices.Equal(opf.Metadata.Identifiers, want) {
+		t.Errorf("OPF identifiers:\n got %#v\nwant %#v", opf.Metadata.Identifiers, want)
+	}
+
+	// Scheme-less identifiers can't go in Calibre's table, but typed ones must.
+	var n int
+	_ = db.QueryRow(`SELECT COUNT(*) FROM identifiers WHERE type = ''`).Scan(&n)
+	if n != 0 {
+		t.Errorf("expected no empty-type rows in DB, got %d", n)
+	}
+	_ = db.QueryRow(`SELECT COUNT(*) FROM identifiers i JOIN books b ON b.id = i.book WHERE b.uuid = ?`, bookUUID).Scan(&n)
+	if n != 3 {
+		t.Errorf("expected 3 typed identifiers in DB, got %d", n)
+	}
+}
+
+// An unparseable stored date can't be shown in <input type="date">, so the
+// editor submits "". That must not overwrite the stored value.
+func TestApplyMetadataHandler_KeepsUnparseableDate(t *testing.T) {
+	db, tempDir := setupTestDB(t)
+	defer os.RemoveAll(tempDir)
+	defer db.Close()
+
+	origDB, origBaseDir := calibreDB, baseDir
+	calibreDB, baseDir = db, tempDir
+	defer func() { calibreDB, baseDir = origDB, origBaseDir }()
+
+	_, bookUUID, bookPath, err := insertBookIntoCalibreDB(db, &UploadedBookMeta{
+		OPFMetadata: OPFMetadata{Title: "Dates", Creators: []string{"A"}},
+	}, nil)
+	if err != nil {
+		t.Fatalf("insert failed: %v", err)
+	}
+	dir := filepath.Join(tempDir, bookPath)
+	_ = os.MkdirAll(dir, 0755)
+	if err := writeOPF(&OPF{Metadata: OPFMetadata{Title: "Dates", Date: "Spring 1987"}}, filepath.Join(dir, "metadata.opf")); err != nil {
+		t.Fatalf("write opf: %v", err)
+	}
+
+	mux := http.NewServeMux()
+	mux.HandleFunc("POST /metadata/{uuid}/apply", applyMetadataHandler)
+	server := httptest.NewServer(mux)
+	defer server.Close()
+
+	post := func(date string) {
+		resp, err := http.Post(server.URL+"/metadata/"+bookUUID+"/apply", "application/json",
+			strings.NewReader(`{"title":"Dates","creators":"A","date":"`+date+`"}`))
+		if err != nil {
+			t.Fatalf("POST failed: %v", err)
+		}
+		resp.Body.Close()
+		if resp.StatusCode != http.StatusOK {
+			t.Fatalf("expected 200, got %d", resp.StatusCode)
+		}
+	}
+	readDate := func() string {
+		opf, err := loadOPF(filepath.Join(dir, "metadata.opf"))
+		if err != nil {
+			t.Fatalf("load opf: %v", err)
+		}
+		return opf.Metadata.Date
+	}
+
+	post("")
+	if got := readDate(); got != "Spring 1987" {
+		t.Errorf("empty submit overwrote unparseable date: got %q", got)
+	}
+
+	post("1987-04-01") // an explicit new date still wins
+	if got := readDate(); !strings.HasPrefix(got, "1987-04-01") {
+		t.Errorf("explicit date not applied: got %q", got)
 	}
 }

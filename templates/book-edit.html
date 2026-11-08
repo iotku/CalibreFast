@@ -391,6 +391,39 @@
                 border-color: rgba(186, 122, 122, 0.3);
             }
 
+            /* Soft-removed: parked at the bottom until changes are applied */
+            .custom-identifier-row.removed .meta-input {
+                text-decoration: line-through;
+                opacity: 0.45;
+            }
+
+            .custom-identifier-row.removed:first-of-type,
+            .custom-identifier-row:not(.removed) + .custom-identifier-row.removed {
+                margin-top: 8px;
+                padding-top: 12px;
+                border-top: 1px dashed var(--border);
+            }
+
+            .btn-remove-id.btn-undo-id {
+                font-family: var(--mono);
+                font-size: 0.75rem;
+                letter-spacing: 0.04em;
+                color: var(--accent);
+                border-color: var(--border);
+            }
+
+            .btn-remove-id.btn-undo-id:hover {
+                color: var(--accent);
+                background: rgba(200, 169, 110, 0.12);
+                border-color: var(--accent);
+            }
+
+            .date-raw-note {
+                margin: 6px 0 0;
+                font-size: 0.8rem;
+                color: var(--muted);
+            }
+
             .identifiers-bottom-row {
                 display: flex;
                 align-items: center;
@@ -603,6 +636,12 @@
                     <fieldset class="meta-field">
                         <legend>Publication Date</legend>
                         <input type="date" name="date" value="{{ .Date }}" class="meta-input" />
+                        {{ if .RawDate }}
+                        <p class="date-raw-note">
+                            Stored date <code>{{ .RawDate }}</code> isn't a recognised format.
+                            It's kept as-is unless you pick a new date.
+                        </p>
+                        {{ end }}
                         <div class="meta-source-buttons" data-field="date"></div>
                     </fieldset>
 

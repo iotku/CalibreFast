@@ -180,6 +180,9 @@ func insertBookIntoCalibreDB(db *sql.DB, meta *UploadedBookMeta, formats []forma
 			continue
 		}
 		idType, idVal := parseIdentifier(id)
+		if idType == "" {
+			continue // kept in metadata.opf; Calibre's table needs a type
+		}
 		tx.Exec(`INSERT OR IGNORE INTO identifiers (book, type, val) VALUES (?, ?, ?)`, bookID, idType, idVal)
 	}
 
@@ -478,12 +481,15 @@ func updateBookInCalibreDB(db *sql.DB, baseDir string, bookUUID string, meta *OP
 	if _, err = tx.Exec(`DELETE FROM identifiers WHERE book = ?`, bookID); err != nil {
 		return "", fmt.Errorf("delete old identifiers: %w", err)
 	}
+	// Calibre's identifiers table needs a type and holds one value per type,
+	// so scheme-less (or duplicate-type) identifiers can't live there; they are
+	// still written to metadata.opf below, which is the source of truth.
 	for _, id := range meta.Identifiers {
 		if strings.TrimSpace(id.Value) == "" {
 			continue
 		}
 		idType, idVal := parseIdentifier(id)
-		if idVal != "" {
+		if idType != "" && idVal != "" {
 			if _, err = tx.Exec(`INSERT OR IGNORE INTO identifiers (book, type, val) VALUES (?, ?, ?)`, bookID, idType, idVal); err != nil {
 				return "", fmt.Errorf("insert identifier %s=%s: %w", idType, idVal, err)
 			}

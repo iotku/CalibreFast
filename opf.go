@@ -3,6 +3,7 @@ package main
 import (
 	"encoding/xml"
 	"os"
+	"strings"
 )
 
 // This is unlikely to be compliant, but for spec reference see below.
@@ -26,8 +27,9 @@ type OPFMetadata struct {
 }
 
 type opfIdentifier struct {
-	Scheme string `xml:"scheme,attr"`
+	Scheme string `xml:"scheme,attr"` // may be empty: such identifiers must still round-trip
 	Value  string `xml:",chardata"`
+	ID     string `xml:"id,attr"` // e.g. "uuid_id", "calibre_id"; preserved on rewrite
 }
 
 type opfMeta struct {
@@ -98,17 +100,46 @@ func writeOPF(opf *OPF, path string) error {
 	writeDC("date", opf.Metadata.Date)
 	writeDC("language", opf.Metadata.Language)
 
+	// package@unique-identifier points at "uuid_id"; make sure exactly one
+	// identifier carries it without clobbering ids already present.
+	uuidIdx := -1
 	for i, id := range opf.Metadata.Identifiers {
-		start := xml.StartElement{
-			Name: xml.Name{Local: "dc:identifier"},
-			Attr: []xml.Attr{
-				{Name: xml.Name{Local: "opf:scheme"}, Value: id.Scheme},
-			},
+		if id.ID == "uuid_id" {
+			uuidIdx = i
+			break
 		}
-		if i == 0 {
+	}
+	if uuidIdx == -1 {
+		for i, id := range opf.Metadata.Identifiers {
+			if id.ID == "" && strings.EqualFold(id.Scheme, "uuid") {
+				uuidIdx = i
+				break
+			}
+		}
+	}
+	if uuidIdx == -1 {
+		for i, id := range opf.Metadata.Identifiers {
+			if id.ID == "" {
+				uuidIdx = i
+				break
+			}
+		}
+	}
+
+	for i, id := range opf.Metadata.Identifiers {
+		start := xml.StartElement{Name: xml.Name{Local: "dc:identifier"}}
+		if id.Scheme != "" {
 			start.Attr = append(start.Attr, xml.Attr{
-				Name:  xml.Name{Local: "id"},
-				Value: "uuid_id",
+				Name: xml.Name{Local: "opf:scheme"}, Value: id.Scheme,
+			})
+		}
+		idAttr := id.ID
+		if i == uuidIdx {
+			idAttr = "uuid_id"
+		}
+		if idAttr != "" {
+			start.Attr = append(start.Attr, xml.Attr{
+				Name: xml.Name{Local: "id"}, Value: idAttr,
 			})
 		}
 		enc.EncodeToken(start)

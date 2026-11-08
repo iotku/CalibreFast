@@ -87,7 +87,8 @@ type PageData struct {
 type EditBookPageData struct { // TODO I Hate this, these page structs are all over the place, we should unify them
 	UUID         string
 	Metadata     *OPFMetadata
-	Date         string
+	Date         string // YYYY-MM-DD for <input type="date">, "" if missing/unparseable
+	RawDate      string // original dc:date when it couldn't be parsed (kept on save)
 	CoverModTime int64
 }
 
@@ -295,10 +296,14 @@ func serveLibraryHTTP() {
 			return
 		}
 
-		parsedDate, err := parseAnyDate(existingOPF.Metadata.Date)
-		if err != nil {
-			http.Error(w, "Failed to parse date: "+err.Error(), http.StatusInternalServerError)
-			return
+		// A missing or odd date must not block editing.
+		var dateStr, rawDate string
+		if raw := strings.TrimSpace(existingOPF.Metadata.Date); raw != "" {
+			if parsedDate, err := parseAnyDate(raw); err == nil {
+				dateStr = parsedDate.Format("2006-01-02")
+			} else {
+				rawDate = raw
+			}
 		}
 
 		coverStat, cErr := os.Stat(filepath.Join(baseDir, bookPath.(string), "cover.jpg"))
@@ -310,7 +315,8 @@ func serveLibraryHTTP() {
 		EditBookPageData := EditBookPageData{
 			UUID:         uuid,
 			Metadata:     &existingOPF.Metadata,
-			Date:         parsedDate.Format("2006-01-02"),
+			Date:         dateStr,
+			RawDate:      rawDate,
 			CoverModTime: coverModTime,
 		}
 
@@ -448,14 +454,42 @@ func GetOptionsForBook(w http.ResponseWriter, r *http.Request) {
 }
 
 type ApplyMetadataRequest struct {
-	Title       string `json:"title"`
-	Creators    string `json:"creators"`
-	Description string `json:"description"`
-	Publisher   string `json:"publisher"`
-	Date        string `json:"date"`
-	Language    string `json:"language"`
-	Subjects    string `json:"subjects"`
-	Identifiers string `json:"identifiers"`
+	Title       string         `json:"title"`
+	Creators    string         `json:"creators"`
+	Description string         `json:"description"`
+	Publisher   string         `json:"publisher"`
+	Date        string         `json:"date"`
+	Language    string         `json:"language"`
+	Subjects    string         `json:"subjects"`
+	Identifiers identifierList `json:"identifiers"`
+}
+
+// identifierList accepts a JSON array of {scheme, value, id} objects (lossless,
+// used by the editor) or the legacy "scheme: value, ..." string.
+type identifierList []opfIdentifier
+
+func (l *identifierList) UnmarshalJSON(data []byte) error {
+	var s string
+	if err := json.Unmarshal(data, &s); err == nil {
+		*l = parseIdentifiersString(s)
+		return nil
+	}
+	var ids []opfIdentifier
+	if err := json.Unmarshal(data, &ids); err != nil {
+		return err
+	}
+	out := make([]opfIdentifier, 0, len(ids))
+	for _, id := range ids {
+		id.Scheme = strings.TrimSpace(id.Scheme)
+		id.Value = strings.TrimSpace(id.Value)
+		id.ID = strings.TrimSpace(id.ID)
+		if id.Scheme == "" && id.Value == "" {
+			continue // blank row, nothing to keep
+		}
+		out = append(out, id)
+	}
+	*l = out
+	return nil
 }
 
 func parseCreatorsString(s string) []string {
@@ -533,6 +567,31 @@ func parseIdentifiersString(s string) []opfIdentifier {
 	return identifiers
 }
 
+// unparseableStoredDate returns the book's current dc:date if it is set but
+// not in a format parseAnyDate understands; otherwise "".
+func unparseableStoredDate(uuid string) string {
+	bookPath, ok := uuidPathIndex.Load(uuid)
+	if !ok {
+		p, err := resolveBookPath(uuid)
+		if err != nil {
+			return ""
+		}
+		bookPath = p
+	}
+	opf, err := loadOPF(filepath.Join(baseDir, bookPath.(string), "metadata.opf"))
+	if err != nil {
+		return ""
+	}
+	raw := strings.TrimSpace(opf.Metadata.Date)
+	if raw == "" {
+		return ""
+	}
+	if _, err := parseAnyDate(raw); err != nil {
+		return raw
+	}
+	return ""
+}
+
 func applyMetadataHandler(w http.ResponseWriter, r *http.Request) {
 	if r.Method != http.MethodPost {
 		http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
@@ -555,6 +614,14 @@ func applyMetadataHandler(w http.ResponseWriter, r *http.Request) {
 		title = "Unknown"
 	}
 
+	// <input type="date"> can't display a date we couldn't parse, so it comes
+	// back empty. Don't let that silently overwrite the stored value.
+	if strings.TrimSpace(req.Date) == "" {
+		if raw := unparseableStoredDate(uuid); raw != "" {
+			req.Date = raw
+		}
+	}
+
 	meta := OPFMetadata{
 		Title:       title,
 		Creators:    parseCreatorsString(req.Creators),
@@ -563,7 +630,7 @@ func applyMetadataHandler(w http.ResponseWriter, r *http.Request) {
 		Date:        normalizeDate(req.Date),
 		Language:    strings.TrimSpace(req.Language),
 		Subjects:    parseSubjectsString(req.Subjects),
-		Identifiers: parseIdentifiersString(req.Identifiers),
+		Identifiers: req.Identifiers,
 	}
 
 	bookPath, err := updateBookInCalibreDB(calibreDB, baseDir, uuid, &meta)

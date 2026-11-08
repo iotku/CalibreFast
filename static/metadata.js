@@ -93,9 +93,36 @@ function populateField(form, current, metas, key, kind) {
   updateHighlights();
 }
 
-function createCustomIdentifierRow(scheme = "", value = "", onChange = null) {
+// Identifiers are precious curated data: nothing is dropped unless the user
+// explicitly clicks remove, and removals stay undoable until changes are applied.
+const idKey = (scheme, value) =>
+  `${(scheme || "").trim().toLowerCase()}: ${(value || "").trim()}`;
+
+function rowValues(row) {
+  return {
+    scheme: row.querySelector(".identifier-type-input")?.value.trim() || "",
+    value: row.querySelector(".identifier-val-input")?.value.trim() || "",
+    id: row.dataset.id || "",
+  };
+}
+
+/** Active (not removed) identifiers currently in the form, ISBN first. */
+function readIdentifiers(form) {
+  const out = [];
+  const isbnInput = form.querySelector('[name="identifier_isbn"]');
+  const isbn = isbnInput?.value.trim();
+  if (isbn) out.push({ scheme: "isbn", value: isbn, id: isbnInput.dataset.id || "" });
+  for (const row of form.querySelectorAll(".custom-identifier-row:not(.removed)")) {
+    const v = rowValues(row);
+    if (v.scheme || v.value) out.push(v); // scheme-less identifiers are kept
+  }
+  return out;
+}
+
+function createCustomIdentifierRow(scheme = "", value = "", { id = "", onChange = null, onRemove = null } = {}) {
   const row = document.createElement("div");
   row.className = "identifier-row custom-identifier-row";
+  if (id) row.dataset.id = id;
 
   const typeInput = document.createElement("input");
   typeInput.type = "text";
@@ -114,20 +141,14 @@ function createCustomIdentifierRow(scheme = "", value = "", onChange = null) {
   removeBtn.className = "btn-remove-id";
   removeBtn.title = "Remove identifier";
   removeBtn.textContent = "×";
-  removeBtn.addEventListener("click", () => {
-    row.remove();
-    if (onChange) onChange();
-  });
+  removeBtn.addEventListener("click", () => onRemove?.(row));
 
   if (onChange) {
     typeInput.addEventListener("input", onChange);
     valInput.addEventListener("input", onChange);
   }
 
-  row.appendChild(typeInput);
-  row.appendChild(valInput);
-  row.appendChild(removeBtn);
-
+  row.append(typeInput, valInput, removeBtn);
   return row;
 }
 
@@ -143,63 +164,114 @@ function populateIdentifiers(form, current, metas) {
 
   const buttons = [];
 
-  function getCurrentIdentifiersNormalized() {
-    const items = [];
-    const isbn = isbnInput.value.trim();
-    if (isbn) items.push(`isbn: ${isbn.toLowerCase()}`);
-    for (const row of customList.querySelectorAll(".custom-identifier-row")) {
-      const type = row.querySelector(".identifier-type-input")?.value.trim();
-      const val = row.querySelector(".identifier-val-input")?.value.trim();
-      if (type && val) {
-        items.push(`${type.toLowerCase()}: ${val}`);
-      }
-    }
-    return items.sort().join(", ");
-  }
-
-  function getSourceIdentifiersNormalized(meta) {
-    return (meta.Identifiers || [])
-      .map((id) => `${(id.Scheme || "").trim().toLowerCase()}: ${(id.Value || "").trim()}`)
-      .filter((s) => s !== ":")
+  const normalize = (ids) =>
+    ids
+      .filter((id) => (id.scheme || id.value))
+      .map((id) => idKey(id.scheme, id.value))
       .sort()
       .join(", ");
-  }
+
+  const fromMeta = (meta) =>
+    (meta.Identifiers || []).map((id) => ({
+      scheme: (id.Scheme || "").trim(),
+      value: (id.Value || "").trim(),
+      id: id.ID || "",
+    }));
 
   const updateHighlights = () => {
-    const cur = getCurrentIdentifiersNormalized();
+    const cur = normalize(readIdentifiers(form));
     for (const btn of buttons) {
-      const srcNorm = btn.dataset.normalized;
-      const matches = srcNorm === cur;
+      const matches = btn.dataset.normalized === cur;
       btn.classList.toggle("meta-source-match", matches);
       btn.classList.toggle("meta-source-diff", !matches);
     }
   };
 
-  function setIdentifiersFromList(ids) {
-    customList.replaceChildren();
-    isbnInput.value = "";
-    for (const id of ids || []) {
-      const scheme = (id.Scheme || "").trim();
-      const val = (id.Value || "").trim();
-      if (scheme.toLowerCase() === "isbn") {
-        isbnInput.value = val;
-      } else if (scheme || val) {
-        const row = createCustomIdentifierRow(scheme, val, updateHighlights);
+  const firstRemoved = () => customList.querySelector(".custom-identifier-row.removed");
+
+  function setRemoved(row, removed) {
+    row.classList.toggle("removed", removed);
+    for (const input of row.querySelectorAll("input")) input.disabled = removed;
+    const btn = row.querySelector(".btn-remove-id");
+    btn.textContent = removed ? "Undo" : "×";
+    btn.title = removed ? "Restore identifier" : "Remove identifier";
+    btn.classList.toggle("btn-undo-id", removed);
+  }
+
+  /** Remove click: soft-remove to the bottom; second click (Undo) restores. */
+  function toggleRemove(row) {
+    if (row.classList.contains("removed")) {
+      setRemoved(row, false);
+      customList.insertBefore(row, firstRemoved()); // back above the removed block
+    } else {
+      const v = rowValues(row);
+      if (!v.scheme && !v.value && !v.id) {
+        row.remove(); // blank row the user just added: nothing to lose
+      } else {
+        setRemoved(row, true);
         customList.appendChild(row);
       }
     }
     updateHighlights();
   }
 
-  if (current) {
-    setIdentifiersFromList(current.Identifiers || []);
+  const makeRow = (scheme, value, id, removed = false) => {
+    const row = createCustomIdentifierRow(scheme, value, {
+      id,
+      onChange: updateHighlights,
+      onRemove: toggleRemove,
+    });
+    if (removed) setRemoved(row, true);
+    return row;
+  };
+
+  /**
+   * Replace the active identifiers with `ids`. With keepMissing, anything
+   * currently active that isn't in `ids` is soft-removed (undoable) rather
+   * than discarded, and matching identifiers keep their existing OPF id.
+   */
+  function setIdentifiers(ids, { keepMissing = false } = {}) {
+    const previous = keepMissing ? readIdentifiers(form) : [];
+    const prevIds = new Map(previous.map((p) => [idKey(p.scheme, p.value), p.id]));
+    const incoming = new Set(ids.map((i) => idKey(i.scheme, i.value)));
+
+    for (const row of customList.querySelectorAll(".custom-identifier-row")) {
+      const removed = row.classList.contains("removed");
+      // Drop active rows (re-added below); drop removed rows the new set restores.
+      if (!removed || incoming.has(idKey(rowValues(row).scheme, rowValues(row).value))) {
+        row.remove();
+      }
+    }
+    isbnInput.value = "";
+    delete isbnInput.dataset.id;
+
+    for (const i of ids) {
+      if (!i.scheme && !i.value) continue;
+      const id = prevIds.get(idKey(i.scheme, i.value)) || i.id;
+      if (i.scheme.toLowerCase() === "isbn" && !isbnInput.value) {
+        isbnInput.value = i.value;
+        if (id) isbnInput.dataset.id = id;
+      } else {
+        // Extra ISBNs land here too instead of overwriting the first.
+        customList.insertBefore(makeRow(i.scheme, i.value, id), firstRemoved());
+      }
+    }
+
+    for (const p of previous) {
+      if (!incoming.has(idKey(p.scheme, p.value))) {
+        customList.appendChild(makeRow(p.scheme, p.value, p.id, true));
+      }
+    }
+    updateHighlights();
   }
+
+  if (current) setIdentifiers(fromMeta(current));
 
   if (addBtn && !addBtn.dataset.bound) {
     addBtn.dataset.bound = "true";
     addBtn.addEventListener("click", () => {
-      const row = createCustomIdentifierRow("", "", updateHighlights);
-      customList.appendChild(row);
+      const row = makeRow("", "", "");
+      customList.insertBefore(row, firstRemoved());
       row.querySelector(".identifier-type-input")?.focus();
     });
   }
@@ -208,22 +280,19 @@ function populateIdentifiers(form, current, metas) {
 
   buttonRow.replaceChildren();
   metas.forEach((meta) => {
-    const ids = meta.Identifiers || [];
+    const ids = fromMeta(meta);
     if (ids.length === 0 && meta.Format !== "current") return;
 
-    const norm = getSourceIdentifiersNormalized(meta);
-    const displayVal = ids.map((id) => `${id.Scheme}: ${id.Value}`).join(", ");
+    const displayVal = ids.map((id) => `${id.scheme}: ${id.value}`).join(", ");
 
     const btn = document.createElement("button");
     btn.type = "button";
     btn.className = "meta-source-btn";
     btn.textContent = sourceLabel(meta);
     btn.title = `Click to use from ${meta.Format}: "${displayVal}"`;
-    btn.dataset.normalized = norm;
+    btn.dataset.normalized = normalize(ids);
 
-    btn.addEventListener("click", () => {
-      setIdentifiersFromList(ids);
-    });
+    btn.addEventListener("click", () => setIdentifiers(ids, { keepMissing: true }));
 
     buttonRow.appendChild(btn);
     buttons.push(btn);
@@ -247,20 +316,8 @@ export function collectValues(form) {
   const values = {};
   for (const { key, kind } of FIELDS) {
     if (kind === "identifiers") {
-      const parts = [];
-      const isbnInput = form.querySelector('[name="identifier_isbn"]');
-      if (isbnInput && isbnInput.value.trim()) {
-        parts.push(`isbn: ${isbnInput.value.trim()}`);
-      }
-      const customRows = form.querySelectorAll(".custom-identifier-row");
-      for (const row of customRows) {
-        const type = row.querySelector(".identifier-type-input")?.value.trim();
-        const val = row.querySelector(".identifier-val-input")?.value.trim();
-        if (type && val) {
-          parts.push(`${type}: ${val}`);
-        }
-      }
-      values[key] = parts.join(", ");
+      // Sent as structured objects so commas, colons and empty schemes survive.
+      values[key] = readIdentifiers(form);
     } else {
       const input = form.querySelector(`[name="${key}"]`);
       if (input) values[key] = input.value;
