@@ -109,28 +109,36 @@
                     <a href="/author/{{ . }}" class="meta-link">{{ . }}</a>
                     {{ end }}
                 </div>
+                {{ if .Publisher }}
                 <div class="meta-row">
                     <strong>Publisher:</strong>
                     <a href="/publisher/{{ .Publisher }}" class="meta-link"
                         >{{ .Publisher }}</a
                     >
                 </div>
+                {{ end }}
+                {{ if .Date }}
                 <div class="meta-row">
                     <strong>Date:</strong>
                     {{ .Date }}
                 </div>
+                {{ end }}
+                {{ if .Language }}
                 <div class="meta-row">
                     <strong>Language:</strong>
                     {{ .Language }}
                 </div>
-                {{if .Tags}}
+                {{ end }}
+                {{ if .Tags }}
                 <div class="meta-row">
                     {{ range .Tags }}
                     <a href="/tag/{{ . }}" class="tag meta-link">{{ . }}</a>
                     {{ end }}
                 </div>
-                {{ else }} {{ end }}
+                {{ end }}
+                {{ if .Description }}
                 <div class="description">{{ .Description }}</div>
+                {{ end }}
             </div>
         </div>
     </body>
