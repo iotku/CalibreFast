@@ -433,7 +433,13 @@
             /* Entry row sits above the chips so new chips never move it */
             .chip-entry {
                 display: flex;
+                align-items: stretch; /* Add button matches the text box height */
                 gap: 6px;
+            }
+
+            /* beats the global input[type="text"] height from style.css */
+            .chip-entry input.chip-text {
+                height: 36px;
             }
 
             .chip-text {
@@ -455,7 +461,7 @@
 
             .chip-add-btn {
                 flex-shrink: 0;
-                height: 34px;
+                height: auto;
                 padding: 0 14px;
                 font-family: var(--mono);
                 font-size: 0.75rem;
