@@ -59,6 +59,37 @@ function makeEditedButton(onClick) {
   return btn;
 }
 
+/**
+ * Per-field diff shown under a field when its "edited" button is clicked:
+ * this field's changes vs the pre-existing ("current") metadata. Stays live
+ * while open; clicking "edited" again (while edits are showing) hides it.
+ */
+const openDiffs = new Map(); // key -> { el, render }
+
+function fieldDiffToggle(form, current, key, buttonRow, { alreadyShowingEdits }) {
+  const open = openDiffs.get(key);
+  if (open && alreadyShowingEdits) {
+    open.el.remove();
+    openDiffs.delete(key);
+    return;
+  }
+  if (open) return open.render();
+
+  const el = document.createElement("div");
+  el.className = "field-diff";
+  const render = () => {
+    const changes = computeChanges(current, collectValues(form)).filter((c) => c.key === key);
+    el.replaceChildren(...renderChanges(changes, { compact: true }));
+  };
+  buttonRow.closest("fieldset").append(el);
+  openDiffs.set(key, { el, render });
+  render();
+}
+
+function refreshOpenDiffs() {
+  for (const { render } of openDiffs.values()) render();
+}
+
 function insertEditedButton(buttonRow, btn) {
   // right after "current" (the pre-existing metadata) when present
   const first = buttonRow.firstElementChild;
@@ -119,7 +150,11 @@ function populateField(form, current, metas, key, kind) {
   input.addEventListener("input", () => {
     if (!applying) {
       if (!editedBtn) {
-        editedBtn = makeEditedButton(() => setValue(editedBtn.dataset.value));
+        editedBtn = makeEditedButton(() => {
+          const showing = input.value === editedBtn.dataset.value;
+          if (!showing) setValue(editedBtn.dataset.value);
+          fieldDiffToggle(form, current, key, buttonRow, { alreadyShowingEdits: showing });
+        });
         insertEditedButton(buttonRow, editedBtn);
         buttons.push(editedBtn);
       }
@@ -245,7 +280,11 @@ function populateIdentifiers(form, current, metas) {
   function userChanged() {
     editedIds = readIdentifiers(form).map(({ scheme, value, id }) => ({ scheme, value, id }));
     if (!editedBtn) {
-      editedBtn = makeEditedButton(() => setIdentifiers(editedIds, { keepMissing: true }));
+      editedBtn = makeEditedButton(() => {
+        const showing = normalize(readIdentifiers(form)) === editedBtn.dataset.normalized;
+        if (!showing) setIdentifiers(editedIds, { keepMissing: true });
+        fieldDiffToggle(form, current, "identifiers", buttonRow, { alreadyShowingEdits: showing });
+      });
       insertEditedButton(buttonRow, editedBtn);
       buttons.push(editedBtn);
     }
@@ -452,11 +491,13 @@ function el(tag, cls, text) {
   return e;
 }
 
-function renderChanges(changes) {
-  if (changes.length === 0) return [el("p", "compare-empty", "No changes from the current metadata.")];
+function renderChanges(changes, { compact = false } = {}) {
+  if (changes.length === 0) {
+    return [el("p", "compare-empty", compact ? "No changes from current." : "No changes from the current metadata.")];
+  }
   return changes.map((c) => {
-    const row = el("section", "compare-row");
-    row.append(el("h3", "compare-field", c.label));
+    const row = el("section", compact ? "compare-row compact" : "compare-row");
+    row.append(el("h3", "compare-field", compact ? "Changes vs current" : c.label));
     if (c.kind === "list") {
       const items = el("div", "compare-items");
       for (const x of c.removed) items.append(el("span", "compare-chip removed", x));
@@ -499,6 +540,18 @@ export async function mountMetadataEditor(uuid, form) {
 
     const metas = await fetchMetas(uuid);
     populateMetadataForm(form, metas);
+
+    // Keep any open per-field diffs in sync with further edits.
+    let diffFrame = 0;
+    const scheduleDiffRefresh = () => {
+      if (!openDiffs.size || diffFrame) return;
+      diffFrame = requestAnimationFrame(() => {
+        diffFrame = 0;
+        refreshOpenDiffs();
+      });
+    };
+    form.addEventListener("input", scheduleDiffRefresh);
+    form.addEventListener("click", scheduleDiffRefresh);
 
     const compareBtn = document.getElementById("btn-compare");
     const compareDialog = document.getElementById("compare-dialog");

@@ -468,6 +468,24 @@
                 display: none;
             }
 
+            /* Per-field changes, opened from that field's "edited" button */
+            .field-diff {
+                margin-top: 10px;
+                padding: 8px 10px;
+                background: rgba(255, 255, 255, 0.03);
+                border: 1px dashed var(--border);
+                border-radius: 6px;
+            }
+
+            .compare-row.compact {
+                padding: 0;
+                border-bottom: none;
+            }
+
+            .field-diff .compare-empty {
+                margin: 0;
+            }
+
             /* ── Compare dialog ── */
             .compare-dialog {
                 width: min(760px, calc(100vw - 32px));
@@ -855,7 +873,7 @@
                         <span class="uuid-badge">{{.UUID}}</span>
                     </div>
                     <p class="banner-hint">
-                        Tip: Click the format pills (e.g. <strong>current</strong>, <strong>epub</strong>, <strong>pdf</strong>) under each field to autofill values from that metadata source. Green indicates an exact match.
+                        Tip: Click the pills under each field (e.g. <strong>current</strong>, <strong>epub</strong>, <strong>pdf</strong>) to use that source's value; green means it matches. After you change a field, its <strong>edited</strong> pill restores your changes and shows what changed vs <strong>current</strong>. <strong>Compare changes</strong> at the bottom lists every changed field.
                     </p>
                 </div>
             </div>
