@@ -141,23 +141,29 @@ export function createChipInput(backing, { placeholder = "", splitOn = ";" } = {
     }
 
     function startEdit(chip, el, label) {
-        const input = document.createElement("input");
-        input.type = "text";
+        if (el.classList.contains("editing")) return;
+        // Textarea so long values wrap inside the field instead of widening it.
+        const input = document.createElement("textarea");
         input.className = "chip-edit";
         input.value = chip.text;
+        input.rows = 1;
         input.spellcheck = false;
         input.autocomplete = "off";
-        input.size = Math.max(4, chip.text.length + 1);
+        const fit = () => {
+            input.style.height = "auto";
+            input.style.height = `${input.scrollHeight}px`;
+        };
         let done = false;
         const finish = (save) => {
             if (done) return;
             done = true;
-            if (save && input.value.trim() !== chip.text) applyEdit(chip, input.value);
+            const value = input.value.replace(/\s*\n\s*/g, " "); // values are single-line
+            if (save && value.trim() !== chip.text) applyEdit(chip, value);
             else render();
         };
         input.addEventListener("keydown", (e) => {
             if (e.key === "Enter") {
-                e.preventDefault(); // don't submit the form
+                e.preventDefault(); // no newlines, and don't submit the form
                 finish(true);
                 text.focus();
             } else if (e.key === "Escape") {
@@ -166,12 +172,11 @@ export function createChipInput(backing, { placeholder = "", splitOn = ";" } = {
                 finish(false);
             }
         });
-        input.addEventListener("input", () => {
-            input.size = Math.max(4, input.value.length + 1);
-        });
+        input.addEventListener("input", fit);
         input.addEventListener("blur", () => finish(true));
         label.replaceWith(input);
         el.classList.add("editing");
+        fit();
         input.focus();
         input.select();
     }
@@ -186,11 +191,16 @@ export function createChipInput(backing, { placeholder = "", splitOn = ";" } = {
             label.textContent = chip.text;
             el.append(label);
             if (!chip.removed) {
-                label.tabIndex = 0;
-                label.setAttribute("role", "button");
-                label.title = "Click to edit";
-                label.addEventListener("click", () => startEdit(chip, el, label));
-                label.addEventListener("keydown", (e) => {
+                // Anywhere on the chip edits it, except its own buttons (×, Split).
+                el.tabIndex = 0;
+                el.setAttribute("role", "button");
+                el.title = "Click to edit";
+                el.addEventListener("click", (e) => {
+                    if (e.target.closest(".chip-btn, .chip-edit")) return;
+                    startEdit(chip, el, label);
+                });
+                el.addEventListener("keydown", (e) => {
+                    if (e.target !== el) return;
                     if (e.key === "Enter" || e.key === " ") {
                         e.preventDefault();
                         startEdit(chip, el, label);
