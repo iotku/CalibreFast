@@ -545,6 +545,27 @@
                 border-bottom: 1px solid var(--border);
             }
 
+            /* Matches the book modal's close button */
+            .compare-close {
+                width: 36px;
+                height: 36px;
+                display: flex;
+                align-items: center;
+                justify-content: center;
+                font-size: 1.2rem;
+                color: var(--text);
+                background: rgba(30, 30, 30, 0.65);
+                border: 1px solid rgba(255, 255, 255, 0.1);
+                border-radius: 50%;
+                cursor: pointer;
+                transition: background 0.15s ease, color 0.15s ease;
+            }
+
+            .compare-close:hover {
+                background: rgba(60, 60, 60, 0.9);
+                color: #fff;
+            }
+
             .compare-header h2 {
                 margin: 0;
                 font-size: 1rem;
@@ -1014,7 +1035,7 @@
             <dialog id="compare-dialog" class="compare-dialog" aria-labelledby="compare-title">
                 <header class="compare-header">
                     <h2 id="compare-title">Changes vs current metadata</h2>
-                    <form method="dialog"><button class="btn-secondary" aria-label="Close">Close</button></form>
+                    <form method="dialog"><button class="compare-close" aria-label="Close">✕</button></form>
                 </header>
                 <div id="compare-body"></div>
             </dialog>

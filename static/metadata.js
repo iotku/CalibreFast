@@ -556,6 +556,12 @@ export async function mountMetadataEditor(uuid, form) {
     const compareBtn = document.getElementById("btn-compare");
     const compareDialog = document.getElementById("compare-dialog");
     if (compareBtn && compareDialog) {
+      // Click outside the dialog box (on the backdrop) closes it.
+      compareDialog.addEventListener("click", (e) => {
+        const r = compareDialog.getBoundingClientRect();
+        const inside = e.clientX >= r.left && e.clientX <= r.right && e.clientY >= r.top && e.clientY <= r.bottom;
+        if (!inside) compareDialog.close();
+      });
       compareBtn.addEventListener("click", () => {
         commitPending();
         const current = metas.find((m) => m.Format === "current") || null;
