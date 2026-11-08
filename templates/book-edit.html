@@ -343,11 +343,6 @@
                 border: 1px solid var(--border);
                 border-radius: 6px;
                 padding: 6px;
-                cursor: text;
-            }
-
-            .chip-input:focus-within {
-                border-color: var(--accent);
             }
 
             .chip-list {
@@ -435,16 +430,52 @@
                 color: var(--accent);
             }
 
+            /* Entry row sits above the chips so new chips never move it */
+            .chip-entry {
+                display: flex;
+                gap: 6px;
+            }
+
             .chip-text {
-                flex: 1 1 140px;
-                min-width: 120px;
-                height: 30px;
-                padding: 0 6px;
+                flex: 1;
+                min-width: 0;
+                height: 34px;
+                padding: 0 10px;
                 font: inherit;
                 color: var(--text);
-                background: transparent;
-                border: none;
+                background: rgba(255, 255, 255, 0.03);
+                border: 1px solid var(--border);
+                border-radius: 6px;
                 outline: none;
+            }
+
+            .chip-text:focus {
+                border-color: var(--accent);
+            }
+
+            .chip-add-btn {
+                flex-shrink: 0;
+                height: 34px;
+                padding: 0 14px;
+                font-family: var(--mono);
+                font-size: 0.75rem;
+                color: var(--accent);
+                background: rgba(200, 169, 110, 0.1);
+                border: 1px solid var(--accent-dim);
+                border-radius: 6px;
+                cursor: pointer;
+            }
+
+            .chip-add-btn:hover {
+                background: rgba(200, 169, 110, 0.18);
+            }
+
+            .chip-list {
+                margin-top: 8px;
+            }
+
+            .chip-list[hidden] {
+                display: none;
             }
 
             .chip-tools {

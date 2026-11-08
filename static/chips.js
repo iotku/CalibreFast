@@ -2,9 +2,11 @@
  * Chip ("bean") editor layered over a plain backing <input>.
  *
  * The backing input keeps holding "a, b, c" (active chips only), so form
- * collection, source buttons and highlighting work unchanged. Typing a comma
- * or Enter commits text as chips. Removing a chip strikes it through and parks
- * it at the end with Undo; nothing is lost until the form is applied.
+ * collection, source buttons and highlighting work unchanged. Text is typed
+ * in an entry row above the chips (so new chips never push it around) and is
+ * only added on Enter or the Add button; commas there separate several items.
+ * Removing a chip strikes it through and parks it at the end with Undo;
+ * nothing is lost until the form is applied.
  *
  * Chips containing `splitOn` (";") get a Split button, and the field gets a
  * "Split all" button, for tags that were glued together with semicolons. A
@@ -35,6 +37,13 @@ export function createChipInput(backing, { placeholder = "", splitOn = ";" } = {
     text.placeholder = placeholder;
     text.autocomplete = "off";
     text.spellcheck = false;
+    const addBtn = document.createElement("button");
+    addBtn.type = "button";
+    addBtn.className = "chip-add-btn";
+    addBtn.textContent = "Add";
+    const entry = document.createElement("div");
+    entry.className = "chip-entry";
+    entry.append(text, addBtn);
     const tools = document.createElement("div");
     tools.className = "chip-tools";
     const splitAllBtn = document.createElement("button");
@@ -42,8 +51,7 @@ export function createChipInput(backing, { placeholder = "", splitOn = ";" } = {
     splitAllBtn.className = "chip-tool-btn";
     tools.append(splitAllBtn);
 
-    list.append(text);
-    root.append(list, tools);
+    root.append(entry, list, tools);
     backing.type = "hidden";
     backing.after(root);
 
@@ -227,7 +235,8 @@ export function createChipInput(backing, { placeholder = "", splitOn = ";" } = {
             el.append(x);
             return el;
         });
-        list.replaceChildren(...nodes, text);
+        list.replaceChildren(...nodes);
+        list.hidden = nodes.length === 0;
 
         const splittable = active().filter((c) => splitOn && c.text.includes(splitOn));
         splitAllBtn.hidden = splittable.length === 0;
@@ -238,18 +247,17 @@ export function createChipInput(backing, { placeholder = "", splitOn = ";" } = {
         for (const c of active().filter((c) => c.text.includes(splitOn))) split(c);
     });
 
+    // Only Enter or Add commits; typing commas just types commas. Pending text
+    // stays in the box (and is committed before apply/compare via commitPending).
     text.addEventListener("keydown", (e) => {
-        if (e.key === "Enter" || e.key === ",") {
+        if (e.key === "Enter") {
             e.preventDefault(); // Enter must not submit the form
             commitText();
         }
     });
-    text.addEventListener("input", () => {
-        if (text.value.includes(",")) commitText(); // pasted "a, b, c"
-    });
-    text.addEventListener("blur", commitText); // typed text is never dropped
-    root.addEventListener("click", (e) => {
-        if (e.target === root || e.target === list) text.focus();
+    addBtn.addEventListener("click", () => {
+        commitText();
+        text.focus();
     });
 
     /**
