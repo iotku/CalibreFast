@@ -1,115 +1,86 @@
 <!doctype html>
 <html>
-    <head>
-        <meta charset="utf-8" />
-        <title>{{ .Title }}</title>
-        <link rel="stylesheet" href="/static/style.css" />
-        <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    </head>
-    <body>
-        {{ $readLink := "" }}
-        {{ range .Formats }}
-            {{ if eq . "pdf" }}
-                {{ if not $readLink }}
-                    {{ $readLink = printf "/read-pdf?uuid=%s" $.UUID }}
-                {{ end }}
-            {{ end }}
-            {{ if eq . "epub" }}
-                {{ $readLink = printf "/read?uuid=%s" $.UUID }}
-            {{ end }}
-        {{ end }}
-        <div class="book-page">
-            <div class="book-header">
-                <div class="title-row">
-                    <h1>{{ .Title }}</h1>
-                    <a
-                        href="/book/get/{{ .UUID }}"
-                        class="icon-link"
-                        title="Permalink"
-                        aria-label="Permalink"
-                    >
-                        <svg
-                            viewBox="0 0 24 24"
-                            width="18"
-                            height="18"
-                            fill="none"
-                            stroke="currentColor"
-                            stroke-width="2"
-                            stroke-linecap="round"
-                            stroke-linejoin="round"
-                        >
-                            <path
-                                d="M10 13a5 5 0 0 0 7.07 0l2.83-2.83a5 5 0 0 0-7.07-7.07l-1.5 1.5"
-                            />
-                            <path
-                                d="M14 11a5 5 0 0 0-7.07 0l-2.83 2.83a5 5 0 0 0 7.07 7.07l1.5-1.5"
-                            />
+
+<head>
+    <meta charset="utf-8" />
+    <title>{{ .Title }}</title>
+    <link rel="stylesheet" href="/static/style.css" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+</head>
+
+<body>
+    {{ $readLink := "" }}
+    {{ range .Formats }}
+    {{ if eq . "pdf" }}
+    {{ if not $readLink }}
+    {{ $readLink = printf "/read-pdf?uuid=%s" $.UUID }}
+    {{ end }}
+    {{ end }}
+    {{ if eq . "epub" }}
+    {{ $readLink = printf "/read?uuid=%s" $.UUID }}
+    {{ end }}
+    {{ end }}
+    <div class="book-page">
+        <div class="book-header">
+            <div class="title-row">
+                <h1>{{ .Title }} <a href="/book/get/{{ .UUID }}" class="icon-link" title="Permalink"
+                        aria-label="Permalink">
+                        <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor"
+                            stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                            <path d="M10 13a5 5 0 0 0 7.07 0l2.83-2.83a5 5 0 0 0-7.07-7.07l-1.5 1.5" />
+                            <path d="M14 11a5 5 0 0 0-7.07 0l-2.83 2.83a5 5 0 0 0 7.07 7.07l1.5-1.5" />
                         </svg>
-                    </a>
-                </div>
-                <div class="book-actions">
-                    <div id="read-buttons">
-                        {{ range .Formats }} {{ if eq . "epub" }}
-                        <a
-                            class="btn-action btn-action-read"
-                            href="/read?uuid={{ $.UUID }}"
-                        >
-                            <svg class="action-icon" viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-                                <path d="M2 3h6a4 4 0 0 1 4 4v14a3 3 0 0 0-3-3H2z" />
-                                <path d="M22 3h-6a4 4 0 0 0-4 4v14a3 3 0 0 1 3-3h7z" />
-                            </svg>
-                            <span>Read EPUB</span>
-                        </a>
-                        {{ else if eq . "pdf" }}
-                        <a
-                            class="btn-action btn-action-read"
-                            href="/read-pdf?uuid={{ $.UUID }}"
-                        >
-                            <svg class="action-icon" viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-                                <path d="M2 3h6a4 4 0 0 1 4 4v14a3 3 0 0 0-3-3H2z" />
-                                <path d="M22 3h-6a4 4 0 0 0-4 4v14a3 3 0 0 1 3-3h7z" />
-                            </svg>
-                            <span>Read PDF</span>
-                        </a>
-                        {{ end }} {{ end }}
-                    </div>
-                    {{ range .Formats }}
-                    <a
-                        class="btn-action btn-action-download"
-                        href="/download/{{ $.UUID }}/{{ . }}"
-                    >
-                        <svg class="action-icon" viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-                            <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4" />
-                            <polyline points="7 10 12 15 17 10" />
-                            <line x1="12" y1="15" x2="12" y2="3" />
-                        </svg>
-                        <span>Download {{ . }}</span>
-                    </a>
-                    {{ end }}
-                    <a
-                        class="btn-action btn-action-edit"
-                        href="/book/edit/{{ .UUID }}"
-                        title="Edit metadata"
-                    >
-                        <svg class="action-icon" viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-                            <path d="M12 20h9" />
-                            <path
-                                d="M16.5 3.5a2.121 2.121 0 0 1 3 3L7 19l-4 1 1-4Z"
-                            />
-                        </svg>
-                        <span>Edit metadata</span>
-                    </a>
-                </div>
+                    </a></h1>
             </div>
-            <div class="book-page-cover">
-                {{ if $readLink }}
-                <a href="{{ $readLink }}" class="cover-link" title="Read book" aria-label="Read book">
-                    <img
-                        class="thumbnail"
-                        alt="Cover"
-                        src="/cover-thumb/{{ .UUID }}{{ if .ModTime }}?t={{ .ModTime }}{{ end }}"
-                        data-full="/cover/{{ .UUID }}{{ if .ModTime }}?t={{ .ModTime }}{{ end }}"
-                        onload="
+            <div class="book-actions">
+                <div id="read-buttons">
+                    {{ range .Formats }} {{ if eq . "epub" }}
+                    <a class="btn-action btn-action-read" href="/read?uuid={{ $.UUID }}">
+                        <svg class="action-icon" viewBox="0 0 24 24" width="16" height="16" fill="none"
+                            stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                            <path d="M2 3h6a4 4 0 0 1 4 4v14a3 3 0 0 0-3-3H2z" />
+                            <path d="M22 3h-6a4 4 0 0 0-4 4v14a3 3 0 0 1 3-3h7z" />
+                        </svg>
+                        <span>Read EPUB</span>
+                    </a>
+                    {{ else if eq . "pdf" }}
+                    <a class="btn-action btn-action-read" href="/read-pdf?uuid={{ $.UUID }}">
+                        <svg class="action-icon" viewBox="0 0 24 24" width="16" height="16" fill="none"
+                            stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                            <path d="M2 3h6a4 4 0 0 1 4 4v14a3 3 0 0 0-3-3H2z" />
+                            <path d="M22 3h-6a4 4 0 0 0-4 4v14a3 3 0 0 1 3-3h7z" />
+                        </svg>
+                        <span>Read PDF</span>
+                    </a>
+                    {{ end }} {{ end }}
+                </div>
+                {{ range .Formats }}
+                <a class="btn-action btn-action-download" href="/download/{{ $.UUID }}/{{ . }}">
+                    <svg class="action-icon" viewBox="0 0 24 24" width="16" height="16" fill="none"
+                        stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                        <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4" />
+                        <polyline points="7 10 12 15 17 10" />
+                        <line x1="12" y1="15" x2="12" y2="3" />
+                    </svg>
+                    <span>Download {{ . }}</span>
+                </a>
+                {{ end }}
+                <a class="btn-action btn-action-edit" href="/book/edit/{{ .UUID }}" title="Edit metadata">
+                    <svg class="action-icon" viewBox="0 0 24 24" width="16" height="16" fill="none"
+                        stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                        <path d="M12 20h9" />
+                        <path d="M16.5 3.5a2.121 2.121 0 0 1 3 3L7 19l-4 1 1-4Z" />
+                    </svg>
+                    <span>Edit metadata</span>
+                </a>
+            </div>
+        </div>
+        <div class="book-page-cover">
+            {{ if $readLink }}
+            <a href="{{ $readLink }}" class="cover-link" title="Read book" aria-label="Read book">
+                <img class="thumbnail" alt="Cover"
+                    src="/cover-thumb/{{ .UUID }}{{ if .ModTime }}?t={{ .ModTime }}{{ end }}"
+                    data-full="/cover/{{ .UUID }}{{ if .ModTime }}?t={{ .ModTime }}{{ end }}" onload="
                             const full = this.dataset.full;
                             if (!full) return;
                             delete this.dataset.full;
@@ -118,23 +89,19 @@
                                 this.src = full;
                             };
                             img.src = full;
-                        "
-                    />
-                    <span class="cover-read-hint">
-                        <svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-                            <path d="M2 3h6a4 4 0 0 1 4 4v14a3 3 0 0 0-3-3H2z" />
-                            <path d="M22 3h-6a4 4 0 0 0-4 4v14a3 3 0 0 1 3-3h7z" />
-                        </svg>
-                        <span>Read</span>
-                    </span>
-                </a>
-                {{ else }}
-                <img
-                    class="thumbnail"
-                    alt="Cover"
-                    src="/cover-thumb/{{ .UUID }}{{ if .ModTime }}?t={{ .ModTime }}{{ end }}"
-                    data-full="/cover/{{ .UUID }}{{ if .ModTime }}?t={{ .ModTime }}{{ end }}"
-                    onload="
+                        " />
+                <span class="cover-read-hint">
+                    <svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2"
+                        stroke-linecap="round" stroke-linejoin="round">
+                        <path d="M2 3h6a4 4 0 0 1 4 4v14a3 3 0 0 0-3-3H2z" />
+                        <path d="M22 3h-6a4 4 0 0 0-4 4v14a3 3 0 0 1 3-3h7z" />
+                    </svg>
+                    <span>Read</span>
+                </span>
+            </a>
+            {{ else }}
+            <img class="thumbnail" alt="Cover" src="/cover-thumb/{{ .UUID }}{{ if .ModTime }}?t={{ .ModTime }}{{ end }}"
+                data-full="/cover/{{ .UUID }}{{ if .ModTime }}?t={{ .ModTime }}{{ end }}" onload="
                         const full = this.dataset.full;
                         if (!full) return;
                         delete this.dataset.full;
@@ -143,48 +110,46 @@
                             this.src = full;
                         };
                         img.src = full;
-                    "
-                />
-                {{ end }}
-            </div>
-            <div class="book-page-info">
-                <div class="meta-row">
-                    <strong>Author:</strong>
-                    {{ range .Authors }}
-                    <a href="/author/{{ . }}" class="meta-link">{{ . }}</a>
-                    {{ end }}
-                </div>
-                {{ if .Publisher }}
-                <div class="meta-row">
-                    <strong>Publisher:</strong>
-                    <a href="/publisher/{{ .Publisher }}" class="meta-link"
-                        >{{ .Publisher }}</a
-                    >
-                </div>
-                {{ end }}
-                {{ if .Date }}
-                <div class="meta-row">
-                    <strong>Date:</strong>
-                    {{ .Date }}
-                </div>
-                {{ end }}
-                {{ if .Language }}
-                <div class="meta-row">
-                    <strong>Language:</strong>
-                    {{ .Language }}
-                </div>
-                {{ end }}
-                {{ if .Tags }}
-                <div class="meta-row">
-                    {{ range .Tags }}
-                    <a href="/tag/{{ . }}" class="tag meta-link">{{ . }}</a>
-                    {{ end }}
-                </div>
-                {{ end }}
-                {{ if .Description }}
-                <div class="description">{{ .Description }}</div>
-                {{ end }}
-            </div>
+                    " />
+            {{ end }}
         </div>
-    </body>
+        <div class="book-page-info">
+            <div class="meta-row">
+                <strong>Author:</strong>
+                {{ range .Authors }}
+                <a href="/author/{{ . }}" class="meta-link">{{ . }}</a>
+                {{ end }}
+            </div>
+            {{ if .Publisher }}
+            <div class="meta-row">
+                <strong>Publisher:</strong>
+                <a href="/publisher/{{ .Publisher }}" class="meta-link">{{ .Publisher }}</a>
+            </div>
+            {{ end }}
+            {{ if .Date }}
+            <div class="meta-row">
+                <strong>Date:</strong>
+                {{ .Date }}
+            </div>
+            {{ end }}
+            {{ if .Language }}
+            <div class="meta-row">
+                <strong>Language:</strong>
+                {{ .Language }}
+            </div>
+            {{ end }}
+            {{ if .Tags }}
+            <div class="meta-row">
+                {{ range .Tags }}
+                <a href="/tag/{{ . }}" class="tag meta-link">{{ . }}</a>
+                {{ end }}
+            </div>
+            {{ end }}
+            {{ if .Description }}
+            <div class="description">{{ .Description }}</div>
+            {{ end }}
+        </div>
+    </div>
+</body>
+
 </html>
