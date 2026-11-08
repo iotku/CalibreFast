@@ -117,6 +117,65 @@ export function createChipInput(backing, { placeholder = "", splitOn = ";" } = {
         emit();
     }
 
+    /** Apply an inline edit: commas split, empty soft-removes, dupes merge. */
+    function applyEdit(chip, value) {
+        const parts = parseList(value);
+        if (parts.length === 0) {
+            if (!chip.removed) toggle(chip); // struck through with its original text; Undo restores
+            else render();
+            return;
+        }
+        const at = chips.indexOf(chip);
+        const [first, ...rest] = parts;
+        const dupe = chips.find((c) => c !== chip && lower(c.text) === lower(first));
+        if (dupe) {
+            chips.splice(at, 1); // merged into the existing chip
+            if (dupe.removed) toggle(dupe);
+            addItems(rest, Math.min(at, activeEnd()));
+        } else {
+            chip.text = first;
+            addItems(rest, at + 1);
+        }
+        render();
+        emit();
+    }
+
+    function startEdit(chip, el, label) {
+        const input = document.createElement("input");
+        input.type = "text";
+        input.className = "chip-edit";
+        input.value = chip.text;
+        input.spellcheck = false;
+        input.autocomplete = "off";
+        input.size = Math.max(4, chip.text.length + 1);
+        let done = false;
+        const finish = (save) => {
+            if (done) return;
+            done = true;
+            if (save && input.value.trim() !== chip.text) applyEdit(chip, input.value);
+            else render();
+        };
+        input.addEventListener("keydown", (e) => {
+            if (e.key === "Enter") {
+                e.preventDefault(); // don't submit the form
+                finish(true);
+                text.focus();
+            } else if (e.key === "Escape") {
+                e.preventDefault();
+                e.stopPropagation();
+                finish(false);
+            }
+        });
+        input.addEventListener("input", () => {
+            input.size = Math.max(4, input.value.length + 1);
+        });
+        input.addEventListener("blur", () => finish(true));
+        label.replaceWith(input);
+        el.classList.add("editing");
+        input.focus();
+        input.select();
+    }
+
     function render() {
         const nodes = chips.map((chip) => {
             const el = document.createElement("span");
@@ -126,6 +185,18 @@ export function createChipInput(backing, { placeholder = "", splitOn = ";" } = {
             label.className = "chip-label";
             label.textContent = chip.text;
             el.append(label);
+            if (!chip.removed) {
+                label.tabIndex = 0;
+                label.setAttribute("role", "button");
+                label.title = "Click to edit";
+                label.addEventListener("click", () => startEdit(chip, el, label));
+                label.addEventListener("keydown", (e) => {
+                    if (e.key === "Enter" || e.key === " ") {
+                        e.preventDefault();
+                        startEdit(chip, el, label);
+                    }
+                });
+            }
 
             if (!chip.removed && splitOn && chip.text.includes(splitOn)) {
                 const s = document.createElement("button");
