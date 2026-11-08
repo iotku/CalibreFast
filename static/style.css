@@ -170,10 +170,12 @@ input[type="number"],
     margin: var(--topbar-total) auto 0;
 }
 
-.page {
-    display: contents;
+#books > .page {
+    display: grid;
+    grid-column: 1 / -1;
+    grid-template-columns: subgrid;
+    row-gap: inherit;
 }
-
 /* ============================================
    Component - Book Card
    ============================================ */

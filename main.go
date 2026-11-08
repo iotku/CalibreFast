@@ -678,7 +678,7 @@ func generatePages() {
 		}
 	}(rows)
 	page := 1
-	booksPerPage := 30
+	booksPerPage := 120
 	books := make([]Book, 0, booksPerPage)
 
 	for rows.Next() {

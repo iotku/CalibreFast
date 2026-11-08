@@ -10,8 +10,8 @@
 import { renderBooksPage } from "./utils.js";
 import { setupBookClickHandlers, loadBook, HASH_PREFIX } from "./modal.js";
 
-const KEEP_AHEAD = 5; // real pages kept in the scroll direction
-const KEEP_BEHIND = 3; // ...and the opposite way
+const KEEP_AHEAD = 1; // real pages kept in the scroll direction
+const KEEP_BEHIND = 1; // ...and the opposite way
 const MAX_PAGE_FETCHES = 2; // concurrent page-JSON requests
 const HISTORY_DEBOUNCE_MS = 300; // browsers throttle rapid history updates
 const FAST_SCROLL_PAGES_PER_SEC = 4; // faster than this: don't fetch/render yet
@@ -30,6 +30,7 @@ let lastLabelPage = null;
 let lastWidth = window.innerWidth;
 let keyScrolling = false;
 let scrollDir = 1; // 1 = down, -1 = up; biases the render window
+let scrollAdjust = 0; // px of programmatic compensation the scroll handler hasn't seen yet
 const badgeEl = document.getElementById("scroll-badge"); // in index.html
 let draggingScrollbar = false; // mouse held on the scrollbar, or a touch is active
 let badgeTimer = null;
@@ -256,7 +257,7 @@ function pageExtent(el) {
     return bottom - top;
 }
 
-/** Make a page real. Keeps the viewport still if it sits above it. */
+/** Make a page real. Scroll compensation is handled by syncWindow. */
 function renderPage(n, books) {
     if (realPages.has(n)) return;
     const ph = pageEl(n);
@@ -264,18 +265,10 @@ function renderPage(n, books) {
     const el = buildPageEl(books, n);
     if (!el) return;
 
-    const before = pageBounds(ph);
-    const above = before.bottom <= headerHeight();
     el.classList.add("appear"); // fade-in, see CSS
     ph.replaceWith(el);
     realPages.add(n);
     setupBookClickHandlers(el); // must run while attached to the document
-
-    if (above) {
-        const after = pageBounds(el);
-        const delta = after.bottom - after.top - (before.bottom - before.top);
-        if (delta) window.scrollBy({ top: delta, behavior: "instant" });
-    }
 }
 
 /** Replace a real page with a same-height placeholder. */
@@ -286,18 +279,20 @@ function evictPage(n) {
     const height = pageExtent(el);
     for (const img of el.querySelectorAll(".book-cover")) {
         coversInflight.delete(img);
+        img.removeAttribute("src"); // cancel inflight fetches
     }
     el.replaceWith(makePlaceholder(n, height));
 }
 
 /**
  * Make the pages around the viewport real and everything else a placeholder.
- * Returns the visible page.
+ * Pins the visible page's top across all swaps. Returns the visible page.
  */
 function syncWindow() {
     if (!window.totalPages || !pageHeight) return targetPage;
 
     const visible = getVisiblePage();
+    const anchorTop = pageBounds(pageEl(visible)).top;
 
     // Window leans in the scroll direction so we stay ahead of the viewport.
     const down = scrollDir > 0;
@@ -336,6 +331,13 @@ function syncWindow() {
                 if (books) syncWindow();
             });
         }
+    }
+
+    // Swaps above the viewport can change heights: pin the visible page.
+    const drift = pageBounds(pageEl(visible)).top - anchorTop;
+    if (Math.abs(drift) >= 1) {
+        scrollAdjust += drift;
+        window.scrollBy({ top: drift, behavior: "instant" });
     }
 
     pumpCovers();
@@ -468,9 +470,11 @@ function setupScrollTracking() {
 
                 const now = performance.now();
                 const y = window.scrollY;
-                const pxPerSec =
-                    (Math.abs(y - lastY) / (now - lastT || 1)) * 1000;
-                if (y !== lastY) scrollDir = y > lastY ? 1 : -1;
+                // Ignore our own compensation: only user scroll counts.
+                const dy = y - lastY - scrollAdjust;
+                scrollAdjust = 0;
+                const pxPerSec = (Math.abs(dy) / (now - lastT || 1)) * 1000;
+                if (dy) scrollDir = dy > 0 ? 1 : -1;
                 lastY = y;
                 lastT = now;
                 clearTimeout(settleTimer);
@@ -568,23 +572,34 @@ function onResize() {
 /* ------------------------------------------------------------------ */
 
 /**
- * Start pending covers in DOM order (nearest the viewport first),
- * keeping at most MAX_COVERS_INFLIGHT requests open. Each finished
- * image pumps the queue again.
+ * Start pending covers nearest the viewport first, favouring the scroll
+ * direction, keeping at most MAX_COVERS_INFLIGHT requests open. Each
+ * finished image pumps the queue again.
  */
 function pumpCovers() {
     // Images removed by a placeholder swap never fire load/error.
     for (const img of coversInflight) {
         if (!img.isConnected) coversInflight.delete(img);
     }
+    if (coversInflight.size >= MAX_COVERS_INFLIGHT) return;
 
-    const visible = getVisiblePage();
+    const header = headerHeight();
+    const vh = window.innerHeight;
+    const down = scrollDir > 0;
 
+    // Distance from the viewport in px; covers behind the scroll direction cost double.
+    const queue = [];
     for (const img of document.querySelectorAll(".book-cover[data-src]")) {
-        if (coversInflight.size >= MAX_COVERS_INFLIGHT) break;
+        const r = img.getBoundingClientRect();
+        let dist = 0;
+        if (r.top > vh) dist = (r.top - vh) * (down ? 1 : 2);
+        else if (r.bottom < header) dist = (header - r.bottom) * (down ? 2 : 1);
+        queue.push({ img, dist });
+    }
+    queue.sort((a, b) => a.dist - b.dist);
 
-        const pageNumber = Number(img.closest(".page")?.dataset.page);
-        if (pageNumber < visible - 1) continue; // behind the viewport, wait
+    for (const { img } of queue) {
+        if (coversInflight.size >= MAX_COVERS_INFLIGHT) break;
 
         const src = img.dataset.src;
         delete img.dataset.src;

@@ -19,11 +19,9 @@ var uuidPathIndex sync.Map // map[string]string uuid -> relative path to book di
 var modTimeCache sync.Map  // map[string]int64 uuid -> last modified time of book from calibre database, used for cache-busting cover.jpg and cover-thumb.jpg
 var formatCache sync.Map   // map[string][]string uuid -> list of formats and their paths relative to the baseDir
 // TODO: Performance, maybe this can be increased?
-var imageSem = make(chan struct{}, 8) // only n HDD reads at once
+var imageSem = make(chan struct{}, 4) // only n HDD reads at once
 
 func coverHandler(w http.ResponseWriter, r *http.Request) {
-	imageSem <- struct{}{}        // acquire slot
-	defer func() { <-imageSem }() // release slot
 	// uuid comes from URL: /cover/{uuid}
 	uuid := filepath.Base(r.URL.Path)
 
@@ -85,6 +83,8 @@ func ensureDir(path string) error {
 }
 
 func coverThumbHandler(w http.ResponseWriter, r *http.Request) {
+	imageSem <- struct{}{}        // acquire slot
+	defer func() { <-imageSem }() // release slot
 	uuid := strings.TrimPrefix(r.URL.Path, "/cover-thumb/")
 	if !isSafeUUIDComponent(uuid) {
 		http.Error(w, "invalid cover id", http.StatusBadRequest)
