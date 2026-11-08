@@ -96,7 +96,7 @@ const TOOLS = [
     ["insertUnorderedList", "• List", "Bulleted list"],
     ["insertOrderedList", "1. List", "Numbered list"],
     ["createLink", "Link", "Link selected text"],
-    ["removeFormat", "Clear", "Clear formatting on selection"],
+    ["removeFormat", "Clear", "Clear formatting on selection (incl. lists, links, headings)"],
 ];
 
 export function createDescriptionEditor(textarea) {
@@ -211,6 +211,36 @@ export function createDescriptionEditor(textarea) {
         syncFromPreview();
     });
 
+    /** Closest ancestor (inside the preview) matching selector, or null. */
+    const within = (node, selector) => {
+        const el = node?.nodeType === Node.ELEMENT_NODE ? node : node?.parentElement;
+        const hit = el?.closest(selector);
+        return hit && preview.contains(hit) ? hit : null;
+    };
+
+    /**
+     * "Clear": removeFormat only strips inline formatting, so also take the
+     * selection out of lists (incl. nested) and links, and turn headings /
+     * quotes / code blocks back into paragraphs.
+     */
+    function clearFormatting() {
+        const sel = window.getSelection();
+        if (!sel.rangeCount) return;
+        document.execCommand("removeFormat", false);
+        document.execCommand("unlink", false);
+        // Toggling the list command on list items removes that list level.
+        for (let i = 0; i < 10; i++) {
+            const list = within(sel.anchorNode, "ul, ol") || within(sel.focusNode, "ul, ol");
+            if (!list) break;
+            const cmd = list.tagName === "OL" ? "insertOrderedList" : "insertUnorderedList";
+            document.execCommand(cmd, false);
+            if ((within(sel.anchorNode, "ul, ol") || within(sel.focusNode, "ul, ol")) === list) break; // didn't change
+        }
+        if (within(sel.anchorNode, "h1,h2,h3,h4,h5,h6,blockquote,pre") || within(sel.focusNode, "h1,h2,h3,h4,h5,h6,blockquote,pre")) {
+            document.execCommand("formatBlock", false, "p");
+        }
+    }
+
     tools.addEventListener("mousedown", (e) => {
         if (e.target.closest(".desc-tool")) e.preventDefault(); // keep the selection
     });
@@ -222,6 +252,8 @@ export function createDescriptionEditor(textarea) {
             const url = prompt("Link URL (https://…)");
             if (!url || !SAFE_URL.test(url.trim())) return;
             document.execCommand("createLink", false, url.trim());
+        } else if (b.dataset.cmd === "removeFormat") {
+            clearFormatting();
         } else {
             document.execCommand(b.dataset.cmd, false);
         }
