@@ -170,13 +170,12 @@ input[type="number"],
     margin: var(--topbar-total) auto 0;
 }
 
-#books>.page {
+#books > .page {
     display: grid;
     grid-column: 1 / -1;
     grid-template-columns: subgrid;
     row-gap: inherit;
 }
-
 /* ============================================
    Component - Book Card
    ============================================ */
@@ -214,11 +213,13 @@ input[type="number"],
     padding: 18px;
     color: white;
 
-    background: linear-gradient(to top,
-            rgba(0, 0, 0, 0.92) 0%,
-            rgba(0, 0, 0, 0.65) 35%,
-            rgba(0, 0, 0, 0.15) 65%,
-            transparent 100%);
+    background: linear-gradient(
+        to top,
+        rgba(0, 0, 0, 0.92) 0%,
+        rgba(0, 0, 0, 0.65) 35%,
+        rgba(0, 0, 0, 0.15) 65%,
+        transparent 100%
+    );
 
     opacity: 0;
     transform: translateY(8px);
@@ -269,7 +270,6 @@ input[type="number"],
 }
 
 @media (prefers-reduced-motion: reduce) {
-
     .book,
     .book-cover,
     .book-info {
@@ -293,7 +293,6 @@ input[type="number"],
     z-index: 1;
     transition: opacity 0.5s var(--transition-fast);
 }
-
 .book-cover.loaded {
     opacity: 1;
 }
@@ -327,7 +326,6 @@ input[type="number"],
     -webkit-box-orient: vertical;
     overflow: hidden;
 }
-
 .ph-author {
     font: 0.75rem sans-serif;
     opacity: 0.85;
@@ -1084,14 +1082,12 @@ input[type="number"],
     border: 1px solid var(--border, #2a2a27);
     border-radius: var(--radius, 6px);
 }
-
 .cover-picker-header {
     display: flex;
     align-items: center;
     justify-content: space-between;
     margin-bottom: 0.6rem;
 }
-
 .cover-picker-header h3 {
     font-family: var(--mono, monospace);
     font-size: 0.72rem;
@@ -1101,7 +1097,6 @@ input[type="number"],
     text-transform: uppercase;
     margin: 0;
 }
-
 .cover-picker-done {
     font-family: var(--mono, monospace);
     font-size: 0.68rem;
@@ -1110,7 +1105,6 @@ input[type="number"],
     align-items: center;
     gap: 4px;
 }
-
 .cover-picker-done.visible {
     display: inline-flex;
 }
@@ -1121,7 +1115,6 @@ input[type="number"],
     align-items: center;
     flex-wrap: wrap;
 }
-
 .cover-picker-actions label,
 .cover-picker-actions button {
     font-family: var(--mono, monospace);
@@ -1137,17 +1130,14 @@ input[type="number"],
         border-color 0.15s,
         background 0.15s;
 }
-
 .cover-picker-actions label:hover,
 .cover-picker-actions button:hover {
     border-color: var(--accent-dim, #7a6340);
     background: #1c1c1a;
 }
-
 .cover-picker-actions label input[type="file"] {
     display: none;
 }
-
 .cover-picker-actions button.active {
     border-color: var(--accent, #c8a96e);
     background: rgba(200, 169, 110, 0.12);
@@ -1157,18 +1147,15 @@ input[type="number"],
     display: none;
     margin-top: 0.75rem;
 }
-
 .cover-pages.visible {
     display: block;
 }
-
 .cover-pages-strip {
     display: flex;
     gap: 8px;
     overflow-x: auto;
     padding: 4px 0 8px;
 }
-
 .cover-pages-strip canvas {
     height: 180px;
     border: 2px solid transparent;
@@ -1180,16 +1167,13 @@ input[type="number"],
     flex-shrink: 0;
     background: #222;
 }
-
 .cover-pages-strip canvas:hover {
     border-color: var(--accent-dim, #7a6340);
 }
-
 .cover-pages-strip canvas.selected {
     border-color: var(--accent, #c8a96e);
     box-shadow: 0 0 0 1px var(--accent, #c8a96e);
 }
-
 .cover-pages-status {
     font-family: var(--mono, monospace);
     font-size: 0.68rem;
@@ -1217,7 +1201,6 @@ input[type="number"],
     color: #e59999 !important;
     background: rgba(186, 122, 122, 0.12) !important;
 }
-
 .btn-revert-cover:hover {
     border-color: #ba7a7a !important;
     background: rgba(186, 122, 122, 0.22) !important;
@@ -1253,7 +1236,7 @@ input[type="number"],
     flex-shrink: 0;
 }
 
-#books>.page.placeholder {
+#books > .page.placeholder {
     display: block;
     grid-column: 1 / -1;
     flex: 0 0 100%;
@@ -1262,8 +1245,7 @@ input[type="number"],
 
 #scroll-badge {
     position: fixed;
-    right: 28px;
-    /* clear of the scrollbar */
+    right: 28px; /* clear of the scrollbar */
     z-index: 900;
     padding: 4px 10px;
     border-radius: 999px;
