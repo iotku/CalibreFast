@@ -125,19 +125,16 @@
                 Published on {{ .Date }}
             </div>
             {{ end }}
-            {{ if .Language }}
+
             <div class="meta-row">
-                <strong>Language:</strong>
-                {{ .Language }}
-            </div>
-            {{ end }}
-            {{ if .Tags }}
-            <div class="meta-row">
+                {{ if .Language }}<a href="#/lang/{{ .Language }}" class="tag meta-link">Language: {{ .Language }}</a>
+                {{ end }}
+                {{ if .Tags }}
                 {{ range .Tags }}
                 <a href="/tag/{{ . }}" class="tag meta-link">{{ . }}</a>
                 {{ end }}
+                {{ end }}
             </div>
-            {{ end }}
             {{ if .Description }}
             <div class="description">{{ .Description }}</div>
             {{ end }}
