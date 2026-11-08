@@ -244,13 +244,15 @@ func serveLibraryHTTP() {
 		}), "could not encode library info")
 	})
 
-	// serve css/js
+	// serve css/js. Short max-age: no requests while fresh, and edits still
+	// reach browsers within a couple of minutes (then a cheap 304 revalidation).
+	staticFiles := http.StripPrefix("/static/", http.FileServer(http.Dir("./static")))
 	http.Handle(
 		"/static/",
-		http.StripPrefix(
-			"/static/",
-			http.FileServer(http.Dir("./static")),
-		),
+		http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			w.Header().Set("Cache-Control", "max-age=120")
+			staticFiles.ServeHTTP(w, r)
+		}),
 	)
 
 	// server cover getter

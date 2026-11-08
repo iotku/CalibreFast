@@ -590,11 +590,14 @@ input[type="number"],
 .book-page {
     display: grid;
     grid-template-columns: 280px minmax(0, 1fr);
+    /* Header row hugs its content; when the cover is taller than the text,
+       the slack goes below the info instead of between buttons and info. */
+    grid-template-rows: auto 1fr;
     grid-template-areas:
         "cover header"
         "cover info";
     column-gap: 2.5rem;
-    row-gap: 0.5rem;
+    row-gap: 1.25rem;
     max-width: 1080px;
     margin: auto;
     padding: 2rem;
@@ -695,7 +698,7 @@ input[type="number"],
     flex-wrap: wrap;
     align-items: center;
     gap: 0.65rem;
-    margin: 1rem 0 1.5rem 0;
+    margin: 1rem 0 0;
 }
 
 #read-buttons {
@@ -782,7 +785,7 @@ input[type="number"],
 }
 
 .description {
-    margin-top: 1.75rem;
+    margin-top: 1.25rem;
     line-height: 1.65;
     word-break: break-word;
     overflow-wrap: break-word;
@@ -856,6 +859,11 @@ input[type="number"],
 .modal-content .book-page {
     padding: 0;
     max-width: 100%;
+}
+
+/* Long titles must not run under the close button */
+.modal-content .title-row {
+    padding-right: 2.5rem;
 }
 
 #modal-close {
@@ -940,7 +948,11 @@ input[type="number"],
 
     .title-row {
         gap: 0.5rem;
-        margin-bottom: 0.5rem;
+    }
+
+    /* clear the fixed (44px) close button */
+    .modal-content .title-row {
+        padding-right: 52px;
     }
 
     .title-row h1 {
@@ -953,11 +965,14 @@ input[type="number"],
         min-width: 36px;
         min-height: 36px;
         padding: 6px;
+        box-sizing: border-box;
+        /* keep the 36px touch target without growing the line box */
+        margin: -9px 0;
     }
 
     .book-actions {
         gap: 0.5rem;
-        margin: 0.75rem 0 1rem 0;
+        margin: 0.75rem 0 0;
     }
 
     .btn-action {
@@ -1027,10 +1042,12 @@ input[type="number"],
     .book-page {
         display: grid;
         grid-template-columns: 160px minmax(0, 1fr);
+        grid-template-rows: auto 1fr;
         grid-template-areas:
             "cover header"
             "cover info";
         column-gap: 1.25rem;
+        row-gap: 1rem;
     }
 
     .book-page-cover {
@@ -1212,8 +1229,13 @@ input[type="number"],
 
 .icon-link {
     display: inline-flex;
+    vertical-align: middle;
     color: inherit;
     opacity: 0.55;
+}
+
+.book-authors {
+    margin-top: 0.35rem;
 }
 
 .icon-link:hover {
