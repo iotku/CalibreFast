@@ -2,22 +2,26 @@
 <html lang="en">
 <head>
     <meta charset="utf-8">
-    <title>{{ .Title }}</title>
+    <title>{{ .Name }} — {{ .Title }}</title>
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <link rel="stylesheet" href="/static/style.css">
-    <script src="https://unpkg.com/htmx.org@4.0.0/dist/htmx.min.js"></script>
-    <script src="https://unpkg.com/htmx.org@4.0.0/dist/ext/hx-preload.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/htmx.org@4.0.1/dist/htmx.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/htmx.org@4.0.1/dist/ext/hx-preload.js"></script>
 </head>
 <body>
 <header class="top-bar">
-    <button class="btn-back" onclick="history.back()">&#8592; Back</button>
-    <div class="top-bar-center-abs">
-        <h1 id="page-title" class="title"></h1>
+    <div class="top-bar-left">
+        <button class="btn-back" onclick="history.back()">&#8592; Back</button>
+        <h1 class="title">{{ .Name }}</h1>
     </div>
-    <div></div>
+    <div class="top-bar-right">
+        <button id="prev-page" class="btn-nav" aria-label="Previous page">&lsaquo;</button>
+        <input id="page-input" type="number" min="1" value="1" class="input-page" />
+        <span>/ <span id="total-pages">—</span></span>
+        <button id="next-page" class="btn-nav" aria-label="Next page">&rsaquo;</button>
+    </div>
 </header>
-<div id="books"></div>
-<div id="load-more" class="load-more-sentinel"></div>
+<div id="books" data-page-url="{{ .PageURL }}&page={n}" data-total-pages="{{ .TotalPages }}"></div>
 <p id="status" class="status-message"></p>
 <div id="book-modal" class="modal-overlay">
     <div class="modal-content">
@@ -25,6 +29,7 @@
         <div id="modal-body"></div>
     </div>
 </div>
-<script type="module" src="/static/filtered.js"></script>
+<div id="scroll-badge"></div>
+<script type="module" src="/static/app-htmx.js"></script>
 </body>
 </html>

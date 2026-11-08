@@ -1172,6 +1172,19 @@ input[type="number"],
     line-height: 2;
 }
 
+.agg-item {
+    color: var(--text-primary, #eee);
+    text-decoration: none;
+    padding: 4px 8px;
+    display: inline-block;
+    opacity: var(--o, 1);
+    transition: opacity 0.15s;
+}
+
+.agg-item:hover {
+    opacity: 1;
+}
+
 .meta-link {
     color: var(--text-link);
     text-decoration: none;

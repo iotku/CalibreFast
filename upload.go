@@ -428,6 +428,7 @@ func uploadHandler(w http.ResponseWriter, r *http.Request) {
 	}
 
 	generatePage1()
+	refreshAllCaches()
 
 	w.Header().Set("Content-Type", "application/json")
 	if err := json.NewEncoder(w).Encode(results); err != nil {
@@ -630,7 +631,7 @@ func cleanupTemps(entries []formatEntry) {
 // generatePage1 rewrites pages/page1.json with the 30 most recently added books.
 func generatePage1() {
 	rows, err := calibreDB.Query(`
-		SELECT title, author_sort, series_index, pubdate, path, uuid
+		SELECT title, author_sort, series_index, pubdate, path, uuid, last_modified
 		FROM books
 		ORDER BY timestamp DESC
 		LIMIT 30`)
@@ -643,7 +644,7 @@ func generatePage1() {
 	books := make([]Book, 0, 30)
 	for rows.Next() {
 		var b Book
-		if err := rows.Scan(&b.Title, &b.AuthorSort, &b.SeriesIndex, &b.PubDate, &b.Path, &b.UUID); err != nil {
+		if err := rows.Scan(&b.Title, &b.AuthorSort, &b.SeriesIndex, &b.PubDate, &b.Path, &b.UUID, &b.LastModified); err != nil {
 			continue
 		}
 		uuidPathIndex.Store(b.UUID, b.Path)

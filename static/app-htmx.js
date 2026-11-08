@@ -5,6 +5,11 @@
  * Pages near the viewport are real; all others are fixed-height placeholders.
  * Scroll limits are therefore physical, not "end of what's loaded", so no
  * input method (keys, fling, scrollbar) can run away by chasing the loader.
+ *
+ * Data source is configured on #books:
+ *   data-page-url    URL template, "{n}" -> page number (default: static JSON)
+ *   data-total-pages total page count; if absent, fetched from /library-info
+ * Page nav controls (#page-input, #prev-page, #next-page) are optional.
  */
 
 import { renderBooksPage } from "./utils.js";
@@ -40,6 +45,14 @@ let historyPage = null; // page waiting to be written to the URL
 const $ = (id) => document.getElementById(id);
 const headerHeight = () => document.querySelector(".top-bar").offsetHeight;
 const pageEl = (n) => $("books").children[n - 1];
+const booksCfg = $("books").dataset;
+const pageUrl = (n) =>
+    (booksCfg.pageUrl || "/pages/page{n}.json").replace("{n}", n);
+
+function setStatus(text) {
+    const el = $("status");
+    if (el) el.textContent = text;
+}
 
 function clampPage(n) {
     const max = window.totalPages || Infinity;
@@ -128,12 +141,16 @@ export function setupCoverStates(container) {
 
 async function loadLibraryInfo() {
     try {
-        const res = await fetch("/library-info");
-        const info = await res.json();
-        window.totalPages = info.total_pages;
+        if (booksCfg.totalPages !== undefined) {
+            window.totalPages = parseInt(booksCfg.totalPages, 10) || 0;
+        } else {
+            const res = await fetch("/library-info");
+            const info = await res.json();
+            window.totalPages = info.total_pages;
+        }
 
-        $("total-pages").textContent = window.totalPages;
-        $("page-input").max = window.totalPages; // arrow keys clamp natively
+        if ($("total-pages")) $("total-pages").textContent = window.totalPages;
+        if ($("page-input")) $("page-input").max = window.totalPages; // arrow keys clamp natively
         updateNavigationButtons();
     } catch (err) {
         console.error("Failed to load library info:", err);
@@ -146,10 +163,11 @@ async function loadLibraryInfo() {
  */
 async function buildDocument(start) {
     const total = window.totalPages;
-    if (!total) return;
+    const empty = booksCfg.emptyText ?? "No books found.";
+    if (!total) return setStatus(empty);
 
     const books = await loadPageData(start);
-    if (!books || books.length === 0) return;
+    if (!books || books.length === 0) return setStatus(empty);
 
     const booksEl = $("books");
     booksEl.innerHTML = "";
@@ -177,7 +195,7 @@ async function buildDocument(start) {
 
 async function fetchPage(page, signal) {
     try {
-        const res = await fetch(`/pages/page${page}.json`, {
+        const res = await fetch(pageUrl(page), {
             signal,
             priority: "high",
         });
@@ -356,7 +374,7 @@ function scrollToPage(page, { syncInput = true } = {}) {
     if (!el) return;
 
     targetPage = page;
-    if (syncInput) $("page-input").value = page;
+    if (syncInput && $("page-input")) $("page-input").value = page;
 
     const delta = pageBounds(el).top - headerHeight();
     if (delta) scrollDir = delta > 0 ? 1 : -1;
@@ -414,7 +432,7 @@ function updatePageLabel(page) {
     lastLabelPage = page;
     targetPage = page;
     // Don't overwrite what the user is typing.
-    if (document.activeElement !== $("page-input")) {
+    if ($("page-input") && document.activeElement !== $("page-input")) {
         $("page-input").value = page;
     }
     scheduleHistoryUpdate(page);
@@ -435,10 +453,12 @@ function flushHistory() {
     historyPage = null;
     try {
         // Keep the hash and state so an open modal's entry isn't clobbered.
+        const params = new URLSearchParams(window.location.search);
+        params.set("page", page);
         history.replaceState(
             { ...history.state, page },
             "",
-            `?page=${page}${window.location.hash}`,
+            `?${params}${window.location.hash}`,
         );
     } catch (err) {
         console.warn("history.replaceState throttled:", err);
@@ -446,8 +466,8 @@ function flushHistory() {
 }
 
 function updateNavigationButtons() {
-    $("prev-page").disabled = targetPage <= 1;
-    $("next-page").disabled = targetPage >= window.totalPages;
+    if ($("prev-page")) $("prev-page").disabled = targetPage <= 1;
+    if ($("next-page")) $("next-page").disabled = targetPage >= window.totalPages;
 }
 
 /* ------------------------------------------------------------------ */
@@ -626,22 +646,24 @@ document.addEventListener("error", onCoverSettled, true);
 
 const pageInput = $("page-input");
 
-// Arrow keys / spinner / typing: jump immediately, leave the field alone.
-pageInput.addEventListener("input", () => {
-    const n = parseInt(pageInput.value, 10);
-    if (Number.isNaN(n)) return; // mid-edit (empty field)
-    scrollToPage(n, { syncInput: false });
-});
+if (pageInput) {
+    // Arrow keys / spinner / typing: jump immediately, leave the field alone.
+    pageInput.addEventListener("input", () => {
+        const n = parseInt(pageInput.value, 10);
+        if (Number.isNaN(n)) return; // mid-edit (empty field)
+        scrollToPage(n, { syncInput: false });
+    });
 
-// Blur / Enter: normalize whatever is in the field.
-pageInput.addEventListener("change", () => {
-    const n = parseInt(pageInput.value, 10);
-    if (Number.isNaN(n)) {
-        pageInput.value = targetPage;
-        return;
-    }
-    pageInput.value = clampPage(n);
-});
+    // Blur / Enter: normalize whatever is in the field.
+    pageInput.addEventListener("change", () => {
+        const n = parseInt(pageInput.value, 10);
+        if (Number.isNaN(n)) {
+            pageInput.value = targetPage;
+            return;
+        }
+        pageInput.value = clampPage(n);
+    });
+}
 
-$("next-page").addEventListener("click", () => scrollToPage(targetPage + 1));
-$("prev-page").addEventListener("click", () => scrollToPage(targetPage - 1));
+$("next-page")?.addEventListener("click", () => scrollToPage(targetPage + 1));
+$("prev-page")?.addEventListener("click", () => scrollToPage(targetPage - 1));

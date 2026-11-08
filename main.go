@@ -65,13 +65,13 @@ func initCalibreDB() {
 }
 
 type Book struct {
-	Title       string  `json:"title"`
-	AuthorSort  string  `json:"author_sort"`
-	SeriesIndex float64 `json:"series_index"`
-	PubDate     string  `json:"pubdate"`
-	Path        string  `json:"path"` // e.g "Author Name/Book Title" not direct link to specific file format
-	UUID        string  `json:"uuid"`
-	LastModified string `json:"last_modified"`
+	Title        string  `json:"title"`
+	AuthorSort   string  `json:"author_sort"`
+	SeriesIndex  float64 `json:"series_index"`
+	PubDate      string  `json:"pubdate"`
+	Path         string  `json:"path"` // e.g "Author Name/Book Title" not direct link to specific file format
+	UUID         string  `json:"uuid"`
+	LastModified string  `json:"last_modified"`
 }
 
 type LibraryInfo struct {
@@ -125,7 +125,26 @@ func main() {
 	}
 	generatePages()
 	initCalibreDB()
+	preloadCaches()
 	serveLibraryHTTP()
+}
+
+const searchWhere = `
+FROM books b
+LEFT JOIN books_authors_link bal ON bal.book = b.id
+LEFT JOIN authors a ON a.id = bal.author
+WHERE (b.title LIKE ? OR a.name LIKE ? OR a.sort LIKE ?)`
+
+// searchTotalPages counts matching books and converts to a page count.
+func searchTotalPages(q string) int {
+	like := "%" + q + "%"
+	var count int
+	err := calibreDB.QueryRow(`SELECT COUNT(DISTINCT b.id) `+searchWhere, like, like, like).Scan(&count)
+	if err != nil {
+		log.Println("search count error:", err)
+		return 0
+	}
+	return (count + filteredBooksPerPage - 1) / filteredBooksPerPage
 }
 
 func searchHandler(w http.ResponseWriter, r *http.Request) {
@@ -141,7 +160,7 @@ func searchHandler(w http.ResponseWriter, r *http.Request) {
 	}
 
 	like := "%" + q + "%"
-	offset := (page - 1) * 50
+	offset := (page - 1) * filteredBooksPerPage
 
 	query := `
 SELECT
@@ -149,18 +168,13 @@ SELECT
     b.title,
     GROUP_CONCAT(COALESCE(a.sort, a.name, ''), ' & ') as author_sort,
     b.pubdate,
-    b.path
-FROM books b
-LEFT JOIN books_authors_link bal ON bal.book = b.id
-LEFT JOIN authors a ON a.id = bal.author
-WHERE (b.title LIKE ? OR a.name LIKE ? OR a.sort LIKE ?)
-GROUP BY b.uuid, b.title, b.pubdate, b.path
+    b.path,
+    b.last_modified` + searchWhere + `
+GROUP BY b.id
 ORDER BY b.sort
-LIMIT 50 OFFSET ?`
-	args := []any{like, like, like, offset}
+LIMIT ? OFFSET ?`
 
-	args = append(args, offset)
-	rows, err := calibreDB.Query(query, args...)
+	rows, err := calibreDB.Query(query, like, like, like, filteredBooksPerPage, offset)
 	if err != nil {
 		log.Println("search error:", err)
 		http.Error(w, "search failed", http.StatusInternalServerError)
@@ -169,10 +183,7 @@ LIMIT 50 OFFSET ?`
 	defer func(rows *sql.Rows) {
 		logErr(rows.Close(), "could not close rows in searchHandler")
 	}(rows)
-	err = encodeBooksJSONFromRows(rows, w)
-	if err != nil {
-		panic("failed to encode books json: " + err.Error())
-	}
+	logErr(encodeBooksJSONFromRows(rows, w), "failed to encode search results")
 }
 
 // encodeBooksJSONFromRows runs for dynamic operations that hit the database to
@@ -319,7 +330,12 @@ func serveLibraryHTTP() {
 	http.HandleFunc("/book/get/", bookHandler)
 
 	http.HandleFunc("/search", func(w http.ResponseWriter, r *http.Request) {
-		err := templates.ExecuteTemplate(w, "search.html", PageData{Title: SiteTitle})
+		q := strings.TrimSpace(r.URL.Query().Get("q"))
+		data := SearchPageData{Title: SiteTitle, Query: q}
+		if q != "" {
+			data.TotalPages = searchTotalPages(q)
+		}
+		err := templates.ExecuteTemplate(w, "search.html", data)
 		if err != nil {
 			http.Error(w, err.Error(), 500)
 		}
@@ -360,37 +376,10 @@ func serveLibraryHTTP() {
 	})
 
 	// page routes
-	for _, page := range []string{"authors", "publishers", "tags"} {
-		p := page
-		http.HandleFunc("/"+p, func(w http.ResponseWriter, r *http.Request) {
-			err := templates.ExecuteTemplate(w, "aggregate.html", PageData{Title: SiteTitle})
-			if err != nil {
-				http.Error(w, err.Error(), http.StatusInternalServerError)
-			}
-		})
+	for _, c := range []string{"authors", "publishers", "tags"} {
+		http.HandleFunc("/"+c, aggregatePageHandler(c))
+		http.HandleFunc("/"+strings.TrimSuffix(c, "s")+"/", filteredPageHandler(strings.TrimSuffix(c, "s")))
 	}
-
-	http.HandleFunc("/author/", func(w http.ResponseWriter, r *http.Request) {
-		if r.URL.Query().Get("api") == "1" {
-			filteredBooksHandler(w, r, "author")
-			return
-		}
-		logErr(templates.ExecuteTemplate(w, "filtered.html", PageData{Title: SiteTitle}), "failed to execute author filtered template")
-	})
-	http.HandleFunc("/publisher/", func(w http.ResponseWriter, r *http.Request) {
-		if r.URL.Query().Get("api") == "1" {
-			filteredBooksHandler(w, r, "publisher")
-			return
-		}
-		logErr(templates.ExecuteTemplate(w, "filtered.html", PageData{Title: SiteTitle}), "failed to execute publisher filtered template")
-	})
-	http.HandleFunc("/tag/", func(w http.ResponseWriter, r *http.Request) {
-		if r.URL.Query().Get("api") == "1" {
-			filteredBooksHandler(w, r, "tag")
-			return
-		}
-		logErr(templates.ExecuteTemplate(w, "filtered.html", PageData{Title: SiteTitle}), "failed to execute tag filtered template")
-	})
 	log.Println("Listening on :" + hostPort)
 	log.Fatal(http.ListenAndServe(":"+hostPort, nil))
 }
@@ -598,6 +587,7 @@ func applyMetadataHandler(w http.ResponseWriter, r *http.Request) {
 
 	// Refresh page1.json cache
 	generatePage1()
+	refreshAllCaches()
 
 	w.Header().Set("Content-Type", "application/json")
 	json.NewEncoder(w).Encode(map[string]any{
@@ -699,8 +689,8 @@ func generatePages() {
 
 		// Trunicate timestamps to seconds
 		t, _ := time.Parse(time.RFC3339Nano, book.LastModified) // We do have consistant times in the databse now right? right?
-		timeStr := t.Format("20060102150405") // Truncate to seconds for cache-busting
-		book.LastModified = timeStr // cache-busters!
+		timeStr := t.Format("20060102150405")                   // Truncate to seconds for cache-busting
+		book.LastModified = timeStr                             // cache-busters!
 
 		// cache last Modified time for book from database
 		modTimeCache.Store(book.UUID, timeStr)
