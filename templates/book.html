@@ -7,26 +7,19 @@
         <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     </head>
     <body>
+        {{ $readLink := "" }}
+        {{ range .Formats }}
+            {{ if eq . "pdf" }}
+                {{ if not $readLink }}
+                    {{ $readLink = printf "/read-pdf?uuid=%s" $.UUID }}
+                {{ end }}
+            {{ end }}
+            {{ if eq . "epub" }}
+                {{ $readLink = printf "/read?uuid=%s" $.UUID }}
+            {{ end }}
+        {{ end }}
         <div class="book-page">
-            <div class="book-page-cover">
-                <img
-                    class="thumbnail"
-                    alt="Cover"
-                    src="/cover-thumb/{{ .UUID }}{{ if .ModTime }}?t={{ .ModTime }}{{ end }}"
-                    data-full="/cover/{{ .UUID }}{{ if .ModTime }}?t={{ .ModTime }}{{ end }}"
-                    onload="
-                        const full = this.dataset.full;
-                        if (!full) return;
-                        delete this.dataset.full;
-                        const img = new Image();
-                        img.onload = () => {
-                            this.src = full;
-                        };
-                        img.src = full;
-                    "
-                />
-            </div>
-            <div class="book-page-info">
+            <div class="book-header">
                 <div class="title-row">
                     <h1>{{ .Title }}</h1>
                     <a
@@ -58,7 +51,7 @@
                     <div id="read-buttons">
                         {{ range .Formats }} {{ if eq . "epub" }}
                         <a
-                            class="btn-action btn-read btn-action-primary"
+                            class="btn-action btn-action-read"
                             href="/read?uuid={{ $.UUID }}"
                         >
                             <svg class="action-icon" viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
@@ -69,7 +62,7 @@
                         </a>
                         {{ else if eq . "pdf" }}
                         <a
-                            class="btn-action btn-read btn-action-primary"
+                            class="btn-action btn-action-read"
                             href="/read-pdf?uuid={{ $.UUID }}"
                         >
                             <svg class="action-icon" viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
@@ -82,7 +75,7 @@
                     </div>
                     {{ range .Formats }}
                     <a
-                        class="btn-action download-btn"
+                        class="btn-action btn-action-download"
                         href="/download/{{ $.UUID }}/{{ . }}"
                     >
                         <svg class="action-icon" viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
@@ -94,7 +87,7 @@
                     </a>
                     {{ end }}
                     <a
-                        class="btn-action edit-btn"
+                        class="btn-action btn-action-edit"
                         href="/book/edit/{{ .UUID }}"
                         title="Edit metadata"
                     >
@@ -107,6 +100,54 @@
                         <span>Edit metadata</span>
                     </a>
                 </div>
+            </div>
+            <div class="book-page-cover">
+                {{ if $readLink }}
+                <a href="{{ $readLink }}" class="cover-link" title="Read book" aria-label="Read book">
+                    <img
+                        class="thumbnail"
+                        alt="Cover"
+                        src="/cover-thumb/{{ .UUID }}{{ if .ModTime }}?t={{ .ModTime }}{{ end }}"
+                        data-full="/cover/{{ .UUID }}{{ if .ModTime }}?t={{ .ModTime }}{{ end }}"
+                        onload="
+                            const full = this.dataset.full;
+                            if (!full) return;
+                            delete this.dataset.full;
+                            const img = new Image();
+                            img.onload = () => {
+                                this.src = full;
+                            };
+                            img.src = full;
+                        "
+                    />
+                    <span class="cover-read-hint">
+                        <svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                            <path d="M2 3h6a4 4 0 0 1 4 4v14a3 3 0 0 0-3-3H2z" />
+                            <path d="M22 3h-6a4 4 0 0 0-4 4v14a3 3 0 0 1 3-3h7z" />
+                        </svg>
+                        <span>Read</span>
+                    </span>
+                </a>
+                {{ else }}
+                <img
+                    class="thumbnail"
+                    alt="Cover"
+                    src="/cover-thumb/{{ .UUID }}{{ if .ModTime }}?t={{ .ModTime }}{{ end }}"
+                    data-full="/cover/{{ .UUID }}{{ if .ModTime }}?t={{ .ModTime }}{{ end }}"
+                    onload="
+                        const full = this.dataset.full;
+                        if (!full) return;
+                        delete this.dataset.full;
+                        const img = new Image();
+                        img.onload = () => {
+                            this.src = full;
+                        };
+                        img.src = full;
+                    "
+                />
+                {{ end }}
+            </div>
+            <div class="book-page-info">
                 <div class="meta-row">
                     <strong>Author:</strong>
                     {{ range .Authors }}
