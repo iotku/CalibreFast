@@ -1,5 +1,6 @@
 import { createChipInput, parseList } from "./chips.js";
 import { attachSuggest } from "./suggest.js";
+import { createDescriptionEditor } from "./description.js";
 
 const FIELDS = [
   { key: "title", kind: "string" },
@@ -545,6 +546,10 @@ export async function mountMetadataEditor(uuid, form) {
         return chips;
       })
       .filter(Boolean);
+
+    // Description: formatted preview + raw HTML tabs over the textarea.
+    const descriptionInput = form.querySelector('[name="description"]');
+    if (descriptionInput) createDescriptionEditor(descriptionInput);
 
     // Library-backed suggestions for the plain list/single-value fields.
     const creatorsInput = form.querySelector('[name="creators"]');
