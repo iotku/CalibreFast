@@ -10,14 +10,17 @@
 
 <body>
     {{ $readLink := "" }}
+    {{ $readFormat := "" }}
     {{ range .Formats }}
     {{ if eq . "pdf" }}
     {{ if not $readLink }}
     {{ $readLink = printf "/read-pdf?uuid=%s" $.UUID }}
+    {{ $readFormat = "pdf" }}
     {{ end }}
     {{ end }}
     {{ if eq . "epub" }}
     {{ $readLink = printf "/read?uuid=%s" $.UUID }}
+    {{ $readFormat = "epub" }}
     {{ end }}
     {{ end }}
     <div class="book-page">
@@ -36,19 +39,21 @@
                 <div id="read-buttons">
                     {{ range .Formats }} {{ if eq . "epub" }}
                     <a class="btn-action btn-action-read" href="/read?uuid={{ $.UUID }}">
-                        <svg class="action-icon" viewBox="0 0 24 24" width="16" height="16" fill="none"
+                        <svg class="action-icon action-icon-epub" viewBox="0 0 24 24" width="16" height="16" fill="none"
                             stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-                            <path d="M2 3h6a4 4 0 0 1 4 4v14a3 3 0 0 0-3-3H2z" />
-                            <path d="M22 3h-6a4 4 0 0 0-4 4v14a3 3 0 0 1 3-3h7z" />
+                            <path d="M4 19.5v-15A2.5 2.5 0 0 1 6.5 2H20v20H6.5a2.5 2.5 0 0 1-2.5-2.5Z" />
+                            <path d="M6 6h10" />
+                            <text x="12" y="16" font-size="5.5" font-weight="800" text-anchor="middle" fill="currentColor" stroke="none" font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif" letter-spacing="-0.3px">EPUB</text>
                         </svg>
                         <span>Read EPUB</span>
                     </a>
                     {{ else if eq . "pdf" }}
                     <a class="btn-action btn-action-read" href="/read-pdf?uuid={{ $.UUID }}">
-                        <svg class="action-icon" viewBox="0 0 24 24" width="16" height="16" fill="none"
+                        <svg class="action-icon action-icon-pdf" viewBox="0 0 24 24" width="16" height="16" fill="none"
                             stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-                            <path d="M2 3h6a4 4 0 0 1 4 4v14a3 3 0 0 0-3-3H2z" />
-                            <path d="M22 3h-6a4 4 0 0 0-4 4v14a3 3 0 0 1 3-3h7z" />
+                            <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z" />
+                            <polyline points="14 2 14 8 20 8" />
+                            <text x="12" y="17.5" font-size="6.5" font-weight="800" text-anchor="middle" fill="currentColor" stroke="none" font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif" letter-spacing="-0.3px">PDF</text>
                         </svg>
                         <span>Read PDF</span>
                     </a>
@@ -91,12 +96,23 @@
                             img.src = full;
                         " />
                 <span class="cover-read-hint">
+                    {{ if eq $readFormat "pdf" }}
                     <svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2"
                         stroke-linecap="round" stroke-linejoin="round">
-                        <path d="M2 3h6a4 4 0 0 1 4 4v14a3 3 0 0 0-3-3H2z" />
-                        <path d="M22 3h-6a4 4 0 0 0-4 4v14a3 3 0 0 1 3-3h7z" />
+                        <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z" />
+                        <polyline points="14 2 14 8 20 8" />
+                        <text x="12" y="17.5" font-size="6.5" font-weight="800" text-anchor="middle" fill="currentColor" stroke="none" font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif" letter-spacing="-0.3px">PDF</text>
                     </svg>
-                    <span>Read</span>
+                    <span>Read PDF</span>
+                    {{ else }}
+                    <svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2"
+                        stroke-linecap="round" stroke-linejoin="round">
+                        <path d="M4 19.5v-15A2.5 2.5 0 0 1 6.5 2H20v20H6.5a2.5 2.5 0 0 1-2.5-2.5Z" />
+                        <path d="M6 6h10" />
+                        <text x="12" y="16" font-size="5.5" font-weight="800" text-anchor="middle" fill="currentColor" stroke="none" font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif" letter-spacing="-0.3px">EPUB</text>
+                    </svg>
+                    <span>Read EPUB</span>
+                    {{ end }}
                 </span>
             </a>
             {{ else }}
