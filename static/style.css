@@ -732,6 +732,13 @@ input[type="number"],
     cursor: pointer;
 }
 
+/* Dropdown panels are --bg-elevated already: hover/current need a lighter tint. */
+.tb-menu-list a:hover,
+.tb-menu-list button:hover,
+.tb-menu-list a[aria-current="page"] {
+    background: rgba(255, 255, 255, 0.08);
+}
+
 .tb-menu-list hr {
     width: 100%;
     margin: 4px 0;
@@ -773,6 +780,11 @@ input[type="number"],
 
     .tb-nav a[aria-current="page"]::after {
         display: none;
+    }
+
+    .tb-nav a:hover,
+    .tb-nav a[aria-current="page"] {
+        background: rgba(255, 255, 255, 0.08);
     }
 
     .tb-nav a[aria-current="page"] {
