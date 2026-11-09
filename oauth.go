@@ -10,7 +10,7 @@ package main
 //   - Accounts are matched by the provider's stable user id, never by email,
 //     so someone can't take over an account by registering its email address
 //     with a provider. Linking is explicit, from the account page.
-//   - New accounts are only created on sign-in with -open-registration.
+//   - New accounts are only created on sign-in with -allow-registrations.
 //
 // Configure with environment variables (kept out of `ps`):
 //   CF_GITHUB_CLIENT_ID / CF_GITHUB_CLIENT_SECRET
@@ -307,7 +307,7 @@ var (
 )
 
 // resolveOAuthUser maps a provider identity to a user: link (linkUserID != 0),
-// existing link, or (with -open-registration) a new account.
+// existing link, or (with -allow-registrations) a new account.
 func resolveOAuthUser(provider string, ou *oauthUser, linkUserID int64) (int64, string, error) {
 	var owner int64
 	err := appDB.QueryRow(`SELECT user_id FROM identities WHERE provider = ? AND subject = ?`, provider, ou.Subject).Scan(&owner)
@@ -342,7 +342,7 @@ func resolveOAuthUser(provider string, ou *oauthUser, linkUserID int64) (int64, 
 		return owner, "", nil
 	}
 
-	if !openRegistration {
+	if !allowRegistrations {
 		return 0, "", errNotLinked
 	}
 	u, err := createUserWithFreeName(usernameFrom(ou))

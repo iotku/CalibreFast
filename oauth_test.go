@@ -102,7 +102,7 @@ func signedInAs(t *testing.T, app *httptest.Server, client *http.Client) string 
 
 func TestOAuthClosedRegistrationRefusesUnknown(t *testing.T) {
 	setupTestAppDB(t)
-	openRegistration = false
+	allowRegistrations = false
 	srv, p := fakeProvider(t, 42, "octo")
 	defer srv.Close()
 	app, client := oauthApp(t, p)
@@ -121,8 +121,8 @@ func TestOAuthClosedRegistrationRefusesUnknown(t *testing.T) {
 
 func TestOAuthOpenRegistrationCreatesAndReuses(t *testing.T) {
 	setupTestAppDB(t)
-	openRegistration = true
-	defer func() { openRegistration = false }()
+	allowRegistrations = true
+	defer func() { allowRegistrations = false }()
 	srv, p := fakeProvider(t, 42, "octo")
 	defer srv.Close()
 	app, client := oauthApp(t, p)
@@ -149,7 +149,7 @@ func TestOAuthOpenRegistrationCreatesAndReuses(t *testing.T) {
 
 func TestOAuthLinkFromAccount(t *testing.T) {
 	setupTestAppDB(t)
-	openRegistration = false
+	allowRegistrations = false
 	u, _ := createUser("carol", "longenough-pw", false)
 	srv, p := fakeProvider(t, 7, "carol-gh")
 	defer srv.Close()
@@ -176,8 +176,8 @@ func TestOAuthLinkFromAccount(t *testing.T) {
 
 func TestOAuthStateMustMatch(t *testing.T) {
 	setupTestAppDB(t)
-	openRegistration = true
-	defer func() { openRegistration = false }()
+	allowRegistrations = true
+	defer func() { allowRegistrations = false }()
 	srv, p := fakeProvider(t, 9, "mallory")
 	defer srv.Close()
 	app, client := oauthApp(t, p)

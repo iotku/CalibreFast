@@ -168,9 +168,9 @@ func main() {
 	flag.StringVar(&hostPort, "port", "8080", "port to listen on")
 	flag.BoolVar(&allowWrites, "allow-writes", false, "allow admins to change the library (metadata edits, uploads, covers, groups)")
 	flag.StringVar(&dataDir, "datadir", "data", "where CalibreFast keeps its own database (accounts, favorites, progress, shelves)")
-	flag.BoolVar(&requireLogin, "require-login", false, "require signing in to browse anything (even the catalog)")
-	flag.BoolVar(&publicRead, "public-read", false, "public read-only mode: let anonymous visitors read and download books (by default they can only browse the catalog)")
-	flag.BoolVar(&openRegistration, "open-registration", false, "let anyone create an account (password, or GitHub/Google sign-in)")
+	flag.BoolVar(&publicCatalog, "public", false, "let anonymous visitors browse the library catalog (by default everything requires signing in)")
+	flag.BoolVar(&publicRead, "public-read", false, "public read-only mode: anonymous visitors can also read and download books (implies -public)")
+	flag.BoolVar(&allowRegistrations, "allow-registrations", false, "let anyone create an account from the web interface (only on trusted networks: bots will try)")
 	flag.StringVar(&publicURL, "public-url", "", "external base URL, e.g. https://books.example.com (needed for GitHub/Google sign-in)")
 	createUserName := flag.String("create-user", "", "create a user (or reset their password) and exit; password from $CF_PASSWORD or stdin")
 	createAdmin := flag.Bool("admin", false, "with -create-user: make the user an admin")
@@ -186,12 +186,26 @@ func main() {
 		}
 		return
 	}
+	if publicRead {
+		publicCatalog = true
+	}
 	pruneSessions()
 	configureOAuth()
 	if allowWrites {
 		log.Println("-allow-writes: admins can change the library")
 	} else {
 		log.Println("read-only mode: start with -allow-writes to let admins edit, upload and group")
+	}
+	switch {
+	case publicRead:
+		log.Println("-public-read: anyone who can reach this server can browse, read and download every book")
+	case publicCatalog:
+		log.Println("-public: anyone who can reach this server can browse the catalog; reading needs an account")
+	default:
+		log.Println("private library: sign-in required for everything (use -public to open the catalog)")
+	}
+	if allowRegistrations {
+		log.Println("WARNING: -allow-registrations: anyone who can reach this server can create an account; bots will try. Only use on trusted networks")
 	}
 	if adminCount() == 0 {
 		log.Println("no admin account yet: create one with  -create-user NAME -admin")

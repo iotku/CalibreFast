@@ -29,11 +29,11 @@ import (
 // ---------------------------------------------------------------------------
 
 var (
-	dataDir          string // -datadir: where calibrefast.db lives
-	requireLogin     bool   // -require-login: anonymous visitors can't browse
-	publicRead       bool   // -public-read: anonymous visitors may read/download books
-	openRegistration bool   // -open-registration: anyone may create an account
-	publicURL        string // -public-url: external base URL (OAuth redirects, Secure cookies)
+	dataDir            string // -datadir: where calibrefast.db lives
+	publicCatalog      bool   // -public: anonymous visitors may browse the catalog
+	publicRead         bool   // -public-read: anonymous visitors may also read/download (implies -public)
+	allowRegistrations bool   // -allow-registrations: anyone may create an account from the web
+	publicURL          string // -public-url: external base URL (OAuth redirects, Secure cookies)
 )
 
 const (
@@ -267,21 +267,24 @@ func canEditLibrary(r *http.Request) bool {
 	return allowWrites && isAdmin(r)
 }
 
-// publicPaths stay reachable with -require-login (sign-in itself, assets).
+// isPublicPath: reachable without signing in even when the library is
+// private (sign-in and registration themselves, and static assets).
 func isPublicPath(p string) bool {
-	return p == "/login" || p == "/logout" || p == "/api/me" ||
+	return p == "/login" || p == "/logout" || p == "/register" || p == "/api/me" ||
 		strings.HasPrefix(p, "/auth/") || strings.HasPrefix(p, "/static/")
 }
 
 // withAuth loads the session user into the request context and, with
-// -require-login, keeps anonymous visitors out of everything but sign-in.
+// unless the server runs with -public, keeps anonymous visitors out of
+// everything but sign-in: a private library doesn't expose its catalog,
+// covers or book UUIDs.
 func withAuth(h http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		u := userFromSession(r)
 		if u != nil {
 			r = r.WithContext(context.WithValue(r.Context(), userKey, u))
 		}
-		if requireLogin && u == nil && !isPublicPath(r.URL.Path) {
+		if !publicCatalog && u == nil && !isPublicPath(r.URL.Path) {
 			if wantsHTML(r) {
 				http.Redirect(w, r, "/login?next="+url.QueryEscape(r.URL.RequestURI()), http.StatusSeeOther)
 			} else {
@@ -410,7 +413,7 @@ func safeNext(next string) string {
 func renderAuthPage(w http.ResponseWriter, name string, data AuthPageData, status int) {
 	data.Title = SiteTitle
 	data.Providers = enabledProviders()
-	data.Registration = openRegistration
+	data.Registration = allowRegistrations
 	w.Header().Set("Content-Type", "text/html; charset=utf-8")
 	w.Header().Set("Cache-Control", "no-store")
 	w.WriteHeader(status)
@@ -453,7 +456,7 @@ func loginHandler(w http.ResponseWriter, r *http.Request) {
 }
 
 func registerHandler(w http.ResponseWriter, r *http.Request) {
-	if !openRegistration {
+	if !allowRegistrations {
 		http.Error(w, "registration is closed; ask an admin for an account", http.StatusForbidden)
 		return
 	}
@@ -533,7 +536,7 @@ func meHandler(w http.ResponseWriter, r *http.Request) {
 	u := currentUser(r)
 	if u == nil {
 		w.WriteHeader(http.StatusUnauthorized)
-		_ = json.NewEncoder(w).Encode(map[string]any{"user": nil, "registration": openRegistration})
+		_ = json.NewEncoder(w).Encode(map[string]any{"user": nil, "registration": allowRegistrations})
 		return
 	}
 	_ = json.NewEncoder(w).Encode(map[string]any{"user": u, "can_edit_library": canEditLibrary(r)})

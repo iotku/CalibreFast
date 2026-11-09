@@ -36,7 +36,7 @@ CalibreFast reads directly from your Calibre `metadata.db` and serves your libra
 - **Resume anywhere:** your reading position and bookmarks sync between devices, and are kept locally too in case the server is down.
 - **Bookshelves:** your own private shelves, plus global shelves that admins curate for everyone.
 
-Editing metadata, uploads and creating groups need an admin account and the `-allow-writes` flag. Reading and downloading need any account, unless you run with `-public-read`.
+Everything needs an account unless you open the catalog with `-public` (or reading too, with `-public-read`). Editing metadata, uploads and creating groups need an admin account and the `-allow-writes` flag.
 
 See [docs/FEATURES.md](docs/FEATURES.md) for the details.
 
@@ -71,9 +71,9 @@ Then open [http://localhost:8080](http://localhost:8080) and sign in. Add more u
 | `-port` | Port to listen on (default `8080`) |
 | `-datadir` | Where CalibreFast keeps its own database: accounts, favorites, progress, shelves (default `./data`) |
 | `-allow-writes` | Let **admins** edit metadata, upload, change covers and manage groups. Off by default. |
-| `-public-read` | Public read-only mode: anyone can read and download books without signing in |
-| `-require-login` | Require signing in to see anything, even the catalog |
-| `-open-registration` | Let anyone create an account (password, GitHub or Google) |
+| `-public` | Let anyone browse the catalog without signing in. **By default the whole library is private:** nothing (not even covers or book IDs) is shown until you sign in. |
+| `-public-read` | Public read-only mode: anyone can also read and download books (implies `-public`) |
+| `-allow-registrations` | Let anyone create an account from the sign-in page. **Bots will try to sign up:** only use on a trusted network, such as a Tailscale network shared with people you trust. |
 | `-public-url` | Your external URL, e.g. `https://books.example.com` (needed for GitHub/Google sign-in) |
 | `-create-user NAME` | Create a user (or reset their password) and exit; add `-admin` to make them an admin |
 

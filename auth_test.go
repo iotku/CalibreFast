@@ -120,23 +120,31 @@ func TestSessionsAndLoginFlow(t *testing.T) {
 	}
 }
 
-func TestRequireLoginGate(t *testing.T) {
+func TestLibraryPrivateByDefault(t *testing.T) {
 	setupTestAppDB(t)
-	orig := requireLogin
-	requireLogin = true
-	defer func() { requireLogin = orig }()
+	orig := publicCatalog
+	defer func() { publicCatalog = orig }()
 
 	h := withAuth(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) { w.WriteHeader(200) }))
-	cases := map[string]int{"/": http.StatusUnauthorized, "/download/x/epub": http.StatusUnauthorized,
-		"/login": 200, "/static/style.css": 200, "/auth/github/start": 200}
-	for p, want := range cases {
-		rec := httptest.NewRecorder()
-		h.ServeHTTP(rec, httptest.NewRequest("GET", p, nil))
-		if rec.Code != want {
-			t.Errorf("%s: got %d, want %d", p, rec.Code, want)
+	check := func(cases map[string]int) {
+		t.Helper()
+		for p, want := range cases {
+			rec := httptest.NewRecorder()
+			h.ServeHTTP(rec, httptest.NewRequest("GET", p, nil))
+			if rec.Code != want {
+				t.Errorf("public=%v %s: got %d, want %d", publicCatalog, p, rec.Code, want)
+			}
 		}
 	}
-	// Browsers get sent to the sign-in page instead.
+
+	publicCatalog = false // the default
+	check(map[string]int{
+		"/": http.StatusUnauthorized, "/pages/page1.json": http.StatusUnauthorized,
+		"/cover-thumb/some-uuid": http.StatusUnauthorized, "/book/get/some-uuid": http.StatusUnauthorized,
+		"/api/tags": http.StatusUnauthorized, "/shelves": http.StatusUnauthorized,
+		"/login": 200, "/register": 200, "/static/style.css": 200, "/auth/github/start": 200, "/api/me": 200,
+	})
+	// Browsers are sent to the sign-in page instead.
 	req := httptest.NewRequest("GET", "/tag/x?page=2", nil)
 	req.Header.Set("Accept", "text/html")
 	rec := httptest.NewRecorder()
@@ -144,6 +152,9 @@ func TestRequireLoginGate(t *testing.T) {
 	if rec.Code != http.StatusSeeOther || !strings.HasPrefix(rec.Header().Get("Location"), "/login?next=") {
 		t.Errorf("html redirect: %d %q", rec.Code, rec.Header().Get("Location"))
 	}
+
+	publicCatalog = true // -public
+	check(map[string]int{"/": 200, "/cover-thumb/some-uuid": 200, "/shelves": 200})
 }
 
 func TestLoginRateLimit(t *testing.T) {

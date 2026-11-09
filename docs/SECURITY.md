@@ -6,7 +6,7 @@ CalibreFast has accounts, but it's a personal project: the authentication code i
 
 | | Browse the catalog (covers, metadata, search) | Read and download books | Favorites, progress, bookmarks, own shelves | Change the library (metadata, uploads, covers, groups) | Manage users, global shelves |
 |---|---|---|---|---|---|
-| **Anonymous visitor** | Yes (no, with `-require-login`) | Only with `-public-read` | No | **Never** | No |
+| **Anonymous visitor** | Only with `-public` | Only with `-public-read` | No | **Never** | No |
 | **Signed-in user** | Yes | Yes | Yes (their own) | **Never** | No |
 | **Admin** | Yes | Yes | Yes (their own) | Only with `-allow-writes` | Yes |
 
@@ -15,9 +15,9 @@ CalibreFast has accounts, but it's a personal project: the authentication code i
 
 ### Modes
 
-- **Default:** anyone who can reach the server can browse the catalog. Reading and downloading need an account.
-- **`-public-read`:** public read-only mode. Anyone can also read and download every book.
-- **`-require-login`:** nothing is visible without signing in, apart from the sign-in page itself.
+- **Default (private):** nothing is visible without signing in, apart from the sign-in page. Anonymous visitors can't see the catalog, covers or book IDs.
+- **`-public`:** anyone who can reach the server can browse the catalog (and global shelves). Reading and downloading still need an account.
+- **`-public-read`:** public read-only mode. Anyone can also read and download every book. Implies `-public`.
 
 ## Accounts
 
@@ -26,7 +26,9 @@ CalibreFast has accounts, but it's a personal project: the authentication code i
   - Changing your password signs out your other devices.
   - Disabling a user, or an admin resetting their password, signs them out everywhere.
 - **Rate limiting:** sign-in and registration allow 10 attempts per 15 minutes per IP address and per username.
-- **Registration** is closed by default. Admins create users, or users are created with `-create-user`. `-open-registration` lets anyone create an account; new accounts are never admins.
+- **Registration** is closed by default. Admins create users, or users are created with `-create-user`.
+  - `-allow-registrations` lets anyone who can reach the server create an account from the sign-in page, or by signing in with GitHub/Google. New accounts are never admins.
+  - **Bots will try to create accounts.** There's no CAPTCHA or email verification, only rate limiting. Use it only on a trusted network, such as a Tailscale network shared with people you trust, and turn it off once everyone has an account.
 - **The last admin** can't be demoted, disabled or deleted.
 
 ### GitHub and Google sign-in
@@ -35,7 +37,7 @@ Set `CF_GITHUB_CLIENT_ID` / `CF_GITHUB_CLIENT_SECRET` and/or `CF_GOOGLE_CLIENT_I
 
 - **Standard flow:** OAuth 2.0 authorization code flow with PKCE, and a single-use `state` value tied to your browser by a cookie. This prevents login CSRF and replayed callbacks.
 - **Account matching:** by the provider's permanent user ID, **never by email address**. Someone who registers your email with GitHub or Google can't take over your account.
-- **New accounts:** without `-open-registration`, a GitHub/Google sign-in only works once you've linked it. Sign in with your password, then use **Account → Linked sign-ins**. With it, an unknown GitHub/Google account gets a new, non-admin user.
+- **New accounts:** without `-allow-registrations`, a GitHub/Google sign-in only works once you've linked it. Sign in with your password, then use **Account → Linked sign-ins**. With it, an unknown GitHub/Google account gets a new, non-admin user.
 - **Unlinking** can't remove your only way to sign in.
 
 ## Cross-site requests
@@ -59,5 +61,6 @@ CalibreFast writes to the same `metadata.db` and book folders that the Calibre d
 - **Don't expose CalibreFast directly to the internet.** Put it behind a VPN or a reverse proxy with its own login, and serve it over HTTPS (set `-public-url https://…`).
 - **Leave `-allow-writes` off normally.** Turn it on while you're editing or uploading.
 - **Back up** `metadata.db` (ideally the whole library) and your `-datadir` before enabling writes.
-- **Prefer closed registration.** Create accounts as an admin and have people link GitHub/Google afterwards.
+- **Prefer closed registration.** Create accounts as an admin and have people link GitHub/Google afterwards. If you do use `-allow-registrations`, only on a trusted network, and only for as long as you need it.
+- **Leave the library private** unless you mean to share it. `-public` exposes your whole catalog to anyone who can reach the server.
 - **Use an up-to-date browser.** Cross-site protection relies on headers all current browsers send.
