@@ -81,8 +81,41 @@ function hashUuid(): string | null {
     }
 }
 
+/* ------------------------------------------------------------------ */
+/* Busy: grid covers pause while the modal loads                       */
+/* ------------------------------------------------------------------ */
+
+const LOADING_HTML = '<p class="modal-loading">Loading...</p>';
+let busy = false;
+
+/**
+ * Tell the grid (app-htmx.ts) to stop loading covers while the modal loads,
+ * so on slow connections the book and its cover get all the bandwidth.
+ */
+function setBusy(b: boolean): void {
+    if (b === busy) return;
+    busy = b;
+    document.dispatchEvent(new CustomEvent<boolean>("cf:modal-busy", { detail: b }));
+}
+
+/** Busy ends once the book has arrived and every image in it has loaded (or failed). */
+function checkIdle(): void {
+    const body = bodyEl();
+    if (!busy || !body || body.querySelector(".modal-loading")) return;
+    const pending = [...body.querySelectorAll("img")].filter((img) => !img.complete);
+    if (pending.length === 0) {
+        setBusy(false);
+        return;
+    }
+    for (const img of pending) {
+        img.addEventListener("load", checkIdle, { once: true });
+        img.addEventListener("error", checkIdle, { once: true });
+    }
+}
+
 function showModal(): void {
-    setBody("Loading...");
+    setBody(LOADING_HTML);
+    setBusy(true);
     document.body.classList.add("no-scroll");
     modalEl()?.classList.add("open");
 }
@@ -93,6 +126,7 @@ function hideModal(): void {
     const body = bodyEl();
     if (body) body.innerHTML = "";
     document.title = BASE_TITLE; // every close path ends here
+    setBusy(false);
 }
 
 export function loadBook(uuid: string): void {
@@ -153,6 +187,9 @@ export function setupModal(): void {
     );
 
     window.addEventListener("hashchange", syncFromHash);
+
+    const body = bodyEl();
+    if (body) new MutationObserver(checkIdle).observe(body, { childList: true, subtree: true });
 
     // Close: X button or backdrop click
     const modal = modalEl();
