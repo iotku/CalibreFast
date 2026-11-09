@@ -11,82 +11,87 @@
  */
 
 // Mirrors bluemonday's UGCPolicy element list.
-const ALLOWED = new Set(
-    (
-        "a abbr acronym address article aside b bdi bdo blockquote br caption cite code col colgroup " +
-        "dd del details dfn div dl dt em figcaption figure footer h1 h2 h3 h4 h5 h6 header hgroup hr i " +
-        "img ins kbd li main mark nav ol p pre q rp rt ruby s samp section small span strike strong sub " +
-        "summary sup table tbody td tfoot th thead time tr tt u ul var wbr"
-    ).split(" "),
-);
-// Dropped together with everything inside them.
-const DROP = new Set(
+const ALLOWED = (
+    "a abbr acronym address article aside b bdi bdo blockquote br caption cite code col colgroup " +
+    "dd del details dfn div dl dt em figcaption figure footer h1 h2 h3 h4 h5 h6 header hgroup hr i " +
+    "img ins kbd li main mark nav ol p pre q rp rt ruby s samp section small span strike strong sub " +
+    "summary sup table tbody td tfoot th thead time tr tt u ul var wbr"
+).split(" ");
+// Dropped together with everything inside them (other disallowed elements
+// are unwrapped, keeping their content).
+const DROP =
     "script style noscript template iframe object embed svg math canvas form input button select textarea video audio head title meta link".split(
         " ",
-    ),
-);
+    );
 const SAFE_URL = /^(https?:|mailto:|\/|#)/i;
+
+/** Attributes kept, and on which elements (all others are removed). */
+const ATTRS: Record<string, (tag: string, value: string) => boolean> = {
+    title: () => true,
+    lang: () => true,
+    dir: () => true,
+    href: (tag, v) => tag === "a" && SAFE_URL.test(v.trim()),
+    alt: (tag) => tag === "img",
+    src: (tag, v) => tag === "img" && /^https?:/i.test(v.trim()),
+    colspan: (tag) => tag === "td" || tag === "th",
+    rowspan: (tag) => tag === "td" || tag === "th",
+};
 
 /**
  * Inline styles are stripped (the book page doesn't allow them), but shops
  * often bold/italicise via CSS: keep that meaning as real tags.
  */
-function styleToTags(el: Element, doc: Document): void {
-    if (!(el instanceof HTMLElement) || !el.getAttribute("style")) return;
+function styleToTags(el: HTMLElement): void {
+    if (!el.getAttribute("style")) return;
     const st = el.style;
+    const deco = st.textDecorationLine || st.textDecoration || "";
     const wraps: string[] = [];
     const w = st.fontWeight;
     if (w === "bold" || w === "bolder" || Number(w) >= 600) wraps.push("strong");
     if (st.fontStyle === "italic" || st.fontStyle === "oblique") wraps.push("em");
-    if ((st.textDecorationLine || st.textDecoration || "").includes("underline")) wraps.push("u");
-    if ((st.textDecorationLine || st.textDecoration || "").includes("line-through")) wraps.push("s");
+    if (deco.includes("underline")) wraps.push("u");
+    if (deco.includes("line-through")) wraps.push("s");
     for (const t of wraps) {
-        const wrap = doc.createElement(t);
+        const wrap = el.ownerDocument.createElement(t);
         wrap.append(...el.childNodes);
         el.append(wrap);
     }
 }
 
-/** Clean HTML to what the book page will display. */
+// DOMPurify is only loaded on the metadata editor page.
+if (typeof DOMPurify !== "undefined") {
+    DOMPurify.addHook("uponSanitizeElement", (node) => {
+        if (node.nodeType === Node.ELEMENT_NODE) styleToTags(node as HTMLElement);
+    });
+    DOMPurify.addHook("uponSanitizeAttribute", (node, data) => {
+        const ok = ATTRS[data.attrName];
+        if (!ok || !ok(node.tagName.toLowerCase(), data.attrValue)) data.keepAttr = false;
+    });
+}
+
+/**
+ * Clean HTML to what the book page will display, as DOM nodes (sanitized by
+ * DOMPurify; never re-parsed from a string).
+ */
+export function cleanFragment(html: string): DocumentFragment {
+    const frag = DOMPurify.sanitize(html || "", {
+        ALLOWED_TAGS: ALLOWED,
+        ALLOWED_ATTR: Object.keys(ATTRS),
+        ADD_FORBID_CONTENTS: DROP,
+        RETURN_DOM_FRAGMENT: true,
+    });
+    // A <span> with no attributes left adds nothing (pasted layout noise).
+    for (const span of [...frag.querySelectorAll("span")]) {
+        if (span.attributes.length === 0) span.replaceWith(...span.childNodes);
+    }
+    return frag;
+}
+
+/** cleanFragment, serialized (for the HTML textarea). */
 export function cleanHTML(html: string): string {
-    const doc = new DOMParser().parseFromString(html || "", "text/html");
-    const walk = (node: Node): void => {
-        for (const child of [...node.childNodes]) {
-            if (child.nodeType === Node.COMMENT_NODE) {
-                child.remove(); // e.g. Word's <!--StartFragment-->
-                continue;
-            }
-            if (!(child instanceof Element)) continue;
-            const tag = child.tagName.toLowerCase();
-            if (DROP.has(tag)) {
-                child.remove();
-                continue;
-            }
-            walk(child);
-            styleToTags(child, doc);
-            if (!ALLOWED.has(tag)) {
-                child.replaceWith(...child.childNodes); // unwrap, keep content
-                continue;
-            }
-            for (const attr of [...child.attributes]) {
-                const name = attr.name.toLowerCase();
-                const keep =
-                    name === "title" ||
-                    name === "lang" ||
-                    name === "dir" ||
-                    (tag === "a" && name === "href" && SAFE_URL.test(attr.value.trim())) ||
-                    (tag === "img" && (name === "alt" || (name === "src" && /^https?:/i.test(attr.value.trim())))) ||
-                    ((tag === "td" || tag === "th") && (name === "colspan" || name === "rowspan"));
-                if (!keep) child.removeAttribute(attr.name);
-            }
-            // A <span> with no attributes left adds nothing (pasted layout noise).
-            if (tag === "span" && child.attributes.length === 0) {
-                child.replaceWith(...child.childNodes);
-            }
-        }
-    };
-    walk(doc.body);
-    return doc.body.innerHTML.trim();
+    const box = document.createElement("div");
+    box.append(cleanFragment(html));
+    return box.innerHTML.trim();
 }
 
 const TOOLS = [
@@ -156,7 +161,7 @@ export function createDescriptionEditor(textarea: HTMLTextAreaElement): HTMLDivE
     let fromPreview = false;
 
     const render = () => {
-        preview.innerHTML = cleanHTML(textarea.value);
+        preview.replaceChildren(cleanFragment(textarea.value));
     };
 
     function setMode(m: "preview" | "html"): void {
@@ -199,7 +204,7 @@ export function createDescriptionEditor(textarea: HTMLTextAreaElement): HTMLDivE
         if (!sel || !sel.rangeCount || !preview.contains(sel.anchorNode)) return;
         const range = sel.getRangeAt(0);
         range.deleteContents();
-        const frag = range.createContextualFragment(cleanHTML(html));
+        const frag = cleanFragment(html);
         const last = frag.lastChild;
         range.insertNode(frag);
         if (last) {
