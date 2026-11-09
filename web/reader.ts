@@ -91,11 +91,35 @@ function percentFor(loc: EpubJS.Location): number {
     return book.locations.percentageFromCfi(loc.start.cfi) || 0;
 }
 
+/**
+ * "p. N / M": the print edition's page numbers when the book has a page
+ * list, otherwise synthetic pages (~1600 characters, roughly a printed page;
+ * the same on every device and font size). The tooltip adds the percentage
+ * and the screen within the chapter.
+ */
+const CHARS_PER_PAGE = 1600;
+let lastLoc: EpubJS.Location | null = null;
+function pageText(cfi: string): string {
+    const pl = book.pageList;
+    const printed = pl?.pages.length ? pl.pageFromCfi(cfi) : -1;
+    if (printed > 0) return `p. ${printed} / ${pl?.lastPage}`;
+    if (!locationsReady) return "—";
+    return `p. ${book.locations.locationFromCfi(cfi) + 1} / ${book.locations.length()}`;
+}
+function updateLabel(): void {
+    if (!currentCfi) return;
+    progressLabel.textContent = pageText(currentCfi);
+    const d = lastLoc?.start.displayed;
+    progressLabel.title =
+        (locationsReady ? `${Math.round(currentPercent * 100)}%` : "") + (d ? ` · screen ${d.page} of ${d.total} in this chapter` : "");
+}
+
 rendition.on("relocated", (loc) => {
     if (!loc?.start?.cfi) return;
     currentCfi = loc.start.cfi;
+    lastLoc = loc;
     currentPercent = percentFor(loc);
-    progressLabel.textContent = locationsReady ? `${Math.round(currentPercent * 100)}%` : "—";
+    updateLabel();
     if (openingCfi === null) {
         openingCfi = currentCfi;
         return;
@@ -115,13 +139,11 @@ try {
 }
 
 book.ready
-    .then(() => book.locations.generate(1024))
+    .then(() => book.locations.generate(CHARS_PER_PAGE))
     .then(() => {
         locationsReady = true;
-        if (currentCfi) {
-            currentPercent = book.locations.percentageFromCfi(currentCfi) || 0;
-            progressLabel.textContent = `${Math.round(currentPercent * 100)}%`;
-        }
+        if (currentCfi) currentPercent = book.locations.percentageFromCfi(currentCfi) || 0;
+        updateLabel();
     });
 
 // ---- contents --------------------------------------------------------------
@@ -187,7 +209,8 @@ sync.loadBookmarks().then(showBookmarks);
 
 $("bookmark-btn")?.addEventListener("click", () => {
     if (!currentCfi) return;
-    const pct = locationsReady ? ` — ${Math.round(currentPercent * 100)}%` : "";
+    const page = pageText(currentCfi);
+    const pct = page !== "—" ? ` — ${page.split(" / ")[0]}` : "";
     sync.addBookmark(currentCfi, `${chapterLabel() || "Bookmark"}${pct}`);
     showBookmarks(sync.bookmarks());
     setSync("Bookmark added");
