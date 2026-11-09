@@ -1,21 +1,40 @@
 /**
- * Behaviour for the per-user controls under a book's read/download buttons
- * (favorite, reading status, shelves). The controls are rendered by the
- * server (/book/me/<uuid>) and loaded by htmx with a throbber; this file only
- * wires up clicks. Where htmx isn't on the page (the standalone /book/get
- * page) it loads the fragment itself.
+ * The per-user controls under a book's read/download buttons (favorite,
+ * reading status, shelves). The server renders them (/book/me/<uuid>); this
+ * file loads them into each book page's .book-user-actions and wires up
+ * clicks.
+ *
+ * In the book modal they're fetched ahead: when the pointer is over a book
+ * card (alongside the card's hx-preload of the book) and as soon as the
+ * modal starts loading the book, so they arrive with it rather than a round
+ * trip after it.
  */
 import { api, errorMessage } from "./dom.js";
-/** (Re)load the controls into their container. */
-async function loadControls(container) {
-    try {
-        const res = await fetch(`/book/me/${encodeURIComponent(container.dataset["uuid"] ?? "")}`, { credentials: "same-origin" });
-        if (res.ok)
-            container.innerHTML = await res.text();
-    }
-    catch {
-        /* offline: leave as is */
-    }
+const PREFETCH_TTL_MS = 30_000; // like the book page's own max-age
+const prefetched = new Map();
+function fetchControls(uuid) {
+    return fetch(`/book/me/${encodeURIComponent(uuid)}`, { credentials: "same-origin" })
+        .then((res) => (res.ok ? res.text() : null))
+        .catch(() => null); // offline: the throbber stays
+}
+/** Start fetching a book's controls, for the next time they're shown. */
+export function prefetchControls(uuid) {
+    const now = Date.now();
+    for (const [k, v] of prefetched)
+        if (v.expires <= now)
+            prefetched.delete(k);
+    if (prefetched.has(uuid))
+        return;
+    prefetched.set(uuid, { html: fetchControls(uuid), expires: now + PREFETCH_TTL_MS });
+}
+/** (Re)load the controls into their container. A prefetch is used once; fresh skips it. */
+async function loadControls(container, fresh = false) {
+    const uuid = container.dataset["uuid"] ?? "";
+    const hit = prefetched.get(uuid);
+    prefetched.delete(uuid);
+    const html = await (!fresh && hit && hit.expires > Date.now() ? hit.html : fetchControls(uuid));
+    if (html !== null && container.isConnected)
+        container.innerHTML = html;
 }
 function bind(controls) {
     if (controls.dataset["bound"])
@@ -80,7 +99,7 @@ function bind(controls) {
         try {
             const shelf = await api("POST", "/api/shelves", { name });
             await api("PUT", `/api/shelves/${shelf.id}/books/${uuid}`);
-            await loadControls(container);
+            await loadControls(container, true);
             container.querySelector(".book-shelves")?.setAttribute("open", "");
         }
         catch (err) {
@@ -100,29 +119,18 @@ function bind(controls) {
 function scan(root) {
     if (!(root instanceof HTMLElement))
         return;
-    // Controls that arrived (htmx swap, or our own load).
+    // Controls that arrived.
     if (root.matches(".book-user-controls"))
         bind(root);
     root.querySelectorAll(".book-user-controls").forEach(bind);
-    // Without htmx (standalone book page) load the controls ourselves; with
-    // htmx, step in only if it hasn't loaded them after a few seconds, so the
-    // throbber can never spin forever.
-    const containers = root.matches(".book-user-actions[hx-get]")
-        ? [root]
-        : [...root.querySelectorAll(".book-user-actions[hx-get]")];
-    containers.forEach((c) => {
-        if (c.dataset["watching"])
-            return;
-        c.dataset["watching"] = "1";
-        const load = () => {
-            if (c.isConnected && c.querySelector(":scope > .throbber"))
-                void loadControls(c);
-        };
-        if (typeof htmx === "undefined")
-            load();
-        else
-            setTimeout(load, 3000);
-    });
+    // Book pages that arrived: load their controls.
+    const containers = root.matches(".book-user-actions") ? [root] : [...root.querySelectorAll(".book-user-actions")];
+    for (const c of containers) {
+        if (c.dataset["loading"])
+            continue;
+        c.dataset["loading"] = "1";
+        void loadControls(c);
+    }
 }
 new MutationObserver((records) => {
     for (const r of records)

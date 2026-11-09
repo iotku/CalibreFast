@@ -43,6 +43,7 @@ On startup CalibreFast queries `metadata.db` and writes paginated JSON (`pages/p
 
   The same script therefore works with the static JSON files and with the API endpoints.
 - **Book popup** (`web/modal.ts`) loads `/book/get/<uuid>` through htmx.
+  - **Preloading.** Hovering a card preloads the book (`hx-preload`) and its per-user controls (`/book/me/<uuid>`, `prefetchControls` in `web/user.ts`). The card's click is only the hash change (`hx-trigger="none"`). `loadBook` makes the one request with the card as htmx's `source`, which reuses the preload even while it's still in flight. Without a hover, the controls are fetched alongside the book rather than after it.
   - It's a `#book/<uuid>` history entry, closed by going back. While it's open the grid doesn't write `?page` to the URL: going back only closes it if both entries have the same `?page` (otherwise there's no `hashchange`). The page is written once it closes.
   - The modal follows the URL on both `hashchange` and `popstate`, so back/forward between entries with different `?page` still opens and closes it.
   - htmx's own history is off on these pages (`<meta name="htmx-config" content="history:false">`). Otherwise, on back/forward it re-fetches the page and replaces the whole body, grid included.
