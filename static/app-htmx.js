@@ -20,7 +20,11 @@ const MAX_PAGE_FETCHES = 2; // concurrent page-JSON requests
 const HISTORY_DEBOUNCE_MS = 300; // browsers throttle rapid history updates
 const FAST_SCROLL_PAGES_PER_SEC = 4; // faster than this: don't fetch/render yet
 const SETTLE_MS = 120; // quiet time before rendering after a fast scroll
-const MAX_COVERS_INFLIGHT = 6 - MAX_PAGE_FETCHES; // headroom under the 6-per-host limit
+// Covers downloading at once (see maxCovers):
+const COVERS_HTTP1 = 6 - MAX_PAGE_FETCHES; // headroom under HTTP/1.1's 6 connections per host
+const COVERS_MULTIPLEXED = 10; // HTTP/2 and 3: one connection, no per-host limit
+const COVERS_3G = 4;
+const COVERS_2G = 2;
 const coversInflight = new Set();
 const pageCache = new Map(); // page -> books
 const loading = new Map(); // page -> in-flight fetch
@@ -549,9 +553,40 @@ function cancelCover(img) {
     img.removeAttribute("src");
     img.dataset["src"] = src;
 }
+let httpVersion = "";
+/** "h2", "h3", "http/1.1"…, or "" while the browser hasn't said. */
+function pageProtocol() {
+    if (httpVersion)
+        return httpVersion;
+    // The page itself, else anything it fetched from this server (a page from
+    // the browser cache may report "").
+    const entries = [
+        ...performance.getEntriesByType("navigation"),
+        ...performance.getEntriesByType("resource").filter((e) => e.name.startsWith(location.origin)),
+    ];
+    httpVersion = entries.find((e) => e.nextHopProtocol)?.nextHopProtocol ?? "";
+    return httpVersion;
+}
+/**
+ * How many covers may download at once.
+ *   - HTTP/1.1 (or unknown): the browser opens at most 6 connections per
+ *     host, and leaves the page JSON and the book modal waiting behind
+ *     anything over that.
+ *   - HTTP/2 and 3 multiplex one connection: more at once hides round trips.
+ *   - On a slow link (Chromium's estimate) more at once only splits the
+ *     bandwidth: fewer, so covers still arrive one by one.
+ */
+function maxCovers() {
+    const effective = navigator.connection?.effectiveType;
+    if (effective?.endsWith("2g"))
+        return COVERS_2G;
+    if (effective === "3g")
+        return COVERS_3G;
+    return /^h[23]/.test(pageProtocol()) ? COVERS_MULTIPLEXED : COVERS_HTTP1;
+}
 /**
  * Load covers on screen first, then the rest nearest the viewport (favouring
- * the scroll direction), keeping at most MAX_COVERS_INFLIGHT requests open:
+ * the scroll direction), keeping at most maxCovers() requests open:
  *   - off-screen covers only start once nothing on screen is waiting or loading
  *   - while an on-screen cover waits, off-screen downloads are cancelled
  *   - nothing starts while the book modal is loading
@@ -594,8 +629,9 @@ function pumpCovers() {
         }
     }
     queue.sort((a, b) => a.dist - b.dist);
+    const cap = maxCovers();
     for (const { img, dist } of queue) {
-        if (coversInflight.size >= MAX_COVERS_INFLIGHT)
+        if (coversInflight.size >= cap)
             break;
         if (dist > 0 && (onScreenWaiting || onScreenLoading))
             break; // viewport first
