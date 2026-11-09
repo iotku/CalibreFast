@@ -9,6 +9,7 @@ import (
 	"os"
 	"path/filepath"
 	"regexp"
+	"strconv"
 	"strings"
 	"sync"
 
@@ -108,51 +109,30 @@ func coverThumbHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	thumbPath := filepath.Join(cacheDir, "covers", "thumb", uuid+".jpg")
+	thumbPath := thumbCachePath(uuid)
 	if err := ensureDir(thumbPath); err != nil {
 		println(err.Error())
 	}
 
 	// FAST PATH: cached thumbnail exists AND is NOT older than original cover.jpg
 	if thumbStat, err := os.Stat(thumbPath); err == nil && !thumbStat.ModTime().Before(origStat.ModTime()) {
-		if f, err := os.Open(thumbPath); err == nil {
-			defer func(f *os.File) {
-				logErr(f.Close(), "failed to close thumb "+thumbPath)
-			}(f)
-			w.Header().Set("Content-Type", "image/jpeg")
-			w.Header().Set("Cache-Control", "public, max-age=31536000, immutable")
-			w.Header().Set("X-Cache-Hit", "true")
-			http.ServeContent(w, r, "thumb.jpg", thumbStat.ModTime(), f)
+		if data, err := os.ReadFile(thumbPath); err == nil {
+			writeThumb(w, data, true)
 			return
 		}
 	}
 
-	// SLOW PATH: generate fresh thumbnail directly from cover.jpg
-	f, err := os.Open(origPath)
+	// SLOW PATH: generate fresh thumbnail from cover.jpg
+	orig, err := os.ReadFile(origPath)
 	if err != nil {
 		http.NotFound(w, r)
 		return
 	}
-	defer func(f *os.File) {
-		logErr(f.Close(), "failed to close original cover.jpg at "+origPath)
-	}(f)
-
-	img, _, err := image.Decode(f)
+	data, err := makeThumb(orig)
 	if err != nil {
 		http.NotFound(w, r)
 		return
 	}
-
-	thumb := resizeToWidth(img, 600)
-	var buf bytes.Buffer
-	err = jpeg.Encode(&buf, thumb, &jpeg.Options{Quality: 85})
-	if err != nil {
-		http.Error(w, "encode failed", http.StatusInternalServerError)
-		log.Println("failed to encode cover jpg at " + thumbPath)
-		return
-	}
-
-	data := buf.Bytes()
 
 	// Write to cache file synchronously with current timestamp
 	if err := os.WriteFile(thumbPath, data, 0644); err != nil {
@@ -160,10 +140,48 @@ func coverThumbHandler(w http.ResponseWriter, r *http.Request) {
 	} else {
 		_ = os.Chtimes(thumbPath, origStat.ModTime(), origStat.ModTime())
 	}
+	writeThumb(w, data, false)
+}
 
-	w.Header().Set("Content-Type", "image/jpeg")
+// Thumbnails only need to look good at library-grid sizes (cards are ~200 CSS
+// px wide, so 400px covers 2x screens); the full cover is shown in the book
+// modal.
+const (
+	thumbWidth   = 400
+	thumbQuality = 80
+)
+
+// thumbCachePath is the cached thumbnail for a book. The directory is
+// versioned: bump it when thumbnail settings change so old ones regenerate.
+func thumbCachePath(uuid string) string {
+	return filepath.Join(cacheDir, "covers", "thumb-v2", uuid+".jpg")
+}
+
+// makeThumb returns a thumbnail of the cover image, never larger than the
+// original: covers already at or below thumbWidth, or whose thumbnail would
+// be more bytes than the original, are returned unchanged.
+func makeThumb(orig []byte) ([]byte, error) {
+	img, _, err := image.Decode(bytes.NewReader(orig))
+	if err != nil {
+		return nil, err
+	}
+	if img.Bounds().Dx() <= thumbWidth {
+		return orig, nil
+	}
+	var buf bytes.Buffer
+	if err := jpeg.Encode(&buf, resizeToWidth(img, thumbWidth), &jpeg.Options{Quality: thumbQuality}); err != nil {
+		return nil, err
+	}
+	if buf.Len() >= len(orig) {
+		return orig, nil
+	}
+	return buf.Bytes(), nil
+}
+
+func writeThumb(w http.ResponseWriter, data []byte, cacheHit bool) {
+	w.Header().Set("Content-Type", http.DetectContentType(data)) // the original may be served as-is (not always JPEG)
 	w.Header().Set("Cache-Control", "public, max-age=31536000, immutable")
-	w.Header().Set("X-Cache-Hit", "false")
+	w.Header().Set("X-Cache-Hit", strconv.FormatBool(cacheHit))
 	_, _ = w.Write(data)
 }
 
@@ -171,11 +189,11 @@ func resizeToWidth(img image.Image, width int) image.Image {
 	bounds := img.Bounds()
 
 	scale := float64(width) / float64(bounds.Dx())
-	height := int(float64(bounds.Dy()) * scale)
+	height := max(1, int(float64(bounds.Dy())*scale+0.5))
 
 	dst := image.NewRGBA(image.Rect(0, 0, width, height))
 
-	draw.NearestNeighbor.Scale(
+	draw.CatmullRom.Scale(
 		dst,
 		dst.Bounds(),
 		img,
