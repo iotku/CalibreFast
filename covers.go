@@ -2,6 +2,8 @@ package main
 
 import (
 	"bytes"
+	"context"
+	"errors"
 	"image"
 	"image/jpeg"
 	"log"
@@ -9,6 +11,7 @@ import (
 	"os"
 	"path/filepath"
 	"regexp"
+	"runtime"
 	"strconv"
 	"strings"
 	"sync"
@@ -19,8 +22,12 @@ import (
 var uuidPathIndex sync.Map // map[string]string uuid -> relative path to book dir
 var modTimeCache sync.Map  // map[string]int64 uuid -> last modified time of book from calibre database, used for cache-busting cover.jpg and cover-thumb.jpg
 var formatCache sync.Map   // map[string][]string uuid -> list of formats and their paths relative to the baseDir
-// TODO: Performance, maybe this can be increased?
-var imageSem = make(chan struct{}, 4) // only n HDD reads at once
+
+// imageSem bounds cover-thumb requests in progress, across all clients: one
+// per core, since generating a thumbnail is CPU-bound (~80 ms and ~30 MB for
+// a typical cover). GOMAXPROCS is the core count, or the container's CPU
+// limit when it's lower.
+var imageSem = make(chan struct{}, runtime.GOMAXPROCS(0))
 
 func coverHandler(w http.ResponseWriter, r *http.Request) {
 	// uuid comes from URL: /cover/{uuid}
@@ -84,63 +91,81 @@ func ensureDir(path string) error {
 }
 
 func coverThumbHandler(w http.ResponseWriter, r *http.Request) {
-	imageSem <- struct{}{}        // acquire slot
-	defer func() { <-imageSem }() // release slot
 	uuid := strings.TrimPrefix(r.URL.Path, "/cover-thumb/")
 	if !isSafeUUIDComponent(uuid) {
 		http.Error(w, "invalid cover id", http.StatusBadRequest)
 		return
 	}
+	defer thumbRequestStarted()()
 
+	// A request the browser cancels (a cover scrolled away) stops before the
+	// next expensive step and leaves its thumbnail to the idle-time backlog.
+	ctx := r.Context()
+	select {
+	case imageSem <- struct{}{}:
+	case <-ctx.Done():
+		backlogThumb(uuid)
+		return
+	}
+	defer func() { <-imageSem }()
+
+	data, cacheHit, err := loadThumb(uuid, ctx.Err)
+	switch {
+	case errors.Is(err, context.Canceled):
+		backlogThumb(uuid)
+	case err != nil:
+		http.NotFound(w, r)
+	default:
+		writeThumb(w, data, cacheHit)
+	}
+}
+
+// loadThumb returns the book's cached thumbnail, first making it if it's
+// missing or older than cover.jpg. abort is checked before each expensive
+// step (reading and decoding the cover, scaling, encoding); its error stops
+// the work and is returned.
+func loadThumb(uuid string, abort func() error) (data []byte, cacheHit bool, err error) {
 	path, ok := uuidPathIndex.Load(uuid)
 	if !ok {
-		var err error
-		path, err = resolveBookPath(uuid)
-		if err != nil {
-			http.NotFound(w, r)
-			return
+		if path, err = resolveBookPath(uuid); err != nil {
+			return nil, false, err
 		}
 	}
-
 	origPath := filepath.Join(baseDir, path.(string), "cover.jpg")
 	origStat, err := os.Stat(origPath)
 	if err != nil {
-		http.NotFound(w, r)
-		return
+		return nil, false, err
 	}
 
 	thumbPath := thumbCachePath(uuid)
-	if err := ensureDir(thumbPath); err != nil {
-		println(err.Error())
-	}
-
-	// FAST PATH: cached thumbnail exists AND is NOT older than original cover.jpg
 	if thumbStat, err := os.Stat(thumbPath); err == nil && !thumbStat.ModTime().Before(origStat.ModTime()) {
 		if data, err := os.ReadFile(thumbPath); err == nil {
-			writeThumb(w, data, true)
-			return
+			return data, true, nil
 		}
 	}
 
-	// SLOW PATH: generate fresh thumbnail from cover.jpg
+	if err := abort(); err != nil {
+		return nil, false, err
+	}
 	orig, err := os.ReadFile(origPath)
 	if err != nil {
-		http.NotFound(w, r)
-		return
+		return nil, false, err
 	}
-	data, err := makeThumb(orig)
-	if err != nil {
-		http.NotFound(w, r)
-		return
+	if data, err = makeThumb(orig, abort); err != nil {
+		return nil, false, err
 	}
 
-	// Write to cache file synchronously with current timestamp
+	// The thumbnail takes the cover's modification time: it's stale once the
+	// cover is newer.
+	if err := ensureDir(thumbPath); err != nil {
+		log.Printf("cover-thumb: %v", err)
+	}
 	if err := os.WriteFile(thumbPath, data, 0644); err != nil {
 		log.Printf("cover-thumb: failed to write thumbnail %s: %v", thumbPath, err)
 	} else {
 		_ = os.Chtimes(thumbPath, origStat.ModTime(), origStat.ModTime())
 	}
-	writeThumb(w, data, false)
+	return data, false, nil
 }
 
 // Thumbnails only need to look good at library-grid sizes (cards are ~200 CSS
@@ -159,8 +184,9 @@ func thumbCachePath(uuid string) string {
 
 // makeThumb returns a thumbnail of the cover image, never larger than the
 // original: covers already at or below thumbWidth, or whose thumbnail would
-// be more bytes than the original, are returned unchanged.
-func makeThumb(orig []byte) ([]byte, error) {
+// be more bytes than the original, are returned unchanged. abort is checked
+// between decoding, scaling and encoding; its error stops the work.
+func makeThumb(orig []byte, abort func() error) ([]byte, error) {
 	img, _, err := image.Decode(bytes.NewReader(orig))
 	if err != nil {
 		return nil, err
@@ -168,8 +194,15 @@ func makeThumb(orig []byte) ([]byte, error) {
 	if img.Bounds().Dx() <= thumbWidth {
 		return orig, nil
 	}
+	if err := abort(); err != nil {
+		return nil, err
+	}
+	small := resizeToWidth(img, thumbWidth)
+	if err := abort(); err != nil {
+		return nil, err
+	}
 	var buf bytes.Buffer
-	if err := jpeg.Encode(&buf, resizeToWidth(img, thumbWidth), &jpeg.Options{Quality: thumbQuality}); err != nil {
+	if err := jpeg.Encode(&buf, small, &jpeg.Options{Quality: thumbQuality}); err != nil {
 		return nil, err
 	}
 	if buf.Len() >= len(orig) {

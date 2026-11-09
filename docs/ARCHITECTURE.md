@@ -46,7 +46,9 @@ On startup CalibreFast queries `metadata.db` and writes paginated JSON (`pages/p
 
 ## Caching
 
-- **Cover thumbnails** are generated on first request and stored in `-cachedir`.
+- **Cover thumbnails** are generated on first request and stored in `-cachedir`. The server handles one thumbnail request per core at a time (`imageSem` in `covers.go`, sized by `GOMAXPROCS`, which follows container CPU limits).
+  - A request the browser cancels (a cover scrolled away) stops before its next expensive step: waiting for a slot, reading and decoding, scaling, encoding.
+  - Its thumbnail goes to a backlog (`thumb_backlog.go`), made one at a time once no thumbnail requests have come in for 2 seconds. A new request stops the backlog's current one, which goes back in the queue.
 - **Cover loading in the browser** (`pumpCovers` in `web/app-htmx.ts`): covers on screen first, a few at a time (`maxCovers`: 4 over HTTP/1.1, which leaves room for page JSON under the browser's 6 connections per host; 10 over HTTP/2 or 3; 2–4 when Chromium estimates a 2G/3G link); off-screen covers only start once the viewport is done, and in-flight ones that scroll away are cancelled (by removing `src`) and re-queued. While the book modal loads, grid covers are cancelled and wait until every image in the modal has arrived (`cf:modal-busy` from `web/modal.ts`).
 - **Static files** (`/static/`) are served with `Cache-Control: max-age=120`, so edits reach browsers within about 2 minutes without constant revalidation.
 - **Book pages** use an `ETag` built from the OPF modification time, the groups version and whether the viewer may edit, plus `max-age=30`.

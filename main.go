@@ -401,6 +401,7 @@ func serveLibraryHTTP() {
 	// server cover getter
 	http.HandleFunc("/cover/", coverHandler)            // Full cover image
 	http.HandleFunc("/cover-thumb/", coverThumbHandler) // Thumbnail cover image
+	go runThumbBacklog()                                // thumbnails of cancelled requests, made when idle
 
 	// server get formats
 	http.HandleFunc("/formats/", formatsHandler)
@@ -508,7 +509,6 @@ func serveLibraryHTTP() {
 			http.Error(w, err.Error(), 500)
 		}
 	}))
-
 
 	http.HandleFunc("/view/", requireReader(viewHandler))
 
