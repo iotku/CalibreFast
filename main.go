@@ -36,6 +36,22 @@ var (
 	allowWrites bool
 )
 
+// csrfProtect rejects cross-origin state-changing requests (POST, PUT,
+// DELETE, PATCH) from browsers, using Sec-Fetch-Site / Origin. Without it,
+// any website open in the user's browser could submit uploads or metadata
+// edits to a server on their network while -allow-writes is on. Same-origin
+// requests and non-browser clients (no such headers, e.g. curl) pass; GET and
+// HEAD always pass, so every write handler must reject GET (they do).
+func csrfProtect(h http.Handler) http.Handler {
+	p := http.NewCrossOriginProtection()
+	p.SetDenyHandler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		log.Printf("blocked cross-origin %s %s (Origin %q, Sec-Fetch-Site %q)",
+			r.Method, r.URL.Path, r.Header.Get("Origin"), r.Header.Get("Sec-Fetch-Site"))
+		http.Error(w, "cross-origin request refused", http.StatusForbidden)
+	}))
+	return p.Handler(h)
+}
+
 // requireWrites refuses a handler unless the server was started with
 // -allow-writes. Enforced server-side; hiding the UI is only cosmetic.
 func requireWrites(h http.HandlerFunc) http.HandlerFunc {
@@ -400,7 +416,7 @@ func serveLibraryHTTP() {
 	registerCategoryRoutes()
 
 	log.Println("Listening on :" + hostPort)
-	log.Fatal(http.ListenAndServe(":"+hostPort, nil))
+	log.Fatal(http.ListenAndServe(":"+hostPort, csrfProtect(http.DefaultServeMux)))
 }
 
 func logErr(err error, why string) {
