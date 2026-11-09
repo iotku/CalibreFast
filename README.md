@@ -77,11 +77,12 @@ Then open [http://localhost:8080](http://localhost:8080) and sign in. Add more u
 | `-public-url` | Your external URL, e.g. `https://books.example.com` (needed for GitHub/Google sign-in) |
 | `-create-user NAME` | Create a user (or reset their password) and exit; add `-admin` to make them an admin |
 
-GitHub and Google sign-in are switched on by setting `CF_GITHUB_CLIENT_ID`/`CF_GITHUB_CLIENT_SECRET` and/or `CF_GOOGLE_CLIENT_ID`/`CF_GOOGLE_CLIENT_SECRET`, plus `-public-url`. See [SECURITY.md](docs/SECURITY.md#github-and-google-sign-in).
+GitHub and Google sign-in are optional: see [OAUTH.md](docs/OAUTH.md) for step-by-step setup.
 
 ## Documentation
 
 - [SECURITY.md](docs/SECURITY.md): the risks, and how to run CalibreFast safely
+- [OAUTH.md](docs/OAUTH.md): setting up GitHub and Google sign-in
 - [FEATURES.md](docs/FEATURES.md): how everything behaves, in detail
 - [ARCHITECTURE.md](docs/ARCHITECTURE.md): how it works under the hood
 - [notes/Performance.md](docs/notes/Performance.md): performance notes

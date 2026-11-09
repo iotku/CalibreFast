@@ -48,7 +48,7 @@ Safeguards:
 
 ### GitHub and Google sign-in
 
-Set `CF_GITHUB_CLIENT_ID` / `CF_GITHUB_CLIENT_SECRET` and/or `CF_GOOGLE_CLIENT_ID` / `CF_GOOGLE_CLIENT_SECRET` as environment variables, so they don't show up in `ps`. Also set `-public-url`. Register `<public-url>/auth/github/callback` and `<public-url>/auth/google/callback` as the callback URLs.
+Setup steps are in [OAUTH.md](OAUTH.md). In short: set `CF_GITHUB_CLIENT_ID` / `CF_GITHUB_CLIENT_SECRET` and/or `CF_GOOGLE_CLIENT_ID` / `CF_GOOGLE_CLIENT_SECRET` as environment variables, so they don't show up in `ps`. Also set `-public-url`. Register `<public-url>/auth/github/callback` and `<public-url>/auth/google/callback` as the callback URLs.
 
 - **Standard flow:** OAuth 2.0 authorization code flow with PKCE, and a single-use `state` value tied to your browser by a cookie. This prevents login CSRF and replayed callbacks.
 - **Account matching:** by the provider's permanent user ID, **never by email address**. Someone who registers your email with GitHub or Google can't take over your account.
