@@ -7,9 +7,6 @@
  *     search box (narrow screens); a click outside or Escape closes them
  */
 import { el } from "./dom.js";
-const bar = document.querySelector(".site-bar");
-if (bar)
-    init(bar);
 function icon(path) {
     const svg = document.createElementNS("http://www.w3.org/2000/svg", "svg");
     svg.setAttribute("viewBox", "0 0 24 24");
@@ -31,12 +28,10 @@ function init(bar) {
     const user = bar.querySelector(".tb-user");
     const active = user?.dataset["active"] ?? "";
     const current = (name) => active === name ? { ariaCurrent: "page" } : {};
-    // ---- open/close ---------------------------------------------------------
-    /** Every toggle: its button, and what "open" means for it. */
-    const toggles = [];
+    let toggles = [];
     function register(btn, set) {
         if (!btn)
-            return;
+            return null;
         const t = {
             btn,
             set(open) {
@@ -51,6 +46,7 @@ function init(bar) {
             closeAll();
             t.set(open);
         });
+        return t;
     }
     function closeAll() {
         for (const t of toggles)
@@ -82,32 +78,92 @@ function init(bar) {
     });
     bar.querySelector(".tb-search-close")?.addEventListener("click", () => closeAll());
     // ---- user part ----------------------------------------------------------
+    //
+    // The last answer from /api/me is kept in localStorage and shown straight
+    // away, so on repeat visits the user part doesn't pop in; the request then
+    // corrects it if anything changed. First visit: the template's throbber
+    // shows until the request finishes.
     if (!user)
         return;
+    const userEl = user;
+    const CACHE_KEY = "cf-me";
+    const cache = {
+        get() {
+            try {
+                return localStorage.getItem(CACHE_KEY);
+            }
+            catch {
+                return null;
+            }
+        },
+        set(v) {
+            try {
+                if (v === null)
+                    localStorage.removeItem(CACHE_KEY);
+                else
+                    localStorage.setItem(CACHE_KEY, v);
+            }
+            catch {
+                /* storage blocked: no instant render, the throbber still works */
+            }
+        },
+    };
+    // Signing in or out changes the answer: don't show a stale one next.
+    if (/^\/(login|register|l\/)/.test(location.pathname))
+        cache.set(null);
+    let userToggle = null;
+    function render(st) {
+        if (userToggle)
+            toggles = toggles.filter((t) => t !== userToggle);
+        userToggle = null;
+        if (!st.username) {
+            const next = encodeURIComponent(location.pathname + location.search);
+            userEl.replaceChildren(el("a", { className: "tb-btn", href: `/login?next=${next}`, textContent: "Sign in" }));
+            return;
+        }
+        const name = st.username;
+        const shortcut = (href, label, path, key) => {
+            const a = el("a", { className: "tb-icon tb-shortcut", href, title: label, ariaLabel: label, ...current(key) });
+            a.append(icon(path));
+            return a;
+        };
+        const btn = el("button", { type: "button", className: "tb-user-btn", title: name, ariaLabel: `Account menu for ${name}` });
+        btn.setAttribute("aria-haspopup", "true");
+        btn.setAttribute("aria-expanded", "false");
+        btn.append(el("span", { className: "tb-avatar", textContent: name.slice(0, 1) }), el("span", { className: "tb-user-name", textContent: name }));
+        const logout = el("form", { method: "post", action: "/logout" }, el("button", { type: "submit", textContent: "Sign out" }));
+        logout.addEventListener("submit", () => cache.set(null));
+        const list = el("div", { className: "tb-menu-list", hidden: true }, el("a", { href: "/me/favorites", textContent: "★ Favorites", ...current("favorites") }), el("a", { href: "/me/reading", textContent: "Reading", ...current("reading") }), el("a", { href: "/me/finished", textContent: "Finished", ...current("finished") }), el("hr"), ...(st.canEdit ? [el("a", { href: "/upload", textContent: "Upload books" })] : []), ...(st.isAdmin ? [el("a", { href: "/admin/users", textContent: "Manage users" })] : []), el("a", { href: "/account", textContent: "Account" }), logout);
+        userToggle = register(btn, (open) => {
+            list.hidden = !open;
+        });
+        userEl.replaceChildren(shortcut("/me/favorites", "Favorites", STAR, "favorites"), shortcut("/me/reading", "Reading", BOOK, "reading"), el("div", { className: "tb-menu" }, btn, list));
+    }
+    let shown = cache.get();
+    if (shown) {
+        try {
+            render(JSON.parse(shown));
+        }
+        catch {
+            shown = null;
+        }
+    }
     fetch("/api/me", { credentials: "same-origin" })
         .then(async (r) => ({ ok: r.ok, body: (await r.json()) }))
         .then(({ ok, body }) => {
         const u = ok ? body.user : null;
-        if (!u) {
-            const next = encodeURIComponent(location.pathname + location.search);
-            user.replaceChildren(el("a", { className: "tb-btn", href: `/login?next=${next}`, textContent: "Sign in" }));
-            return;
-        }
-        const shortcut = (href, label, path, name) => {
-            const a = el("a", { className: "tb-icon tb-shortcut", href, title: label, ariaLabel: label, ...current(name) });
-            a.append(icon(path));
-            return a;
-        };
-        const btn = el("button", { type: "button", className: "tb-user-btn", title: u.username, ariaLabel: `Account menu for ${u.username}` });
-        btn.setAttribute("aria-haspopup", "true");
-        btn.setAttribute("aria-expanded", "false");
-        btn.append(el("span", { className: "tb-avatar", textContent: u.username.slice(0, 1) }), el("span", { className: "tb-user-name", textContent: u.username }));
-        const logout = el("form", { method: "post", action: "/logout" }, el("button", { type: "submit", textContent: "Sign out" }));
-        const list = el("div", { className: "tb-menu-list", hidden: true }, el("a", { href: "/me/favorites", textContent: "★ Favorites", ...current("favorites") }), el("a", { href: "/me/reading", textContent: "Reading", ...current("reading") }), el("a", { href: "/me/finished", textContent: "Finished", ...current("finished") }), el("hr"), ...(body.can_edit_library ? [el("a", { href: "/upload", textContent: "Upload books" })] : []), ...(u.is_admin ? [el("a", { href: "/admin/users", textContent: "Manage users" })] : []), el("a", { href: "/account", textContent: "Account" }), logout);
-        register(btn, (open) => {
-            list.hidden = !open;
-        });
-        user.replaceChildren(shortcut("/me/favorites", "Favorites", STAR, "favorites"), shortcut("/me/reading", "Reading", BOOK, "reading"), el("div", { className: "tb-menu" }, btn, list));
+        const st = { username: u?.username ?? null, isAdmin: !!u?.is_admin, canEdit: !!body.can_edit_library };
+        const json = JSON.stringify(st);
+        cache.set(json);
+        if (json !== shown)
+            render(st);
     })
-        .catch(() => { }); // offline: leave it empty
+        .catch(() => {
+        if (!shown)
+            userEl.replaceChildren(); // offline, nothing known: drop the throbber
+    });
 }
+// Last, so the constants above are initialized (init may render synchronously).
+const bar = document.querySelector(".site-bar");
+if (bar)
+    init(bar);

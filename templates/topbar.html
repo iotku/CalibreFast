@@ -48,7 +48,9 @@ pages stay the same for everyone and cacheable.
 
 {{ define "topbar-end" }}
     </div>
-    <div id="user-nav" class="tb-user" data-active="{{ .Active }}"></div>
+    <div id="user-nav" class="tb-user" data-active="{{ .Active }}">
+        <div class="throbber" role="status" aria-label="Loading account"><span class="throbber-dot"></span><span class="throbber-dot"></span><span class="throbber-dot"></span></div>
+    </div>
 </header>
 <script type="module" src="/static/nav.js"></script>
 {{ end }}

@@ -601,10 +601,18 @@ input[type="number"],
     padding: 0 4px;
 }
 
-/* Reserve room so the bar doesn't shift when nav.ts fills in the user part. */
 .tb-user {
-    min-width: 116px;
     justify-content: flex-end;
+}
+
+.tb-user .throbber {
+    height: 36px;
+    gap: 4px;
+}
+
+.tb-user .throbber-dot {
+    width: 6px;
+    height: 6px;
 }
 
 .site-bar .tb-icon {
@@ -847,9 +855,6 @@ input[type="number"],
         display: none !important;
     }
 
-    .tb-user {
-        min-width: 36px;
-    }
 
     .site-bar .tb-pager .input-page {
         width: 40px;
