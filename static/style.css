@@ -71,9 +71,10 @@ body {
     color: var(--text-primary);
 }
 
-/* Opening the book modal hides the page scrollbar (body.no-scroll); keep its
-   space reserved on pages that have the modal so the content doesn't shift. */
-html:has(#book-modal) {
+/* Opening the book modal hides the page scrollbar (body.no-scroll). If the
+   page had one, modal.ts sets .keep-gutter so its space stays reserved and
+   the content doesn't shift; pages that don't scroll get no empty strip. */
+html.keep-gutter {
     scrollbar-gutter: stable;
 }
 

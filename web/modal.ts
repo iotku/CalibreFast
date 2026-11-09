@@ -116,12 +116,16 @@ function checkIdle(): void {
 function showModal(): void {
     setBody(LOADING_HTML);
     setBusy(true);
+    // Hiding the scrollbar would widen the page: keep its space if there was one.
+    const root = document.documentElement;
+    root.classList.toggle("keep-gutter", root.scrollHeight > root.clientHeight);
     document.body.classList.add("no-scroll");
     modalEl()?.classList.add("open");
 }
 
 function hideModal(): void {
     document.body.classList.remove("no-scroll");
+    document.documentElement.classList.remove("keep-gutter");
     modalEl()?.classList.remove("open");
     const body = bodyEl();
     if (body) body.innerHTML = "";
