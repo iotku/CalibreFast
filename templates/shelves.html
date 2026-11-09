@@ -4,7 +4,7 @@
     <meta charset="utf-8">
     <title>Bookshelves — {{ .Title }}</title>
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <link rel="stylesheet" href="/static/style.css">
+    <link rel="stylesheet" href="{{ asset "style.css" }}">
 </head>
 <body class="auth-body">
 {{ $tb := topbar "Active" "shelves" "Title" "Bookshelves" "NavTitle" true }}
@@ -61,6 +61,6 @@
     <p class="auth-muted"><a class="meta-link" href="/login?next=/shelves">Sign in</a> to make your own shelves.</p>
     {{ end }}
 </main>
-<script type="module" src="/static/shelves.js"></script>
+<script type="module" src="{{ asset "shelves.js" }}"></script>
 </body>
 </html>

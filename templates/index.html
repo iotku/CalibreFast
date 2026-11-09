@@ -4,7 +4,7 @@
         <meta charset="utf-8" />
         <title>{{ .Title }}</title>
         <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-        <link rel="stylesheet" href="/static/style.css" />
+        <link rel="stylesheet" href="{{ asset "style.css" }}" />
         <!-- No htmx history: the URL and back/forward belong to app-htmx.ts and modal.ts. -->
         <meta name="htmx-config" content="history:false" />
         <script src="https://cdn.jsdelivr.net/npm/htmx.org@4.0.1/dist/htmx.min.js"></script>
@@ -26,6 +26,6 @@
         <div id="scroll-badge"></div>
 
         <div id="load-more" class="load-more-sentinel"></div>
-        <script type="module" src="/static/app-htmx.js"></script>
+        <script type="module" src="{{ asset "app-htmx.js" }}"></script>
     </body>
 </html>

@@ -22,14 +22,14 @@ On startup CalibreFast queries `metadata.db` and writes paginated JSON (`pages/p
 
 ## Frontend
 
-- **TypeScript, compiled by Go.** Browser code is written in TypeScript in `web/` and compiled one-to-one into `static/` (same file names, so templates and URLs don't change).
-  - The compiler is `tsgo`, the Go-native TypeScript compiler. There's no Node, npm or `package.json`.
-    - It's pinned as a Go tool in its own module, `tools/go.mod`, so the server itself still builds with Go 1.25 and none of the compiler's dependencies.
-    - Working on the TypeScript needs Go 1.26+, which `tsgo` requires.
-  - Run `go generate` (or `go tool -modfile=tools/go.mod tsgo -p tsconfig.json`) after editing a `.ts` file. Type errors stop the build, and no JS is written.
-  - To update `tsgo`: `cd tools && go get -tool github.com/microsoft/typescript-go/cmd/tsgo@latest`, then `go generate` and run the tests.
-  - The compiled `static/*.js` is committed, so `go run .` works without a build step. **Don't edit it by hand.** `TestTypeScriptUpToDate` type-checks `web/` and fails if the committed JS doesn't match the sources.
-  - Settings are in `tsconfig.json`: strict mode, no unused locals/parameters, every file is a module.
+- **TypeScript and CSS, built by Go tools.** Browser code is TypeScript in `web/`, along with the stylesheet (`web/style.css`). There's no Node, npm or `package.json`.
+  - `go generate` runs two steps, both pinned as Go tools in their own module, `tools/go.mod`, so the server itself still builds with Go 1.25 and none of their dependencies. Working on the browser code needs Go 1.26+, which `tsgo` requires.
+    1. `tsgo`, the Go-native TypeScript compiler, type-checks `web/` (`tsconfig.json`: strict mode, no unused locals/parameters, every file is a module). It writes nothing.
+    2. `tools/jsbuild` uses esbuild's Go API to bundle each entry with its imports, minify it, and write it to `static/dist/` named by content hash (`app-htmx-NGM5EDXU.js`), with a source map and `manifest.json`.
+  - **Entries are what the templates use**, via `{{ asset "app-htmx.js" }}` (`web/app-htmx.ts`) or `{{ asset "style.css" }}` (`web/style.css`). Inline module scripts import the same way: `import … from {{ asset "metadata.js" }};`. jsbuild finds the names by scanning `templates/`, so adding a script to a page is just the template change plus `go generate`.
+  - One file per page script, with no import waterfall. Code shared by two entries is copied into both, so module state isn't shared between them: e.g. the book modal's user controls come bundled inside `app-htmx.js`, and `book.html` loads `user.js` only when the page is opened on its own.
+  - `static/dist/` is committed, so `go run .` works without a build step. **Don't edit it by hand.** `TestTypeScriptUpToDate` type-checks and rebuilds into a temporary directory and fails if the result differs from the committed files.
+  - To update the tools: `cd tools && go get -tool github.com/microsoft/typescript-go/cmd/tsgo@latest` (or `go get github.com/evanw/esbuild@latest`), then `go generate` and run the tests.
   - Shared code: `web/dom.ts` (typed element lookups, `api()` fetch helper) and `web/types.ts` (shapes of the JSON the Go server sends; keep in sync with the Go structs named there). `web/globals.d.ts` describes the parts of htmx, epub.js and pdf.js the app uses.
 - **Top bar.** Every page except the readers uses the shared bar in `templates/topbar.html`: `{{ template "topbar-start" (topbar …) }}`, the page's own tools (pager, Group button), then `{{ template "topbar-end" … }}`. The `topbar` template function (main.go) takes key/value pairs: `Active` nav item, `Title`, `Query`, and so on.
   - The signed-in part (★ Favorites, Reading, user menu) is filled by `web/nav.ts` from `/api/me`, so pages stay identical for everyone and cacheable. `nav.ts` also opens and closes the ☰ menu, user menu and mobile search.
@@ -54,7 +54,7 @@ On startup CalibreFast queries `metadata.db` and writes paginated JSON (`pages/p
   - A request the browser cancels (a cover scrolled away) stops before its next expensive step: waiting for a slot, reading and decoding, scaling, encoding.
   - Its thumbnail goes to a backlog (`thumb_backlog.go`), made one at a time once no thumbnail requests have come in for 2 seconds. A new request stops the backlog's current one, which goes back in the queue.
 - **Cover loading in the browser** (`pumpCovers` in `web/app-htmx.ts`): covers on screen first, a few at a time (`maxCovers`: 4 over HTTP/1.1, which leaves room for page JSON under the browser's 6 connections per host; 10 over HTTP/2 or 3; 2–4 when Chromium estimates a 2G/3G link); off-screen covers only start once the viewport is done, and in-flight ones that scroll away are cancelled (by removing `src`) and re-queued. While the book modal loads, grid covers are cancelled and wait until every image in the modal has arrived (`cf:modal-busy` from `web/modal.ts`).
-- **Static files** (`/static/`) are served with `Cache-Control: max-age=120`, so edits reach browsers within about 2 minutes without constant revalidation.
+- **Scripts and styles** (`/static/dist/`, `assets.go`) are held in memory, gzipped once at startup, and served with `Cache-Control: public, max-age=31536000, immutable`. Their names change with their content, so returning visitors make no requests for them until a new build. A restart picks up a new build.
 - **Book pages** use an `ETag` built from the OPF modification time, the groups version and whether the viewer may edit, plus `max-age=30`.
 
 ## Writes

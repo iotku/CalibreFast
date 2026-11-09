@@ -4,7 +4,7 @@
     <meta charset="utf-8">
     <title>Reader — {{ .Title }}</title>
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <link rel="stylesheet" href="/static/style.css">
+    <link rel="stylesheet" href="{{ asset "style.css" }}">
     <script src="https://unpkg.com/htmx.org@4.0.0/dist/htmx.min.js"></script>
 </head>
 <body class="reader-page">
@@ -42,6 +42,6 @@
 </div>
 <script src=" https://cdn.jsdelivr.net/npm/pdfjs-dist@5.7.284/wasm/openjpeg_nowasm_fallback.min.js "></script>
 <link href=" https://cdn.jsdelivr.net/npm/pdfjs-dist@5.7.284/web/pdf_viewer.min.css " rel="stylesheet">
-<script type="module" src="/static/reader-pdf.js"></script>
+<script type="module" src="{{ asset "reader-pdf.js" }}"></script>
 </body>
 </html>
