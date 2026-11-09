@@ -40,7 +40,6 @@ declare namespace EpubJS {
         prev(): Promise<void>;
         on(event: "relocated", cb: (location: Location) => void): void;
         on(event: "rendered", cb: (section: Section, view: View) => void): void;
-        on(event: "linkClicked", cb: (href: string) => void): void;
         themes: { fontSize(size: string): void };
     }
     interface Book {
