@@ -16,7 +16,7 @@ declare namespace EpubJS {
         subitems?: NavItem[];
     }
     interface Location {
-        start: { cfi: string; percentage?: number };
+        start: { cfi: string; percentage?: number; displayed?: { page: number; total: number } };
         end: { cfi: string };
         atStart?: boolean;
         atEnd?: boolean;
@@ -49,7 +49,11 @@ declare namespace EpubJS {
         locations: {
             generate(chars: number): Promise<string[]>;
             percentageFromCfi(cfi: string): number;
+            locationFromCfi(cfi: string): number;
+            length(): number;
         };
+        /** Print page numbers, when the book has a page list. */
+        pageList?: { pages: string[]; lastPage: number; pageFromCfi(cfi: string): number };
         renderTo(element: string | Element, options: { width: string; height: string; flow: string }): Rendition;
         coverUrl(): Promise<string | null>;
         load(path: string): Promise<unknown>;
