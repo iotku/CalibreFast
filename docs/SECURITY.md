@@ -76,6 +76,16 @@ Browsers let any website send requests to a server on your network (cross-site r
 
 EPUBs can contain scripts and arbitrary HTML. The server only ever sends the whole `.epub` as a download. The reader unpacks it in the browser, and epub.js shows each chapter in a sandboxed iframe with scripts disabled. Book descriptions are sanitized on the server (bluemonday) and in the metadata editor (DOMPurify).
 
+## Online lookups
+
+The metadata editor's **Look up** sends a book's ISBN (or its title and first author) to Open Library, then, if Open Library doesn't know it, to Wikidata. Google Books is asked only when an admin clicks **Try Google Books**. That tells those sites a book is in your library.
+
+- **Only on a click** by an admin, on a server with `-allow-writes`, one site at a time. Opening the editor, uploading, or finding ISBNs in a book's files sends nothing.
+- **Only the query** is sent, with a generic User-Agent. No account, library name or cookies.
+- **Covers are fetched by the server**, from URLs it builds itself, and only when asked for, so your browser doesn't contact those sites.
+- **Limits:** each site has a rate and daily limit, and CalibreFast backs off when a site says to (HTTP 429).
+- **`-no-lookups`** turns lookups off entirely; **`-no-google-books`** turns off Google only.
+
 ## Writes can conflict with Calibre itself
 
 CalibreFast writes to the same `metadata.db` and book folders that the Calibre desktop app uses. Editing in both at once can lose changes or confuse Calibre. **Close Calibre while editing through CalibreFast.**

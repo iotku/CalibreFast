@@ -15,6 +15,7 @@ Keys (all optional):
             shown only on narrow screens, where the nav is in the ☰ menu
   Sub       small text after the title (e.g. a raw language code)
   Query     search box value
+  NoSearch  true to leave out the search box (the page puts its own in the tools)
 The signed-in part (upload, favorites, reading, user menu) is filled by nav.ts, so
 pages stay the same for everyone and cacheable.
 */}}
@@ -34,6 +35,7 @@ pages stay the same for everyone and cacheable.
         <a href="/shelves"{{ if eq .Active "shelves" }} aria-current="page"{{ end }}>Shelves</a>
     </nav>
     {{ if .Title }}<h1 class="tb-title{{ if .NavTitle }} tb-title-nav{{ end }}" title="{{ .Title }}">{{ .Title }}{{ with .Sub }} <span class="tb-title-sub">{{ . }}</span>{{ end }}</h1>{{ end }}
+    {{ if not .NoSearch }}
     <form class="tb-search" action="/search" method="get" role="search">
         <input name="q" type="search" value="{{ .Query }}" placeholder="Search title or author…" aria-label="Search books" />
         <button type="button" class="tb-icon tb-search-close" aria-label="Close search">
@@ -43,6 +45,7 @@ pages stay the same for everyone and cacheable.
     <button type="button" class="tb-icon tb-search-btn" aria-label="Search">
         <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><circle cx="11" cy="11" r="7"/><path d="M20 20l-3.5-3.5"/></svg>
     </button>
+    {{ end }}
     <div class="tb-tools">
 {{ end }}
 

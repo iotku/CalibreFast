@@ -1,6 +1,9 @@
 package main
 
-import "strings"
+import (
+	"slices"
+	"strings"
+)
 
 // Display names for the ~100 most widely used languages, keyed by every code
 // they commonly appear under in book metadata: ISO 639-1 (2-letter),
@@ -180,4 +183,23 @@ func languageLabel(code string) string {
 	}
 	name, _ := languageDisplayName(code)
 	return name
+}
+
+// canonicalLanguage turns a language code from an online lookup ("en",
+// MARC's "ger") into the 3-letter ISO 639-2/T code Calibre uses ("eng",
+// "deu"). Unknown codes are kept, lowercased.
+func canonicalLanguage(code string) string {
+	c := strings.ToLower(strings.TrimSpace(code))
+	base, _, _ := strings.Cut(strings.ReplaceAll(c, "_", "-"), "-")
+	for _, l := range languageTable {
+		if !slices.Contains(l.codes, base) {
+			continue
+		}
+		for _, x := range l.codes {
+			if len(x) == 3 {
+				return x
+			}
+		}
+	}
+	return c
 }

@@ -170,6 +170,8 @@ type EditBookPageData struct { // TODO I Hate this, these page structs are all o
 	Date         string // YYYY-MM-DD for <input type="date">, "" if missing/unparseable
 	RawDate      string // original dc:date when it couldn't be parsed (kept on save)
 	CoverModTime int64
+	Lookups      bool // show the ISBN lookup (Open Library, Wikidata); off with -no-lookups
+	GoogleBooks  bool // offer Google Books as a last resort; off with -no-google-books
 }
 
 func writePage(page int, books []Book) error {
@@ -219,6 +221,8 @@ func main() {
 	flag.BoolVar(&publicCatalog, "public", false, "let anonymous visitors browse the library catalog (by default everything requires signing in)")
 	flag.BoolVar(&publicRead, "public-read", false, "public read-only mode: anonymous visitors can also read and download books (implies -public)")
 	flag.BoolVar(&allowRegistrations, "allow-registrations", false, "let anyone create an account from the web interface (only on trusted networks: bots will try)")
+	flag.BoolVar(&noLookups, "no-lookups", false, "never look books up online (hides the metadata editor's ISBN lookup)")
+	flag.BoolVar(&noGoogleBooks, "no-google-books", false, "never offer Google Books in the metadata editor (Open Library and Wikidata only)")
 	flag.StringVar(&publicURL, "public-url", "", "external base URL, e.g. https://books.example.com (needed for GitHub/Google sign-in)")
 	createUserName := flag.String("create-user", "", "create a user (or reset their password) and exit; password from $CF_PASSWORD or stdin")
 	createAdmin := flag.Bool("admin", false, "with -create-user: make the user an admin")
@@ -239,6 +243,7 @@ func main() {
 	}
 	pruneSessions()
 	configureOAuth()
+	configureLookups()
 	if allowWrites {
 		log.Println("-allow-writes: admins can change the library")
 	} else {
@@ -393,7 +398,7 @@ func topbarData(kv ...any) (map[string]any, error) {
 	if len(kv)%2 != 0 {
 		return nil, errors.New("topbar: odd number of arguments")
 	}
-	m := map[string]any{"Site": SiteTitle, "Active": "", "Title": "", "NavTitle": false, "Query": ""}
+	m := map[string]any{"Site": SiteTitle, "Active": "", "Title": "", "NavTitle": false, "Query": "", "NoSearch": false}
 	for i := 0; i < len(kv); i += 2 {
 		k, ok := kv[i].(string)
 		if !ok {
@@ -499,6 +504,8 @@ func serveLibraryHTTP() {
 			Date:         dateStr,
 			RawDate:      rawDate,
 			CoverModTime: coverModTime,
+			Lookups:      !noLookups,
+			GoogleBooks:  !noLookups && !noGoogleBooks,
 		}
 
 		err = templates.ExecuteTemplate(w, "book-edit.html", EditBookPageData)
@@ -512,6 +519,14 @@ func serveLibraryHTTP() {
 
 	// Apply updated metadata to a book
 	http.HandleFunc("/metadata/{uuid}/apply", requireWrites(applyMetadataHandler))
+
+	// ISBNs found in the book's own files (isbn.go)
+	http.HandleFunc("/metadata/{uuid}/isbns", requireWrites(isbnCandidatesHandler))
+
+	// Metadata from Open Library, Wikidata and Google Books, and Open
+	// Library covers (lookup.go)
+	http.HandleFunc("GET /metadata/lookup", requireWrites(requireLookups(lookupHandler)))
+	http.HandleFunc("GET /metadata/lookup/cover", requireWrites(requireLookups(lookupCoverHandler)))
 
 	// Book Display
 	http.HandleFunc("/book/get/", bookHandler)

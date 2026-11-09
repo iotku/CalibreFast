@@ -86,7 +86,26 @@ Groups combine values that mean the same thing without editing any books. For ex
 - **Autocomplete** for authors, publisher, tags and languages offers only values in your library; languages match by name too.
   - Nothing is preselected, so Enter adds exactly what you typed.
   - ↑/↓ highlight a suggestion; Enter, Tab or a click takes it.
-- **Cover picker:** upload an image, or pick a page from the PDF/EPUB.
+- **Cover picker:** opens when you click the cover at the top (it's usually right already). Upload an image, pick a page from the PDF/EPUB, or, after a lookup that found one, the cover Open Library has. Picking saves the cover right away; **Revert** brings back the previous one.
+- **Apply Changes** saves and opens the book page.
+
+### Finding ISBNs and looking books up
+
+Both only offer choices. Nothing is saved until **Apply Changes**.
+
+- **Find ISBNs in files** (under Identifiers) looks in the book's own files. It runs by itself when the book has no ISBN.
+  - **EPUB:** the package's identifiers, then the text of the first 5 and last 3 chapters, where copyright pages are. An EPUB 3 `dc:source` ISBN is the print edition.
+  - **MOBI/AZW3:** the ISBN in the file's EXTH header.
+  - **PDF:** the XMP metadata, then the text of the first 5 and last 3 pages, read in the browser with pdf.js. Only those pages are downloaded.
+  - **Checked:** ISBN-10 and ISBN-13 check digits, so phone numbers and typos are skipped. A 10-digit number needs "ISBN" shortly before it. Every ISBN is shown as ISBN-13, once.
+  - **Ranked:** copyright pages list the print editions too, so ISBNs labelled ebook/e-book/EPUB/PDF/digital come first. Next are those from the files' metadata, then other ISBNs in the text, then those labelled hardcover, paperback, print or audio.
+  - **Use** puts one in the ISBN field. If the book had a different ISBN, it's crossed out with **Undo**. ISBNs tried in between aren't kept, and a value is only ever crossed out once.
+- **Look up** in the top bar (in place of the library search) looks the book up by ISBN. The box starts with the book's ISBN, or the best one found in its files. Without an ISBN, it uses the title and first author. Each found ISBN also has its own **Look up**.
+  - **Open Library first.** Only if it doesn't know the ISBN is **Wikidata** asked. **Try Wikidata** and **Try Google Books** ask the others on request. Google Books often has the best description; `-no-google-books` hides it.
+  - **A source that knows the book** opens a comparison with the current metadata. **Accept all and apply** takes every value it has (never the cover), saves, and opens the book page. **Pick fields in the form** closes it: the source is a pill under every field (**Open Library**, **Wikidata**, **Google Books**), so values can be picked one by one. **Compare …** reopens it.
+  - Its identifier pill adds identifiers (ISBN, `olid`, `wikidata`, `google`) without crossing anything out.
+  - Open Library's cover, when it has one, is fetched only when you click **Cover from Open Library** in the cover picker.
+  - **Only on a click:** nothing is sent when the editor opens, on upload, or when an ISBN is found, and each click asks one site at a time. Answers are cached, each site has rate and daily limits, and `-no-lookups` turns lookups off.
 
 ### Description editor
 
@@ -97,6 +116,7 @@ Groups combine values that mean the same thing without editing any books. For ex
   - Bold and italic done with CSS (`font-weight`, `font-style`) are converted to `<strong>`/`<em>` first, so that formatting survives.
 - **HTML tab** edits stay as typed until you click **Clean HTML**.
 - **Clear** removes inline formatting, links, lists and headings from the selection.
+- Deleting all the text leaves an empty description, not the `<br>` browsers leave behind.
 
 ## Uploading
 

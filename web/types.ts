@@ -33,3 +33,61 @@ export interface ValueSuggestion {
     value: string;
     label?: string;
 }
+
+/** An identifier as Go sends it (Go: opfIdentifier in opf.go). */
+export interface OPFIdentifier {
+    Scheme: string;
+    Value: string;
+    ID: string;
+}
+
+/**
+ * A metadata source for the editor: the book's current metadata, an uploaded
+ * format, or an online lookup (Go: UploadedBookMeta, which embeds
+ * OPFMetadata, so its fields are flat).
+ */
+export interface MetaSource {
+    Format: string;
+    FileName: string;
+    Title: string;
+    Creators: string[] | null;
+    Description: string;
+    Publisher: string;
+    Date: string;
+    Languages: string[] | null;
+    Subjects: string[] | null;
+    Identifiers: OPFIdentifier[] | null;
+    /** Set by the editor on answers from an online lookup. */
+    External?: boolean;
+}
+
+/** An ISBN found in the book's files (Go: isbnCandidate in isbn.go). */
+export interface IsbnCandidate {
+    isbn13: string;
+    file: string;
+    source: "opf" | "exth" | "xmp" | "text";
+    /** Edition named next to it: "ebook", "hardcover", … */
+    label?: string;
+}
+
+/** GET/POST /metadata/<uuid>/isbns (Go: isbnResponse). */
+export interface IsbnResponse {
+    candidates: IsbnCandidate[];
+    /** The book's PDF, which the editor reads with pdf.js and posts back. */
+    pdf?: string;
+}
+
+/** Open Library's answer from /metadata/lookup (Go: lookupResult in lookup.go). */
+export interface LookupResult {
+    source: string;
+    option?: MetaSource;
+    /** Same-origin URL of its cover. */
+    cover?: string;
+    error?: string;
+}
+
+/** A cover from a lookup, for the cover picker (cf:cover-candidates event). */
+export interface CoverCandidate {
+    source: string;
+    url: string;
+}

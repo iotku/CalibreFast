@@ -178,7 +178,10 @@ export function createDescriptionEditor(textarea: HTMLTextAreaElement): HTMLDivE
     // raw for manual control; "Clean HTML" cleans it on demand.)
     function syncFromPreview() {
         fromPreview = true;
-        textarea.value = cleanHTML(preview.innerHTML);
+        // Nothing left to read (e.g. a space typed then deleted leaves a
+        // <br>): the description is empty, not "<br>".
+        const blank = !(preview.textContent ?? "").trim() && !preview.querySelector("img, hr, table");
+        textarea.value = blank ? "" : cleanHTML(preview.innerHTML);
         textarea.dispatchEvent(new Event("input", { bubbles: true }));
         fromPreview = false;
     }
