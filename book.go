@@ -9,6 +9,7 @@ import (
 	"path/filepath"
 	"strings"
 	"time"
+	"unicode/utf16"
 
 	"github.com/microcosm-cc/bluemonday"
 )
@@ -42,6 +43,20 @@ type BookPageData struct {
 
 	Formats []string
 	ModTime string
+
+	HasCover bool // cover.jpg exists; otherwise only the placeholder is shown
+	CoverHue int  // placeholder colour, as on the book's library card
+}
+
+// coverHue is the hue of a book's placeholder cover: the same string hash as
+// coverHue in web/utils.ts (JavaScript's 32-bit arithmetic), so the book page
+// matches the book's card in the library.
+func coverHue(uuid string) int {
+	var h int32
+	for _, c := range utf16.Encode([]rune(uuid)) {
+		h = h<<5 - h + int32(c)
+	}
+	return int(max(int64(h), -int64(h)) % 360)
 }
 
 func bookHandler(w http.ResponseWriter, r *http.Request) {
@@ -64,15 +79,18 @@ func bookHandler(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, err.Error(), http.StatusInternalServerError)
 		return
 	}
+	_, err = os.Stat(filepath.Join(baseDir, path, "cover.jpg"))
+	hasCover := err == nil
 
 	// Groups version: the language label depends on group names.
 	// Varies with whether this viewer may edit (shows the Edit button).
 	// Server start time: a restart (e.g. after updating templates) must not
 	// keep serving browsers a cached page in the old layout.
+	// Whether there's a cover (an upload adds one without touching the OPF).
 	// The modal (an htmx request) gets the bare fragment; a direct visit gets
 	// the full page with the top bar.
 	standalone := r.Header.Get("HX-Request") == ""
-	etag := fmt.Sprintf(`"%x-%x-%t-%x-%t"`, opfStat.ModTime().UnixNano(), groups.currentVersion(), canEditLibrary(r), serverStarted, standalone)
+	etag := fmt.Sprintf(`"%x-%x-%t-%x-%t-%t"`, opfStat.ModTime().UnixNano(), groups.currentVersion(), canEditLibrary(r), serverStarted, standalone, hasCover)
 	w.Header().Set("ETag", etag)
 	w.Header().Set("Vary", "HX-Request")
 	w.Header().Set("Cache-Control", "private, max-age=30")
@@ -126,6 +144,9 @@ func bookHandler(w http.ResponseWriter, r *http.Request) {
 
 		Formats: formats,
 		ModTime: modTime.(string), // cache-busting modtime for cover.jpg and cover-thumb.jpg
+
+		HasCover: hasCover,
+		CoverHue: coverHue(uuid),
 	}
 	// render into buffer first
 	var buf bytes.Buffer

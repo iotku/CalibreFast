@@ -310,6 +310,7 @@ input[type="number"],
     position: relative;
     aspect-ratio: 2 / 3;
     overflow: hidden;
+    background: hsl(var(--cover-hue) 55% 35%); /* placeholder until (or instead of) the cover */
 }
 
 .book-cover {
@@ -929,6 +930,60 @@ body.book-standalone {
     grid-area: 1 / 1;
 }
 
+/* Placeholder cover, as on the book's library card (colour, title, author):
+   shown while no image in the stack has loaded, so when there's no cover,
+   while it loads, or when it fails. */
+.cover-stack > .cover-placeholder {
+    grid-area: 1 / 1;
+    display: flex;
+    flex-direction: column;
+    justify-content: flex-end;
+    box-sizing: border-box;
+    width: 100%;
+    max-width: 280px;
+    aspect-ratio: 2 / 3;
+    padding: 18px;
+    overflow: hidden;
+    border-radius: var(--radius-large);
+    box-shadow: var(--shadow-medium);
+    color: white;
+    overflow-wrap: anywhere;
+    background:
+        linear-gradient(
+            to top,
+            rgba(0, 0, 0, 0.92) 0%,
+            rgba(0, 0, 0, 0.65) 35%,
+            rgba(0, 0, 0, 0.15) 65%,
+            transparent 100%
+        ),
+        hsl(var(--cover-hue) 55% 35%);
+}
+
+.cover-stack:has(> img.loaded) > .cover-placeholder {
+    display: none;
+}
+
+/* Room for the "Read" hint at the bottom of the cover link. */
+.cover-link .cover-placeholder {
+    padding-bottom: 52px;
+}
+
+.cover-placeholder-title {
+    display: -webkit-box;
+    -webkit-box-orient: vertical;
+    -webkit-line-clamp: 5;
+    overflow: hidden;
+    margin-bottom: 8px;
+    font-size: var(--font-size-large);
+    font-weight: 600;
+    line-height: 1.2;
+}
+
+.cover-placeholder-author {
+    color: rgba(255, 255, 255, 0.8);
+    font-size: var(--font-size-small);
+}
+
 .book-page-cover img.cover-full {
     box-shadow: none;
     opacity: 0;
@@ -1323,6 +1378,11 @@ body.book-standalone {
         margin: 0 auto;
     }
 
+    .book-page-cover .cover-placeholder {
+        max-width: 220px;
+        margin: 0 auto;
+    }
+
     /* 3. Details (metadata + description) below the cover */
     .book-page-info {
         width: 100%;
@@ -1349,6 +1409,10 @@ body.book-standalone {
     .cover-link img {
         max-width: 180px;
         max-height: 260px;
+    }
+
+    .book-page-cover .cover-placeholder {
+        max-width: 180px;
     }
 
     .title-row h1 {
