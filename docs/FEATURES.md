@@ -114,6 +114,7 @@ Groups combine values that mean the same thing without editing any books. For ex
 - **Favorites and status:** the book popup has ★ Favorite and a status menu (not started / reading / finished). Lists are at `/me/favorites`, `/me/reading` and `/me/finished`.
   - Turning a page in a reader marks a book as reading; reaching ≥ 97% marks it finished.
   - Automatic changes only move forward and never override a status you set yourself.
+- **EPUB reader loads the whole book up front** (with a progress label), then reads offline: chapters, images and fonts come from memory, with no requests at chapter boundaries.
 - **Reading position and bookmarks:** kept in the browser and, when signed in, synced to the server, so another device can resume.
   - The newest position wins.
   - Changes made offline are pushed when the connection returns.

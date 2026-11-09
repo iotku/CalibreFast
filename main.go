@@ -468,7 +468,6 @@ func serveLibraryHTTP() {
 		}
 	}))
 
-	http.HandleFunc("/epub/", requireReader(epubFileHandler))
 
 	http.HandleFunc("/view/", requireReader(viewHandler))
 
