@@ -277,6 +277,13 @@ input[type="number"],
     transform: translateY(0);
 }
 
+/* Until the cover loads (or if there is none), the info stands in for it,
+   then fades out as the cover fades in. */
+.book:not(:has(.book-cover.loaded)) .book-info {
+    opacity: 1;
+    transform: none;
+}
+
 @media (hover: none) {
     .book-info {
         opacity: 1;
@@ -310,40 +317,6 @@ input[type="number"],
 }
 .book-cover.loaded {
     opacity: 1;
-}
-
-/* Book cover placeholder */
-
-.cover-placeholder {
-    position: absolute;
-    inset: 0;
-    display: flex;
-    flex-direction: column;
-    justify-content: space-between;
-    align-items: center;
-    padding: 12% 8%;
-    text-align: center;
-    color: #fff;
-    text-wrap: balance;
-    transition: opacity ease-out 0.2s;
-}
-
-.cover-placeholder.loaded {
-    opacity: 0;
-}
-
-.ph-title {
-    font: bold 0.9rem/1.25 sans-serif;
-    margin-top: 25%;
-    display: -webkit-box;
-    -webkit-line-clamp: 5;
-    line-clamp: 5;
-    -webkit-box-orient: vertical;
-    overflow: hidden;
-}
-.ph-author {
-    font: 0.75rem sans-serif;
-    opacity: 0.85;
 }
 
 /* ============================================

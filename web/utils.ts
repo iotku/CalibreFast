@@ -120,10 +120,6 @@ export function renderBookCard(book: Book): string {
                     data-src="/cover-thumb/${uuid}?t=${book.last_modified}"
                     data-id="${uuid}"
                     fetchpriority="low" />
-                <div class="cover-placeholder">
-                    <span class="ph-title">${title}</span>
-                    <span class="ph-author">${author}</span>
-                </div>
             </div>
     </a>
     <div class="book-info">

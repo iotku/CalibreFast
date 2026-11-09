@@ -108,7 +108,7 @@ export function setupCoverStates(container) {
         const img = e.target;
         if (!(img instanceof HTMLImageElement) || !img.matches(".book-cover"))
             return;
-        img.parentElement?.classList.add("no-cover"); // placeholder stays visible
+        img.parentElement?.classList.add("no-cover"); // title/author info stays visible
         img.remove();
     }, true);
 }
