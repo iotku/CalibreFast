@@ -752,7 +752,7 @@ input[type="number"],
         left: var(--page-padding);
         flex-direction: column; /* as wide as its longest item */
         align-items: stretch;
-        gap: 8px; /* room for the active underline between items */
+        gap: 2px;
         padding: 6px;
         background: var(--bg-elevated);
         border: 1px solid var(--border-medium);
@@ -762,6 +762,23 @@ input[type="number"],
 
     .site-bar.nav-open .tb-nav {
         display: flex;
+    }
+
+    /* Menu items: 44px touch targets; the active one underlines its word
+       (straight, inside the item, clear of the next entry). */
+    .tb-nav a {
+        padding: 14px;
+        line-height: 16px;
+    }
+
+    .tb-nav a[aria-current="page"]::after {
+        display: none;
+    }
+
+    .tb-nav a[aria-current="page"] {
+        text-decoration: underline;
+        text-decoration-thickness: 2px;
+        text-underline-offset: 6px;
     }
 
     .tb-nav .tb-home {
