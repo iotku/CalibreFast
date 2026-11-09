@@ -44,6 +44,8 @@ On startup CalibreFast queries `metadata.db` and writes paginated JSON (`pages/p
   The same script therefore works with the static JSON files and with the API endpoints.
 - **Book popup** (`web/modal.ts`) loads `/book/get/<uuid>` through htmx.
   - It's a `#book/<uuid>` history entry, closed by going back. While it's open the grid doesn't write `?page` to the URL: going back only closes it if both entries have the same `?page` (otherwise there's no `hashchange`). The page is written once it closes.
+  - The modal follows the URL on both `hashchange` and `popstate`, so back/forward between entries with different `?page` still opens and closes it.
+  - htmx's own history is off on these pages (`<meta name="htmx-config" content="history:false">`). Otherwise, on back/forward it re-fetches the page and replaces the whole body, grid included.
 
 ## Caching
 
