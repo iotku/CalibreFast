@@ -22,14 +22,23 @@ On startup CalibreFast queries `metadata.db` and writes paginated JSON (`pages/p
 
 ## Frontend
 
-- **Scroll engine.** `static/app-htmx.js` drives the main library, filtered views and search.
+- **TypeScript, compiled by Go.** Browser code is written in TypeScript in `web/` and compiled one-to-one into `static/` (same file names, so templates and URLs don't change).
+  - The compiler is `tsgo`, the Go-native TypeScript compiler. There's no Node, npm or `package.json`.
+    - It's pinned as a Go tool in its own module, `tools/go.mod`, so the server itself still builds with Go 1.25 and none of the compiler's dependencies.
+    - Working on the TypeScript needs Go 1.26+, which `tsgo` requires.
+  - Run `go generate` (or `go tool -modfile=tools/go.mod tsgo -p tsconfig.json`) after editing a `.ts` file. Type errors stop the build, and no JS is written.
+  - To update `tsgo`: `cd tools && go get -tool github.com/microsoft/typescript-go/cmd/tsgo@latest`, then `go generate` and run the tests.
+  - The compiled `static/*.js` is committed, so `go run .` works without a build step. **Don't edit it by hand.** `TestTypeScriptUpToDate` type-checks `web/` and fails if the committed JS doesn't match the sources.
+  - Settings are in `tsconfig.json`: strict mode, no unused locals/parameters, every file is a module.
+  - Shared code: `web/dom.ts` (typed element lookups, `api()` fetch helper) and `web/types.ts` (shapes of the JSON the Go server sends; keep in sync with the Go structs named there). `web/globals.d.ts` describes the parts of htmx, epub.js and pdf.js the app uses.
+- **Scroll engine.** `web/app-htmx.ts` drives the main library, filtered views and search.
 - **Data source.** Each page's HTML sets attributes on `#books`:
   - `data-page-url`: a URL template with `{n}` for the page number
   - `data-total-pages`
   - `data-empty-text`
 
   The same script therefore works with the static JSON files and with the API endpoints.
-- **Book popup** (`static/modal.js`) loads `/book/get/<uuid>` through htmx.
+- **Book popup** (`web/modal.ts`) loads `/book/get/<uuid>` through htmx.
 
 ## Caching
 

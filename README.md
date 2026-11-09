@@ -79,6 +79,16 @@ Then open [http://localhost:8080](http://localhost:8080) and sign in. Add more u
 
 GitHub and Google sign-in are optional: see [OAUTH.md](docs/OAUTH.md) for step-by-step setup.
 
+### Working on the browser code
+
+The browser code is TypeScript in `web/`, compiled into `static/` by Go's own tooling (no Node or npm; needs Go 1.26+). Only needed if you change the browser code. After editing a `.ts` file:
+
+```bash
+go generate   # type-checks and rebuilds static/*.js
+```
+
+See [ARCHITECTURE.md](docs/ARCHITECTURE.md#frontend) for details.
+
 ## Documentation
 
 - [SECURITY.md](docs/SECURITY.md): the risks, and how to run CalibreFast safely
