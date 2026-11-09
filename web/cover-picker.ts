@@ -1,12 +1,14 @@
 // Reusable Cover Picker component for upload and book-edit pages.
 import { errorMessage } from "./dom.js";
+import type { CoverCandidate } from "./types.js";
 import { EPUBJS_URL, JSZIP_URL, openPdf } from "./vendor.js";
 
 /** Called after a cover is saved for a book. */
 type CoverSaved = ((uuid: string) => void) | null;
 /** Shows/hides the revert button depending on whether a backup exists. */
 type RevertUpdater = ((hasBackup: boolean) => void) | null;
-type PageFormat = "pdf" | "epub";
+/** Fills the strip with pictures to pick from. */
+type StripRenderer = (strip: HTMLElement, status: HTMLElement) => void;
 
 /** Response of /upload-cover, /revert-cover and /cover-status. */
 interface CoverStatus {
@@ -269,7 +271,8 @@ export function buildCoverPicker(
         pdfBtn.type = "button";
         pdfBtn.textContent = "Pick from PDF pages";
         const btn = pdfBtn;
-        btn.addEventListener("click", () => togglePageStrip(btn, picker, uuid, "pdf", onCoverSaved, false, updateRevertBtn));
+        btn.addEventListener("click", () =>
+            showPageStrip(btn, picker, (strip, status) => renderPdfPages(uuid, strip, status, picker, onCoverSaved, false, updateRevertBtn)));
         actions.appendChild(pdfBtn);
     }
 
@@ -278,8 +281,31 @@ export function buildCoverPicker(
         epubBtn.type = "button";
         epubBtn.textContent = "Pick from EPUB pages";
         const btn = epubBtn;
-        btn.addEventListener("click", () => togglePageStrip(btn, picker, uuid, "epub", onCoverSaved, false, updateRevertBtn));
+        btn.addEventListener("click", () =>
+            showPageStrip(btn, picker, (strip, status) => renderEpubPages(uuid, strip, status, picker, onCoverSaved, false, updateRevertBtn)));
         actions.appendChild(epubBtn);
+    }
+
+    // Covers from an online lookup in the metadata editor (web/isbn-tools.ts).
+    if (isEditPage) {
+        let lookupBtn: HTMLButtonElement | null = null;
+        let covers: CoverCandidate[] = [];
+        const render: StripRenderer = (strip, status) => {
+            status.textContent = "Covers found online: click one to use it";
+            for (const c of covers) renderImageThumb(uuid, c.url, c.source, strip, picker, onCoverSaved, false, updateRevertBtn);
+        };
+        document.addEventListener("cf:cover-candidates", (e) => {
+            covers = (e as CustomEvent<CoverCandidate[]>).detail;
+            if (!lookupBtn) {
+                const btn = document.createElement("button");
+                btn.type = "button";
+                btn.textContent = "Covers found online";
+                btn.addEventListener("click", () => showPageStrip(btn, picker, render));
+                actions.appendChild(btn);
+                lookupBtn = btn;
+            }
+            showPageStrip(lookupBtn, picker, render, { toggle: false });
+        });
     }
 
     picker.appendChild(actions);
@@ -294,10 +320,11 @@ export function buildCoverPicker(
 
     // Auto-select default cover from page 1 on upload
     if (autoSelectDefault) {
+        const auto = { toggle: false, loading: "Saving default cover from page 1…" };
         if (hasEpub && epubBtn) {
-            togglePageStrip(epubBtn, picker, uuid, "epub", onCoverSaved, true, updateRevertBtn);
+            showPageStrip(epubBtn, picker, (strip, status) => renderEpubPages(uuid, strip, status, picker, onCoverSaved, true, updateRevertBtn), auto);
         } else if (hasPdf && pdfBtn) {
-            togglePageStrip(pdfBtn, picker, uuid, "pdf", onCoverSaved, true, updateRevertBtn);
+            showPageStrip(pdfBtn, picker, (strip, status) => renderPdfPages(uuid, strip, status, picker, onCoverSaved, true, updateRevertBtn), auto);
         }
     }
 
@@ -326,14 +353,15 @@ export async function mountCoverPicker(
     return picker;
 }
 
-function togglePageStrip(
+/**
+ * Shows btn's pictures in the strip under the buttons. Clicking the active
+ * button again hides them, unless toggle is false.
+ */
+function showPageStrip(
     btn: HTMLButtonElement,
     picker: HTMLElement,
-    uuid: string,
-    format: PageFormat,
-    onCoverSaved: CoverSaved,
-    autoSelect = false,
-    updateRevertBtn: RevertUpdater = null,
+    render: StripRenderer,
+    { toggle = true, loading = "Loading pages…" }: { toggle?: boolean; loading?: string } = {},
 ): void {
     const pages = picker.querySelector<HTMLElement>(".cover-pages");
     const strip = pages?.querySelector<HTMLElement>(".cover-pages-strip");
@@ -341,9 +369,7 @@ function togglePageStrip(
     if (!pages || !strip || !status) return;
 
     const allBtns = picker.querySelectorAll(".cover-picker-actions button:not(.btn-revert-cover)");
-    const wasActive = btn.classList.contains("active");
-
-    if (wasActive && !autoSelect) {
+    if (toggle && btn.classList.contains("active")) {
         allBtns.forEach(b => b.classList.remove("active"));
         pages.classList.remove("visible");
         return;
@@ -352,14 +378,9 @@ function togglePageStrip(
     allBtns.forEach(b => b.classList.remove("active"));
     btn.classList.add("active");
     strip.innerHTML = "";
-    status.textContent = autoSelect ? "Saving default cover from page 1…" : "Loading pages…";
+    status.textContent = loading;
     pages.classList.add("visible");
-
-    if (format === "pdf") {
-        renderPdfPages(uuid, strip, status, picker, onCoverSaved, autoSelect, updateRevertBtn);
-    } else if (format === "epub") {
-        renderEpubPages(uuid, strip, status, picker, onCoverSaved, autoSelect, updateRevertBtn);
-    }
+    render(strip, status);
 }
 
 async function renderPdfPages(

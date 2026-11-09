@@ -76,6 +76,19 @@ On startup CalibreFast queries `metadata.db` and writes paginated JSON (`pages/p
   - The whole server is wrapped in `csrfProtect`, Go's `http.CrossOriginProtection`.
 - **Read-only mode** writes only CalibreFast's own caches (`./pages` and `-cachedir`).
 
+## ISBNs and online lookups
+
+Both are behind `requireWrites` and only add options to the metadata editor (`web/isbn-tools.ts`). They never write.
+
+- **`/metadata/{uuid}/isbns`** (`isbn.go`) finds ISBNs in the book's files. GET reads EPUB (package identifiers, then the first 5 and last 3 spine documents' visible text), MOBI and AZW3 (EXTH record 104). It names the book's PDF, if any.
+  - Go has no reliable PDF text extraction, so the editor reads the PDF with pdf.js: the XMP packet and the first and last few pages, with range requests and `disableAutoFetch`. It POSTs them to the same endpoint.
+  - All parsing, check digits, ISBN-13 normalisation, labels and ranking happen on the server, so there's one implementation.
+- **`/metadata/lookup?isbn=…`** (or `?title=…&author=…`) (`lookup.go`) asks Open Library and Google Books at once. Each answer is mapped to an `UploadedBookMeta` (Format "Open Library" / "Google Books"). The editor adds it as one more source, with `External` set.
+  - Open Library: `/isbn/{isbn}.json` (the edition), then its work (description, subjects) and authors. Without an ISBN, `/search.json`. Google Books: `/volumes?q=isbn:…`, with `CF_GOOGLE_BOOKS_KEY` if set.
+  - Answers, including "no match", are cached in memory for 24 hours (500 entries). Errors aren't cached.
+  - Requests carry a generic User-Agent and nothing else about the library or user. `-no-lookups` refuses both endpoints and hides the button.
+- **`/metadata/lookup/cover?src=…`** fetches a lookup's cover for the cover picker. The server builds the URL from a cover or volume id it checks, so it can't be pointed elsewhere. The browser never contacts the third party, and the canvas the picker re-encodes from isn't cross-origin.
+
 ## Accounts and per-user data
 
 - `appdb.go`: CalibreFast's own SQLite database in `-datadir`, with versioned migrations (users, identities, sessions, favorites, reading_status, reading_progress, bookmarks, shelves, shelf_books).

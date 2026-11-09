@@ -11,9 +11,12 @@ const PDFJS_WORKER_URL = "/static/vendor/pdfjs-dist@5.7.284/build/pdf.worker.min
 // decoders, which it fetches from here.
 const PDFJS_WASM_URL = "/static/vendor/pdfjs-dist@5.7.284/wasm/";
 
-/** Opens a PDF with pdf.js, which is loaded on first use. */
-export async function openPdf(url: string): Promise<PdfJS.Document> {
+/**
+ * Opens a PDF with pdf.js, which is loaded on first use. To read only a few
+ * pages of a large file, pass { disableAutoFetch: true, disableStream: true }.
+ */
+export async function openPdf(url: string, options: PdfJS.LoadOptions = {}): Promise<PdfJS.Document> {
     const pdfjs = (await import(PDFJS_URL)) as PdfJS.Lib;
     pdfjs.GlobalWorkerOptions.workerSrc = PDFJS_WORKER_URL;
-    return pdfjs.getDocument({ url, wasmUrl: PDFJS_WASM_URL }).promise;
+    return pdfjs.getDocument({ ...options, url, wasmUrl: PDFJS_WASM_URL }).promise;
 }

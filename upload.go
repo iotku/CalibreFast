@@ -33,6 +33,50 @@ type UploadedBookMeta struct {
 	FileName string // original filename
 }
 
+// epubPackagePath is the path of an EPUB's package document (the OPF):
+// from META-INF/container.xml, else the first .opf in the archive.
+func epubPackagePath(zr *zip.Reader) (string, error) {
+	if data, err := readZipEntry(zr, "META-INF/container.xml", 1<<20); err == nil {
+		var c struct {
+			Rootfiles []struct {
+				FullPath string `xml:"full-path,attr"`
+			} `xml:"rootfiles>rootfile"`
+		}
+		if xml.Unmarshal(data, &c) == nil && len(c.Rootfiles) > 0 && c.Rootfiles[0].FullPath != "" {
+			return c.Rootfiles[0].FullPath, nil
+		}
+	}
+	for _, f := range zr.File {
+		if strings.HasSuffix(f.Name, ".opf") {
+			return f.Name, nil
+		}
+	}
+	return "", errors.New("could not find OPF in epub")
+}
+
+// readZipEntry reads one file from a zip, refusing entries over max bytes.
+func readZipEntry(zr *zip.Reader, name string, max int64) ([]byte, error) {
+	for _, f := range zr.File {
+		if f.Name != name {
+			continue
+		}
+		rc, err := f.Open()
+		if err != nil {
+			return nil, err
+		}
+		defer rc.Close()
+		data, err := io.ReadAll(io.LimitReader(rc, max+1))
+		if err != nil {
+			return nil, err
+		}
+		if int64(len(data)) > max {
+			return nil, fmt.Errorf("%s is larger than %d bytes", name, max)
+		}
+		return data, nil
+	}
+	return nil, fmt.Errorf("%s not found", name)
+}
+
 // --- EPUB metadata extraction ---
 func extractEPUBMeta(r io.ReaderAt, size int64, filename string) (*UploadedBookMeta, error) {
 	zr, err := zip.NewReader(r, size)
@@ -40,57 +84,13 @@ func extractEPUBMeta(r io.ReaderAt, size int64, filename string) (*UploadedBookM
 		return nil, fmt.Errorf("not a valid zip/epub: %w", err)
 	}
 
-	// Find OPF path via META-INF/container.xml
-	opfPath := ""
-	for _, f := range zr.File {
-		if f.Name == "META-INF/container.xml" {
-			rc, err := f.Open()
-			if err != nil {
-				break
-			}
-			data, _ := io.ReadAll(rc)
-			rc.Close()
-			type rootfile struct {
-				FullPath string `xml:"full-path,attr"`
-			}
-			type container struct {
-				Rootfiles []rootfile `xml:"rootfiles>rootfile"`
-			}
-			var c container
-			xml.Unmarshal(data, &c)
-			if len(c.Rootfiles) > 0 {
-				opfPath = c.Rootfiles[0].FullPath
-			}
-			break
-		}
+	opfPath, err := epubPackagePath(zr)
+	if err != nil {
+		return nil, err
 	}
-	// Fallback: first .opf file found
-	if opfPath == "" {
-		for _, f := range zr.File {
-			if strings.HasSuffix(f.Name, ".opf") {
-				opfPath = f.Name
-				break
-			}
-		}
-	}
-	if opfPath == "" {
-		return nil, fmt.Errorf("could not find OPF in epub")
-	}
-
-	var opfData []byte
-	for _, f := range zr.File {
-		if f.Name == opfPath {
-			rc, err := f.Open()
-			if err != nil {
-				return nil, err
-			}
-			opfData, _ = io.ReadAll(rc)
-			rc.Close()
-			break
-		}
-	}
-	if opfData == nil {
-		return nil, fmt.Errorf("could not read OPF file")
+	opfData, err := readZipEntry(zr, opfPath, 16<<20)
+	if err != nil {
+		return nil, fmt.Errorf("could not read OPF file: %w", err)
 	}
 
 	var pkg OPF
@@ -337,6 +337,7 @@ func parseAnyDate(s string) (time.Time, error) {
 		"2 January 2006",
 		"Jan 2, 2006",
 		"Jan 2006",
+		"January 2006",
 		"20060102150405-0700",
 		"20060102150405Z0700",
 		"20060102150405Z",

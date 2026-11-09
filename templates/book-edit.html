@@ -944,10 +944,96 @@
                 gap: 6px;
             }
 
-            .btn-add-id:hover {
+            .btn-add-id:hover:not(:disabled) {
                 background: rgba(200, 169, 110, 0.12);
                 border-color: var(--accent);
                 color: var(--accent-hover);
+            }
+
+            .btn-add-id:disabled {
+                opacity: 0.5;
+                cursor: progress;
+            }
+
+            .identifier-actions {
+                display: flex;
+                flex-wrap: wrap;
+                gap: 8px;
+            }
+
+            /* ── ISBN finder and lookup ── */
+            .isbn-panel {
+                margin-top: 12px;
+                padding-top: 10px;
+                border-top: 1px solid var(--border);
+            }
+
+            .isbn-status {
+                margin: 10px 0 0;
+                font-size: 0.8rem;
+                color: var(--muted);
+            }
+
+            .isbn-panel .isbn-status {
+                margin-top: 0;
+            }
+
+            .isbn-status.error {
+                color: #e59999;
+            }
+
+            .isbn-candidates {
+                list-style: none;
+                margin: 8px 0 0;
+                padding: 0;
+                display: flex;
+                flex-direction: column;
+                gap: 6px;
+            }
+
+            .isbn-candidate {
+                display: flex;
+                flex-wrap: wrap;
+                align-items: center;
+                gap: 6px 10px;
+                font-size: 0.8rem;
+            }
+
+            .isbn-candidate + .isbn-candidate {
+                padding-top: 6px;
+                border-top: 1px solid var(--border);
+            }
+
+            .isbn-value {
+                font-family: var(--mono);
+                font-size: 0.85rem;
+                color: var(--text);
+            }
+
+            .isbn-label {
+                font-family: var(--mono);
+                font-size: 0.7rem;
+                padding: 1px 6px;
+                border: 1px solid var(--border);
+                border-radius: 4px;
+                color: var(--accent);
+            }
+
+            .isbn-where {
+                color: var(--muted);
+                min-width: 0;
+                overflow-wrap: anywhere;
+            }
+
+            .isbn-actions {
+                display: inline-flex;
+                gap: 6px;
+                margin-left: auto;
+            }
+
+            .isbn-in-use {
+                color: #7aba7e;
+                font-size: 0.75rem;
             }
 
             /* ── Action Bar ── */
@@ -1081,7 +1167,7 @@
                         <span class="uuid-badge">{{.UUID}}</span>
                     </div>
                     <p class="banner-hint">
-                        Tip: Click the pills under each field (e.g. <strong>current</strong>, <strong>epub</strong>, <strong>pdf</strong>) to use that source's value; green means it matches. After you change a field, its <strong>edited</strong> pill restores your changes and shows what changed vs <strong>current</strong>. <strong>Compare changes</strong> at the bottom lists every changed field.
+                        Tip: Click the pills under each field (e.g. <strong>current</strong>, <strong>epub</strong>, <strong>pdf</strong>, or <strong>Open Library</strong> after a lookup) to use that source's value; green means it matches. After you change a field, its <strong>edited</strong> pill restores your changes and shows what changed vs <strong>current</strong>. <strong>Compare changes</strong> at the bottom lists every changed field.
                     </p>
                 </div>
             </div>
@@ -1166,11 +1252,27 @@
                             <div id="custom-identifiers-list" class="identifiers-container identifiers-list"></div>
                         </div>
                         <div class="identifiers-bottom-row">
-                            <button type="button" id="btn-add-identifier" class="btn-add-id">
-                                + Add Identifier
-                            </button>
+                            <div class="identifier-actions">
+                                <button type="button" id="btn-add-identifier" class="btn-add-id">
+                                    + Add Identifier
+                                </button>
+                                <button type="button" id="btn-find-isbns" class="btn-add-id" title="Look for ISBNs in the book's EPUB, MOBI, AZW3 and PDF files">
+                                    Find ISBNs in files
+                                </button>
+                                {{ if .Lookups }}
+                                <button type="button" id="btn-lookup" class="btn-add-id" title="Sends the ISBN (or, without one, the title and first author) to Open Library and Google Books">
+                                    Look up online
+                                </button>
+                                {{ end }}
+                            </div>
                             <div class="meta-source-buttons" data-field="identifiers"></div>
                         </div>
+                        <!-- ISBNs found in the book's files (web/isbn-tools.ts) -->
+                        <div id="isbn-panel" class="isbn-panel" hidden>
+                            <p id="isbn-status" class="isbn-status"></p>
+                            <ul id="isbn-candidates" class="isbn-candidates"></ul>
+                        </div>
+                        <p id="lookup-status" class="isbn-status" hidden></p>
                     </fieldset>
 
                     <fieldset class="meta-field col-span-2">

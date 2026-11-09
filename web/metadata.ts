@@ -2,34 +2,12 @@ import { createChipInput, parseList, type ChipInput } from "./chips.js";
 import { attachSuggest } from "./suggest.js";
 import { createDescriptionEditor } from "./description.js";
 import { errorMessage, maybeId } from "./dom.js";
+import { isbnDigits, mountIsbnTools } from "./isbn-tools.js";
+import type { MetaSource } from "./types.js";
 
 type FieldKind = "string" | "date" | "list" | "identifiers";
 type FieldKey = "title" | "creators" | "description" | "publisher" | "date" | "languages" | "subjects" | "identifiers";
 type TextKey = Exclude<FieldKey, "identifiers">;
-
-/** An identifier as Go sends it (Go: opfIdentifier). */
-interface OPFIdentifier {
-  Scheme: string;
-  Value: string;
-  ID: string;
-}
-
-/**
- * A metadata source: the book's current metadata or one uploaded format
- * (Go: UploadedBookMeta, which embeds OPFMetadata so its fields are flat).
- */
-export interface MetaSource {
-  Format: string;
-  FileName: string;
-  Title: string;
-  Creators: string[] | null;
-  Description: string;
-  Publisher: string;
-  Date: string;
-  Languages: string[] | null;
-  Subjects: string[] | null;
-  Identifiers: OPFIdentifier[] | null;
-}
 
 /** An identifier as the editor sends it (Go: identifierList). */
 interface Ident {
@@ -91,6 +69,30 @@ function fieldValue(meta: MetaSource, key: FieldKey, kind: FieldKind): string {
 
 function sourceLabel(meta: MetaSource): string {
   return meta.FileName ? `${meta.Format} (${meta.FileName})` : meta.Format;
+}
+
+/** A source pill under a field. */
+function sourceButton(meta: MetaSource, title: string): HTMLButtonElement {
+  const btn = document.createElement("button");
+  btn.type = "button";
+  btn.className = "meta-source-btn";
+  btn.textContent = sourceLabel(meta);
+  btn.title = title;
+  btn.dataset["format"] = meta.Format;
+  if (meta.External) btn.dataset["external"] = "true";
+  return btn;
+}
+
+/** A newer answer from a lookup replaces that source's earlier pill. */
+function dropOldLookup(buttons: HTMLButtonElement[], meta: MetaSource): void {
+  if (!meta.External) return;
+  for (let i = buttons.length - 1; i >= 0; i--) {
+    const b = buttons[i];
+    if (b?.dataset["external"] && b.dataset["format"] === meta.Format) {
+      b.remove();
+      buttons.splice(i, 1);
+    }
+  }
 }
 
 export async function fetchMetas(uuid: string): Promise<MetaSource[]> {
@@ -158,16 +160,19 @@ function insertEditedButton(buttonRow: HTMLElement, btn: HTMLButtonElement): voi
   else buttonRow.prepend(btn);
 }
 
+/** Adds a source's pill to a field (a lookup's answer arrives later). */
+type AddSource = (meta: MetaSource) => void;
+
 function populateField(
   form: HTMLFormElement,
   current: MetaSource | null,
   metas: MetaSource[],
   key: FieldKey,
   kind: FieldKind,
-): void {
+): AddSource | null {
   const input = form.querySelector<HTMLInputElement | HTMLTextAreaElement>(`[name="${key}"]`);
   const buttonRow = form.querySelector<HTMLElement>(`.meta-source-buttons[data-field="${key}"]`);
-  if (!input || !buttonRow) return;
+  if (!input || !buttonRow) return null;
 
   let applying = false; // true while we set the value programmatically
   const setValue = (v: string): void => {
@@ -180,27 +185,6 @@ function populateField(
   buttonRow.replaceChildren();
   const buttons: HTMLButtonElement[] = [];
 
-  metas.forEach((meta) => {
-    const value = fieldValue(meta, key, kind);
-    if (!value) return; // nothing to offer from this source
-
-    const btn = document.createElement("button");
-    btn.type = "button";
-    btn.className = "meta-source-btn";
-    btn.textContent = sourceLabel(meta);
-    btn.title = `Click to use from ${meta.Format}: "${value}"`;
-    btn.dataset["value"] = value;
-    btn.dataset["format"] = meta.Format;
-
-    btn.addEventListener("click", () => {
-      setValue(value);
-      if (input.type !== "hidden") input.focus();
-    });
-
-    buttonRow.appendChild(btn);
-    buttons.push(btn);
-  });
-
   // green if a source's value matches what's in the field, gold otherwise
   const updateHighlights = (): void => {
     const currentVal = input.value.trim();
@@ -210,6 +194,23 @@ function populateField(
       btn.classList.toggle("meta-source-diff", !matches);
     }
   };
+
+  const addSource: AddSource = (meta) => {
+    dropOldLookup(buttons, meta);
+    const value = fieldValue(meta, key, kind);
+    if (!value) return; // nothing to offer from this source
+
+    const btn = sourceButton(meta, `Click to use from ${meta.Format}: "${value}"`);
+    btn.dataset["value"] = value;
+    btn.addEventListener("click", () => {
+      setValue(value);
+      if (input.type !== "hidden") input.focus();
+    });
+    buttonRow.appendChild(btn);
+    buttons.push(btn);
+    updateHighlights();
+  };
+  metas.forEach(addSource);
 
   let editedBtn: HTMLButtonElement | null = null;
   input.addEventListener("input", () => {
@@ -233,6 +234,7 @@ function populateField(
 
   if (current) setValue(fieldValue(current, key, kind));
   updateHighlights();
+  return addSource;
 }
 
 // Identifiers are precious curated data: nothing is dropped unless the user
@@ -304,13 +306,24 @@ function createCustomIdentifierRow(
   return row;
 }
 
-function populateIdentifiers(form: HTMLFormElement, current: MetaSource | null, metas: MetaSource[]): void {
+/** The identifiers field, for sources added later and the ISBN finder. */
+interface IdentifierField {
+  addSource: AddSource;
+  /** Put an ISBN in the ISBN field; a different one there is crossed out (Undo). */
+  useIsbn(isbn: string): void;
+}
+
+/** Compares identifiers for merging: an ISBN by its 13 digits. */
+const mergeKey = (scheme: string, value: string): string =>
+  scheme.trim().toLowerCase() === "isbn" ? `isbn: ${isbnDigits(value)}` : idKey(scheme, value);
+
+function populateIdentifiers(form: HTMLFormElement, current: MetaSource | null, metas: MetaSource[]): IdentifierField | null {
   const isbnEl = form.querySelector<HTMLInputElement>('[name="identifier_isbn"]');
   const listEl = form.querySelector<HTMLElement>("#custom-identifiers-list");
   const rowEl = form.querySelector<HTMLElement>('.meta-source-buttons[data-field="identifiers"]');
   const addBtn = form.querySelector<HTMLButtonElement>("#btn-add-identifier");
 
-  if (!isbnEl || !listEl || !rowEl) return;
+  if (!isbnEl || !listEl || !rowEl) return null;
   // Non-null from here on (also inside the closures below).
   const isbnInput: HTMLInputElement = isbnEl;
   const customList: HTMLElement = listEl;
@@ -333,9 +346,14 @@ function populateIdentifiers(form: HTMLFormElement, current: MetaSource | null, 
     }));
 
   const updateHighlights = (): void => {
-    const cur = normalize(readIdentifiers(form));
+    const active = readIdentifiers(form);
+    const cur = normalize(active);
+    const have = new Set(active.map((i) => mergeKey(i.scheme, i.value)));
     for (const btn of buttons) {
-      const matches = btn.dataset["normalized"] === cur;
+      // A lookup's identifiers are added rather than switched to, so its
+      // pill matches once they're all there.
+      const keys = btn.dataset["keys"];
+      const matches = keys !== undefined ? keys.split("\n").every((k) => have.has(k)) : btn.dataset["normalized"] === cur;
       btn.classList.toggle("meta-source-match", matches);
       btn.classList.toggle("meta-source-diff", !matches);
     }
@@ -439,6 +457,40 @@ function populateIdentifiers(form: HTMLFormElement, current: MetaSource | null, 
     updateHighlights();
   }
 
+  /**
+   * Add `ids` (from a lookup) without removing anything: ones already there
+   * are skipped, crossed-out ones are restored, and an ISBN fills the ISBN
+   * field if it's empty.
+   */
+  function mergeIdentifiers(ids: Ident[]): void {
+    const have = new Set(readIdentifiers(form).map((i) => mergeKey(i.scheme, i.value)));
+    for (const i of ids) {
+      const k = mergeKey(i.scheme, i.value);
+      if (have.has(k)) continue;
+      have.add(k);
+      const removed = [...customList.querySelectorAll<HTMLElement>(".custom-identifier-row.removed")]
+        .find((row) => mergeKey(rowValues(row).scheme, rowValues(row).value) === k);
+      if (removed) {
+        setRemoved(removed, false);
+        customList.insertBefore(removed, firstRemoved());
+      } else if (i.scheme.toLowerCase() === "isbn" && !isbnInput.value.trim()) {
+        isbnInput.value = i.value;
+      } else {
+        customList.insertBefore(makeRow(i.scheme, i.value, ""), firstRemoved());
+      }
+    }
+    updateHighlights();
+  }
+
+  function useIsbn(isbn: string): void {
+    const old = isbnInput.value.trim();
+    if (old && isbnDigits(old) === isbnDigits(isbn)) return;
+    if (old) customList.appendChild(makeRow("isbn", old, isbnInput.dataset["id"] || "", true));
+    isbnInput.value = isbn;
+    delete isbnInput.dataset["id"];
+    userChanged();
+  }
+
   if (current) setIdentifiers(fromMeta(current));
 
   if (addBtn && !addBtn.dataset["bound"]) {
@@ -452,39 +504,57 @@ function populateIdentifiers(form: HTMLFormElement, current: MetaSource | null, 
 
   isbnInput.addEventListener("input", userChanged);
 
-  buttonRow.replaceChildren();
-  metas.forEach((meta) => {
+  const addSource: AddSource = (meta) => {
+    dropOldLookup(buttons, meta);
     const ids = fromMeta(meta);
     if (ids.length === 0 && meta.Format !== "current") return;
 
     const displayVal = ids.map((id) => `${id.scheme}: ${id.value}`).join(", ");
+    if (meta.External) {
+      const btn = sourceButton(meta, `Click to add from ${meta.Format}: "${displayVal}"`);
+      btn.dataset["keys"] = ids.map((i) => mergeKey(i.scheme, i.value)).join("\n");
+      btn.addEventListener("click", () => mergeIdentifiers(ids));
+      buttonRow.appendChild(btn);
+      buttons.push(btn);
+    } else {
+      const btn = sourceButton(meta, `Click to use from ${meta.Format}: "${displayVal}"`);
+      btn.dataset["normalized"] = normalize(ids);
+      btn.addEventListener("click", () => setIdentifiers(ids, { keepMissing: true }));
+      buttonRow.appendChild(btn);
+      buttons.push(btn);
+    }
+    updateHighlights();
+  };
 
-    const btn = document.createElement("button");
-    btn.type = "button";
-    btn.className = "meta-source-btn";
-    btn.textContent = sourceLabel(meta);
-    btn.title = `Click to use from ${meta.Format}: "${displayVal}"`;
-    btn.dataset.normalized = normalize(ids);
-    btn.dataset.format = meta.Format;
-
-    btn.addEventListener("click", () => setIdentifiers(ids, { keepMissing: true }));
-
-    buttonRow.appendChild(btn);
-    buttons.push(btn);
-  });
-
+  buttonRow.replaceChildren();
+  metas.forEach(addSource);
   updateHighlights();
+  return { addSource, useIsbn };
 }
 
-export function populateMetadataForm(form: HTMLFormElement, metas: MetaSource[]): void {
+/** The editor after loading: more sources can be added (from a lookup). */
+export interface MetadataForm {
+  addSource: AddSource;
+  useIsbn(isbn: string): void;
+}
+
+export function populateMetadataForm(form: HTMLFormElement, metas: MetaSource[]): MetadataForm {
   const current = metas.find((m) => m.Format === "current") || metas[0] || null;
+  const adders: AddSource[] = [];
+  let identifiers: IdentifierField | null = null;
   for (const { key, kind } of FIELDS) {
     if (kind === "identifiers") {
-      populateIdentifiers(form, current, metas);
+      identifiers = populateIdentifiers(form, current, metas);
+      if (identifiers) adders.push(identifiers.addSource);
     } else {
-      populateField(form, current, metas, key, kind);
+      const add = populateField(form, current, metas, key, kind);
+      if (add) adders.push(add);
     }
   }
+  return {
+    addSource: (meta) => adders.forEach((add) => add(meta)),
+    useIsbn: (isbn) => identifiers?.useIsbn(isbn),
+  };
 }
 
 export function collectValues(form: HTMLFormElement): FormValues {
@@ -650,7 +720,20 @@ export async function mountMetadataEditor(uuid: string, form: HTMLFormElement): 
     const commitPending = (): void => chipInputs.forEach((c) => c.commitPending());
 
     const metas = await fetchMetas(uuid);
-    populateMetadataForm(form, metas);
+    const editor = populateMetadataForm(form, metas);
+
+    // Find ISBNs in the book's files; look the book up online.
+    mountIsbnTools({
+      uuid,
+      form,
+      currentIsbn: () => form.querySelector<HTMLInputElement>('[name="identifier_isbn"]')?.value.trim() ?? "",
+      titleAndAuthor: () => ({
+        title: titleInput?.value.trim() ?? "",
+        author: parseList(creatorsInput?.value ?? "")[0] ?? "",
+      }),
+      useIsbn: editor.useIsbn,
+      addSource: editor.addSource,
+    });
 
     // Keep any open per-field diffs in sync with further edits.
     let diffFrame = 0;

@@ -170,6 +170,7 @@ type EditBookPageData struct { // TODO I Hate this, these page structs are all o
 	Date         string // YYYY-MM-DD for <input type="date">, "" if missing/unparseable
 	RawDate      string // original dc:date when it couldn't be parsed (kept on save)
 	CoverModTime int64
+	Lookups      bool // show "Look up" (Open Library, Google Books); off with -no-lookups
 }
 
 func writePage(page int, books []Book) error {
@@ -219,6 +220,7 @@ func main() {
 	flag.BoolVar(&publicCatalog, "public", false, "let anonymous visitors browse the library catalog (by default everything requires signing in)")
 	flag.BoolVar(&publicRead, "public-read", false, "public read-only mode: anonymous visitors can also read and download books (implies -public)")
 	flag.BoolVar(&allowRegistrations, "allow-registrations", false, "let anyone create an account from the web interface (only on trusted networks: bots will try)")
+	flag.BoolVar(&noLookups, "no-lookups", false, "never send ISBNs or titles to Open Library or Google Books (hides the metadata editor's Look up button)")
 	flag.StringVar(&publicURL, "public-url", "", "external base URL, e.g. https://books.example.com (needed for GitHub/Google sign-in)")
 	createUserName := flag.String("create-user", "", "create a user (or reset their password) and exit; password from $CF_PASSWORD or stdin")
 	createAdmin := flag.Bool("admin", false, "with -create-user: make the user an admin")
@@ -239,6 +241,7 @@ func main() {
 	}
 	pruneSessions()
 	configureOAuth()
+	configureLookups()
 	if allowWrites {
 		log.Println("-allow-writes: admins can change the library")
 	} else {
@@ -499,6 +502,7 @@ func serveLibraryHTTP() {
 			Date:         dateStr,
 			RawDate:      rawDate,
 			CoverModTime: coverModTime,
+			Lookups:      !noLookups,
 		}
 
 		err = templates.ExecuteTemplate(w, "book-edit.html", EditBookPageData)
@@ -512,6 +516,13 @@ func serveLibraryHTTP() {
 
 	// Apply updated metadata to a book
 	http.HandleFunc("/metadata/{uuid}/apply", requireWrites(applyMetadataHandler))
+
+	// ISBNs found in the book's own files (isbn.go)
+	http.HandleFunc("/metadata/{uuid}/isbns", requireWrites(isbnCandidatesHandler))
+
+	// Metadata and covers from Open Library and Google Books (lookup.go)
+	http.HandleFunc("GET /metadata/lookup", requireWrites(requireLookups(lookupHandler)))
+	http.HandleFunc("GET /metadata/lookup/cover", requireWrites(requireLookups(lookupCoverHandler)))
 
 	// Book Display
 	http.HandleFunc("/book/get/", bookHandler)

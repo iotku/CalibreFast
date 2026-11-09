@@ -77,6 +77,12 @@ declare namespace PdfJS {
     interface Page {
         getViewport(options: { scale: number }): Viewport;
         render(options: { canvasContext: CanvasRenderingContext2D; viewport: Viewport }): { promise: Promise<void> };
+        getTextContent(): Promise<{ items: (TextItem | { type: string })[] }>;
+    }
+    interface TextItem {
+        str: string;
+        /** The text's line ends after this item. */
+        hasEOL: boolean;
     }
     interface OutlineItem {
         title: string;
@@ -89,10 +95,19 @@ declare namespace PdfJS {
         getOutline(): Promise<OutlineItem[] | null>;
         getDestination(id: string): Promise<unknown[] | null>;
         getPageIndex(ref: unknown): Promise<number>;
+        /** metadata: the XMP packet, when there is one. */
+        getMetadata(): Promise<{ metadata: { getRaw(): string } | null }>;
+        /** Stops loading and frees the worker's copy. */
+        destroy(): Promise<void>;
+    }
+    interface LoadOptions {
+        /** Fetch only what's asked for, not the rest in the background. */
+        disableAutoFetch?: boolean;
+        disableStream?: boolean;
     }
     interface Lib {
         GlobalWorkerOptions: { workerSrc: string };
-        getDocument(src: { url: string; wasmUrl?: string }): { promise: Promise<Document> };
+        getDocument(src: LoadOptions & { url: string; wasmUrl?: string }): { promise: Promise<Document> };
     }
 }
 

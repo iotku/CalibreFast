@@ -86,7 +86,24 @@ Groups combine values that mean the same thing without editing any books. For ex
 - **Autocomplete** for authors, publisher, tags and languages offers only values in your library; languages match by name too.
   - Nothing is preselected, so Enter adds exactly what you typed.
   - ↑/↓ highlight a suggestion; Enter, Tab or a click takes it.
-- **Cover picker:** upload an image, or pick a page from the PDF/EPUB.
+- **Cover picker:** upload an image, pick a page from the PDF/EPUB, or pick a cover found by **Look up online**. Picking saves the cover right away; **Revert** brings back the previous one.
+
+### Finding ISBNs and looking books up
+
+Both only offer choices. Nothing is saved until **Apply Changes**.
+
+- **Find ISBNs in files** (under Identifiers) looks in the book's own files. It runs by itself when the book has no ISBN.
+  - **EPUB:** the package's identifiers, then the text of the first 5 and last 3 chapters, where copyright pages are. An EPUB 3 `dc:source` ISBN is the print edition.
+  - **MOBI/AZW3:** the ISBN in the file's EXTH header.
+  - **PDF:** the XMP metadata, then the text of the first 5 and last 3 pages, read in the browser with pdf.js. Only those pages are downloaded.
+  - **Checked:** ISBN-10 and ISBN-13 check digits, so phone numbers and typos are skipped. A 10-digit number needs "ISBN" shortly before it. Every ISBN is shown as ISBN-13, once.
+  - **Ranked:** copyright pages list the print editions too, so ISBNs labelled ebook/e-book/EPUB/PDF/digital come first. Next are those from the files' metadata, then other ISBNs in the text, then those labelled hardcover, paperback, print or audio.
+  - **Use** puts one in the ISBN field. A different ISBN already there is crossed out, with **Undo**.
+- **Look up online** sends the ISBN field's value to Open Library and Google Books. With no ISBN, it sends the title and first author instead. Each candidate ISBN also has its own **Look up**.
+  - Each site that knows the book becomes a source pill under every field (**Open Library**, **Google Books**), so values are picked field by field. Looking up again replaces those pills.
+  - Their identifier pill adds identifiers (ISBN, `olid`, `google`) without crossing anything out.
+  - Their covers appear in the cover picker under **Covers found online**.
+  - Only on a click: nothing is sent when the editor opens. `-no-lookups` turns it off.
 
 ### Description editor
 
