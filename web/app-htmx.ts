@@ -1,57 +1,70 @@
 /**
- * CalibreFast Main Library
+ * CalibreFast library grid: the main library, filtered views and search.
  *
- * The document always contains one element per page (index = page - 1).
- * Pages near the viewport are real; all others are fixed-height placeholders.
- * Scroll limits are therefore physical, not "end of what's loaded", so no
- * input method (keys, fling, scrollbar) can run away by chasing the loader.
+ * The books are one continuous grid, addressed by index. Pages (the
+ * server's data-page-size books per JSON request) are only how the data
+ * arrives, and the number the page box shows.
  *
- * Data source is configured on #books:
- *   data-page-url    URL template, "{n}" -> page number (default: static JSON)
- *   data-total-pages total page count; if absent, fetched from /library-info
+ * Every row is the same height (cards have a fixed aspect ratio), so where
+ * any book sits is arithmetic. Only the rows around the viewport are in the
+ * DOM, between two spacers that stand in for the rest. The spacers are
+ * painted as empty cards (a CSS mask), so a scroll that outruns the DOM
+ * still shows the grid, never a blank. Books whose page hasn't arrived yet
+ * are skeleton cards, filled in place when it does. Nothing on screen ever
+ * moves, so there's no scroll compensation.
+ *
+ * Configured on #books:
+ *   data-page-url    URL template, "{n}" -> page number
+ *   data-page-size   books per page
+ *   data-total-books
+ *   data-empty-text
  * Page nav controls (#page-input, #prev-page, #next-page) are optional.
+ *
+ * The URL keeps ?page=N, the page at the top of the screen; history.state
+ * keeps the exact book, so a reload or back/forward returns to the same row.
  */
 
 import { byId, maybeId } from "./dom.js";
 import type { Book } from "./types.js";
-import { renderBooksPage } from "./utils.js";
+import { coverUrl, renderBookCard } from "./utils.js";
 import { setupBookClickHandlers, loadBook, HASH_PREFIX } from "./modal.js";
 
-const KEEP_AHEAD = 1; // real pages kept in the scroll direction
-const KEEP_BEHIND = 1; // ...and the opposite way
+const RENDER_AHEAD = 1; // screens of rows in the DOM past the viewport, in the scroll direction
+const RENDER_BEHIND = 0.5; // ...and the other way
+const FETCH_AHEAD = 2; // screens of book data fetched ahead, at least
+const FETCH_LEAD = 2; // ...and at speed, how many fetch-times of scrolling ahead
 const MAX_PAGE_FETCHES = 2; // concurrent page-JSON requests
+const RETRY_FAILED_MS = 5000; // a page that failed isn't asked for again sooner
 const HISTORY_DEBOUNCE_MS = 300; // browsers throttle rapid history updates
-const FAST_SCROLL_PAGES_PER_SEC = 4; // faster than this: don't fetch/render yet
-const SETTLE_MS = 120; // quiet time before rendering after a fast scroll
+const COVERS_WAIT_SCREENS_PER_SEC = 4; // faster than this, covers wait until it slows
+const SETTLE_MS = 120; // no scrolling for this long: stopped
 // Covers downloading at once (see maxCovers):
 const COVERS_HTTP1 = 6 - MAX_PAGE_FETCHES; // headroom under HTTP/1.1's 6 connections per host
 const COVERS_MULTIPLEXED = 10; // HTTP/2 and 3: one connection, no per-host limit
 const COVERS_3G = 4;
 const COVERS_2G = 2;
 
+const SKELETON = `<div class="book skeleton" aria-hidden="true"></div>`;
+// A page that came back shorter than the count said (rewritten since).
+const MISSING = `<div class="book missing" aria-hidden="true"></div>`;
+
 interface PageLoad {
     promise: Promise<Book[] | null>;
     ctrl: AbortController;
 }
 
+/** A place in the grid: a book, and how far (in rows) the screen's top is past its row's top. */
+interface Anchor {
+    index: number;
+    frac: number;
+}
+
 const coversInflight = new Set<HTMLImageElement>();
+const loadedCovers = new Set<string>(); // cover URLs the browser has: shown at once when re-rendered
 const pageCache = new Map<number, Book[]>(); // page -> books
 const loading = new Map<number, PageLoad>(); // page -> in-flight fetch
-const realPages = new Set<number>(); // page numbers currently rendered for real
-
-let totalPages: number | null = null;
-let pageHeight = 0; // estimated px height of one page
-let targetPage = 1; // page the UI says we're on / heading to
-let lastLabelPage: number | null = null;
-let lastWidth = window.innerWidth;
-let keyScrolling = false;
-let scrollDir = 1; // 1 = down, -1 = up; biases the render window
-let scrollAdjust = 0; // px of programmatic compensation the scroll handler hasn't seen yet
-const badgeEl = maybeId("scroll-badge"); // in index.html
-let draggingScrollbar = false; // mouse held on the scrollbar, or a touch is active
-let badgeTimer: ReturnType<typeof setTimeout> | undefined;
-let historyTimer: ReturnType<typeof setTimeout> | undefined;
-let historyPage: number | null = null; // page waiting to be written to the URL
+const failedAt = new Map<number, number>(); // page -> when its fetch last failed
+const cards = new Map<number, HTMLElement>(); // book index -> its card in the DOM
 
 // Elements. #books is required; the page-nav controls are optional.
 const booksEl = byId("books");
@@ -59,11 +72,47 @@ const pageInputEl = maybeId("page-input", HTMLInputElement);
 const prevBtn = maybeId("prev-page", HTMLButtonElement);
 const nextBtn = maybeId("next-page", HTMLButtonElement);
 const totalPagesEl = maybeId("total-pages");
+const badgeEl = maybeId("scroll-badge"); // in index.html
+const topSpacer = makeSpacer();
+const bottomSpacer = makeSpacer();
+
+const cfg = booksEl.dataset;
+const total = Math.max(0, parseInt(cfg["totalBooks"] ?? "", 10) || 0);
+const pageSize = Math.max(1, parseInt(cfg["pageSize"] ?? "", 10) || 60);
+const totalPages = Math.ceil(total / pageSize);
+const pageUrl = (n: number): string => (cfg["pageUrl"] ?? "").replace("{n}", String(n));
+const pageOf = (index: number): number => Math.floor(index / pageSize) + 1;
+
+// Geometry, from the layout (measure).
+let cols = 1;
+let rows = 0;
+let rowGap = 0;
+let rowH = 0; // card height + row gap: row r starts at r * rowH
+
+let first = 0; // books with a card in the DOM: [first, last)
+let last = 0;
+let anchor: Anchor = { index: 0, frac: 0 }; // where the user is; kept across relayouts
+let targetPage = 1; // page the UI says we're on
+let lastLabelPage: number | null = null;
+let scrollDir = 1; // 1 = down, -1 = up; biases what's rendered and fetched
+let speed = 0; // rows per second the user is scrolling, 0 when stopped
+let fetchSecs = 0.1; // how long a page fetch takes (moving average)
+let lastY = 0; // scrollY the scroll handler last saw
+let lastWidth = 0;
+let keyScrolling = false;
+let draggingScrollbar = false; // mouse held on the scrollbar, or a touch is active
+let badgeTimer: ReturnType<typeof setTimeout> | undefined;
+let historyTimer: ReturnType<typeof setTimeout> | undefined;
+let historyPending = false; // the anchor moved since the URL was written
 
 const headerHeight = (): number => document.querySelector<HTMLElement>(".top-bar")?.offsetHeight ?? 0;
-const pageEl = (n: number): HTMLElement | undefined => booksEl.children[n - 1] as HTMLElement | undefined;
-const booksCfg = booksEl.dataset;
-const pageUrl = (n: number): string => (booksCfg["pageUrl"] || "/pages/page{n}.json").replace("{n}", String(n));
+const clamp = (n: number, lo: number, hi: number): number => Math.max(lo, Math.min(n, hi));
+
+/** px of the grid above the screen (under the top bar or scrolled off): row r is at the top when this is r * rowH. */
+const viewTop = (): number => headerHeight() - booksEl.getBoundingClientRect().top;
+
+/** Rows on screen, counting partly visible ones. */
+const screenRows = (): number => Math.ceil((window.innerHeight - headerHeight()) / rowH) + 1;
 
 function setStatus(text: string): void {
     const el = maybeId("status");
@@ -71,8 +120,7 @@ function setStatus(text: string): void {
 }
 
 function clampPage(n: number): number {
-    const max = totalPages || Infinity;
-    return Math.max(1, Math.min(n, max));
+    return clamp(n, 1, Math.max(1, totalPages));
 }
 
 /** Floating "page / total" label that rides alongside the scrollbar thumb. */
@@ -80,8 +128,7 @@ function showScrollBadge(page: number): void {
     if (!badgeEl) return;
     const root = document.documentElement;
     const header = headerHeight();
-    const ratio =
-        window.scrollY / Math.max(1, root.scrollHeight - window.innerHeight);
+    const ratio = window.scrollY / Math.max(1, root.scrollHeight - window.innerHeight);
     const room = window.innerHeight - header - badgeEl.offsetHeight - 8;
 
     badgeEl.textContent = `${page} / ${totalPages}`;
@@ -96,42 +143,59 @@ function showScrollBadge(page: number): void {
 /* Init                                                               */
 /* ------------------------------------------------------------------ */
 
-window.addEventListener("DOMContentLoaded", async () => {
-    await loadLibraryInfo();
-
-    const params = new URLSearchParams(window.location.search);
-    const urlPage = parseInt(params.get("page") || "1", 10);
-    const start = clampPage(Number.isFinite(urlPage) ? urlPage : 1);
+window.addEventListener("DOMContentLoaded", () => {
+    if (totalPagesEl) totalPagesEl.textContent = String(totalPages);
+    if (pageInputEl) pageInputEl.max = String(totalPages); // arrow keys clamp natively
+    updateNavigationButtons();
+    if (!total) return setStatus(cfg["emptyText"] ?? "No books found.");
 
     // Make the hash-less URL the base history entry.
     const initialHash = window.location.hash;
     if (initialHash) {
-        history.replaceState(
-            history.state,
-            "",
-            window.location.pathname + window.location.search,
-        );
+        history.replaceState(history.state, "", window.location.pathname + window.location.search);
     }
-
     window.history.scrollRestoration = "manual";
-    window.scrollTo(0, 0);
 
-    // We compensate scroll manually when swapping pages above the viewport.
+    // Nothing above the screen ever changes height, so there's nothing for
+    // the browser's scroll anchoring to do but fight the spacers.
     booksEl.style.overflowAnchor = "none";
     setupCoverStates(booksEl);
-
-    await buildDocument(start);
+    booksEl.replaceChildren(topSpacer, bottomSpacer);
+    lastWidth = booksEl.getBoundingClientRect().width;
+    measure();
+    jumpTo(startAnchor());
 
     // Re-add the hash as a new entry on top, then open the modal.
     if (initialHash.startsWith(HASH_PREFIX)) {
         const url = new URL(window.location.href);
         url.hash = initialHash;
-        history.pushState({ page: targetPage, modal: true }, "", url);
+        history.pushState({ ...history.state, modal: true }, "", url);
         loadBook(initialHash.substring(HASH_PREFIX.length));
     }
 
     setupScrollTracking();
 });
+
+/**
+ * Where to start: the book history.state remembers if it's from this URL's
+ * page (a reload, back/forward), else the top of ?page.
+ */
+function startAnchor(): Anchor {
+    const urlPage = parseInt(new URLSearchParams(window.location.search).get("page") ?? "1", 10);
+    const page = clampPage(Number.isFinite(urlPage) ? urlPage : 1);
+    const state = history.state as { page?: unknown; at?: unknown; frac?: unknown } | null;
+    if (
+        state?.page === page &&
+        typeof state.at === "number" &&
+        Number.isInteger(state.at) &&
+        state.at >= 0 &&
+        state.at < total
+    ) {
+        const frac = typeof state.frac === "number" ? clamp(state.frac, -1, 1) : 0;
+        return { index: state.at, frac };
+    }
+    return { index: (page - 1) * pageSize, frac: 0 };
+}
 
 export function setupCoverStates(container: HTMLElement): void {
     container.addEventListener(
@@ -155,53 +219,203 @@ export function setupCoverStates(container: HTMLElement): void {
     );
 }
 
-async function loadLibraryInfo(): Promise<void> {
-    try {
-        if (booksCfg.totalPages !== undefined) {
-            totalPages = parseInt(booksCfg.totalPages, 10) || 0;
-        } else {
-            const res = await fetch("/library-info");
-            const info = await res.json();
-            totalPages = info.total_pages;
-        }
+/* ------------------------------------------------------------------ */
+/* Layout                                                             */
+/* ------------------------------------------------------------------ */
 
-        if (totalPagesEl) totalPagesEl.textContent = String(totalPages);
-        if (pageInputEl) pageInputEl.max = String(totalPages); // arrow keys clamp natively
-        updateNavigationButtons();
-    } catch (err) {
-        console.error("Failed to load library info:", err);
-    }
+function makeSpacer(): HTMLDivElement {
+    const el = document.createElement("div");
+    el.className = "grid-spacer";
+    el.setAttribute("aria-hidden", "true");
+    el.hidden = true;
+    return el;
 }
 
 /**
- * Render the first real page, measure it, then lay out one placeholder per
- * page of the library at that height and scroll to the start page.
+ * Columns and row pitch, read from the layout so the arithmetic matches it
+ * to the subpixel, and the spacers' empty-card pattern to go with them.
  */
-async function buildDocument(start: number): Promise<void> {
-    const total = totalPages;
-    const empty = booksCfg.emptyText ?? "No books found.";
-    if (!total) return setStatus(empty);
+function measure(): void {
+    const cs = getComputedStyle(booksEl);
+    const tracks = cs.gridTemplateColumns
+        .split(" ")
+        .map(parseFloat)
+        .filter((w) => w > 0);
+    cols = Math.max(1, tracks.length);
+    rows = Math.ceil(total / cols);
+    rowGap = parseFloat(cs.rowGap) || 0;
+    const colGap = parseFloat(cs.columnGap) || 0;
 
-    const books = await loadPageData(start);
-    if (!books || books.length === 0) return setStatus(empty);
+    // Any card will do: they're all the same size. Without one, a probe.
+    const probe = cards.size ? null : booksEl.appendChild(cardElements(SKELETON)[0]!);
+    const card = probe ?? cards.values().next().value!;
+    const cardH = card.getBoundingClientRect().height;
+    const radius = parseFloat(getComputedStyle(card).borderTopLeftRadius) || 0;
+    probe?.remove();
+    rowH = cardH + rowGap;
+    if (cardH <= 0) rows = 0; // no layout (hidden): nothing to place
 
-    booksEl.innerHTML = "";
 
-    const first = buildPageEl(books, start);
-    if (!first) return;
-    booksEl.appendChild(first);
-    pageHeight = pageExtent(first) || 1000;
-    booksEl.style.setProperty("--page-h", `${pageHeight}px`);
-
-    const frag = document.createDocumentFragment();
-    for (let n = 1; n <= total; n++) {
-        frag.appendChild(n === start ? first : makePlaceholder(n));
+    // One row of empty cards; CSS repeats it down the spacers.
+    let x = 0;
+    let rects = "";
+    for (const w of tracks) {
+        rects += `<rect x="${x}" width="${w}" height="${cardH}" rx="${radius}"/>`;
+        x += w + colGap;
     }
-    booksEl.replaceChildren(frag);
-    realPages.add(start);
-    setupBookClickHandlers(first); // must run while attached to the document
+    const svg = `<svg xmlns="http://www.w3.org/2000/svg" width="${x}" height="${rowH}">${rects}</svg>`;
+    booksEl.style.setProperty("--skeleton-row", `url("data:image/svg+xml,${encodeURIComponent(svg)}")`);
+    booksEl.style.setProperty("--skeleton-size", `${x}px ${rowH}px`);
+    booksEl.style.setProperty("--skeleton-gap", `${rowGap}px`);
+}
 
-    scrollToPage(start);
+/** New width: same book at the top, laid out for the new column count. */
+function relayout(): void {
+    measure();
+    jumpTo(anchor);
+}
+
+/** The row range to have in the DOM when `top` is the top row. */
+function windowRows(top: number): [number, number] {
+    const view = screenRows();
+    const ahead = Math.ceil(view * RENDER_AHEAD);
+    const behind = Math.ceil(view * RENDER_BEHIND);
+    const down = scrollDir > 0;
+    return [Math.max(0, top - (down ? behind : ahead)), Math.min(rows, top + view + (down ? ahead : behind))];
+}
+
+/** Parse card HTML into elements. */
+function cardElements(html: string): HTMLElement[] {
+    const t = document.createElement("template");
+    t.innerHTML = html;
+    return [...t.content.children] as HTMLElement[];
+}
+
+function cardHtml(i: number): string {
+    const books = pageCache.get(pageOf(i));
+    if (!books) return SKELETON;
+    const book = books[i % pageSize];
+    if (!book) return MISSING;
+    return renderBookCard(book, loadedCovers.has(coverUrl(book)));
+}
+
+/** Cards for books [from, to), registered in `cards`; insert them, then activate them. */
+function makeCards(from: number, to: number): HTMLElement[] {
+    let html = "";
+    for (let i = from; i < to; i++) html += cardHtml(i);
+    const els = cardElements(html);
+    els.forEach((el, k) => cards.set(from + k, el));
+    return els;
+}
+
+/** htmx preloading for real cards; must run once they're in the document. */
+function activate(els: HTMLElement[]): void {
+    for (const el of els) {
+        if (!el.classList.contains("skeleton") && !el.classList.contains("missing")) setupBookClickHandlers(el);
+    }
+}
+
+function dropCard(i: number): void {
+    const el = cards.get(i);
+    if (!el) return;
+    cards.delete(i);
+    for (const img of el.querySelectorAll<HTMLImageElement>(".book-cover")) {
+        coversInflight.delete(img);
+        if (!img.complete) img.removeAttribute("src"); // cancel the download
+    }
+    el.remove();
+}
+
+/**
+ * Have cards for books [a, b) and only those: keeps the ones already there,
+ * adds and removes at the edges. The spacers make up the rest, so whatever
+ * is on screen stays exactly where it is.
+ */
+function setWindow(a: number, b: number): void {
+    if (a !== first || b !== last) {
+        let added: HTMLElement[];
+        if (b <= first || a >= last) {
+            for (const i of [...cards.keys()]) dropCard(i);
+            added = makeCards(a, b);
+            bottomSpacer.before(...added);
+        } else {
+            for (let i = first; i < a; i++) dropCard(i);
+            for (let i = b; i < last; i++) dropCard(i);
+            const before = makeCards(a, first);
+            const after = makeCards(last, b);
+            topSpacer.after(...before);
+            bottomSpacer.before(...after);
+            added = [...before, ...after];
+        }
+        first = a;
+        last = b;
+        activate(added);
+    }
+    sizeSpacer(topSpacer, first / cols);
+    sizeSpacer(bottomSpacer, rows - Math.ceil(last / cols));
+}
+
+function sizeSpacer(el: HTMLElement, rowCount: number): void {
+    el.hidden = rowCount <= 0;
+    el.style.height = `${rowCount * rowH - rowGap}px`; // the grid adds the gap after it
+}
+
+/** A page's data arrived: its skeletons on screen become cards. */
+function fillPage(page: number): void {
+    const from = Math.max(first, (page - 1) * pageSize);
+    const to = Math.min(last, page * pageSize);
+    if (from >= to || !cards.get(from)?.classList.contains("skeleton")) return;
+    const old: HTMLElement[] = [];
+    for (let i = from; i < to; i++) old.push(cards.get(i)!);
+    const fresh = makeCards(from, to);
+    old.forEach((el, k) => el.replaceWith(fresh[k]!));
+    activate(fresh);
+}
+
+/**
+ * Bring the DOM and data in line with the scroll position: render the rows
+ * around the screen, fetch the pages around them (not mid-fling), queue
+ * the covers, and update the page shown.
+ */
+function sync(): void {
+    if (!rows) return;
+    const top = clamp(Math.floor(viewTop() / rowH), 0, rows - 1);
+    const [r0, r1] = windowRows(top);
+    setWindow(r0 * cols, Math.min(total, r1 * cols));
+    // Pages go by faster than they can be fetched (a scrollbar drag): they'd
+    // be gone before they arrived. Skeletons until it slows.
+    if ((speed * cols) / pageSize < MAX_PAGE_FETCHES / fetchSecs) fetchAround(top);
+    // Covers are heavier, and only worth it once things slow down.
+    if (speed * rowH < window.innerHeight * COVERS_WAIT_SCREENS_PER_SEC) pumpCovers();
+    updatePageLabel(pageAtTop());
+}
+
+/** Lay out the rows around a book, then scroll its row to the top of the screen. */
+function jumpTo(to: Anchor): void {
+    anchor = to;
+    const row = clamp(Math.floor(to.index / cols), 0, Math.max(0, rows - 1));
+    const [r0, r1] = windowRows(row);
+    setWindow(r0 * cols, Math.min(total, r1 * cols)); // the document is full height before scrolling
+    window.scrollBy({ top: (row + to.frac) * rowH - viewTop(), behavior: "instant" });
+    lastY = window.scrollY; // ours, not the user's: no fling, and the anchor stays exact
+    sync();
+    scheduleHistoryUpdate();
+}
+
+/** The anchor for the current scroll position: the nearest row's first book. */
+function anchorHere(): Anchor {
+    const y = viewTop() / rowH;
+    const row = clamp(Math.round(y), 0, rows - 1);
+    return { index: row * cols, frac: y - row };
+}
+
+/**
+ * The page the top row belongs to: of its last book, so a jump to page n
+ * (which puts the row with its first book at the top) shows n.
+ */
+function pageAtTop(): number {
+    const row = clamp(Math.round(viewTop() / rowH), 0, rows - 1);
+    return pageOf(Math.min(total, (row + 1) * cols) - 1);
 }
 
 /* ------------------------------------------------------------------ */
@@ -210,17 +424,19 @@ async function buildDocument(start: number): Promise<void> {
 
 async function fetchPage(page: number, signal: AbortSignal): Promise<Book[] | null> {
     try {
-        const res = await fetch(pageUrl(page), {
-            signal,
-            priority: "high",
-        });
-        if (!res.ok) return null;
-        const books = (await res.json()) as Book[];
-        pageCache.set(page, books);
-        return books;
+        const started = performance.now();
+        const res = await fetch(pageUrl(page), { signal, priority: "high" });
+        if (!res.ok) throw new Error(`HTTP ${res.status}`);
+        const books: unknown = await res.json();
+        if (!Array.isArray(books)) throw new Error("not a list of books");
+        fetchSecs = fetchSecs * 0.7 + ((performance.now() - started) / 1000) * 0.3;
+        pageCache.set(page, books as Book[]);
+        failedAt.delete(page);
+        return books as Book[];
     } catch (err) {
         if (!(err instanceof DOMException && err.name === "AbortError")) {
             console.error(`Failed to fetch page ${page}:`, err);
+            failedAt.set(page, performance.now());
         }
         return null;
     }
@@ -243,206 +459,97 @@ function loadPageData(page: number): Promise<Book[] | null> {
     return entry.promise;
 }
 
-/* ------------------------------------------------------------------ */
-/* Pages and placeholders                                             */
-/* ------------------------------------------------------------------ */
-
-function buildPageEl(books: Book[], page: number): HTMLElement | null {
-    const temp = document.createElement("div");
-    temp.innerHTML = renderBooksPage(books, page);
-    const first = temp.firstElementChild; // htmx processing happens after insertion
-    return first instanceof HTMLElement ? first : null;
-}
-
-function makePlaceholder(n: number, height?: number): HTMLDivElement {
-    const ph = document.createElement("div");
-    ph.className = "page placeholder";
-    ph.dataset["page"] = String(n);
-    // Only pin a height when it differs from the shared estimate.
-    if (height && Math.abs(height - pageHeight) > 1) {
-        ph.style.height = `${height}px`;
-    }
-    return ph;
+/** Pages holding rows [r0, r1), nearest `from` first. */
+function pagesOfRows(r0: number, r1: number, from: "top" | "bottom"): number[] {
+    r0 = Math.max(0, r0);
+    r1 = Math.min(rows, r1);
+    if (r0 >= r1) return [];
+    const p0 = pageOf(r0 * cols);
+    const p1 = pageOf(Math.min(total, r1 * cols) - 1);
+    const pages: number[] = [];
+    for (let p = p0; p <= p1; p++) pages.push(p);
+    return from === "top" ? pages : pages.reverse();
 }
 
 /**
- * Viewport-relative top/bottom of a page. `display: contents` wrappers have
- * no box, so measure the span of their children instead.
+ * Fetch the pages around the screen: what's on it first, then ahead in the
+ * scroll direction (further the faster it goes, so pages arrive before the
+ * screen does), then behind. Fetches for pages no longer wanted are
+ * aborted. Each arrival fills its cards and comes back here for the next.
  */
-function pageBounds(el: Element | undefined): { top: number; bottom: number } {
-    if (!el) return { top: 0, bottom: 0 };
-    if (
-        el.classList.contains("placeholder") ||
-        getComputedStyle(el).display !== "contents"
-    ) {
-        const r = el.getBoundingClientRect();
-        return { top: r.top, bottom: r.bottom };
-    }
-    let top = Infinity;
-    let bottom = -Infinity;
-    for (const child of el.children) {
-        const r = child.getBoundingClientRect();
-        top = Math.min(top, r.top);
-        bottom = Math.max(bottom, r.bottom);
-    }
-    return bottom > top ? { top, bottom } : { top: 0, bottom: 0 };
-}
-
-function pageExtent(el: Element | undefined): number {
-    const { top, bottom } = pageBounds(el);
-    return bottom - top;
-}
-
-/** Make a page real. Scroll compensation is handled by syncWindow. */
-function renderPage(n: number, books: Book[]): void {
-    if (realPages.has(n)) return;
-    const ph = pageEl(n);
-    if (!ph) return;
-    const el = buildPageEl(books, n);
-    if (!el) return;
-
-    el.classList.add("appear"); // fade-in, see CSS
-    ph.replaceWith(el);
-    realPages.add(n);
-    setupBookClickHandlers(el); // must run while attached to the document
-}
-
-/** Replace a real page with a same-height placeholder. */
-function evictPage(n: number): void {
-    const el = pageEl(n);
-    realPages.delete(n);
-    if (!el) return;
-    const height = pageExtent(el);
-    for (const img of el.querySelectorAll<HTMLImageElement>(".book-cover")) {
-        coversInflight.delete(img);
-        img.removeAttribute("src"); // cancel inflight fetches
-    }
-    el.replaceWith(makePlaceholder(n, height));
-}
-
-/**
- * Make the pages around the viewport real and everything else a placeholder.
- * Pins the visible page's top across all swaps. Returns the visible page.
- */
-function syncWindow(): number {
-    if (!totalPages || !pageHeight) return targetPage;
-
-    const visible = getVisiblePage();
-    const anchorTop = pageBounds(pageEl(visible)).top;
-
-    // Window leans in the scroll direction so we stay ahead of the viewport.
+function fetchAround(top: number): void {
+    const view = screenRows();
+    const ahead = Math.ceil(Math.max(view * FETCH_AHEAD, speed * fetchSecs * FETCH_LEAD));
+    const behind = Math.ceil(view * RENDER_BEHIND);
+    const bottom = top + view;
     const down = scrollDir > 0;
-    const lo = Math.max(1, visible - (down ? KEEP_BEHIND : KEEP_AHEAD));
-    const hi = Math.min(
-        totalPages,
-        visible + (down ? KEEP_AHEAD : KEEP_BEHIND),
-    );
+    const order = down
+        ? [
+              ...pagesOfRows(top, bottom, "top"),
+              ...pagesOfRows(bottom, bottom + ahead, "top"),
+              ...pagesOfRows(top - behind, top, "bottom"),
+          ]
+        : [
+              ...pagesOfRows(top, bottom, "bottom"),
+              ...pagesOfRows(top - ahead, top, "bottom"),
+              ...pagesOfRows(bottom, bottom + behind, "top"),
+          ];
+    const wanted = new Set(order);
 
-    for (const n of [...realPages]) {
-        if (n < lo || n > hi) evictPage(n);
-    }
-
-    // Stop fetching pages the user has already left behind.
     for (const [n, entry] of loading) {
-        if (n < lo || n > hi) {
+        if (!wanted.has(n)) {
             entry.ctrl.abort();
             loading.delete(n);
         }
     }
 
-    // Visible page first, then alternating ahead/behind, nearest first.
-    const order = [visible];
-    for (let d = 1; d <= KEEP_AHEAD; d++) {
-        order.push(visible + scrollDir * d, visible - scrollDir * d);
+    const now = performance.now();
+    for (const n of wanted) {
+        if (loading.size >= MAX_PAGE_FETCHES) break;
+        if (pageCache.has(n) || loading.has(n)) continue;
+        if (now - (failedAt.get(n) ?? -Infinity) < RETRY_FAILED_MS) continue;
+        loadPageData(n).then((books) => {
+            if (!books) return;
+            fillPage(n);
+            sync(); // the next fetch, and the new covers
+        });
     }
-
-    for (const n of order) {
-        if (n < lo || n > hi || realPages.has(n)) continue;
-
-        const cachedBooks = pageCache.get(n);
-        if (cachedBooks) {
-            renderPage(n, cachedBooks);
-        } else if (!loading.has(n) && loading.size < MAX_PAGE_FETCHES) {
-            // On arrival, re-sync: renders it and starts the next fetch.
-            loadPageData(n).then((books) => {
-                if (books) syncWindow();
-            });
-        }
-    }
-
-    // Swaps above the viewport can change heights: pin the visible page.
-    const drift = pageBounds(pageEl(visible)).top - anchorTop;
-    if (Math.abs(drift) >= 1) {
-        scrollAdjust += drift;
-        window.scrollBy({ top: drift, behavior: "instant" });
-    }
-
-    pumpCovers();
-    return visible;
 }
 
 /* ------------------------------------------------------------------ */
 /* Navigation                                                         */
 /* ------------------------------------------------------------------ */
 
-/** Scroll so the page's top sits under the header, then render around it. */
+/** Scroll so the row with the page's first book sits under the header. */
 function scrollToPage(page: number, { syncInput = true }: { syncInput?: boolean } = {}): void {
-    if (!Number.isFinite(page)) return;
+    if (!Number.isFinite(page) || !rows) return;
     page = clampPage(page);
-    const el = pageEl(page);
-    if (!el) return;
-
-    targetPage = page;
     if (syncInput && pageInputEl) pageInputEl.value = String(page);
-
-    const delta = pageBounds(el).top - headerHeight();
-    if (delta) scrollDir = delta > 0 ? 1 : -1;
-    window.scrollBy({ top: delta, behavior: "instant" });
-
-    updatePageLabel(syncWindow());
+    scrollDir = page >= targetPage ? 1 : -1;
+    jumpTo({ index: (page - 1) * pageSize, frac: 0 });
 }
 
-/** Home: top of the visible page; if already there, top of the previous. */
+const pageTopRow = (page: number): number => Math.floor(((page - 1) * pageSize) / cols);
+const pageBottomRow = (page: number): number => Math.floor((Math.min(total, page * pageSize) - 1) / cols);
+
+/** Home: the top of the current page; if already there, of the previous. */
 function scrollToPageTop(): void {
-    const visible = getVisiblePage();
-    let delta = pageBounds(pageEl(visible)).top - headerHeight();
-
-    if (delta > -2) {
-        if (visible <= 1) {
-            window.scrollTo({ top: 0, behavior: "instant" });
-            return;
-        }
-        delta = pageBounds(pageEl(visible - 1)).top - headerHeight();
-    }
-    window.scrollBy({ top: delta, behavior: "instant" });
+    const y = viewTop();
+    let page = targetPage;
+    if (pageTopRow(page) * rowH >= y - 2) page--;
+    const to = page < 1 ? 0 : pageTopRow(page) * rowH;
+    window.scrollBy({ top: to - y, behavior: "instant" });
 }
 
-/** End: bottom of the visible page; if already there, bottom of the next. */
+/** End: the bottom of the current page at the bottom of the screen; if already there, the next page's. */
 function scrollToPageBottom(): void {
-    const visible = getVisiblePage();
-    let bottom = pageBounds(pageEl(visible)).bottom;
-
-    if (bottom - window.innerHeight <= 2) {
-        if (visible >= (totalPages ?? 1)) return;
-        bottom = pageBounds(pageEl(visible + 1)).bottom;
-    }
-    window.scrollBy({ top: bottom - window.innerHeight, behavior: "instant" });
-}
-
-/** Binary search: last page whose top has reached the header. */
-function getVisiblePage(): number {
-    const pages = booksEl.children;
-    if (pages.length === 0) return targetPage;
-
-    const limit = headerHeight() + 5;
-    let lo = 0;
-    let hi = pages.length - 1;
-    while (lo < hi) {
-        const mid = (lo + hi + 1) >> 1;
-        if (pageBounds(pages[mid]).top <= limit) lo = mid;
-        else hi = mid - 1;
-    }
-    return lo + 1;
+    const y = viewTop();
+    const screen = window.innerHeight - headerHeight();
+    const bottomAt = (page: number): number => (pageBottomRow(page) + 1) * rowH - rowGap - screen;
+    let page = targetPage;
+    if (bottomAt(page) <= y + 2) page++;
+    if (page > totalPages) return;
+    window.scrollBy({ top: bottomAt(page) - y, behavior: "instant" });
 }
 
 function updatePageLabel(page: number): void {
@@ -454,33 +561,33 @@ function updatePageLabel(page: number): void {
     if (pageInputEl && document.activeElement !== pageInputEl) {
         pageInputEl.value = String(page);
     }
-    scheduleHistoryUpdate(page);
     updateNavigationButtons();
 }
 
-/** Trailing-edge debounce; only the settled page reaches history. */
-function scheduleHistoryUpdate(page: number): void {
-    historyPage = page;
+/** Trailing-edge debounce; only the settled position reaches history. */
+function scheduleHistoryUpdate(): void {
+    historyPending = true;
     clearTimeout(historyTimer);
     historyTimer = setTimeout(flushHistory, HISTORY_DEBOUNCE_MS);
 }
 
 /**
- * Writes the pending page to the URL. Not while the book modal is open: it
- * closes by going back to the entry before its #book/ one, and that's only
- * a hash change (which closes it) if both entries have the same ?page. The
- * page waits until the modal closes ("cf:modal-closed" from modal.ts).
+ * Writes the position to the URL (?page) and history.state (the exact
+ * book). Not while the book modal is open: it closes by going back to the
+ * entry before its #book/ one, and that's only a hash change (which closes
+ * it) if both entries have the same ?page. The position waits until the
+ * modal closes ("cf:modal-closed" from modal.ts).
  */
 function flushHistory(): void {
     clearTimeout(historyTimer);
-    if (historyPage === null || window.location.hash.startsWith(HASH_PREFIX)) return;
-    const page = historyPage;
-    historyPage = null;
+    if (!historyPending || window.location.hash.startsWith(HASH_PREFIX)) return;
+    historyPending = false;
+    const page = targetPage;
     try {
         const params = new URLSearchParams(window.location.search);
         params.set("page", String(page));
         history.replaceState(
-            { ...history.state, page },
+            { ...history.state, page, at: anchor.index, frac: Math.round(anchor.frac * 1000) / 1000 },
             "",
             `?${params}${window.location.hash}`,
         );
@@ -491,7 +598,7 @@ function flushHistory(): void {
 
 function updateNavigationButtons(): void {
     if (prevBtn) prevBtn.disabled = targetPage <= 1;
-    if (nextBtn) nextBtn.disabled = targetPage >= (totalPages ?? 1);
+    if (nextBtn) nextBtn.disabled = targetPage >= totalPages;
 }
 
 /* ------------------------------------------------------------------ */
@@ -500,7 +607,6 @@ function updateNavigationButtons(): void {
 
 function setupScrollTracking(): void {
     let scheduled = false;
-    let lastY = window.scrollY;
     let lastT = performance.now();
     let settleTimer: ReturnType<typeof setTimeout> | undefined;
 
@@ -514,31 +620,24 @@ function setupScrollTracking(): void {
 
                 const now = performance.now();
                 const y = window.scrollY;
-                // Ignore our own compensation: only user scroll counts.
-                const dy = y - lastY - scrollAdjust;
-                scrollAdjust = 0;
-                const pxPerSec = (Math.abs(dy) / (now - lastT || 1)) * 1000;
-                if (dy) scrollDir = dy > 0 ? 1 : -1;
+                const dy = y - lastY; // 0 after our own jumpTo
+                speed = (Math.abs(dy) / rowH / (now - lastT || 1)) * 1000;
                 lastY = y;
                 lastT = now;
-                clearTimeout(settleTimer);
-
-                if (
-                    pageHeight &&
-                    pxPerSec / pageHeight > FAST_SCROLL_PAGES_PER_SEC
-                ) {
-                    // Flying past: keep the label live, but skip fetching and
-                    // rendering pages we're about to leave. Catch up once it settles.
-                    const visible = getVisiblePage();
-                    updatePageLabel(visible);
-                    if (draggingScrollbar) showScrollBadge(visible);
-                    settleTimer = setTimeout(
-                        () => updatePageLabel(syncWindow()),
-                        SETTLE_MS,
-                    );
-                } else {
-                    updatePageLabel(syncWindow());
+                if (dy) {
+                    scrollDir = dy > 0 ? 1 : -1;
+                    anchor = anchorHere();
+                    scheduleHistoryUpdate();
                 }
+
+                // Stopped: whatever speed held back (see sync) catches up.
+                clearTimeout(settleTimer);
+                settleTimer = setTimeout(() => {
+                    speed = 0;
+                    sync();
+                }, SETTLE_MS);
+                sync();
+                if (draggingScrollbar) showScrollBadge(targetPage);
             });
         },
         { passive: true },
@@ -583,40 +682,30 @@ function setupScrollTracking(): void {
     });
 
     window.addEventListener("pagehide", flushHistory);
-    document.addEventListener("cf:modal-closed", flushHistory);
+    // Closing a deep-linked modal clears history.state: always write it back.
+    document.addEventListener("cf:modal-closed", () => {
+        historyPending = true;
+        flushHistory();
+    });
     document.addEventListener("visibilitychange", () => {
         if (document.visibilityState === "hidden") flushHistory();
     });
 
-    // Column count changes with width => page height changes. The page to
-    // keep is the one shown before the resize: by the time the first resize
-    // event runs the grid has already reflowed, so the old scroll offset
-    // lands on a different page.
-    let resizeTimer: ReturnType<typeof setTimeout> | undefined;
-    let resizeKeep: number | null = null;
+    // A new width (window resize, a scrollbar appearing, rotation) changes
+    // the columns and the row height: lay out again around the same book.
+    // The observer runs after layout and before paint, so the reflowed grid
+    // is never shown with stale spacers.
+    new ResizeObserver((entries) => {
+        const width = entries[0]?.contentRect.width ?? lastWidth;
+        if (width === lastWidth) return;
+        lastWidth = width;
+        relayout();
+    }).observe(booksEl);
+    // A new height alone (mobile URL bar) only changes how many rows to
+    // render. A new width is the observer's.
     window.addEventListener("resize", () => {
-        resizeKeep ??= targetPage;
-        clearTimeout(resizeTimer);
-        resizeTimer = setTimeout(() => {
-            onResize(resizeKeep ?? targetPage);
-            resizeKeep = null;
-        }, 150);
+        if (booksEl.getBoundingClientRect().width === lastWidth) sync();
     });
-}
-
-function onResize(keep: number): void {
-    if (window.innerWidth === lastWidth) return; // mobile URL-bar show/hide
-    lastWidth = window.innerWidth;
-
-    const el = pageEl(keep);
-    if (realPages.has(keep)) {
-        pageHeight = pageExtent(el) || pageHeight;
-        booksEl.style.setProperty("--page-h", `${pageHeight}px`);
-    }
-    for (const ph of booksEl.querySelectorAll<HTMLElement>(".placeholder[style]")) {
-        ph.style.height = "";
-    }
-    scrollToPage(keep);
 }
 
 /* ------------------------------------------------------------------ */
@@ -679,7 +768,7 @@ function maxCovers(): number {
  * Each finished image pumps the queue again.
  */
 function pumpCovers(): void {
-    // Images removed by a placeholder swap never fire load/error.
+    // Images removed with their card never fire load/error.
     for (const img of coversInflight) {
         if (!img.isConnected) coversInflight.delete(img);
     }
@@ -697,7 +786,7 @@ function pumpCovers(): void {
         return 0;
     };
 
-    const queue = [...document.querySelectorAll<HTMLImageElement>(".book-cover[data-src]")].map((img) => ({
+    const queue = [...booksEl.querySelectorAll<HTMLImageElement>(".book-cover[data-src]")].map((img) => ({
         img,
         dist: distance(img),
     }));
@@ -740,6 +829,7 @@ document.addEventListener("cf:modal-busy", (e) => {
 function onCoverSettled(e: Event): void {
     const img = e.target;
     if (!(img instanceof HTMLImageElement) || !img.classList.contains("book-cover")) return;
+    if (e.type === "load") loadedCovers.add(img.getAttribute("src") ?? "");
     if (coversInflight.delete(img)) pumpCovers();
 }
 document.addEventListener("load", onCoverSettled, true);

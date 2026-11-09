@@ -10,7 +10,9 @@ See also: [FEATURES.md](FEATURES.md) for behaviour, [SECURITY.md](SECURITY.md) f
 
 ## Main library pages
 
-On startup CalibreFast queries `metadata.db` and writes paginated JSON (`pages/page1.json`, `page2.json`, …, 120 books each). The frontend fetches these directly as static files, so browsing never hits the database. `pages/page1.json` is regenerated after uploads and edits.
+On startup CalibreFast queries `metadata.db` and writes paginated JSON (`pages/page1.json`, `page2.json`, …, `booksPerPage` = 60 books each). The frontend fetches these directly as static files, so browsing never hits the database. `pages/page1.json` is regenerated after uploads and edits.
+
+`index.html` asks for `pageN.json?v=<pagesVersion>`, a stamp that changes whenever the files are rewritten, so with a matching `v` they're cached for good (`servePages`). Anything else is revalidated.
 
 ## Filtered views, overview pages and search
 
@@ -36,9 +38,15 @@ On startup CalibreFast queries `metadata.db` and writes paginated JSON (`pages/p
   - Wide screens show everything inline. At 1000px or less the browse links move into ☰; at 640px or less search becomes an icon and Favorites/Reading move into the user menu.
   - A book page opened directly (no `HX-Request` header) gets the bar; the modal's copy doesn't (`Vary: HX-Request`).
 - **Scroll engine.** `web/app-htmx.ts` drives the main library, filtered views and search.
+  - **One grid, addressed by book index.** Pages are only how the data arrives. Every row is the same height (cards have a fixed aspect ratio), so row `r` starts at `r × rowH`, and a book's place follows from its index and the column count. `measure()` reads both from the layout.
+  - **Only the rows around the screen are in the DOM**, between two `.grid-spacer`s sized to the rows they stand for. Moving the window adds and removes rows at its edges and resizes the spacers by the same amount, so nothing on screen moves and there's no scroll compensation. The spacers are painted as empty cards: a CSS mask of one row, built from the measured layout and repeated down.
+  - **Books whose page hasn't arrived are `.skeleton` cards**, replaced in place when it does.
+  - **Fetching.** Up to 2 pages at a time: the screen first, then ahead in the scroll direction (at least 2 screens, more at speed: 2 fetch-times of scrolling), then behind. Pages no longer wanted are aborted. While pages go by faster than they can be fetched, nothing is fetched until scrolling stops.
+  - **Position.** The URL has `?page`, the page of the top row's last book (so going to page N shows N). `history.state` has the exact place: `at` (first book of the top row) and `frac` (how far into that row). A reload or back/forward on the same `?page` returns there. A width change keeps `at` at the top: a `ResizeObserver` lays out again after layout and before paint.
 - **Data source.** Each page's HTML sets attributes on `#books`:
   - `data-page-url`: a URL template with `{n}` for the page number
-  - `data-total-pages`
+  - `data-page-size` (`booksPerPage`)
+  - `data-total-books`
   - `data-empty-text`
 
   The same script therefore works with the static JSON files and with the API endpoints.

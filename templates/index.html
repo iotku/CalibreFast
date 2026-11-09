@@ -15,7 +15,7 @@
 {{ template "topbar-start" $tb }}
 {{ template "topbar-pager" }}
 {{ template "topbar-end" $tb }}
-        <div id="books"></div>
+        <div id="books" data-page-url="/pages/page{n}.json?v={{ .PagesVersion }}" data-page-size="{{ booksPerPage }}" data-total-books="{{ .TotalBooks }}"></div>
         <div id="book-modal" class="modal-overlay">
             <div class="modal-content">
                 <button id="modal-close" aria-label="Close modal">✕</button>
@@ -25,7 +25,6 @@
 
         <div id="scroll-badge"></div>
 
-        <div id="load-more" class="load-more-sentinel"></div>
         <script type="module" src="{{ asset "app-htmx.js" }}"></script>
     </body>
 </html>

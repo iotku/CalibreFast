@@ -16,9 +16,9 @@
 {{ template "topbar-pager" }}
 {{ template "topbar-end" $tb }}
 {{ if .Query }}
-<div id="books" data-page-url="/api/search?q={{ .Query }}&page={n}" data-total-pages="{{ .TotalPages }}" data-empty-text="No results found."></div>
+<div id="books" data-page-url="/api/search?q={{ .Query }}&page={n}" data-page-size="{{ booksPerPage }}" data-total-books="{{ .TotalBooks }}" data-empty-text="No results found."></div>
 {{ else }}
-<div id="books" data-total-pages="0" data-empty-text=""></div>
+<div id="books" data-total-books="0" data-empty-text=""></div>
 {{ end }}
 <p id="status" class="status-message"></p>
 <div id="book-modal" class="modal-overlay">

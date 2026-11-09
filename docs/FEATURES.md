@@ -4,18 +4,19 @@ Reference for how CalibreFast behaves, for people and AI tools working on the co
 
 ## Browsing
 
-- **The whole library is one scrollable document.** Every page has a fixed-height placeholder, so the scrollbar reflects the full library and you can drag straight to any point. Only pages near the viewport are rendered; others are swapped back to placeholders as you leave them.
-- **120 books per page.** That's the lowest common multiple of every grid width (10/8/6/4/2 columns), so page boundaries never leave gaps in the grid. The same page size is used everywhere: the main library, filtered views and search.
+- **The whole library is one continuous grid.** The scrollbar reflects the full library from the start, and you can drag straight to any point. Only the rows near the screen are in the page; the rest are drawn as empty cards, so even a scroll faster than the page can keep up shows the grid's shape, never a blank.
+- **60 books per page**, everywhere: the main library, filtered views and search. A page is how the books are fetched and what the page box counts, not a block in the grid: books flow on from one page to the next with no gaps, at any number of columns.
 - **Navigation:**
-  - a page number box with prev/next in the top bar
+  - a page number box with prev/next in the top bar; going to page N puts the row with its first book at the top
   - Home/End move one page at a time
   - a floating `page / total` badge appears while dragging the scrollbar
-  - the current page is kept in the URL (`?page=N`), so links and the back button work
+  - the page at the top of the screen is kept in the URL (`?page=N`), so links work; reload and back/forward return to the exact row, even after the window has changed width
+  - resizing keeps the same book at the top
 - **Covers:**
   - load nearest-first in the scroll direction, with a limited number in flight so they don't crowd out page requests
   - requests for covers scrolled past are cancelled
   - books without a cover get a generated placeholder
-- **Fast scrolling** (a fling or a scrollbar drag) skips fetching and rendering until scrolling settles.
+- **Fast scrolling.** Book data is fetched further ahead the faster you scroll, so it's there before the screen is. Only when pages go by faster than they can be fetched (a scrollbar drag) does it wait until scrolling settles. Covers wait whenever you're moving faster than about 4 screens a second.
 
 ## Book details
 
