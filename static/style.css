@@ -645,6 +645,31 @@ input[type="number"],
     display: block;
 }
 
+/* Thumbnail and full cover share one grid cell; the full one fades in on top. */
+.cover-stack {
+    display: grid;
+}
+
+.cover-stack > img {
+    grid-area: 1 / 1;
+}
+
+.book-page-cover img.cover-full {
+    box-shadow: none;
+    opacity: 0;
+    transition: opacity 0.4s ease;
+}
+
+.book-page-cover img.cover-full.loaded {
+    opacity: 1;
+}
+
+@media (prefers-reduced-motion: reduce) {
+    .book-page-cover img.cover-full {
+        transition: none;
+    }
+}
+
 .cover-link {
     display: block;
     position: relative;

@@ -43,18 +43,7 @@
             <div class="book-page-cover">
                 {{ if $readLink }}
                 <a href="{{ $readLink }}" class="cover-link" title="Read book" aria-label="Read book">
-                    <img class="thumbnail" alt="Cover"
-                        src="/cover-thumb/{{ .UUID }}{{ if .ModTime }}?t={{ .ModTime }}{{ end }}"
-                        data-full="/cover/{{ .UUID }}{{ if .ModTime }}?t={{ .ModTime }}{{ end }}" onload="
-                                const full = this.dataset.full;
-                                if (!full) return;
-                                delete this.dataset.full;
-                                const img = new Image();
-                                img.onload = () => {
-                                    this.src = full;
-                                };
-                                img.src = full;
-                            " />
+                    {{ template "book-cover-stack" . }}
                     <span class="cover-read-hint">
                         <svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2"
                             stroke-linecap="round" stroke-linejoin="round">
@@ -65,17 +54,7 @@
                     </span>
                 </a>
                 {{ else }}
-                <img class="thumbnail" alt="Cover" src="/cover-thumb/{{ .UUID }}{{ if .ModTime }}?t={{ .ModTime }}{{ end }}"
-                    data-full="/cover/{{ .UUID }}{{ if .ModTime }}?t={{ .ModTime }}{{ end }}" onload="
-                            const full = this.dataset.full;
-                            if (!full) return;
-                            delete this.dataset.full;
-                            const img = new Image();
-                            img.onload = () => {
-                                this.src = full;
-                            };
-                            img.src = full;
-                        " />
+                {{ template "book-cover-stack" . }}
                 {{ end }}
             </div>
             <div class="book-actions">
@@ -165,3 +144,10 @@
 </body>
 
 </html>
+
+{{/* Cached thumbnail first; the full cover fades in over it once loaded (#16). */}}
+{{ define "book-cover-stack" }}<span class="cover-stack">
+    <img class="thumbnail" alt="Cover" src="/cover-thumb/{{ .UUID }}{{ if .ModTime }}?t={{ .ModTime }}{{ end }}" />
+    <img class="cover-full" alt="" aria-hidden="true" decoding="async"
+        src="/cover/{{ .UUID }}{{ if .ModTime }}?t={{ .ModTime }}{{ end }}" onload="this.classList.add('loaded')" />
+</span>{{ end }}
