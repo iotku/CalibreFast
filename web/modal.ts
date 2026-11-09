@@ -1,4 +1,4 @@
-import "./user.js"; // favorite / status / shelves controls in the book popup
+import { prefetchControls } from "./user.js"; // favorite / status / shelves controls in the book popup
 /* ------------------------------------------------------------------ */
 /* Modal (hash-driven)                                                 */
 /* ------------------------------------------------------------------ */
@@ -132,7 +132,12 @@ export function loadBook(uuid: string): void {
         setBody("htmx not loaded.");
         return;
     }
+    prefetchControls(uuid); // in parallel with the book, not after it
+    // The book's card (if on the page) as the source: htmx then uses the
+    // card's hx-preload response, even one still in flight.
+    const card = document.querySelector<HTMLElement>(`.book-link[href="${HASH_PREFIX}${CSS.escape(uuid)}"]`);
     htmx.ajax("GET", `/book/get/${encodeURIComponent(uuid)}`, {
+        source: card ?? undefined,
         target: "#" + BODY_ID,
         swap: "innerHTML",
     });
@@ -182,6 +187,16 @@ export function setupModal(): void {
             if (e.target instanceof Element && e.target.closest(".book-link")) openedViaNav = true;
         },
         true,
+    );
+
+    // Hovering a card preloads the book (hx-preload) and its user controls.
+    document.addEventListener(
+        "mouseover",
+        (e) => {
+            const href = e.target instanceof Element ? e.target.closest(".book-link")?.getAttribute("href") : null;
+            if (href?.startsWith(HASH_PREFIX)) prefetchControls(decodeURIComponent(href.slice(HASH_PREFIX.length)));
+        },
+        { passive: true },
     );
 
     // The modal follows the URL. Back/forward between entries whose ?page

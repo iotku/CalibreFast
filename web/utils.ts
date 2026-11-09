@@ -97,7 +97,9 @@ export function escapeHtml(str: string): string {
 
 /**
  * Render a single book card HTML
- * Plain link to #book/<uuid>; modal logic lives in setupModal().
+ * Plain link to #book/<uuid>; modal logic lives in setupModal(). htmx only
+ * preloads the book on hover (hx-trigger="none": the click is the hash
+ * change, and modal.ts's loadBook uses the preloaded response).
  * @param book - Book object
  * @returns HTML string for book card
  */
@@ -111,8 +113,7 @@ export function renderBookCard(book: Book): string {
 <div class="book" >
     <a href="#book/${uuid}" class="book-link"
        hx-get="/book/get/${uuid}"
-       hx-target="#modal-body"
-       hx-swap="innerHTML"
+       hx-trigger="none"
        hx-preload="mouseover"
     >
         <div class="cover-wrapper" style="background:${coverColor}">

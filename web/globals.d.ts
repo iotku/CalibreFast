@@ -3,7 +3,8 @@
 
 // ---- htmx (global, loaded by <script> on library pages) --------------------
 interface HtmxApi {
-    ajax(method: string, url: string, options: { target: string; swap?: string }): Promise<void>;
+    /** source: the element the request is for (its hx-preload response is used). */
+    ajax(method: string, url: string, options: { target: string; swap?: string; source?: Element }): Promise<void>;
     process(element: Element): void;
 }
 declare const htmx: HtmxApi | undefined;
