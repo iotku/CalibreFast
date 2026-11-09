@@ -20,13 +20,20 @@ export function hashString(str: string): number {
 }
 
 /**
+ * Hue of a book's placeholder cover (CSS --cover-hue). coverHue in book.go
+ * computes the same for the book page: keep them in step.
+ */
+export function coverHue(book: Pick<Book, "uuid">): number {
+    return hashString(book.uuid) % 360;
+}
+
+/**
  * Generate a color from a book's UUID
  * @param book - Book object with uuid property
  * @returns HSL color string
  */
 export function colorFromBook(book: Pick<Book, "uuid">): string {
-    const h = hashString(book.uuid);
-    return `hsl(${h % 360}, 55%, 35%)`;
+    return `hsl(${coverHue(book)}, 55%, 35%)`;
 }
 
 /**
@@ -107,7 +114,7 @@ export function renderBookCard(book: Book): string {
     const title = escapeHtml(book.title || "Untitled");
     const author = escapeHtml(book.author_sort || "Unknown Author");
     const uuid = escapeHtml(book.uuid);
-    const coverColor = colorFromBook(book);
+    const hue = coverHue(book);
 
     return `
 <div class="book" >
@@ -116,7 +123,7 @@ export function renderBookCard(book: Book): string {
        hx-trigger="none"
        hx-preload="mouseover"
     >
-        <div class="cover-wrapper" style="background:${coverColor}">
+        <div class="cover-wrapper" style="--cover-hue:${hue}">
                 <img class="book-cover"
                     data-src="/cover-thumb/${uuid}?t=${book.last_modified}"
                     data-id="${uuid}"

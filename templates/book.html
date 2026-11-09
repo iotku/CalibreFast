@@ -146,8 +146,18 @@
 </html>
 
 {{/* Cached thumbnail first; the full cover fades in over it once loaded (#16). */}}
+{{/* The placeholder (the book's library-card colour, title and author)
+     shows when there's no cover, and stands in until a cover image loads;
+     an image that fails is removed. */}}
 {{ define "book-cover-stack" }}<span class="cover-stack">
-    <img class="thumbnail" alt="Cover" src="/cover-thumb/{{ .UUID }}{{ if .ModTime }}?t={{ .ModTime }}{{ end }}" />
+    <span class="cover-placeholder" style="--cover-hue: {{ .CoverHue }}"{{ if .HasCover }} aria-hidden="true"{{ end }}>
+        <span class="cover-placeholder-title">{{ .Title }}</span>
+        {{ if .Authors }}<span class="cover-placeholder-author">{{ range $i, $a := .Authors }}{{ if $i }}, {{ end }}{{ $a }}{{ end }}</span>{{ end }}
+    </span>
+    {{ if .HasCover }}
+    <img class="thumbnail" alt="Cover" src="/cover-thumb/{{ .UUID }}{{ if .ModTime }}?t={{ .ModTime }}{{ end }}"
+        onload="this.classList.add('loaded')" onerror="this.remove()" />
     <img class="cover-full" alt="" aria-hidden="true" decoding="async"
-        src="/cover/{{ .UUID }}{{ if .ModTime }}?t={{ .ModTime }}{{ end }}" onload="this.classList.add('loaded')" />
+        src="/cover/{{ .UUID }}{{ if .ModTime }}?t={{ .ModTime }}{{ end }}" onload="this.classList.add('loaded')" onerror="this.remove()" />
+    {{ end }}
 </span>{{ end }}

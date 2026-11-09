@@ -16,13 +16,19 @@ export function hashString(str) {
     return Math.abs(h);
 }
 /**
+ * Hue of a book's placeholder cover (CSS --cover-hue). coverHue in book.go
+ * computes the same for the book page: keep them in step.
+ */
+export function coverHue(book) {
+    return hashString(book.uuid) % 360;
+}
+/**
  * Generate a color from a book's UUID
  * @param book - Book object with uuid property
  * @returns HSL color string
  */
 export function colorFromBook(book) {
-    const h = hashString(book.uuid);
-    return `hsl(${h % 360}, 55%, 35%)`;
+    return `hsl(${coverHue(book)}, 55%, 35%)`;
 }
 /**
  * Generate a text-based cover canvas for books without cover images
@@ -93,7 +99,7 @@ export function renderBookCard(book) {
     const title = escapeHtml(book.title || "Untitled");
     const author = escapeHtml(book.author_sort || "Unknown Author");
     const uuid = escapeHtml(book.uuid);
-    const coverColor = colorFromBook(book);
+    const hue = coverHue(book);
     return `
 <div class="book" >
     <a href="#book/${uuid}" class="book-link"
@@ -101,7 +107,7 @@ export function renderBookCard(book) {
        hx-trigger="none"
        hx-preload="mouseover"
     >
-        <div class="cover-wrapper" style="background:${coverColor}">
+        <div class="cover-wrapper" style="--cover-hue:${hue}">
                 <img class="book-cover"
                     data-src="/cover-thumb/${uuid}?t=${book.last_modified}"
                     data-id="${uuid}"
