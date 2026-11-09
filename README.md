@@ -34,6 +34,7 @@ CalibreFast reads directly from your Calibre `metadata.db` and serves your libra
 - **Accounts:** username/password, or GitHub/Google sign-in. Admins manage users, and can send someone a one-time sign-in or invite link (e.g. over Discord).
 - **Favorites and reading status:** star books, and track what you're reading and have finished. The readers update this as you go.
 - **Resume anywhere:** your reading position and bookmarks sync between devices, and are kept locally too in case the server is down.
+- **KOReader sync:** use CalibreFast as KOReader's progress sync server, so positions follow you between your Kobo, Kindle or phone and the web readers.
 - **Bookshelves:** your own private shelves, plus global shelves that admins curate for everyone.
 
 Everything needs an account unless you open the catalog with `-public` (or reading too, with `-public-read`). Editing metadata, uploads and creating groups need an admin account and the `-allow-writes` flag.
@@ -116,6 +117,7 @@ Editors: VS Code's TypeScript support reads `tsconfig.json` as-is. See [ARCHITEC
 
 - [SECURITY.md](docs/SECURITY.md): the risks, and how to run CalibreFast safely
 - [OAUTH.md](docs/OAUTH.md): setting up GitHub and Google sign-in
+- [KOREADER.md](docs/KOREADER.md): syncing reading positions with KOReader
 - [FEATURES.md](docs/FEATURES.md): how everything behaves, in detail
 - [ARCHITECTURE.md](docs/ARCHITECTURE.md): how it works under the hood
 - [notes/Performance.md](docs/notes/Performance.md): performance notes

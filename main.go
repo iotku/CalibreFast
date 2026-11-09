@@ -1097,4 +1097,5 @@ func downloadHandler(w http.ResponseWriter, r *http.Request) {
 	)
 
 	http.ServeFile(w, r, fullPath)
+	noteDownload(uuid, format) // for KOReader progress sync (kosync_digest.go)
 }

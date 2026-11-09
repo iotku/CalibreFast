@@ -34,6 +34,39 @@
         </form>
     </section>
 
+    <section class="auth-card" id="device-sync">
+        <h2>Device sync</h2>
+        {{ if .SyncNotice }}<p class="auth-notice" role="status">{{ .SyncNotice }}</p>{{ end }}
+        <p class="auth-muted">KOReader (on Kobo, Kindle, PocketBook or Android) can sync reading positions with the readers here. In KOReader, open a book, then Tools → Progress sync: set Custom sync server to the address below, then Login with your username and sync key.</p>
+        {{ if .NewSyncKey }}
+        <div class="sync-new-key" role="status">
+            <p>Your sync key. Enter it as the password in KOReader:</p>
+            <code class="sync-key">{{ .NewSyncKey }}</code>
+            <p class="auth-muted">It is shown only now. If you lose it, create a new one.</p>
+        </div>
+        {{ end }}
+        <dl class="sync-facts">
+            <dt>Server</dt><dd><code>{{ .SyncURL }}</code></dd>
+            <dt>Username</dt><dd><code>{{ .User.Username }}</code></dd>
+            <dt>Sync key</dt>
+            <dd>{{ if .SyncKey }}Created {{ .SyncKey.Created }}{{ if .SyncKey.LastUsed }}, last used {{ .SyncKey.LastUsed }}{{ end }}{{ if .SyncKey.LastDevice }} (latest position from {{ .SyncKey.LastDevice }}){{ end }}{{ else }}None{{ end }}</dd>
+        </dl>
+        <div class="sync-actions">
+            <form method="post" action="/account/sync-key#device-sync">
+                <input type="hidden" name="action" value="generate">
+                <button type="submit" class="btn-standard">{{ if .SyncKey }}Replace sync key{{ else }}Create sync key{{ end }}</button>
+            </form>
+            {{ if .SyncKey }}
+            <form method="post" action="/account/sync-key#device-sync">
+                <input type="hidden" name="action" value="revoke">
+                <button type="submit" class="btn-standard">Revoke</button>
+            </form>
+            {{ end }}
+        </div>
+        {{ if .SyncKey }}<p class="auth-muted">Replacing or revoking the key stops devices that use it from syncing. Positions already synced are kept.</p>{{ end }}
+        <p class="auth-muted">Books downloaded from this library are recognised as they are. For books Calibre sent to the device, set KOReader's Document matching method to Filename. Use HTTPS when syncing over the internet.</p>
+    </section>
+
     {{ if .Providers }}
     <section class="auth-card">
         <h2>Linked sign-ins</h2>

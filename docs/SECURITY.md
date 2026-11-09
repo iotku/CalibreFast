@@ -7,7 +7,7 @@ CalibreFast has accounts, but it's a personal project: the authentication code i
 | | Browse the catalog (covers, metadata, search) | Read and download books | Favorites, progress, bookmarks, own shelves | Change the library (metadata, uploads, covers, groups) | Manage users, global shelves |
 |---|---|---|---|---|---|
 | **Anonymous visitor** | Only with `-public` | Only with `-public-read` | No | **Never** | No |
-| **Signed-in user** | Yes | Yes | Yes (their own) | **Never** | No |
+| **Signed-in user** | Yes | Yes | Yes (their own; progress also from KOReader with a sync key) | **Never** | No |
 | **Admin** | Yes | Yes | Yes (their own) | Only with `-allow-writes` | Yes |
 
 - Library changes always need **both** an admin session **and** a server started with `-allow-writes`. Without the flag, nobody (not even admins) can modify `metadata.db` or the library folder. Anonymous visitors get 401 and regular users 403.
@@ -30,6 +30,19 @@ CalibreFast has accounts, but it's a personal project: the authentication code i
   - `-allow-registrations` lets anyone who can reach the server create an account from the sign-in page, or by signing in with GitHub/Google. New accounts are never admins.
   - **Bots will try to create accounts.** There's no CAPTCHA or email verification, only rate limiting. Use it only on a trusted network, such as a Tailscale network shared with people you trust, and turn it off once everyone has an account.
 - **The last admin** can't be demoted, disabled or deleted.
+
+### Device sync keys (KOReader)
+
+KOReader devices sync reading positions through `/kosync` ([KOREADER.md](KOREADER.md)). They never use the account password:
+- **The key:** each user can create one sync key on their account page.
+  - It's 16 random lower-case letters, about 73 bits, easy to type on an e-reader.
+  - It is shown once. KOReader sends its MD5 with every request, and only a SHA-256 of that MD5 is stored.
+  - It is compared in constant time.
+- **What it allows:** reading and writing that user's reading positions, and the reading status they update. It can't sign in, read books or reach the catalog.
+- **Replacing or revoking** it takes effect at once. Disabled accounts can't sync.
+- **Rate limiting:** an address that sends 10 different wrong username/key pairs within 15 minutes is refused (429) until the window passes. A device repeating one stale key counts once, so it can't lock out other devices behind the same address.
+- **Registering** from KOReader is refused: accounts only come from CalibreFast.
+- **Plain HTTP:** the key's MD5 is sent in a header with every request. **Use HTTPS for anything beyond your own network.** Anyone who copies it can change your reading positions until you replace the key, but can do nothing else.
 
 ### One-time links
 
@@ -78,7 +91,7 @@ CalibreFast writes to the same `metadata.db` and book folders that the Calibre d
 
 ## Where data is stored
 
-- **`-datadir`** (default `./data`) holds `calibrefast.db`: accounts, sessions, favorites, progress, bookmarks and shelves.
+- **`-datadir`** (default `./data`) holds `calibrefast.db`: accounts, sessions, sync key hashes, favorites, progress (including KOReader devices' positions and names), bookmarks and shelves. It also caches the fingerprints KOReader uses for library files.
   - The directory is created `0700` and the database file is `0600`, because it holds password hashes and session tokens.
   - **Keep it out of version control** (`/data/` is in `.gitignore`) and back it up separately from the library.
 - **`calibrefast-groups.json`** in the library folder holds groups. It's the only file CalibreFast adds to a library.

@@ -51,6 +51,8 @@ func getProgress(userID int64, uuid, format string) (*progressRec, error) {
 	return &p, nil
 }
 
+// progressGetHandler returns the latest position: the web readers' own, or a
+// KOReader device's (kosync.go) when that is newer.
 func progressGetHandler(w http.ResponseWriter, r *http.Request) {
 	u := currentUser(r)
 	format := r.URL.Query().Get("format")
@@ -58,14 +60,14 @@ func progressGetHandler(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "format must be epub or pdf", http.StatusBadRequest)
 		return
 	}
-	p, err := getProgress(u.ID, r.PathValue("uuid"), format)
-	if errors.Is(err, sql.ErrNoRows) {
-		writeJSON(w, http.StatusOK, map[string]any{"progress": nil})
-		return
-	}
-	if err != nil {
+	uuid := r.PathValue("uuid")
+	p, err := getProgress(u.ID, uuid, format)
+	if err != nil && !errors.Is(err, sql.ErrNoRows) {
 		http.Error(w, "query failed", http.StatusInternalServerError)
 		return
+	}
+	if d := deviceProgressForWeb(u.ID, uuid, format); d != nil && (p == nil || d.UpdatedAt > p.UpdatedAt) {
+		p = d
 	}
 	writeJSON(w, http.StatusOK, map[string]any{"progress": p})
 }

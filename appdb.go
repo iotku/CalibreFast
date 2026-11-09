@@ -18,7 +18,7 @@ var appDB *sql.DB
 const appDBFile = "calibrefast.db"
 
 // migrations are applied in order; each runs once, recorded in schema_version.
-// Never edit an applied migration — add a new one.
+// Never edit or reorder an applied migration — add a new one at the end.
 var migrations = []string{
 	// 1: accounts and sessions
 	`
@@ -102,6 +102,48 @@ var migrations = []string{
 		added_at  INTEGER NOT NULL,
 		PRIMARY KEY (shelf_id, book_uuid)
 	);
+	`,
+	// 4: one-time sign-in and invite links (links.go)
+	`
+	CREATE TABLE login_links (
+		token_hash   TEXT    PRIMARY KEY,
+		kind         TEXT    NOT NULL CHECK (kind IN ('login', 'invite')),
+		user_id      INTEGER REFERENCES users(id) ON DELETE CASCADE, -- sign-in links
+		invite_admin INTEGER NOT NULL DEFAULT 0,                    -- invites: create as admin
+		note         TEXT    NOT NULL DEFAULT '',
+		created_by   INTEGER REFERENCES users(id) ON DELETE SET NULL,
+		created_at   INTEGER NOT NULL,
+		expires_at   INTEGER NOT NULL,
+		used_at      INTEGER,
+		used_by      INTEGER REFERENCES users(id) ON DELETE SET NULL
+	);`,
+	// 5: KOReader progress sync (kosync.go)
+	`
+	CREATE TABLE sync_keys (
+		user_id      INTEGER PRIMARY KEY REFERENCES users(id) ON DELETE CASCADE,
+		key_hash     TEXT    NOT NULL,            -- sha256 of the MD5 KOReader sends as x-auth-key
+		created_at   INTEGER NOT NULL,
+		last_used_at INTEGER
+	);
+	CREATE TABLE device_progress (
+		user_id    INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+		document   TEXT    NOT NULL,              -- KOReader's document id (partial MD5 or file name MD5)
+		progress   TEXT    NOT NULL,              -- XPointer or page number, exactly as sent
+		percentage REAL    NOT NULL,
+		device     TEXT    NOT NULL,
+		device_id  TEXT,
+		updated_at INTEGER NOT NULL,              -- server clock, ms
+		PRIMARY KEY (user_id, document)
+	);
+	CREATE TABLE book_digests (                  -- KOReader partial MD5 of library files, cached
+		book_uuid TEXT    NOT NULL,
+		format    TEXT    NOT NULL,
+		digest    TEXT    NOT NULL,
+		size      INTEGER NOT NULL,               -- file size and mtime (ns) when hashed
+		mtime     INTEGER NOT NULL,
+		PRIMARY KEY (book_uuid, format)
+	);
+	CREATE INDEX book_digests_digest ON book_digests(digest);
 	`,
 }
 
