@@ -4,7 +4,7 @@ A fast, minimal web frontend for your [Calibre](https://calibre-ebook.com/) libr
 
 > ⚠️ **Experimental.** CalibreFast is not feature complete and comes with no security guarantees. **Do not expose it to the public internet**. It is intended for personal use on a trusted local network (e.g. private wireguard/tailscale network).
 >
-> 🔒 **There is no authentication.** The server starts **read-only**. With `-allow-writes`, **anyone who can reach it can change your library**. Read [SECURITY.md](docs/SECURITY.md) before turning that on.
+> 🔒 **Accounts are new and haven't been independently reviewed.** Only admins can change the library, and only when the server is started with `-allow-writes`. Read [SECURITY.md](docs/SECURITY.md) before exposing CalibreFast beyond your own machine.
 
 ![Search Screenshot](image-3.png)
 
@@ -31,15 +31,19 @@ CalibreFast reads directly from your Calibre `metadata.db` and serves your libra
 - **Groups** merge values that mean the same thing, like `en`/`eng`/`en-US` → English, without editing any books.
 - **Metadata editor:** tag and language chips, autocomplete from your library, a formatted description editor, side-by-side comparison of your changes, and safeguards so curated metadata isn't lost.
 - **Uploads:** EPUB/PDF metadata is read automatically, and multiple formats of one book are combined.
+- **Accounts:** username/password, or GitHub/Google sign-in. Admins manage users.
+- **Favorites and reading status:** star books, and track what you're reading and have finished. The readers update this as you go.
+- **Resume anywhere:** your reading position and bookmarks sync between devices, and are kept locally too in case the server is down.
+- **Bookshelves:** your own private shelves, plus global shelves that admins curate for everyone.
 
-Editing metadata, uploads and creating groups require starting the server with `-allow-writes`.
+Editing metadata, uploads and creating groups need an admin account and the `-allow-writes` flag. Reading and downloading need any account, unless you run with `-public-read`.
 
 See [docs/FEATURES.md](docs/FEATURES.md) for the details.
 
 ## What it is not
 
 - Not production ready
-- Not authenticated or access controlled in any way — see [SECURITY.md](docs/SECURITY.md)
+- Not hardened or audited for the public internet — see [SECURITY.md](docs/SECURITY.md)
 - Not a full Calibre replacement or sync tool
 
 ## Getting started
@@ -49,17 +53,31 @@ Requires Go 1.25+ and a Calibre library with a `metadata.db`.
 ```bash
 git clone https://github.com/iotku/CalibreFast.git
 cd CalibreFast
-go run . -basedir /path/to/calibre/library -cachedir /path/to/cache
+go build .
+
+# Create the first admin (prompts for a password, min. 10 characters)
+./CalibreFast -create-user yourname -admin
+
+# Run
+./CalibreFast -basedir /path/to/calibre/library -cachedir /path/to/cache
 ```
 
-Then open [http://localhost:8080](http://localhost:8080).
+Then open [http://localhost:8080](http://localhost:8080) and sign in. Add more users from **Account → Manage users**, or with `-create-user`. Running `-create-user` again for an existing name resets that user's password.
 
 | Flag | Description |
 |------|-------------|
 | `-basedir` | Path to your Calibre library root (required) |
 | `-cachedir` | Where to store cover thumbnails (default: the current directory) |
 | `-port` | Port to listen on (default `8080`) |
-| `-allow-writes` | Allow editing, uploads, cover changes and groups. **Off by default.** With no authentication, anyone who can reach the server can then modify your library — read [SECURITY.md](docs/SECURITY.md) first. |
+| `-datadir` | Where CalibreFast keeps its own database: accounts, favorites, progress, shelves (default `./data`) |
+| `-allow-writes` | Let **admins** edit metadata, upload, change covers and manage groups. Off by default. |
+| `-public-read` | Public read-only mode: anyone can read and download books without signing in |
+| `-require-login` | Require signing in to see anything, even the catalog |
+| `-open-registration` | Let anyone create an account (password, GitHub or Google) |
+| `-public-url` | Your external URL, e.g. `https://books.example.com` (needed for GitHub/Google sign-in) |
+| `-create-user NAME` | Create a user (or reset their password) and exit; add `-admin` to make them an admin |
+
+GitHub and Google sign-in are switched on by setting `CF_GITHUB_CLIENT_ID`/`CF_GITHUB_CLIENT_SECRET` and/or `CF_GOOGLE_CLIENT_ID`/`CF_GOOGLE_CLIENT_SECRET`, plus `-public-url`. See [SECURITY.md](docs/SECURITY.md#github-and-google-sign-in).
 
 ## Documentation
 

@@ -39,7 +39,7 @@ Groups combine values that mean the same thing without editing any books. For ex
 - **Exclusive membership.** A value belongs to at most one group; adding it to another moves it.
 - **Unique names.** Two groups can't share a name.
 - **Removing a group.** Removing every member, or leaving one member with no new name, removes the group.
-- **Editing.** Groups are edited on any filtered page with **Group…** (needs `-allow-writes`).
+- **Editing.** Groups are edited on any filtered page with **Group…** (needs an admin and `-allow-writes`).
   - Changes are staged locally; nothing is saved until **Save grouping**.
   - Suggestions only offer values that exist in the library.
 - **Storage.** Groups live in `<library>/calibrefast-groups.json`.
@@ -53,7 +53,7 @@ Groups combine values that mean the same thing without editing any books. For ex
 
 ## Metadata editor
 
-`/book/edit/<uuid>` (needs `-allow-writes`) writes both `metadata.db` and the book's `metadata.opf`.
+`/book/edit/<uuid>` (needs an admin and `-allow-writes`) writes both `metadata.db` and the book's `metadata.opf`.
 
 ### Nothing is lost by accident
 
@@ -99,6 +99,20 @@ Groups combine values that mean the same thing without editing any books. For ex
 
 ## Uploading
 
-`/upload` (needs `-allow-writes`):
+`/upload` (needs an admin and `-allow-writes`):
 - Files with the same name and different formats (`Book.epub` + `Book.pdf`) become one book with both formats.
 - Metadata is read from EPUB and PDF files. Afterwards the editor lets you pick each field's value from each format.
+
+## Accounts, favorites, progress and shelves
+
+- **Accounts:** password, or GitHub/Google sign-in. Admins manage users at `/admin/users`. See [SECURITY.md](SECURITY.md) for who can do what.
+- **Favorites and status:** the book popup has ★ Favorite and a status menu (not started / reading / finished). Lists are at `/me/favorites`, `/me/reading` and `/me/finished`.
+  - Turning a page in a reader marks a book as reading; reaching ≥ 97% marks it finished.
+  - Automatic changes only move forward and never override a status you set yourself.
+- **Reading position and bookmarks:** kept in the browser and, when signed in, synced to the server, so another device can resume.
+  - The newest position wins.
+  - Changes made offline are pushed when the connection returns.
+- **Bookshelves** (`/shelves`):
+  - Personal shelves are private to their owner.
+  - Global shelves are visible to everyone and edited by admins.
+  - Books are added from the book popup's Shelves section.

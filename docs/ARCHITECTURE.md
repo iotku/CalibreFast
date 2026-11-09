@@ -35,11 +35,19 @@ On startup CalibreFast queries `metadata.db` and writes paginated JSON (`pages/p
 
 - **Cover thumbnails** are generated on first request and stored in `-cachedir`.
 - **Static files** (`/static/`) are served with `Cache-Control: max-age=120`, so edits reach browsers within about 2 minutes without constant revalidation.
-- **Book pages** use an `ETag` built from the OPF modification time, the groups version and the `-allow-writes` setting, plus `max-age=30`.
+- **Book pages** use an `ETag` built from the OPF modification time, the groups version and whether the viewer may edit, plus `max-age=30`.
 
 ## Writes
 
 - **Guards.**
-  - Every endpoint that changes the library is wrapped in `requireWrites` (`main.go`), which returns 403 unless the server was started with `-allow-writes`.
+  - Every endpoint that changes the library is wrapped in `requireWrites` (`main.go`), which requires `-allow-writes` and a signed-in admin.
   - The whole server is wrapped in `csrfProtect`, Go's `http.CrossOriginProtection`.
 - **Read-only mode** writes only CalibreFast's own caches (`./pages` and `-cachedir`).
+
+## Accounts and per-user data
+
+- `appdb.go`: CalibreFast's own SQLite database in `-datadir`, with versioned migrations (users, identities, sessions, favorites, reading_status, reading_progress, bookmarks, shelves, shelf_books).
+- `auth.go`: passwords, sessions and the `withAuth` middleware that puts the user in the request context. The guards are `requireUser`, `requireAdminUser`, `requireReader` (book contents unless `-public-read`) and `requireWrites`.
+- `oauth.go`: GitHub/Google sign-in.
+- `userdata.go`: favorites, reading status and the `/me/...` lists. `progress.go`: reader position and bookmarks. `shelves.go`: bookshelves.
+- The app database stores book UUIDs; book details for lists come from `metadata.db`.
