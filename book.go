@@ -8,6 +8,7 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
+	"time"
 
 	"github.com/microcosm-cc/bluemonday"
 )
@@ -21,6 +22,9 @@ var descriptionPolicy = func() *bluemonday.Policy {
 
 	return p
 }()
+
+// serverStarted is part of page ETags so a restart invalidates cached pages.
+var serverStarted = time.Now().UnixNano()
 
 type BookPageData struct {
 	UUID string
@@ -62,7 +66,9 @@ func bookHandler(w http.ResponseWriter, r *http.Request) {
 
 	// Groups version: the language label depends on group names.
 	// Varies with whether this viewer may edit (shows the Edit button).
-	etag := fmt.Sprintf(`"%x-%x-%t"`, opfStat.ModTime().UnixNano(), groups.currentVersion(), canEditLibrary(r))
+	// Server start time: a restart (e.g. after updating templates) must not
+	// keep serving browsers a cached page in the old layout.
+	etag := fmt.Sprintf(`"%x-%x-%t-%x"`, opfStat.ModTime().UnixNano(), groups.currentVersion(), canEditLibrary(r), serverStarted)
 	w.Header().Set("ETag", etag)
 	w.Header().Set("Cache-Control", "private, max-age=30")
 	if r.Header.Get("If-None-Match") == etag {

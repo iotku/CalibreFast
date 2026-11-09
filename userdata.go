@@ -10,6 +10,7 @@ import (
 	"errors"
 	"log"
 	"net/http"
+	"net/url"
 	"strconv"
 	"strings"
 )
@@ -296,8 +297,46 @@ func setStatusHandler(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, http.StatusOK, map[string]string{"status": status, "status_source": source})
 }
 
+// BookUserActionsData feeds the per-user controls fragment under a book's
+// read/download buttons.
+type BookUserActionsData struct {
+	UUID         string
+	SignedIn     bool
+	Next         string
+	Favorite     bool
+	Status       string
+	StatusSource string
+	Shelves      []shelfMark
+	OnShelves    int
+}
+
+// bookUserActionsHandler: GET /book/me/{uuid} — the favorite / status /
+// shelves controls as HTML, loaded (with a throbber) after the book page.
+// Always 200: signed-out visitors get a sign-in hint, so a loading spinner
+// is never left stuck on an error response.
+func bookUserActionsHandler(w http.ResponseWriter, r *http.Request) {
+	uuid := r.PathValue("uuid")
+	data := BookUserActionsData{UUID: uuid, Next: url.QueryEscape("/book/get/" + uuid)}
+	if u := currentUser(r); u != nil {
+		data.SignedIn = true
+		var one int
+		data.Favorite = appDB.QueryRow(`SELECT 1 FROM favorites WHERE user_id = ? AND book_uuid = ?`, u.ID, uuid).Scan(&one) == nil
+		data.Status, data.StatusSource = readStatus(u.ID, uuid)
+		data.Shelves = shelfMarks(u, uuid)
+		for _, s := range data.Shelves {
+			if s.Has {
+				data.OnShelves++
+			}
+		}
+	}
+	w.Header().Set("Content-Type", "text/html; charset=utf-8")
+	w.Header().Set("Cache-Control", "private, no-store")
+	logErr(templates.ExecuteTemplate(w, "book-user-actions", data), "render book user actions")
+}
+
 func registerUserDataRoutes() {
 	http.HandleFunc("GET /me/{list}", requireUser(meListHandler))
+	http.HandleFunc("GET /book/me/{uuid}", bookUserActionsHandler)
 	http.HandleFunc("GET /api/me/books/{uuid}", requireUser(bookStateHandler))
 	http.HandleFunc("PUT /api/me/books/{uuid}/favorite", requireUser(setFavoriteHandler))
 	http.HandleFunc("PUT /api/me/books/{uuid}/status", requireUser(setStatusHandler))

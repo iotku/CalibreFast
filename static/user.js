@@ -1,11 +1,10 @@
 /**
- * Per-user controls in the book popup / page: favorite star, reading status
- * and shelves. Loaded from /api/me/books/<uuid> so the book page itself stays
- * the same for everyone (and cacheable). Signed-out visitors get a sign-in
- * link instead.
+ * Behaviour for the per-user controls under a book's read/download buttons
+ * (favorite, reading status, shelves). The controls are rendered by the
+ * server (/book/me/<uuid>) and loaded by htmx with a throbber; this file only
+ * wires up clicks. Where htmx isn't on the page (the standalone /book/get
+ * page) it loads the fragment itself.
  */
-
-const SELECTOR = ".book-user-actions[data-uuid]";
 
 async function api(method, url, body) {
     const res = await fetch(url, {
@@ -14,157 +13,119 @@ async function api(method, url, body) {
         headers: body ? { "content-type": "application/json" } : {},
         body: body ? JSON.stringify(body) : undefined,
     });
-    if (!res.ok) {
-        const err = new Error((await res.text()).trim() || `HTTP ${res.status}`);
-        err.status = res.status;
-        throw err;
-    }
+    if (!res.ok) throw new Error((await res.text()).trim() || `HTTP ${res.status}`);
     return res.status === 204 ? null : res.json();
 }
 
-const el = (tag, props = {}, ...children) => {
-    const e = Object.assign(document.createElement(tag), props);
-    e.append(...children);
-    return e;
-};
-
-function renderSignedOut(box) {
-    const next = encodeURIComponent(location.pathname + location.search + location.hash);
-    box.replaceChildren(
-        el("a", { href: `/login?next=${next}`, className: "meta-link user-signin-hint", textContent: "Sign in to favorite, track and shelve this book" }),
-    );
+/** (Re)load the controls into their container. */
+async function loadControls(container) {
+    try {
+        const res = await fetch(`/book/me/${encodeURIComponent(container.dataset.uuid)}`, { credentials: "same-origin" });
+        if (res.ok) container.innerHTML = await res.text();
+    } catch {
+        /* offline: leave as is */
+    }
 }
 
-function render(box, uuid, state) {
-    const star = el("button", {
-        type: "button",
-        className: "btn-action btn-favorite",
-        title: state.favorite ? "Remove from favorites" : "Add to favorites",
-    });
-    const paintStar = () => {
-        star.textContent = state.favorite ? "★ Favorite" : "☆ Favorite";
-        star.setAttribute("aria-pressed", String(state.favorite));
-        star.classList.toggle("is-favorite", state.favorite);
-    };
-    paintStar();
-    star.addEventListener("click", async () => {
-        const want = !state.favorite;
-        state.favorite = want; // optimistic
-        paintStar();
+function bind(controls) {
+    if (controls.dataset.bound) return;
+    controls.dataset.bound = "1";
+    const uuid = controls.dataset.uuid;
+    const container = controls.closest(".book-user-actions");
+
+    const star = controls.querySelector(".btn-favorite");
+    star?.addEventListener("click", async () => {
+        const want = star.getAttribute("aria-pressed") !== "true";
+        const paint = (on) => {
+            star.setAttribute("aria-pressed", String(on));
+            star.classList.toggle("is-favorite", on);
+            star.textContent = `${on ? "★" : "☆"} Favorite`;
+            star.title = on ? "Remove from favorites" : "Add to favorites";
+        };
+        paint(want); // optimistic
         try {
             await api("PUT", `/api/me/books/${uuid}/favorite`, { favorite: want });
         } catch {
-            state.favorite = !want;
-            paintStar();
+            paint(!want);
         }
     });
 
-    const status = el("select", { className: "book-status", title: "Reading status" },
-        el("option", { value: "", textContent: "Not started" }),
-        el("option", { value: "reading", textContent: "Reading" }),
-        el("option", { value: "finished", textContent: "Finished" }),
-    );
-    status.value = state.status || "";
-    const autoNote = el("span", { className: "book-status-note" });
-    const paintNote = () => {
-        autoNote.textContent = state.status && state.status_source === "auto" ? "set by the reader" : "";
-    };
-    paintNote();
-    status.addEventListener("change", async () => {
-        const prev = state.status;
+    const status = controls.querySelector(".book-status");
+    const note = controls.querySelector(".book-status-note");
+    let current = status?.value;
+    status?.addEventListener("change", async () => {
         try {
             const res = await api("PUT", `/api/me/books/${uuid}/status`, { status: status.value });
-            Object.assign(state, res);
+            current = res.status;
+            if (note) note.textContent = res.status && res.status_source === "auto" ? "set by the reader" : "";
         } catch {
-            status.value = prev || "";
+            status.value = current;
         }
-        paintNote();
     });
 
-    const row = el("div", { className: "book-user-row" }, star, el("label", { className: "book-status-label" }, status), autoNote);
-    box.replaceChildren(row);
-    renderShelves(box, uuid, state);
-}
-
-function renderShelves(box, uuid, state) {
-    const shelves = state.shelves || [];
-    const details = el("details", { className: "book-shelves" });
-    const summary = el("summary", { textContent: "Shelves" });
-    const count = el("span", { className: "book-shelves-count" });
-    summary.append(count);
-    const list = el("div", { className: "book-shelves-list" });
+    const count = controls.querySelector(".book-shelves-count");
     const paintCount = () => {
-        const n = shelves.filter((s) => s.has).length;
-        count.textContent = n ? ` (${n})` : "";
+        const n = controls.querySelectorAll("input[data-shelf]:checked").length;
+        if (count) count.textContent = n ? ` (${n})` : "";
     };
-
-    for (const s of shelves) {
-        const box2 = el("input", { type: "checkbox", checked: s.has, disabled: !s.can_edit });
-        box2.addEventListener("change", async () => {
+    controls.querySelectorAll("input[data-shelf]").forEach((box) =>
+        box.addEventListener("change", async () => {
             try {
-                await api(box2.checked ? "PUT" : "DELETE", `/api/shelves/${s.id}/books/${uuid}`);
-                s.has = box2.checked;
+                await api(box.checked ? "PUT" : "DELETE", `/api/shelves/${box.dataset.shelf}/books/${uuid}`);
             } catch {
-                box2.checked = !box2.checked;
+                box.checked = !box.checked;
             }
             paintCount();
-        });
-        list.append(el("label", { className: "book-shelf" }, box2, ` ${s.name}`, s.global ? el("span", { className: "book-shelf-global", textContent: "global" }) : ""));
-    }
+        }),
+    );
 
-    // Quick-create a personal shelf with this book on it.
-    const input = el("input", { type: "text", placeholder: "New shelf…", className: "book-shelf-new", autocomplete: "off" });
-    const add = el("button", { type: "button", className: "btn-action", textContent: "Add" });
+    // Create a personal shelf with this book on it.
+    const input = controls.querySelector(".book-shelf-new");
     const create = async () => {
         const name = input.value.trim();
         if (!name) return;
         try {
             const shelf = await api("POST", "/api/shelves", { name });
             await api("PUT", `/api/shelves/${shelf.id}/books/${uuid}`);
-            shelves.push({ id: shelf.id, name: shelf.name, global: false, has: true, can_edit: true });
-            renderShelves(box, uuid, state);
-            box.querySelector(".book-shelves").open = true;
+            await loadControls(container);
+            container.querySelector(".book-shelves")?.setAttribute("open", "");
         } catch (err) {
             input.setCustomValidity(err.message);
             input.reportValidity();
         }
     };
-    add.addEventListener("click", create);
-    input.addEventListener("input", () => input.setCustomValidity(""));
-    input.addEventListener("keydown", (e) => {
+    controls.querySelector(".book-shelf-add")?.addEventListener("click", create);
+    input?.addEventListener("input", () => input.setCustomValidity(""));
+    input?.addEventListener("keydown", (e) => {
         if (e.key === "Enter") {
             e.preventDefault();
             create();
         }
     });
-    list.append(el("div", { className: "book-shelf-create" }, input, add));
-
-    details.append(summary, list);
-    paintCount();
-    box.querySelector(".book-shelves")?.remove();
-    box.append(details);
 }
 
-async function mount(box) {
-    if (box.dataset.mounted) return;
-    box.dataset.mounted = "1";
-    const uuid = box.dataset.uuid;
-    try {
-        const state = await api("GET", `/api/me/books/${encodeURIComponent(uuid)}`);
-        render(box, uuid, state);
-    } catch (err) {
-        if (err.status === 401) renderSignedOut(box);
-    }
+function scan(root) {
+    if (root.nodeType !== 1) return;
+    // Controls that arrived (htmx swap, or our own load).
+    if (root.matches(".book-user-controls")) bind(root);
+    root.querySelectorAll(".book-user-controls").forEach(bind);
+    // Without htmx (standalone book page) load the controls ourselves; with
+    // htmx, step in only if it hasn't loaded them after a few seconds, so the
+    // throbber can never spin forever.
+    const containers = root.matches(".book-user-actions[hx-get]") ? [root] : root.querySelectorAll(".book-user-actions[hx-get]");
+    containers.forEach((c) => {
+        if (c.dataset.watching) return;
+        c.dataset.watching = "1";
+        const load = () => {
+            if (c.isConnected && c.querySelector(":scope > .throbber")) loadControls(c);
+        };
+        if (typeof htmx === "undefined") load();
+        else setTimeout(load, 3000);
+    });
 }
 
-export function mountAll(root = document) {
-    if (root.matches?.(SELECTOR)) mount(root);
-    root.querySelectorAll?.(SELECTOR).forEach(mount);
-}
-
-// Book popups are loaded by htmx; mount whatever appears.
 new MutationObserver((records) => {
-    for (const r of records) for (const n of r.addedNodes) if (n.nodeType === 1) mountAll(n);
+    for (const r of records) for (const n of r.addedNodes) scan(n);
 }).observe(document.documentElement, { childList: true, subtree: true });
 
-mountAll();
+scan(document.documentElement);

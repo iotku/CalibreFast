@@ -1,0 +1,35 @@
+{{ define "book-user-actions" }}
+<div class="book-user-controls" data-uuid="{{ .UUID }}">
+{{ if not .SignedIn }}
+    <a href="/login?next={{ .Next }}" class="meta-link user-signin-hint">Sign in to favorite, track and shelve this book</a>
+{{ else }}
+    <div class="book-user-row">
+        <button type="button" class="btn-action btn-favorite{{ if .Favorite }} is-favorite{{ end }}"
+                aria-pressed="{{ .Favorite }}" title="{{ if .Favorite }}Remove from favorites{{ else }}Add to favorites{{ end }}">
+            {{ if .Favorite }}★{{ else }}☆{{ end }} Favorite
+        </button>
+        <select class="book-status" title="Reading status" aria-label="Reading status">
+            <option value="" {{ if eq .Status "" }}selected{{ end }}>Not started</option>
+            <option value="reading" {{ if eq .Status "reading" }}selected{{ end }}>Reading</option>
+            <option value="finished" {{ if eq .Status "finished" }}selected{{ end }}>Finished</option>
+        </select>
+        <span class="book-status-note">{{ if and .Status (eq .StatusSource "auto") }}set by the reader{{ end }}</span>
+    </div>
+    <details class="book-shelves">
+        <summary>Shelves<span class="book-shelves-count">{{ if .OnShelves }} ({{ .OnShelves }}){{ end }}</span></summary>
+        <div class="book-shelves-list">
+            {{ range .Shelves }}
+            <label class="book-shelf">
+                <input type="checkbox" data-shelf="{{ .ID }}" {{ if .Has }}checked{{ end }} {{ if not .CanEdit }}disabled{{ end }}>
+                {{ .Name }}{{ if .Global }}<span class="book-shelf-global">global</span>{{ end }}
+            </label>
+            {{ end }}
+            <div class="book-shelf-create">
+                <input type="text" class="book-shelf-new" placeholder="New shelf…" autocomplete="off" maxlength="100" aria-label="New shelf name">
+                <button type="button" class="btn-action book-shelf-add">Add</button>
+            </div>
+        </div>
+    </details>
+{{ end }}
+</div>
+{{ end }}
