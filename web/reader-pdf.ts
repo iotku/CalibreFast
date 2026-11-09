@@ -1,6 +1,7 @@
 import * as pdfjsLib from "https://cdn.jsdelivr.net/npm/pdfjs-dist@5.7.284/build/pdf.mjs";
 import { byId, maybeId } from "./dom.js";
 import { createReadingSync, renderBookmarks, type Bookmark, type BookmarkHandlers } from "./reading-sync.js";
+import { setupSidebar } from "./reader-sidebar.js";
 
 pdfjsLib.GlobalWorkerOptions.workerSrc = "https://cdn.jsdelivr.net/npm/pdfjs-dist@5.7.284/build/pdf.worker.mjs";
 
@@ -14,6 +15,7 @@ if (!uuidParam) {
 const uuid: string = uuidParam;
 
 const progressLabel = byId("progress-label");
+const sidebar = setupSidebar();
 const syncLabel = maybeId("sync-status");
 const setSync = (text: string): void => {
     if (syncLabel) syncLabel.textContent = text;
@@ -209,19 +211,16 @@ async function renderToc(): Promise<void> {
     const list = byId("toc-list");
 
     if (!outline || outline.length === 0) {
-        list.innerHTML = "<li style='color:#888'>No outline available.</li>";
+        list.innerHTML = '<li class="toc-empty">This PDF has no contents.</li>';
         return;
     }
 
     async function buildToc(items: PdfJS.OutlineItem[], el: HTMLElement): Promise<void> {
         for (const item of items) {
             const li = document.createElement("li");
-            li.style.padding = "6px 0";
-
             const a = document.createElement("a");
             a.textContent = item.title;
             a.href = "#";
-            a.style.cssText = "color:var(--color-text, #eee); text-decoration:none; display:block;";
 
             a.addEventListener("click", async (e) => {
                 e.preventDefault();
@@ -235,14 +234,13 @@ async function renderToc(): Promise<void> {
                         void renderPage(pageIndex + 1); // pdf.js is 0-indexed
                     }
                 }
-                byId("toc-sidebar").style.display = "none";
+                sidebar.close();
             });
 
             li.appendChild(a);
 
             if (item.items?.length) {
                 const sub = document.createElement("ul");
-                sub.style.paddingLeft = "1rem";
                 await buildToc(item.items, sub);
                 li.appendChild(sub);
             }
@@ -253,11 +251,6 @@ async function renderToc(): Promise<void> {
 
     await buildToc(outline, list);
 }
-
-byId("toc-btn").addEventListener("click", () => {
-    const sidebar = byId("toc-sidebar");
-    sidebar.style.display = sidebar.style.display === "none" ? "block" : "none";
-});
 
 // scroll to navigate
 byId("pdf-container").addEventListener("wheel", (e) => {
@@ -285,7 +278,7 @@ byId("pdf-container").addEventListener("click", (e) => {
 const bookmarkHandlers: BookmarkHandlers = {
     onGo: (b) => {
         renderPage(Math.min(numPages(), Math.max(1, parseInt(b.position, 10) || 1)));
-        byId("toc-sidebar").style.display = "none";
+        sidebar.close();
     },
     onDelete: (b) => {
         sync.removeBookmark(b.id);
