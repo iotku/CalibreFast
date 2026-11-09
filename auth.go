@@ -688,6 +688,7 @@ func registerAuthRoutes() {
 	http.HandleFunc("POST /api/admin/users", requireAdminUser(adminCreateUser))
 	http.HandleFunc("PATCH /api/admin/users/{id}", requireAdminUser(adminUpdateUser))
 	http.HandleFunc("DELETE /api/admin/users/{id}", requireAdminUser(adminDeleteUser))
+	registerOAuthRoutes()
 }
 
 func withUserCtx(r *http.Request, u *User) context.Context {

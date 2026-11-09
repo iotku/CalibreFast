@@ -2,6 +2,7 @@ package main
 
 import (
 	"net/http"
+	"net/http/cookiejar"
 	"net/http/httptest"
 	"net/url"
 	"strings"
@@ -189,4 +190,9 @@ func TestSafeNext(t *testing.T) {
 			t.Errorf("safeNext(%q) = %q, want %q", in, got, want)
 		}
 	}
+}
+
+func newJar() http.CookieJar {
+	j, _ := cookiejar.New(nil)
+	return j
 }
