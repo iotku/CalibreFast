@@ -22,7 +22,13 @@ export function parseList(value) {
         .filter(Boolean);
 }
 
-export function createChipInput(backing, { placeholder = "", splitOn = ";" } = {}) {
+/**
+ * placeholders: values that only stand in for "nothing set" (e.g. "und" for
+ * languages). They're removed outright as soon as a real value is added or
+ * edited in.
+ */
+export function createChipInput(backing, { placeholder = "", splitOn = ";", placeholders = [] } = {}) {
+    const placeholderSet = new Set(placeholders.map((p) => p.toLowerCase()));
     // { text, removed }
     let chips = [];
     let emitting = false;
@@ -92,11 +98,19 @@ export function createChipInput(backing, { placeholder = "", splitOn = ";" } = {
         }
     }
 
+    /** Once there's a real value, placeholder chips (e.g. "und") go away. */
+    function dropPlaceholders() {
+        if (!placeholderSet.size) return;
+        const hasReal = chips.some((c) => !c.removed && !placeholderSet.has(lower(c.text)));
+        if (hasReal) chips = chips.filter((c) => !placeholderSet.has(lower(c.text)));
+    }
+
     function commitText() {
         const items = parseList(text.value);
         text.value = "";
         if (items.length === 0) return;
         addItems(items);
+        dropPlaceholders();
         render();
         emit();
     }
@@ -144,6 +158,7 @@ export function createChipInput(backing, { placeholder = "", splitOn = ";" } = {
             chip.text = first;
             addItems(rest, at + 1);
         }
+        dropPlaceholders();
         render();
         emit();
     }

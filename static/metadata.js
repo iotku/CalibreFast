@@ -530,13 +530,14 @@ export async function mountMetadataEditor(uuid, form) {
   try {
     // Tags and languages are edited as chips over their (hidden) inputs.
     const chipInputs = [
-      ["subjects", "Add tags (comma separated)…", "tag"],
-      ["languages", "e.g. eng, fra, deu", "language"],
+      ["subjects", "Add tags (comma separated)…", "tag", []],
+      // "und" (undetermined) disappears as soon as a real language is added.
+      ["languages", "e.g. eng, fra, deu", "language", ["und"]],
     ]
-      .map(([name, placeholder, category]) => {
+      .map(([name, placeholder, category, placeholders]) => {
         const backing = form.querySelector(`[name="${name}"]`);
         if (!backing) return null;
-        const chips = createChipInput(backing, { placeholder });
+        const chips = createChipInput(backing, { placeholder, placeholders });
         attachSuggest(chips.textInput, {
           category,
           multi: true,
