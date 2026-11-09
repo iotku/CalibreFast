@@ -29,7 +29,7 @@ CalibreFast reads directly from your Calibre `metadata.db` and serves your libra
 - **Search** by title or author.
 - **Browse by author, publisher, tag or language,** with language codes shown as names (`eng` → English).
 - **Groups** merge values that mean the same thing, like `en`/`eng`/`en-US` → English, without editing any books.
-- **Metadata editor:** tag and language chips, autocomplete from your library, a formatted description editor, side-by-side comparison of your changes, and safeguards so curated metadata isn't lost. It can find ISBNs in the book's own files and look books up on Open Library and Google Books, offering their metadata and covers to pick from.
+- **Metadata editor:** tag and language chips, autocomplete from your library, a formatted description editor, side-by-side comparison of your changes, and safeguards so curated metadata isn't lost. It can find ISBNs in the book's own files and look books up by ISBN on Open Library and Wikidata (Google Books on request), offering their metadata to pick from or accept in one go.
 - **Uploads:** EPUB/PDF metadata is read automatically, and multiple formats of one book are combined.
 - **Accounts:** username/password, or GitHub/Google sign-in. Admins manage users, and can send someone a one-time sign-in or invite link (e.g. over Discord).
 - **Favorites and reading status:** star books, and track what you're reading and have finished. The readers update this as you go.
@@ -76,12 +76,13 @@ Then open [http://localhost:8080](http://localhost:8080) and sign in. Add more u
 | `-public-read` | Public read-only mode: anyone can also read and download books (implies `-public`) |
 | `-allow-registrations` | Let anyone create an account from the sign-in page. **Bots will try to sign up:** only use on a trusted network, such as a Tailscale network shared with people you trust. |
 | `-public-url` | Your external URL, e.g. `https://books.example.com` (needed for GitHub/Google sign-in) |
-| `-no-lookups` | Never send ISBNs or titles to Open Library or Google Books: hides the metadata editor's **Look up online** button. Lookups are on by default but only happen when an admin clicks it. |
+| `-no-lookups` | Never look books up online: hides the metadata editor's ISBN lookup. Lookups are on by default but only happen when an admin clicks **Look up**. |
+| `-no-google-books` | Never offer Google Books in the metadata editor. Open Library and Wikidata still work. |
 | `-create-user NAME` | Create a user (or reset their password) and exit; add `-admin` to make them an admin |
 
 GitHub and Google sign-in are optional: see [OAUTH.md](docs/OAUTH.md) for step-by-step setup.
 
-Google Books lookups without an API key share a small quota that's often used up. To use your own, set `CF_GOOGLE_BOOKS_KEY` (an API key with the Books API enabled) as an environment variable.
+Google Books is only asked when an admin clicks **Try Google Books**. Without an API key, it shares a small quota that's often used up; to use your own, set `CF_GOOGLE_BOOKS_KEY` (an API key with the Books API enabled) as an environment variable.
 
 ### Working on the browser code
 

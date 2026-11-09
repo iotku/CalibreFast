@@ -146,9 +146,9 @@ func TestXHTMLText(t *testing.T) {
 	}
 }
 
-// writeTestEPUB writes an EPUB whose package declares ids and whose spine
+// writeISBNTestEPUB writes an EPUB whose package declares ids and whose spine
 // has the given documents (path relative to OEBPS → body XHTML).
-func writeTestEPUB(t *testing.T, path, metadata string, docs []string) {
+func writeISBNTestEPUB(t *testing.T, path, metadata string, docs []string) {
 	t.Helper()
 	var buf bytes.Buffer
 	zw := zip.NewWriter(&buf)
@@ -195,7 +195,7 @@ func TestEPUBISBNs(t *testing.T) {
 	docs[1] = "<p>ISBN 978-0-13-419044-0 (hardcover)</p><p>ISBN 978-0-13-419058-7 (ebook)</p>"
 	docs[6] = "<p>ISBN 978-3-16-148410-0</p>" // the middle of the book isn't read
 	docs[9] = "<p>Also available: ISBN 0-306-40615-2</p>"
-	writeTestEPUB(t, path, `
+	writeISBNTestEPUB(t, path, `
     <dc:identifier id="uid">urn:uuid:0b6f4d3a-5c1e-4f6a-9e3b-2f1d8c7a6b5e</dc:identifier>
     <dc:identifier opf:scheme="ISBN">9780134190587</dc:identifier>
     <dc:identifier opf:scheme="AMAZON">0134190440</dc:identifier>
@@ -314,7 +314,7 @@ func TestISBNCandidatesHandler(t *testing.T) {
 	const uuid = "isbn-test-uuid"
 	dir := filepath.Join(baseDir, "Author", "Book (1)")
 	os.MkdirAll(dir, 0o755)
-	writeTestEPUB(t, filepath.Join(dir, "Book.epub"), "", []string{"<p>ISBN 978-0-13-419044-0 (hardcover)</p>"})
+	writeISBNTestEPUB(t, filepath.Join(dir, "Book.epub"), "", []string{"<p>ISBN 978-0-13-419044-0 (hardcover)</p>"})
 	os.WriteFile(filepath.Join(dir, "Book.azw3"), testMOBI(map[uint32]string{104: "9780306406157"}), 0o644)
 	os.WriteFile(filepath.Join(dir, "Book.pdf"), []byte("%PDF-1.4"), 0o644)
 	uuidPathIndex.Store(uuid, "Author/Book (1)")

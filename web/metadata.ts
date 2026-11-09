@@ -361,6 +361,21 @@ function populateIdentifiers(form: HTMLFormElement, current: MetaSource | null, 
 
   const firstRemoved = (): Element | null => customList.querySelector(".custom-identifier-row.removed");
 
+  // Crossed-out rows (with Undo) are only for identifiers the book had, each
+  // once. Anything else, such as an ISBN tried and then replaced, just goes.
+  const original = new Set(current ? fromMeta(current).map((i) => idKey(i.scheme, i.value)) : []);
+  const isCrossedOut = (key: string): boolean =>
+    [...customList.querySelectorAll<HTMLElement>(".custom-identifier-row.removed")]
+      .some((row) => idKey(rowValues(row).scheme, rowValues(row).value) === key);
+  const keepCrossedOut = (scheme: string, value: string): boolean => {
+    const key = idKey(scheme, value);
+    return original.has(key) && !isCrossedOut(key);
+  };
+  /** Cross out an identifier the book had; drop any other. */
+  function park(scheme: string, value: string, id: string): void {
+    if (keepCrossedOut(scheme, value)) customList.appendChild(makeRow(scheme, value, id, true));
+  }
+
   function setRemoved(row: HTMLElement, removed: boolean): void {
     row.classList.toggle("removed", removed);
     for (const input of row.querySelectorAll("input")) input.disabled = removed;
@@ -397,8 +412,8 @@ function populateIdentifiers(form: HTMLFormElement, current: MetaSource | null, 
       customList.insertBefore(row, firstRemoved()); // back above the removed block
     } else {
       const v = rowValues(row);
-      if (!v.scheme && !v.value && !v.id) {
-        row.remove(); // blank row the user just added: nothing to lose
+      if (!keepCrossedOut(v.scheme, v.value)) {
+        row.remove(); // not one the book had (or already crossed out): nothing to lose
       } else {
         setRemoved(row, true);
         customList.appendChild(row);
@@ -450,9 +465,7 @@ function populateIdentifiers(form: HTMLFormElement, current: MetaSource | null, 
     }
 
     for (const p of previous) {
-      if (!incoming.has(idKey(p.scheme, p.value))) {
-        customList.appendChild(makeRow(p.scheme, p.value, p.id, true));
-      }
+      if (!incoming.has(idKey(p.scheme, p.value))) park(p.scheme, p.value, p.id);
     }
     updateHighlights();
   }
@@ -485,9 +498,16 @@ function populateIdentifiers(form: HTMLFormElement, current: MetaSource | null, 
   function useIsbn(isbn: string): void {
     const old = isbnInput.value.trim();
     if (old && isbnDigits(old) === isbnDigits(isbn)) return;
-    if (old) customList.appendChild(makeRow("isbn", old, isbnInput.dataset["id"] || "", true));
+    if (old) park("isbn", old, isbnInput.dataset["id"] || "");
     isbnInput.value = isbn;
     delete isbnInput.dataset["id"];
+    // Back to an ISBN the book had: it's no longer crossed out.
+    const back = [...customList.querySelectorAll<HTMLElement>(".custom-identifier-row.removed")]
+      .find((row) => mergeKey(rowValues(row).scheme, rowValues(row).value) === mergeKey("isbn", isbn));
+    if (back) {
+      if (back.dataset["id"]) isbnInput.dataset["id"] = back.dataset["id"];
+      back.remove();
+    }
     userChanged();
   }
 
@@ -536,6 +556,10 @@ function populateIdentifiers(form: HTMLFormElement, current: MetaSource | null, 
 export interface MetadataForm {
   addSource: AddSource;
   useIsbn(isbn: string): void;
+  /** What taking every value a lookup has would change, vs current. */
+  preview(meta: MetaSource): HTMLElement[];
+  /** Take every value a lookup has (its pills), then apply. */
+  acceptAll(meta: MetaSource): void;
 }
 
 export function populateMetadataForm(form: HTMLFormElement, metas: MetaSource[]): MetadataForm {
@@ -554,7 +578,33 @@ export function populateMetadataForm(form: HTMLFormElement, metas: MetaSource[])
   return {
     addSource: (meta) => adders.forEach((add) => add(meta)),
     useIsbn: (isbn) => identifiers?.useIsbn(isbn),
+    preview: (meta) => renderChanges(computeChanges(current, withSource(collectValues(form), meta))),
+    acceptAll: (meta) => {
+      for (const btn of form.querySelectorAll<HTMLButtonElement>(".meta-source-btn[data-external]")) {
+        if (btn.dataset["format"] === meta.Format) btn.click();
+      }
+      form.requestSubmit();
+    },
   };
+}
+
+/** values with every field meta has taken from it; identifiers are added. */
+function withSource(values: FormValues, meta: MetaSource): FormValues {
+  const out: FormValues = { ...values };
+  for (const { key, kind } of FIELDS) {
+    if (kind === "identifiers") {
+      const ids = [...(values.identifiers ?? [])];
+      const have = new Set(ids.map((i) => mergeKey(i.scheme, i.value)));
+      for (const id of meta.Identifiers ?? []) {
+        if (!have.has(mergeKey(id.Scheme, id.Value))) ids.push({ scheme: id.Scheme, value: id.Value, id: "" });
+      }
+      out.identifiers = ids;
+    } else {
+      const v = fieldValue(meta, key, kind);
+      if (v) out[key as TextKey] = v;
+    }
+  }
+  return out;
 }
 
 export function collectValues(form: HTMLFormElement): FormValues {
@@ -733,6 +783,8 @@ export async function mountMetadataEditor(uuid: string, form: HTMLFormElement): 
       }),
       useIsbn: editor.useIsbn,
       addSource: editor.addSource,
+      preview: editor.preview,
+      acceptAll: editor.acceptAll,
     });
 
     // Keep any open per-field diffs in sync with further edits.
@@ -828,14 +880,13 @@ export async function mountMetadataEditor(uuid: string, form: HTMLFormElement): 
         baseline = JSON.stringify(values); // applied: nothing unsaved now
         if (statusEl) {
           statusEl.className = "edit-status success";
-          statusEl.innerHTML = `✓ Metadata applied successfully! <a href="/book/get/${uuid}" class="status-link">View updated book →</a>`;
-        }
-        if (headerTitle && values.title) {
-          headerTitle.textContent = values.title;
+          statusEl.textContent = "✓ Metadata applied. Opening the book…";
         }
         form.dispatchEvent(
           new CustomEvent("metadata-applied", { detail: result }),
         );
+        // The book page with the changes (?applied= skips its 30s cache).
+        location.assign(`/book/get/${encodeURIComponent(uuid)}?applied=${Date.now()}`);
       } catch (err) {
         console.error("Apply metadata failed:", err);
         if (statusEl) {

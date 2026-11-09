@@ -77,7 +77,7 @@ export interface IsbnResponse {
     pdf?: string;
 }
 
-/** One source's answer from /metadata/lookup (Go: lookupResult in lookup.go). */
+/** Open Library's answer from /metadata/lookup (Go: lookupResult in lookup.go). */
 export interface LookupResult {
     source: string;
     option?: MetaSource;

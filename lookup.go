@@ -1,16 +1,24 @@
 package main
 
-// Looking up a book's metadata on Open Library and Google Books, for the
-// metadata editor's "Look up" button (/metadata/lookup). Each source's
-// answer becomes one more option in the editor, next to "current" and the
-// uploaded formats, and the admin picks values field by field. Nothing is
-// written until they apply their changes.
+// Looking a book up online, for the metadata editor (/metadata/lookup).
+// Open Library first; Wikidata when Open Library doesn't know the ISBN; Google
+// Books only when the admin asks for it (it often has the best description).
+// Each answer becomes one more option in the editor, next to "current" and
+// the uploaded formats. Nothing is written until the admin applies changes.
 //
-// Privacy: the library is private, and a lookup tells a third party about a
-// book in it. So a lookup only ever happens on a click, sends only the ISBN
-// (or the title and first author) with a generic User-Agent, and covers are
-// fetched by the server, so the browser never contacts those sites.
-// -no-lookups turns lookups off.
+// CalibreFast is meant to be self-contained, so lookups are kept to a
+// minimum:
+//   - one source per request, only when an admin clicks, for one book: never
+//     on page load, upload, when an ISBN is found, or in the background. The
+//     editor asks the next source only if the first found nothing, or when
+//     the admin asks.
+//   - only the ISBN (or the title and first author) is sent, with a generic
+//     User-Agent
+//   - answers are cached; each service has its own rate and daily limits
+//     (serviceLimit), and a 429 pauses it for its Retry-After
+//   - covers come from Open Library only, fetched by the server, and only
+//     when the admin asks
+//   - -no-lookups turns everything off; -no-google-books turns off Google
 
 import (
 	"context"
@@ -24,34 +32,78 @@ import (
 	"net/url"
 	"os"
 	"regexp"
+	"runtime/debug"
 	"slices"
+	"sort"
+	"strconv"
 	"strings"
 	"sync"
 	"time"
 )
 
-// noLookups (-no-lookups) turns off every request to Open Library and
-// Google Books.
-var noLookups bool
+var (
+	// noLookups (-no-lookups) turns off every request to another site.
+	noLookups bool
+	// noGoogleBooks (-no-google-books) turns off Google Books only.
+	noGoogleBooks bool
+)
+
+// Sources, as the editor names them (?source=) and shows them (Format).
+const (
+	openLibraryName = "Open Library"
+	wikidataName    = "Wikidata"
+	googleBooksName = "Google Books"
+)
+
+var lookupSources = map[string]string{"openlibrary": openLibraryName, "wikidata": wikidataName, "google": googleBooksName}
 
 var bookLookups = &bookLookup{
-	client:       &http.Client{Timeout: 15 * time.Second},
-	openLibrary:  "https://openlibrary.org",
-	olCovers:     "https://covers.openlibrary.org",
-	googleBooks:  "https://www.googleapis.com/books/v1",
-	googleCovers: "https://books.google.com",
-	cache:        newLookupCache(24*time.Hour, 500),
+	client:      &http.Client{Timeout: 15 * time.Second},
+	openLibrary: "https://openlibrary.org",
+	olCovers:    "https://covers.openlibrary.org",
+	wikidata:    "https://query.wikidata.org/sparql",
+	googleBooks: "https://www.googleapis.com/books/v1",
+	cache:       newLookupCache(24*time.Hour, 500),
+	limits: map[string]*serviceLimit{
+		// An Open Library lookup is up to 7 requests (edition, work,
+		// authors), plus a cover.
+		openLibraryName: newServiceLimit(1, 20, 1000),
+		wikidataName:    newServiceLimit(0.5, 10, 500), // 2 queries a lookup
+		googleBooksName: newServiceLimit(0.1, 5, 100),  // 1 request a lookup
+	},
 }
 
-// lookupUserAgent identifies the software, not the user or the library.
-const lookupUserAgent = "CalibreFast (+https://github.com/iotku/CalibreFast)"
+// lookupUserAgent identifies the software and its version, not the user or
+// the library.
+var lookupUserAgent = "CalibreFast/" + appVersion() + " (+https://github.com/iotku/CalibreFast)"
+
+// appVersion is the module version of an installed build, else the commit
+// it was built from.
+func appVersion() string {
+	info, ok := debug.ReadBuildInfo()
+	if !ok {
+		return "dev"
+	}
+	if v := info.Main.Version; v != "" && v != "(devel)" {
+		return v
+	}
+	for _, s := range info.Settings {
+		if s.Key == "vcs.revision" && len(s.Value) >= 7 {
+			return s.Value[:7]
+		}
+	}
+	return "dev"
+}
 
 // configureLookups reads the optional Google Books API key. Without one,
-// Google counts requests against a small shared quota, often used up.
+// Google counts requests against a shared quota that's often used up.
 func configureLookups() {
 	bookLookups.googleKey = os.Getenv("CF_GOOGLE_BOOKS_KEY")
-	if noLookups {
-		log.Println("-no-lookups: the metadata editor won't look books up on Open Library or Google Books")
+	switch {
+	case noLookups:
+		log.Println("-no-lookups: the metadata editor won't look books up online")
+	case noGoogleBooks:
+		log.Println("-no-google-books: the metadata editor won't offer Google Books")
 	}
 }
 
@@ -67,13 +119,14 @@ func requireLookups(h http.HandlerFunc) http.HandlerFunc {
 }
 
 type bookLookup struct {
-	client       *http.Client
-	openLibrary  string
-	olCovers     string
-	googleBooks  string
-	googleCovers string
-	googleKey    string
-	cache        *lookupCache
+	client      *http.Client
+	openLibrary string
+	olCovers    string
+	wikidata    string
+	googleBooks string
+	googleKey   string
+	cache       *lookupCache
+	limits      map[string]*serviceLimit // by source name
 }
 
 // lookupQuery is what's sent: an ISBN-13, or a title and an author.
@@ -88,16 +141,30 @@ func (q lookupQuery) key() string {
 	return "q:" + strings.ToLower(q.Title) + "\x00" + strings.ToLower(q.Author)
 }
 
-// lookupResult is one source's answer (TS: LookupResult in web/types.ts).
+// lookupResult is a source's answer (TS: LookupResult in web/types.ts).
 type lookupResult struct {
-	Source string            `json:"source"`           // "Open Library", "Google Books"
+	Source string            `json:"source"`           // "Open Library", "Wikidata", "Google Books"
 	Option *UploadedBookMeta `json:"option,omitempty"` // nil: no match, or an error
 	Cover  string            `json:"cover,omitempty"`  // its cover, through /metadata/lookup/cover
 	Error  string            `json:"error,omitempty"`
 }
 
-// lookupHandler: GET /metadata/lookup?isbn=… or ?title=…&author=…
+// lookupHandler: GET /metadata/lookup?source=openlibrary|wikidata|google
+// &isbn=… (or &title=…&author=…; not for Wikidata).
 func lookupHandler(w http.ResponseWriter, r *http.Request) {
+	source := r.URL.Query().Get("source")
+	if source == "" {
+		source = "openlibrary"
+	}
+	name, ok := lookupSources[source]
+	if !ok {
+		http.Error(w, "unknown source", http.StatusBadRequest)
+		return
+	}
+	if name == googleBooksName && noGoogleBooks {
+		http.Error(w, "Google Books is turned off on this server (-no-google-books).", http.StatusForbidden)
+		return
+	}
 	q := lookupQuery{
 		Title:  strings.TrimSpace(r.URL.Query().Get("title")),
 		Author: strings.TrimSpace(r.URL.Query().Get("author")),
@@ -107,6 +174,9 @@ func lookupHandler(w http.ResponseWriter, r *http.Request) {
 			http.Error(w, raw+" isn't a valid ISBN (wrong length or check digit)", http.StatusBadRequest)
 			return
 		}
+	} else if name == wikidataName {
+		http.Error(w, "Wikidata lookups need an ISBN", http.StatusBadRequest)
+		return
 	} else if q.Title == "" {
 		http.Error(w, "need an ISBN or a title", http.StatusBadRequest)
 		return
@@ -114,49 +184,35 @@ func lookupHandler(w http.ResponseWriter, r *http.Request) {
 	ctx, cancel := context.WithTimeout(r.Context(), 20*time.Second)
 	defer cancel()
 	w.Header().Set("Content-Type", "application/json")
-	logErr(json.NewEncoder(w).Encode(bookLookups.lookup(ctx, q)), "could not encode lookup results")
+	logErr(json.NewEncoder(w).Encode(bookLookups.lookup(ctx, name, q)), "could not encode lookup result")
 }
 
-// lookup asks every source at once. Answers, including "no match", are
-// cached; errors aren't.
-func (l *bookLookup) lookup(ctx context.Context, q lookupQuery) []lookupResult {
-	sources := []struct {
-		name string
-		fn   func(context.Context, lookupQuery) (*lookupResult, error)
-	}{
-		{"Open Library", l.openLibraryLookup},
-		{"Google Books", l.googleBooksLookup},
+// lookup asks one source. Answers, including "no match", are cached; errors
+// aren't.
+func (l *bookLookup) lookup(ctx context.Context, source string, q lookupQuery) lookupResult {
+	key := source + "\x00" + q.key()
+	if res, ok := l.cache.get(key); ok {
+		return res
 	}
-	results := make([]lookupResult, len(sources))
-	var wg sync.WaitGroup
-	for i, s := range sources {
-		key := s.name + "\x00" + q.key()
-		if res, ok := l.cache.get(key); ok {
-			results[i] = res
-			continue
-		}
-		wg.Add(1)
-		go func() {
-			defer wg.Done()
-			res, err := s.fn(ctx, q)
-			switch {
-			case err != nil:
-				log.Printf("lookup: %s: %v", s.name, err)
-				results[i] = lookupResult{Source: s.name, Error: err.Error()}
-				return
-			case res == nil:
-				res = &lookupResult{} // no match
-			}
-			res.Source = s.name
-			if res.Option != nil {
-				res.Option.Format = s.name
-			}
-			l.cache.put(key, *res)
-			results[i] = *res
-		}()
+	fn := map[string]func(context.Context, lookupQuery) (*lookupResult, error){
+		openLibraryName: l.openLibraryLookup,
+		wikidataName:    l.wikidataLookup,
+		googleBooksName: l.googleBooksLookup,
+	}[source]
+	res, err := fn(ctx, q)
+	switch {
+	case err != nil:
+		log.Printf("lookup: %s: %v", source, err)
+		return lookupResult{Source: source, Error: err.Error()}
+	case res == nil:
+		res = &lookupResult{} // no match
 	}
-	wg.Wait()
-	return results
+	res.Source = source
+	if res.Option != nil {
+		res.Option.Format = source
+	}
+	l.cache.put(key, *res)
+	return *res
 }
 
 // statusError is a non-200, non-404 answer.
@@ -164,20 +220,47 @@ type statusError int
 
 func (e statusError) Error() string { return fmt.Sprintf("HTTP %d", int(e)) }
 
-// getJSON fetches rawURL into v. found is false on a 404.
-func (l *bookLookup) getJSON(ctx context.Context, rawURL string, v any) (found bool, err error) {
-	req, err := http.NewRequestWithContext(ctx, http.MethodGet, rawURL, nil)
-	if err != nil {
-		return false, err
+// do sends a request to a service within its limits, with the generic
+// User-Agent. A 429 pauses the service for its Retry-After.
+func (l *bookLookup) do(service string, req *http.Request) (*http.Response, error) {
+	limit := l.limits[service]
+	if err := limit.take(time.Now()); err != nil {
+		return nil, err
 	}
 	req.Header.Set("User-Agent", lookupUserAgent)
-	req.Header.Set("Accept", "application/json")
 	resp, err := l.client.Do(req)
 	if err != nil {
 		// Drop the URL: the error is shown in the editor.
 		if ue := (*url.Error)(nil); errors.As(err, &ue) {
 			err = ue.Err
 		}
+		return nil, err
+	}
+	if resp.StatusCode == http.StatusTooManyRequests {
+		resp.Body.Close()
+		wait := retryAfter(resp.Header.Get("Retry-After"), time.Now())
+		limit.pause(time.Now().Add(wait))
+		return nil, &rateLimitedError{wait}
+	}
+	return resp, nil
+}
+
+// rateLimitedError: the service answered 429.
+type rateLimitedError struct{ wait time.Duration }
+
+func (e *rateLimitedError) Error() string {
+	return fmt.Sprintf("asked to slow down (HTTP 429); try again in %s", e.wait)
+}
+
+// getJSON fetches rawURL from a service into v. found is false on a 404.
+func (l *bookLookup) getJSON(ctx context.Context, service, rawURL string, v any) (found bool, err error) {
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet, rawURL, nil)
+	if err != nil {
+		return false, err
+	}
+	req.Header.Set("Accept", "application/json")
+	resp, err := l.do(service, req)
+	if err != nil {
 		return false, err
 	}
 	defer resp.Body.Close()
@@ -188,6 +271,70 @@ func (l *bookLookup) getJSON(ctx context.Context, rawURL string, v any) (found b
 		return false, nil
 	}
 	return false, statusError(resp.StatusCode)
+}
+
+// retryAfter reads a Retry-After header (seconds or a date): at least a
+// second, at most a day, and a minute when missing.
+func retryAfter(h string, now time.Time) time.Duration {
+	d := time.Minute
+	if secs, err := strconv.Atoi(strings.TrimSpace(h)); err == nil {
+		d = time.Duration(secs) * time.Second
+	} else if t, err := http.ParseTime(h); err == nil {
+		d = t.Sub(now)
+	}
+	return min(max(d, time.Second), 24*time.Hour).Round(time.Second)
+}
+
+// serviceLimit keeps CalibreFast well inside a service's limits: a token
+// bucket (burst, then perSecond), a daily cap, and a pause after a 429.
+// Over the limit a request is refused, not queued.
+type serviceLimit struct {
+	mu        sync.Mutex
+	perSecond float64
+	burst     float64
+	daily     int
+	tokens    float64
+	last      time.Time
+	day       string // the date today counts
+	today     int
+	pausedTil time.Time
+}
+
+func newServiceLimit(perSecond, burst float64, daily int) *serviceLimit {
+	return &serviceLimit{perSecond: perSecond, burst: burst, daily: daily, tokens: burst}
+}
+
+func (s *serviceLimit) take(now time.Time) error {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	if now.Before(s.pausedTil) {
+		return fmt.Errorf("asked to slow down; try again in %s", s.pausedTil.Sub(now).Round(time.Second))
+	}
+	if d := now.Format(time.DateOnly); d != s.day {
+		s.day, s.today = d, 0
+	}
+	if s.today >= s.daily {
+		return fmt.Errorf("CalibreFast's limit of %d requests a day is used up; try again tomorrow", s.daily)
+	}
+	if !s.last.IsZero() {
+		s.tokens = min(s.burst, s.tokens+now.Sub(s.last).Seconds()*s.perSecond)
+	}
+	s.last = now
+	if s.tokens < 1 {
+		wait := time.Duration((1 - s.tokens) / s.perSecond * float64(time.Second))
+		return fmt.Errorf("too many requests just now; try again in %s", max(wait, time.Second).Round(time.Second))
+	}
+	s.tokens--
+	s.today++
+	return nil
+}
+
+func (s *serviceLimit) pause(until time.Time) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	if until.After(s.pausedTil) {
+		s.pausedTil = until
+	}
 }
 
 // ---------------------------------------------------------------------------
@@ -265,13 +412,13 @@ func (l *bookLookup) openLibraryLookup(ctx context.Context, q lookupQuery) (*loo
 		return l.openLibrarySearch(ctx, q)
 	}
 	var ed olEdition
-	if found, err := l.getJSON(ctx, l.openLibrary+"/isbn/"+q.ISBN+".json", &ed); err != nil || !found {
+	if found, err := l.getJSON(ctx, openLibraryName, l.openLibrary+"/isbn/"+q.ISBN+".json", &ed); err != nil || !found {
 		return nil, err
 	}
 	var work olWork
 	if len(ed.Works) > 0 && olKeyRe.MatchString(ed.Works[0].Key) {
 		// Best effort: the edition alone is still worth showing.
-		if _, err := l.getJSON(ctx, l.openLibrary+ed.Works[0].Key+".json", &work); err != nil {
+		if _, err := l.getJSON(ctx, openLibraryName, l.openLibrary+ed.Works[0].Key+".json", &work); err != nil {
 			log.Printf("lookup: Open Library work %s: %v", ed.Works[0].Key, err)
 		}
 	}
@@ -310,10 +457,8 @@ func (l *bookLookup) openLibraryLookup(ctx context.Context, q lookupQuery) (*loo
 	}
 
 	res := &lookupResult{Option: m}
-	if id := firstCover(ed.Covers, work.Covers); id > 0 {
+	if id := firstCover(ed.Covers, work.Covers); id > 0 { // no cover id: no cover to offer
 		res.Cover = fmt.Sprintf("/metadata/lookup/cover?src=openlibrary&id=%d", id)
-	} else {
-		res.Cover = "/metadata/lookup/cover?src=openlibrary&isbn=" + q.ISBN
 	}
 	return res, nil
 }
@@ -331,13 +476,13 @@ func (l *bookLookup) openLibrarySearch(ctx context.Context, q lookupQuery) (*loo
 	var found struct {
 		Docs []olSearchDoc `json:"docs"`
 	}
-	if ok, err := l.getJSON(ctx, l.openLibrary+"/search.json?"+v.Encode(), &found); err != nil || !ok || len(found.Docs) == 0 {
+	if ok, err := l.getJSON(ctx, openLibraryName, l.openLibrary+"/search.json?"+v.Encode(), &found); err != nil || !ok || len(found.Docs) == 0 {
 		return nil, err
 	}
 	doc := found.Docs[0]
 	var work olWork
 	if olKeyRe.MatchString(doc.Key) {
-		if _, err := l.getJSON(ctx, l.openLibrary+doc.Key+".json", &work); err != nil {
+		if _, err := l.getJSON(ctx, openLibraryName, l.openLibrary+doc.Key+".json", &work); err != nil {
 			log.Printf("lookup: Open Library work %s: %v", doc.Key, err)
 		}
 	}
@@ -379,7 +524,7 @@ func (l *bookLookup) olAuthorNames(ctx context.Context, keys []olKey) []string {
 			var a struct {
 				Name string `json:"name"`
 			}
-			if _, err := l.getJSON(ctx, l.openLibrary+k.Key+".json", &a); err != nil {
+			if _, err := l.getJSON(ctx, openLibraryName, l.openLibrary+k.Key+".json", &a); err != nil {
 				log.Printf("lookup: Open Library author %s: %v", k.Key, err)
 			}
 			names[i] = strings.TrimSpace(a.Name)
@@ -427,7 +572,216 @@ func firstCover(lists ...[]int64) int64 {
 }
 
 // ---------------------------------------------------------------------------
-// Google Books
+// Wikidata
+// ---------------------------------------------------------------------------
+
+type sparqlResults struct {
+	Results struct {
+		Bindings []map[string]struct {
+			Value string `json:"value"`
+			Lang  string `json:"xml:lang"`
+		} `json:"bindings"`
+	} `json:"results"`
+}
+
+var wikidataQIDRe = regexp.MustCompile(`^Q[0-9]+$`)
+
+// isbnHyphenations lists every way an ISBN-13 (and its ISBN-10) could be
+// hyphenated. Wikidata stores ISBNs hyphenated (P212, P957), and where the
+// hyphens go depends on the ISBN agency's ranges, so the query asks for all
+// of them: an exact match is an index lookup, a normalised one a full scan.
+func isbnHyphenations(isbn13 string) []string {
+	out := []string{isbn13}
+	split := func(prefix, body, check string) {
+		for g := 1; g <= 5; g++ { // group, registrant, publication
+			for r := 1; r <= 7; r++ {
+				if p := len(body) - g - r; p >= 1 && p <= 6 {
+					out = append(out, prefix+body[:g]+"-"+body[g:g+r]+"-"+body[g+r:]+"-"+check)
+				}
+			}
+		}
+	}
+	split(isbn13[:3]+"-", isbn13[3:12], isbn13[12:])
+	if strings.HasPrefix(isbn13, "978") {
+		sum := 0
+		for i, c := range isbn13[3:12] {
+			sum += int(c-'0') * (10 - i)
+		}
+		check := strconv.Itoa((11 - sum%11) % 11)
+		if check == "10" {
+			check = "X"
+		}
+		isbn10 := isbn13[3:12] + check
+		out = append(out, isbn10)
+		split("", isbn10[:9], check)
+	}
+	return out
+}
+
+// wikidataLookup finds the edition with this ISBN and reads it and the work
+// it's an edition of (P629): two queries, each a few index lookups.
+func (l *bookLookup) wikidataLookup(ctx context.Context, q lookupQuery) (*lookupResult, error) {
+	if q.ISBN == "" {
+		return nil, errors.New("Wikidata lookups need an ISBN")
+	}
+	quoted := make([]string, 0, 64)
+	for _, v := range isbnHyphenations(q.ISBN) {
+		quoted = append(quoted, `"`+v+`"`)
+	}
+	var found sparqlResults
+	if _, err := l.sparql(ctx, `SELECT ?item ?work WHERE { VALUES ?isbn { `+strings.Join(quoted, " ")+` }
+		{ ?item wdt:P212 ?isbn } UNION { ?item wdt:P957 ?isbn } OPTIONAL { ?item wdt:P629 ?work } } LIMIT 1`, &found); err != nil {
+		return nil, err
+	}
+	if len(found.Results.Bindings) == 0 {
+		return nil, nil
+	}
+	row := found.Results.Bindings[0]
+	item := strings.TrimPrefix(row["item"].Value, "http://www.wikidata.org/entity/")
+	work := strings.TrimPrefix(row["work"].Value, "http://www.wikidata.org/entity/")
+	if !wikidataQIDRe.MatchString(item) {
+		return nil, nil
+	}
+	ids := []string{item}
+	if wikidataQIDRe.MatchString(work) && work != item {
+		ids = append(ids, work)
+	}
+
+	var vals sparqlResults
+	if _, err := l.sparql(ctx, wikidataValuesQuery(ids), &vals); err != nil {
+		return nil, err
+	}
+	var rows []wikidataValue
+	for _, b := range vals.Results.Bindings {
+		ord, _ := strconv.Atoi(b["ord"].Value)
+		rows = append(rows, wikidataValue{From: b["from"].Value, Kind: b["kind"].Value, Ref: b["ref"].Value,
+			Value: b["value"].Value, Lang: b["value"].Lang, Ord: ord})
+	}
+	return &lookupResult{Option: wikidataOption(q.ISBN, item, rows)}, nil
+}
+
+func (l *bookLookup) sparql(ctx context.Context, query string, v any) (bool, error) {
+	return l.getJSON(ctx, wikidataName, l.wikidata+"?format=json&query="+url.QueryEscape(query), v)
+}
+
+// wikidataValuesQuery reads the values of these items (the edition, then its
+// work), one per row so that rows can't multiply. The QIDs are written into
+// the query: the query service only uses its indexes for constants here.
+func wikidataValuesQuery(ids []string) string {
+	const label = `rdfs:label ?value FILTER(LANG(?value) IN ("en", "mul"))`
+	var branches []string
+	for _, id := range ids {
+		e, from := "wd:"+id, `BIND("`+id+`" AS ?from)`
+		for _, b := range []struct{ kind, pattern string }{
+			{"title", e + ` wdt:P1476 ?value`},
+			{"label", e + ` ` + label},
+			{"date", e + ` wdt:P577 ?value`},
+			{"author", e + ` p:P50 ?st . ?st ps:P50 ?ref . OPTIONAL { ?st pq:P1545 ?ord } ?ref ` + label},
+			{"publisher", e + ` wdt:P123 ?ref . ?ref ` + label},
+			{"language", e + ` wdt:P407 ?ref . ?ref wdt:P218|wdt:P219|wdt:P220 ?value`},
+			{"subject", e + ` wdt:P136|wdt:P921 ?ref . ?ref ` + label},
+		} {
+			branches = append(branches, `{ `+b.pattern+` BIND("`+b.kind+`" AS ?kind) `+from+` }`)
+		}
+	}
+	return "SELECT ?from ?kind ?ref ?value ?ord WHERE {\n" + strings.Join(branches, "\nUNION ") + "\n}"
+}
+
+// wikidataValue is one row of wikidataValuesQuery.
+type wikidataValue struct {
+	From, Kind, Ref, Value, Lang string
+	Ord                          int // author order (P1545), 0 if unset
+}
+
+// wikidataOption maps the values of an edition (item) and its work: the
+// edition's own values first, the work's where the edition has none.
+// Labels are English, else multilingual.
+func wikidataOption(isbn, item string, rows []wikidataValue) *UploadedBookMeta {
+	// Values of one kind, from the edition if it has any, else the work.
+	pick := func(kind string) []wikidataValue {
+		var mine, work []wikidataValue
+		for _, r := range rows {
+			if r.Kind != kind {
+				continue
+			}
+			if r.From == item {
+				mine = append(mine, r)
+			} else {
+				work = append(work, r)
+			}
+		}
+		if len(mine) > 0 {
+			return mine
+		}
+		return work
+	}
+	// One label per referenced item, English first, in first-seen order.
+	labels := func(rs []wikidataValue) []wikidataValue {
+		var out []wikidataValue
+		index := map[string]int{}
+		for _, r := range rs {
+			if i, ok := index[r.Ref]; ok {
+				if r.Lang == "en" && out[i].Lang != "en" {
+					out[i].Value, out[i].Lang = r.Value, r.Lang
+				}
+				continue
+			}
+			index[r.Ref] = len(out)
+			out = append(out, r)
+		}
+		return out
+	}
+	first := func(rs []wikidataValue) string {
+		for _, r := range rs {
+			if r.Lang == "en" || r.Lang == "" {
+				return r.Value
+			}
+		}
+		if len(rs) > 0 {
+			return rs[0].Value
+		}
+		return ""
+	}
+
+	m := &UploadedBookMeta{OPFMetadata: OPFMetadata{
+		Title:       firstNonEmpty(first(pick("title")), first(pick("label"))),
+		Publisher:   first(labels(pick("publisher"))),
+		Identifiers: []opfIdentifier{{Scheme: "isbn", Value: isbn}, {Scheme: "wikidata", Value: item}},
+	}}
+	if d := pick("date"); len(d) > 0 {
+		m.Date = lookupDate(d[0].Value)
+	}
+	authors := labels(pick("author"))
+	sort.SliceStable(authors, func(i, j int) bool {
+		a, b := authors[i].Ord, authors[j].Ord
+		return a != 0 && (b == 0 || a < b) // numbered first, in order
+	})
+	for _, a := range authors {
+		m.Creators = append(m.Creators, a.Value)
+	}
+	seen := map[string]bool{}
+	for _, l := range pick("language") {
+		if c := canonicalLanguage(l.Value); !seen[l.Ref] && !slices.Contains(m.Languages, c) {
+			seen[l.Ref] = true
+			m.Languages = append(m.Languages, c)
+		}
+	}
+	var subjects []wikidataValue // the edition's and the work's
+	for _, r := range rows {
+		if r.Kind == "subject" {
+			subjects = append(subjects, r)
+		}
+	}
+	for _, s := range labels(subjects) {
+		if !slices.Contains(m.Subjects, s.Value) && len(m.Subjects) < 15 {
+			m.Subjects = append(m.Subjects, s.Value)
+		}
+	}
+	return m
+}
+
+// ---------------------------------------------------------------------------
+// Google Books (only when the admin asks)
 // ---------------------------------------------------------------------------
 
 type gbVolume struct {
@@ -445,11 +799,9 @@ type gbVolume struct {
 			Type       string `json:"type"` // ISBN_10, ISBN_13, OTHER
 			Identifier string `json:"identifier"`
 		} `json:"industryIdentifiers"`
-		ImageLinks map[string]string `json:"imageLinks"`
 	} `json:"volumeInfo"`
 }
 
-// googleIDRe checks volume ids before they go into a URL.
 var googleIDRe = regexp.MustCompile(`^[A-Za-z0-9_-]{1,40}$`)
 
 func (l *bookLookup) googleBooksLookup(ctx context.Context, q lookupQuery) (*lookupResult, error) {
@@ -470,12 +822,9 @@ func (l *bookLookup) googleBooksLookup(ctx context.Context, q lookupQuery) (*loo
 	var found struct {
 		Items []gbVolume `json:"items"`
 	}
-	ok, err := l.getJSON(ctx, l.googleBooks+"/volumes?"+v.Encode(), &found)
-	if se := statusError(0); errors.As(err, &se) && se == http.StatusTooManyRequests {
-		if l.googleKey == "" {
-			return nil, errors.New("Google's shared quota is used up; set CF_GOOGLE_BOOKS_KEY to use your own API key")
-		}
-		return nil, errors.New("this API key's quota is used up for today")
+	ok, err := l.getJSON(ctx, googleBooksName, l.googleBooks+"/volumes?"+v.Encode(), &found)
+	if rl := (*rateLimitedError)(nil); errors.As(err, &rl) && l.googleKey == "" {
+		return nil, errors.New("Google's shared quota is used up; set CF_GOOGLE_BOOKS_KEY to use your own API key")
 	}
 	if err != nil || !ok || len(found.Items) == 0 {
 		return nil, err
@@ -506,14 +855,10 @@ func (l *bookLookup) googleBooksLookup(ctx context.Context, q lookupQuery) (*loo
 	if isbn != "" {
 		m.Identifiers = append(m.Identifiers, opfIdentifier{Scheme: "isbn", Value: isbn})
 	}
-	res := &lookupResult{Option: m}
 	if googleIDRe.MatchString(vol.ID) {
 		m.Identifiers = append(m.Identifiers, opfIdentifier{Scheme: "google", Value: vol.ID})
-		if len(info.ImageLinks) > 0 { // without, Google serves an "image not available" picture
-			res.Cover = "/metadata/lookup/cover?src=google&id=" + vol.ID
-		}
 	}
-	return res, nil
+	return &lookupResult{Option: m}, nil
 }
 
 // splitGoogleCategories turns "Computers / Programming / General" into
@@ -542,24 +887,14 @@ func splitGoogleCategories(cats []string) []string {
 var olCoverIDRe = regexp.MustCompile(`^[0-9]{1,12}$`)
 
 // lookupCoverHandler: GET /metadata/lookup/cover?src=openlibrary&id=…
-// (or &isbn=…) or ?src=google&id=… fetches a cover for the editor's cover
-// picker. The server builds the URL from those values, so it can't be
-// pointed anywhere else, and the browser never contacts the third party.
+// fetches a cover for the editor's cover picker, when the admin asks for it. The server builds the URL from those values, so it can't be
+// pointed anywhere else, and the browser never contacts Open Library.
 func lookupCoverHandler(w http.ResponseWriter, r *http.Request) {
 	q := r.URL.Query()
 	l := bookLookups
 	var u string
-	switch q.Get("src") {
-	case "openlibrary":
-		if id := q.Get("id"); olCoverIDRe.MatchString(id) {
-			u = l.olCovers + "/b/id/" + id + "-L.jpg?default=false"
-		} else if isbn := normalizeISBN(q.Get("isbn")); isbn != "" {
-			u = l.olCovers + "/b/isbn/" + isbn + "-L.jpg?default=false"
-		}
-	case "google":
-		if id := q.Get("id"); googleIDRe.MatchString(id) {
-			u = l.googleCovers + "/books/content?id=" + id + "&printsec=frontcover&img=1"
-		}
+	if id := q.Get("id"); q.Get("src") == "openlibrary" && olCoverIDRe.MatchString(id) {
+		u = l.olCovers + "/b/id/" + id + "-L.jpg?default=false"
 	}
 	if u == "" {
 		http.Error(w, "unknown cover", http.StatusBadRequest)
@@ -573,10 +908,9 @@ func lookupCoverHandler(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, err.Error(), http.StatusInternalServerError)
 		return
 	}
-	req.Header.Set("User-Agent", lookupUserAgent)
-	resp, err := l.client.Do(req)
+	resp, err := l.do(openLibraryName, req)
 	if err != nil {
-		http.Error(w, "cover unavailable", http.StatusBadGateway)
+		http.Error(w, "cover unavailable: "+err.Error(), http.StatusBadGateway)
 		return
 	}
 	defer resp.Body.Close()

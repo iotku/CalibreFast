@@ -287,11 +287,12 @@ export function buildCoverPicker(
     }
 
     // Covers from an online lookup in the metadata editor (web/isbn-tools.ts).
+    // They're only fetched (through the server) when this button is clicked.
     if (isEditPage) {
         let lookupBtn: HTMLButtonElement | null = null;
         let covers: CoverCandidate[] = [];
         const render: StripRenderer = (strip, status) => {
-            status.textContent = "Covers found online: click one to use it";
+            status.textContent = "Cover from Open Library: click it to use it";
             for (const c of covers) renderImageThumb(uuid, c.url, c.source, strip, picker, onCoverSaved, false, updateRevertBtn);
         };
         document.addEventListener("cf:cover-candidates", (e) => {
@@ -299,12 +300,13 @@ export function buildCoverPicker(
             if (!lookupBtn) {
                 const btn = document.createElement("button");
                 btn.type = "button";
-                btn.textContent = "Covers found online";
-                btn.addEventListener("click", () => showPageStrip(btn, picker, render));
+                btn.textContent = "Cover from Open Library";
+                btn.addEventListener("click", () => showPageStrip(btn, picker, render, { loading: "Loading cover…" }));
                 actions.appendChild(btn);
                 lookupBtn = btn;
+            } else if (lookupBtn.classList.contains("active")) {
+                showPageStrip(lookupBtn, picker, render, { toggle: false, loading: "Loading cover…" });
             }
-            showPageStrip(lookupBtn, picker, render, { toggle: false });
         });
     }
 
