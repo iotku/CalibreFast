@@ -1,2 +1,5 @@
 # Built from web/ by `go generate` (tools/jsbuild); edit the sources instead.
 static/dist/** linguist-generated=true
+
+# Third-party libraries, as published on npm (docs/ARCHITECTURE.md#frontend).
+static/vendor/** linguist-vendored=true

@@ -1,9 +1,7 @@
-import * as pdfjsLib from "https://cdn.jsdelivr.net/npm/pdfjs-dist@5.7.284/build/pdf.mjs";
 import { byId, maybeId } from "./dom.js";
 import { createReadingSync, renderBookmarks, type Bookmark, type BookmarkHandlers } from "./reading-sync.js";
 import { setupSidebar } from "./reader-sidebar.js";
-
-pdfjsLib.GlobalWorkerOptions.workerSrc = "https://cdn.jsdelivr.net/npm/pdfjs-dist@5.7.284/build/pdf.worker.mjs";
+import { openPdf } from "./vendor.js";
 
 const params = new URLSearchParams(window.location.search);
 const uuidParam = params.get("uuid");
@@ -115,7 +113,7 @@ async function renderPage(pageNum: number): Promise<void> {
 }
 
 async function init(): Promise<void> {
-    pdf = await pdfjsLib.getDocument(`/download/${uuid}/pdf`).promise;
+    pdf = await openPdf(`/download/${uuid}/pdf`);
     currentPage = Math.min(currentPage, numPages());
     await renderToc();
     if (fitToggle.checked) {

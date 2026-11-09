@@ -117,8 +117,8 @@ func build(root, out string) error {
 		MinifyIdentifiers: true,
 		MinifySyntax:      true,
 		Charset:           api.CharsetUTF8,
-		Sourcemap:         api.SourceMapLinked, // only fetched by devtools
-		External:          []string{"https://*"},
+		Sourcemap:         api.SourceMapLinked,          // only fetched by devtools
+		External:          []string{"/static/vendor/*"}, // served as they are (web/vendor.ts)
 		Metafile:          true,
 		LogLevel:          api.LogLevelSilent,
 	})
