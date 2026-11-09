@@ -83,7 +83,9 @@ h1 {
    Component Classes - Buttons
    ============================================ */
 button,
-.btn {
+.btn,
+a.btn-back,
+a.btn-standard {
     cursor: pointer;
     border: 1px solid var(--border-medium);
     background: var(--bg-surface);
@@ -95,9 +97,21 @@ button,
 }
 
 button:hover,
-.btn:hover {
+.btn:hover,
+a.btn-back:hover,
+a.btn-standard:hover {
     border-color: var(--border-medium);
     background: var(--bg-elevated);
+}
+
+/* Links styled as buttons (back links, sign-in providers) */
+a.btn-back,
+a.btn-standard {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    box-sizing: border-box;
+    text-decoration: none;
 }
 
 button:disabled,
@@ -137,6 +151,7 @@ button:disabled,
    ============================================ */
 input[type="search"],
 input[type="text"],
+input[type="password"],
 input[type="number"],
 .input-search,
 .input-page {
