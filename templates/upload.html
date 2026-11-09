@@ -6,7 +6,7 @@
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <title>{{.Title}}</title>
-    <link rel="stylesheet" href="/static/style.css" />
+    <link rel="stylesheet" href="{{ asset "style.css" }}" />
     <link rel="preconnect" href="https://fonts.googleapis.com" />
     <link
         href="https://fonts.googleapis.com/css2?family=Playfair+Display:wght@400;700&family=IBM+Plex+Mono:wght@400;500&family=IBM+Plex+Sans:wght@300;400;500&display=swap"
@@ -673,7 +673,7 @@
     </main>
 
     <script type="module">
-        import { buildCoverPicker } from "/static/cover-picker.js";
+        import { buildCoverPicker } from {{ asset "cover-picker.js" }};
 
         (function () {
             const dropZone = document.getElementById("drop-zone");

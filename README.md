@@ -81,22 +81,22 @@ GitHub and Google sign-in are optional: see [OAUTH.md](docs/OAUTH.md) for step-b
 
 ### Working on the browser code
 
-The browser code is TypeScript in `web/`, compiled into `static/` by [tsgo](https://github.com/microsoft/typescript-go), the Go-native TypeScript compiler. You only need this if you change the browser code; the compiled `static/*.js` is committed, so running the server needs nothing extra.
+The browser code is TypeScript and CSS in `web/`. [tsgo](https://github.com/microsoft/typescript-go), the Go-native TypeScript compiler, type-checks it; [esbuild](https://esbuild.github.io/) (also written in Go) bundles and minifies each page's script and the stylesheet into `static/dist/`. You only need this if you change the browser code: the built files are committed, so running the server needs nothing extra.
 
-**Installing:** nothing to install separately. tsgo is pinned as a Go tool in `tools/go.mod`, and Go downloads and builds it the first time you run it. It needs Go 1.26+; no Node or npm.
+**Installing:** nothing to install separately. tsgo and esbuild are pinned in `tools/go.mod`, and Go downloads and builds them the first time you run them. It needs Go 1.26+; no Node or npm.
 
-**After editing a `.ts` file**, rebuild:
+**After editing a `.ts` or `.css` file** (or adding a script to a template), rebuild:
 
 ```bash
 go generate
 ```
 
-This type-checks everything and rewrites `static/*.js`. If there's a type error, nothing is written. Commit the `.ts` changes together with the regenerated `.js`; `go test` fails if they're out of sync.
+This type-checks everything, then rewrites `static/dist/` and prints each file's size. If there's a type error, nothing is written. Commit the source changes together with the rebuilt `static/dist/`; `go test` fails if they're out of sync.
 
 **Type-check only**, without writing files:
 
 ```bash
-go tool -modfile=tools/go.mod tsgo -p tsconfig.json --noEmit
+go tool -modfile=tools/go.mod tsgo -p tsconfig.json
 ```
 
 **Updating tsgo:**
@@ -105,7 +105,7 @@ go tool -modfile=tools/go.mod tsgo -p tsconfig.json --noEmit
 cd tools && go get -tool github.com/microsoft/typescript-go/cmd/tsgo@latest
 ```
 
-Then run `go generate` and `go test ./...` from the repository root.
+Then run `go generate` and `go test ./...` from the repository root. esbuild updates the same way: `cd tools && go get github.com/evanw/esbuild@latest`.
 
 Editors: VS Code's TypeScript support reads `tsconfig.json` as-is. See [ARCHITECTURE.md](docs/ARCHITECTURE.md#frontend) for how the code is organised.
 

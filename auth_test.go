@@ -142,7 +142,7 @@ func TestLibraryPrivateByDefault(t *testing.T) {
 		"/": http.StatusUnauthorized, "/pages/page1.json": http.StatusUnauthorized,
 		"/cover-thumb/some-uuid": http.StatusUnauthorized, "/book/get/some-uuid": http.StatusUnauthorized,
 		"/api/tags": http.StatusUnauthorized, "/shelves": http.StatusUnauthorized,
-		"/login": 200, "/register": 200, "/static/style.css": 200, "/auth/github/start": 200, "/api/me": 200,
+		"/login": 200, "/register": 200, "/static/dist/style-X.css": 200, "/auth/github/start": 200, "/api/me": 200,
 	})
 	// Browsers are sent to the sign-in page instead.
 	req := httptest.NewRequest("GET", "/tag/x?page=2", nil)

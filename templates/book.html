@@ -4,7 +4,7 @@
 <head>
     <meta charset="utf-8" />
     <title>{{ .Title }}</title>
-    <link rel="stylesheet" href="/static/style.css" />
+    <link rel="stylesheet" href="{{ asset "style.css" }}" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
 </head>
 
@@ -140,7 +140,8 @@
             {{ end }}
         </div>
     </div>
-<script type="module" src="/static/user.js"></script>
+{{/* In the modal, app-htmx.js already has user.ts bundled in. */}}
+{{ if .Standalone }}<script type="module" src="{{ asset "user.js" }}"></script>{{ end }}
 </body>
 
 </html>

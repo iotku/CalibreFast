@@ -1,10 +1,12 @@
 package main
 
-// Browser code is TypeScript in web/, compiled 1:1 into static/ by tsgo
-// (the Go-native TypeScript compiler). It's pinned in its own module,
-// tools/go.mod, so it doesn't raise the Go version or dependencies needed
-// to build the server.
+// Browser code is TypeScript (and CSS) in web/: tsgo, the Go-native
+// TypeScript compiler, type-checks it, then tools/jsbuild bundles and
+// minifies it into static/dist/ with esbuild (see assets.go). Both are
+// pinned in their own module, tools/go.mod, so they don't raise the Go
+// version or dependencies needed to build the server.
 //go:generate go tool -modfile=tools/go.mod tsgo -p tsconfig.json
+//go:generate go -C tools run ./jsbuild
 
 import (
 	"database/sql"
@@ -339,7 +341,7 @@ func fileModTime(f *os.File) (t time.Time) {
 }
 
 var templates = template.Must(
-	template.New("").Funcs(template.FuncMap{"topbar": topbarData}).ParseGlob("templates/*.html"),
+	template.New("").Funcs(template.FuncMap{"topbar": topbarData, "asset": assetURL}).ParseGlob("templates/*.html"),
 )
 
 // topbarData builds the data for templates/topbar.html from key/value pairs,
@@ -387,16 +389,8 @@ func serveLibraryHTTP() {
 		}), "could not encode library info")
 	})
 
-	// serve css/js. Short max-age: no requests while fresh, and edits still
-	// reach browsers within a couple of minutes (then a cheap 304 revalidation).
-	staticFiles := http.StripPrefix("/static/", http.FileServer(http.Dir("./static")))
-	http.Handle(
-		"/static/",
-		http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-			w.Header().Set("Cache-Control", "max-age=120")
-			staticFiles.ServeHTTP(w, r)
-		}),
-	)
+	// Built scripts and styles (assets.go): content-hashed, cached for good.
+	http.HandleFunc("GET /static/dist/", serveAsset)
 
 	// server cover getter
 	http.HandleFunc("/cover/", coverHandler)            // Full cover image

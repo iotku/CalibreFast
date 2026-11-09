@@ -6,6 +6,7 @@ tool github.com/microsoft/typescript-go/cmd/tsgo
 
 require (
 	github.com/Microsoft/go-winio v0.6.2 // indirect
+	github.com/evanw/esbuild v0.28.2 // indirect
 	github.com/go-json-experiment/json v0.0.0-20260623181947-01eb4420fa68 // indirect
 	github.com/klauspost/cpuid/v2 v2.2.10 // indirect
 	github.com/mackerelio/go-osstat v0.2.7 // indirect

@@ -1,2 +1,2 @@
-# Compiled from web/*.ts by `go generate`; edit the TypeScript instead.
-static/*.js linguist-generated=true
+# Built from web/ by `go generate` (tools/jsbuild); edit the sources instead.
+static/dist/** linguist-generated=true
