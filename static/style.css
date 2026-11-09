@@ -750,8 +750,7 @@ input[type="number"],
         position: absolute;
         top: calc(100% + 4px);
         left: var(--page-padding);
-        min-width: 200px;
-        flex-direction: column;
+        flex-direction: column; /* as wide as its longest item */
         align-items: stretch;
         gap: 8px; /* room for the active underline between items */
         padding: 6px;
