@@ -1,5 +1,70 @@
 // Reusable Cover Picker component for upload and book-edit pages.
 
+/**
+ * Readable text blocks from an EPUB section. epub.js's section.load() gives
+ * the section's root <html> element (not a Document), and EPUB XHTML is XML,
+ * so there's no .body / .innerText: find <body> and read block elements.
+ * Returns [{text, heading}].
+ */
+function sectionBlocks(root) {
+    const body = root?.querySelector?.("body") || root;
+    if (!body) return [];
+    const blocks = [...body.querySelectorAll("h1,h2,h3,h4,h5,h6,p,li,blockquote,pre,dt,dd,figcaption,td")]
+        .map((el) => ({
+            text: (el.textContent || "").replace(/\s+/g, " ").trim(),
+            heading: /^h[1-6]$/i.test(el.localName || el.tagName),
+        }))
+        .filter((b) => b.text);
+    if (blocks.length) return blocks;
+    const text = (body.textContent || "").replace(/\s+/g, " ").trim();
+    return text ? [{ text, heading: false }] : [];
+}
+
+/**
+ * Draw blocks onto a page-shaped canvas, word-wrapped to its width. The
+ * first heading is bold and larger. Sizes are relative to the canvas width
+ * so the thumbnail and the full-size cover look the same.
+ */
+function drawTextPage(ctx, width, height, blocks, fallbackTitle) {
+    const margin = Math.round(width * 0.08);
+    const maxWidth = width - margin * 2;
+    const bodySize = Math.max(6, Math.round(width * 0.045));
+    const headSize = Math.round(bodySize * 1.6);
+    ctx.fillStyle = "#fcfaf7";
+    ctx.fillRect(0, 0, width, height);
+    ctx.fillStyle = "#1a1a1a";
+    ctx.textBaseline = "top";
+
+    const items = blocks.length ? blocks : [{ text: fallbackTitle, heading: true }];
+    let y = margin;
+    let firstHeadingDone = false;
+    for (const block of items) {
+        const isHead = block.heading && !firstHeadingDone;
+        if (block.heading) firstHeadingDone = true;
+        const size = isHead ? headSize : bodySize;
+        ctx.font = `${isHead ? "bold " : ""}${size}px Georgia, serif`;
+        const lineHeight = Math.round(size * 1.35);
+        let line = "";
+        for (const word of block.text.split(" ")) {
+            const test = line ? `${line} ${word}` : word;
+            if (ctx.measureText(test).width > maxWidth && line) {
+                if (y + lineHeight > height - margin) return;
+                ctx.fillText(line, margin, y);
+                y += lineHeight;
+                line = word;
+            } else {
+                line = test;
+            }
+        }
+        if (line) {
+            if (y + lineHeight > height - margin) return;
+            ctx.fillText(line, margin, y);
+            y += lineHeight;
+        }
+        y += Math.round(lineHeight * (isHead ? 0.6 : 0.4)); // paragraph gap
+    }
+}
+
 function resolveEpubPath(baseHref, rel) {
     if (!rel || rel.startsWith("http://") || rel.startsWith("https://") || rel.startsWith("data:")) {
         return rel;
@@ -486,19 +551,8 @@ function renderTextPageThumb(uuid, doc, title, strip, picker, onCoverSaved, auto
     canvas.style.objectFit = "contain";
     const ctx = canvas.getContext("2d");
 
-    ctx.fillStyle = "#fcfaf7";
-    ctx.fillRect(0, 0, 127, 180);
-    ctx.fillStyle = "#222";
-    ctx.font = "bold 9px serif";
-
-    const text = (doc.body ? doc.body.innerText : "") || title;
-    const lines = text.split("\n").map(l => l.trim()).filter(Boolean);
-    let y = 24;
-    for (const line of lines.slice(0, 8)) {
-        ctx.fillText(line.slice(0, 24), 10, y);
-        y += 14;
-        ctx.font = "7px serif";
-    }
+    const blocks = sectionBlocks(doc);
+    drawTextPage(ctx, 127, 180, blocks, title);
     strip.appendChild(canvas);
 
     const status = picker.querySelector(".cover-pages-status");
@@ -513,16 +567,7 @@ function renderTextPageThumb(uuid, doc, title, strip, picker, onCoverSaved, auto
             hiresCanvas.width = 800;
             hiresCanvas.height = 1130;
             const hctx = hiresCanvas.getContext("2d");
-            hctx.fillStyle = "#fcfaf7";
-            hctx.fillRect(0, 0, 800, 1130);
-            hctx.fillStyle = "#111";
-            hctx.font = "bold 32px serif";
-            let hy = 120;
-            for (const line of lines.slice(0, 15)) {
-                hctx.fillText(line.slice(0, 45), 60, hy);
-                hy += 44;
-                hctx.font = "20px serif";
-            }
+            drawTextPage(hctx, 800, 1130, blocks, title);
             const dataUrl = hiresCanvas.toDataURL("image/jpeg", 0.92);
             const res = await uploadCoverDataUrl(uuid, dataUrl);
             if (isDefault) {
