@@ -1,5 +1,11 @@
 package main
 
+// Browser code is TypeScript in web/, compiled 1:1 into static/ by tsgo
+// (the Go-native TypeScript compiler). It's pinned in its own module,
+// tools/go.mod, so it doesn't raise the Go version or dependencies needed
+// to build the server.
+//go:generate go tool -modfile=tools/go.mod tsgo -p tsconfig.json
+
 import (
 	"database/sql"
 	"encoding/json"

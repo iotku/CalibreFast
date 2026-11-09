@@ -15,7 +15,7 @@
     <section class="auth-card">
         <h1>Users</h1>
         <p id="admin-status" class="auth-notice" role="status" hidden></p>
-        <table class="admin-users">
+        <table id="users-table" class="admin-users">
             <thead><tr><th>User</th><th>Admin</th><th>Disabled</th><th></th></tr></thead>
             <tbody>
             {{ range .Users }}

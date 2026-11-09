@@ -1,152 +1,147 @@
-// Admin user management (calls /api/admin/users).
-const status = document.getElementById("admin-status");
-const say = (text, error = false) => {
-    status.hidden = false;
-    status.textContent = text;
-    status.className = error ? "auth-error" : "auth-notice";
-};
-
-async function api(method, url, body) {
-    const res = await fetch(url, {
-        method,
-        headers: { "content-type": "application/json" },
-        body: body ? JSON.stringify(body) : undefined,
-    });
-    if (!res.ok) throw new Error((await res.text()).trim() || `HTTP ${res.status}`);
-    return res.status === 204 ? null : res.json();
+// Admin user management (calls /api/admin/users) and one-time links
+// (/api/admin/links).
+import { api, byId, el, errorMessage, statusLine } from "./dom.js";
+const say = statusLine("admin-status");
+const table = byId("users-table", HTMLTableElement);
+/** A form field by name, checked to exist (the template defines them). */
+function field(form, name) {
+    const input = form.elements.namedItem(name);
+    if (!(input instanceof HTMLInputElement))
+        throw new Error(`form field ${name} missing`);
+    return input;
 }
-
-document.querySelector(".admin-users").addEventListener("change", async (e) => {
-    const box = e.target.closest("input[data-field]");
-    if (!box) return;
-    const row = box.closest("tr");
+table.addEventListener("change", async (e) => {
+    const box = e.target instanceof Element ? e.target.closest("input[data-field]") : null;
+    const row = box?.closest("tr");
+    if (!box || !row)
+        return;
     try {
-        await api("PATCH", `/api/admin/users/${row.dataset.id}`, { [box.dataset.field]: box.checked });
-        say(`Updated ${row.dataset.username}.`);
-    } catch (err) {
+        await api("PATCH", `/api/admin/users/${row.dataset["id"]}`, { [box.dataset["field"] ?? ""]: box.checked });
+        say(`Updated ${row.dataset["username"]}.`);
+    }
+    catch (err) {
         box.checked = !box.checked;
-        say(err.message, true);
+        say(errorMessage(err), true);
     }
 });
-
-document.querySelector(".admin-users").addEventListener("click", async (e) => {
-    const btn = e.target.closest("button[data-action]");
-    if (!btn) return;
-    const row = btn.closest("tr");
-    const name = row.dataset.username;
+table.addEventListener("click", async (e) => {
+    const btn = e.target instanceof Element ? e.target.closest("button[data-action]") : null;
+    const row = btn?.closest("tr");
+    if (!btn || !row)
+        return;
+    const name = row.dataset["username"] ?? "";
+    const id = row.dataset["id"] ?? "";
     try {
-        if (btn.dataset.action === "signin-link") {
-            const res = await api("POST", "/api/admin/links", { kind: "login", user_id: Number(row.dataset.id), expires: expiry() });
-            showLink(`Sign-in link for ${name} — works once, expires ${when(res.expires_at)}:`, res.url);
-            loadLinks();
-        } else if (btn.dataset.action === "password") {
-            const pw = prompt(`New password for ${name} (min 10 characters). Their sessions will be signed out.`);
-            if (!pw) return;
-            await api("PATCH", `/api/admin/users/${row.dataset.id}`, { password: pw });
-            say(`Password reset for ${name}.`);
-        } else if (btn.dataset.action === "delete") {
-            if (!confirm(`Delete ${name}? Their favorites, progress, bookmarks and shelves are deleted too. This can't be undone.`)) return;
-            await api("DELETE", `/api/admin/users/${row.dataset.id}`);
-            row.remove();
-            say(`Deleted ${name}.`);
+        switch (btn.dataset["action"]) {
+            case "signin-link": {
+                const res = await api("POST", "/api/admin/links", { kind: "login", user_id: Number(id), expires: expiry() });
+                showLink(`Sign-in link for ${name} — works once, expires ${when(res.expires_at)}:`, res.url);
+                void loadLinks();
+                break;
+            }
+            case "password": {
+                const pw = prompt(`New password for ${name} (min 10 characters). Their sessions will be signed out.`);
+                if (!pw)
+                    return;
+                await api("PATCH", `/api/admin/users/${id}`, { password: pw });
+                say(`Password reset for ${name}.`);
+                break;
+            }
+            case "delete":
+                if (!confirm(`Delete ${name}? Their favorites, progress, bookmarks and shelves are deleted too. This can't be undone.`))
+                    return;
+                await api("DELETE", `/api/admin/users/${id}`);
+                row.remove();
+                say(`Deleted ${name}.`);
+                break;
         }
-    } catch (err) {
-        say(err.message, true);
+    }
+    catch (err) {
+        say(errorMessage(err), true);
     }
 });
-
-document.getElementById("add-user").addEventListener("submit", async (e) => {
+byId("add-user", HTMLFormElement).addEventListener("submit", async (e) => {
     e.preventDefault();
-    const f = e.target;
+    const f = e.currentTarget;
     try {
         await api("POST", "/api/admin/users", {
-            username: f.username.value,
-            password: f.password.value,
-            is_admin: f.is_admin.checked,
+            username: field(f, "username").value,
+            password: field(f, "password").value,
+            is_admin: field(f, "is_admin").checked,
         });
         location.reload();
-    } catch (err) {
-        say(err.message, true);
+    }
+    catch (err) {
+        say(errorMessage(err), true);
     }
 });
-
-// ---- one-time links --------------------------------------------------------
-
-const expiry = () => document.getElementById("link-expiry").value;
+const expiry = () => byId("link-expiry", HTMLSelectElement).value;
 const when = (unix) => new Date(unix * 1000).toLocaleString([], { dateStyle: "medium", timeStyle: "short" });
-
 function showLink(label, url) {
-    document.getElementById("link-output").hidden = false;
-    document.getElementById("link-output-label").textContent = label;
-    const input = document.getElementById("link-url");
+    byId("link-output").hidden = false;
+    byId("link-output-label").textContent = label;
+    const input = byId("link-url", HTMLInputElement);
     input.value = url;
     input.focus();
     input.select();
-    document.getElementById("links").scrollIntoView({ behavior: "smooth", block: "start" });
+    byId("links").scrollIntoView({ behavior: "smooth", block: "start" });
 }
-
-document.getElementById("link-copy").addEventListener("click", async () => {
-    const input = document.getElementById("link-url");
+byId("link-copy").addEventListener("click", async () => {
+    const input = byId("link-url", HTMLInputElement);
     try {
         await navigator.clipboard.writeText(input.value);
-    } catch {
+    }
+    catch {
         input.select();
         document.execCommand("copy");
     }
     say("Link copied.");
 });
-
-document.getElementById("invite-form").addEventListener("submit", async (e) => {
+byId("invite-form", HTMLFormElement).addEventListener("submit", async (e) => {
     e.preventDefault();
-    const f = e.target;
+    const f = e.currentTarget;
+    const admin = field(f, "is_admin").checked;
     try {
         const res = await api("POST", "/api/admin/links", {
             kind: "invite",
-            is_admin: f.is_admin.checked,
-            note: f.note.value,
+            is_admin: admin,
+            note: field(f, "note").value,
             expires: expiry(),
         });
-        showLink(`Invite${f.is_admin.checked ? " (admin)" : ""} — works once, expires ${when(res.expires_at)}:`, res.url);
+        showLink(`Invite${admin ? " (admin)" : ""} — works once, expires ${when(res.expires_at)}:`, res.url);
         f.reset();
-        loadLinks();
-    } catch (err) {
-        say(err.message, true);
+        void loadLinks();
+    }
+    catch (err) {
+        say(errorMessage(err), true);
     }
 });
-
+function linkRow(l) {
+    const text = (l.kind === "login" ? `Sign-in as ${l.username}` : `Invite${l.invite_admin ? " (admin)" : ""}`) +
+        (l.note ? ` — “${l.note}”` : "") +
+        ` · by ${l.created_by || "?"} · expires ${when(l.expires_at)}`;
+    const revoke = el("button", { type: "button", className: "btn-standard", textContent: "Revoke" });
+    const li = el("li", {}, el("span", { textContent: text }), revoke);
+    revoke.addEventListener("click", async () => {
+        try {
+            await api("DELETE", `/api/admin/links/${l.id}`);
+            li.remove();
+            say("Link revoked.");
+        }
+        catch (err) {
+            say(errorMessage(err), true);
+        }
+    });
+    return li;
+}
 async function loadLinks() {
-    const list = document.getElementById("link-list");
+    const list = byId("link-list");
     try {
         const { links } = await api("GET", "/api/admin/links");
-        list.replaceChildren(
-            ...(links.length
-                ? links.map((l) => {
-                      const li = document.createElement("li");
-                      const text = document.createElement("span");
-                      text.textContent =
-                          (l.kind === "login" ? `Sign-in as ${l.username}` : `Invite${l.invite_admin ? " (admin)" : ""}`) +
-                          (l.note ? ` — “${l.note}”` : "") +
-                          ` · by ${l.created_by || "?"} · expires ${when(l.expires_at)}`;
-                      const revoke = document.createElement("button");
-                      revoke.type = "button";
-                      revoke.className = "btn-standard";
-                      revoke.textContent = "Revoke";
-                      revoke.addEventListener("click", async () => {
-                          try {
-                              await api("DELETE", `/api/admin/links/${l.id}`);
-                              li.remove();
-                              say("Link revoked.");
-                          } catch (err) {
-                              say(err.message, true);
-                          }
-                      });
-                      li.append(text, revoke);
-                      return li;
-                  })
-                : [Object.assign(document.createElement("li"), { className: "auth-muted", textContent: "No active links." })]),
-        );
-    } catch (err) {
-        list.replaceChildren(Object.assign(document.createElement("li"), { className: "auth-error", textContent: err.message }));
+        list.replaceChildren(...(links.length ? links.map(linkRow) : [el("li", { className: "auth-muted", textContent: "No active links." })]));
+    }
+    catch (err) {
+        list.replaceChildren(el("li", { className: "auth-error", textContent: errorMessage(err) }));
     }
 }
-loadLinks();
+void loadLinks();

@@ -79,6 +79,36 @@ Then open [http://localhost:8080](http://localhost:8080) and sign in. Add more u
 
 GitHub and Google sign-in are optional: see [OAUTH.md](docs/OAUTH.md) for step-by-step setup.
 
+### Working on the browser code
+
+The browser code is TypeScript in `web/`, compiled into `static/` by [tsgo](https://github.com/microsoft/typescript-go), the Go-native TypeScript compiler. You only need this if you change the browser code; the compiled `static/*.js` is committed, so running the server needs nothing extra.
+
+**Installing:** nothing to install separately. tsgo is pinned as a Go tool in `tools/go.mod`, and Go downloads and builds it the first time you run it. It needs Go 1.26+; no Node or npm.
+
+**After editing a `.ts` file**, rebuild:
+
+```bash
+go generate
+```
+
+This type-checks everything and rewrites `static/*.js`. If there's a type error, nothing is written. Commit the `.ts` changes together with the regenerated `.js`; `go test` fails if they're out of sync.
+
+**Type-check only**, without writing files:
+
+```bash
+go tool -modfile=tools/go.mod tsgo -p tsconfig.json --noEmit
+```
+
+**Updating tsgo:**
+
+```bash
+cd tools && go get -tool github.com/microsoft/typescript-go/cmd/tsgo@latest
+```
+
+Then run `go generate` and `go test ./...` from the repository root.
+
+Editors: VS Code's TypeScript support reads `tsconfig.json` as-is. See [ARCHITECTURE.md](docs/ARCHITECTURE.md#frontend) for how the code is organised.
+
 ## Documentation
 
 - [SECURITY.md](docs/SECURITY.md): the risks, and how to run CalibreFast safely

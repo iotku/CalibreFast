@@ -1,0 +1,26 @@
+{
+  // TypeScript for the browser code. Sources are in web/, compiled 1:1 into
+  // static/ (same file names, so templates and URLs don't change).
+  // Build:  go generate   (or: go tool -modfile=tools/go.mod tsgo -p tsconfig.json)
+  // tsgo is the Go-native TypeScript compiler, pinned in tools/go.mod.
+  "compilerOptions": {
+    "target": "es2022",
+    "module": "esnext",
+    "moduleDetection": "force",
+    "moduleResolution": "bundler",
+    "lib": ["es2023", "dom", "dom.iterable"],
+    "rootDir": "web",
+    "outDir": "static",
+    "strict": true,
+    "noEmitOnError": true,
+    "noUnusedLocals": true,
+    "noUnusedParameters": true,
+    "noFallthroughCasesInSwitch": true,
+    "noImplicitOverride": true,
+    "exactOptionalPropertyTypes": false,
+    "useUnknownInCatchVariables": true,
+    "skipLibCheck": true,
+    "newLine": "lf"
+  },
+  "include": ["web"]
+}
