@@ -2,6 +2,7 @@ package main
 
 import (
 	"bytes"
+	"errors"
 	"image"
 	"image/color"
 	"image/jpeg"
@@ -26,12 +27,12 @@ func testJPEG(t *testing.T, w, h, quality int) []byte {
 func TestMakeThumb(t *testing.T) {
 	// Small cover: returned unchanged, never upscaled.
 	small := testJPEG(t, 300, 450, 90)
-	if got, _ := makeThumb(small); !bytes.Equal(got, small) {
+	if got, _ := makeThumb(small, noAbort); !bytes.Equal(got, small) {
 		t.Error("small cover was re-encoded")
 	}
 	// Large cover: scaled to thumbWidth, and smaller than the original.
 	large := testJPEG(t, 1200, 1800, 92)
-	got, err := makeThumb(large)
+	got, err := makeThumb(large, noAbort)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -44,7 +45,17 @@ func TestMakeThumb(t *testing.T) {
 	}
 	// Large but already tiny in bytes: the original wins.
 	tiny := testJPEG(t, 800, 1200, 5)
-	if got, _ := makeThumb(tiny); len(got) > len(tiny) {
+	if got, _ := makeThumb(tiny, noAbort); len(got) > len(tiny) {
 		t.Errorf("thumb %d bytes > original %d", len(got), len(tiny))
+	}
+}
+
+func noAbort() error { return nil }
+
+func TestMakeThumbAbort(t *testing.T) {
+	stop := errors.New("stop")
+	large := testJPEG(t, 1200, 1800, 92)
+	if _, err := makeThumb(large, func() error { return stop }); !errors.Is(err, stop) {
+		t.Errorf("err = %v, want the abort error", err)
 	}
 }
