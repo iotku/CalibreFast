@@ -19,6 +19,7 @@ func setupTestAppDB(t *testing.T) {
 	orig := appDB
 	appDB = db
 	t.Cleanup(func() { db.Close(); appDB = orig })
+	resetKosyncCaches()
 }
 
 func TestPasswordAuth(t *testing.T) {

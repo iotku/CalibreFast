@@ -29,22 +29,6 @@ import (
 	"time"
 )
 
-func init() {
-	migrations = append(migrations, `
-	CREATE TABLE login_links (
-		token_hash   TEXT    PRIMARY KEY,
-		kind         TEXT    NOT NULL CHECK (kind IN ('login', 'invite')),
-		user_id      INTEGER REFERENCES users(id) ON DELETE CASCADE, -- sign-in links
-		invite_admin INTEGER NOT NULL DEFAULT 0,                    -- invites: create as admin
-		note         TEXT    NOT NULL DEFAULT '',
-		created_by   INTEGER REFERENCES users(id) ON DELETE SET NULL,
-		created_at   INTEGER NOT NULL,
-		expires_at   INTEGER NOT NULL,
-		used_at      INTEGER,
-		used_by      INTEGER REFERENCES users(id) ON DELETE SET NULL
-	);`)
-}
-
 var linkLifetimes = map[string]time.Duration{"1h": time.Hour, "1d": 24 * time.Hour, "7d": 7 * 24 * time.Hour}
 
 type loginLink struct {

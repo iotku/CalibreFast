@@ -78,8 +78,24 @@ On startup CalibreFast queries `metadata.db` and writes paginated JSON (`pages/p
 
 ## Accounts and per-user data
 
-- `appdb.go`: CalibreFast's own SQLite database in `-datadir`, with versioned migrations (users, identities, sessions, favorites, reading_status, reading_progress, bookmarks, shelves, shelf_books).
+- `appdb.go`: CalibreFast's own SQLite database in `-datadir`, with versioned migrations (users, identities, sessions, favorites, reading_status, reading_progress, bookmarks, shelves, shelf_books, login_links, sync_keys, device_progress, book_digests). Migrations are one ordered list: add new ones at the end.
 - `auth.go`: passwords, sessions and the `withAuth` middleware that puts the user in the request context. The guards are `requireUser`, `requireAdminUser`, `requireReader` (book contents unless `-public-read`) and `requireWrites`.
 - `oauth.go`: GitHub/Google sign-in.
 - `userdata.go`: favorites, reading status and the `/me/...` lists. `progress.go`: reader position and bookmarks. `shelves.go`: bookshelves.
 - The app database stores book UUIDs; book details for lists come from `metadata.db`.
+
+## KOReader progress sync
+
+[KOREADER.md](KOREADER.md) covers setup. Under the hood:
+- `kosync.go`: KOReader's sync API under `/kosync`, the per-user sync keys, and joining device positions with the web readers'.
+  - Devices authenticate with headers, so `/kosync/` is a public path to `withAuth`.
+  - Device positions are kept raw in `device_progress`, one per (user, document id), last writer wins, as KOReader's reference server does.
+  - Nothing is copied between `device_progress` and `reading_progress`. Each read (the web reader's `GET /api/me/progress`, a device's `GET /kosync/syncs/progress/…`) takes the newest of the two for that book format and converts it.
+- `kosync_digest.go`: maps KOReader's document ids to library files (`book_uuid`, format).
+  - **Binary ids:** KOReader's partial MD5. It's computed lazily, when a file is opened in the web reader or downloaded, and cached in `book_digests` with the file's size and mtime, so a changed file is hashed again.
+  - **Filename ids:** the MD5 of the file name. They come from Calibre's `data` table, rebuilt in memory at most once a minute.
+  - When a device asks about an id nothing matches, the files the user has read on the web but never hashed are hashed in the background.
+- `kosync_position.go`: EPUB position translation.
+  - KOReader's `/body/DocFragment[N]/…` XPointer and the web reader's CFI both name the spine item: DocFragment N is the N-th spine itemref with a manifest entry.
+  - Inside the chapter, the element path is followed in the chapter's XHTML. It converts to that element when the path resolves, otherwise to the chapter start. Character offsets are dropped.
+  - PDF positions are page numbers on both sides.

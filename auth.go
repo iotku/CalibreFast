@@ -269,10 +269,11 @@ func canEditLibrary(r *http.Request) bool {
 }
 
 // isPublicPath: reachable without signing in even when the library is
-// private (sign-in and registration themselves, and static assets).
+// private (sign-in and registration themselves, static assets, and the
+// KOReader sync API, which checks its own credentials).
 func isPublicPath(p string) bool {
 	return p == "/login" || p == "/logout" || p == "/register" || p == "/api/me" ||
-		strings.HasPrefix(p, "/l/") ||
+		strings.HasPrefix(p, "/l/") || isKosyncPath(p) ||
 		strings.HasPrefix(p, "/auth/") || strings.HasPrefix(p, "/static/")
 }
 
@@ -402,6 +403,10 @@ type AuthPageData struct {
 	Providers    []string // enabled OAuth providers
 	Registration bool
 	Identities   []Identity
+	SyncURL      string       // KOReader's custom sync server address (kosync.go)
+	SyncKey      *syncKeyInfo // nil: no sync key
+	NewSyncKey   string       // shown once, right after it is generated
+	SyncNotice   string
 }
 
 // safeNext returns next if it is a path on this site, otherwise "/". It is
@@ -516,6 +521,7 @@ func logoutHandler(w http.ResponseWriter, r *http.Request) {
 func accountHandler(w http.ResponseWriter, r *http.Request) {
 	u := currentUser(r)
 	data := AuthPageData{User: u, Identities: identitiesFor(u.ID), Notice: r.URL.Query().Get("notice"), Error: r.URL.Query().Get("error")}
+	fillSyncKeyData(&data, r)
 	if r.Method == http.MethodPost {
 		// change password (current password required if one is set)
 		if u.HasPass {
@@ -730,6 +736,7 @@ func registerAuthRoutes() {
 	registerProgressRoutes()
 	registerShelfRoutes()
 	registerLinkRoutes()
+	registerKosyncRoutes(http.DefaultServeMux)
 }
 
 func withUserCtx(r *http.Request, u *User) context.Context {
