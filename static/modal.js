@@ -10,14 +10,8 @@ const CLOSE_SELECTOR = "#modal-close, [data-modal-close]";
 const BASE_TITLE = document.title;
 const TITLE_SEP = " – ";
 let modalInitialized = false;
-let openedViaNav = false; // true if the current modal entry was pushed by a click
-// htmx restores history on popstate (state.htmx) by re-fetching the current
-// URL. The modal is a pure overlay driven by the hash, so htmx history is
-// unused: swallow popstate before htmx sees it. Registered at module load,
-// in the capture phase, so it runs ahead of htmx's own handler.
-window.addEventListener("popstate", (e) => {
-    e.stopImmediatePropagation();
-}, true);
+let openedViaNav = false; // true if there's an entry to go back to (click or back/forward)
+let shownUuid = null; // book in the open modal
 function modalEl() {
     return document.getElementById(MODAL_ID);
 }
@@ -116,11 +110,13 @@ function hideModal() {
     if (body)
         body.innerHTML = "";
     document.title = BASE_TITLE; // every close path ends here
+    shownUuid = null;
     setBusy(false);
     // The URL no longer has #book/: the grid may write its page now (app-htmx.ts).
     document.dispatchEvent(new Event("cf:modal-closed"));
 }
 export function loadBook(uuid) {
+    shownUuid = uuid;
     showModal();
     if (typeof htmx === "undefined") {
         setBody("htmx not loaded.");
@@ -132,12 +128,14 @@ export function loadBook(uuid) {
     });
 }
 /**
- * Sync modal state to the URL hash.
+ * Sync modal state to the URL hash. Runs on popstate and hashchange, which
+ * often both fire for one navigation: a book already shown isn't reloaded.
  */
 function syncFromHash() {
     const uuid = hashUuid();
     if (uuid) {
-        loadBook(uuid);
+        if (uuid !== shownUuid || !isModalOpen())
+            loadBook(uuid);
     }
     else if (isModalOpen()) {
         hideModal();
@@ -152,7 +150,7 @@ export function closeModal() {
     if (!isModalOpen())
         return;
     if (openedViaNav) {
-        history.back(); // hashchange -> syncFromHash -> hideModal
+        history.back(); // popstate -> syncFromHash -> hideModal
     }
     else {
         history.replaceState(null, "", location.pathname + location.search);
@@ -173,7 +171,16 @@ export function setupModal() {
         if (e.target instanceof Element && e.target.closest(".book-link"))
             openedViaNav = true;
     }, true);
+    // The modal follows the URL. Back/forward between entries whose ?page
+    // differs (the grid moved after the modal closed) isn't a hash change, so
+    // popstate covers it. htmx history is off on these pages (htmx-config
+    // meta): it would re-fetch the page and replace the body.
     window.addEventListener("hashchange", syncFromHash);
+    window.addEventListener("popstate", () => {
+        if (hashUuid())
+            openedViaNav = true; // reached by back/forward: there's an entry behind it
+        syncFromHash();
+    });
     const body = bodyEl();
     if (body)
         new MutationObserver(checkIdle).observe(body, { childList: true, subtree: true });
