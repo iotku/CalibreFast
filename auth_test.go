@@ -196,7 +196,24 @@ func TestLastAdminProtected(t *testing.T) {
 }
 
 func TestSafeNext(t *testing.T) {
-	for in, want := range map[string]string{"/tag/x": "/tag/x", "//evil.com": "/", "https://evil.com": "/", "/\\evil.com": "/", "": "/"} {
+	for in, want := range map[string]string{
+		"/tag/x":              "/tag/x",
+		"/search?q=a%20b#top": "/search?q=a%20b#top",
+		"/author/A%2FB":       "/author/A%2FB",
+		"//evil.com":          "/",
+		"///evil.com":         "/",
+		"https://evil.com":    "/",
+		"HTTPS://evil.com":    "/",
+		"javascript:alert(1)": "/",
+		"/\\evil.com":         "/",
+		"\\\\evil.com":        "/",
+		"/\t/evil.com":        "/",
+		"/\n/evil.com":        "/",
+		"/%2F/evil.com":       "/",
+		"evil.com":            "/",
+		"//user@evil.com/x":   "/",
+		"":                    "/",
+	} {
 		if got := safeNext(in); got != want {
 			t.Errorf("safeNext(%q) = %q, want %q", in, got, want)
 		}
