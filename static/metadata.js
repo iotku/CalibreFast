@@ -538,6 +538,16 @@ export async function mountMetadataEditor(uuid, form) {
         const publisherInput = form.querySelector('[name="publisher"]');
         if (publisherInput)
             attachSuggest(publisherInput, { category: "publisher" });
+        // Swap title and author (often mixed up in imported metadata). Firing
+        // "input" on both updates the edited markers, diffs and unsaved guard.
+        const titleInput = form.querySelector('[name="title"]');
+        maybeId("swap-title-author")?.addEventListener("click", () => {
+            if (!titleInput || !creatorsInput)
+                return;
+            [titleInput.value, creatorsInput.value] = [creatorsInput.value, titleInput.value];
+            for (const input of [titleInput, creatorsInput])
+                input.dispatchEvent(new Event("input", { bubbles: true }));
+        });
         const commitPending = () => chipInputs.forEach((c) => c.commitPending());
         const metas = await fetchMetas(uuid);
         populateMetadataForm(form, metas);

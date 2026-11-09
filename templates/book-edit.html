@@ -155,7 +155,43 @@
                 transition: border-color 0.15s ease;
             }
 
-            .meta-field:focus-within {
+            /* Title, swap button, Author(s). 8px of visible space on each side
+               of the button: the Author card's top border runs through the
+               middle of its 15px legend (7px below the card's edge), so the
+               space below is 1px + 7px. */
+            .title-author {
+                display: flex;
+                flex-direction: column;
+            }
+
+            .swap-row {
+                display: flex;
+                justify-content: center;
+                margin: 8px 0 1px;
+            }
+
+            .swap-btn {
+                height: 30px;
+                padding: 0 12px 0 9px;
+                display: inline-flex;
+                align-items: center;
+                gap: 5px;
+                background: var(--surface);
+                color: var(--muted);
+                border: 1px solid var(--border);
+                border-radius: var(--radius);
+                font-family: var(--mono);
+                font-size: 0.72rem;
+                cursor: pointer;
+            }
+
+            .swap-btn:hover,
+            .swap-btn:focus-visible {
+                color: var(--text);
+                border-color: var(--accent);
+            }
+
+                        .meta-field:focus-within {
                 border-color: rgba(200, 169, 110, 0.4);
             }
 
@@ -166,6 +202,7 @@
                 letter-spacing: 0.1em;
                 text-transform: uppercase;
                 color: var(--accent);
+                line-height: 15px; /* fixed: the swap row's spacing depends on it */
                 padding: 0 4px;
                 margin-bottom: 6px;
             }
@@ -1058,17 +1095,29 @@
             <!-- Metadata Edit Form -->
             <form id="metadata-form" data-uuid="{{.UUID}}">
                 <div class="form-grid">
-                    <fieldset class="meta-field col-span-2">
-                        <legend>Title</legend>
-                        <input type="text" name="title" class="meta-input" placeholder="e.g. The Go Programming Language" />
-                        <div class="meta-source-buttons" data-field="title"></div>
-                    </fieldset>
+                    <!-- Title, swap button, Author(s): one grid cell so the spacing
+                         around the swap button can be set exactly. -->
+                    <div class="title-author col-span-2">
+                        <fieldset class="meta-field">
+                            <legend>Title</legend>
+                            <input type="text" name="title" class="meta-input" placeholder="e.g. The Go Programming Language" />
+                            <div class="meta-source-buttons" data-field="title"></div>
+                        </fieldset>
 
-                    <fieldset class="meta-field col-span-2">
-                        <legend>Author(s)</legend>
-                        <input type="text" name="creators" class="meta-input" placeholder="e.g. Alan A. A. Donovan, Brian W. Kernighan" />
-                        <div class="meta-source-buttons" data-field="creators"></div>
-                    </fieldset>
+                        <!-- A common mix-up in imported metadata. -->
+                        <div class="swap-row">
+                            <button type="button" id="swap-title-author" class="swap-btn" title="Swap title and author" aria-label="Swap title and author">
+                                <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M8 20V4M4 8l4-4 4 4M16 4v16M12 16l4 4 4-4"/></svg>
+                                Swap
+                            </button>
+                        </div>
+
+                        <fieldset class="meta-field">
+                            <legend>Author(s)</legend>
+                            <input type="text" name="creators" class="meta-input" placeholder="e.g. Alan A. A. Donovan, Brian W. Kernighan" />
+                            <div class="meta-source-buttons" data-field="creators"></div>
+                        </fieldset>
+                    </div>
 
                     <fieldset class="meta-field">
                         <legend>Publisher</legend>
