@@ -1,0 +1,104 @@
+# Features in detail
+
+Reference for how CalibreFast behaves, for people and AI tools working on the code. The [README](../README.md) has the short version.
+
+## Browsing
+
+- **The whole library is one scrollable document.** Every page has a fixed-height placeholder, so the scrollbar reflects the full library and you can drag straight to any point. Only pages near the viewport are rendered; others are swapped back to placeholders as you leave them.
+- **120 books per page.** That's the lowest common multiple of every grid width (10/8/6/4/2 columns), so page boundaries never leave gaps in the grid. The same page size is used everywhere: the main library, filtered views and search.
+- **Navigation:**
+  - a page number box with prev/next in the top bar
+  - Home/End move one page at a time
+  - a floating `page / total` badge appears while dragging the scrollbar
+  - the current page is kept in the URL (`?page=N`), so links and the back button work
+- **Covers:**
+  - load nearest-first in the scroll direction, with a limited number in flight so they don't crowd out page requests
+  - requests for covers scrolled past are cancelled
+  - books without a cover get a generated placeholder
+- **Fast scrolling** (a fling or a scrollbar drag) skips fetching and rendering until scrolling settles.
+
+## Book details
+
+- **Popup.** Clicking a book opens a details popup (full-screen on phones) with a shareable `#book/<uuid>` URL. There's also a permalink page at `/book/get/<uuid>`. Details are preloaded on hover.
+- **Actions.** Read and download buttons sit under the cover, for every format on disk (EPUB, PDF, MOBI, AZW3, DJVU).
+- **Links.** Authors, publisher, tags and languages link to their filtered views.
+- **Language names.** Codes are shown by name, covering about 120 languages and all their common 2/3-letter codes. Examples: `eng`/`en` → English, `pt-BR` → Portuguese (BR). A group name, if you've set one, takes precedence. Books with several languages show all of them.
+- **Descriptions** are rendered as HTML and cleaned with the same rules as the editor (see [Description editor](#description-editor)).
+
+## Authors, publishers, tags and languages
+
+- **Overview pages** (`/authors`, `/publishers`, `/tags`, `/languages`) show a tag cloud sized by book count.
+- **Filtered views** (`/author/…`, `/publisher/…`, `/tag/…`, `/lang/…`) use the same grid as the main library.
+
+### Groups
+
+Groups combine values that mean the same thing without editing any books. For example, `en`, `eng` and `en-US` grouped as "English".
+
+- **Same books from every name.** Every member, and the group name itself, opens the same combined list: `/lang/en`, `/lang/eng` and `/lang/English` all match. Matching ignores case, like Calibre.
+- **One entry on overview pages.** A group shows once, and a book carrying several members is counted once.
+- **Exclusive membership.** A value belongs to at most one group; adding it to another moves it.
+- **Unique names.** Two groups can't share a name.
+- **Removing a group.** Removing every member, or leaving one member with no new name, removes the group.
+- **Editing.** Groups are edited on any filtered page with **Group…** (needs `-allow-writes`).
+  - Changes are staged locally; nothing is saved until **Save grouping**.
+  - Suggestions only offer values that exist in the library.
+- **Storage.** Groups live in `<library>/calibrefast-groups.json`.
+  - Writes are atomic (a temp file, then a rename).
+  - The previous version is kept as `.bak`.
+  - If the file can't be read, grouping goes read-only rather than overwriting it.
+
+## Search
+
+`/search?q=…` matches titles and authors, using the same grid and navigation as the library.
+
+## Metadata editor
+
+`/book/edit/<uuid>` (needs `-allow-writes`) writes both `metadata.db` and the book's `metadata.opf`.
+
+### Nothing is lost by accident
+
+- **Identifiers**
+  - Values are kept even with no type (`opf:scheme`).
+  - Their `id` attributes (`uuid_id`, `calibre_id`, …) are preserved.
+  - Values containing commas or colons survive, because identifiers are sent as structured data rather than a string.
+- **Removing things**
+  - A removed identifier, tag or language is crossed out with **Undo** and moved to the end of its list until you apply.
+  - Switching a field to another source crosses out values the new source doesn't have, rather than dropping them.
+- **Languages.** A book can have several, kept in order (the first is primary). They're stored as multiple `<dc:language>` entries and ordered links in `metadata.db`.
+- **Dates.** A stored date the date picker can't show is kept unless you pick a new one; the page shows a note about it.
+- **Leaving the page with unapplied changes** triggers the browser's "Leave site?" prompt.
+  - **Leave:** goes without saving.
+  - **Cancel:** shows what would be lost and offers to apply it.
+  - Half-typed text in the tags or languages box counts as unsaved.
+
+### Editing tools
+
+- **Source buttons** under each field switch its value between:
+  - **current:** the existing metadata
+  - each **uploaded format:** metadata read from the file
+  - **edited:** your own changes. Clicking it also lists that field's changes inline.
+- **Compare changes** lists every changed field before and after.
+- **Tags and languages are edited as chips:**
+  - Type in the box above the chips, then press Enter or **Add**. Commas separate several values; typing a comma doesn't add anything on its own.
+  - Click anywhere on a chip, except its ×, to edit it in place.
+  - **Split ;** breaks tags that were glued together with semicolons. **Split all** does every such tag at once.
+- **Autocomplete** for authors, publisher, tags and languages offers only values in your library; languages match by name too.
+  - Nothing is preselected, so Enter adds exactly what you typed.
+  - ↑/↓ highlight a suggestion; Enter, Tab or a click takes it.
+- **Cover picker:** upload an image, or pick a page from the PDF/EPUB.
+
+### Description editor
+
+- **Two tabs:** an editable formatted **Preview** and the raw **HTML**.
+- **Pasting** (e.g. from a shop listing) is cleaned with the same rules the book page uses to display descriptions (bluemonday's `UGCPolicy`):
+  - **Kept:** headings, paragraphs, bold/italic/underline, lists, links, tables and images.
+  - **Removed:** inline styles, classes, scripts, event handlers and `javascript:` links.
+  - Bold and italic done with CSS (`font-weight`, `font-style`) are converted to `<strong>`/`<em>` first, so that formatting survives.
+- **HTML tab** edits stay as typed until you click **Clean HTML**.
+- **Clear** removes inline formatting, links, lists and headings from the selection.
+
+## Uploading
+
+`/upload` (needs `-allow-writes`):
+- Files with the same name and different formats (`Book.epub` + `Book.pdf`) become one book with both formats.
+- Metadata is read from EPUB and PDF files. Afterwards the editor lets you pick each field's value from each format.
