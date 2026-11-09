@@ -117,6 +117,8 @@ function hideModal() {
         body.innerHTML = "";
     document.title = BASE_TITLE; // every close path ends here
     setBusy(false);
+    // The URL no longer has #book/: the grid may write its page now (app-htmx.ts).
+    document.dispatchEvent(new Event("cf:modal-closed"));
 }
 export function loadBook(uuid) {
     showModal();

@@ -465,13 +465,18 @@ function scheduleHistoryUpdate(page: number): void {
     historyTimer = setTimeout(flushHistory, HISTORY_DEBOUNCE_MS);
 }
 
+/**
+ * Writes the pending page to the URL. Not while the book modal is open: it
+ * closes by going back to the entry before its #book/ one, and that's only
+ * a hash change (which closes it) if both entries have the same ?page. The
+ * page waits until the modal closes ("cf:modal-closed" from modal.ts).
+ */
 function flushHistory(): void {
     clearTimeout(historyTimer);
-    if (historyPage === null) return;
+    if (historyPage === null || window.location.hash.startsWith(HASH_PREFIX)) return;
     const page = historyPage;
     historyPage = null;
     try {
-        // Keep the hash and state so an open modal's entry isn't clobbered.
         const params = new URLSearchParams(window.location.search);
         params.set("page", String(page));
         history.replaceState(
@@ -578,23 +583,31 @@ function setupScrollTracking(): void {
     });
 
     window.addEventListener("pagehide", flushHistory);
+    document.addEventListener("cf:modal-closed", flushHistory);
     document.addEventListener("visibilitychange", () => {
         if (document.visibilityState === "hidden") flushHistory();
     });
 
-    // Column count changes with width => page height changes.
+    // Column count changes with width => page height changes. The page to
+    // keep is the one shown before the resize: by the time the first resize
+    // event runs the grid has already reflowed, so the old scroll offset
+    // lands on a different page.
     let resizeTimer: ReturnType<typeof setTimeout> | undefined;
+    let resizeKeep: number | null = null;
     window.addEventListener("resize", () => {
+        resizeKeep ??= targetPage;
         clearTimeout(resizeTimer);
-        resizeTimer = setTimeout(onResize, 150);
+        resizeTimer = setTimeout(() => {
+            onResize(resizeKeep ?? targetPage);
+            resizeKeep = null;
+        }, 150);
     });
 }
 
-function onResize(): void {
+function onResize(keep: number): void {
     if (window.innerWidth === lastWidth) return; // mobile URL-bar show/hide
     lastWidth = window.innerWidth;
 
-    const keep = getVisiblePage();
     const el = pageEl(keep);
     if (realPages.has(keep)) {
         pageHeight = pageExtent(el) || pageHeight;
