@@ -10,7 +10,7 @@ if (nav) {
                 Object.assign(document.createElement("a"), { href, textContent: text, className: cls });
             if (!ok || !body.user) {
                 const next = encodeURIComponent(location.pathname + location.search);
-                nav.replaceChildren(link(`/login?next=${next}`, "Sign in"));
+                nav.replaceChildren(link("/shelves", "Shelves"), link(`/login?next=${next}`, "Sign in"));
                 return;
             }
             const items = [

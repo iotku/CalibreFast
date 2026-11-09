@@ -1977,3 +1977,68 @@ label.group-row span {
     color: var(--text-muted);
     font-size: 0.85rem;
 }
+
+/* ============================================
+   Bookshelves page
+   ============================================ */
+.shelf-list {
+    margin: 0 0 1rem;
+    padding: 0;
+    list-style: none;
+}
+
+.shelf-row {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    justify-content: space-between;
+    gap: 0.5rem 1rem;
+    padding: 0.6rem 0;
+    border-bottom: 1px solid var(--border-medium);
+}
+
+.shelf-link {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: baseline;
+    gap: 0.25rem 0.6rem;
+    min-width: 0;
+    color: inherit;
+    text-decoration: none;
+}
+
+.shelf-link:hover .shelf-name {
+    text-decoration: underline;
+}
+
+.shelf-name {
+    font-weight: 600;
+}
+
+.shelf-count {
+    font-size: 0.8rem;
+    color: var(--text-muted);
+}
+
+.shelf-desc {
+    width: 100%;
+    font-size: 0.85rem;
+    color: var(--text-muted);
+}
+
+.shelf-actions {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 0.4rem;
+}
+
+.shelf-create {
+    display: flex;
+    gap: 0.5rem;
+}
+
+.shelf-create input {
+    flex: 1;
+    min-width: 0;
+    width: auto;
+}

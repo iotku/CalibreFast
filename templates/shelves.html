@@ -1,0 +1,71 @@
+<!doctype html>
+<html lang="en">
+<head>
+    <meta charset="utf-8">
+    <title>Bookshelves — {{ .Title }}</title>
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <link rel="stylesheet" href="/static/style.css">
+</head>
+<body class="auth-body">
+<header class="top-bar">
+    <div class="top-bar-left">
+        <a href="/" class="btn-back">&#8592; Library</a>
+        <h1 class="title">Bookshelves</h1>
+    </div>
+    <span id="user-nav" class="user-nav"></span>
+</header>
+<main class="auth-main auth-wide">
+    <p id="shelf-status" class="auth-notice" role="status" hidden></p>
+
+    {{ define "shelf-row" }}
+    <li class="shelf-row" data-id="{{ .ID }}" data-name="{{ .Name }}" data-description="{{ .Description }}">
+        <a class="shelf-link" href="/shelf/{{ .ID }}">
+            <span class="shelf-name">{{ .Name }}</span>
+            <span class="shelf-count">{{ .Count }} {{ if eq .Count 1 }}book{{ else }}books{{ end }}</span>
+            {{ if .Description }}<span class="shelf-desc">{{ .Description }}</span>{{ end }}
+        </a>
+        {{ if .CanEdit }}
+        <span class="shelf-actions">
+            <button type="button" class="btn-standard" data-action="rename">Rename</button>
+            <button type="button" class="btn-standard" data-action="describe">Description</button>
+            <button type="button" class="btn-standard" data-action="delete">Delete</button>
+        </span>
+        {{ end }}
+    </li>
+    {{ end }}
+
+    {{ if .User }}
+    <section class="auth-card">
+        <h2>Your shelves</h2>
+        <ul class="shelf-list">
+            {{ range .Mine }}{{ template "shelf-row" . }}{{ else }}<li class="auth-muted">No shelves yet. Create one below, or from a book's Shelves menu.</li>{{ end }}
+        </ul>
+        <form class="shelf-create" data-global="false">
+            <input name="name" type="text" maxlength="100" placeholder="New shelf name" required autocomplete="off">
+            <button type="submit" class="btn-standard">Create</button>
+        </form>
+    </section>
+    {{ end }}
+
+    <section class="auth-card">
+        <h2>Global shelves</h2>
+        <p class="auth-muted">Shared with everyone{{ if and .User .User.IsAdmin }}; as an admin you can create and edit these{{ end }}.</p>
+        <ul class="shelf-list">
+            {{ range .Global }}{{ template "shelf-row" . }}{{ else }}<li class="auth-muted">No global shelves yet.</li>{{ end }}
+        </ul>
+        {{ if and .User .User.IsAdmin }}
+        <form class="shelf-create" data-global="true">
+            <input name="name" type="text" maxlength="100" placeholder="New global shelf name" required autocomplete="off">
+            <button type="submit" class="btn-standard">Create global shelf</button>
+        </form>
+        {{ end }}
+    </section>
+
+    {{ if not .User }}
+    <p class="auth-muted"><a class="meta-link" href="/login?next=/shelves">Sign in</a> to make your own shelves.</p>
+    {{ end }}
+</main>
+<script type="module" src="/static/nav.js"></script>
+<script type="module" src="/static/shelves.js"></script>
+</body>
+</html>

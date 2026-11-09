@@ -709,6 +709,7 @@ func registerAuthRoutes() {
 	registerOAuthRoutes()
 	registerUserDataRoutes()
 	registerProgressRoutes()
+	registerShelfRoutes()
 }
 
 func withUserCtx(r *http.Request, u *User) context.Context {
