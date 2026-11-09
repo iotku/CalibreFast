@@ -12,16 +12,13 @@
  * "Split all" button, for tags that were glued together with semicolons. A
  * split chip is replaced by its parts (no struck-through copy is kept).
  */
-
 const lower = (s) => s.toLowerCase();
-
 export function parseList(value) {
     return (value || "")
         .split(",")
         .map((s) => s.trim())
         .filter(Boolean);
 }
-
 /**
  * placeholders: values that only stand in for "nothing set" (e.g. "und" for
  * languages). They're removed outright as soon as a real value is added or
@@ -29,10 +26,8 @@ export function parseList(value) {
  */
 export function createChipInput(backing, { placeholder = "", splitOn = ";", placeholders = [] } = {}) {
     const placeholderSet = new Set(placeholders.map((p) => p.toLowerCase()));
-    // { text, removed }
     let chips = [];
     let emitting = false;
-
     const root = document.createElement("div");
     root.className = "chip-input";
     const list = document.createElement("div");
@@ -56,33 +51,30 @@ export function createChipInput(backing, { placeholder = "", splitOn = ";", plac
     splitAllBtn.type = "button";
     splitAllBtn.className = "chip-tool-btn";
     tools.append(splitAllBtn);
-
     root.append(entry, list, tools);
     backing.type = "hidden";
     backing.after(root);
-
     const active = () => chips.filter((c) => !c.removed);
-
     function emit() {
         const value = active().map((c) => c.text).join(", ");
-        if (value === backing.value) return;
+        if (value === backing.value)
+            return;
         backing.value = value;
         emitting = true;
         backing.dispatchEvent(new Event("input", { bubbles: true }));
         emitting = false;
     }
-
     /** Index where active chips end (removed ones are parked after). */
     function activeEnd() {
         const i = chips.findIndex((c) => c.removed);
         return i === -1 ? chips.length : i;
     }
-
     /** Add items (deduped case-insensitively); revives removed duplicates. */
     function addItems(items, at = activeEnd()) {
         for (const raw of items) {
             const t = raw.trim();
-            if (!t) continue;
+            if (!t)
+                continue;
             const existing = chips.find((c) => lower(c.text) === lower(t));
             if (existing) {
                 if (existing.removed) {
@@ -97,37 +89,37 @@ export function createChipInput(backing, { placeholder = "", splitOn = ";", plac
             at++;
         }
     }
-
     /** Once there's a real value, placeholder chips (e.g. "und") go away. */
     function dropPlaceholders() {
-        if (!placeholderSet.size) return;
+        if (!placeholderSet.size)
+            return;
         const hasReal = chips.some((c) => !c.removed && !placeholderSet.has(lower(c.text)));
-        if (hasReal) chips = chips.filter((c) => !placeholderSet.has(lower(c.text)));
+        if (hasReal)
+            chips = chips.filter((c) => !placeholderSet.has(lower(c.text)));
     }
-
     function commitText() {
         const items = parseList(text.value);
         text.value = "";
-        if (items.length === 0) return;
+        if (items.length === 0)
+            return;
         addItems(items);
         dropPlaceholders();
         render();
         emit();
     }
-
     function toggle(chip) {
         chips.splice(chips.indexOf(chip), 1);
         if (chip.removed) {
             chip.removed = false;
             chips.splice(activeEnd(), 0, chip);
-        } else {
+        }
+        else {
             chip.removed = true;
             chips.push(chip);
         }
         render();
         emit();
     }
-
     function split(chip) {
         const at = chips.indexOf(chip);
         const parts = chip.text.split(splitOn).map((s) => s.trim()).filter(Boolean);
@@ -138,13 +130,14 @@ export function createChipInput(backing, { placeholder = "", splitOn = ";", plac
         render();
         emit();
     }
-
     /** Apply an inline edit: commas split, empty soft-removes, dupes merge. */
     function applyEdit(chip, value) {
         const parts = parseList(value);
         if (parts.length === 0) {
-            if (!chip.removed) toggle(chip); // struck through with its original text; Undo restores
-            else render();
+            if (!chip.removed)
+                toggle(chip); // struck through with its original text; Undo restores
+            else
+                render();
             return;
         }
         const at = chips.indexOf(chip);
@@ -152,9 +145,11 @@ export function createChipInput(backing, { placeholder = "", splitOn = ";", plac
         const dupe = chips.find((c) => c !== chip && lower(c.text) === lower(first));
         if (dupe) {
             chips.splice(at, 1); // merged into the existing chip
-            if (dupe.removed) toggle(dupe);
+            if (dupe.removed)
+                toggle(dupe);
             addItems(rest, Math.min(at, activeEnd()));
-        } else {
+        }
+        else {
             chip.text = first;
             addItems(rest, at + 1);
         }
@@ -162,9 +157,9 @@ export function createChipInput(backing, { placeholder = "", splitOn = ";", plac
         render();
         emit();
     }
-
     function startEdit(chip, el, label) {
-        if (el.classList.contains("editing")) return;
+        if (el.classList.contains("editing"))
+            return;
         // Textarea so long values wrap inside the field instead of widening it.
         const input = document.createElement("textarea");
         input.className = "chip-edit";
@@ -178,18 +173,22 @@ export function createChipInput(backing, { placeholder = "", splitOn = ";", plac
         };
         let done = false;
         const finish = (save) => {
-            if (done) return;
+            if (done)
+                return;
             done = true;
             const value = input.value.replace(/\s*\n\s*/g, " "); // values are single-line
-            if (save && value.trim() !== chip.text) applyEdit(chip, value);
-            else render();
+            if (save && value.trim() !== chip.text)
+                applyEdit(chip, value);
+            else
+                render();
         };
         input.addEventListener("keydown", (e) => {
             if (e.key === "Enter") {
                 e.preventDefault(); // no newlines, and don't submit the form
                 finish(true);
                 text.focus();
-            } else if (e.key === "Escape") {
+            }
+            else if (e.key === "Escape") {
                 e.preventDefault();
                 e.stopPropagation();
                 finish(false);
@@ -203,7 +202,6 @@ export function createChipInput(backing, { placeholder = "", splitOn = ";", plac
         input.focus();
         input.select();
     }
-
     function render() {
         const nodes = chips.map((chip) => {
             const el = document.createElement("span");
@@ -219,18 +217,19 @@ export function createChipInput(backing, { placeholder = "", splitOn = ";", plac
                 el.setAttribute("role", "button");
                 el.title = "Click to edit";
                 el.addEventListener("click", (e) => {
-                    if (e.target.closest(".chip-btn, .chip-edit")) return;
+                    if (e.target instanceof Element && e.target.closest(".chip-btn, .chip-edit"))
+                        return;
                     startEdit(chip, el, label);
                 });
                 el.addEventListener("keydown", (e) => {
-                    if (e.target !== el) return;
+                    if (e.target !== el)
+                        return;
                     if (e.key === "Enter" || e.key === " ") {
                         e.preventDefault();
                         startEdit(chip, el, label);
                     }
                 });
             }
-
             if (!chip.removed && splitOn && chip.text.includes(splitOn)) {
                 const s = document.createElement("button");
                 s.type = "button";
@@ -240,7 +239,6 @@ export function createChipInput(backing, { placeholder = "", splitOn = ";", plac
                 s.addEventListener("click", () => split(chip));
                 el.append(s);
             }
-
             const x = document.createElement("button");
             x.type = "button";
             x.className = "chip-btn";
@@ -252,16 +250,14 @@ export function createChipInput(backing, { placeholder = "", splitOn = ";", plac
         });
         list.replaceChildren(...nodes);
         list.hidden = nodes.length === 0;
-
         const splittable = active().filter((c) => splitOn && c.text.includes(splitOn));
         splitAllBtn.hidden = splittable.length === 0;
         splitAllBtn.textContent = `Split all on “${splitOn}” (${splittable.length})`;
     }
-
     splitAllBtn.addEventListener("click", () => {
-        for (const c of active().filter((c) => c.text.includes(splitOn))) split(c);
+        for (const c of active().filter((c) => c.text.includes(splitOn)))
+            split(c);
     });
-
     // Only Enter or Add commits; typing commas just types commas. Pending text
     // stays in the box (and is committed before apply/compare via commitPending).
     text.addEventListener("keydown", (e) => {
@@ -274,26 +270,23 @@ export function createChipInput(backing, { placeholder = "", splitOn = ";", plac
         commitText();
         text.focus();
     });
-
     /**
      * External changes (initial load, source buttons): items no longer present
      * are struck through rather than dropped.
      */
     backing.addEventListener("input", () => {
-        if (emitting) return;
+        if (emitting)
+            return;
         const next = parseList(backing.value);
         const nextKeys = new Set(next.map(lower));
         const prevActive = active().filter((c) => !nextKeys.has(lower(c.text)));
-        const prevRemoved = chips.filter(
-            (c) => c.removed && !nextKeys.has(lower(c.text)),
-        );
+        const prevRemoved = chips.filter((c) => c.removed && !nextKeys.has(lower(c.text)));
         chips = next.map((t) => ({ text: t, removed: false }));
         for (const c of [...prevActive, ...prevRemoved]) {
             chips.push({ text: c.text, removed: true });
         }
         render();
     });
-
     /** Commit any half-typed text (call before reading the form). */
     root.commitPending = commitText;
     /** Active chip values (for autocomplete exclusion). */
