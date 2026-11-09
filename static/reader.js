@@ -60,6 +60,40 @@ const rendition = book.renderTo("reader-container", {
     height: "100%",
     flow: "paginated",
 });
+/**
+ * Links inside the book (registered before the first chapter renders). We handle clicks ourselves (capture phase, before
+ * epub.js): in-book links become a history entry plus a jump; external links
+ * open in a new tab from this page (the chapter iframe is sandboxed and
+ * can't open windows).
+ */
+rendition.on("rendered", (section, view) => {
+    view.document.addEventListener("click", (e) => {
+        // The target lives in the iframe's window: `instanceof Element` (ours) is false.
+        const t = e.target;
+        const a = typeof t?.closest === "function" ? t.closest("a[href]") : null;
+        const href = a?.getAttribute("href");
+        if (!href)
+            return;
+        e.preventDefault();
+        e.stopImmediatePropagation();
+        const url = new URL(href, `epub:${section.url}`);
+        if (url.protocol !== "epub:") {
+            if (/^(https?|mailto):$/.test(url.protocol))
+                window.open(url.href, "_blank", "noopener,noreferrer");
+            return;
+        }
+        // Same-book target: find its spine item (by path), keep the #anchor.
+        const path = decodeURIComponent(url.pathname);
+        for (let i = 0; i < (book.spine.length ?? 0); i++) {
+            const item = book.spine.get(i);
+            if (item && decodeURIComponent(item.url) === path) {
+                pushJump();
+                void rendition.display(item.href + url.hash);
+                return;
+            }
+        }
+    }, true);
+});
 // ---- font size -------------------------------------------------------------
 let fontSize = parseInt(localStorage.getItem("reader-fontsize") || "100", 10) || 100;
 function applyFontSize() {
@@ -153,7 +187,6 @@ rendition.on("relocated", (loc) => {
 function pushJump() {
     history.pushState({ depth: (state().depth ?? 0) + 1 }, "");
 }
-rendition.on("linkClicked", pushJump); // epub.js then displays the target itself
 window.addEventListener("popstate", () => {
     const cfi = state().cfi;
     if (cfi)
