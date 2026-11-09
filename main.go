@@ -429,8 +429,9 @@ func serveLibraryHTTP() {
 		}), "could not encode library info")
 	})
 
-	// Built scripts and styles (assets.go): content-hashed, cached for good.
+	// Scripts, styles and libraries (assets.go): cached for good.
 	http.HandleFunc("GET /static/dist/", serveAsset)
+	http.HandleFunc("GET /static/vendor/", serveAsset)
 
 	// server cover getter
 	http.HandleFunc("/cover/", coverHandler)            // Full cover image

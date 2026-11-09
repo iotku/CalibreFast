@@ -1,4 +1,4 @@
-// Types for the third-party libraries loaded from CDNs (htmx, epub.js,
+// Types for the third-party libraries in static/vendor/ (htmx, epub.js,
 // pdf.js, DOMPurify). Only the parts CalibreFast uses are described — extend as needed.
 
 // ---- htmx (global, loaded by <script> on library pages) --------------------
@@ -68,7 +68,7 @@ interface Window {
     ePub?: typeof ePub;
 }
 
-// ---- pdf.js (ES module imported from the CDN) ------------------------------
+// ---- pdf.js (ES module imported by web/vendor.ts) --------------------------
 declare namespace PdfJS {
     interface Viewport {
         width: number;
@@ -92,12 +92,8 @@ declare namespace PdfJS {
     }
     interface Lib {
         GlobalWorkerOptions: { workerSrc: string };
-        getDocument(src: string): { promise: Promise<Document> };
+        getDocument(src: { url: string; wasmUrl?: string }): { promise: Promise<Document> };
     }
-}
-declare module "https://cdn.jsdelivr.net/npm/pdfjs-dist@5.7.284/build/pdf.mjs" {
-    export const GlobalWorkerOptions: PdfJS.Lib["GlobalWorkerOptions"];
-    export function getDocument(src: string): { promise: Promise<PdfJS.Document> };
 }
 
 // ---- DOMPurify (global, loaded by <script> on the metadata editor) ---------

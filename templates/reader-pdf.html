@@ -5,7 +5,8 @@
     <title>Reader — {{ .Title }}</title>
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <link rel="stylesheet" href="{{ asset "style.css" }}">
-    <script src="https://unpkg.com/htmx.org@4.0.0/dist/htmx.min.js"></script>
+    <!-- pdf.js, fetched alongside reader-pdf.js instead of after it (web/vendor.ts). -->
+    <link rel="modulepreload" href="/static/vendor/pdfjs-dist@5.7.284/build/pdf.min.mjs">
 </head>
 <body class="reader-page">
 <header class="top-bar">
@@ -40,8 +41,6 @@
 <div id="pdf-container">
     <canvas id="pdf-canvas"></canvas>
 </div>
-<script src=" https://cdn.jsdelivr.net/npm/pdfjs-dist@5.7.284/wasm/openjpeg_nowasm_fallback.min.js "></script>
-<link href=" https://cdn.jsdelivr.net/npm/pdfjs-dist@5.7.284/web/pdf_viewer.min.css " rel="stylesheet">
 <script type="module" src="{{ asset "reader-pdf.js" }}"></script>
 </body>
 </html>
