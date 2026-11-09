@@ -143,6 +143,24 @@ book.ready
         currentPercent = book.locations.percentageFromCfi(currentCfi) || 0;
     updateLabel();
 });
+const state = () => history.state ?? {};
+// Keep the current entry pointing at where the reader is now.
+rendition.on("relocated", (loc) => {
+    if (loc?.start?.cfi)
+        history.replaceState({ depth: state().depth ?? 0, cfi: loc.start.cfi }, ""); // only our keys (not htmx's)
+});
+/** Call before an in-book jump: the current spot stays behind as a Back entry. */
+function pushJump() {
+    history.pushState({ depth: (state().depth ?? 0) + 1 }, "");
+}
+rendition.on("linkClicked", pushJump); // epub.js then displays the target itself
+window.addEventListener("popstate", () => {
+    const cfi = state().cfi;
+    if (cfi)
+        void rendition.display(cfi);
+});
+// The top-bar Back leaves the reader, skipping the in-book jumps.
+document.querySelector(".btn-back")?.addEventListener("click", () => history.go(-((state().depth ?? 0) + 1)));
 // ---- contents --------------------------------------------------------------
 function renderToc(items, el) {
     for (const item of items) {
@@ -155,6 +173,7 @@ function renderToc(items, el) {
         a.style.textDecoration = "none";
         a.addEventListener("click", (e) => {
             e.preventDefault();
+            pushJump();
             rendition.display(item.href);
             $("toc-sidebar").style.display = "none";
         });
