@@ -78,6 +78,7 @@
                         " />
                 {{ end }}
             </div>
+            <div class="book-user-actions" data-uuid="{{ .UUID }}"></div>
             <div class="book-actions">
                 <div id="read-buttons">
                     {{ range .Formats }} {{ if eq . "epub" }}
@@ -154,6 +155,7 @@
             {{ end }}
         </div>
     </div>
+<script type="module" src="/static/user.js"></script>
 </body>
 
 </html>

@@ -1841,3 +1841,97 @@ label.group-row span {
 .user-nav-name {
     font-weight: 600;
 }
+
+/* ============================================
+   Book popup: per-user controls
+   ============================================ */
+.book-user-actions {
+    margin-top: 1rem;
+}
+
+.book-user-row {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 0.5rem;
+}
+
+.btn-favorite.is-favorite {
+    color: #f3c969;
+    border-color: rgba(243, 201, 105, 0.6);
+}
+
+.book-status {
+    height: 44px;
+    padding: 0 0.75rem;
+    color: var(--text-primary);
+    background: var(--bg-surface);
+    border: 1px solid var(--border-medium);
+    border-radius: var(--radius-medium);
+    font: inherit;
+    font-size: 0.88rem;
+}
+
+.book-status-note {
+    width: 100%;
+    font-size: 0.75rem;
+    color: var(--text-muted);
+}
+
+.book-status-note:empty {
+    display: none;
+}
+
+.book-shelves {
+    margin-top: 0.5rem;
+    font-size: 0.9rem;
+}
+
+.book-shelves summary {
+    cursor: pointer;
+    color: var(--text-muted);
+    padding: 0.35rem 0;
+}
+
+.book-shelves-list {
+    display: flex;
+    flex-direction: column;
+    gap: 0.35rem;
+    padding: 0.25rem 0 0.5rem;
+}
+
+.book-shelf {
+    display: flex;
+    align-items: center;
+    gap: 0.4rem;
+}
+
+.book-shelf-global {
+    margin-left: 0.4rem;
+    padding: 0 6px;
+    font-size: 0.7rem;
+    color: var(--text-muted);
+    border: 1px solid var(--border-medium);
+    border-radius: 999px;
+}
+
+.book-shelf-create {
+    display: flex;
+    gap: 0.4rem;
+}
+
+.book-shelf-create .book-shelf-new {
+    flex: 1;
+    min-width: 0;
+    width: auto;
+    height: 36px;
+}
+
+.book-shelf-create .btn-action {
+    height: 36px;
+    min-height: 36px;
+}
+
+.user-signin-hint {
+    font-size: 0.85rem;
+}

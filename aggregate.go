@@ -97,6 +97,8 @@ type FilteredPageData struct {
 	Writable    bool   // server started with -allow-writes (shows the group editor)
 	PageURL     string // API base URL; template appends &page={n}
 	TotalPages  int
+	EmptyText   string         // shown when there are no books (default: "No books found.")
+	Extra       map[string]any // page-specific extras (e.g. shelf controls)
 }
 
 // SearchPageData is passed to search.html.
