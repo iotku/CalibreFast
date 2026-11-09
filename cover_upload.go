@@ -140,7 +140,7 @@ func uploadCoverHandler(w http.ResponseWriter, r *http.Request) {
 	}
 
 	// Invalidate thumbnail cache
-	thumbPath := filepath.Join(cacheDir, "covers", "thumb", uuid+".jpg")
+	thumbPath := thumbCachePath(uuid)
 	if err := os.Remove(thumbPath); err != nil && !os.IsNotExist(err) {
 		log.Printf("upload-cover: failed to remove thumbnail cache for %s: %v", uuid, err)
 	}
@@ -233,7 +233,7 @@ func revertCoverHandler(w http.ResponseWriter, r *http.Request) {
 	_ = os.Chtimes(coverPath, now, now)
 
 	// Invalidate thumbnail cache
-	thumbPath := filepath.Join(cacheDir, "covers", "thumb", uuid+".jpg")
+	thumbPath := thumbCachePath(uuid)
 	if err := os.Remove(thumbPath); err != nil && !os.IsNotExist(err) {
 		log.Printf("revert-cover: failed to remove thumbnail cache for %s: %v", uuid, err)
 	}
