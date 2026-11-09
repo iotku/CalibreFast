@@ -4,6 +4,7 @@ import (
 	"context"
 	"net/http"
 	"net/http/httptest"
+	"strings"
 	"testing"
 )
 
@@ -73,5 +74,39 @@ func TestCSRFProtect(t *testing.T) {
 		if rec.Code != c.want {
 			t.Errorf("%s: got %d, want %d", c.name, rec.Code, c.want)
 		}
+	}
+}
+
+func TestRequireReader(t *testing.T) {
+	setupTestAppDB(t)
+	orig := publicRead
+	defer func() { publicRead = orig }()
+	u, _ := createUser("someone", "longenough-pw", false)
+	h := requireReader(func(w http.ResponseWriter, r *http.Request) { w.WriteHeader(http.StatusOK) })
+	run := func(who *User, html bool) *httptest.ResponseRecorder {
+		req := httptest.NewRequest("GET", "/download/x/epub", nil)
+		if html {
+			req.Header.Set("Accept", "text/html")
+		}
+		if who != nil {
+			req = req.WithContext(context.WithValue(req.Context(), userKey, who))
+		}
+		rec := httptest.NewRecorder()
+		h(rec, req)
+		return rec
+	}
+	publicRead = false
+	if c := run(nil, false).Code; c != http.StatusUnauthorized {
+		t.Errorf("anonymous download: %d", c)
+	}
+	if rec := run(nil, true); rec.Code != http.StatusSeeOther || !strings.HasPrefix(rec.Header().Get("Location"), "/login?next=") {
+		t.Errorf("anonymous browser should be sent to sign in: %d %q", rec.Code, rec.Header().Get("Location"))
+	}
+	if c := run(u, false).Code; c != http.StatusOK {
+		t.Errorf("signed in: %d", c)
+	}
+	publicRead = true
+	if c := run(nil, false).Code; c != http.StatusOK {
+		t.Errorf("public read-only mode, anonymous: %d", c)
 	}
 }

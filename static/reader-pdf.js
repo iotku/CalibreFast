@@ -1,4 +1,5 @@
 import * as pdfjsLib from "https://cdn.jsdelivr.net/npm/pdfjs-dist@5.7.284/build/pdf.mjs";
+import { createReadingSync, renderBookmarks } from "./reading-sync.js";
 
 pdfjsLib.GlobalWorkerOptions.workerSrc = "https://cdn.jsdelivr.net/npm/pdfjs-dist@5.7.284/build/pdf.worker.mjs";
 
@@ -11,11 +12,24 @@ if (!uuid) {
 }
 
 const progressLabel = document.getElementById("progress-label");
+const syncLabel = document.getElementById("sync-status");
+const setSync = (text) => {
+    if (syncLabel) syncLabel.textContent = text;
+};
+
+// Resume from this device or the server (whichever is newer).
+const sync = await createReadingSync(uuid, "pdf", { legacyKey: `pdf-page-${uuid}`, onStatus: setSync });
+const saved = await sync.loadProgress();
+if (!sync.signedIn) setSync("Saved on this device");
 
 let pdf = null;
-let currentPage = parseInt(localStorage.getItem(`pdf-page-${uuid}`) || "1");
+let currentPage = parseInt(saved?.position || "1", 10) || 1;
+// The first render is just opening the book; only moving away from it is
+// saved (and marks the book as being read).
+let openingPage = null;
 let scale = parseFloat(localStorage.getItem("pdf-scale") || "1.5");
 let rendering = false;
+let lastWasDual = false; // updated each renderPage
 const dualToggle = document.getElementById("dual-toggle");
 dualToggle.checked = localStorage.getItem("pdf-dual") === "true";
 
@@ -50,7 +64,9 @@ async function renderPage(pageNum) {
     const container = document.getElementById("pdf-container");
     container.innerHTML = "";
 
-    if (await effectiveDual()) {
+    const dual = await effectiveDual();
+    lastWasDual = dual;
+    if (dual) {
         const wrapper = document.createElement("div");
         wrapper.style.cssText = "display:flex; gap:4px; justify-content:center; align-items:flex-start;";
 
@@ -74,7 +90,13 @@ async function renderPage(pageNum) {
     }
 
     currentPage = pageNum;
-    localStorage.setItem(`pdf-page-${uuid}`, currentPage);
+    if (openingPage === null) {
+        openingPage = pageNum;
+    } else if (pageNum !== openingPage) {
+        openingPage = -1; // moved: from now on every page change is saved
+        const lastShown = dual ? Math.min(pageNum + 1, pdf.numPages) : pageNum;
+        sync.saveProgress(pageNum, lastShown / pdf.numPages);
+    }
     rendering = false;
 }
 
@@ -245,7 +267,24 @@ document.getElementById("pdf-container").addEventListener("click", (e) => {
     }
 });
 
-let lastWasDual = false; // updated each renderPage
+// ---- bookmarks ----
+const bookmarkHandlers = {
+    onGo: (b) => {
+        renderPage(Math.min(pdf.numPages, Math.max(1, parseInt(b.position, 10) || 1)));
+        document.getElementById("toc-sidebar").style.display = "none";
+    },
+    onDelete: (b) => {
+        sync.removeBookmark(b.id);
+        showBookmarks(sync.bookmarks());
+    },
+};
+const showBookmarks = (items) => renderBookmarks(document.getElementById("bookmark-list"), items, bookmarkHandlers);
+sync.loadBookmarks().then(showBookmarks);
+document.getElementById("bookmark-btn")?.addEventListener("click", () => {
+    sync.addBookmark(currentPage, `Page ${currentPage}${pdf ? ` of ${pdf.numPages}` : ""}`);
+    showBookmarks(sync.bookmarks());
+    setSync("Bookmark added");
+});
 function effectiveDualSync() {
     return lastWasDual;
 }

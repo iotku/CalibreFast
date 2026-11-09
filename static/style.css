@@ -1935,3 +1935,45 @@ label.group-row span {
 .user-signin-hint {
     font-size: 0.85rem;
 }
+
+/* ============================================
+   Readers: sync status and bookmarks
+   ============================================ */
+.reader-sync {
+    font-size: 0.75rem;
+    color: var(--text-muted);
+    white-space: nowrap;
+}
+
+.bookmark-item {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 0.5rem;
+    padding: 4px 0;
+}
+
+.bookmark-item a {
+    color: var(--color-text, #eee);
+    text-decoration: none;
+}
+
+.bookmark-delete {
+    min-width: 28px;
+    height: 28px;
+    color: var(--text-muted);
+    background: transparent;
+    border: none;
+    border-radius: 999px;
+    cursor: pointer;
+}
+
+.bookmark-delete:hover {
+    color: var(--text-primary);
+    background: rgba(255, 255, 255, 0.08);
+}
+
+.bookmark-empty {
+    color: var(--text-muted);
+    font-size: 0.85rem;
+}

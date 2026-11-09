@@ -31,6 +31,7 @@ import (
 var (
 	dataDir          string // -datadir: where calibrefast.db lives
 	requireLogin     bool   // -require-login: anonymous visitors can't browse
+	publicRead       bool   // -public-read: anonymous visitors may read/download books
 	openRegistration bool   // -open-registration: anyone may create an account
 	publicURL        string // -public-url: external base URL (OAuth redirects, Secure cookies)
 )
@@ -306,6 +307,23 @@ func requireUser(h http.HandlerFunc) http.HandlerFunc {
 				return
 			}
 			http.Error(w, "sign in required", http.StatusUnauthorized)
+			return
+		}
+		h(w, r)
+	}
+}
+
+// requireReader guards book contents (readers, downloads, EPUB/PDF files):
+// sign-in required unless the server runs in public read-only mode
+// (-public-read). The catalog (covers, metadata, search) stays browsable.
+func requireReader(h http.HandlerFunc) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		if !publicRead && currentUser(r) == nil {
+			if wantsHTML(r) {
+				http.Redirect(w, r, "/login?next="+url.QueryEscape(r.URL.RequestURI()), http.StatusSeeOther)
+				return
+			}
+			http.Error(w, "sign in to read or download books", http.StatusUnauthorized)
 			return
 		}
 		h(w, r)
@@ -690,6 +708,7 @@ func registerAuthRoutes() {
 	http.HandleFunc("DELETE /api/admin/users/{id}", requireAdminUser(adminDeleteUser))
 	registerOAuthRoutes()
 	registerUserDataRoutes()
+	registerProgressRoutes()
 }
 
 func withUserCtx(r *http.Request, u *User) context.Context {

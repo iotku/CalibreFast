@@ -168,7 +168,8 @@ func main() {
 	flag.StringVar(&hostPort, "port", "8080", "port to listen on")
 	flag.BoolVar(&allowWrites, "allow-writes", false, "allow admins to change the library (metadata edits, uploads, covers, groups)")
 	flag.StringVar(&dataDir, "datadir", "data", "where CalibreFast keeps its own database (accounts, favorites, progress, shelves)")
-	flag.BoolVar(&requireLogin, "require-login", false, "require signing in to browse or read anything")
+	flag.BoolVar(&requireLogin, "require-login", false, "require signing in to browse anything (even the catalog)")
+	flag.BoolVar(&publicRead, "public-read", false, "public read-only mode: let anonymous visitors read and download books (by default they can only browse the catalog)")
 	flag.BoolVar(&openRegistration, "open-registration", false, "let anyone create an account (password, or GitHub/Google sign-in)")
 	flag.StringVar(&publicURL, "public-url", "", "external base URL, e.g. https://books.example.com (needed for GitHub/Google sign-in)")
 	createUserName := flag.String("create-user", "", "create a user (or reset their password) and exit; password from $CF_PASSWORD or stdin")
@@ -344,7 +345,7 @@ func serveLibraryHTTP() {
 	http.HandleFunc("/formats/", formatsHandler)
 
 	// Downloads
-	http.HandleFunc("/download/", downloadHandler)
+	http.HandleFunc("/download/", requireReader(downloadHandler))
 
 	// Uploads
 	http.HandleFunc("/upload", requireWrites(uploadHandler))
@@ -432,24 +433,24 @@ func serveLibraryHTTP() {
 
 	http.HandleFunc("/api/search", searchHandler)
 
-	http.HandleFunc("/read", func(w http.ResponseWriter, r *http.Request) {
+	http.HandleFunc("/read", requireReader(func(w http.ResponseWriter, r *http.Request) {
 		err := templates.ExecuteTemplate(w, "reader.html", PageData{Title: SiteTitle})
 		if err != nil {
 			http.Error(w, err.Error(), 500)
 		}
-	})
+	}))
 
 	// TODO: Can we combine this with the /read endpoint?
-	http.HandleFunc("/read-pdf", func(w http.ResponseWriter, r *http.Request) {
+	http.HandleFunc("/read-pdf", requireReader(func(w http.ResponseWriter, r *http.Request) {
 		err := templates.ExecuteTemplate(w, "reader-pdf.html", PageData{Title: SiteTitle})
 		if err != nil {
 			http.Error(w, err.Error(), 500)
 		}
-	})
+	}))
 
-	http.HandleFunc("/epub/", epubFileHandler)
+	http.HandleFunc("/epub/", requireReader(epubFileHandler))
 
-	http.HandleFunc("/view/", viewHandler)
+	http.HandleFunc("/view/", requireReader(viewHandler))
 
 	// authors/publishers/tags/languages: aggregate pages, filtered pages,
 	// JSON APIs and the group editor API

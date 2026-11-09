@@ -1,3 +1,5 @@
+import { createReadingSync, renderBookmarks } from "./reading-sync.js";
+
 const params = new URLSearchParams(window.location.search);
 const uuid = params.get("uuid");
 
@@ -6,6 +8,13 @@ if (!uuid) {
     throw new Error("missing uuid");
 }
 
+const $ = (id) => document.getElementById(id);
+const progressLabel = $("progress-label");
+const syncLabel = $("sync-status");
+const setSync = (text) => {
+    if (syncLabel) syncLabel.textContent = text;
+};
+
 const book = ePub(`/epub/${uuid}/`);
 const rendition = book.renderTo("reader-container", {
     width: "100%",
@@ -13,86 +22,138 @@ const rendition = book.renderTo("reader-container", {
     flow: "paginated",
 });
 
-let fontSize = 100;
+// ---- font size -------------------------------------------------------------
 
+let fontSize = parseInt(localStorage.getItem("reader-fontsize") || "100", 10) || 100;
 function applyFontSize() {
     rendition.themes.fontSize(`${fontSize}%`);
-    localStorage.setItem(`reader-fontsize`, fontSize);
+    localStorage.setItem("reader-fontsize", fontSize);
 }
 
-// restore saved position and font size
-const savedCfi = localStorage.getItem(`reader-cfi-${uuid}`);
-if (savedCfi && savedCfi !== "undefined") {
-    rendition.display(savedCfi);
-} else {
-    localStorage.removeItem(`reader-cfi-${uuid}`); // clean up bad value
-    rendition.display();
-}
-const savedFont = localStorage.getItem(`reader-fontsize`);
-if (savedFont) fontSize = parseInt(savedFont);
+// ---- position: resume (local or synced), save as the reader moves ----------
 
-if (savedCfi) {
-    rendition.display(savedCfi);
-} else {
-    rendition.display();
-}
-
+const sync = await createReadingSync(uuid, "epub", { legacyKey: `reader-cfi-${uuid}`, onStatus: setSync });
+const saved = await sync.loadProgress();
+let startCfi = saved?.position || null;
 applyFontSize();
 
-// progress
-const progressLabel = document.getElementById("progress-label");
+let locationsReady = false;
+let currentCfi = null;
+let currentPercent = 0;
+// The first "relocated" is just the book opening (epub.js may normalise the
+// saved CFI to the page start). Only moving away from it is saved — and that
+// is what marks the book as being read.
+let openingCfi = null;
 
-book.ready.then(() => {
-    book.locations.generate(1024).then(() => {
-        rendition.on("relocated", (loc) => {
-            if (loc?.start?.cfi) {
-                localStorage.setItem(`reader-cfi-${uuid}`, loc.start.cfi);
-                const pct = Math.round(book.locations.percentageFromCfi(loc.start.cfi) * 100);
-                progressLabel.textContent = `${pct}%`;
-            }
-        });
-    });
-    function renderToc(items, el) {
-        for (const item of items) {
-            const li = document.createElement("li");
-            li.style.padding = "6px 0";
-            const a = document.createElement("a");
-            a.textContent = item.label.trim();
-            a.href = "#";
-            a.style.color = "var(--color-text)";
-            a.style.textDecoration = "none";
-            a.addEventListener("click", (e) => {
-                e.preventDefault();
-                rendition.display(item.href);
-                document.getElementById("toc-sidebar").style.display = "none";
-            });
-            li.appendChild(a);
-            if (item.subitems?.length) {
-                const sub = document.createElement("ul");
-                sub.style.paddingLeft = "1rem";
-                renderToc(item.subitems, sub);
-                li.appendChild(sub);
-            }
-            el.appendChild(li);
-        }
+function percentFor(loc) {
+    if (loc.atEnd) return 1;
+    if (!locationsReady) return 0;
+    return book.locations.percentageFromCfi(loc.start.cfi) || 0;
+}
+
+rendition.on("relocated", (loc) => {
+    if (!loc?.start?.cfi) return;
+    currentCfi = loc.start.cfi;
+    currentPercent = percentFor(loc);
+    progressLabel.textContent = locationsReady ? `${Math.round(currentPercent * 100)}%` : "—";
+    if (openingCfi === null) {
+        openingCfi = currentCfi;
+        return;
     }
-
-    book.ready.then(() => {
-        const toc = book.navigation.toc;
-        const list = document.getElementById("toc-list");
-        renderToc(toc, list);
-
-        book.locations.generate(1024).then(() => {
-            rendition.on("relocated", (loc) => {
-                if (loc?.start?.cfi) {
-                    localStorage.setItem(`reader-cfi-${uuid}`, loc.start.cfi);
-                    const pct = Math.round(book.locations.percentageFromCfi(loc.start.cfi) * 100);
-                    progressLabel.textContent = `${pct}%`;
-                }
-            });
-        });
-    });
+    if (currentCfi === openingCfi) return;
+    openingCfi = ""; // moved: from now on every change is saved
+    sync.saveProgress(currentCfi, currentPercent);
 });
+
+// Handler is attached first so the opening position is seen as such.
+try {
+    await rendition.display(startCfi || undefined);
+} catch {
+    startCfi = null; // stale/invalid CFI (e.g. the book file changed)
+    openingCfi = null;
+    await rendition.display();
+}
+
+book.ready
+    .then(() => book.locations.generate(1024))
+    .then(() => {
+        locationsReady = true;
+        if (currentCfi) {
+            currentPercent = book.locations.percentageFromCfi(currentCfi) || 0;
+            progressLabel.textContent = `${Math.round(currentPercent * 100)}%`;
+        }
+    });
+
+// ---- contents --------------------------------------------------------------
+
+function renderToc(items, el) {
+    for (const item of items) {
+        const li = document.createElement("li");
+        li.style.padding = "6px 0";
+        const a = document.createElement("a");
+        a.textContent = item.label.trim();
+        a.href = "#";
+        a.style.color = "var(--color-text)";
+        a.style.textDecoration = "none";
+        a.addEventListener("click", (e) => {
+            e.preventDefault();
+            rendition.display(item.href);
+            $("toc-sidebar").style.display = "none";
+        });
+        li.appendChild(a);
+        if (item.subitems?.length) {
+            const sub = document.createElement("ul");
+            sub.style.paddingLeft = "1rem";
+            renderToc(item.subitems, sub);
+            li.appendChild(sub);
+        }
+        el.appendChild(li);
+    }
+}
+book.ready.then(() => renderToc(book.navigation.toc, $("toc-list")));
+
+// ---- bookmarks -------------------------------------------------------------
+
+function chapterLabel() {
+    try {
+        const section = book.spine.get(currentCfi);
+        const href = section?.href || "";
+        const find = (items) => {
+            for (const it of items) {
+                if (href && it.href && href.endsWith(it.href.split("#")[0])) return it.label.trim();
+                const sub = it.subitems?.length && find(it.subitems);
+                if (sub) return sub;
+            }
+            return "";
+        };
+        return find(book.navigation?.toc || []);
+    } catch {
+        return "";
+    }
+}
+
+const bookmarkHandlers = {
+    onGo: (b) => {
+        rendition.display(b.position);
+        $("toc-sidebar").style.display = "none";
+    },
+    onDelete: (b) => {
+        sync.removeBookmark(b.id);
+        showBookmarks(sync.bookmarks());
+    },
+};
+const showBookmarks = (items) => renderBookmarks($("bookmark-list"), items, bookmarkHandlers);
+sync.loadBookmarks().then(showBookmarks);
+
+$("bookmark-btn")?.addEventListener("click", () => {
+    if (!currentCfi) return;
+    const pct = locationsReady ? ` — ${Math.round(currentPercent * 100)}%` : "";
+    sync.addBookmark(currentCfi, `${chapterLabel() || "Bookmark"}${pct}`);
+    showBookmarks(sync.bookmarks());
+    setSync("Bookmark added");
+});
+
+// ---- navigation ------------------------------------------------------------
 
 function safePrev() {
     rendition.prev().catch((e) => {
@@ -106,45 +167,46 @@ function safeNext() {
     });
 }
 
-// prev/next
-// replace existing prev/next button listeners
-document.getElementById("prev-btn").addEventListener("click", safePrev);
-document.getElementById("next-btn").addEventListener("click", safeNext);
+$("prev-btn").addEventListener("click", safePrev);
+$("next-btn").addEventListener("click", safeNext);
 
-// keyboard nav
 window.addEventListener("keydown", (e) => {
     if (e.key === "ArrowLeft") safePrev();
     if (e.key === "ArrowRight") safeNext();
-    if (e.key === "Escape") document.getElementById("toc-sidebar").style.display = "none";
+    if (e.key === "Escape") $("toc-sidebar").style.display = "none";
 });
 
 // scroll to navigate
 rendition.on("rendered", (section, view) => {
-    view.document.addEventListener("wheel", (e) => {
-        e.preventDefault();
-        if (e.deltaY > 0) safeNext(); else safePrev();
-    }, { passive: false });
+    view.document.addEventListener(
+        "wheel",
+        (e) => {
+            e.preventDefault();
+            if (e.deltaY > 0) safeNext();
+            else safePrev();
+        },
+        { passive: false },
+    );
 });
 
 // click left/right half
-document.getElementById("reader-container").addEventListener("click", (e) => {
-    if (e.clientX < window.innerWidth / 2) safePrev(); else safeNext();
+$("reader-container").addEventListener("click", (e) => {
+    if (e.clientX < window.innerWidth / 2) safePrev();
+    else safeNext();
 });
 
-// TODO: click handler
-
-// font size
-document.getElementById("font-up").addEventListener("click", () => {
+$("font-up").addEventListener("click", () => {
     fontSize = Math.min(fontSize + 10, 200);
     applyFontSize();
 });
-document.getElementById("font-down").addEventListener("click", () => {
+$("font-down").addEventListener("click", () => {
     fontSize = Math.max(fontSize - 10, 60);
     applyFontSize();
 });
 
-// toc toggle
-document.getElementById("toc-btn").addEventListener("click", () => {
-    const sidebar = document.getElementById("toc-sidebar");
+$("toc-btn").addEventListener("click", () => {
+    const sidebar = $("toc-sidebar");
     sidebar.style.display = sidebar.style.display === "none" ? "block" : "none";
 });
+
+if (!sync.signedIn) setSync("Saved on this device");

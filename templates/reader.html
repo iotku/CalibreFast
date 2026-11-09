@@ -19,6 +19,8 @@
     </div>
 
     <div class="top-bar-controls">
+        <span id="sync-status" class="reader-sync" role="status"></span>
+        <button id="bookmark-btn" class="btn-icon" title="Bookmark this page" aria-label="Bookmark this page">🔖</button>
         <button id="toc-btn" class="btn-standard">Contents</button>
         <button id="font-down" class="btn-icon">A-</button>
         <button id="font-up" class="btn-icon">A+</button>
@@ -28,6 +30,8 @@
 <div id="toc-sidebar" class="toc-sidebar">
     <h2>Contents</h2>
     <ul id="toc-list" class="toc-list"></ul>
+    <h2>Bookmarks</h2>
+    <ul id="bookmark-list" class="toc-list bookmark-list"></ul>
 </div>
 
 <div id="reader-container"></div>
