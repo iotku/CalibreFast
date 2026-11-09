@@ -20,6 +20,7 @@ import (
 	"strings"
 	"sync"
 	"time"
+	"unicode"
 
 	"golang.org/x/crypto/bcrypt"
 )
@@ -403,10 +404,24 @@ type AuthPageData struct {
 	Identities   []Identity
 }
 
-// safeNext only allows local redirects ("/x", not "//evil" or "https://…").
+// safeNext returns next if it is a path on this site, otherwise "/". It is
+// used for every post-sign-in redirect (?next=), so it must never send the
+// browser to another host. Rejected:
+//   - absolute URLs and scheme-relative ones ("https://x", "//x", "javascript:")
+//   - backslashes and control characters: browsers treat "\" as "/" and drop
+//     tabs/newlines, so "/\x" or "/\t/x" would become "//x"
+//   - anything that doesn't start with a single "/"
 func safeNext(next string) string {
-	if strings.HasPrefix(next, "/") && !strings.HasPrefix(next, "//") && !strings.HasPrefix(next, "/\\") {
-		return next
+	if strings.ContainsRune(next, '\\') || strings.IndexFunc(next, unicode.IsControl) >= 0 {
+		return "/"
+	}
+	u, err := url.Parse(next)
+	if err != nil {
+		return "/"
+	}
+	if u.Scheme == "" && u.User == nil && u.Hostname() == "" &&
+		strings.HasPrefix(u.Path, "/") && !strings.HasPrefix(u.Path, "//") && !strings.HasPrefix(next, "//") {
+		return (&url.URL{Path: u.Path, RawPath: u.RawPath, RawQuery: u.RawQuery, Fragment: u.Fragment}).String()
 	}
 	return "/"
 }
