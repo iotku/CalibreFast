@@ -111,7 +111,7 @@ func serveUUIDList(w http.ResponseWriter, r *http.Request, l uuidList) {
 		Sub:        l.Sub,
 		Active:     strings.TrimPrefix(l.BaseURL, "/me/"),
 		PageURL:    l.BaseURL + "?api=1",
-		TotalPages: pagesFor(n),
+		TotalBooks: n,
 		EmptyText:  l.EmptyText,
 		Extra:      l.Extra,
 	}

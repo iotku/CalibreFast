@@ -54,7 +54,7 @@
     </div>
 </section>
 {{ end }}
-<div id="books" data-page-url="{{ .PageURL }}&page={n}" data-total-pages="{{ .TotalPages }}"{{ if .EmptyText }} data-empty-text="{{ .EmptyText }}"{{ end }}></div>
+<div id="books" data-page-url="{{ .PageURL }}&page={n}" data-page-size="{{ booksPerPage }}" data-total-books="{{ .TotalBooks }}"{{ if .EmptyText }} data-empty-text="{{ .EmptyText }}"{{ end }}></div>
 <p id="status" class="status-message"></p>
 <div id="book-modal" class="modal-overlay">
     <div class="modal-content">

@@ -654,5 +654,7 @@ func generatePage1() {
 
 	if err := writePage(1, books); err != nil {
 		log.Println("generatePage1: write failed:", err)
+		return
 	}
+	pagesVersion.Store(time.Now().UnixNano())
 }

@@ -192,11 +192,30 @@ input[type="number"],
     margin: var(--topbar-total) auto 0;
 }
 
-#books > .page {
-    display: grid;
+/* The rows outside the rendered window (web/app-htmx.ts): painted as empty
+   cards, so a scroll that outruns the DOM shows the grid, not a blank.
+   app-htmx.ts sets the pattern (one row of cards) from the layout. */
+#books > .grid-spacer {
     grid-column: 1 / -1;
-    grid-template-columns: subgrid;
-    row-gap: inherit;
+    background: var(--bg-secondary);
+    mask: var(--skeleton-row) 0 0 / var(--skeleton-size) repeat-y;
+}
+
+/* The top spacer ends on a row of cards: line the pattern up from there,
+   where it meets the real ones. */
+#books > .grid-spacer:first-child {
+    mask-position: 0 calc(100% + var(--skeleton-gap));
+}
+
+/* A book whose page hasn't arrived yet */
+.book.skeleton {
+    box-shadow: none;
+    cursor: default;
+}
+
+/* A slot the page came back without (it changed since the count) */
+.book.missing {
+    visibility: hidden;
 }
 /* ============================================
    Component - Book Card
@@ -1471,10 +1490,6 @@ body.book-standalone {
 /* ============================================
    Utility Classes
    ============================================ */
-.load-more-sentinel {
-    height: 1px;
-}
-
 .status-message {
     text-align: center;
     padding: 2rem 0;
@@ -1859,13 +1874,6 @@ body.book-standalone {
     object-fit: cover;
     border-radius: var(--radius-small);
     flex-shrink: 0;
-}
-
-#books > .page.placeholder {
-    display: block;
-    grid-column: 1 / -1;
-    flex: 0 0 100%;
-    height: var(--page-h, 1000px);
 }
 
 #scroll-badge {

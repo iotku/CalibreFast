@@ -98,7 +98,7 @@ type FilteredPageData struct {
 	GroupsError string // non-empty when grouping is read-only
 	Writable    bool   // server started with -allow-writes (shows the group editor)
 	PageURL     string // API base URL; template appends &page={n}
-	TotalPages  int
+	TotalBooks  int
 	EmptyText   string         // shown when there are no books (default: "No books found.")
 	Extra       map[string]any // page-specific extras (e.g. shelf controls)
 }
@@ -107,7 +107,7 @@ type FilteredPageData struct {
 type SearchPageData struct {
 	Title      string // site title
 	Query      string // pre-filled query from URL
-	TotalPages int
+	TotalBooks int
 }
 
 // ---------------------------------------------------------------------------
@@ -119,15 +119,14 @@ var (
 	aggregateDisplayCache sync.Map
 	// aggregateJSONCache: plural -> pre-serialised []AggregateItem
 	aggregateJSONCache sync.Map
-	// filteredTotalCache: "key/lowercased resolved name" -> total pages
+	// filteredTotalCache: "key/lowercased resolved name" -> book count
 	filteredTotalCache sync.Map
 )
 
-// booksPerPage is the LCM of the grid column counts (10/8/6/4/2) so page
-// boundaries never leave gaps in the grid. Shared by every paginated view.
-const booksPerPage = 120
-
-func pagesFor(count int) int { return (count + booksPerPage - 1) / booksPerPage }
+// booksPerPage is how many books one page of JSON holds, in every
+// paginated view. The grid lays books out by index, not by page
+// (web/app-htmx.ts), so it needn't divide the column counts.
+const booksPerPage = 60
 
 // preloadCaches populates the aggregate caches at startup.
 func preloadCaches() {
@@ -308,13 +307,13 @@ func getAggregateDisplay(c *category) []AggregateDisplayItem {
 	return items
 }
 
-// getFilteredTotal returns total pages for a resolved entity, cached.
+// getFilteredTotal returns the book count for a resolved entity, cached.
 func getFilteredTotal(c *category, name string, members []string) int {
 	key := c.Key + "/" + strings.ToLower(name)
 	if val, ok := filteredTotalCache.Load(key); ok {
 		return val.(int)
 	}
-	total := pagesFor(countBooks(c, members))
+	total := countBooks(c, members)
 	filteredTotalCache.Store(key, total)
 	return total
 }
@@ -430,7 +429,7 @@ func filteredPageHandler(c *category) http.HandlerFunc {
 			Members:     members,
 			Grouped:     grouped,
 			PageURL:     c.href(value) + "?api=1",
-			TotalPages:  getFilteredTotal(c, name, members),
+			TotalBooks:  getFilteredTotal(c, name, members),
 			Writable:    canEditLibrary(r),
 		}
 		if groups.readOnly != nil {

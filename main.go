@@ -23,6 +23,7 @@ import (
 	"strconv"
 	"strings"
 	"sync"
+	"sync/atomic"
 	"time"
 
 	"github.com/google/uuid"
@@ -137,10 +138,27 @@ type Book struct {
 }
 
 type LibraryInfo struct {
+	TotalBooks int `json:"total_books"`
+	PageSize   int `json:"page_size"`
 	TotalPages int `json:"total_pages"`
 }
 
-var totalPages = 0
+// IndexPageData is passed to index.html.
+type IndexPageData struct {
+	Title        string
+	TotalBooks   int
+	PagesVersion string
+}
+
+var (
+	// totalBooks is how many books pages/*.json hold, set when they're written.
+	totalBooks int
+	// pagesVersion changes whenever pages/*.json are rewritten. index.html
+	// requests pageN.json?v=<it>, so the files can be cached for good.
+	pagesVersion atomic.Int64
+)
+
+func currentPagesVersion() string { return strconv.FormatInt(pagesVersion.Load(), 36) }
 
 type PageData struct {
 	Title string
@@ -169,7 +187,27 @@ func writePage(page int, books []Book) error {
 		"page"+strconv.Itoa(page)+".json",
 	)
 
-	return os.WriteFile(filename, data, 0o644)
+	// Write and rename, so a request never sees half a file.
+	tmp := filename + ".tmp"
+	if err := os.WriteFile(tmp, data, 0o644); err != nil {
+		return err
+	}
+	return os.Rename(tmp, filename)
+}
+
+// servePages serves /pages/ from dir (pages/*.json). A request with the
+// current ?v= (what index.html asks for) may be cached for good: the
+// version changes when the files do. Anything else is revalidated.
+func servePages(dir string) http.Handler {
+	files := http.StripPrefix("/pages/", http.FileServer(http.Dir(dir)))
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Query().Get("v") == currentPagesVersion() {
+			w.Header().Set("Cache-Control", "private, max-age=31536000, immutable")
+		} else {
+			w.Header().Set("Cache-Control", "no-cache")
+		}
+		files.ServeHTTP(w, r)
+	})
 }
 
 func main() {
@@ -242,8 +280,8 @@ LEFT JOIN books_authors_link bal ON bal.book = b.id
 LEFT JOIN authors a ON a.id = bal.author
 WHERE (b.title LIKE ? OR a.name LIKE ? OR a.sort LIKE ?)`
 
-// searchTotalPages counts matching books and converts to a page count.
-func searchTotalPages(q string) int {
+// searchCount counts the books matching q.
+func searchCount(q string) int {
 	like := "%" + q + "%"
 	var count int
 	err := calibreDB.QueryRow(`SELECT COUNT(DISTINCT b.id) `+searchWhere, like, like, like).Scan(&count)
@@ -251,7 +289,7 @@ func searchTotalPages(q string) int {
 		log.Println("search count error:", err)
 		return 0
 	}
-	return (count + booksPerPage - 1) / booksPerPage
+	return count
 }
 
 func searchHandler(w http.ResponseWriter, r *http.Request) {
@@ -341,7 +379,11 @@ func fileModTime(f *os.File) (t time.Time) {
 }
 
 var templates = template.Must(
-	template.New("").Funcs(template.FuncMap{"topbar": topbarData, "asset": assetURL}).ParseGlob("templates/*.html"),
+	template.New("").Funcs(template.FuncMap{
+		"topbar":       topbarData,
+		"asset":        assetURL,
+		"booksPerPage": func() int { return booksPerPage },
+	}).ParseGlob("templates/*.html"),
 )
 
 // topbarData builds the data for templates/topbar.html from key/value pairs,
@@ -364,8 +406,10 @@ func topbarData(kv ...any) (map[string]any, error) {
 
 func serveLibraryHTTP() {
 	http.HandleFunc("/", func(w http.ResponseWriter, r *http.Request) {
-		data := PageData{
-			Title: "Library",
+		data := IndexPageData{
+			Title:        "Library",
+			TotalBooks:   totalBooks,
+			PagesVersion: currentPagesVersion(),
 		}
 
 		err := templates.ExecuteTemplate(w, "index.html", data)
@@ -375,17 +419,13 @@ func serveLibraryHTTP() {
 	})
 
 	// serve generated json pages
-	http.Handle(
-		"/pages/",
-		http.StripPrefix(
-			"/pages/",
-			http.FileServer(http.Dir("./pages")),
-		),
-	)
+	http.Handle("/pages/", servePages("pages"))
 
 	http.HandleFunc("/library-info", func(w http.ResponseWriter, r *http.Request) {
 		logErr(json.NewEncoder(w).Encode(LibraryInfo{
-			TotalPages: totalPages,
+			TotalBooks: totalBooks,
+			PageSize:   booksPerPage,
+			TotalPages: (totalBooks + booksPerPage - 1) / booksPerPage,
 		}), "could not encode library info")
 	})
 
@@ -479,7 +519,7 @@ func serveLibraryHTTP() {
 		q := strings.TrimSpace(r.URL.Query().Get("q"))
 		data := SearchPageData{Title: SiteTitle, Query: q}
 		if q != "" {
-			data.TotalPages = searchTotalPages(q)
+			data.TotalBooks = searchCount(q)
 		}
 		err := templates.ExecuteTemplate(w, "search.html", data)
 		if err != nil {
@@ -857,7 +897,7 @@ func generatePages() {
 		panic(err)
 	}
 
-	// create paginated entries as json for each book in metadata.db (50 books/page)
+	// create paginated entries as json for each book in metadata.db (booksPerPage per page)
 	rows, err := db.Query("SELECT title, author_sort, series_index, pubdate, path, uuid, last_modified FROM books ORDER BY timestamp DESC")
 	if err != nil {
 		panic(err)
@@ -919,7 +959,8 @@ func generatePages() {
 		}
 	}
 
-	totalPages = page
+	totalBooks = (page-1)*booksPerPage + len(books)
+	pagesVersion.Store(time.Now().UnixNano())
 }
 
 // resolveFormats returns a []string of filepaths to matching e-book formats

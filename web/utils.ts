@@ -102,57 +102,43 @@ export function escapeHtml(str: string): string {
     return div.innerHTML;
 }
 
+/** URL of a book's grid thumbnail. */
+export function coverUrl(book: Pick<Book, "uuid" | "last_modified">): string {
+    return `/cover-thumb/${encodeURIComponent(book.uuid)}?t=${encodeURIComponent(book.last_modified)}`;
+}
+
 /**
  * Render a single book card HTML
  * Plain link to #book/<uuid>; modal logic lives in setupModal(). htmx only
  * preloads the book on hover (hx-trigger="none": the click is the hash
  * change, and modal.ts's loadBook uses the preloaded response).
- * @param book - Book object
- * @returns HTML string for book card
+ *
+ * The cover waits in data-src for the grid's download queue, unless
+ * coverReady says the browser already has it: then it's shown at once,
+ * without the fade-in.
  */
-export function renderBookCard(book: Book): string {
+export function renderBookCard(book: Book, coverReady = false): string {
     const title = escapeHtml(book.title || "Untitled");
     const author = escapeHtml(book.author_sort || "Unknown Author");
     const uuid = escapeHtml(book.uuid);
     const hue = coverHue(book);
+    const cover = escapeHtml(coverUrl(book));
+    const img = coverReady
+        ? `<img class="book-cover loaded" src="${cover}" data-id="${uuid}" />`
+        : `<img class="book-cover" data-src="${cover}" data-id="${uuid}" fetchpriority="low" />`;
 
-    return `
-<div class="book" >
+    return `<div class="book">
     <a href="#book/${uuid}" class="book-link"
        hx-get="/book/get/${uuid}"
        hx-trigger="none"
        hx-preload="mouseover"
     >
-        <div class="cover-wrapper" style="--cover-hue:${hue}">
-                <img class="book-cover"
-                    data-src="/cover-thumb/${uuid}?t=${book.last_modified}"
-                    data-id="${uuid}"
-                    fetchpriority="low" />
-            </div>
+        <div class="cover-wrapper" style="--cover-hue:${hue}">${img}</div>
     </a>
     <div class="book-info">
         <h2>${title}</h2>
         <div class="book-author">${author}</div>
         <div class="formats"></div>
     </div>
-</div>`;
-}
-
-/**
- * Render a page of books
- * @param books - Array of book objects
- * @param pageNumber - Page number
- * @returns HTML string for page container with books
- */
-export function renderBooksPage(books: Book[], pageNumber: number): string {
-    if (!books || !Array.isArray(books) || books.length === 0) {
-        return "";
-    }
-
-    const booksHtml = books.map((book) => renderBookCard(book)).join("\n");
-
-    return `
-<div class="page" data-page="${pageNumber}">
-    ${booksHtml}
 </div>`;
 }
