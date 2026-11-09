@@ -426,7 +426,7 @@ func filteredPageHandler(c *category) http.HandlerFunc {
 			Grouped:     grouped,
 			PageURL:     c.href(value) + "?api=1",
 			TotalPages:  getFilteredTotal(c, name, members),
-			Writable:    allowWrites,
+			Writable:    canEditLibrary(r),
 		}
 		if groups.readOnly != nil {
 			data.GroupsError = groups.readOnly.Error()

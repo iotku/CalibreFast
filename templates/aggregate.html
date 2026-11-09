@@ -12,7 +12,7 @@
     <div class="top-bar-center-abs">
         <h1 class="title">{{ .Title }}</h1>
     </div>
-    <div></div>
+    <span id="user-nav" class="user-nav"></span>
 </header>
 <div id="aggregate-grid">
     {{- range .Items }}
@@ -22,5 +22,6 @@
     <p class="status-message">Nothing found.</p>
     {{- end }}
 </div>
+<script type="module" src="/static/nav.js"></script>
 </body>
 </html>

@@ -1,0 +1,47 @@
+<!doctype html>
+<html lang="en">
+<head>
+    <meta charset="utf-8">
+    <title>Sign in — {{ .Title }}</title>
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <link rel="stylesheet" href="/static/style.css">
+</head>
+<body class="auth-body">
+<header class="top-bar">
+    <a href="/" class="btn-back">&#8592; Library</a>
+    <div></div>
+</header>
+<main class="auth-main">
+    <section class="auth-card">
+        <h1>Sign in</h1>
+        {{ if .Error }}<p class="auth-error" role="alert">{{ .Error }}</p>{{ end }}
+        <form method="post" action="/login" class="auth-form">
+            <input type="hidden" name="next" value="{{ .Next }}">
+            <label>Username <input name="username" type="text" value="{{ .Username }}" autocomplete="username" required autofocus></label>
+            <label>Password <input name="password" type="password" autocomplete="current-password" required></label>
+            <button type="submit" class="btn-standard auth-primary">Sign in</button>
+        </form>
+        {{ if .Providers }}
+        <div class="auth-divider"><span>or</span></div>
+        <div class="auth-providers">
+            {{ range .Providers }}
+            <a class="btn-standard auth-provider" href="/auth/{{ . }}/start?next={{ $.Next }}">Continue with {{ if eq . "github" }}GitHub{{ else if eq . "google" }}Google{{ else }}{{ . }}{{ end }}</a>
+            {{ end }}
+        </div>
+        {{ end }}
+    </section>
+
+    {{ if .Registration }}
+    <section class="auth-card">
+        <h2>Create an account</h2>
+        <form method="post" action="/register" class="auth-form">
+            <label>Username <input name="username" type="text" autocomplete="username" pattern="[A-Za-z0-9._\-]{3,32}" required></label>
+            <label>Password <input name="password" type="password" autocomplete="new-password" minlength="10" required></label>
+            <label>Repeat password <input name="password2" type="password" autocomplete="new-password" minlength="10" required></label>
+            <button type="submit" class="btn-standard">Create account</button>
+        </form>
+    </section>
+    {{ end }}
+</main>
+</body>
+</html>

@@ -1,0 +1,47 @@
+<!doctype html>
+<html lang="en">
+<head>
+    <meta charset="utf-8">
+    <title>Users — {{ .Title }}</title>
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <link rel="stylesheet" href="/static/style.css">
+</head>
+<body class="auth-body">
+<header class="top-bar">
+    <a href="/account" class="btn-back">&#8592; Account</a>
+    <div></div>
+</header>
+<main class="auth-main auth-wide">
+    <section class="auth-card">
+        <h1>Users</h1>
+        <p id="admin-status" class="auth-notice" role="status" hidden></p>
+        <table class="admin-users">
+            <thead><tr><th>User</th><th>Admin</th><th>Disabled</th><th></th></tr></thead>
+            <tbody>
+            {{ range .Users }}
+            <tr data-id="{{ .ID }}" data-username="{{ .Username }}">
+                <td>{{ .Username }}{{ if eq .ID $.Me.ID }} <span class="auth-muted">(you)</span>{{ end }}{{ if not .HasPass }} <span class="auth-muted">(no password)</span>{{ end }}</td>
+                <td><input type="checkbox" data-field="is_admin" {{ if .IsAdmin }}checked{{ end }} aria-label="Admin"></td>
+                <td><input type="checkbox" data-field="disabled" {{ if .Disabled }}checked{{ end }} aria-label="Disabled"></td>
+                <td class="admin-actions">
+                    <button type="button" class="btn-standard" data-action="password">Reset password</button>
+                    <button type="button" class="btn-standard" data-action="delete">Delete</button>
+                </td>
+            </tr>
+            {{ end }}
+            </tbody>
+        </table>
+    </section>
+    <section class="auth-card">
+        <h2>Add a user</h2>
+        <form id="add-user" class="auth-form">
+            <label>Username <input name="username" type="text" pattern="[A-Za-z0-9._\-]{3,32}" required></label>
+            <label>Password <input name="password" type="password" autocomplete="new-password" minlength="10" required></label>
+            <label class="auth-check"><input name="is_admin" type="checkbox"> Admin (can edit the library when the server allows writes)</label>
+            <button type="submit" class="btn-standard">Add user</button>
+        </form>
+    </section>
+</main>
+<script type="module" src="/static/admin-users.js"></script>
+</body>
+</html>

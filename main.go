@@ -7,6 +7,7 @@ import (
 	"html/template"
 	"log"
 	"net/http"
+	"net/url"
 	"os"
 	"path/filepath"
 	"strconv"
@@ -54,10 +55,27 @@ func csrfProtect(h http.Handler) http.Handler {
 
 // requireWrites refuses a handler unless the server was started with
 // -allow-writes. Enforced server-side; hiding the UI is only cosmetic.
+//
+// Library changes need BOTH: the server started with -allow-writes (a
+// server-wide kill switch) AND a signed-in admin. Anonymous visitors and
+// regular users can never modify metadata.db or files in the library.
 func requireWrites(h http.HandlerFunc) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		if !allowWrites {
 			http.Error(w, "This library is read-only. Restart the server with -allow-writes to enable editing, uploads and grouping.", http.StatusForbidden)
+			return
+		}
+		u := currentUser(r)
+		if u == nil {
+			if wantsHTML(r) {
+				http.Redirect(w, r, "/login?next="+url.QueryEscape(r.URL.RequestURI()), http.StatusSeeOther)
+				return
+			}
+			http.Error(w, "sign in as an admin to change the library", http.StatusUnauthorized)
+			return
+		}
+		if !u.IsAdmin {
+			http.Error(w, "only admins can change the library", http.StatusForbidden)
 			return
 		}
 		h(w, r)
@@ -148,12 +166,34 @@ func main() {
 	flag.StringVar(&baseDir, "basedir", "", "path to Calibre library root")
 	flag.StringVar(&cacheDir, "cachedir", "", "path to cache location")
 	flag.StringVar(&hostPort, "port", "8080", "port to listen on")
-	flag.BoolVar(&allowWrites, "allow-writes", false, "allow changes to the library (metadata edits, uploads, covers, groups); there is no authentication, so only enable on trusted networks")
+	flag.BoolVar(&allowWrites, "allow-writes", false, "allow admins to change the library (metadata edits, uploads, covers, groups)")
+	flag.StringVar(&dataDir, "datadir", "data", "where CalibreFast keeps its own database (accounts, favorites, progress, shelves)")
+	flag.BoolVar(&requireLogin, "require-login", false, "require signing in to browse or read anything")
+	flag.BoolVar(&openRegistration, "open-registration", false, "let anyone create an account (password, or GitHub/Google sign-in)")
+	flag.StringVar(&publicURL, "public-url", "", "external base URL, e.g. https://books.example.com (needed for GitHub/Google sign-in)")
+	createUserName := flag.String("create-user", "", "create a user (or reset their password) and exit; password from $CF_PASSWORD or stdin")
+	createAdmin := flag.Bool("admin", false, "with -create-user: make the user an admin")
 	flag.Parse()
+
+	var err error
+	if appDB, err = openAppDB(dataDir); err != nil {
+		log.Fatal("app database: ", err)
+	}
+	if *createUserName != "" {
+		if err := runCreateUser(*createUserName, *createAdmin); err != nil {
+			log.Fatal(err)
+		}
+		return
+	}
+	pruneSessions()
+	configureOAuth()
 	if allowWrites {
-		log.Println("WARNING: -allow-writes is on; anyone who can reach this server can modify the library")
+		log.Println("-allow-writes: admins can change the library")
 	} else {
-		log.Println("read-only mode: start with -allow-writes to enable editing, uploads and grouping")
+		log.Println("read-only mode: start with -allow-writes to let admins edit, upload and group")
+	}
+	if adminCount() == 0 {
+		log.Println("no admin account yet: create one with  -create-user NAME -admin")
 	}
 	if baseDir == "" {
 		log.Fatal("missing -basedir")
@@ -416,7 +456,8 @@ func serveLibraryHTTP() {
 	registerCategoryRoutes()
 
 	log.Println("Listening on :" + hostPort)
-	log.Fatal(http.ListenAndServe(":"+hostPort, csrfProtect(http.DefaultServeMux)))
+	registerAuthRoutes()
+	log.Fatal(http.ListenAndServe(":"+hostPort, csrfProtect(withAuth(http.DefaultServeMux))))
 }
 
 func logErr(err error, why string) {

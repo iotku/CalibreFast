@@ -20,6 +20,7 @@
         </button>
         {{ end }}
     </div>
+    <span id="user-nav" class="user-nav"></span>
     <div class="top-bar-right">
         <button id="prev-page" class="btn-nav" aria-label="Previous page">&lsaquo;</button>
         <input id="page-input" type="number" min="1" value="1" class="input-page" />
@@ -69,6 +70,7 @@
 </div>
 <div id="scroll-badge"></div>
 <script type="module" src="/static/app-htmx.js"></script>
+<script type="module" src="/static/nav.js"></script>
 {{ if .Writable }}<script type="module" src="/static/groups.js"></script>{{ end }}
 </body>
 </html>

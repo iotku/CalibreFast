@@ -1,0 +1,60 @@
+<!doctype html>
+<html lang="en">
+<head>
+    <meta charset="utf-8">
+    <title>Account — {{ .Title }}</title>
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <link rel="stylesheet" href="/static/style.css">
+</head>
+<body class="auth-body">
+<header class="top-bar">
+    <a href="/" class="btn-back">&#8592; Library</a>
+    <form method="post" action="/logout"><button class="btn-standard" type="submit">Sign out</button></form>
+</header>
+<main class="auth-main">
+    <section class="auth-card">
+        <h1>{{ .User.Username }}{{ if .User.IsAdmin }} <span class="auth-badge">admin</span>{{ end }}</h1>
+        {{ if .Notice }}<p class="auth-notice" role="status">{{ .Notice }}</p>{{ end }}
+        {{ if .Error }}<p class="auth-error" role="alert">{{ .Error }}</p>{{ end }}
+        <p class="auth-links">
+            <a href="/me/favorites" class="meta-link">Favorites</a>
+            <a href="/me/reading" class="meta-link">Reading</a>
+            <a href="/me/finished" class="meta-link">Finished</a>
+            <a href="/shelves" class="meta-link">Bookshelves</a>
+            {{ if .User.IsAdmin }}<a href="/admin/users" class="meta-link">Manage users</a>{{ end }}
+        </p>
+    </section>
+
+    <section class="auth-card">
+        <h2>{{ if .User.HasPass }}Change password{{ else }}Set a password{{ end }}</h2>
+        <form method="post" action="/account" class="auth-form">
+            {{ if .User.HasPass }}<label>Current password <input name="current" type="password" autocomplete="current-password" required></label>{{ end }}
+            <label>New password <input name="password" type="password" autocomplete="new-password" minlength="10" required></label>
+            <label>Repeat new password <input name="password2" type="password" autocomplete="new-password" minlength="10" required></label>
+            <button type="submit" class="btn-standard">Save password</button>
+        </form>
+    </section>
+
+    {{ if .Providers }}
+    <section class="auth-card">
+        <h2>Linked sign-ins</h2>
+        <ul class="auth-identities">
+            {{ range .Identities }}
+            <li>
+                <span>{{ .Provider }} — {{ if .Login }}{{ .Login }}{{ else }}{{ .Email }}{{ end }}</span>
+                <form method="post" action="/auth/{{ .Provider }}/unlink"><button class="btn-standard" type="submit">Unlink</button></form>
+            </li>
+            {{ else }}
+            <li class="auth-muted">None yet.</li>
+            {{ end }}
+        </ul>
+        <div class="auth-providers">
+            {{ range .Providers }}
+            <a class="btn-standard auth-provider" href="/auth/{{ . }}/start?link=1">Link {{ if eq . "github" }}GitHub{{ else if eq . "google" }}Google{{ else }}{{ . }}{{ end }}</a>
+            {{ end }}
+        </div>
+    </section>
+    {{ end }}
+</main>
+</body>
+</html>
