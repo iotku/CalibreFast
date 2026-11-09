@@ -9,45 +9,10 @@
         <script src="https://cdn.jsdelivr.net/npm/htmx.org@4.0.1/dist/ext/hx-preload.js"></script>
     </head>
     <body>
-        <header class="top-bar">
-            <div class="top-bar-left">
-                <h1 class="title">{{ .Title }}</h1>
-                <a href="/authors" class="meta-link">Authors</a>
-                <a href="/publishers" class="meta-link">Publishers</a>
-                <a href="/tags" class="meta-link">Tags</a>
-                <a href="/languages" class="meta-link">Languages</a>
-                <span id="user-nav" class="user-nav"></span>
-                <form id="search-form" action="/search" method="get">
-                    <input
-                        name="q"
-                        type="search"
-                        placeholder="Search…"
-                        class="input-search"
-                        aria-label="Search books"
-                    />
-                </form>
-            </div>
-            <div class="top-bar-right">
-                <button
-                    id="prev-page"
-                    class="btn-nav"
-                    aria-label="Previous page"
-                >
-                    &lsaquo;
-                </button>
-                <input
-                    id="page-input"
-                    type="number"
-                    min="1"
-                    value="1"
-                    class="input-page"
-                />
-                <span>/ <span id="total-pages">—</span></span>
-                <button id="next-page" class="btn-nav" aria-label="Next page">
-                    &rsaquo;
-                </button>
-            </div>
-        </header>
+{{ $tb := topbar }}
+{{ template "topbar-start" $tb }}
+{{ template "topbar-pager" }}
+{{ template "topbar-end" $tb }}
         <div id="books"></div>
         <div id="book-modal" class="modal-overlay">
             <div class="modal-content">
@@ -60,6 +25,5 @@
 
         <div id="load-more" class="load-more-sentinel"></div>
         <script type="module" src="/static/app-htmx.js"></script>
-        <script type="module" src="/static/nav.js"></script>
     </body>
 </html>

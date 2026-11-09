@@ -31,6 +31,10 @@ On startup CalibreFast queries `metadata.db` and writes paginated JSON (`pages/p
   - The compiled `static/*.js` is committed, so `go run .` works without a build step. **Don't edit it by hand.** `TestTypeScriptUpToDate` type-checks `web/` and fails if the committed JS doesn't match the sources.
   - Settings are in `tsconfig.json`: strict mode, no unused locals/parameters, every file is a module.
   - Shared code: `web/dom.ts` (typed element lookups, `api()` fetch helper) and `web/types.ts` (shapes of the JSON the Go server sends; keep in sync with the Go structs named there). `web/globals.d.ts` describes the parts of htmx, epub.js and pdf.js the app uses.
+- **Top bar.** Every page except the readers uses the shared bar in `templates/topbar.html`: `{{ template "topbar-start" (topbar …) }}`, the page's own tools (pager, Group button), then `{{ template "topbar-end" … }}`. The `topbar` template function (main.go) takes key/value pairs: `Active` nav item, `Title`, `Query`, and so on.
+  - The signed-in part (★ Favorites, Reading, user menu) is filled by `web/nav.ts` from `/api/me`, so pages stay identical for everyone and cacheable. `nav.ts` also opens and closes the ☰ menu, user menu and mobile search.
+  - Wide screens show everything inline. At 1000px or less the browse links move into ☰; at 640px or less search becomes an icon and Favorites/Reading move into the user menu.
+  - A book page opened directly (no `HX-Request` header) gets the bar; the modal's copy doesn't (`Vary: HX-Request`).
 - **Scroll engine.** `web/app-htmx.ts` drives the main library, filtered views and search.
 - **Data source.** Each page's HTML sets attributes on `#books`:
   - `data-page-url`: a URL template with `{n}` for the page number

@@ -7,13 +7,9 @@
     <link rel="stylesheet" href="/static/style.css">
 </head>
 <body>
-<header class="top-bar">
-    <button class="btn-back" onclick="history.back()">&#8592; Back</button>
-    <div class="top-bar-center-abs">
-        <h1 class="title">{{ .Title }}</h1>
-    </div>
-    <span id="user-nav" class="user-nav"></span>
-</header>
+{{ $tb := topbar "Active" .Active "Title" .Title "NavTitle" true }}
+{{ template "topbar-start" $tb }}
+{{ template "topbar-end" $tb }}
 <div id="aggregate-grid">
     {{- range .Items }}
     <a class="agg-item{{ if .Grouped }} agg-group{{ end }}" href="{{ .Href }}" style="font-size: {{ .FontSize }}px; --o: {{ .Opacity }}"
@@ -22,6 +18,5 @@
     <p class="status-message">Nothing found.</p>
     {{- end }}
 </div>
-<script type="module" src="/static/nav.js"></script>
 </body>
 </html>

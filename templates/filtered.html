@@ -9,25 +9,17 @@
     <script src="https://cdn.jsdelivr.net/npm/htmx.org@4.0.1/dist/ext/hx-preload.js"></script>
 </head>
 <body>
-<header class="top-bar">
-    <div class="top-bar-left">
-        <button class="btn-back" onclick="history.back()">&#8592; Back</button>
-        <h1 class="title">{{ .Display }}{{ if .Sub }} <span class="title-sub">{{ .Sub }}</span>{{ end }}</h1>
-        {{ if .Writable }}
+{{ $tb := topbar "Active" .Active "Title" .Display "Sub" .Sub }}
+{{ template "topbar-start" $tb }}
+{{ if .Writable }}
         <button type="button" id="group-toggle" class="btn-group-toggle" aria-expanded="false" aria-controls="group-panel"
-                title="Choose which {{ .Label }} values this page includes">
-            {{ if .Grouped }}Group · {{ len .Members }}{{ else }}Group…{{ end }}
+                title="Choose which {{ .Label }} values this page includes" aria-label="Group {{ .Label }} values">
+            <svg class="tb-group-icon" viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2" stroke-linejoin="round" aria-hidden="true"><path d="M12 3l9 5-9 5-9-5zM3 13l9 5 9-5"/></svg>
+            <span class="tb-label">{{ if .Grouped }}Group · {{ len .Members }}{{ else }}Group…{{ end }}</span>
         </button>
-        {{ end }}
-    </div>
-    <span id="user-nav" class="user-nav"></span>
-    <div class="top-bar-right">
-        <button id="prev-page" class="btn-nav" aria-label="Previous page">&lsaquo;</button>
-        <input id="page-input" type="number" min="1" value="1" class="input-page" />
-        <span>/ <span id="total-pages">—</span></span>
-        <button id="next-page" class="btn-nav" aria-label="Next page">&rsaquo;</button>
-    </div>
-</header>
+{{ end }}
+{{ template "topbar-pager" }}
+{{ template "topbar-end" $tb }}
 {{ if .Writable }}
 <section id="group-panel" class="group-panel" hidden
          data-category="{{ .Category }}" data-key="{{ .Key }}" data-name="{{ .SuggestName }}" data-label="{{ .Label }}">
@@ -70,7 +62,6 @@
 </div>
 <div id="scroll-badge"></div>
 <script type="module" src="/static/app-htmx.js"></script>
-<script type="module" src="/static/nav.js"></script>
 {{ if .Writable }}<script type="module" src="/static/groups.js"></script>{{ end }}
 </body>
 </html>

@@ -27,7 +27,8 @@ var descriptionPolicy = func() *bluemonday.Policy {
 var serverStarted = time.Now().UnixNano()
 
 type BookPageData struct {
-	UUID string
+	UUID       string
+	Standalone bool // opened directly (permalink), not into the modal: show the top bar
 
 	Title       string
 	Authors     []string
@@ -68,8 +69,12 @@ func bookHandler(w http.ResponseWriter, r *http.Request) {
 	// Varies with whether this viewer may edit (shows the Edit button).
 	// Server start time: a restart (e.g. after updating templates) must not
 	// keep serving browsers a cached page in the old layout.
-	etag := fmt.Sprintf(`"%x-%x-%t-%x"`, opfStat.ModTime().UnixNano(), groups.currentVersion(), canEditLibrary(r), serverStarted)
+	// The modal (an htmx request) gets the bare fragment; a direct visit gets
+	// the full page with the top bar.
+	standalone := r.Header.Get("HX-Request") == ""
+	etag := fmt.Sprintf(`"%x-%x-%t-%x-%t"`, opfStat.ModTime().UnixNano(), groups.currentVersion(), canEditLibrary(r), serverStarted, standalone)
 	w.Header().Set("ETag", etag)
+	w.Header().Set("Vary", "HX-Request")
 	w.Header().Set("Cache-Control", "private, max-age=30")
 	if r.Header.Get("If-None-Match") == etag {
 		w.WriteHeader(http.StatusNotModified)
@@ -102,7 +107,8 @@ func bookHandler(w http.ResponseWriter, r *http.Request) {
 	}
 
 	data := BookPageData{
-		UUID: uuid,
+		UUID:       uuid,
+		Standalone: standalone,
 
 		Title:     opf.Metadata.Title,
 		Authors:   opf.Metadata.Creators,
