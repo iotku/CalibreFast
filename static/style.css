@@ -71,6 +71,12 @@ body {
     color: var(--text-primary);
 }
 
+/* Opening the book modal hides the page scrollbar (body.no-scroll); keep its
+   space reserved on pages that have the modal so the content doesn't shift. */
+html:has(#book-modal) {
+    scrollbar-gutter: stable;
+}
+
 body.no-scroll {
     overflow: hidden;
 }
