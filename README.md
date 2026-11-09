@@ -81,7 +81,7 @@ GitHub and Google sign-in are optional: see [OAUTH.md](docs/OAUTH.md) for step-b
 
 ### Working on the browser code
 
-The browser code is TypeScript and CSS in `web/`. [tsgo](https://github.com/microsoft/typescript-go), the Go-native TypeScript compiler, type-checks it; [esbuild](https://esbuild.github.io/) (also written in Go) bundles and minifies each page's script and the stylesheet into `static/dist/`. You only need this if you change the browser code: the built files are committed, so running the server needs nothing extra.
+The browser code is TypeScript and CSS in `web/`. [tsgo](https://github.com/microsoft/typescript-go), the Go-native TypeScript compiler, type-checks it; [esbuild](https://esbuild.github.io/) (also written in Go) bundles and minifies each page's script and the stylesheet into `static/dist/`. You only need this if you change the browser code: the built files are committed, so running the server needs nothing extra. Third-party libraries (htmx, pdf.js, epub.js, …) are committed too, in `static/vendor/`, and served by CalibreFast itself (see [ARCHITECTURE.md](docs/ARCHITECTURE.md#frontend) to upgrade one).
 
 **Installing:** nothing to install separately. tsgo and esbuild are pinned in `tools/go.mod`, and Go downloads and builds them the first time you run them. It needs Go 1.26+; no Node or npm.
 

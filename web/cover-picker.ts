@@ -1,5 +1,6 @@
 // Reusable Cover Picker component for upload and book-edit pages.
 import { errorMessage } from "./dom.js";
+import { EPUBJS_URL, JSZIP_URL, openPdf } from "./vendor.js";
 
 /** Called after a cover is saved for a book. */
 type CoverSaved = ((uuid: string) => void) | null;
@@ -96,15 +97,11 @@ function drawTextPage(ctx: CanvasRenderingContext2D, width: number, height: numb
     }
 }
 
-/** Loads a classic <script> once (the CDN libraries the picker needs). */
-function loadScript(src: string, integrity?: string): Promise<void> {
+/** Loads a classic <script> (the EPUB libraries the picker needs). */
+function loadScript(src: string): Promise<void> {
     return new Promise((resolve, reject) => {
         const s = document.createElement("script");
         s.src = src;
-        if (integrity) {
-            s.integrity = integrity;
-            s.crossOrigin = "anonymous";
-        }
         s.onload = () => resolve();
         s.onerror = () => reject(new Error(`failed to load ${src}`));
         document.head.appendChild(s);
@@ -375,10 +372,7 @@ async function renderPdfPages(
     updateRevertBtn: RevertUpdater = null,
 ): Promise<void> {
     try {
-        const pdfjsLib = await import("https://cdn.jsdelivr.net/npm/pdfjs-dist@5.7.284/build/pdf.mjs");
-        pdfjsLib.GlobalWorkerOptions.workerSrc = "https://cdn.jsdelivr.net/npm/pdfjs-dist@5.7.284/build/pdf.worker.mjs";
-
-        const pdf = await pdfjsLib.getDocument(`/download/${uuid}/pdf`).promise;
+        const pdf = await openPdf(`/download/${uuid}/pdf`);
         const pageCount = Math.min(pdf.numPages, 5);
         status.textContent = autoSelect
             ? "Saving default cover from page 1…"
@@ -466,15 +460,8 @@ async function renderEpubPages(
 ): Promise<void> {
     try {
         // JSZip first: epub.js opens the whole .epub from memory with it.
-        if (!("JSZip" in window)) {
-            await loadScript(
-                "https://cdn.jsdelivr.net/npm/jszip@3.10.2/dist/jszip.min.js",
-                "sha384-DdGlNq+wVXAn83gXqwyeFHB7iyXy6L0rLrNzgDmhKWPjiJLg9vj6qosYmZmkMfQ+",
-            );
-        }
-        if (typeof window.ePub === "undefined") {
-            await loadScript("https://cdn.jsdelivr.net/npm/epubjs@0.3.93/dist/epub.min.js");
-        }
+        if (!("JSZip" in window)) await loadScript(JSZIP_URL);
+        if (typeof window.ePub === "undefined") await loadScript(EPUBJS_URL);
 
         const res = await fetch(`/download/${encodeURIComponent(uuid)}/epub`, { credentials: "same-origin" });
         if (!res.ok) throw new Error(`HTTP ${res.status}`);

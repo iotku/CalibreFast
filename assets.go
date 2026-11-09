@@ -5,6 +5,7 @@ import (
 	"compress/gzip"
 	"encoding/json"
 	"fmt"
+	"io/fs"
 	"mime"
 	"net/http"
 	"os"
@@ -13,12 +14,19 @@ import (
 	"strings"
 )
 
-// Built browser assets: static/dist/, made by `go generate` (tools/jsbuild).
-// File names carry a content hash, so browsers may cache them forever; a
-// change gets a new name, which templates pick up via {{ asset "name" }}.
-// Everything is held in memory, gzipped once at startup.
+// Browser assets, held in memory and gzipped once at startup. Browsers may
+// cache them forever, because their URLs change whenever their content does:
+//
+//   - static/dist/: our scripts and styles, made by `go generate`
+//     (tools/jsbuild). File names carry a content hash; templates get the
+//     current one via {{ asset "name" }}.
+//   - static/vendor/<package>@<version>/: third-party libraries, the files
+//     as published on npm. Templates and web/ link them by path.
 
-const distDir = "static/dist"
+const (
+	distDir   = "static/dist"
+	vendorDir = "static/vendor"
+)
 
 type builtAsset struct {
 	body, gz    []byte // gz is nil when compressing doesn't help
@@ -26,13 +34,16 @@ type builtAsset struct {
 }
 
 var (
-	assetFiles = map[string]*builtAsset{} // by file name in static/dist
-	assetNames = map[string]string{}      // manifest: asset name -> file name
+	assetFiles = map[string]*builtAsset{} // by URL path
+	assetNames = map[string]string{}      // dist manifest: asset name -> file name
 )
 
 func init() {
 	if err := loadAssets(distDir); err != nil {
 		panic(fmt.Sprintf("%v (run `go generate` to build the browser assets)", err))
+	}
+	if err := loadVendor(vendorDir); err != nil {
+		panic(err)
 	}
 }
 
@@ -56,26 +67,50 @@ func loadAssets(dir string) error {
 		if err != nil {
 			return err
 		}
-		ct := mime.TypeByExtension(filepath.Ext(e.Name()))
-		if ct == "" {
-			ct = "application/json" // .map
-		}
-		a := &builtAsset{body: body, contentType: ct}
-		var buf bytes.Buffer
-		zw, _ := gzip.NewWriterLevel(&buf, gzip.BestCompression)
-		_, _ = zw.Write(body)
-		_ = zw.Close()
-		if buf.Len() < len(body) {
-			a.gz = buf.Bytes()
-		}
-		assetFiles[e.Name()] = a
+		addAsset("/"+dir+"/"+e.Name(), body)
 	}
 	for name, file := range assetNames {
-		if assetFiles[file] == nil {
+		if assetFiles["/"+dir+"/"+file] == nil {
 			return fmt.Errorf("%s/manifest.json: %s -> %s is missing", dir, name, file)
 		}
 	}
 	return nil
+}
+
+// loadVendor loads every file under dir (static/vendor), at its path.
+func loadVendor(dir string) error {
+	return filepath.WalkDir(dir, func(p string, d fs.DirEntry, err error) error {
+		if err != nil || d.IsDir() {
+			return err
+		}
+		body, err := os.ReadFile(p)
+		if err != nil {
+			return err
+		}
+		addAsset("/"+filepath.ToSlash(p), body)
+		return nil
+	})
+}
+
+// addAsset holds body for serving at urlPath, gzipped when that's smaller.
+func addAsset(urlPath string, body []byte) {
+	ext := path.Ext(urlPath)
+	ct := mime.TypeByExtension(ext)
+	if ct == "" {
+		ct = "text/plain; charset=utf-8" // LICENSE files
+		if ext == ".map" {
+			ct = "application/json"
+		}
+	}
+	a := &builtAsset{body: body, contentType: ct}
+	var buf bytes.Buffer
+	zw, _ := gzip.NewWriterLevel(&buf, gzip.BestCompression)
+	_, _ = zw.Write(body)
+	_ = zw.Close()
+	if buf.Len() < len(body) {
+		a.gz = buf.Bytes()
+	}
+	assetFiles[urlPath] = a
 }
 
 // assetURL is the template function asset: the URL of a built asset by its
@@ -89,11 +124,11 @@ func assetURL(name string) (string, error) {
 	return "/" + distDir + "/" + file, nil
 }
 
-// serveAsset serves /static/dist/<file>: cached for a year (the name
-// changes with the content), gzipped when the browser accepts it.
+// serveAsset serves /static/dist/ and /static/vendor/: cached for a year
+// (the URL changes with the content), gzipped when the browser accepts it.
 func serveAsset(w http.ResponseWriter, r *http.Request) {
-	a := assetFiles[path.Base(r.URL.Path)]
-	if a == nil || path.Dir(r.URL.Path) != "/"+distDir {
+	a := assetFiles[r.URL.Path]
+	if a == nil {
 		http.NotFound(w, r)
 		return
 	}
