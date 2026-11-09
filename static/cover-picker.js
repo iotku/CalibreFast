@@ -75,27 +75,19 @@ function drawTextPage(ctx, width, height, blocks, fallbackTitle) {
         y += Math.round(lineHeight * (isHead ? 0.6 : 0.4)); // paragraph gap
     }
 }
-function resolveEpubPath(baseHref, rel) {
-    if (!rel || rel.startsWith("http://") || rel.startsWith("https://") || rel.startsWith("data:")) {
-        return rel;
-    }
-    if (rel.startsWith("/")) {
-        return rel.slice(1);
-    }
-    const parts = (baseHref || "").split("/");
-    parts.pop(); // remove filename
-    for (const seg of rel.split("/")) {
-        if (seg === "." || seg === "")
-            continue;
-        if (seg === "..") {
-            if (parts.length > 0)
-                parts.pop();
+/** Loads a classic <script> once (the CDN libraries the picker needs). */
+function loadScript(src, integrity) {
+    return new Promise((resolve, reject) => {
+        const s = document.createElement("script");
+        s.src = src;
+        if (integrity) {
+            s.integrity = integrity;
+            s.crossOrigin = "anonymous";
         }
-        else {
-            parts.push(seg);
-        }
-    }
-    return parts.join("/");
+        s.onload = () => resolve();
+        s.onerror = () => reject(new Error(`failed to load ${src}`));
+        document.head.appendChild(s);
+    });
 }
 async function uploadCoverDataUrl(uuid, dataUrl) {
     const resp = await fetch(`/upload-cover/${uuid}`, {
@@ -403,16 +395,17 @@ async function renderPdfPages(uuid, strip, status, picker, onCoverSaved, autoSel
 }
 async function renderEpubPages(uuid, strip, status, picker, onCoverSaved, autoSelect = false, updateRevertBtn = null) {
     try {
-        if (typeof window.ePub === "undefined") {
-            await new Promise((resolve, reject) => {
-                const s = document.createElement("script");
-                s.src = "https://cdn.jsdelivr.net/npm/epubjs@0.3.93/dist/epub.min.js";
-                s.onload = resolve;
-                s.onerror = reject;
-                document.head.appendChild(s);
-            });
+        // JSZip first: epub.js opens the whole .epub from memory with it.
+        if (!("JSZip" in window)) {
+            await loadScript("https://cdn.jsdelivr.net/npm/jszip@3.10.2/dist/jszip.min.js", "sha384-DdGlNq+wVXAn83gXqwyeFHB7iyXy6L0rLrNzgDmhKWPjiJLg9vj6qosYmZmkMfQ+");
         }
-        const book = ePub(`/epub/${uuid}/`);
+        if (typeof window.ePub === "undefined") {
+            await loadScript("https://cdn.jsdelivr.net/npm/epubjs@0.3.93/dist/epub.min.js");
+        }
+        const res = await fetch(`/download/${encodeURIComponent(uuid)}/epub`, { credentials: "same-origin" });
+        if (!res.ok)
+            throw new Error(`HTTP ${res.status}`);
+        const book = ePub(await res.arrayBuffer());
         await book.ready;
         let hasAnyPreview = false;
         let defaultSaved = false;
@@ -447,8 +440,10 @@ async function renderEpubPages(uuid, strip, status, picker, onCoverSaved, autoSe
                 if (imgEl) {
                     const rawSrc = imgEl.getAttribute("src") || imgEl.getAttribute("href") || imgEl.getAttribute("xlink:href");
                     if (rawSrc) {
-                        const resolvedPath = resolveEpubPath(section.href, rawSrc);
-                        const fullUrl = `/epub/${uuid}/${resolvedPath}`;
+                        // Resolve against the section's path inside the book; external
+                        // and data: URLs are left alone.
+                        const resolved = new URL(rawSrc, `epub:${section.url}`);
+                        const fullUrl = resolved.protocol === "epub:" ? await book.archive.createUrl(resolved.pathname, { base64: false }) : rawSrc;
                         renderImageThumb(uuid, fullUrl, `Section ${i + 1}`, strip, picker, onCoverSaved, shouldAuto, updateRevertBtn);
                         hasAnyPreview = true;
                         if (shouldAuto)

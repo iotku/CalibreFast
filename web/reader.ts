@@ -17,7 +17,45 @@ const setSync = (text: string): void => {
     if (syncLabel) syncLabel.textContent = text;
 };
 
-const book = ePub(`/epub/${uuid}/`);
+/**
+ * The whole .epub is downloaded once and opened from memory: chapters,
+ * images, styles and fonts never touch the network again, so the rest of the
+ * book reads offline. (epub.js renders each chapter in a sandboxed iframe
+ * without scripts.)
+ */
+async function downloadBook(): Promise<ArrayBuffer> {
+    const res = await fetch(`/download/${encodeURIComponent(uuid)}/epub`, { credentials: "same-origin" });
+    if (!res.ok || !res.body) throw new Error(`HTTP ${res.status}`);
+    const total = Number(res.headers.get("content-length")) || 0;
+    const chunks: Uint8Array[] = [];
+    let got = 0;
+    const reader = res.body.getReader();
+    for (;;) {
+        const { done, value } = await reader.read();
+        if (done) break;
+        chunks.push(value);
+        got += value.length;
+        progressLabel.textContent = total ? `Loading ${Math.round((got / total) * 100)}%` : `Loading ${(got / 1048576).toFixed(1)} MB`;
+    }
+    const buf = new Uint8Array(got);
+    let at = 0;
+    for (const c of chunks) {
+        buf.set(c, at);
+        at += c.length;
+    }
+    progressLabel.textContent = "—";
+    return buf.buffer;
+}
+
+let data: ArrayBuffer;
+try {
+    data = await downloadBook();
+} catch (err) {
+    progressLabel.textContent = "Failed to load";
+    $("reader-container").textContent = `Couldn't load this book (${err instanceof Error ? err.message : String(err)}).`;
+    throw err;
+}
+const book = ePub(data);
 const rendition = book.renderTo("reader-container", {
     width: "100%",
     height: "100%",

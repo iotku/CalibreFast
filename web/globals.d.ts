@@ -23,6 +23,8 @@ declare namespace EpubJS {
     }
     interface Section {
         href: string;
+        /** Absolute path inside the book, e.g. "/OEBPS/Text/ch1.xhtml". */
+        url: string;
         load(request: (url: string) => Promise<unknown>): Promise<Element>;
     }
     interface Spine {
@@ -51,9 +53,12 @@ declare namespace EpubJS {
         renderTo(element: string | Element, options: { width: string; height: string; flow: string }): Rendition;
         coverUrl(): Promise<string | null>;
         load(path: string): Promise<unknown>;
+        /** Only when opened from a whole .epub (ArrayBuffer). */
+        archive: { createUrl(path: string, options?: { base64?: boolean }): Promise<string> };
     }
 }
-declare function ePub(url: string): EpubJS.Book;
+/** Opening from an ArrayBuffer of the whole .epub needs the JSZip global. */
+declare function ePub(source: string | ArrayBuffer): EpubJS.Book;
 interface Window {
     ePub?: typeof ePub;
 }

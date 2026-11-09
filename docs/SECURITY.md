@@ -59,6 +59,10 @@ Setup steps are in [OAUTH.md](OAUTH.md). In short: set `CF_GITHUB_CLIENT_ID` / `
 
 Browsers let any website send requests to a server on your network (cross-site request forgery). CalibreFast refuses state-changing requests (`POST`, `PUT`, `DELETE`, `PATCH`) that a browser marks as coming from another site, using Go's `http.CrossOriginProtection`, and logs them. Session cookies are also `SameSite=Lax`.
 
+## Book content is untrusted
+
+EPUBs can contain scripts and arbitrary HTML. The server only ever sends the whole `.epub` as a download. The reader unpacks it in the browser, and epub.js shows each chapter in a sandboxed iframe with scripts disabled. Book descriptions are sanitized on the server (bluemonday) and in the metadata editor (DOMPurify).
+
 ## Writes can conflict with Calibre itself
 
 CalibreFast writes to the same `metadata.db` and book folders that the Calibre desktop app uses. Editing in both at once can lose changes or confuse Calibre. **Close Calibre while editing through CalibreFast.**
