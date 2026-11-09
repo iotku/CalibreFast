@@ -1,5 +1,6 @@
 import { byId, maybeId } from "./dom.js";
 import { createReadingSync, renderBookmarks, type Bookmark, type BookmarkHandlers } from "./reading-sync.js";
+import { setupSidebar } from "./reader-sidebar.js";
 
 const params = new URLSearchParams(window.location.search);
 const uuidParam = params.get("uuid");
@@ -12,6 +13,7 @@ const uuid: string = uuidParam;
 
 const $ = (id: string): HTMLElement => byId(id);
 const progressLabel = $("progress-label");
+const sidebar = setupSidebar();
 const syncLabel = maybeId("sync-status");
 const setSync = (text: string): void => {
     if (syncLabel) syncLabel.textContent = text;
@@ -69,6 +71,8 @@ const rendition = book.renderTo("reader-container", {
  * can't open windows).
  */
 rendition.on("rendered", (section, view) => {
+    // A press in the page (its own document) closes the sidebar.
+    view.document.addEventListener("pointerdown", () => sidebar.close());
     view.document.addEventListener(
         "click",
         (e) => {
@@ -212,57 +216,72 @@ document.querySelector(".btn-back")?.addEventListener("click", () => history.go(
 
 // ---- contents --------------------------------------------------------------
 
+/** Every contents entry, in order, with its link. */
+const tocEntries: { href: string; label: string; link: HTMLAnchorElement }[] = [];
+
 function renderToc(items: EpubJS.NavItem[], el: HTMLElement): void {
     for (const item of items) {
         const li = document.createElement("li");
-        li.style.padding = "6px 0";
         const a = document.createElement("a");
-        a.textContent = item.label.trim();
+        const label = item.label.trim();
+        a.textContent = label;
         a.href = "#";
-        a.style.color = "var(--color-text)";
-        a.style.textDecoration = "none";
         a.addEventListener("click", (e) => {
             e.preventDefault();
             pushJump();
-            rendition.display(item.href);
-            $("toc-sidebar").style.display = "none";
+            void rendition.display(item.href);
+            sidebar.close();
         });
+        tocEntries.push({ href: item.href, label, link: a });
         li.appendChild(a);
         if (item.subitems?.length) {
             const sub = document.createElement("ul");
-            sub.style.paddingLeft = "1rem";
             renderToc(item.subitems, sub);
             li.appendChild(sub);
         }
         el.appendChild(li);
     }
 }
-book.ready.then(() => renderToc(book.navigation.toc, $("toc-list")));
+
+/** The contents entry for the chapter being read (the first one in its file). */
+function currentTocEntry(): (typeof tocEntries)[number] | undefined {
+    try {
+        const href = (currentCfi ? book.spine.get(currentCfi) : null)?.href || "";
+        if (!href) return undefined;
+        return tocEntries.find((t) => {
+            const file = t.href.split("#")[0];
+            return !!file && href.endsWith(file);
+        });
+    } catch {
+        return undefined;
+    }
+}
+
+/** Highlight the current chapter in the contents. */
+function markCurrentChapter(): void {
+    const current = currentTocEntry()?.link;
+    for (const { link } of tocEntries) {
+        if (link === current) link.setAttribute("aria-current", "true");
+        else link.removeAttribute("aria-current");
+    }
+}
+
+book.ready.then(() => {
+    renderToc(book.navigation.toc, $("toc-list"));
+    markCurrentChapter();
+});
+rendition.on("relocated", markCurrentChapter);
 
 // ---- bookmarks -------------------------------------------------------------
 
 function chapterLabel(): string {
-    try {
-        const section = currentCfi ? book.spine.get(currentCfi) : null;
-        const href = section?.href || "";
-        const find = (items: EpubJS.NavItem[]): string => {
-            for (const it of items) {
-                if (href && it.href && href.endsWith(it.href.split("#")[0] ?? "")) return it.label.trim();
-                const sub = it.subitems?.length ? find(it.subitems) : "";
-                if (sub) return sub;
-            }
-            return "";
-        };
-        return find(book.navigation?.toc || []);
-    } catch {
-        return "";
-    }
+    return currentTocEntry()?.label ?? "";
 }
 
 const bookmarkHandlers: BookmarkHandlers = {
     onGo: (b) => {
         void rendition.display(b.position);
-        $("toc-sidebar").style.display = "none";
+        sidebar.close();
     },
     onDelete: (b) => {
         sync.removeBookmark(b.id);
@@ -301,7 +320,6 @@ $("next-btn").addEventListener("click", safeNext);
 window.addEventListener("keydown", (e) => {
     if (e.key === "ArrowLeft") safePrev();
     if (e.key === "ArrowRight") safeNext();
-    if (e.key === "Escape") $("toc-sidebar").style.display = "none";
 });
 
 // scroll to navigate
@@ -330,11 +348,6 @@ $("font-up").addEventListener("click", () => {
 $("font-down").addEventListener("click", () => {
     fontSize = Math.max(fontSize - 10, 60);
     applyFontSize();
-});
-
-$("toc-btn").addEventListener("click", () => {
-    const sidebar = $("toc-sidebar");
-    sidebar.style.display = sidebar.style.display === "none" ? "block" : "none";
 });
 
 if (!sync.signedIn) setSync("Saved on this device");
