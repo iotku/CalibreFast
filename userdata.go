@@ -50,6 +50,7 @@ func booksByUUIDs(uuids []string) ([]Book, error) {
 		if err := rows.Scan(&b.UUID, &b.Title, &b.AuthorSort, &b.PubDate, &b.Path, &b.LastModified); err != nil {
 			continue
 		}
+		b.LastModified = coverStamp(b.LastModified)
 		uuidPathIndex.Store(b.UUID, b.Path)
 		byUUID[b.UUID] = b
 	}
