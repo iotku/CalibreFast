@@ -7,10 +7,9 @@
     <link rel="stylesheet" href="/static/style.css">
 </head>
 <body class="auth-body">
-<header class="top-bar">
-    <a href="/" class="btn-back">&#8592; Library</a>
-    <form method="post" action="/logout"><button class="btn-standard" type="submit">Sign out</button></form>
-</header>
+{{ $tb := topbar "Title" "Account" }}
+{{ template "topbar-start" $tb }}
+{{ template "topbar-end" $tb }}
 <main class="auth-main">
     <section class="auth-card">
         <h1>{{ .User.Username }}{{ if .User.IsAdmin }} <span class="auth-badge">admin</span>{{ end }}</h1>

@@ -9,10 +9,9 @@
     <link rel="stylesheet" href="/static/style.css">
 </head>
 <body class="auth-body">
-<header class="top-bar">
-    <a href="/" class="btn-back">&#8592; Library</a>
-    <div></div>
-</header>
+{{ $tb := topbar }}
+{{ template "topbar-start" $tb }}
+{{ template "topbar-end" $tb }}
 <main class="auth-main">
     <section class="auth-card">
     {{ if not .Link }}

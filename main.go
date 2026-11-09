@@ -9,7 +9,9 @@ package main
 import (
 	"database/sql"
 	"encoding/json"
+	"errors"
 	"flag"
+	"fmt"
 	"html/template"
 	"log"
 	"net/http"
@@ -337,8 +339,26 @@ func fileModTime(f *os.File) (t time.Time) {
 }
 
 var templates = template.Must(
-	template.ParseGlob("templates/*.html"),
+	template.New("").Funcs(template.FuncMap{"topbar": topbarData}).ParseGlob("templates/*.html"),
 )
+
+// topbarData builds the data for templates/topbar.html from key/value pairs,
+// e.g. {{ topbar "Active" "authors" "Title" .Display }}. See that file for
+// the keys.
+func topbarData(kv ...any) (map[string]any, error) {
+	if len(kv)%2 != 0 {
+		return nil, errors.New("topbar: odd number of arguments")
+	}
+	m := map[string]any{"Site": SiteTitle, "Active": "", "Title": "", "NavTitle": false, "Query": ""}
+	for i := 0; i < len(kv); i += 2 {
+		k, ok := kv[i].(string)
+		if !ok {
+			return nil, fmt.Errorf("topbar: key %v is not a string", kv[i])
+		}
+		m[k] = kv[i+1]
+	}
+	return m, nil
+}
 
 func serveLibraryHTTP() {
 	http.HandleFunc("/", func(w http.ResponseWriter, r *http.Request) {

@@ -77,8 +77,9 @@ type AggregateDisplayItem struct {
 
 // AggregatePageData is passed to aggregate.html for server-side rendering.
 type AggregatePageData struct {
-	Title string
-	Items []AggregateDisplayItem
+	Title  string
+	Active string // top-bar nav item: the category's plural, e.g. "authors"
+	Items  []AggregateDisplayItem
 }
 
 // FilteredPageData is passed to filtered.html.
@@ -89,6 +90,7 @@ type FilteredPageData struct {
 	Sub         string // raw value shown small next to Display when they differ
 	SuggestName string // default for the editor's display-name field
 	Category    string // category key, e.g. "language"
+	Active      string // top-bar nav item, e.g. "languages" or "favorites"
 	Label       string // "language"
 	Key         string // value from the URL (used to address the group)
 	Members     []string
@@ -422,6 +424,7 @@ func filteredPageHandler(c *category) http.HandlerFunc {
 			Sub:         sub,
 			SuggestName: suggest,
 			Category:    c.Key,
+			Active:      c.Plural,
 			Label:       c.Label,
 			Key:         value,
 			Members:     members,
@@ -440,7 +443,7 @@ func filteredPageHandler(c *category) http.HandlerFunc {
 // aggregatePageHandler serves the server-rendered tag cloud.
 func aggregatePageHandler(c *category) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
-		data := AggregatePageData{Title: c.Title, Items: getAggregateDisplay(c)}
+		data := AggregatePageData{Title: c.Title, Active: c.Plural, Items: getAggregateDisplay(c)}
 		w.Header().Set("Cache-Control", "no-cache")
 		if err := templates.ExecuteTemplate(w, "aggregate.html", data); err != nil {
 			http.Error(w, err.Error(), http.StatusInternalServerError)

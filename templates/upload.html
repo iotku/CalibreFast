@@ -6,6 +6,7 @@
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <title>{{.Title}}</title>
+    <link rel="stylesheet" href="/static/style.css" />
     <link rel="preconnect" href="https://fonts.googleapis.com" />
     <link
         href="https://fonts.googleapis.com/css2?family=Playfair+Display:wght@400;700&family=IBM+Plex+Mono:wght@400;500&family=IBM+Plex+Sans:wght@300;400;500&display=swap"
@@ -43,36 +44,7 @@
             font-family: var(--sans);
             font-weight: 300;
             min-height: 100vh;
-            padding: 0 0 4rem;
-        }
-
-        /* ── Header ── */
-        header {
-            display: flex;
-            align-items: baseline;
-            gap: 1.5rem;
-            padding: 2rem 2.5rem 1.5rem;
-            border-bottom: 1px solid var(--border);
-        }
-
-        header a {
-            font-family: var(--serif);
-            font-size: 1.4rem;
-            color: var(--accent);
-            text-decoration: none;
-            letter-spacing: 0.02em;
-        }
-
-        header a:hover {
-            color: var(--text);
-        }
-
-        header span {
-            font-family: var(--mono);
-            font-size: 0.7rem;
-            color: var(--muted);
-            letter-spacing: 0.12em;
-            text-transform: uppercase;
+            padding: var(--topbar-total) 0 4rem; /* fixed top bar */
         }
 
         /* ── Main layout ── */
@@ -644,10 +616,9 @@
 <body>
     <script src="https://cdn.jsdelivr.net/npm/jszip@3.10.2/dist/jszip.min.js" integrity="sha384-DdGlNq+wVXAn83gXqwyeFHB7iyXy6L0rLrNzgDmhKWPjiJLg9vj6qosYmZmkMfQ+" crossorigin="anonymous"></script>
     <script src="https://cdn.jsdelivr.net/npm/epubjs@0.3.93/dist/epub.min.js"></script>
-    <header>
-        <a href="/">{{.Title}}</a>
-        <span>/ upload</span>
-    </header>
+{{ $tb := topbar "Active" "upload" "Title" "Upload" }}
+{{ template "topbar-start" $tb }}
+{{ template "topbar-end" $tb }}
 
     <main>
         <h1>Add books</h1>

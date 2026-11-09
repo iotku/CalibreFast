@@ -7,10 +7,9 @@
     <link rel="stylesheet" href="/static/style.css">
 </head>
 <body class="auth-body">
-<header class="top-bar">
-    <a href="/account" class="btn-back">&#8592; Account</a>
-    <div></div>
-</header>
+{{ $tb := topbar "Title" "Manage users" }}
+{{ template "topbar-start" $tb }}
+{{ template "topbar-end" $tb }}
 <main class="auth-main auth-wide">
     <section class="auth-card">
         <h1>Users</h1>

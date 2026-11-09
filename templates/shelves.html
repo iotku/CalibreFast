@@ -7,13 +7,9 @@
     <link rel="stylesheet" href="/static/style.css">
 </head>
 <body class="auth-body">
-<header class="top-bar">
-    <div class="top-bar-left">
-        <a href="/" class="btn-back">&#8592; Library</a>
-        <h1 class="title">Bookshelves</h1>
-    </div>
-    <span id="user-nav" class="user-nav"></span>
-</header>
+{{ $tb := topbar "Active" "shelves" "Title" "Bookshelves" "NavTitle" true }}
+{{ template "topbar-start" $tb }}
+{{ template "topbar-end" $tb }}
 <main class="auth-main auth-wide">
     <p id="shelf-status" class="auth-notice" role="status" hidden></p>
 
@@ -65,7 +61,6 @@
     <p class="auth-muted"><a class="meta-link" href="/login?next=/shelves">Sign in</a> to make your own shelves.</p>
     {{ end }}
 </main>
-<script type="module" src="/static/nav.js"></script>
 <script type="module" src="/static/shelves.js"></script>
 </body>
 </html>

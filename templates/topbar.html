@@ -1,0 +1,66 @@
+{{/*
+Shared top bar for every page except the readers. Page-specific tools (the
+pager, the Group button, …) go between the two halves:
+
+    {{ $tb := topbar "Active" "authors" "Title" .Display }}
+    {{ template "topbar-start" $tb }}
+        …tools…
+    {{ template "topbar-end" $tb }}
+
+Keys (all optional):
+  Active    nav item to highlight: authors, publishers, tags, languages,
+            shelves, favorites, reading, upload
+  Title     page title, shown after the nav (truncated when space runs out)
+  NavTitle  true when Title only repeats the highlighted nav item: then it's
+            shown only on narrow screens, where the nav is in the ☰ menu
+  Sub       small text after the title (e.g. a raw language code)
+  Query     search box value
+The signed-in part (upload, favorites, reading, user menu) is filled by nav.ts, so
+pages stay the same for everyone and cacheable.
+*/}}
+
+{{ define "topbar-start" }}
+<header class="top-bar site-bar">
+    <button type="button" class="tb-icon tb-menu-btn" aria-label="Menu" aria-expanded="false" aria-controls="tb-nav">
+        <svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M4 6h16M4 12h16M4 18h16"/></svg>
+    </button>
+    <a class="tb-brand" href="/">{{ .Site }}</a>
+    <nav id="tb-nav" class="tb-nav" aria-label="Browse">
+        <a class="tb-home" href="/">{{ .Site }}</a>
+        <a href="/authors"{{ if eq .Active "authors" }} aria-current="page"{{ end }}>Authors</a>
+        <a href="/publishers"{{ if eq .Active "publishers" }} aria-current="page"{{ end }}>Publishers</a>
+        <a href="/tags"{{ if eq .Active "tags" }} aria-current="page"{{ end }}>Tags</a>
+        <a href="/languages"{{ if eq .Active "languages" }} aria-current="page"{{ end }}>Languages</a>
+        <a href="/shelves"{{ if eq .Active "shelves" }} aria-current="page"{{ end }}>Shelves</a>
+    </nav>
+    {{ if .Title }}<h1 class="tb-title{{ if .NavTitle }} tb-title-nav{{ end }}" title="{{ .Title }}">{{ .Title }}{{ with .Sub }} <span class="tb-title-sub">{{ . }}</span>{{ end }}</h1>{{ end }}
+    <form class="tb-search" action="/search" method="get" role="search">
+        <input name="q" type="search" value="{{ .Query }}" placeholder="Search title or author…" aria-label="Search books" />
+        <button type="button" class="tb-icon tb-search-close" aria-label="Close search">
+            <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M6 6l12 12M18 6L6 18"/></svg>
+        </button>
+    </form>
+    <button type="button" class="tb-icon tb-search-btn" aria-label="Search">
+        <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><circle cx="11" cy="11" r="7"/><path d="M20 20l-3.5-3.5"/></svg>
+    </button>
+    <div class="tb-tools">
+{{ end }}
+
+{{ define "topbar-end" }}
+    </div>
+    <div id="user-nav" class="tb-user" data-active="{{ .Active }}">
+        <div class="throbber" role="status" aria-label="Loading account"><span class="throbber-dot"></span><span class="throbber-dot"></span><span class="throbber-dot"></span></div>
+    </div>
+</header>
+<script type="module" src="/static/nav.js"></script>
+{{ end }}
+
+{{/* Page navigation for the scrolling book grids (web/app-htmx.ts). */}}
+{{ define "topbar-pager" }}
+        <div class="tb-pager">
+            <button id="prev-page" class="tb-icon" aria-label="Previous page">&lsaquo;</button>
+            <input id="page-input" type="number" min="1" value="1" class="input-page" aria-label="Page" />
+            <span class="tb-pager-total">/ <span id="total-pages">—</span></span>
+            <button id="next-page" class="tb-icon" aria-label="Next page">&rsaquo;</button>
+        </div>
+{{ end }}

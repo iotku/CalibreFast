@@ -71,9 +71,10 @@ body {
     color: var(--text-primary);
 }
 
-/* Opening the book modal hides the page scrollbar (body.no-scroll); keep its
-   space reserved on pages that have the modal so the content doesn't shift. */
-html:has(#book-modal) {
+/* Opening the book modal hides the page scrollbar (body.no-scroll). If the
+   page had one, modal.ts sets .keep-gutter so its space stays reserved and
+   the content doesn't shift; pages that don't scroll get no empty strip. */
+html.keep-gutter {
     scrollbar-gutter: stable;
 }
 
@@ -351,42 +352,6 @@ input[type="number"],
     box-shadow: 0 4px 20px rgba(0, 0, 0, 0.15);
 }
 
-.top-bar-left,
-.top-bar-center,
-.top-bar-right {
-    display: flex;
-    align-items: center;
-    min-width: 0;
-    gap: var(--gap-medium);
-}
-
-.top-bar-left {
-    flex: 1 1 auto;
-    justify-content: flex-start;
-}
-
-.top-bar-left .title {
-    margin: 0;
-    white-space: nowrap;
-    font-size: 1.2rem;
-}
-
-.top-bar-left form {
-    min-width: 100px;
-    flex: 1 1 300px;
-}
-
-.top-bar-center {
-    flex: 1;
-    justify-content: center;
-}
-
-.top-bar-right {
-    flex: 0 0 auto;
-    justify-content: flex-end;
-    white-space: nowrap;
-}
-
 .top-bar-center-abs {
     position: absolute;
     left: 50%;
@@ -420,12 +385,6 @@ input[type="number"],
     border-radius: var(--radius-medium);
 }
 
-/* Navigation links */
-
-.top-bar .meta-link {
-    white-space: nowrap;
-    flex-shrink: 0;
-}
 
 /* Wideboys */
 @media (min-width: 2000px) {
@@ -451,7 +410,8 @@ input[type="number"],
         --topbar-total: var(--topbar-height);
     }
 
-    .top-bar {
+    /* Reader bars (the site bar has its own rules below) */
+    .top-bar:not(.site-bar) {
         display: grid;
         grid-template-columns: minmax(0, 1fr) auto;
         grid-template-areas:
@@ -462,33 +422,9 @@ input[type="number"],
         padding: 6px var(--page-padding);
     }
 
-    .top-bar-left {
-        grid-area: left;
-        min-width: 0;
-        gap: 8px;
-    }
-
-    .top-bar-center {
-        grid-area: center;
-        justify-content: stretch;
-        width: 100%;
-        min-width: 0;
-    }
-
-    .top-bar-right {
-        grid-area: right;
-        justify-content: flex-end;
-        gap: 6px;
-    }
-
     .top-bar-center-abs {
         position: static;
         transform: none;
-        width: 100%;
-    }
-
-    .top-bar-center input,
-    .top-bar-center .input-search {
         width: 100%;
     }
 
@@ -498,55 +434,16 @@ input[type="number"],
     }
 }
 
-/* ============================================
-   Very Narrow Screens
-   ============================================ */
-
 @media (max-width: 600px) {
     :root {
         --topbar-height: 104px;
         --topbar-total: var(--topbar-height);
     }
 
-    .top-bar {
+    .top-bar:not(.site-bar) {
         grid-template-columns: minmax(0, 1fr) auto;
         gap: 8px;
         padding: 8px 10px;
-    }
-
-    .top-bar-left {
-        flex-wrap: wrap;
-        gap: 6px 10px;
-    }
-
-    .top-bar-left .title {
-        font-size: 1rem;
-    }
-
-    .top-bar-left form {
-        flex: 1 1 100%;
-        order: 2;
-        width: 100%;
-    }
-
-    .top-bar-left .meta-link {
-        font-size: 0.8rem;
-    }
-
-    .top-bar-right {
-        gap: 4px;
-    }
-
-    .top-bar .btn-nav {
-        width: 34px;
-        height: 34px;
-        min-width: 34px;
-        min-height: 34px;
-    }
-
-    .input-page {
-        width: 44px;
-        padding: 0 4px;
     }
 
     #books {
@@ -555,32 +452,431 @@ input[type="number"],
 }
 
 @media (max-width: 380px) {
-    .top-bar {
+    .top-bar:not(.site-bar) {
         padding: 6px 8px;
         column-gap: 6px;
-    }
-
-    .top-bar-left {
-        gap: 4px 8px;
-    }
-
-    .top-bar-left .meta-link {
-        font-size: 0.75rem;
-    }
-
-    .top-bar-right {
-        gap: 3px;
-    }
-
-    .top-bar .btn-nav {
-        width: 30px;
-        min-width: 30px;
     }
 }
 
 /* ============================================
+   Site top bar (templates/topbar.html, web/nav.ts)
+   One slim row on every page except the readers:
+   ☰ · brand · browse links · title · search · page tools · ★ · 📖 · user menu
+   ============================================ */
+
+/* Higher specificity than the :root overrides above, at every width. */
+:root:has(.site-bar) {
+    --topbar-height: 52px;
+    --topbar-padding: 0px;
+    --topbar-total: 52px;
+}
+
+.site-bar {
+    height: var(--topbar-total);
+    padding: 0 var(--page-padding);
+    gap: 10px;
+    justify-content: flex-start;
+    flex-wrap: nowrap;
+}
+
+.site-bar > * {
+    flex-shrink: 0;
+}
+
+.tb-brand {
+    font-weight: 700;
+    font-size: 1.05rem;
+    color: var(--text-primary);
+    text-decoration: none;
+    white-space: nowrap;
+}
+
+.tb-nav {
+    display: flex;
+    align-items: center;
+    gap: 2px;
+}
+
+.tb-nav a,
+.tb-menu-list a,
+.tb-menu-list button {
+    padding: 7px 10px;
+    border-radius: var(--radius-small);
+    color: var(--text-secondary);
+    text-decoration: none;
+    font-size: 0.92rem;
+    white-space: nowrap;
+}
+
+.tb-nav a:hover,
+.tb-menu-list a:hover,
+.tb-menu-list button:hover {
+    color: var(--text-primary);
+    background: var(--bg-elevated);
+}
+
+.tb-nav a[aria-current="page"],
+.tb-menu-list a[aria-current="page"] {
+    color: var(--text-primary);
+    background: var(--bg-surface);
+}
+
+/* Active section: a straight underline drawn just below the link, separate
+   from its rounded background. */
+.tb-nav a {
+    position: relative;
+}
+
+.tb-nav a[aria-current="page"]::after {
+    content: "";
+    position: absolute;
+    left: 10px;
+    right: 10px;
+    bottom: -5px;
+    height: 2px;
+    background: var(--text-primary);
+}
+
+.tb-nav .tb-home {
+    display: none; /* only in the narrow-screen menu */
+}
+
+.tb-title {
+    flex: 0 1 auto; /* the only part that shrinks (ellipsis) when space runs out */
+    min-width: 0;
+    margin: 0 0 0 4px;
+    font-size: 1rem;
+    font-weight: 600;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+}
+
+.tb-title-nav {
+    display: none; /* repeats the highlighted nav item; shown when the nav is in ☰ */
+}
+
+.tb-title-sub {
+    font-size: 0.8em;
+    font-weight: 400;
+    color: var(--text-muted);
+    font-family: var(--mono, ui-monospace, monospace);
+}
+
+/* Starts at its minimum and only grows into leftover space, so the page
+   title keeps priority. */
+.tb-search {
+    display: flex;
+    align-items: center;
+    margin-left: auto;
+    flex: 1 0 150px;
+    max-width: 300px;
+}
+
+.site-bar .tb-search input {
+    width: 100%;
+    height: 36px;
+}
+
+.tb-tools,
+.tb-pager,
+.tb-user {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+}
+
+.tb-tools:not(:has(*)) {
+    display: none;
+}
+
+.tb-pager {
+    gap: 4px;
+    font-size: 0.9rem;
+    color: var(--text-secondary);
+}
+
+.site-bar .tb-pager .input-page {
+    width: 52px;
+    height: 36px;
+    padding: 0 4px;
+}
+
+.tb-user {
+    justify-content: flex-end;
+}
+
+.tb-user .throbber {
+    height: 36px;
+    gap: 4px;
+}
+
+.tb-user .throbber-dot {
+    width: 6px;
+    height: 6px;
+}
+
+.site-bar .tb-icon {
+    width: 36px;
+    height: 36px;
+    min-width: 36px;
+    padding: 0;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    border: 1px solid transparent;
+    border-radius: var(--radius-small);
+    background: transparent;
+    color: var(--text-secondary);
+    font-size: 1.2rem;
+    text-decoration: none;
+}
+
+.site-bar .tb-icon:hover,
+.site-bar .tb-icon[aria-current="page"],
+.site-bar .tb-icon[aria-expanded="true"] {
+    color: var(--text-primary);
+    background: var(--bg-elevated);
+    border-color: var(--border-medium);
+}
+
+.site-bar .tb-btn {
+    height: 34px;
+    padding: 0 12px;
+    display: inline-flex;
+    align-items: center;
+    border: 1px solid var(--border-medium);
+    border-radius: var(--radius-small);
+    background: var(--bg-surface);
+    color: var(--text-primary);
+    font-size: 0.9rem;
+    text-decoration: none;
+    white-space: nowrap;
+}
+
+.site-bar .tb-btn:hover {
+    background: var(--bg-elevated);
+}
+
+/* Narrow-screen-only controls */
+.tb-menu-btn,
+.tb-search-btn,
+.tb-search-close {
+    display: none !important;
+}
+
+/* User menu */
+.tb-menu {
+    position: relative;
+}
+
+.site-bar .tb-user-btn {
+    height: 36px;
+    padding: 0 8px 0 4px;
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    border: 1px solid transparent;
+    border-radius: var(--radius-round);
+    background: transparent;
+    color: var(--text-primary);
+    font-size: 0.9rem;
+}
+
+.site-bar .tb-user-btn:hover,
+.site-bar .tb-user-btn[aria-expanded="true"] {
+    background: var(--bg-elevated);
+    border-color: var(--border-medium);
+}
+
+.tb-avatar {
+    width: 28px;
+    height: 28px;
+    border-radius: 50%;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    background: var(--bg-surface);
+    border: 1px solid var(--border-medium);
+    font-weight: 700;
+    font-size: 0.85rem;
+    text-transform: uppercase;
+}
+
+.tb-user-name {
+    max-width: 12ch;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+.tb-menu-list {
+    position: absolute;
+    top: calc(100% + 8px);
+    right: 0;
+    min-width: 190px;
+    display: flex;
+    flex-direction: column;
+    padding: 6px;
+    background: var(--bg-elevated);
+    border: 1px solid var(--border-medium);
+    border-radius: var(--radius-medium);
+    box-shadow: var(--shadow-medium);
+}
+
+.tb-menu-list[hidden] {
+    display: none;
+}
+
+.tb-menu-list form {
+    display: contents;
+}
+
+.tb-menu-list button {
+    border: 0;
+    background: none;
+    text-align: left;
+    font: inherit;
+    font-size: 0.92rem;
+    cursor: pointer;
+}
+
+/* Dropdown panels are --bg-elevated already: hover/current need a lighter tint. */
+.tb-menu-list a:hover,
+.tb-menu-list button:hover,
+.tb-menu-list a[aria-current="page"] {
+    background: rgba(255, 255, 255, 0.08);
+}
+
+.tb-menu-list hr {
+    width: 100%;
+    margin: 4px 0;
+    border: 0;
+    border-top: 1px solid var(--border-medium);
+}
+
+/* ≤ 1000px: browse links move into the ☰ menu */
+@media (max-width: 1000px) {
+    .tb-menu-btn {
+        display: inline-flex !important;
+    }
+
+    .tb-nav {
+        display: none;
+        position: absolute;
+        top: calc(100% + 4px);
+        left: var(--page-padding);
+        flex-direction: column; /* as wide as its longest item */
+        align-items: stretch;
+        gap: 2px;
+        padding: 6px;
+        background: var(--bg-elevated);
+        border: 1px solid var(--border-medium);
+        border-radius: var(--radius-medium);
+        box-shadow: var(--shadow-medium);
+    }
+
+    .site-bar.nav-open .tb-nav {
+        display: flex;
+    }
+
+    /* Menu items: 44px touch targets; the active one underlines its word
+       (straight, inside the item, clear of the next entry). */
+    .tb-nav a {
+        padding: 14px;
+        line-height: 16px;
+    }
+
+    .tb-nav a[aria-current="page"]::after {
+        display: none;
+    }
+
+    .tb-nav a:hover,
+    .tb-nav a[aria-current="page"] {
+        background: rgba(255, 255, 255, 0.08);
+    }
+
+    .tb-nav a[aria-current="page"] {
+        text-decoration: underline;
+        text-decoration-thickness: 2px;
+        text-underline-offset: 6px;
+    }
+
+    .tb-nav .tb-home {
+        display: block;
+    }
+
+    .tb-title-nav {
+        display: block;
+    }
+}
+
+/* ≤ 640px: search becomes an icon; favorites/reading live in the user menu */
+@media (max-width: 640px) {
+    .site-bar {
+        gap: 6px;
+        padding: 0 8px;
+    }
+
+    .site-bar:has(.tb-title) .tb-brand {
+        display: none; /* the ☰ menu has a link home */
+    }
+
+    .tb-title {
+        flex: 1 1 auto;
+    }
+
+    .tb-search {
+        display: none;
+    }
+
+    .tb-search-btn {
+        display: inline-flex !important;
+        margin-left: auto;
+    }
+
+    .site-bar.search-open .tb-search {
+        display: flex;
+        position: absolute;
+        inset: 0;
+        max-width: none;
+        z-index: 2;
+        gap: 6px;
+        padding: 0 8px;
+        margin: 0;
+        background: var(--bg-secondary);
+    }
+
+    .site-bar.search-open .tb-search-close {
+        display: inline-flex !important;
+    }
+
+    .tb-shortcut,
+    .tb-user-name {
+        display: none !important;
+    }
+
+
+    .site-bar .tb-pager .input-page {
+        width: 40px;
+    }
+
+    /* Phones scroll; the page box is still there to jump. */
+    .tb-pager #prev-page,
+    .tb-pager #next-page,
+    .site-bar .btn-group-toggle .tb-label {
+        display: none;
+    }
+}
+
+
+/* ============================================
    Component - Book Detail Page
    ============================================ */
+body.book-standalone {
+    padding-top: calc(var(--topbar-total) + 1.5rem);
+}
+
 .book-page {
     display: grid;
     grid-template-columns: 280px minmax(0, 1fr);
@@ -1493,6 +1789,29 @@ input[type="number"],
     white-space: nowrap;
 }
 
+.btn-group-toggle {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+}
+
+.tb-group-icon {
+    display: none;
+}
+
+@media (max-width: 640px) {
+    .tb-group-icon {
+        display: block;
+    }
+
+    .site-bar .btn-group-toggle {
+        width: 36px;
+        height: 36px;
+        padding: 0;
+        justify-content: center;
+    }
+}
+
 .btn-group-toggle:hover,
 .btn-group-toggle[aria-expanded="true"] {
     color: var(--text-primary);
@@ -1850,16 +2169,6 @@ label.group-row span {
     justify-content: flex-end;
 }
 
-.user-nav {
-    display: inline-flex;
-    align-items: center;
-    gap: 0.75rem;
-    white-space: nowrap;
-}
-
-.user-nav-name {
-    font-weight: 600;
-}
 
 /* ============================================
    Book popup: per-user controls
