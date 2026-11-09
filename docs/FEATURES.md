@@ -119,6 +119,10 @@ Groups combine values that mean the same thing without editing any books. For ex
 - **Reading position and bookmarks:** kept in the browser and, when signed in, synced to the server, so another device can resume.
   - The newest position wins.
   - Changes made offline are pushed when the connection returns.
+- **KOReader progress sync:** KOReader devices can use CalibreFast as their Progress sync server (`<server>/kosync`), signing in with a sync key from **Account → Device sync**. See [KOREADER.md](KOREADER.md).
+  - Positions move between devices and the web readers, newest first. EPUB positions land on the same chapter, and usually the same paragraph.
+  - Reading on a device marks a library book as reading or finished.
+  - Books outside the library still sync between devices.
 - **Bookshelves** (`/shelves`):
   - Personal shelves are private to their owner.
   - Global shelves are visible to everyone and edited by admins.
