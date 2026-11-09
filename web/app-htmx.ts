@@ -606,46 +606,88 @@ function onResize(): void {
 /* Covers                                                             */
 /* ------------------------------------------------------------------ */
 
+/** True while the book modal is loading: grid covers wait (see modal.ts). */
+let coversPaused = false;
+
 /**
- * Start pending covers nearest the viewport first, favouring the scroll
- * direction, keeping at most MAX_COVERS_INFLIGHT requests open. Each
- * finished image pumps the queue again.
+ * Abort an in-flight cover download and put it back in the queue. Removing
+ * src cancels the request without firing "error" (which would mark the book
+ * as having no cover); a later retry is served from the browser cache if the
+ * image had already arrived.
+ */
+function cancelCover(img: HTMLImageElement): void {
+    coversInflight.delete(img);
+    const src = img.getAttribute("src");
+    if (!src || img.complete) return;
+    img.removeAttribute("src");
+    img.dataset["src"] = src;
+}
+
+/**
+ * Load covers on screen first, then the rest nearest the viewport (favouring
+ * the scroll direction), keeping at most MAX_COVERS_INFLIGHT requests open:
+ *   - off-screen covers only start once nothing on screen is waiting or loading
+ *   - while an on-screen cover waits, off-screen downloads are cancelled
+ *   - nothing starts while the book modal is loading
+ * Each finished image pumps the queue again.
  */
 function pumpCovers(): void {
     // Images removed by a placeholder swap never fire load/error.
     for (const img of coversInflight) {
         if (!img.isConnected) coversInflight.delete(img);
     }
-    if (coversInflight.size >= MAX_COVERS_INFLIGHT) return;
+    if (coversPaused) return;
 
     const header = headerHeight();
     const vh = window.innerHeight;
     const down = scrollDir > 0;
-
-    // Distance from the viewport in px; covers behind the scroll direction cost double.
-    const queue = [];
-    for (const img of document.querySelectorAll<HTMLImageElement>(".book-cover[data-src]")) {
+    // Distance from the viewport in px (0 = on screen); covers behind the
+    // scroll direction cost double.
+    const distance = (img: HTMLImageElement): number => {
         const r = img.getBoundingClientRect();
-        let dist = 0;
-        if (r.top > vh) dist = (r.top - vh) * (down ? 1 : 2);
-        else if (r.bottom < header) dist = (header - r.bottom) * (down ? 2 : 1);
-        queue.push({ img, dist });
+        if (r.top > vh) return (r.top - vh) * (down ? 1 : 2);
+        if (r.bottom < header) return (header - r.bottom) * (down ? 2 : 1);
+        return 0;
+    };
+
+    const queue = [...document.querySelectorAll<HTMLImageElement>(".book-cover[data-src]")].map((img) => ({
+        img,
+        dist: distance(img),
+    }));
+    const onScreenWaiting = queue.some((c) => c.dist === 0);
+
+    let onScreenLoading = false;
+    for (const img of [...coversInflight]) {
+        const dist = distance(img);
+        if (dist === 0) onScreenLoading = true;
+        else if (onScreenWaiting) {
+            cancelCover(img); // give the slot (and bandwidth) to the viewport
+            queue.push({ img, dist });
+        }
     }
     queue.sort((a, b) => a.dist - b.dist);
 
-    for (const { img } of queue) {
+    for (const { img, dist } of queue) {
         if (coversInflight.size >= MAX_COVERS_INFLIGHT) break;
+        if (dist > 0 && (onScreenWaiting || onScreenLoading)) break; // viewport first
 
         const src = img.dataset["src"] ?? "";
         delete img.dataset["src"];
         coversInflight.add(img);
-
-        const done = () => pumpCovers();
-        img.addEventListener("load", done, { once: true });
-        img.addEventListener("error", done, { once: true });
+        if (dist === 0) onScreenLoading = true;
         img.src = src;
     }
 }
+
+// The book modal is loading: stop background covers until it's done.
+document.addEventListener("cf:modal-busy", (e) => {
+    coversPaused = (e as CustomEvent<boolean>).detail;
+    if (coversPaused) {
+        for (const img of [...coversInflight]) cancelCover(img);
+    } else {
+        pumpCovers();
+    }
+});
 
 function onCoverSettled(e: Event): void {
     const img = e.target;
