@@ -518,7 +518,22 @@ input[type="number"],
 .tb-menu-list a[aria-current="page"] {
     color: var(--text-primary);
     background: var(--bg-surface);
-    box-shadow: inset 0 -2px 0 var(--text-secondary);
+}
+
+/* Active section: a straight underline drawn just below the link, separate
+   from its rounded background. */
+.tb-nav a {
+    position: relative;
+}
+
+.tb-nav a[aria-current="page"]::after {
+    content: "";
+    position: absolute;
+    left: 10px;
+    right: 10px;
+    bottom: -5px;
+    height: 2px;
+    background: var(--text-primary);
 }
 
 .tb-nav .tb-home {
@@ -738,6 +753,7 @@ input[type="number"],
         min-width: 200px;
         flex-direction: column;
         align-items: stretch;
+        gap: 8px; /* room for the active underline between items */
         padding: 6px;
         background: var(--bg-elevated);
         border: 1px solid var(--border-medium);
