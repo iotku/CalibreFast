@@ -6,8 +6,9 @@ A fast, minimal web frontend for your [Calibre](https://calibre-ebook.com/) libr
 >
 > 🔒 **There is no authentication.** The server starts **read-only**. With `-allow-writes`, **anyone who can reach it can change your library**. Read [SECURITY.md](docs/SECURITY.md) before turning that on.
 
-![search screenshot](image.png)
-![alt text](image-1.png)
+![Search Screenshot](image-3.png)
+
+![Book Info](image-2.png)
 ---
 
 ## Is this AI Slop?
