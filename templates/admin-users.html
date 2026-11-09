@@ -24,6 +24,7 @@
                 <td><input type="checkbox" data-field="is_admin" {{ if .IsAdmin }}checked{{ end }} aria-label="Admin"></td>
                 <td><input type="checkbox" data-field="disabled" {{ if .Disabled }}checked{{ end }} aria-label="Disabled"></td>
                 <td class="admin-actions">
+                    <button type="button" class="btn-standard" data-action="signin-link" {{ if .Disabled }}disabled{{ end }}>Sign-in link</button>
                     <button type="button" class="btn-standard" data-action="password">Reset password</button>
                     <button type="button" class="btn-standard" data-action="delete">Delete</button>
                 </td>
@@ -31,6 +32,32 @@
             {{ end }}
             </tbody>
         </table>
+    </section>
+    <section class="auth-card" id="links">
+        <h2>One-time links</h2>
+        <p class="auth-muted">Send someone a link (e.g. in a Discord DM). <strong>Sign-in links</strong> sign in as an existing user: use the button next to a user above. <strong>Invites</strong> let someone create an account, even with registration closed. Each link works once. Opening it in a chat preview doesn't use it up.</p>
+        <label class="links-expiry">Links expire after
+            <select id="link-expiry">
+                <option value="1h">1 hour</option>
+                <option value="1d" selected>1 day</option>
+                <option value="7d">7 days</option>
+            </select>
+        </label>
+        <form id="invite-form" class="auth-form">
+            <label>Note (optional, shown to them) <input name="note" type="text" maxlength="200" placeholder="e.g. Hi Sam, here's the library"></label>
+            <label class="auth-check"><input name="is_admin" type="checkbox"> Make them an admin</label>
+            <button type="submit" class="btn-standard">Create invite link</button>
+        </form>
+        <div id="link-output" class="link-output" hidden>
+            <p id="link-output-label" class="auth-muted"></p>
+            <div class="link-copy-row">
+                <input id="link-url" type="text" readonly aria-label="Link">
+                <button type="button" id="link-copy" class="btn-standard">Copy</button>
+            </div>
+            <p class="auth-muted">This is the only time the link is shown.</p>
+        </div>
+        <h3>Active links</h3>
+        <ul id="link-list" class="link-list"><li class="auth-muted">Loading…</li></ul>
     </section>
     <section class="auth-card">
         <h2>Add a user</h2>

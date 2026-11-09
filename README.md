@@ -31,7 +31,7 @@ CalibreFast reads directly from your Calibre `metadata.db` and serves your libra
 - **Groups** merge values that mean the same thing, like `en`/`eng`/`en-US` → English, without editing any books.
 - **Metadata editor:** tag and language chips, autocomplete from your library, a formatted description editor, side-by-side comparison of your changes, and safeguards so curated metadata isn't lost.
 - **Uploads:** EPUB/PDF metadata is read automatically, and multiple formats of one book are combined.
-- **Accounts:** username/password, or GitHub/Google sign-in. Admins manage users.
+- **Accounts:** username/password, or GitHub/Google sign-in. Admins manage users, and can send someone a one-time sign-in or invite link (e.g. over Discord).
 - **Favorites and reading status:** star books, and track what you're reading and have finished. The readers update this as you go.
 - **Resume anywhere:** your reading position and bookmarks sync between devices, and are kept locally too in case the server is down.
 - **Bookshelves:** your own private shelves, plus global shelves that admins curate for everyone.

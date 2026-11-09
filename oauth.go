@@ -142,7 +142,8 @@ type pendingAuth struct {
 	Provider   string
 	Verifier   string // PKCE code_verifier
 	Next       string
-	LinkUserID int64 // non-zero: link to this signed-in user instead of signing in
+	LinkUserID int64  // non-zero: link to this signed-in user instead of signing in
+	Invite     string // invite link token: may create an account even with registration closed
 	Expires    time.Time
 }
 
@@ -198,6 +199,13 @@ func oauthStart(w http.ResponseWriter, r *http.Request) {
 		Verifier: randomToken(48),
 		Next:     safeNext(r.URL.Query().Get("next")),
 		Expires:  time.Now().Add(10 * time.Minute),
+	}
+	if inv := r.URL.Query().Get("invite"); inv != "" {
+		if l, err := lookupLink(inv); err != nil || l.Kind != "invite" {
+			http.Redirect(w, r, "/login?error="+url.QueryEscape(errLinkInvalid.Error()), http.StatusSeeOther)
+			return
+		}
+		pa.Invite = inv // checked again, and used up, only if an account is created
 	}
 	if r.URL.Query().Get("link") == "1" {
 		u := currentUser(r)
@@ -280,7 +288,7 @@ func oauthCallback(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	userID, msg, err := resolveOAuthUser(p.Name, ou, pa.LinkUserID)
+	userID, msg, err := resolveOAuthUser(p.Name, ou, pa.LinkUserID, pa.Invite)
 	if err != nil {
 		if pa.LinkUserID != 0 {
 			http.Redirect(w, r, "/account?error="+url.QueryEscape(err.Error()), http.StatusSeeOther)
@@ -308,7 +316,7 @@ var (
 
 // resolveOAuthUser maps a provider identity to a user: link (linkUserID != 0),
 // existing link, or (with -allow-registrations) a new account.
-func resolveOAuthUser(provider string, ou *oauthUser, linkUserID int64) (int64, string, error) {
+func resolveOAuthUser(provider string, ou *oauthUser, linkUserID int64, invite string) (int64, string, error) {
 	var owner int64
 	err := appDB.QueryRow(`SELECT user_id FROM identities WHERE provider = ? AND subject = ?`, provider, ou.Subject).Scan(&owner)
 	found := err == nil
@@ -342,12 +350,31 @@ func resolveOAuthUser(provider string, ou *oauthUser, linkUserID int64) (int64, 
 		return owner, "", nil
 	}
 
-	if !allowRegistrations {
+	makeAdmin := false
+	switch {
+	case invite != "":
+		// An admin's invite allows this account even with registration closed.
+		admin, err := claimInviteForOAuth(invite)
+		if err != nil {
+			return 0, "", err
+		}
+		makeAdmin = admin
+	case !allowRegistrations:
 		return 0, "", errNotLinked
 	}
 	u, err := createUserWithFreeName(usernameFrom(ou))
 	if err != nil {
+		if invite != "" {
+			unclaimLink(invite)
+		}
 		return 0, "", err
+	}
+	if makeAdmin {
+		_, _ = appDB.Exec(`UPDATE users SET is_admin = 1 WHERE id = ?`, u.ID)
+	}
+	if invite != "" {
+		markLinkUsedBy(invite, u.ID)
+		log.Printf("invite link used: created %s via %s (admin=%v)", u.Username, provider, makeAdmin)
 	}
 	if _, err := appDB.Exec(`INSERT INTO identities (provider, subject, user_id, email, login, created_at) VALUES (?, ?, ?, ?, ?, ?)`,
 		provider, ou.Subject, u.ID, ou.Email, ou.Login, nowUnix()); err != nil {

@@ -1,0 +1,55 @@
+<!doctype html>
+<html lang="en">
+<head>
+    <meta charset="utf-8">
+    <meta name="robots" content="noindex">
+    <meta name="referrer" content="no-referrer">
+    <title>{{ if .Link }}{{ if eq .Link.Kind "invite" }}Invitation{{ else }}Sign in{{ end }}{{ else }}Link{{ end }} — {{ .Title }}</title>
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <link rel="stylesheet" href="/static/style.css">
+</head>
+<body class="auth-body">
+<header class="top-bar">
+    <a href="/" class="btn-back">&#8592; Library</a>
+    <div></div>
+</header>
+<main class="auth-main">
+    <section class="auth-card">
+    {{ if not .Link }}
+        <h1>Link not valid</h1>
+        <p class="auth-error" role="alert">{{ .Error }}</p>
+        <p><a class="meta-link" href="/login">Go to sign in</a></p>
+    {{ else if eq .Link.Kind "login" }}
+        <h1>Sign in as {{ .Link.Username }}</h1>
+        {{ if .Error }}<p class="auth-error" role="alert">{{ .Error }}</p>{{ end }}
+        {{ if .Link.Note }}<p class="auth-muted">“{{ .Link.Note }}”</p>{{ end }}
+        {{ if .SignedIn }}<p class="auth-notice">You're currently signed in as {{ .SignedIn.Username }}. Continuing switches to {{ .Link.Username }}.</p>{{ end }}
+        <p class="auth-muted">This link works once and expires {{ .Expires }}. Don't share it — it signs in as {{ .Link.Username }}.</p>
+        <form method="post" class="auth-form">
+            <button type="submit" class="btn-standard auth-primary">Sign in</button>
+        </form>
+    {{ else }}
+        <h1>You're invited</h1>
+        {{ if .Error }}<p class="auth-error" role="alert">{{ .Error }}</p>{{ end }}
+        <p>Create your account for {{ .Title }}{{ if .Link.InviteAdmin }} — as an <strong>admin</strong>{{ end }}.</p>
+        {{ if .Link.Note }}<p class="auth-muted">“{{ .Link.Note }}”</p>{{ end }}
+        <p class="auth-muted">This invitation works once and expires {{ .Expires }}.</p>
+        <form method="post" class="auth-form">
+            <label>Username <input name="username" type="text" value="{{ .Username }}" autocomplete="username" pattern="[A-Za-z0-9._\-]{3,32}" required autofocus></label>
+            <label>Password <input name="password" type="password" autocomplete="new-password" minlength="10" required></label>
+            <label>Repeat password <input name="password2" type="password" autocomplete="new-password" minlength="10" required></label>
+            <button type="submit" class="btn-standard auth-primary">Create account</button>
+        </form>
+        {{ if .Providers }}
+        <div class="auth-divider"><span>or</span></div>
+        <div class="auth-providers">
+            {{ range .Providers }}
+            <a class="btn-standard auth-provider" href="/auth/{{ . }}/start?invite={{ $.Token }}">Create account with {{ if eq . "github" }}GitHub{{ else if eq . "google" }}Google{{ else }}{{ . }}{{ end }}</a>
+            {{ end }}
+        </div>
+        {{ end }}
+    {{ end }}
+    </section>
+</main>
+</body>
+</html>

@@ -106,6 +106,11 @@ Groups combine values that mean the same thing without editing any books. For ex
 ## Accounts, favorites, progress and shelves
 
 - **Accounts:** password, or GitHub/Google sign-in. Admins manage users at `/admin/users`. See [SECURITY.md](SECURITY.md) for who can do what.
+- **One-time links** (`/l/<token>`), created on `/admin/users`:
+  - a **sign-in link** for an existing user
+  - an **invite** to create an account, optionally as an admin, even with registration closed
+
+  They work once, expire after 1 hour / 1 day / 7 days, can be revoked, and aren't used up by chat link previews.
 - **Favorites and status:** the book popup has ★ Favorite and a status menu (not started / reading / finished). Lists are at `/me/favorites`, `/me/reading` and `/me/finished`.
   - Turning a page in a reader marks a book as reading; reaching ≥ 97% marks it finished.
   - Automatic changes only move forward and never override a status you set yourself.

@@ -271,6 +271,7 @@ func canEditLibrary(r *http.Request) bool {
 // private (sign-in and registration themselves, and static assets).
 func isPublicPath(p string) bool {
 	return p == "/login" || p == "/logout" || p == "/register" || p == "/api/me" ||
+		strings.HasPrefix(p, "/l/") ||
 		strings.HasPrefix(p, "/auth/") || strings.HasPrefix(p, "/static/")
 }
 
@@ -713,6 +714,7 @@ func registerAuthRoutes() {
 	registerUserDataRoutes()
 	registerProgressRoutes()
 	registerShelfRoutes()
+	registerLinkRoutes()
 }
 
 func withUserCtx(r *http.Request, u *User) context.Context {

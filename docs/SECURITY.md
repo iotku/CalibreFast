@@ -31,6 +31,21 @@ CalibreFast has accounts, but it's a personal project: the authentication code i
   - **Bots will try to create accounts.** There's no CAPTCHA or email verification, only rate limiting. Use it only on a trusted network, such as a Tailscale network shared with people you trust, and turn it off once everyone has an account.
 - **The last admin** can't be demoted, disabled or deleted.
 
+### One-time links
+
+Admins can create links from **Manage users** to send to someone directly, e.g. in a Discord DM:
+
+- **Sign-in link:** signs in as an existing user. It works like their password until it's used or expires, so only send it privately.
+- **Invite link:** lets someone create an account (password, or GitHub/Google) even with registration closed, optionally as an admin.
+
+Safeguards:
+- **Tokens:** random 256-bit tokens; only a hash is stored, and the link is shown once.
+- **Single use,** even if two people click at the same moment.
+- **Expiry:** after 1 hour, 1 day or 7 days. Unused links can be revoked from the same page.
+- **Previews don't use them up.** Opening a link (as chat apps do to build previews) only shows a confirmation page; the link is used when the person clicks the button.
+- **No leaks or indexing:** the pages aren't cached or indexed and don't send the link to other sites as a referrer.
+- **Logging:** creating and using links is logged.
+
 ### GitHub and Google sign-in
 
 Set `CF_GITHUB_CLIENT_ID` / `CF_GITHUB_CLIENT_SECRET` and/or `CF_GOOGLE_CLIENT_ID` / `CF_GOOGLE_CLIENT_SECRET` as environment variables, so they don't show up in `ps`. Also set `-public-url`. Register `<public-url>/auth/github/callback` and `<public-url>/auth/google/callback` as the callback URLs.
