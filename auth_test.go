@@ -224,3 +224,16 @@ func newJar() http.CookieJar {
 	j, _ := cookiejar.New(nil)
 	return j
 }
+
+func TestCoverStamp(t *testing.T) {
+	for in, want := range map[string]string{
+		"2026-11-09T00:29:47.324232Z":      "20261109002947", // as the Go sqlite driver returns it
+		"2026-11-09 00:29:47.324232+00:00": "20261109002947", // as Calibre stores it
+		"2026-11-09 02:29:47+02:00":        "20261109002947",
+		"2026-11-09 00:29:47":              "20261109002947",
+	} {
+		if got := coverStamp(in); got != want {
+			t.Errorf("coverStamp(%q) = %q, want %q", in, got, want)
+		}
+	}
+}

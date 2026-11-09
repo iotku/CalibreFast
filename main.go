@@ -289,6 +289,26 @@ LIMIT ? OFFSET ?`
 	logErr(encodeBooksJSONFromRows(rows, w), "failed to encode search results")
 }
 
+// coverStamp turns a Calibre last_modified value into the ?t= cache-buster
+// used on cover URLs ("20060102150405"). Every page must produce the same
+// string for a book, or the browser treats the thumbnail URLs as different
+// images and refetches them (e.g. the book modal after a search).
+func coverStamp(lastModified string) string {
+	s := strings.TrimSpace(lastModified)
+	for _, layout := range []string{time.RFC3339Nano, "2006-01-02 15:04:05.999999999-07:00", "2006-01-02 15:04:05-07:00", "2006-01-02 15:04:05"} {
+		if t, err := time.Parse(layout, s); err == nil {
+			return t.UTC().Format("20060102150405")
+		}
+	}
+	// Unknown format: keep its digits so the value still changes with edits.
+	return strings.Map(func(r rune) rune {
+		if r >= '0' && r <= '9' {
+			return r
+		}
+		return -1
+	}, s)
+}
+
 // encodeBooksJSONFromRows runs for dynamic operations that hit the database to
 // retrieve lists of books and encode them as JSON.
 func encodeBooksJSONFromRows(rows *sql.Rows, w http.ResponseWriter) error {
@@ -298,6 +318,7 @@ func encodeBooksJSONFromRows(rows *sql.Rows, w http.ResponseWriter) error {
 		if err := rows.Scan(&b.UUID, &b.Title, &b.AuthorSort, &b.PubDate, &b.Path, &b.LastModified); err != nil {
 			continue
 		}
+		b.LastModified = coverStamp(b.LastModified)
 		uuidPathIndex.Store(b.UUID, b.Path)
 		books = append(books, b)
 	}
@@ -853,10 +874,8 @@ func generatePages() {
 			panic(err)
 		}
 
-		// Trunicate timestamps to seconds
-		t, _ := time.Parse(time.RFC3339Nano, book.LastModified) // We do have consistant times in the databse now right? right?
-		timeStr := t.Format("20060102150405")                   // Truncate to seconds for cache-busting
-		book.LastModified = timeStr                             // cache-busters!
+		timeStr := coverStamp(book.LastModified)
+		book.LastModified = timeStr
 
 		// cache last Modified time for book from database
 		modTimeCache.Store(book.UUID, timeStr)
