@@ -11,7 +11,7 @@ CalibreFast has accounts, but it's a personal project: the authentication code i
 | **Admin** | Yes | Yes | Yes (their own) | Only with `-allow-writes` | Yes |
 
 - Library changes always need **both** an admin session **and** a server started with `-allow-writes`. Without the flag, nobody (not even admins) can modify `metadata.db` or the library folder. Anonymous visitors get 401 and regular users 403.
-- Personal data (favorites, reading status, progress, bookmarks, personal shelves) is visible only to its owner. Global shelves are visible to everyone who can browse.
+- Personal data (favorites, reading status, progress, bookmarks, highlights and notes, personal shelves) is visible only to its owner. Global shelves are visible to everyone who can browse.
 
 ### Modes
 
@@ -92,7 +92,7 @@ CalibreFast writes to the same `metadata.db` and book folders that the Calibre d
 
 ## Where data is stored
 
-- **`-datadir`** (default `./data`) holds `calibrefast.db`: accounts, sessions, sync key hashes, favorites, progress (including KOReader devices' positions and names), bookmarks and shelves. It also caches the fingerprints KOReader uses for library files.
+- **`-datadir`** (default `./data`) holds `calibrefast.db`: accounts, sessions, sync key hashes, favorites, progress (including KOReader devices' positions and names), bookmarks, highlights and notes, and shelves. It also caches the fingerprints KOReader uses for library files.
   - The directory is created `0700` and the database file is `0600`, because it holds password hashes and session tokens.
   - **Keep it out of version control** (`/data/` is in `.gitignore`) and back it up separately from the library.
 - **`calibrefast-groups.json`** in the library folder holds groups. It's the only file CalibreFast adds to a library.

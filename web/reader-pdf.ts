@@ -1,3 +1,5 @@
+import { colorValue, setupAnnotationUI } from "./annotation-ui.js";
+import { createAnnotationStore, parsePdfAnchor, type Annotation, type PdfAnchor } from "./annotations.js";
 import { byId, maybeId } from "./dom.js";
 import { setupPdfGestures } from "./pdf-gestures.js";
 import { setupLoupe } from "./pdf-loupe.js";
@@ -108,6 +110,8 @@ function onShown(first: number, last: number): void {
     showZoom();
     markCurrentChapter(first);
     loupe.refresh();
+    notesUI.hide();
+    drawMarks();
     history.replaceState({ depth: state().depth ?? 0, page: first } satisfies PdfState, "");
     if (openingPage === null) {
         openingPage = first;
@@ -182,10 +186,16 @@ function doubleTap(x: number, y: number): void {
 // zoomed wider than the window has no turning zones: taps there would mostly
 // be mistakes.
 let pendingTap: { x: number; y: number; t: number; timer: ReturnType<typeof setTimeout> } | null = null;
+let pressDismissed = false;
+container.addEventListener("pointerdown", () => {
+    pressDismissed = notesUI.dismiss(); // that press does nothing else
+});
 container.addEventListener("click", (e) => {
-    if (!view || gestures.wasGesture(e) || loupe.isOn()) return;
+    if (!view || gestures.wasGesture(e) || loupe.isOn() || pressDismissed) return;
     const t = e.target instanceof Element ? e.target : null;
     if (t?.closest("a") || window.getSelection()?.toString()) return;
+    const hit = highlightAt(e.clientX, e.clientY);
+    if (hit) return notesUI.offerExisting(hit.rect, hit.annotation);
     if (!view.overflows().x) {
         if (e.clientX < window.innerWidth * 0.3) return turnSide(-1);
         if (e.clientX > window.innerWidth * 0.7) return turnSide(1);
@@ -303,10 +313,15 @@ byId("zoom-actual").addEventListener("click", () => view?.setScale(ACTUAL_SIZE))
 /** Contents entries with the page each starts on, once known. */
 const tocEntries: { link: HTMLAnchorElement; label: string; page: number | null }[] = [];
 
-function markCurrentChapter(page: number): void {
-    // The last entry starting on or before this page.
+/** The last contents entry starting on or before a page. */
+function chapterAt(page: number): (typeof tocEntries)[number] | undefined {
     let current: (typeof tocEntries)[number] | undefined;
     for (const t of tocEntries) if (t.page !== null && t.page <= page && (!current || t.page >= (current.page ?? 0))) current = t;
+    return current;
+}
+
+function markCurrentChapter(page: number): void {
+    const current = chapterAt(page);
     for (const t of tocEntries) {
         if (t === current) t.link.setAttribute("aria-current", "true");
         else t.link.removeAttribute("aria-current");
@@ -381,6 +396,159 @@ async function init(): Promise<void> {
     void renderToc(pdf);
 }
 void init();
+
+// ---- highlights and notes ---------------------------------------------------------
+// An annotation's anchor is its page and rectangles in PDF points from the
+// page's top left, so it lands on the same words at any zoom. Highlights are
+// drawn in percentages of the page, under the text layer.
+
+const anchors = new Map<string, PdfAnchor | null>(); // parsed once per annotation
+function anchorOf(a: Annotation): PdfAnchor | null {
+    if (!anchors.has(a.id)) anchors.set(a.id, parsePdfAnchor(a.anchor));
+    return anchors.get(a.id) ?? null;
+}
+
+function drawMarks(): void {
+    if (!view) return;
+    const all = store.list();
+    for (let page = view.first; page <= view.last; page++) {
+        const pageEl = view.pageElement(page);
+        const size = view.pageSize(page);
+        if (!pageEl || !size) continue;
+        let layer = pageEl.querySelector<HTMLElement>(".pdf-marks");
+        if (!layer) {
+            layer = document.createElement("div");
+            layer.className = "pdf-marks";
+            pageEl.append(layer);
+        }
+        layer.replaceChildren();
+        for (const a of all) {
+            const anchor = anchorOf(a);
+            if (anchor?.page !== page) continue;
+            for (const [x0, y0, x1, y1] of anchor.rects) {
+                const mark = document.createElement("div");
+                if (a.note) mark.className = "has-note";
+                mark.style.setProperty("--hl", colorValue(a.color));
+                mark.style.left = `${(x0 / size.w) * 100}%`;
+                mark.style.top = `${(y0 / size.h) * 100}%`;
+                mark.style.width = `${((x1 - x0) / size.w) * 100}%`;
+                mark.style.height = `${((y1 - y0) / size.h) * 100}%`;
+                layer.append(mark);
+            }
+        }
+    }
+}
+
+/** The highlight under a screen position, with where it is on screen. */
+function highlightAt(x: number, y: number): { annotation: Annotation; rect: DOMRect } | null {
+    const p = view?.pointAt(x, y);
+    const pageEl = p ? view?.pageElement(p.page) : null;
+    const size = p ? view?.pageSize(p.page) : null;
+    if (!p || !pageEl || !size) return null;
+    for (const a of store.list()) {
+        const anchor = anchorOf(a);
+        if (anchor?.page !== p.page) continue;
+        if (!anchor.rects.some(([x0, y0, x1, y1]) => p.x >= x0 - 1 && p.x <= x1 + 1 && p.y >= y0 - 1 && p.y <= y1 + 1)) continue;
+        const r = pageEl.getBoundingClientRect();
+        const left = Math.min(...anchor.rects.map((q) => q[0]));
+        const top = Math.min(...anchor.rects.map((q) => q[1]));
+        const right = Math.max(...anchor.rects.map((q) => q[2]));
+        const bottom = Math.max(...anchor.rects.map((q) => q[3]));
+        const sx = r.width / size.w;
+        const sy = r.height / size.h;
+        return { annotation: a, rect: new DOMRect(r.left + left * sx, r.top + top * sy, (right - left) * sx, (bottom - top) * sy) };
+    }
+    return null;
+}
+
+/**
+ * The selection as an anchor: its rectangles on the page it starts on, in
+ * points, with the pieces of each line joined (the text layer has a span
+ * per run of text).
+ */
+function selectionAnchor(range: Range): PdfAnchor | null {
+    const start = range.startContainer instanceof Element ? range.startContainer : range.startContainer.parentElement;
+    const pageEl = start?.closest<HTMLElement>(".pdf-page");
+    const page = Number(pageEl?.dataset.page);
+    const size = view?.pageSize(page);
+    if (!pageEl || !size || !start?.closest(".textLayer")) return null;
+    const pr = pageEl.getBoundingClientRect();
+    const sx = size.w / pr.width;
+    const sy = size.h / pr.height;
+    const boxes: [number, number, number, number][] = [];
+    for (const r of range.getClientRects()) {
+        // Not the layer itself (a whole page selected), nor anything on another page.
+        if (r.width < 1 || r.height < 1 || r.height > pr.height / 2 || r.right <= pr.left || r.left >= pr.right || r.bottom <= pr.top || r.top >= pr.bottom) continue;
+        boxes.push([
+            Math.max(0, (r.left - pr.left) * sx),
+            Math.max(0, (r.top - pr.top) * sy),
+            Math.min(size.w, (r.right - pr.left) * sx),
+            Math.min(size.h, (r.bottom - pr.top) * sy),
+        ]);
+    }
+    boxes.sort((a, b) => a[1] - b[1] || a[0] - b[0]);
+    const lines: [number, number, number, number][] = [];
+    for (const b of boxes) {
+        const last = lines[lines.length - 1];
+        const overlap = last ? Math.min(last[3], b[3]) - Math.max(last[1], b[1]) : 0;
+        // Same line: mostly the same height span, and next to each other.
+        if (last && overlap > 0.5 * Math.min(last[3] - last[1], b[3] - b[1]) && b[0] <= last[2] + (b[3] - b[1])) {
+            last[0] = Math.min(last[0], b[0]);
+            last[1] = Math.min(last[1], b[1]);
+            last[2] = Math.max(last[2], b[2]);
+            last[3] = Math.max(last[3], b[3]);
+        } else lines.push([...b]);
+    }
+    if (!lines.length) return null;
+    const round = (n: number): number => Math.round(n * 10) / 10;
+    return { page, rects: lines.slice(0, 200).map((l) => l.map(round) as [number, number, number, number]) };
+}
+
+const store = createAnnotationStore(uuid, "pdf", sync.signedIn, () => {
+    drawMarks();
+    notesUI.renderList();
+});
+const notesUI = setupAnnotationUI({
+    store,
+    onGo(a) {
+        const page = anchorOf(a)?.page;
+        if (page) jump(page);
+        if (window.innerWidth < 700) chrome.sidebar.close();
+    },
+    compare(a, b) {
+        const [p, q] = [anchorOf(a), anchorOf(b)];
+        return (p?.page ?? 0) - (q?.page ?? 0) || (p?.rects[0]?.[1] ?? 0) - (q?.rects[0]?.[1] ?? 0);
+    },
+    toast: chrome.toast,
+});
+void store.load();
+
+// Offer to highlight once a selection in a page's text has stopped changing
+// and the pointer is up.
+let selecting = false;
+let offerTimer: ReturnType<typeof setTimeout> | undefined;
+function offerSelection(): void {
+    clearTimeout(offerTimer);
+    offerTimer = setTimeout(() => {
+        const selection = window.getSelection();
+        const text = selection?.toString().trim() ?? "";
+        if (selecting || !selection?.rangeCount || selection.isCollapsed || !text) return;
+        const range = selection.getRangeAt(0);
+        const anchor = selectionAnchor(range);
+        if (!anchor) return;
+        notesUI.offerNew(range.getBoundingClientRect(), text, (color) => {
+            const made = store.add({ anchor: JSON.stringify(anchor), text, color, chapter: chapterAt(anchor.page)?.label ?? "", page: anchor.page });
+            window.getSelection()?.removeAllRanges();
+            return made;
+        });
+    }, 250);
+}
+document.addEventListener("selectionchange", offerSelection);
+container.addEventListener("pointerdown", () => (selecting = true));
+document.addEventListener("pointerup", () => {
+    selecting = false;
+    offerSelection();
+});
 
 // ---- bookmarks --------------------------------------------------------------------
 

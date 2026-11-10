@@ -734,6 +734,7 @@ func registerAuthRoutes() {
 	registerOAuthRoutes()
 	registerUserDataRoutes()
 	registerProgressRoutes()
+	registerAnnotationRoutes()
 	registerShelfRoutes()
 	registerLinkRoutes()
 	registerKosyncRoutes(http.DefaultServeMux)

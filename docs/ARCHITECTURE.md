@@ -53,6 +53,10 @@ Each book's `authors` is its authors' names in Calibre's order, `A & B` (`bookAu
   - `web/pdf-gestures.ts`: pinch (touch events; `touch-action: pan-x pan-y` leaves one-finger panning to the browser), Ctrl/⌘+wheel and Safari's gesture events, mouse drag, swipe. Zoom is anchored: the point under the fingers is put back under them by scrolling.
   - `web/pdf-loupe.ts`: the magnifier. It asks `pdf-view` to draw a region of the page at the lens's own resolution, as a tile three times the lens's size that slides under it, and draws a new tile near the edge.
   - **No dark page mode.** PDF pages keep their own colours in every theme; only the surroundings and bars change. pdf.js's `pageColors` render option was tried for it and turned down: it remaps images too, so a colour photo comes out as flat greys.
+- **Highlights and notes.** `web/annotations.ts` is the data and its sync, `web/annotation-ui.ts` the toolbar, note editor and Notes tab; each reader finds selections and draws highlights itself.
+  - **Anchors** survive zoom and reflow. EPUB: a CFI range (epub.js's `selected` event gives it, and draws the highlight back from it). PDF: `{"page":N,"rects":[[x0,y0,x1,y1],…]}` in PDF points from the page's top left, one rectangle per line, drawn in percentages of the page under the text layer.
+  - **Sync** (`annotations.go`, `GET`/`PUT /api/me/annotations/{uuid}[/{id}]`): ids are made in the browser; every change carries the device's clock and the newest wins. A delete is a change too: the row stays as a tombstone with its text cleared, so a device that was offline drops its copy instead of sending it back. Where an annotation is never changes after it is made.
+  - **KOReader:** its sync protocol has no annotations (see [KOREADER.md](KOREADER.md)). The row keeps what KOReader's own highlights have (text, note, colour by KOReader's names, chapter, page, both times), and `cfiToXPointer` in `kosync_position.go` already turns a CFI into KOReader's position, so an export in its format can be added without changing what is stored.
 - **Top bar.** Every page except the readers uses the shared bar in `templates/topbar.html`: `{{ template "topbar-start" (topbar …) }}`, the page's own tools (pager, Group button), then `{{ template "topbar-end" … }}`. The `topbar` template function (main.go) takes key/value pairs: `Active` nav item, `Title`, `Query`, and so on.
   - The signed-in part (★ Favorites, Reading, user menu) is filled by `web/nav.ts` from `/api/me`, so pages stay identical for everyone and cacheable. `nav.ts` also opens and closes the ☰ menu, user menu and mobile search.
   - Wide screens show everything inline. At 1000px or less the browse links move into ☰; at 640px or less search becomes an icon and Favorites/Reading move into the user menu.
@@ -110,10 +114,10 @@ Both are behind `requireWrites` and only add options to the metadata editor (`we
 
 ## Accounts and per-user data
 
-- `appdb.go`: CalibreFast's own SQLite database in `-datadir`, with versioned migrations (users, identities, sessions, favorites, reading_status, reading_progress, bookmarks, shelves, shelf_books, login_links, sync_keys, device_progress, book_digests). Migrations are one ordered list: add new ones at the end.
+- `appdb.go`: CalibreFast's own SQLite database in `-datadir`, with versioned migrations (users, identities, sessions, favorites, reading_status, reading_progress, bookmarks, annotations, shelves, shelf_books, login_links, sync_keys, device_progress, book_digests). Migrations are one ordered list: add new ones at the end.
 - `auth.go`: passwords, sessions and the `withAuth` middleware that puts the user in the request context. The guards are `requireUser`, `requireAdminUser`, `requireReader` (book contents unless `-public-read`) and `requireWrites`.
 - `oauth.go`: GitHub/Google sign-in.
-- `userdata.go`: favorites, reading status and the `/me/...` lists. `progress.go`: reader position and bookmarks. `shelves.go`: bookshelves.
+- `userdata.go`: favorites, reading status and the `/me/...` lists. `progress.go`: reader position and bookmarks. `annotations.go`: highlights and notes. `shelves.go`: bookshelves.
 - `bookprogress.go`: the newest position per book (web readers or a matched KOReader device; nothing is hashed). It serves `/api/me/reading`, which `web/reading.ts` uses to mark cards in the grid and caches in localStorage, and the book popup's "Page 5 of 25 · synced …" note. PDF page counts come from pdfcpu, which reads only the page tree, cached per file.
 - The app database stores book UUIDs; book details for lists come from `metadata.db`.
 

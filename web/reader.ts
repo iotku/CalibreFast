@@ -1,3 +1,5 @@
+import { colorValue, setupAnnotationUI } from "./annotation-ui.js";
+import { createAnnotationStore, type Annotation } from "./annotations.js";
 import { byId, errorMessage, maybeId } from "./dom.js";
 import { pageColors, setupChrome } from "./reader-chrome.js";
 import { getSettings, onSettingsChange, type ReaderSettings } from "./reader-settings.js";
@@ -327,7 +329,8 @@ rendition.on("rendered", (section, view) => {
     // A press that closed a panel does nothing else.
     let swallow = false;
     doc.addEventListener("pointerdown", () => {
-        swallow = chrome.closePanels();
+        const closed = chrome.closePanels();
+        swallow = notesUI.dismiss() || closed;
     });
 
     // Links are handled here (capture phase, before epub.js): in-book links
@@ -350,6 +353,11 @@ rendition.on("rendered", (section, view) => {
             }
             if (href) {
                 followLink(href, section);
+                return;
+            }
+            const hit = highlightAt(doc, e.clientX, e.clientY);
+            if (hit) {
+                notesUI.offerExisting(toScreen(doc, hit.rect), hit.annotation);
                 return;
             }
             if (doc.getSelection()?.toString() || t?.closest?.("input, button, select, textarea, audio, video, summary")) return;
@@ -539,6 +547,92 @@ byId("bookmark-btn").addEventListener("click", () => {
     showBookmarks(sync.bookmarks());
     chrome.toast("Bookmark added");
 });
+
+// ---- highlights and notes ---------------------------------------------------
+// An annotation's anchor is a CFI range, which epub.js turns back into a
+// DOM range whatever the font size or layout. epub.js draws the highlights
+// (an SVG layer over the chapter) and puts them back when a chapter is
+// rendered again.
+
+/** A rectangle inside a chapter's iframe, in this window's coordinates. */
+function toScreen(doc: Document, r: DOMRect): DOMRect {
+    const frame = doc.defaultView?.frameElement?.getBoundingClientRect();
+    return new DOMRect(r.left + (frame?.left ?? 0), r.top + (frame?.top ?? 0), r.width, r.height);
+}
+
+function pageNumber(cfi: string): number {
+    try {
+        return locationsReady ? book.locations.locationFromCfi(cfi) + 1 : 0;
+    } catch {
+        return 0;
+    }
+}
+
+/** Highlights on the page now: id -> what was drawn. */
+const drawn = new Map<string, { anchor: string; color: string }>();
+function drawHighlights(): void {
+    const want = new Map(store.list().map((a) => [a.id, a]));
+    for (const [id, d] of drawn) {
+        if (want.get(id)?.color === d.color) continue;
+        rendition.annotations.remove(d.anchor, "highlight");
+        drawn.delete(id);
+    }
+    for (const a of want.values()) {
+        if (drawn.has(a.id)) continue;
+        try {
+            rendition.annotations.highlight(a.anchor, {}, undefined, "cf-hl", { fill: colorValue(a.color), "fill-opacity": "0.38" });
+            drawn.set(a.id, { anchor: a.anchor, color: a.color });
+        } catch {
+            /* an anchor this copy of the book doesn't have */
+        }
+    }
+}
+
+/** The highlight under a point of a chapter's document, if any. */
+function highlightAt(doc: Document, x: number, y: number): { annotation: Annotation; rect: DOMRect } | null {
+    for (const a of store.list()) {
+        let range: Range | undefined;
+        try {
+            range = rendition.getRange(a.anchor);
+        } catch {
+            continue;
+        }
+        if (!range || range.startContainer.ownerDocument !== doc) continue;
+        for (const r of range.getClientRects()) {
+            if (x >= r.left && x <= r.right && y >= r.top && y <= r.bottom) return { annotation: a, rect: range.getBoundingClientRect() };
+        }
+    }
+    return null;
+}
+
+const store = createAnnotationStore(uuid, "epub", sync.signedIn, () => {
+    drawHighlights();
+    notesUI.renderList();
+});
+const notesUI = setupAnnotationUI({
+    store,
+    onGo(a) {
+        pushJump();
+        void rendition.display(a.anchor);
+        if (window.innerWidth < 700) chrome.sidebar.close();
+    },
+    compare: (a, b) => a.page - b.page || a.created_at - b.created_at,
+    toast: chrome.toast,
+});
+void store.load();
+
+rendition.on("selected", (cfiRange, contents) => {
+    const selection = contents.window.getSelection();
+    const text = selection?.toString().trim() ?? "";
+    if (!selection?.rangeCount || !text) return;
+    const at = toScreen(contents.document, selection.getRangeAt(0).getBoundingClientRect());
+    notesUI.offerNew(at, text, (color) => {
+        const made = store.add({ anchor: cfiRange, text, color, chapter: tocEntryFor(cfiRange)?.label ?? "", page: pageNumber(cfiRange) });
+        contents.window.getSelection()?.removeAllRanges();
+        return made;
+    });
+});
+rendition.on("relocated", () => notesUI.hide());
 
 // ---- search ----------------------------------------------------------------
 // Chapters are searched one at a time, in reading order, so results appear

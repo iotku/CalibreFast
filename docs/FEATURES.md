@@ -169,6 +169,13 @@ Both only offer choices. Nothing is saved until **Apply Changes**.
   - **Text** can be selected and copied. **Links** work: web links open in a new tab, links within the document go there and Back returns.
   - **Two pages side by side,** when the window is wider than tall. **First page on its own** (on by default) keeps a cover from pushing every later pair off by one. **Right to left (manga)** puts the first page of a pair on the right and reverses what "forward" means for taps, swipes, the arrow keys, the bottom bar's buttons and the scrubber; it applies to single pages too.
   - **Contents** marks the current chapter; scanned and CJK PDFs get the fonts and character maps they need from the server.
+- **Highlights and notes** (EPUB, and PDFs that have text):
+  - Select text and a small toolbar offers six colours, **Note** (highlights and opens the note editor) and **Copy**.
+  - Tap or click a highlight to change its colour, edit its note or delete it.
+  - The sidebar's **Notes** tab lists them in book order, with chapter and page; choosing one goes there, and Back returns.
+  - They stay on the same words whatever the font size, layout or zoom.
+  - Kept in the browser and, when signed in, synced: an edit or delete on one device reaches the others, and the newest change wins. Not signed in, they stay on that device.
+  - Scanned PDFs have no text to select, so they can't be highlighted yet.
 - **EPUB reader loads the whole book up front** (with a progress label), then reads offline: chapters, images and fonts come from memory, with no requests at chapter boundaries.
 - **Reading position and bookmarks:** kept in the browser and, when signed in, synced to the server, so another device can resume.
   - The newest position wins.

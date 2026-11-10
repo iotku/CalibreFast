@@ -505,6 +505,166 @@ input {
 }
 
 /* ============================================
+   Highlights and notes (web/annotation-ui.ts)
+   ============================================ */
+.r-annot {
+    position: fixed;
+    z-index: 45;
+    display: flex;
+    align-items: center;
+    gap: 2px;
+    padding: 4px 6px;
+    background: var(--chrome-bg);
+    border: 1px solid var(--chrome-border);
+    border-radius: 8px;
+    box-shadow: 0 6px 20px rgba(0, 0, 0, 0.3);
+}
+
+.r-annot[hidden] {
+    display: none;
+}
+
+/* A colour: a dot in a touch-sized button. */
+.hl-color {
+    width: 36px;
+    height: var(--tap);
+    padding: 0;
+    border: 0;
+    background: none;
+    cursor: pointer;
+}
+
+.hl-color::before {
+    content: "";
+    display: block;
+    width: 22px;
+    height: 22px;
+    margin: auto;
+    border-radius: 50%;
+    background: var(--hl);
+    box-shadow: inset 0 0 0 1px rgba(0, 0, 0, 0.25);
+}
+
+.hl-color[aria-pressed="true"]::before {
+    box-shadow:
+        0 0 0 2px var(--chrome-bg),
+        0 0 0 4px var(--chrome-fg);
+}
+
+.r-dialog {
+    width: min(460px, calc(100vw - 32px));
+    box-sizing: border-box;
+    padding: 16px;
+    border: 1px solid var(--chrome-border);
+    border-radius: 8px;
+    background: var(--chrome-bg);
+    color: var(--chrome-fg);
+    box-shadow: 0 12px 40px rgba(0, 0, 0, 0.35);
+}
+
+.r-dialog::backdrop {
+    background: rgba(0, 0, 0, 0.4);
+}
+
+.r-dialog blockquote {
+    max-height: 5.6em;
+    overflow: auto;
+    margin: 0 0 12px;
+    padding: 2px 0 2px 10px;
+    border-left: 4px solid var(--hl);
+    font-size: 13px;
+    color: var(--chrome-muted);
+}
+
+.r-dialog textarea {
+    display: block;
+    width: 100%;
+    box-sizing: border-box;
+    padding: 8px 10px;
+    border: 1px solid var(--chrome-border);
+    border-radius: 6px;
+    background: var(--page-bg);
+    color: var(--page-fg);
+    font: inherit;
+    font-size: 16px; /* smaller makes iOS zoom the page on focus */
+    resize: vertical;
+}
+
+.r-dialog-actions {
+    display: flex;
+    justify-content: flex-end;
+    gap: 8px;
+    margin-top: 12px;
+}
+
+.r-dialog-actions button {
+    min-width: 84px;
+    min-height: 40px;
+    padding: 0 14px;
+    border: 1px solid var(--chrome-border);
+    border-radius: 6px;
+    background: none;
+    cursor: pointer;
+}
+
+.r-dialog-actions button:hover {
+    background: var(--chrome-hover);
+}
+
+.r-dialog-actions .r-primary {
+    border-color: var(--accent);
+    background: var(--accent-soft);
+    font-weight: 600;
+}
+
+/* The Notes tab: each entry carries its colour on the left. */
+.annot-item {
+    align-items: flex-start;
+}
+
+.toc-list a.annot-go {
+    padding-left: 10px;
+    border-left: 4px solid var(--hl);
+    border-radius: 0 4px 4px 0;
+    font-size: 13px;
+}
+
+.annot-text {
+    display: -webkit-box;
+    overflow: hidden;
+    -webkit-box-orient: vertical;
+    -webkit-line-clamp: 4;
+    line-clamp: 4;
+}
+
+.annot-note {
+    display: block;
+    margin-top: 4px;
+    font-style: italic;
+    color: var(--chrome-muted);
+    white-space: pre-wrap;
+}
+
+/* A PDF page's highlights: under the text layer, so text stays selectable. */
+.pdf-marks {
+    position: absolute;
+    inset: 0;
+    z-index: 0;
+    pointer-events: none;
+}
+
+.pdf-marks div {
+    position: absolute;
+    background: var(--hl);
+    opacity: 0.4;
+    mix-blend-mode: multiply;
+}
+
+.pdf-marks .has-note {
+    box-shadow: 0 2px 0 0 var(--hl);
+}
+
+/* ============================================
    Settings sheet: a popover under the top bar; a bottom sheet on phones
    ============================================ */
 .r-sheet {
