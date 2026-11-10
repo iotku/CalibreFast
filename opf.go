@@ -32,6 +32,34 @@ type opfIdentifier struct {
 	ID     string `xml:"id,attr"` // e.g. "uuid_id", "calibre_id"; preserved on rewrite
 }
 
+// Library identifiers are bookkeeping, which Calibre writes into the OPF
+// and its exports: the book's id ("calibre") and uuid, and an EPUB's package
+// uuid (no scheme, "urn:uuid:…"). The editor doesn't show them, and saving
+// keeps the book's own as they are.
+var libraryIdentifierSchemes = map[string]bool{"calibre": true, "uuid": true}
+
+func isLibraryIdentifier(id opfIdentifier) bool {
+	scheme := strings.TrimSpace(id.Scheme)
+	if scheme == "" {
+		value := strings.TrimSpace(id.Value)
+		return len(value) > 9 && strings.EqualFold(value[:9], "urn:uuid:")
+	}
+	return libraryIdentifierSchemes[strings.ToLower(scheme)]
+}
+
+// splitLibraryIdentifiers separates library identifiers from the others,
+// keeping each group's order.
+func splitLibraryIdentifiers(ids []opfIdentifier) (library, others []opfIdentifier) {
+	for _, id := range ids {
+		if isLibraryIdentifier(id) {
+			library = append(library, id)
+		} else {
+			others = append(others, id)
+		}
+	}
+	return library, others
+}
+
 type opfMeta struct {
 	Name     string `xml:"name,attr"`
 	Content  string `xml:"content,attr"`

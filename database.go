@@ -484,14 +484,16 @@ func updateBookInCalibreDB(db *sql.DB, baseDir string, bookUUID string, meta *OP
 		}
 	}
 
-	// 7. Identifiers
-	if _, err = tx.Exec(`DELETE FROM identifiers WHERE book = ?`, bookID); err != nil {
+	// 7. Identifiers. Library identifiers (calibre, uuid) aren't edited: the
+	// book's rows stay, and any in meta are ignored.
+	_, editedIDs := splitLibraryIdentifiers(meta.Identifiers)
+	if _, err = tx.Exec(`DELETE FROM identifiers WHERE book = ? AND lower(type) NOT IN ('calibre', 'uuid')`, bookID); err != nil {
 		return "", fmt.Errorf("delete old identifiers: %w", err)
 	}
 	// Calibre's identifiers table needs a type and holds one value per type,
 	// so scheme-less (or duplicate-type) identifiers can't live there; they are
 	// still written to metadata.opf below, which is the source of truth.
-	for _, id := range meta.Identifiers {
+	for _, id := range editedIDs {
 		if strings.TrimSpace(id.Value) == "" {
 			continue
 		}
@@ -523,6 +525,7 @@ func updateBookInCalibreDB(db *sql.DB, baseDir string, bookUUID string, meta *OP
 			existingOPF = &OPF{
 				Metadata: *meta,
 			}
+			existingOPF.Metadata.Identifiers = editedIDs
 		} else {
 			existingOPF.Metadata.Title = meta.Title
 			existingOPF.Metadata.Creators = meta.Creators
@@ -531,7 +534,9 @@ func updateBookInCalibreDB(db *sql.DB, baseDir string, bookUUID string, meta *OP
 			existingOPF.Metadata.Languages = meta.Languages
 			existingOPF.Metadata.Subjects = meta.Subjects
 			existingOPF.Metadata.Description = meta.Description
-			existingOPF.Metadata.Identifiers = meta.Identifiers
+			// The OPF's library identifiers stay as they were (ids too), first.
+			libraryIDs, _ := splitLibraryIdentifiers(existingOPF.Metadata.Identifiers)
+			existingOPF.Metadata.Identifiers = append(libraryIDs, editedIDs...)
 		}
 		_ = writeOPF(existingOPF, opfPath)
 	}

@@ -219,7 +219,12 @@ function mountLookup(host: IsbnToolsHost): { lookUpIsbn(isbn: string): void; sug
     const submitBtn = lookupForm.querySelector<HTMLButtonElement>("button[type=submit]");
     const googleAllowed = lookupForm.dataset["google"] === "1";
 
-    input.value = host.currentIsbn();
+    /** Fills the box. The cover picker follows it, by its input event. */
+    const setIsbn = (isbn: string): void => {
+        input.value = isbn;
+        input.dispatchEvent(new Event("input"));
+    };
+    setIsbn(host.currentIsbn());
 
     // ---- The current lookup ----------------------------------------------
 
@@ -406,12 +411,12 @@ function mountLookup(host: IsbnToolsHost): { lookUpIsbn(isbn: string): void; sug
 
     return {
         lookUpIsbn(isbn) {
-            input.value = isbn;
+            setIsbn(isbn);
             lookUp({ isbn });
         },
         /** A found ISBN fills the box if it's empty. */
         suggest(isbn) {
-            if (!input.value.trim()) input.value = isbn;
+            if (!input.value.trim()) setIsbn(isbn);
         },
     };
 }

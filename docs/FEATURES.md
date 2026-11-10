@@ -72,6 +72,7 @@ Authors are shown by name everywhere ("Alan A. A. Donovan & Brian W. Kernighan")
 - **Identifiers**
   - Values are kept even with no type (`opf:scheme`).
   - Their `id` attributes (`uuid_id`, `calibre_id`, …) are preserved.
+  - `calibre` and `uuid` identifiers (Calibre's book id and uuid, also in its exports) and an EPUB's `urn:uuid:` package id aren't shown in the editor. Saving keeps the book's own in `metadata.opf` and `metadata.db` as they are.
   - Values containing commas or colons survive, because identifiers are sent as structured data rather than a string.
 - **Removing things**
   - A removed identifier, tag or language is crossed out with **Undo** and moved to the end of its list until you apply.
@@ -97,7 +98,7 @@ Authors are shown by name everywhere ("Alan A. A. Donovan & Brian W. Kernighan")
 - **Autocomplete** for authors, publisher, tags and languages offers only values in your library; languages match by name too.
   - Nothing is preselected, so Enter adds exactly what you typed.
   - ↑/↓ highlight a suggestion; Enter, Tab or a click takes it.
-- **Cover picker:** opens when you click the cover at the top (it's usually right already). Upload an image, pick a page from the PDF/EPUB, or, after a lookup that found one, the cover Open Library has. Picking saves the cover right away; **Revert** brings back the previous one.
+- **Cover picker:** opens under the cover when you click it (it's usually right already). Upload an image or pick a page from the PDF/EPUB. With an ISBN in the lookup box (the book's own, or one found in its files), **Look up cover online** asks Open Library for that ISBN's cover; it also shows the cover from a kept lookup. Picking saves the cover right away; **Revert** brings back the previous one.
 - **Apply Changes** saves and opens the book page.
 
 ### Finding ISBNs and looking books up
@@ -115,7 +116,7 @@ Both only offer choices. Nothing is saved until **Apply Changes**.
   - **Open Library first.** Only if it doesn't know the ISBN is **Wikidata** asked. **Try Wikidata** and **Try Google Books** ask the others on request. Google Books often has the best description; `-no-google-books` hides it.
   - **A source that knows the book** opens a comparison with the current metadata. **Accept all and apply** takes every value it has (never the cover), saves, and opens the book page. **Pick fields in the form** keeps it as a pill under every field (**Open Library**, **Wikidata**, **Google Books**), so values can be picked one by one; **Compare …** reopens it. **Reject** (or ✕, Esc, a click outside) drops a wrong match: the form keeps the pills it had, including an earlier lookup's.
   - Its identifier pill adds identifiers (ISBN, `olid`, `wikidata`, `google`) without crossing anything out.
-  - Open Library's cover, when it has one, is fetched only when you click **Cover from Open Library** in the cover picker.
+  - Open Library's cover, when it has one, is fetched only when you click **Look up cover online** in the cover picker.
   - **Only on a click:** nothing is sent when the editor opens, on upload, or when an ISBN is found, and each click asks one site at a time. Answers are cached, each site has rate and daily limits, and `-no-lookups` turns lookups off.
 
 ### Description editor

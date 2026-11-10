@@ -5,7 +5,7 @@ See also: [FEATURES.md](FEATURES.md) for behaviour, [SECURITY.md](SECURITY.md) f
 ## Data sources
 
 - **`metadata.db`** (Calibre's SQLite database) is the index for listing, searching and filtering.
-- **`metadata.opf`** in each book folder is what the book page and the metadata editor read. Edits write both.
+- **`metadata.opf`** in each book folder is what the book page and the metadata editor read. Edits write both. The editor never sees library identifiers (`calibre`, `uuid`, a scheme-less `urn:uuid:`: `isLibraryIdentifier`), and a save keeps the book's own as they are (`updateBookInCalibreDB`).
 - **`calibrefast-groups.json`** in the library root holds user-defined groups. It's the only file CalibreFast adds to a library.
 
 ## Main library pages
@@ -92,7 +92,7 @@ Both are behind `requireWrites` and only add options to the metadata editor (`we
   - Answers, including "no match", are cached in memory for 24 hours (500 entries). Errors aren't.
   - **Limits** (`serviceLimit`, one per site): a token bucket and a daily cap (Open Library 20 then 1/s, 1,000 a day; Wikidata 10 then 1 per 2s, 500 a day; Google 5 then 1 per 10s, 100 a day). A 429 pauses that site for its `Retry-After`. Over a limit, requests are refused with a message, not queued.
   - Requests carry `User-Agent: CalibreFast/<version> (+https://github.com/iotku/CalibreFast)` and nothing about the library or user. `-no-lookups` refuses both endpoints and hides the lookup; `-no-google-books` refuses Google.
-- **`/metadata/lookup/cover?src=openlibrary&id=…`** fetches a lookup's cover for the cover picker, only when the admin clicks **Cover from Open Library**. The server builds the URL from a cover id it checks, so it can't be pointed elsewhere. The browser never contacts the third party, and the canvas the picker re-encodes from isn't cross-origin.
+- **`/metadata/lookup/cover?src=openlibrary&id=…`** fetches a lookup's cover for the cover picker, only when the admin clicks **Look up cover online**. That button asks `/metadata/lookup?source=openlibrary` for the ISBN in the top bar's lookup box (cached, so a later lookup of it is free) and adds any cover from a kept lookup. The server builds the URL from a cover id it checks, so it can't be pointed elsewhere. The browser never contacts the third party, and the canvas the picker re-encodes from isn't cross-origin.
 
 ## Accounts and per-user data
 

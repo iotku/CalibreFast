@@ -51,6 +51,7 @@
             /* ── Book Preview Banner ── */
             .book-banner {
                 display: flex;
+                flex-wrap: wrap; /* the cover picker is a row of its own */
                 gap: 1.5rem;
                 align-items: center;
                 background: var(--surface);
@@ -92,6 +93,23 @@
 
             .cover-picker-section[hidden] {
                 display: none;
+            }
+
+            /* The cover picker opens inside the banner, on its own row under
+               the cover: part of the banner, not a card inside it. */
+            .book-banner > .cover-picker-section {
+                flex: 0 0 100%;
+                margin: 0;
+                text-align: left;
+            }
+
+            .book-banner .cover-picker {
+                margin: 0;
+                padding: 1rem 0 0;
+                background: none;
+                border: none;
+                border-top: 1px solid var(--border);
+                border-radius: 0;
             }
 
             /* ── ISBN lookup in the top bar ── */
@@ -1288,6 +1306,8 @@
                         Tip: Click the pills under each field (e.g. <strong>current</strong>, <strong>epub</strong>, <strong>pdf</strong>, or <strong>Open Library</strong> after a lookup) to use that source's value; green means it matches. Click the cover to change it. After you change a field, its <strong>edited</strong> pill restores your changes and shows what changed vs <strong>current</strong>. <strong>Compare changes</strong> at the bottom lists every changed field.
                     </p>
                 </div>
+                <!-- The cover picker, under the cover; opened by clicking it -->
+                <div id="cover-picker-section" class="cover-picker-section" hidden></div>
             </div>
 
             <!-- Online lookup: what was found, and the other sources to try -->
@@ -1295,9 +1315,6 @@
                 <p id="lookup-status" class="lookup-status"></p>
                 <div id="lookup-actions" class="lookup-actions"></div>
             </div>
-
-            <!-- Cover Picker Container (opened by clicking the cover) -->
-            <div id="cover-picker-section" class="cover-picker-section" hidden></div>
 
             <!-- Status Banner -->
             <div id="edit-status" class="edit-status"></div>
@@ -1468,7 +1485,7 @@
             if (coverSection && coverBtn) {
                 mountCoverPicker(coverSection, uuid, null, () => {
                     document.getElementById("edit-cover-img").src = `/cover-thumb/${uuid}?t=${Date.now()}`;
-                }, { isEditPage: true });
+                }, { isEditPage: true, isbnInput: document.getElementById("isbn-lookup-input") });
                 coverBtn.addEventListener("click", () => {
                     coverSection.hidden = !coverSection.hidden;
                     coverBtn.setAttribute("aria-expanded", String(!coverSection.hidden));
