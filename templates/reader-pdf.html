@@ -8,23 +8,32 @@
 <body class="reader-page reader-pdf">
 {{ template "reader-icons" }}
 {{ template "reader-top-start" . }}
+    <button id="loupe-btn" class="r-btn r-mouse-only" type="button" title="Magnifier (M)" aria-label="Magnifier" aria-pressed="false">
+        <svg class="r-icon"><use href="#i-loupe"/></svg>
+    </button>
 {{ template "reader-top-end" . }}
 
 {{ template "reader-sidebar" . }}
 
 {{ template "reader-settings-start" . }}
     <div class="r-group">
-        <h3 id="set-pages">Pages</h3>
-        <label class="r-check"><input type="checkbox" data-setting="pdfDual"> Two pages side by side</label>
-        <label class="r-check"><input type="checkbox" data-setting="pdfFit"> Fit the page to the window</label>
-    </div>
-    <div class="r-group r-row">
         <h3 id="set-zoom">Zoom</h3>
-        <div class="r-stepper" role="group" aria-labelledby="set-zoom">
+        <div class="r-seg" role="group" aria-labelledby="set-zoom">
+            <button type="button" data-setting="pdfZoom" data-value="page">Fit page</button>
+            <button type="button" data-setting="pdfZoom" data-value="width">Fit width</button>
+            <button type="button" id="zoom-actual">100%</button>
+        </div>
+        <div class="r-stepper r-under">
             <button type="button" id="zoom-out" aria-label="Zoom out"><svg class="r-icon"><use href="#i-minus"/></svg></button>
             <output id="zoom-label"></output>
             <button type="button" id="zoom-in" aria-label="Zoom in"><svg class="r-icon"><use href="#i-plus"/></svg></button>
         </div>
+    </div>
+    <div class="r-group">
+        <h3 id="set-pages">Pages</h3>
+        <label class="r-check"><input type="checkbox" data-setting="pdfDual"> Two pages side by side (in a wide window)</label>
+        <label class="r-check r-indent"><input type="checkbox" data-setting="pdfCover"> First page on its own, like a cover</label>
+        <label class="r-check"><input type="checkbox" data-setting="pdfRtl"> Right to left (manga)</label>
     </div>
 {{ template "reader-settings-end" . }}
 
