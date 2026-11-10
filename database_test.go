@@ -764,7 +764,7 @@ func TestApplyMetadataHandler_KeepsUnparseableDate(t *testing.T) {
 	}
 	dir := filepath.Join(tempDir, bookPath)
 	_ = os.MkdirAll(dir, 0755)
-	if err := writeOPF(&OPF{Metadata: OPFMetadata{Title: "Dates", Date: "Spring 1987"}}, filepath.Join(dir, "metadata.opf")); err != nil {
+	if err := writeOPF(&OPF{Metadata: OPFMetadata{Title: "Dates", Date: "Spring 1987"}}, filepath.Join(dir, "metadata.opf"), bookUUID); err != nil {
 		t.Fatalf("write opf: %v", err)
 	}
 

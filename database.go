@@ -538,7 +538,7 @@ func updateBookInCalibreDB(db *sql.DB, baseDir string, bookUUID string, meta *OP
 			libraryIDs, _ := splitLibraryIdentifiers(existingOPF.Metadata.Identifiers)
 			existingOPF.Metadata.Identifiers = append(libraryIDs, editedIDs...)
 		}
-		_ = writeOPF(existingOPF, opfPath)
+		_ = writeOPF(existingOPF, opfPath, bookUUID)
 	}
 
 	uuidPathIndex.Store(bookUUID, bookPath)

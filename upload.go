@@ -565,7 +565,7 @@ func processUploadGroup(files []*multipart.FileHeader) UploadResult { // TODO: H
 			// {Name: "calibre:timestamp", Content: "2015-10-26T00:00:00+00:00"},
 		},
 	}
-	if err := writeOPF(bookOPF, opfPath); err != nil {
+	if err := writeOPF(bookOPF, opfPath, bookUUID); err != nil {
 		logErr(deleteBookFromCalibreDB(calibreDB, bookID), "couldn't delete book "+strconv.FormatInt(bookID, 10)+" from calibreDB")
 		cleanupTemps(entries)
 		return UploadResult{Error: "failed to write metadata.opf: " + err.Error()}

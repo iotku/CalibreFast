@@ -3,6 +3,7 @@ package main
 import (
 	"encoding/xml"
 	"os"
+	"slices"
 	"strings"
 )
 
@@ -85,7 +86,14 @@ func loadOPF(path string) (*OPF, error) {
 	return &opf, nil
 }
 
-func writeOPF(opf *OPF, path string) error {
+// uuidIdentifierID is the id that package@unique-identifier points at. In
+// Calibre's own metadata.opf it is on <dc:identifier opf:scheme="uuid">,
+// whose value is the book's uuid in metadata.db.
+const uuidIdentifierID = "uuid_id"
+
+// writeOPF writes opf to path. bookUUID is the book's uuid in metadata.db
+// ("" if unknown); see identifiersForWrite for what it does to identifiers.
+func writeOPF(opf *OPF, path string, bookUUID string) error {
 	f, err := os.Create(path)
 	if err != nil {
 		return err
@@ -101,7 +109,7 @@ func writeOPF(opf *OPF, path string) error {
 	enc.EncodeToken(xml.StartElement{
 		Name: xml.Name{Space: "http://www.idpf.org/2007/opf", Local: "package"},
 		Attr: []xml.Attr{
-			{Name: xml.Name{Local: "unique-identifier"}, Value: "uuid_id"},
+			{Name: xml.Name{Local: "unique-identifier"}, Value: uuidIdentifierID},
 			{Name: xml.Name{Local: "version"}, Value: "2.0"},
 		},
 	})
@@ -130,46 +138,16 @@ func writeOPF(opf *OPF, path string) error {
 		writeDC("language", l)
 	}
 
-	// package@unique-identifier points at "uuid_id"; make sure exactly one
-	// identifier carries it without clobbering ids already present.
-	uuidIdx := -1
-	for i, id := range opf.Metadata.Identifiers {
-		if id.ID == "uuid_id" {
-			uuidIdx = i
-			break
-		}
-	}
-	if uuidIdx == -1 {
-		for i, id := range opf.Metadata.Identifiers {
-			if id.ID == "" && strings.EqualFold(id.Scheme, "uuid") {
-				uuidIdx = i
-				break
-			}
-		}
-	}
-	if uuidIdx == -1 {
-		for i, id := range opf.Metadata.Identifiers {
-			if id.ID == "" {
-				uuidIdx = i
-				break
-			}
-		}
-	}
-
-	for i, id := range opf.Metadata.Identifiers {
+	for _, id := range identifiersForWrite(opf.Metadata.Identifiers, bookUUID) {
 		start := xml.StartElement{Name: xml.Name{Local: "dc:identifier"}}
 		if id.Scheme != "" {
 			start.Attr = append(start.Attr, xml.Attr{
 				Name: xml.Name{Local: "opf:scheme"}, Value: id.Scheme,
 			})
 		}
-		idAttr := id.ID
-		if i == uuidIdx {
-			idAttr = "uuid_id"
-		}
-		if idAttr != "" {
+		if id.ID != "" {
 			start.Attr = append(start.Attr, xml.Attr{
-				Name: xml.Name{Local: "id"}, Value: idAttr,
+				Name: xml.Name{Local: "id"}, Value: id.ID,
 			})
 		}
 		enc.EncodeToken(start)
@@ -215,6 +193,99 @@ func writeOPF(opf *OPF, path string) error {
 	enc.EncodeToken(xml.EndElement{Name: xml.Name{Space: "http://www.idpf.org/2007/opf", Local: "package"}})
 
 	return enc.Flush()
+}
+
+// identifiersForWrite returns the identifiers to write, with id="uuid_id" on
+// exactly one of them: the book's UUID identifier. It never goes on one typed
+// as something else, such as an ISBN. Values are never changed or dropped,
+// and other identifiers keep their ids, except that a second "uuid_id" is
+// cleared, because ids must be unique. ids itself is not modified.
+//
+// With bookUUID (the book's uuid in metadata.db), the UUID identifier is the
+// one holding that uuid, bare or as "urn:uuid:…". If none does, a
+// Calibre-style <dc:identifier opf:scheme="uuid"> is added first, so the file
+// always names the book it belongs to and Calibre can rebuild its database
+// from it.
+//
+// Without bookUUID, it is the identifier already called uuid_id, else one
+// whose value is "urn:uuid:…", else one with scheme "uuid". If there is none,
+// no identifier gets uuid_id.
+func identifiersForWrite(ids []opfIdentifier, bookUUID string) []opfIdentifier {
+	out := slices.Clone(ids)
+	bookUUID = strings.TrimSpace(bookUUID)
+	hasUUIDScheme := func(id opfIdentifier) bool { return strings.EqualFold(strings.TrimSpace(id.Scheme), "uuid") }
+	isHolder := func(id opfIdentifier) bool { return id.ID == uuidIdentifierID }
+
+	var pick int
+	if bookUUID != "" {
+		holdsBook := func(id opfIdentifier) bool {
+			return !typedAsOther(id) && strings.EqualFold(bareUUID(id.Value), bookUUID)
+		}
+		pick = firstMatch(out,
+			func(id opfIdentifier) bool { return holdsBook(id) && isHolder(id) },
+			func(id opfIdentifier) bool { return holdsBook(id) && hasUUIDScheme(id) },
+			holdsBook,
+		)
+		if pick == -1 {
+			out = slices.Insert(out, 0, opfIdentifier{Scheme: "uuid", Value: bookUUID})
+			pick = 0
+		}
+	} else {
+		pick = firstMatch(out,
+			func(id opfIdentifier) bool { return isHolder(id) && !typedAsOther(id) },
+			func(id opfIdentifier) bool { return !typedAsOther(id) && isURNUUID(id.Value) },
+			hasUUIDScheme,
+		)
+	}
+
+	for i := range out {
+		switch {
+		case i == pick:
+			out[i].ID = uuidIdentifierID
+		case isHolder(out[i]):
+			out[i].ID = ""
+		}
+	}
+	return out
+}
+
+// firstMatch returns the index of the first identifier matching the first
+// predicate that matches any, or -1.
+func firstMatch(ids []opfIdentifier, preds ...func(opfIdentifier) bool) int {
+	for _, p := range preds {
+		if i := slices.IndexFunc(ids, p); i != -1 {
+			return i
+		}
+	}
+	return -1
+}
+
+// typedAsOther reports whether an identifier says it is something other than
+// a UUID: an opf:scheme other than "uuid" (isbn, calibre, …), or a URN of
+// another kind ("urn:isbn:…").
+func typedAsOther(id opfIdentifier) bool {
+	if s := strings.TrimSpace(id.Scheme); s != "" {
+		return !strings.EqualFold(s, "uuid")
+	}
+	v := strings.ToLower(strings.TrimSpace(id.Value))
+	return strings.HasPrefix(v, "urn:") && !isURNUUID(v)
+}
+
+const urnUUIDPrefix = "urn:uuid:"
+
+// isURNUUID reports whether v starts with "urn:uuid:" (any case).
+func isURNUUID(v string) bool {
+	v = strings.TrimSpace(v)
+	return len(v) >= len(urnUUIDPrefix) && strings.EqualFold(v[:len(urnUUIDPrefix)], urnUUIDPrefix)
+}
+
+// bareUUID trims v and strips a "urn:uuid:" prefix.
+func bareUUID(v string) string {
+	v = strings.TrimSpace(v)
+	if isURNUUID(v) {
+		return strings.TrimSpace(v[len(urnUUIDPrefix):])
+	}
+	return v
 }
 
 // getMeta returns the content value for a named meta entry, or "" if not found.
