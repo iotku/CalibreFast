@@ -72,6 +72,7 @@ Authors are shown by name everywhere ("Alan A. A. Donovan & Brian W. Kernighan")
 - **Identifiers**
   - Values are kept even with no type (`opf:scheme`).
   - Their `id` attributes (`uuid_id`, `calibre_id`, …) are preserved.
+  - `uuid_id`, which `package@unique-identifier` points at, always goes on the identifier holding the book's uuid from `metadata.db`, never on an ISBN or another typed identifier. If no identifier holds that uuid, a Calibre-style `<dc:identifier opf:scheme="uuid" id="uuid_id">` is added first, so Calibre can rebuild its database from the file. Only a second `uuid_id` (as left by older versions on an ISBN) loses its id; values never change.
   - `calibre` and `uuid` identifiers (Calibre's book id and uuid, also in its exports) and an EPUB's `urn:uuid:` package id aren't shown in the editor. Saving keeps the book's own in `metadata.opf` and `metadata.db` as they are.
   - Values containing commas or colons survive, because identifiers are sent as structured data rather than a string.
 - **Removing things**
@@ -134,7 +135,7 @@ Both only offer choices. Nothing is saved until **Apply Changes**.
 
 `/upload` (needs an admin and `-allow-writes`):
 - Files with the same name and different formats (`Book.epub` + `Book.pdf`) become one book with both formats.
-- Metadata is read from EPUB and PDF files. Afterwards the editor lets you pick each field's value from each format.
+- Metadata is read from EPUB and PDF files. Afterwards the editor lets you pick each field's value from each format. `metadata.opf` gets the book's uuid as `<dc:identifier opf:scheme="uuid" id="uuid_id">`; the file's own identifiers (an EPUB's `urn:uuid:`, its ISBN) are kept with their ids.
 
 ## Accounts, favorites, progress and shelves
 

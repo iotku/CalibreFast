@@ -661,7 +661,7 @@ func TestApplyMetadataHandler_PreservesIdentifiers(t *testing.T) {
 	if err := writeOPF(&OPF{Metadata: OPFMetadata{
 		Title: "Ids", Creators: []string{"A"},
 		Identifiers: append(slices.Clone(library), opfIdentifier{Scheme: "isbn", Value: "9780000000002"}),
-	}}, opfPath); err != nil {
+	}}, opfPath, bookUUID); err != nil {
 		t.Fatal(err)
 	}
 	if _, err := db.Exec(`INSERT INTO identifiers (book, type, val) VALUES (?, 'calibre', '7')`, bookID); err != nil {
@@ -764,7 +764,7 @@ func TestApplyMetadataHandler_KeepsUnparseableDate(t *testing.T) {
 	}
 	dir := filepath.Join(tempDir, bookPath)
 	_ = os.MkdirAll(dir, 0755)
-	if err := writeOPF(&OPF{Metadata: OPFMetadata{Title: "Dates", Date: "Spring 1987"}}, filepath.Join(dir, "metadata.opf")); err != nil {
+	if err := writeOPF(&OPF{Metadata: OPFMetadata{Title: "Dates", Date: "Spring 1987"}}, filepath.Join(dir, "metadata.opf"), bookUUID); err != nil {
 		t.Fatalf("write opf: %v", err)
 	}
 
