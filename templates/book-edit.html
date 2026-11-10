@@ -51,7 +51,6 @@
             /* ── Book Preview Banner ── */
             .book-banner {
                 display: flex;
-                flex-wrap: wrap; /* the cover picker is a row of its own */
                 gap: 1.5rem;
                 align-items: center;
                 background: var(--surface);
@@ -86,30 +85,213 @@
             }
 
             .book-banner-cover-btn:hover .book-banner-cover-hint,
-            .book-banner-cover-btn:focus-visible .book-banner-cover-hint,
-            .book-banner-cover-btn[aria-expanded="true"] .book-banner-cover-hint {
+            .book-banner-cover-btn:focus-visible .book-banner-cover-hint {
                 opacity: 1;
             }
 
-            .cover-picker-section[hidden] {
+            /* ── Cover dialog (web/cover-dialog.ts) ── */
+            .cover-dialog {
+                width: min(1100px, calc(100vw - 32px));
+                max-height: 92vh;
+            }
+
+            .cover-dialog.busy {
+                cursor: progress;
+            }
+
+            .cover-dialog.busy button {
+                pointer-events: none;
+                opacity: 0.6;
+            }
+
+            .cover-dialog-body {
+                padding: 14px 18px 18px;
+            }
+
+            .cover-tools {
+                display: flex;
+                flex-wrap: wrap;
+                align-items: center;
+                gap: 8px;
+            }
+
+            .cover-tool {
+                font-family: var(--mono);
+                font-size: 0.72rem;
+                letter-spacing: 0.04em;
+                padding: 7px 12px;
+                color: var(--text);
+                background: rgba(255, 255, 255, 0.04);
+                border: 1px solid var(--border);
+                border-radius: 6px;
+                cursor: pointer;
+            }
+
+            .cover-tool:hover:not(:disabled) {
+                border-color: var(--accent);
+            }
+
+            .cover-tool[hidden] {
                 display: none;
             }
 
-            /* The cover picker opens inside the banner, on its own row under
-               the cover: part of the banner, not a card inside it. */
-            .book-banner > .cover-picker-section {
-                flex: 0 0 100%;
-                margin: 0;
-                text-align: left;
+            .cover-tool-revert {
+                margin-left: auto;
+                color: #e59999;
+                border-color: rgba(186, 122, 122, 0.45);
             }
 
-            .book-banner .cover-picker {
+            .cover-status {
+                margin: 12px 0;
+                font-size: 0.8rem;
+                color: var(--muted);
+            }
+
+            .cover-status.error {
+                color: #e59999;
+            }
+
+            /* One or two choices, large */
+            .cover-view {
+                margin-bottom: 16px;
+                padding: 12px;
+                background: rgba(0, 0, 0, 0.25);
+                border: 1px solid var(--border);
+                border-radius: 8px;
+            }
+
+            .cover-view[hidden] {
+                display: none;
+            }
+
+            .cover-view-head {
+                display: flex;
+                justify-content: flex-end;
+                gap: 8px;
+                margin-bottom: 10px;
+            }
+
+            .cover-view-head .cover-tool[aria-pressed="true"] {
+                border-color: var(--accent);
+                color: var(--accent);
+            }
+
+            .cover-view-items {
+                display: grid;
+                grid-template-columns: repeat(auto-fit, minmax(260px, 1fr));
+                gap: 16px;
+            }
+
+            .cover-view-item {
                 margin: 0;
-                padding: 1rem 0 0;
-                background: none;
-                border: none;
-                border-top: 1px solid var(--border);
-                border-radius: 0;
+                min-width: 0;
+                display: flex;
+                flex-direction: column;
+                align-items: center;
+                gap: 8px;
+            }
+
+            .cover-view-frame {
+                max-width: 100%;
+                max-height: 62vh;
+                overflow: auto;
+                background: #111;
+                border-radius: 6px;
+            }
+
+            .cover-view-frame img {
+                display: block;
+                max-width: 100%;
+                max-height: 62vh;
+            }
+
+            /* Pixel for pixel: the frame scrolls */
+            .cover-view.actual .cover-view-frame {
+                align-self: stretch;
+            }
+
+            .cover-view.actual .cover-view-frame img {
+                max-width: none;
+                max-height: none;
+            }
+
+            .cover-view-item figcaption {
+                font-size: 0.8rem;
+                color: var(--muted);
+                text-align: center;
+            }
+
+            .cover-view-item figcaption strong {
+                color: var(--text);
+                font-weight: 500;
+            }
+
+            .cover-view-note {
+                font-size: 0.75rem;
+                color: #7aba7e;
+            }
+
+            /* Every choice */
+            .cover-choices {
+                list-style: none;
+                margin: 0;
+                padding: 0;
+                display: grid;
+                grid-template-columns: repeat(auto-fill, minmax(170px, 1fr));
+                gap: 12px;
+            }
+
+            .cover-card {
+                width: 100%;
+                display: flex;
+                flex-direction: column;
+                gap: 4px;
+                padding: 8px;
+                font: inherit;
+                text-align: left;
+                color: var(--text);
+                background: rgba(255, 255, 255, 0.03);
+                border: 1px solid var(--border);
+                border-radius: 8px;
+                cursor: pointer;
+            }
+
+            .cover-card:hover {
+                border-color: var(--accent-dim, #7a6340);
+            }
+
+            .cover-card[aria-pressed="true"] {
+                border-color: var(--accent);
+                box-shadow: 0 0 0 1px var(--accent);
+            }
+
+            .cover-card img {
+                width: 100%;
+                height: 240px;
+                object-fit: contain;
+                background: #111;
+                border-radius: 4px;
+                margin-bottom: 4px;
+            }
+
+            .cover-card-label {
+                font-size: 0.8rem;
+            }
+
+            .cover-card-size {
+                font-family: var(--mono);
+                font-size: 0.68rem;
+                color: var(--muted);
+            }
+
+            @media (max-width: 480px) {
+                .cover-choices {
+                    grid-template-columns: repeat(2, minmax(0, 1fr));
+                }
+
+                .cover-card img {
+                    height: 180px;
+                }
             }
 
             /* ── ISBN lookup in the top bar ── */
@@ -1039,6 +1221,13 @@
                 color: var(--muted);
             }
 
+            .split-note:not([hidden]) {
+                display: flex;
+                flex-wrap: wrap;
+                align-items: center;
+                gap: 4px 8px;
+            }
+
             .date-raw-note {
                 margin: 6px 0 0;
                 font-size: 0.8rem;
@@ -1298,8 +1487,8 @@
         <main class="edit-container">
             <!-- Book Preview Banner -->
             <div class="book-banner">
-                <!-- The cover picker opens from here: the cover is usually right. -->
-                <button type="button" id="edit-cover-btn" class="book-banner-cover-btn" title="Change the cover" aria-expanded="false" aria-controls="cover-picker-section">
+                <!-- Opens the cover dialog: the cover is usually right. -->
+                <button type="button" id="edit-cover-btn" class="book-banner-cover-btn" title="Change the cover" aria-haspopup="dialog">
                     <img
                         src="/cover-thumb/{{.UUID}}{{ if .CoverModTime }}?t={{ .CoverModTime }}{{ end }}"
                         alt="Cover (click to change)"
@@ -1318,8 +1507,6 @@
                         Tip: Click the pills under each field (e.g. <strong>current</strong>, <strong>epub</strong>, <strong>pdf</strong>, or <strong>Open Library</strong> after a lookup) to use that source's value; green means it matches. Click the cover to change it. After you change a field, its <strong>edited</strong> pill restores your changes and shows what changed vs <strong>current</strong>. <strong>Compare changes</strong> at the bottom lists every changed field.
                     </p>
                 </div>
-                <!-- The cover picker, under the cover; opened by clicking it -->
-                <div id="cover-picker-section" class="cover-picker-section" hidden></div>
             </div>
 
             <!-- Online lookup: what was found, and the other sources to try -->
@@ -1354,7 +1541,10 @@
                         <fieldset class="meta-field">
                             <legend>Author(s)</legend>
                             <input type="text" name="creators" class="meta-input" placeholder="e.g. Alan A. A. Donovan & Brian W. Kernighan" />
-                            <p id="creators-saved-as" class="field-note" hidden></p>
+                            <p id="creators-split" class="field-note split-note" hidden>
+                                <button type="button" id="btn-split-authors" class="meta-source-btn" title="Rewrite the authors this way (click current to undo)">Split</button>
+                                <span id="creators-split-preview"></span>
+                            </p>
                             <div class="meta-source-buttons" data-field="creators"></div>
                         </fieldset>
                     </div>
@@ -1482,13 +1672,37 @@
                     <button type="button" id="lookup-accept" class="btn-primary">Accept all and apply</button>
                 </footer>
             </dialog>
+
+            <!-- Every cover the book could have, to compare and pick (web/cover-dialog.ts) -->
+            <dialog id="cover-dialog" class="compare-dialog cover-dialog" aria-labelledby="cover-title">
+                <header class="compare-header">
+                    <h2 id="cover-title">Choose a cover</h2>
+                    <form method="dialog"><button class="compare-close" aria-label="Close">✕</button></form>
+                </header>
+                <div class="cover-dialog-body">
+                    <div class="cover-tools">
+                        <label class="cover-tool">Upload image…<input type="file" id="cover-file" accept=".jpg,.jpeg,.png" hidden /></label>
+                        <button type="button" id="cover-online" class="cover-tool" hidden>Look up cover online</button>
+                        <button type="button" id="cover-revert" class="cover-tool cover-tool-revert" hidden>↺ Revert to previous cover</button>
+                    </div>
+                    <p id="cover-status" class="cover-status" role="status"></p>
+                    <section id="cover-view" class="cover-view" aria-label="Selected covers" hidden>
+                        <div class="cover-view-head">
+                            <button type="button" id="cover-actual" class="cover-tool" aria-pressed="false" title="One image pixel per screen pixel">Actual pixels</button>
+                            <button type="button" id="cover-view-close" class="cover-tool">Hide</button>
+                        </div>
+                        <div id="cover-view-items" class="cover-view-items"></div>
+                    </section>
+                    <ul id="cover-choices" class="cover-choices"></ul>
+                </div>
+            </dialog>
         </main>
 
         <!-- Sanitizes the description editor's HTML (web/description.ts). -->
         <script src="/static/vendor/dompurify@3.2.6/dist/purify.min.js"></script>
         <script type="module">
             import { mountMetadataEditor } from {{ asset "metadata.js" }};
-            import { mountCoverPicker } from {{ asset "cover-picker.js" }};
+            import { mountCoverDialog } from {{ asset "cover-dialog.js" }};
 
             const form = document.getElementById("metadata-form");
             const uuid = form.dataset.uuid;
@@ -1496,15 +1710,18 @@
                 console.error("Error mounting metadata editor:", err);
             });
 
-            const coverSection = document.getElementById("cover-picker-section");
             const coverBtn = document.getElementById("edit-cover-btn");
-            if (coverSection && coverBtn) {
-                mountCoverPicker(coverSection, uuid, null, () => {
-                    document.getElementById("edit-cover-img").src = `/cover-thumb/${uuid}?t=${Date.now()}`;
-                }, { isEditPage: true, isbnInput: document.getElementById("isbn-lookup-input") });
-                coverBtn.addEventListener("click", () => {
-                    coverSection.hidden = !coverSection.hidden;
-                    coverBtn.setAttribute("aria-expanded", String(!coverSection.hidden));
+            const editStatus = document.getElementById("edit-status");
+            if (coverBtn) {
+                mountCoverDialog({
+                    uuid,
+                    opener: coverBtn,
+                    isbnInput: document.getElementById("isbn-lookup-input"),
+                    onChanged(message) {
+                        document.getElementById("edit-cover-img").src = `/cover-thumb/${uuid}?t=${Date.now()}`;
+                        editStatus.className = "edit-status success";
+                        editStatus.textContent = message;
+                    },
                 });
             }
         </script>

@@ -516,7 +516,7 @@ func TestApplyMetadataHandler_HTTP(t *testing.T) {
 	// Apply updated metadata
 	payload := `{
 		"title": "Updated HTTP Title",
-		"creators": "First New Author, Second New Author",
+		"creators": "First New Author & Second New Author",
 		"publisher": "New HTTP Publisher",
 		"date": "2024-01-15",
 		"language": "eng",

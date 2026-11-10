@@ -1,165 +1,16 @@
-// Reusable Cover Picker component for upload and book-edit pages.
-import { api, errorMessage } from "./dom.js";
-import type { CoverCandidate, LookupResult } from "./types.js";
-import { EPUBJS_URL, JSZIP_URL, openPdf } from "./vendor.js";
+// The upload page's cover picker: upload an image, or pick a page of the
+// book's PDF or EPUB from a strip of thumbnails. A click saves it. With
+// autoSelectDefault, the EPUB's cover (or the PDF's first page) is saved
+// right away. The metadata editor uses cover-dialog.ts instead.
+
+import { errorMessage } from "./dom.js";
+import { type CoverChoice, epubPages, fileChoice, pdfPages } from "./cover-sources.js";
 
 /** Called after a cover is saved for a book. */
 type CoverSaved = ((uuid: string) => void) | null;
-/** Shows/hides the revert button depending on whether a backup exists. */
-type RevertUpdater = ((hasBackup: boolean) => void) | null;
-/** Fills the strip with pictures to pick from. */
-type StripRenderer = (strip: HTMLElement, status: HTMLElement) => void;
-
-/** Response of /upload-cover, /revert-cover and /cover-status. */
-interface CoverStatus {
-    hasCover?: boolean;
-    hasBackup?: boolean;
-}
-
-/** One block of readable text from an EPUB section. */
-interface TextBlock {
-    text: string;
-    heading: boolean;
-}
 
 export interface CoverPickerOptions {
-    isEditPage?: boolean;
     autoSelectDefault?: boolean;
-    /**
-     * The editor's ISBN lookup box (absent with -no-lookups). With an ISBN in
-     * it, the picker offers to look up Open Library's cover for that ISBN.
-     */
-    isbnInput?: HTMLInputElement | null;
-}
-
-/** A canvas's 2D context; these canvases are always 2D-capable. */
-function ctx2d(canvas: HTMLCanvasElement): CanvasRenderingContext2D {
-    const ctx = canvas.getContext("2d");
-    if (!ctx) throw new Error("2D canvas not supported");
-    return ctx;
-}
-
-/**
- * Readable text blocks from an EPUB section. epub.js's section.load() gives
- * the section's root <html> element (not a Document), and EPUB XHTML is XML,
- * so there's no .body / .innerText: find <body> and read block elements.
- * Returns [{text, heading}].
- */
-function sectionBlocks(root: Element | null): TextBlock[] {
-    const body = root?.querySelector?.("body") || root;
-    if (!body) return [];
-    const blocks = [...body.querySelectorAll("h1,h2,h3,h4,h5,h6,p,li,blockquote,pre,dt,dd,figcaption,td")]
-        .map((el) => ({
-            text: (el.textContent || "").replace(/\s+/g, " ").trim(),
-            heading: /^h[1-6]$/i.test(el.localName || el.tagName),
-        }))
-        .filter((b) => b.text);
-    if (blocks.length) return blocks;
-    const text = (body.textContent || "").replace(/\s+/g, " ").trim();
-    return text ? [{ text, heading: false }] : [];
-}
-
-/**
- * Draw blocks onto a page-shaped canvas, word-wrapped to its width. The
- * first heading is bold and larger. Sizes are relative to the canvas width
- * so the thumbnail and the full-size cover look the same.
- */
-function drawTextPage(ctx: CanvasRenderingContext2D, width: number, height: number, blocks: TextBlock[], fallbackTitle: string): void {
-    const margin = Math.round(width * 0.08);
-    const maxWidth = width - margin * 2;
-    const bodySize = Math.max(6, Math.round(width * 0.045));
-    const headSize = Math.round(bodySize * 1.6);
-    ctx.fillStyle = "#fcfaf7";
-    ctx.fillRect(0, 0, width, height);
-    ctx.fillStyle = "#1a1a1a";
-    ctx.textBaseline = "top";
-
-    const items = blocks.length ? blocks : [{ text: fallbackTitle, heading: true }];
-    let y = margin;
-    let firstHeadingDone = false;
-    for (const block of items) {
-        const isHead = block.heading && !firstHeadingDone;
-        if (block.heading) firstHeadingDone = true;
-        const size = isHead ? headSize : bodySize;
-        ctx.font = `${isHead ? "bold " : ""}${size}px Georgia, serif`;
-        const lineHeight = Math.round(size * 1.35);
-        let line = "";
-        for (const word of block.text.split(" ")) {
-            const test = line ? `${line} ${word}` : word;
-            if (ctx.measureText(test).width > maxWidth && line) {
-                if (y + lineHeight > height - margin) return;
-                ctx.fillText(line, margin, y);
-                y += lineHeight;
-                line = word;
-            } else {
-                line = test;
-            }
-        }
-        if (line) {
-            if (y + lineHeight > height - margin) return;
-            ctx.fillText(line, margin, y);
-            y += lineHeight;
-        }
-        y += Math.round(lineHeight * (isHead ? 0.6 : 0.4)); // paragraph gap
-    }
-}
-
-/** Loads a classic <script> (the EPUB libraries the picker needs). */
-function loadScript(src: string): Promise<void> {
-    return new Promise((resolve, reject) => {
-        const s = document.createElement("script");
-        s.src = src;
-        s.onload = () => resolve();
-        s.onerror = () => reject(new Error(`failed to load ${src}`));
-        document.head.appendChild(s);
-    });
-}
-
-async function uploadCoverDataUrl(uuid: string, dataUrl: string): Promise<CoverStatus> {
-    const resp = await fetch(`/upload-cover/${uuid}`, {
-        method: "POST",
-        body: dataUrl,
-    });
-    if (!resp.ok) throw new Error(await resp.text());
-    return resp.json();
-}
-
-async function uploadCoverFile(uuid: string, file: File): Promise<CoverStatus> {
-    const fd = new FormData();
-    fd.append("cover", file);
-    const resp = await fetch(`/upload-cover/${uuid}`, {
-        method: "POST",
-        body: fd,
-    });
-    if (!resp.ok) throw new Error(await resp.text());
-    return resp.json();
-}
-
-async function revertCover(uuid: string): Promise<CoverStatus> {
-    const resp = await fetch(`/revert-cover/${uuid}`, {
-        method: "POST",
-    });
-    if (!resp.ok) throw new Error(await resp.text());
-    return resp.json();
-}
-
-async function fetchCoverStatus(uuid: string): Promise<CoverStatus> {
-    try {
-        const resp = await fetch(`/cover-status/${uuid}`);
-        if (resp.ok) return resp.json();
-    } catch {
-        /* ignore */
-    }
-    return { hasCover: false, hasBackup: false };
-}
-
-function showCoverDone(picker: HTMLElement, msg = "✓ Cover updated"): void {
-    const done = picker.querySelector(".cover-picker-done");
-    if (done) {
-        done.textContent = msg;
-        done.classList.add("visible");
-        setTimeout(() => done.classList.remove("visible"), 4000);
-    }
 }
 
 export function buildCoverPicker(
@@ -168,32 +19,52 @@ export function buildCoverPicker(
     onCoverSaved: CoverSaved = null,
     options: CoverPickerOptions = {},
 ): HTMLDivElement {
-    const isEditPage = Boolean(options.isEditPage);
-    const autoSelectDefault = Boolean(options.autoSelectDefault);
-
     const picker = document.createElement("div");
     picker.className = "cover-picker";
-
-    const header = document.createElement("div");
-    header.className = "cover-picker-header";
-    header.innerHTML = `
-        <h3>Cover Image</h3>
-        <span class="cover-picker-done">✓ Cover updated</span>
+    picker.innerHTML = `
+        <div class="cover-picker-header">
+            <h3>Cover Image</h3>
+            <span class="cover-picker-done">✓ Cover updated</span>
+        </div>
+        <div class="cover-picker-actions"></div>
+        <div class="cover-pages">
+            <div class="cover-pages-strip"></div>
+            <div class="cover-pages-status"></div>
+        </div>
     `;
-    picker.appendChild(header);
+    const actions = picker.querySelector<HTMLElement>(".cover-picker-actions")!;
+    const pages = picker.querySelector<HTMLElement>(".cover-pages")!;
+    const strip = picker.querySelector<HTMLElement>(".cover-pages-strip")!;
+    const status = picker.querySelector<HTMLElement>(".cover-pages-status")!;
+    const done = picker.querySelector<HTMLElement>(".cover-picker-done")!;
 
-    // Edit page helper notice
-    if (isEditPage) {
-        const hint = document.createElement("div");
-        hint.className = "cover-auto-save-hint";
-        hint.innerHTML = `<span>⚡</span> <span>Selecting a page or uploading an image saves the new cover automatically on click.</span>`;
-        picker.appendChild(hint);
-    }
+    const save = async (choice: CoverChoice, thumb: HTMLElement | null, isDefault = false): Promise<void> => {
+        if (!choice.save) return;
+        strip.querySelectorAll(".selected").forEach((t) => t.classList.remove("selected"));
+        thumb?.classList.add("selected");
+        status.textContent = isDefault ? `Saving the default cover (${choice.label})…` : "Saving cover…";
+        try {
+            await choice.save();
+            done.textContent = isDefault ? "✓ Default cover saved" : "✓ Cover saved";
+            done.classList.add("visible");
+            status.textContent = isDefault ? `✓ Saved ${choice.label} as the cover (click another to change)` : "Cover saved!";
+            onCoverSaved?.(uuid);
+        } catch (err: unknown) {
+            status.textContent = "Failed to save: " + errorMessage(err);
+        }
+    };
 
-    const actions = document.createElement("div");
-    actions.className = "cover-picker-actions";
+    const thumb = (choice: CoverChoice): HTMLImageElement => {
+        const img = document.createElement("img");
+        img.src = choice.src;
+        img.alt = choice.label;
+        img.title = `${choice.label} · ${choice.width} × ${choice.height} px`;
+        img.addEventListener("click", () => void save(choice, img));
+        strip.appendChild(img);
+        return img;
+    };
 
-    // Upload image input
+    // Upload: saved as soon as it's picked.
     const uploadLabel = document.createElement("label");
     uploadLabel.textContent = "Upload image (JPG/PNG)";
     const fileIn = document.createElement("input");
@@ -201,534 +72,61 @@ export function buildCoverPicker(
     fileIn.accept = ".jpg,.jpeg,.png";
     uploadLabel.appendChild(fileIn);
     actions.appendChild(uploadLabel);
-
-    // Revert button
-    const revertBtn = document.createElement("button");
-    revertBtn.type = "button";
-    revertBtn.className = "btn-revert-cover";
-    revertBtn.textContent = "↺ Revert to previous cover";
-    revertBtn.style.display = "none";
-    actions.appendChild(revertBtn);
-
-    const updateRevertBtn = (hasBackup: boolean | undefined): void => {
-        if (isEditPage && hasBackup) {
-            revertBtn.style.display = "inline-flex";
-        }
-    };
-
-    if (isEditPage) {
-        fetchCoverStatus(uuid).then(status => {
-            if (status && status.hasBackup) {
-                updateRevertBtn(true);
-            }
-        });
-    }
-
-    revertBtn.addEventListener("click", async () => {
-        revertBtn.disabled = true;
-        const status = picker.querySelector(".cover-pages-status");
-        const pagesEl = picker.querySelector(".cover-pages");
-        if (pagesEl) pagesEl.classList.add("visible");
-        if (status) status.textContent = "Reverting cover…";
-
-        try {
-            await revertCover(uuid);
-            showCoverDone(picker, "✓ Reverted to previous cover");
-            if (status) status.textContent = "Restored previous cover.";
-            picker.querySelectorAll(".cover-pages-strip canvas").forEach(c => c.classList.remove("selected"));
-            if (onCoverSaved) onCoverSaved(uuid);
-        } catch (err: unknown) {
-            if (status) status.textContent = "Revert failed: " + errorMessage(err);
-        } finally {
-            revertBtn.disabled = false;
-        }
-    });
-
     fileIn.addEventListener("change", async () => {
-        if (!fileIn.files?.length) return;
-        const status = picker.querySelector(".cover-pages-status");
-        const pagesEl = picker.querySelector(".cover-pages");
-        if (pagesEl) pagesEl.classList.add("visible");
-        if (status) status.textContent = "Uploading cover image…";
+        const file = fileIn.files?.[0];
+        if (!file) return;
+        pages.classList.add("visible");
         try {
-            const file = fileIn.files?.[0];
-            if (!file) return;
-            const res = await uploadCoverFile(uuid, file);
-            showCoverDone(picker, "✓ Cover uploaded");
-            if (status) status.textContent = "Cover uploaded successfully!";
-            if (res && res.hasBackup) updateRevertBtn(true);
-            if (onCoverSaved) onCoverSaved(uuid);
+            await save(await fileChoice(uuid, file), null);
         } catch (err: unknown) {
-            if (status) status.textContent = "Upload failed: " + errorMessage(err);
+            status.textContent = "Upload failed: " + errorMessage(err);
         } finally {
             fileIn.value = "";
         }
     });
 
-    const hasPdf = formats.includes("pdf");
-    const hasEpub = formats.includes("epub");
+    /** Shows a source's pages in the strip; its button again hides them. */
+    const show = async (btn: HTMLButtonElement, source: AsyncGenerator<CoverChoice>, autoSave = false): Promise<void> => {
+        const allBtns = actions.querySelectorAll("button");
+        if (!autoSave && btn.classList.contains("active")) {
+            allBtns.forEach((b) => b.classList.remove("active"));
+            pages.classList.remove("visible");
+            return;
+        }
+        allBtns.forEach((b) => b.classList.remove("active"));
+        btn.classList.add("active");
+        strip.replaceChildren();
+        status.textContent = "Loading pages…";
+        pages.classList.add("visible");
+        let n = 0;
+        try {
+            for await (const choice of source) {
+                const img = thumb(choice);
+                if (autoSave && n === 0) void save(choice, img, true);
+                n++;
+            }
+            if (!autoSave) status.textContent = n ? "Click a page to use it as the cover" : "No pages to show.";
+        } catch (err: unknown) {
+            status.textContent = "Failed to load pages: " + errorMessage(err);
+        }
+    };
 
-    let pdfBtn: HTMLButtonElement | null = null;
-    let epubBtn: HTMLButtonElement | null = null;
-
-    if (hasPdf) {
-        pdfBtn = document.createElement("button");
-        pdfBtn.type = "button";
-        pdfBtn.textContent = "Pick from PDF pages";
-        const btn = pdfBtn;
-        btn.addEventListener("click", () =>
-            showPageStrip(btn, picker, (strip, status) => renderPdfPages(uuid, strip, status, picker, onCoverSaved, false, updateRevertBtn)));
-        actions.appendChild(pdfBtn);
-    }
-
-    if (hasEpub) {
-        epubBtn = document.createElement("button");
-        epubBtn.type = "button";
-        epubBtn.textContent = "Pick from EPUB pages";
-        const btn = epubBtn;
-        btn.addEventListener("click", () =>
-            showPageStrip(btn, picker, (strip, status) => renderEpubPages(uuid, strip, status, picker, onCoverSaved, false, updateRevertBtn)));
-        actions.appendChild(epubBtn);
-    }
-
-    // Covers from Open Library, in the metadata editor with lookups on: for
-    // the ISBN in the lookup box (the book's, or one found in its files), and
-    // from a lookup the admin kept (web/isbn-tools.ts). Nothing is fetched
-    // until this button is clicked, and then only through the server.
-    const isbnInput = isEditPage ? options.isbnInput : null;
-    if (isbnInput) {
+    const sourceButton = (text: string, source: () => AsyncGenerator<CoverChoice>): HTMLButtonElement => {
         const btn = document.createElement("button");
         btn.type = "button";
-        btn.textContent = "Look up cover online";
+        btn.textContent = text;
+        btn.addEventListener("click", () => void show(btn, source()));
         actions.appendChild(btn);
+        return btn;
+    };
+    const pdfBtn = formats.includes("pdf") ? sourceButton("Pick from PDF pages", () => pdfPages(uuid)) : null;
+    const epubBtn = formats.includes("epub") ? sourceButton("Pick from EPUB pages", () => epubPages(uuid)) : null;
 
-        let kept: CoverCandidate[] = [];
-        const byIsbn = new Map<string, CoverCandidate[]>();
-        const isbn = (): string => isbnInput.value.replace(/[^0-9Xx]/g, "");
-        const update = (): void => {
-            const n = isbn();
-            btn.hidden = !n && !kept.length;
-            btn.title = n ? `Asks Open Library for the cover of ISBN ${n}` : "The cover from the Open Library lookup";
-        };
-
-        let showing = 0; // the latest render: an older one's lookup may finish later
-        const render: StripRenderer = async (strip, status) => {
-            const me = ++showing;
-            const n = isbn();
-            let found: CoverCandidate[] = byIsbn.get(n) ?? [];
-            let note = "";
-            if (n && !byIsbn.has(n)) {
-                status.textContent = `Looking up ISBN ${n} on Open Library…`;
-                try {
-                    const r = await api<LookupResult>("GET", `/metadata/lookup?${new URLSearchParams({ source: "openlibrary", isbn: n })}`);
-                    found = r.cover ? [{ source: r.source, url: r.cover }] : [];
-                    if (r.option) byIsbn.set(n, found); // not errors: a rate limit passes
-                    else note = `Open Library: ${r.error || "no match"}`;
-                } catch (err) {
-                    note = `Lookup failed: ${errorMessage(err)}`;
-                }
-                if (me !== showing || !btn.classList.contains("active")) return;
-            }
-            const covers = [...found, ...kept.filter((k) => !found.some((f) => f.url === k.url))];
-            if (!covers.length) {
-                status.textContent = note || `Open Library has no cover for ISBN ${n}.`;
-                return;
-            }
-            status.textContent = "Cover from Open Library: click it to use it";
-            for (const c of covers) renderImageThumb(uuid, c.url, c.source, strip, picker, onCoverSaved, false, updateRevertBtn);
-        };
-
-        btn.addEventListener("click", () => showPageStrip(btn, picker, render, { loading: "Loading cover…" }));
-        isbnInput.addEventListener("input", update);
-        document.addEventListener("cf:cover-candidates", (e) => {
-            kept = (e as CustomEvent<CoverCandidate[]>).detail;
-            update();
-            if (btn.classList.contains("active")) showPageStrip(btn, picker, render, { toggle: false, loading: "Loading cover…" });
-        });
-        update();
-    }
-
-    picker.appendChild(actions);
-
-    const pages = document.createElement("div");
-    pages.className = "cover-pages";
-    pages.innerHTML = `
-        <div class="cover-pages-strip"></div>
-        <div class="cover-pages-status">Loading pages…</div>
-    `;
-    picker.appendChild(pages);
-
-    // Auto-select default cover from page 1 on upload
-    if (autoSelectDefault) {
-        const auto = { toggle: false, loading: "Saving default cover from page 1…" };
-        if (hasEpub && epubBtn) {
-            showPageStrip(epubBtn, picker, (strip, status) => renderEpubPages(uuid, strip, status, picker, onCoverSaved, true, updateRevertBtn), auto);
-        } else if (hasPdf && pdfBtn) {
-            showPageStrip(pdfBtn, picker, (strip, status) => renderPdfPages(uuid, strip, status, picker, onCoverSaved, true, updateRevertBtn), auto);
-        }
+    // On upload: the EPUB's cover, else the PDF's first page.
+    if (options.autoSelectDefault) {
+        if (epubBtn) void show(epubBtn, epubPages(uuid), true);
+        else if (pdfBtn) void show(pdfBtn, pdfPages(uuid), true);
     }
 
     return picker;
-}
-
-export async function mountCoverPicker(
-    container: HTMLElement,
-    uuid: string,
-    formats: string[] | null = null,
-    onCoverSaved: CoverSaved = null,
-    options: CoverPickerOptions = {},
-): Promise<HTMLDivElement> {
-    if (!formats || formats.length === 0) {
-        try {
-            const res = await fetch(`/formats/${uuid}`);
-            if (res.ok) {
-                formats = await res.json();
-            }
-        } catch (_) {
-            formats = [];
-        }
-    }
-    const picker = buildCoverPicker(uuid, formats || [], onCoverSaved, options);
-    container.appendChild(picker);
-    return picker;
-}
-
-/**
- * Shows btn's pictures in the strip under the buttons. Clicking the active
- * button again hides them, unless toggle is false.
- */
-function showPageStrip(
-    btn: HTMLButtonElement,
-    picker: HTMLElement,
-    render: StripRenderer,
-    { toggle = true, loading = "Loading pages…" }: { toggle?: boolean; loading?: string } = {},
-): void {
-    const pages = picker.querySelector<HTMLElement>(".cover-pages");
-    const strip = pages?.querySelector<HTMLElement>(".cover-pages-strip");
-    const status = pages?.querySelector<HTMLElement>(".cover-pages-status");
-    if (!pages || !strip || !status) return;
-
-    const allBtns = picker.querySelectorAll(".cover-picker-actions button:not(.btn-revert-cover)");
-    if (toggle && btn.classList.contains("active")) {
-        allBtns.forEach(b => b.classList.remove("active"));
-        pages.classList.remove("visible");
-        return;
-    }
-
-    allBtns.forEach(b => b.classList.remove("active"));
-    btn.classList.add("active");
-    strip.innerHTML = "";
-    status.textContent = loading;
-    pages.classList.add("visible");
-    render(strip, status);
-}
-
-async function renderPdfPages(
-    uuid: string,
-    strip: HTMLElement,
-    status: HTMLElement,
-    picker: HTMLElement,
-    onCoverSaved: CoverSaved,
-    autoSelect = false,
-    updateRevertBtn: RevertUpdater = null,
-): Promise<void> {
-    try {
-        const pdf = await openPdf(`/download/${uuid}/pdf`);
-        const pageCount = Math.min(pdf.numPages, 5);
-        status.textContent = autoSelect
-            ? "Saving default cover from page 1…"
-            : `Showing first ${pageCount} page(s) — click to select cover`;
-
-        for (let i = 1; i <= pageCount; i++) {
-            const page = await pdf.getPage(i);
-            const viewport = page.getViewport({ scale: 1 });
-
-            const targetHeight = 180;
-            const scale = targetHeight / viewport.height;
-            const scaledViewport = page.getViewport({ scale });
-
-            const canvas = document.createElement("canvas");
-            canvas.width = scaledViewport.width;
-            canvas.height = scaledViewport.height;
-            canvas.title = `Page ${i}`;
-            canvas.style.height = "180px";
-            canvas.style.maxHeight = "180px";
-            canvas.style.width = "auto";
-            canvas.style.maxWidth = "140px";
-            canvas.style.objectFit = "contain";
-
-            await page.render({
-                canvasContext: ctx2d(canvas),
-                viewport: scaledViewport,
-            }).promise;
-
-            const saveHiresCover = async (isDefault = false) => {
-                strip.querySelectorAll("canvas").forEach(c => c.classList.remove("selected"));
-                canvas.classList.add("selected");
-                status.textContent = isDefault ? "Saving default cover from page 1…" : "Saving cover…";
-
-                try {
-                    const maxWidth = 1200;
-                    const hiresScale = Math.min(maxWidth / viewport.width, 3);
-                    const hiresViewport = page.getViewport({ scale: hiresScale });
-
-                    const hiresCanvas = document.createElement("canvas");
-                    hiresCanvas.width = hiresViewport.width;
-                    hiresCanvas.height = hiresViewport.height;
-
-                    await page.render({
-                        canvasContext: ctx2d(hiresCanvas),
-                        viewport: hiresViewport,
-                    }).promise;
-
-                    const dataUrl = hiresCanvas.toDataURL("image/jpeg", 0.92);
-                    const res = await uploadCoverDataUrl(uuid, dataUrl);
-                    if (isDefault) {
-                        showCoverDone(picker, "✓ Default cover saved from page 1");
-                        status.textContent = "✓ Default cover saved from page 1 (click another to change)";
-                    } else {
-                        showCoverDone(picker, "✓ Cover saved");
-                        status.textContent = "Cover saved!";
-                    }
-                    if (updateRevertBtn && res && res.hasBackup) updateRevertBtn(true);
-                    if (onCoverSaved) onCoverSaved(uuid);
-                } catch (err: unknown) {
-                    status.textContent = "Failed to save: " + errorMessage(err);
-                }
-            };
-
-            canvas.addEventListener("click", () => saveHiresCover(false));
-            strip.appendChild(canvas);
-
-            // Auto-save page 1 on upload
-            if (i === 1 && autoSelect) {
-                saveHiresCover(true);
-            }
-        }
-    } catch (e: unknown) {
-        status.textContent = "Failed to load PDF pages: " + errorMessage(e);
-    }
-}
-
-async function renderEpubPages(
-    uuid: string,
-    strip: HTMLElement,
-    status: HTMLElement,
-    picker: HTMLElement,
-    onCoverSaved: CoverSaved,
-    autoSelect = false,
-    updateRevertBtn: RevertUpdater = null,
-): Promise<void> {
-    try {
-        // JSZip first: epub.js opens the whole .epub from memory with it.
-        if (!("JSZip" in window)) await loadScript(JSZIP_URL);
-        if (typeof window.ePub === "undefined") await loadScript(EPUBJS_URL);
-
-        const res = await fetch(`/download/${encodeURIComponent(uuid)}/epub`, { credentials: "same-origin" });
-        if (!res.ok) throw new Error(`HTTP ${res.status}`);
-        const book = ePub(await res.arrayBuffer());
-        await book.ready;
-
-        let hasAnyPreview = false;
-        let defaultSaved = false;
-
-        // 1. Try declared cover
-        try {
-            const coverUrl = await book.coverUrl();
-            if (coverUrl) {
-                const shouldAuto = autoSelect && !defaultSaved;
-                renderImageThumb(uuid, coverUrl, "EPUB Cover", strip, picker, onCoverSaved, shouldAuto, updateRevertBtn);
-                hasAnyPreview = true;
-                if (shouldAuto) defaultSaved = true;
-            }
-        } catch {
-        /* ignore */
-    }
-
-        // 2. First 5 spine sections
-        const spine = book.spine;
-        const count = Math.min(spine.length || 0, 5);
-
-        for (let i = 0; i < count; i++) {
-            const section = spine.get(i);
-            if (!section) continue;
-
-            try {
-                const doc = await section.load(book.load.bind(book));
-                if (!doc) continue;
-
-                const shouldAuto = autoSelect && !defaultSaved;
-
-                // Look for image in section
-                const imgEl = doc.querySelector("img, image");
-                if (imgEl) {
-                    const rawSrc = imgEl.getAttribute("src") || imgEl.getAttribute("href") || imgEl.getAttribute("xlink:href");
-                    if (rawSrc) {
-                        // Resolve against the section's path inside the book; external
-                        // and data: URLs are left alone.
-                        const resolved = new URL(rawSrc, `epub:${section.url}`);
-                        const fullUrl =
-                            resolved.protocol === "epub:" ? await book.archive.createUrl(resolved.pathname, { base64: false }) : rawSrc;
-                        renderImageThumb(uuid, fullUrl, `Section ${i + 1}`, strip, picker, onCoverSaved, shouldAuto, updateRevertBtn);
-                        hasAnyPreview = true;
-                        if (shouldAuto) defaultSaved = true;
-                        continue;
-                    }
-                }
-
-                // Fallback text page preview
-                renderTextPageThumb(uuid, doc, `Section ${i + 1}`, strip, picker, onCoverSaved, shouldAuto, updateRevertBtn);
-                hasAnyPreview = true;
-                if (shouldAuto) defaultSaved = true;
-            } catch (err: unknown) {
-                console.warn("Could not load EPUB section", i, err);
-            }
-        }
-
-        if (!autoSelect) {
-            status.textContent = hasAnyPreview
-                ? "Click any page to use as cover"
-                : "No previewable pages found in EPUB.";
-        }
-    } catch (e: unknown) {
-        status.textContent = "Failed to load EPUB: " + errorMessage(e);
-    }
-}
-
-function renderImageThumb(
-    uuid: string,
-    imgUrl: string,
-    title: string,
-    strip: HTMLElement,
-    picker: HTMLElement,
-    onCoverSaved: CoverSaved,
-    autoSelect = false,
-    updateRevertBtn: RevertUpdater = null,
-): void {
-    const canvas = document.createElement("canvas");
-    canvas.title = title;
-    canvas.style.cursor = "pointer";
-    canvas.style.height = "180px";
-    canvas.style.maxHeight = "180px";
-    canvas.style.width = "auto";
-    canvas.style.maxWidth = "140px";
-    canvas.style.objectFit = "contain";
-    strip.appendChild(canvas);
-
-    const status = picker.querySelector(".cover-pages-status");
-
-    const doSave = async (isDefault = false) => {
-        strip.querySelectorAll("canvas").forEach(c => c.classList.remove("selected"));
-        canvas.classList.add("selected");
-        if (status) status.textContent = isDefault ? "Saving default cover…" : "Saving cover…";
-
-        try {
-            const hiresCanvas = document.createElement("canvas");
-            const maxW = 1200;
-            const w = img.naturalWidth || img.width || 800;
-            const h = img.naturalHeight || img.height || 1130;
-            const s = w > maxW ? maxW / w : 1;
-            hiresCanvas.width = Math.round(w * s);
-            hiresCanvas.height = Math.round(h * s);
-            const hctx = ctx2d(hiresCanvas);
-            hctx.drawImage(img, 0, 0, hiresCanvas.width, hiresCanvas.height);
-
-            const dataUrl = hiresCanvas.toDataURL("image/jpeg", 0.92);
-            const res = await uploadCoverDataUrl(uuid, dataUrl);
-            if (isDefault) {
-                showCoverDone(picker, "✓ Default cover saved from page 1");
-                if (status) status.textContent = "✓ Default cover saved from page 1 (click another to change)";
-            } else {
-                showCoverDone(picker, "✓ Cover saved");
-                if (status) status.textContent = "Cover saved!";
-            }
-            if (updateRevertBtn && res && res.hasBackup) updateRevertBtn(true);
-            if (onCoverSaved) onCoverSaved(uuid);
-        } catch (err: unknown) {
-            if (status) status.textContent = "Failed to save: " + errorMessage(err);
-        }
-    };
-
-    const img = new Image();
-    img.crossOrigin = "anonymous";
-    img.onload = () => {
-        const targetHeight = 180;
-        const scale = targetHeight / (img.height || 180);
-        canvas.height = targetHeight;
-        canvas.width = Math.max(50, Math.round((img.width || 120) * scale));
-        const ctx = ctx2d(canvas);
-        ctx.drawImage(img, 0, 0, canvas.width, canvas.height);
-
-        if (autoSelect) {
-            doSave(true);
-        }
-    };
-    img.onerror = () => {
-        canvas.remove();
-    };
-    img.src = imgUrl;
-
-    canvas.addEventListener("click", () => doSave(false));
-}
-
-function renderTextPageThumb(
-    uuid: string,
-    doc: Element,
-    title: string,
-    strip: HTMLElement,
-    picker: HTMLElement,
-    onCoverSaved: CoverSaved,
-    autoSelect = false,
-    updateRevertBtn: RevertUpdater = null,
-): void {
-    const canvas = document.createElement("canvas");
-    canvas.width = 127;
-    canvas.height = 180;
-    canvas.title = title;
-    canvas.style.cursor = "pointer";
-    canvas.style.height = "180px";
-    canvas.style.maxHeight = "180px";
-    canvas.style.width = "auto";
-    canvas.style.maxWidth = "140px";
-    canvas.style.objectFit = "contain";
-    const ctx = ctx2d(canvas);
-
-    const blocks = sectionBlocks(doc);
-    drawTextPage(ctx, 127, 180, blocks, title);
-    strip.appendChild(canvas);
-
-    const status = picker.querySelector(".cover-pages-status");
-
-    const doSave = async (isDefault = false) => {
-        strip.querySelectorAll("canvas").forEach(c => c.classList.remove("selected"));
-        canvas.classList.add("selected");
-        if (status) status.textContent = isDefault ? "Saving default cover…" : "Saving cover…";
-
-        try {
-            const hiresCanvas = document.createElement("canvas");
-            hiresCanvas.width = 800;
-            hiresCanvas.height = 1130;
-            const hctx = ctx2d(hiresCanvas);
-            drawTextPage(hctx, 800, 1130, blocks, title);
-            const dataUrl = hiresCanvas.toDataURL("image/jpeg", 0.92);
-            const res = await uploadCoverDataUrl(uuid, dataUrl);
-            if (isDefault) {
-                showCoverDone(picker, "✓ Default cover saved from page 1");
-                if (status) status.textContent = "✓ Default cover saved from page 1 (click another to change)";
-            } else {
-                showCoverDone(picker, "✓ Cover saved");
-                if (status) status.textContent = "Cover saved!";
-            }
-            if (updateRevertBtn && res && res.hasBackup) updateRevertBtn(true);
-            if (onCoverSaved) onCoverSaved(uuid);
-        } catch (err: unknown) {
-            if (status) status.textContent = "Failed to save: " + errorMessage(err);
-        }
-    };
-
-    canvas.addEventListener("click", () => doSave(false));
-
-    if (autoSelect) {
-        doSave(true);
-    }
 }

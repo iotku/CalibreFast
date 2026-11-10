@@ -503,8 +503,8 @@ func processUploadGroup(files []*multipart.FileHeader) UploadResult { // TODO: H
 				FileName: fh.Filename,
 			}
 		}
-		// "Last, First; Last, First" in one creator becomes separate authors.
-		meta.Creators = normalizeAuthors(meta.Creators)
+		// One creator can hold "A & B"; other lists are left for the editor's Split.
+		meta.Creators = splitCreators(meta.Creators)
 		metas = append(metas, meta)
 
 		tmp, err := os.CreateTemp("", "calibrefast-upload-*."+ext)

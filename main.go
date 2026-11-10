@@ -691,10 +691,10 @@ func (l *identifierList) UnmarshalJSON(data []byte) error {
 	return nil
 }
 
-// parseCreatorsString reads the editor's authors field (parseAuthors), with
-// "Unknown" for none, as Calibre does.
+// parseCreatorsString reads the editor's authors field ("A & B":
+// splitAuthors), with "Unknown" for none, as Calibre does.
 func parseCreatorsString(s string) []string {
-	if creators := parseAuthors(s); len(creators) > 0 {
+	if creators := splitAuthors(s); len(creators) > 0 {
 		return creators
 	}
 	return []string{"Unknown"}

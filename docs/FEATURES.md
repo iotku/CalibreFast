@@ -52,12 +52,11 @@ Groups combine values that mean the same thing without editing any books. For ex
 
 Authors are shown by name everywhere ("Alan A. A. Donovan & Brian W. Kernighan"): the grids, the book popup and the editor. The "Last, First" form is only used for sorting.
 
-- **Reading a list of authors** (the editor's field, an uploaded file's creators):
-  - `;` and `&` separate authors: `Hailu, Gebreyesus; Negash, Ghirmai; Chrisman, Laura` is three authors.
-  - Without them, commas separate authors only if every part is a full name (`Alan Donovan, Brian Kernighan`). Otherwise the comma is inside one name (`Donovan, Alan`).
-  - `Last, First` becomes `First Last`. Suffixes (`King, Jr.`) and names with two commas are left alone.
-  - Repeats are dropped.
-- **The editor** writes several authors as `A & B`, as Calibre does. When what you typed would be saved differently, a **Saved as:** line under the field shows how. **Compare changes** shows it too.
+- **Several authors** are written `A & B`, as Calibre does: the editor's field, and an uploaded file's creators, split on `&` only. Names are kept as written, and repeats are dropped.
+- **Split** (under the authors field) is offered when the authors look written another way, and rewrites them only when clicked; **current** undoes it. Nothing is split by itself, since the guess can be wrong.
+  - `;` separates authors: `Hailu, Gebreyesus; Negash, Ghirmai; Chrisman, Laura` → `Gebreyesus Hailu & Ghirmai Negash & Laura Chrisman`.
+  - Without `;` or `&`, commas separate authors only if every part is a full name (`Alan Donovan, Brian Kernighan`). Otherwise the comma is inside one name (`Donovan, Alan`).
+  - `Last, First` becomes `First Last` (**First name first**). Suffixes (`King, Jr.`) and names with two commas are left alone.
 
 ## Search
 
@@ -99,8 +98,11 @@ Authors are shown by name everywhere ("Alan A. A. Donovan & Brian W. Kernighan")
 - **Autocomplete** for authors, publisher, tags and languages offers only values in your library; languages match by name too.
   - Nothing is preselected, so Enter adds exactly what you typed.
   - ↑/↓ highlight a suggestion; Enter, Tab or a click takes it.
-- **Cover picker:** opens under the cover when you click it (it's usually right already). Upload an image or pick a page from the PDF/EPUB. With an ISBN in the lookup box (the book's own, or one found in its files), **Look up cover online** asks Open Library for that ISBN's cover; it also shows the cover from a kept lookup. Picking saves the cover right away; **Revert** brings back the previous one.
-- **Apply Changes** saves and opens the book page.
+- **Cover dialog:** clicking the cover (it's usually right already) opens every cover the book could have, large enough to compare quality, each with its size in pixels and bytes.
+  - **Choices:** the current cover and the first 5 pages of the book's PDF and EPUB, loaded when the dialog opens. Also **Upload image…**, and **Look up cover online**: with an ISBN in the lookup box (the book's own, or one found in its files), it asks Open Library for that ISBN's cover, and it also shows the cover from a kept lookup.
+  - **Comparing:** click a cover to see it large; click another to see the two side by side. An upload or an online cover is shown next to the current one. **Actual pixels** shows them pixel for pixel.
+  - **Use this cover** saves it right away, without **Apply Changes**. **Revert** brings back the previous one.
+- **Apply Changes** saves and opens the book page. It's off until you change a field (what the editor fills in or tidies when it loads doesn't count), and off again if you undo your changes.
 
 ### Finding ISBNs and looking books up
 
@@ -117,7 +119,7 @@ Both only offer choices. Nothing is saved until **Apply Changes**.
   - **Open Library first.** Only if it doesn't know the ISBN is **Wikidata** asked. **Try Wikidata** and **Try Google Books** ask the others on request. Google Books often has the best description; `-no-google-books` hides it.
   - **A source that knows the book** opens a comparison with the current metadata. **Accept all and apply** takes every value it has (never the cover), saves, and opens the book page. **Pick fields in the form** keeps it as a pill under every field (**Open Library**, **Wikidata**, **Google Books**), so values can be picked one by one; **Compare …** reopens it. **Reject** (or ✕, Esc, a click outside) drops a wrong match: the form keeps the pills it had, including an earlier lookup's.
   - Its identifier pill adds identifiers (ISBN, `olid`, `wikidata`, `google`) without crossing anything out.
-  - Open Library's cover, when it has one, is fetched only when you click **Look up cover online** in the cover picker.
+  - Open Library's cover, when it has one, is fetched only when you click **Look up cover online** in the cover dialog.
   - **Only on a click:** nothing is sent when the editor opens, on upload, or when an ISBN is found, and each click asks one site at a time. Answers are cached, each site has rate and daily limits, and `-no-lookups` turns lookups off.
 
 ### Description editor

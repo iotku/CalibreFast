@@ -1726,10 +1726,6 @@ body.book-standalone {
     opacity: 1;
 }
 
-.cover-picker-section {
-    margin-bottom: 2rem;
-}
-
 .identifiers-list {
     margin-top: 0;
 }
@@ -1818,7 +1814,7 @@ body.book-standalone {
     overflow-x: auto;
     padding: 4px 0 8px;
 }
-.cover-pages-strip canvas {
+.cover-pages-strip img {
     height: 180px;
     border: 2px solid transparent;
     border-radius: 4px;
@@ -1829,10 +1825,10 @@ body.book-standalone {
     flex-shrink: 0;
     background: #222;
 }
-.cover-pages-strip canvas:hover {
+.cover-pages-strip img:hover {
     border-color: var(--accent-dim, #7a6340);
 }
-.cover-pages-strip canvas.selected {
+.cover-pages-strip img.selected {
     border-color: var(--accent, #c8a96e);
     box-shadow: 0 0 0 1px var(--accent, #c8a96e);
 }
@@ -1841,32 +1837,6 @@ body.book-standalone {
     font-size: 0.68rem;
     color: var(--muted, #8a857c);
     margin-top: 0.4rem;
-}
-
-.cover-auto-save-hint {
-    font-family: var(--mono, monospace);
-    font-size: 0.72rem;
-    color: var(--accent, #c8a96e);
-    background: rgba(200, 169, 110, 0.08);
-    border: 1px solid rgba(200, 169, 110, 0.25);
-    border-radius: var(--radius, 4px);
-    padding: 7px 10px;
-    margin-bottom: 0.75rem;
-    display: flex;
-    align-items: center;
-    gap: 8px;
-    line-height: 1.4;
-}
-
-.btn-revert-cover {
-    border-color: rgba(186, 122, 122, 0.45) !important;
-    color: #e59999 !important;
-    background: rgba(186, 122, 122, 0.12) !important;
-}
-.btn-revert-cover:hover {
-    border-color: #ba7a7a !important;
-    background: rgba(186, 122, 122, 0.22) !important;
-    color: #fff !important;
 }
 
 .result-cover-thumb {

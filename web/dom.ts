@@ -30,6 +30,19 @@ export function el<K extends keyof HTMLElementTagNameMap>(
     return e;
 }
 
+/**
+ * A click on the backdrop (outside the box) closes a modal dialog. Only
+ * clicks on the dialog itself count: a button pressed with Enter or Space
+ * reports (0, 0), which is "outside" too.
+ */
+export function closeOnBackdropClick(dialog: HTMLDialogElement): void {
+    dialog.addEventListener("click", (e) => {
+        if (e.target !== dialog) return;
+        const r = dialog.getBoundingClientRect();
+        if (e.clientX < r.left || e.clientX > r.right || e.clientY < r.top || e.clientY > r.bottom) dialog.close();
+    });
+}
+
 /** Message from an unknown thrown value. */
 export function errorMessage(err: unknown): string {
     return err instanceof Error ? err.message : String(err);
