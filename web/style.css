@@ -362,7 +362,7 @@ input[type="number"],
     object-fit: cover;
     opacity: 0;
     z-index: 1;
-    transition: opacity 0.5s var(--transition-fast);
+    transition: opacity var(--transition-fast);
 }
 .book-cover.loaded {
     opacity: 1;
