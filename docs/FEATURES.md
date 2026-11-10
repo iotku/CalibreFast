@@ -155,11 +155,20 @@ Both only offer choices. Nothing is saved until **Apply Changes**.
 - **Readers** (EPUB and PDF) share their controls:
   - **Bars.** A top bar (back, title and chapter, bookmark, contents, settings) and a bottom bar (previous/next, a scrubber, the position). A tap or click in the middle of the page hides and shows them; turning a page from the page hides them. Escape does the same, and Tab brings them back for the keyboard. While they're hidden the position stays in small print at the bottom.
   - **Turning pages:** tap or click the left or right third, swipe (EPUB), the wheel, ←/→, PageUp/PageDown, Space/Shift+Space. Right-to-left EPUBs turn the other way.
-  - **Themes:** light, sepia, dark and black, or the system's light/dark setting (the default). Dark themes recolour an EPUB's text and backgrounds and leave its images alone. PDF pages keep their own colours.
+  - **Themes:** light, sepia, dark and black, or the system's light/dark setting (the default). Dark themes recolour an EPUB's text and backgrounds and leave its images alone. PDF pages keep their own colours in every theme: recolouring them would spoil photos and scans.
   - **Sidebar:** Contents (the current chapter is marked), Bookmarks, and for EPUBs Search.
   - **Settings are per device** (a phone and a desktop want different sizes).
 - **EPUB settings:** font (the book's own, serif, sans-serif, monospace: fonts already on the device, nothing is downloaded), size, line spacing, margins, alignment, hyphenation, and pages or continuous scrolling within a chapter.
 - **EPUB search** (the magnifier, or Ctrl/⌘+F) goes through the book a chapter at a time and lists matches with their chapter and page. Choosing one goes there and highlights it; Back returns.
+- **PDF reader:**
+  - **Sharp at any zoom,** on any screen: pages are drawn at the screen's own resolution and drawn again whenever the zoom changes.
+  - **Zoom:** pinch (it zooms around your fingers), double-tap or double-click to zoom in on a spot and again to fit, Ctrl/⌘+wheel or a trackpad pinch, `+`/`-`/`0`, and Fit page, Fit width and 100% in the settings. Zoom goes from half the fitted size to 1000%. The fit is remembered; zooming by hand lasts until you leave the book.
+  - **Moving a zoomed page:** drag with a finger, scroll, or drag with the mouse anywhere that isn't text.
+  - **Turning pages:** as above, plus swipe. While a page is zoomed wider than the window, swipes and taps move and don't turn. A taller page (Fit width) scrolls with the wheel, Space and PageDown, and turns at its end. Home/End go to the first and last page.
+  - **Magnifier** (mouse only; the button in the top bar, or `M`): a lens follows the pointer and shows what's under it, drawn from the PDF at 2.5× (the wheel changes that, from 1.5× to 8×), so a scan's small print is readable without zooming the page. Esc or `M` turns it off.
+  - **Text** can be selected and copied. **Links** work: web links open in a new tab, links within the document go there and Back returns.
+  - **Two pages side by side,** when the window is wider than tall. **First page on its own** (on by default) keeps a cover from pushing every later pair off by one. **Right to left (manga)** puts the first page of a pair on the right and reverses what "forward" means for taps, swipes, the arrow keys, the bottom bar's buttons and the scrubber; it applies to single pages too.
+  - **Contents** marks the current chapter; scanned and CJK PDFs get the fonts and character maps they need from the server.
 - **EPUB reader loads the whole book up front** (with a progress label), then reads offline: chapters, images and fonts come from memory, with no requests at chapter boundaries.
 - **Reading position and bookmarks:** kept in the browser and, when signed in, synced to the server, so another device can resume.
   - The newest position wins.

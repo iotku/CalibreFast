@@ -23,12 +23,29 @@ export interface ReaderSettings {
     flow: "paginated" | "scrolled";
 
     // ---- PDF ----
+    /** Two pages side by side, when the window is wider than tall. */
     pdfDual: boolean;
-    pdfFit: boolean;
-    pdfScale: number;
+    /** Right to left (manga): spreads are swapped and "forward" is to the left. */
+    pdfRtl: boolean;
+    /** With two pages: the first page stands alone, as a cover does. */
+    pdfCover: boolean;
+    /**
+     * What a page is fitted to. Zooming by hand lasts until the reader is
+     * closed: the next book opens fitted again.
+     */
+    pdfZoom: "page" | "width";
+
 }
 
-export const FONT_SIZE = { min: 60, max: 250, step: 10 };
+/** What each setting with a fixed set of choices may be (anything else stored is ignored). */
+const CHOICES: Partial<Record<keyof ReaderSettings, readonly string[]>> = {
+    theme: ["auto", "light", "sepia", "dark", "black"],
+    font: ["publisher", "serif", "sans", "mono"],
+    margin: ["narrow", "medium", "wide"],
+    align: ["publisher", "left", "justify"],
+    flow: ["paginated", "scrolled"],
+    pdfZoom: ["page", "width"],
+};
 
 const KEY = "cf-reader-settings";
 
@@ -51,8 +68,9 @@ function defaults(): ReaderSettings {
         hyphens: false,
         flow: "paginated",
         pdfDual: old("pdf-dual") === "true",
-        pdfFit: old("pdf-fit") !== "false",
-        pdfScale: parseFloat(old("pdf-scale") || "") || 1.5,
+        pdfRtl: false,
+        pdfCover: true,
+        pdfZoom: "page",
     };
 }
 
@@ -70,10 +88,13 @@ export function getSettings(): ReaderSettings {
     } catch {
         /* unreadable: start from the defaults */
     }
-    // Only known keys, and only values of the right type.
+    // Only known keys, and only values they can have.
     const out = d as unknown as Record<string, unknown>;
     for (const [k, v] of Object.entries(stored)) {
-        if (k in d && typeof v === typeof out[k]) out[k] = v;
+        if (!(k in d) || typeof v !== typeof out[k]) continue;
+        const choices = CHOICES[k as keyof ReaderSettings];
+        if (choices && !choices.includes(String(v))) continue;
+        out[k] = v;
     }
     current = d;
     return current;

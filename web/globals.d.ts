@@ -90,22 +90,48 @@ interface Window {
 // ---- pdf.js (ES module imported by web/vendor.ts) --------------------------
 declare namespace PdfJS {
     interface Viewport {
+        /** Device pixels at this viewport's scale. */
         width: number;
         height: number;
+        /** [x1, y1, x2, y2] in PDF units to viewport pixels (corners in no particular order). */
+        convertToViewportRectangle(rect: number[]): number[];
+    }
+    interface RenderTask {
+        /** Rejects with a RenderingCancelledException after cancel(). */
+        promise: Promise<void>;
+        cancel(): void;
     }
     interface Page {
         getViewport(options: { scale: number }): Viewport;
-        render(options: { canvasContext: CanvasRenderingContext2D; viewport: Viewport }): { promise: Promise<void> };
+        render(options: {
+            canvasContext: CanvasRenderingContext2D;
+            viewport: Viewport;
+            /** Applied after the viewport's own: used to draw one region of the page. */
+            transform?: number[];
+        }): RenderTask;
         getTextContent(): Promise<{ items: (TextItem | { type: string })[] }>;
+        streamTextContent(): ReadableStream;
+        getAnnotations(): Promise<Annotation[]>;
     }
     interface TextItem {
         str: string;
         /** The text's line ends after this item. */
         hasEOL: boolean;
     }
+    /** A destination inside the document: a name, or [page reference, …]. */
+    type Dest = string | unknown[] | null;
+    interface Annotation {
+        subtype: string;
+        /** [x1, y1, x2, y2] in PDF units. */
+        rect: number[];
+        /** Links: an http(s)/mailto URL pdf.js has checked, */
+        url?: string;
+        /** or a place in the document. */
+        dest?: Dest;
+    }
     interface OutlineItem {
         title: string;
-        dest: string | unknown[] | null;
+        dest: Dest;
         items?: OutlineItem[];
     }
     interface Document {
@@ -124,9 +150,24 @@ declare namespace PdfJS {
         disableAutoFetch?: boolean;
         disableStream?: boolean;
     }
+    /** Selectable text over a page: spans placed in % of the container, sized by --total-scale-factor. */
+    interface TextLayer {
+        render(): Promise<void>;
+        cancel(): void;
+    }
     interface Lib {
         GlobalWorkerOptions: { workerSrc: string };
-        getDocument(src: LoadOptions & { url: string; wasmUrl?: string }): { promise: Promise<Document> };
+        getDocument(
+            src: LoadOptions & {
+                url: string;
+                wasmUrl?: string;
+                cMapUrl?: string;
+                cMapPacked?: boolean;
+                standardFontDataUrl?: string;
+                iccUrl?: string;
+            },
+        ): { promise: Promise<Document> };
+        TextLayer: new (options: { textContentSource: ReadableStream; container: HTMLElement; viewport: Viewport }) => TextLayer;
     }
 }
 

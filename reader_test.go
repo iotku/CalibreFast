@@ -23,7 +23,8 @@ func TestReaderPages(t *testing.T) {
 		absent string
 	}{
 		{"reader.html", true, []string{`id="reader-container"`, `id="search-input"`, `id="search-results"`, `data-setting="flow"`}, ""},
-		{"reader-pdf.html", false, []string{`id="pdf-container"`, `id="zoom-in"`, `id="zoom-out"`, `data-setting="pdfDual"`}, `id="search-input"`},
+		{"reader-pdf.html", false, []string{`id="pdf-container"`, `id="zoom-in"`, `id="zoom-out"`, `id="zoom-actual"`, `id="zoom-label"`, `id="loupe-btn"`,
+			`data-setting="pdfDual"`, `data-setting="pdfRtl"`, `data-setting="pdfCover"`, `data-setting="pdfZoom"`}, `id="search-input"`},
 	} {
 		var buf bytes.Buffer
 		data := ReaderPageData{Title: "Library", BookTitle: `A <b>Book</b>`, Search: tc.search}
