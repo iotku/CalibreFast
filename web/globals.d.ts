@@ -17,7 +17,8 @@ declare namespace EpubJS {
         subitems?: NavItem[];
     }
     interface Location {
-        start: { cfi: string; percentage?: number; displayed?: { page: number; total: number } };
+        /** index: the spine item (chapter); displayed: the screen within it. */
+        start: { cfi: string; index: number; percentage?: number; displayed?: { page: number; total: number } };
         end: { cfi: string };
         atStart?: boolean;
         atEnd?: boolean;

@@ -28,6 +28,7 @@ import { byId, maybeId } from "./dom.js";
 import type { Book } from "./types.js";
 import { coverUrl, renderBookCard } from "./utils.js";
 import { setupBookClickHandlers, loadBook, HASH_PREFIX } from "./modal.js";
+import { cachedReading, fetchReading, markCard, type Reading } from "./reading.js";
 
 const RENDER_AHEAD = 1; // screens of rows in the DOM past the viewport, in the scroll direction
 const RENDER_BEHIND = 0.5; // ...and the other way
@@ -35,6 +36,7 @@ const FETCH_AHEAD = 2; // screens of book data fetched ahead, at least
 const FETCH_LEAD = 2; // ...and at speed, how many fetch-times of scrolling ahead
 const MAX_PAGE_FETCHES = 2; // concurrent page-JSON requests
 const RETRY_FAILED_MS = 5000; // a page that failed isn't asked for again sooner
+const READING_REFRESH_MS = 15_000; // coming back to the tab re-checks reading progress, at most this often
 const HISTORY_DEBOUNCE_MS = 300; // browsers throttle rapid history updates
 const COVERS_WAIT_SCREENS_PER_SEC = 4; // faster than this, covers wait until it slows
 const SETTLE_MS = 120; // no scrolling for this long: stopped
@@ -65,6 +67,8 @@ const pageCache = new Map<number, Book[]>(); // page -> books
 const loading = new Map<number, PageLoad>(); // page -> in-flight fetch
 const failedAt = new Map<number, number>(); // page -> when its fetch last failed
 const cards = new Map<number, HTMLElement>(); // book index -> its card in the DOM
+let reading: Reading = cachedReading(); // books the user is reading -> how far (reading.ts)
+let readingFetchedAt = 0;
 
 // Elements. #books is required; the page-nav controls are optional.
 const booksEl = byId("books");
@@ -174,7 +178,37 @@ window.addEventListener("DOMContentLoaded", () => {
     }
 
     setupScrollTracking();
+    setupReading();
 });
+
+/* ------------------------------------------------------------------ */
+/* Reading progress                                                   */
+/* ------------------------------------------------------------------ */
+
+function markReading(el: HTMLElement): void {
+    const uuid = el.dataset["uuid"];
+    if (uuid) markCard(el, reading.get(uuid));
+}
+
+async function refreshReading(): Promise<void> {
+    readingFetchedAt = Date.now();
+    const fresh = await fetchReading();
+    if (!fresh) return;
+    reading = fresh;
+    for (const el of cards.values()) markReading(el);
+}
+
+/** Fetch now; again when the user comes back (from the reader, another tab) or changes a status in the popup. */
+function setupReading(): void {
+    void refreshReading();
+    window.addEventListener("pageshow", (e) => {
+        if (e.persisted) void refreshReading();
+    });
+    document.addEventListener("visibilitychange", () => {
+        if (document.visibilityState === "visible" && Date.now() - readingFetchedAt > READING_REFRESH_MS) void refreshReading();
+    });
+    document.addEventListener("cf:status", () => void refreshReading());
+}
 
 /**
  * Where to start: the book history.state remembers if it's from this URL's
@@ -304,7 +338,10 @@ function makeCards(from: number, to: number): HTMLElement[] {
     let html = "";
     for (let i = from; i < to; i++) html += cardHtml(i);
     const els = cardElements(html);
-    els.forEach((el, k) => cards.set(from + k, el));
+    els.forEach((el, k) => {
+        cards.set(from + k, el);
+        markReading(el);
+    });
     return els;
 }
 

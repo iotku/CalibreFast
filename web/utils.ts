@@ -127,7 +127,7 @@ export function renderBookCard(book: Book, coverReady = false): string {
         ? `<img class="book-cover loaded" src="${cover}" data-id="${uuid}" />`
         : `<img class="book-cover" data-src="${cover}" data-id="${uuid}" fetchpriority="low" />`;
 
-    return `<div class="book">
+    return `<div class="book" data-uuid="${uuid}">
     <a href="#book/${uuid}" class="book-link"
        hx-get="/book/get/${uuid}"
        hx-trigger="none"

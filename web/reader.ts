@@ -128,8 +128,13 @@ let openingCfi: string | null = null;
 
 function percentFor(loc: EpubJS.Location): number {
     if (loc.atEnd) return 1;
-    if (!locationsReady) return 0;
-    return book.locations.percentageFromCfi(loc.start.cfi) || 0;
+    if (locationsReady) return book.locations.percentageFromCfi(loc.start.cfi) || 0;
+    // Until the locations are counted (a few seconds for a long book),
+    // estimate by chapter, so a saved position isn't 0%.
+    const chapters = book.spine.length ?? 0;
+    const d = loc.start.displayed;
+    if (!chapters) return 0;
+    return Math.min(1, (loc.start.index + (d?.total ? (d.page - 1) / d.total : 0)) / chapters);
 }
 
 /**
