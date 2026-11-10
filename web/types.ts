@@ -87,7 +87,7 @@ export interface LookupResult {
     error?: string;
 }
 
-/** A cover from a lookup, for the cover picker (cf:cover-candidates event). */
+/** A cover from a lookup, for the cover dialog (cf:cover-candidates event). */
 export interface CoverCandidate {
     source: string;
     url: string;

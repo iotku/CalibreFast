@@ -1,9 +1,9 @@
 import { createChipInput, parseList, type ChipInput } from "./chips.js";
 import { attachSuggest } from "./suggest.js";
 import { createDescriptionEditor } from "./description.js";
-import { errorMessage, maybeId } from "./dom.js";
+import { closeOnBackdropClick, errorMessage, maybeId } from "./dom.js";
 import { isbnDigits, mountIsbnTools } from "./isbn-tools.js";
-import { joinAuthors, parseAuthors } from "./authors.js";
+import { joinAuthors, splitAuthors, tidyAuthors } from "./authors.js";
 import type { MetaSource } from "./types.js";
 
 type FieldKind = "string" | "date" | "list" | "identifiers";
@@ -667,7 +667,7 @@ export function computeChanges(current: MetaSource | null, values: FormValues): 
   for (const { key, kind } of FIELDS) {
     const label = FIELD_LABELS[key] || key;
     if (kind === "list") {
-      const after = key === "creators" ? parseAuthors(values.creators) : parseList(values[key as TextKey]);
+      const after = key === "creators" ? splitAuthors(values.creators) : parseList(values[key as TextKey]);
       const d = listDiff(metaList(current, key), after);
       if (d.added.length || d.removed.length || d.reordered) changes.push({ key, label, kind: "list", ...d });
     } else if (kind === "identifiers") {
@@ -758,18 +758,26 @@ export async function mountMetadataEditor(uuid: string, form: HTMLFormElement): 
     // Library-backed suggestions for the plain list/single-value fields.
     const creatorsInput = form.querySelector<HTMLInputElement>('[name="creators"]');
     if (creatorsInput) {
-      attachSuggest(creatorsInput, { category: "author", multi: true, separators: "&;" });
-      // How the field will be saved, when that differs from what's typed
-      // ("Hailu, Gebreyesus; Negash, Ghirmai" → two authors, first name first).
-      const savedAs = maybeId("creators-saved-as");
-      const showSavedAs = (): void => {
-        if (!savedAs) return;
-        const typed = creatorsInput.value.trim().replace(/\s+/g, " ");
-        const saved = joinAuthors(parseAuthors(typed));
-        savedAs.hidden = !typed || saved === typed;
-        savedAs.textContent = `Saved as: ${saved}`;
-      };
-      creatorsInput.addEventListener("input", showSavedAs);
+      attachSuggest(creatorsInput, { category: "author", multi: true, separators: "&" });
+      // Authors written another way ("Hailu, Gebreyesus; Negash, Ghirmai", or
+      // "Last, First") are saved as written; Split rewrites them, only when
+      // clicked (the "current" pill undoes it).
+      const splitNote = maybeId("creators-split");
+      const splitBtn = maybeId("btn-split-authors", HTMLButtonElement);
+      const splitPreview = maybeId("creators-split-preview");
+      if (splitNote && splitBtn && splitPreview) {
+        creatorsInput.addEventListener("input", () => {
+          const asIs = splitAuthors(creatorsInput.value);
+          const tidy = tidyAuthors(creatorsInput.value);
+          splitNote.hidden = joinAuthors(tidy) === joinAuthors(asIs);
+          splitBtn.textContent = tidy.length > asIs.length ? `Split into ${tidy.length} authors` : "First name first";
+          splitPreview.textContent = joinAuthors(tidy);
+        });
+        splitBtn.addEventListener("click", () => {
+          creatorsInput.value = joinAuthors(tidyAuthors(creatorsInput.value));
+          creatorsInput.dispatchEvent(new Event("input", { bubbles: true }));
+        });
+      }
     }
     const publisherInput = form.querySelector<HTMLInputElement>('[name="publisher"]');
     if (publisherInput) attachSuggest(publisherInput, { category: "publisher" });
@@ -795,7 +803,7 @@ export async function mountMetadataEditor(uuid: string, form: HTMLFormElement): 
       currentIsbn: () => form.querySelector<HTMLInputElement>('[name="identifier_isbn"]')?.value.trim() ?? "",
       titleAndAuthor: () => ({
         title: titleInput?.value.trim() ?? "",
-        author: parseAuthors(creatorsInput?.value)[0] ?? "",
+        author: tidyAuthors(creatorsInput?.value)[0] ?? "", // a search hint, not saved
       }),
       useIsbn: editor.useIsbn,
       addSource: editor.addSource,
@@ -818,12 +826,7 @@ export async function mountMetadataEditor(uuid: string, form: HTMLFormElement): 
     const compareBtn = maybeId("btn-compare");
     const compareDialog = maybeId("compare-dialog", HTMLDialogElement);
     if (compareBtn && compareDialog) {
-      // Click outside the dialog box (on the backdrop) closes it.
-      compareDialog.addEventListener("click", (e) => {
-        const r = compareDialog.getBoundingClientRect();
-        const inside = e.clientX >= r.left && e.clientX <= r.right && e.clientY >= r.top && e.clientY <= r.bottom;
-        if (!inside) compareDialog.close();
-      });
+      closeOnBackdropClick(compareDialog);
       compareBtn.addEventListener("click", () => openCompare({ leaving: false }));
     }
 
@@ -861,6 +864,26 @@ export async function mountMetadataEditor(uuid: string, form: HTMLFormElement): 
       !saving &&
       (chipInputs.some((c) => c.textInput.value.trim()) || snapshot() !== baseline);
 
+    // Apply Changes is only for changes the admin made: off until the form
+    // differs from what was loaded (what the editor itself filled in or tidied
+    // is part of that), and off again when the changes are undone.
+    const updateApply = (): void => {
+      if (!saveBtn || saving) return;
+      const dirty = isDirty();
+      saveBtn.disabled = !dirty;
+      saveBtn.title = dirty ? "" : "Nothing to apply: no field has been changed";
+    };
+    let applyFrame = 0;
+    const scheduleApply = (): void => {
+      if (applyFrame) return;
+      applyFrame = requestAnimationFrame(() => {
+        applyFrame = 0;
+        updateApply();
+      });
+    };
+    for (const type of ["input", "change", "click"]) form.addEventListener(type, scheduleApply);
+    updateApply();
+
     window.addEventListener("beforeunload", (e) => {
       if (!isDirty()) return;
       e.preventDefault();
@@ -879,6 +902,16 @@ export async function mountMetadataEditor(uuid: string, form: HTMLFormElement): 
     form.addEventListener("submit", async (e) => {
       e.preventDefault();
       commitPending(); // half-typed tag/language text is never dropped
+      // Every way to apply (the button, Enter, Accept all, the leave prompt)
+      // comes here: nothing changed, nothing saved.
+      if (!isDirty()) {
+        if (statusEl) {
+          statusEl.className = "edit-status pending";
+          statusEl.textContent = "Nothing to apply: no field has been changed.";
+        }
+        updateApply();
+        return;
+      }
       const values = collectValues(form);
 
       if (saveBtn) {
@@ -911,10 +944,8 @@ export async function mountMetadataEditor(uuid: string, form: HTMLFormElement): 
         }
       } finally {
         saving = false; // a failed apply leaves the changes unsaved (guard back on)
-        if (saveBtn) {
-          saveBtn.disabled = false;
-          saveBtn.textContent = "Apply Changes";
-        }
+        if (saveBtn) saveBtn.textContent = "Apply Changes";
+        updateApply();
       }
     });
 

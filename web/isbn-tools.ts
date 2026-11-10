@@ -8,7 +8,7 @@
 // Open Library first; Wikidata only if Open Library doesn't know the ISBN;
 // other sources only when the admin clicks "Try …".
 
-import { api, el, errorMessage, maybeId } from "./dom.js";
+import { api, closeOnBackdropClick, el, errorMessage, maybeId } from "./dom.js";
 import type { CoverCandidate, IsbnCandidate, IsbnResponse, LookupResult, MetaSource } from "./types.js";
 import { openPdf } from "./vendor.js";
 
@@ -224,7 +224,7 @@ function mountLookup(host: IsbnToolsHost): { lookUpIsbn(isbn: string): void; sug
     const submitBtn = lookupForm.querySelector<HTMLButtonElement>("button[type=submit]");
     const googleAllowed = lookupForm.dataset["google"] === "1";
 
-    /** Fills the box. The cover picker follows it, by its input event. */
+    /** Fills the box. The cover dialog follows it, by its input event. */
     const setIsbn = (isbn: string): void => {
         input.value = isbn;
         input.dispatchEvent(new Event("input"));
@@ -295,11 +295,7 @@ function mountLookup(host: IsbnToolsHost): { lookUpIsbn(isbn: string): void; sug
         host.acceptAll(shown.meta);
     });
     rejectBtn?.addEventListener("click", () => dialog.close());
-    // Click outside the dialog box (on the backdrop) closes it.
-    dialog.addEventListener("click", (e) => {
-        const r = dialog.getBoundingClientRect();
-        if (e.clientX < r.left || e.clientX > r.right || e.clientY < r.top || e.clientY > r.bottom) dialog.close();
-    });
+    closeOnBackdropClick(dialog);
     // However it closed, an answer that wasn't kept is rejected.
     dialog.addEventListener("close", () => {
         if (!pending) return;
@@ -337,7 +333,7 @@ function mountLookup(host: IsbnToolsHost): { lookUpIsbn(isbn: string): void; sug
         const earlier = [...kept.keys()].filter((s) => !keptNow.has(s));
         if (now.length) parts.push(`Values from ${names(now)} are under each field.`);
         if (earlier.length) parts.push(`Values from an earlier ${names(earlier)} lookup are still under each field.`);
-        if (kept.get("openlibrary")?.cover) parts.push("Open Library's cover is in the cover picker (click the book's cover).");
+        if (kept.get("openlibrary")?.cover) parts.push("Open Library has a cover: click the book's cover, then Look up cover online.");
         return parts.join(" ") || "No match.";
     }
 
