@@ -13,7 +13,7 @@
  */
 
 import { COLORS, type Annotation, type AnnotationStore } from "./annotations.js";
-import { byId, el } from "./dom.js";
+import { byId, el, errorMessage } from "./dom.js";
 
 export interface AnnotationUI {
     /**
@@ -37,6 +37,21 @@ export interface AnnotationUIOptions {
     /** Order of the list: negative when a comes before b in the book. */
     compare(a: Annotation, b: Annotation): number;
     toast(text: string): void;
+    /**
+     * Exchanging highlights with KOReader (koreader_annotations.go), when
+     * signed in: the book, and a sync with the server to run before an
+     * export and after an import.
+     */
+    koreader?: { uuid: string; format: string; sync(): Promise<void> };
+}
+
+/** What an import did (Go: koreaderImport). */
+interface ImportResult {
+    added: number;
+    updated: number;
+    unchanged: number;
+    skipped: number;
+    bookmarks: number;
 }
 
 /** How each colour is painted (also in web/reader.css, for the buttons). */
@@ -55,6 +70,59 @@ export const COLOR_VALUES: Record<string, string> = {
 export const colorValue = (name: string): string => COLOR_VALUES[name] ?? "#ffd60a";
 
 const LAST_COLOR_KEY = "cf-highlight-color";
+
+/** "1 highlight", "3 highlights". */
+const count = (n: number, what: string): string => `${n} ${what}${n === 1 ? "" : "s"}`;
+
+function setupKOReader({ uuid, format, sync }: { uuid: string; format: string; sync(): Promise<void> }): void {
+    const url = `/api/me/annotations/${encodeURIComponent(uuid)}/koreader?format=${format}`;
+    const status = byId("ko-status");
+    const fileInput = byId("ko-file", HTMLInputElement);
+    byId("koreader-tools").hidden = false;
+
+    byId("ko-export").addEventListener("click", async () => {
+        status.textContent = "Preparing…";
+        try {
+            await sync(); // what was made offline goes too
+            const res = await fetch(url, { credentials: "same-origin" });
+            if (!res.ok) throw new Error((await res.text()).trim() || `HTTP ${res.status}`);
+            const name = /filename="?([^";]+)"?/.exec(res.headers.get("content-disposition") ?? "")?.[1] ?? `book.${format}.annotations.lua`;
+            const link = el("a", { href: URL.createObjectURL(await res.blob()), download: name });
+            link.click();
+            setTimeout(() => URL.revokeObjectURL(link.href), 10_000);
+            const skipped = Number(res.headers.get("x-annotations-skipped")) || 0;
+            status.textContent =
+                `Exported ${count(Number(res.headers.get("x-annotations-exported")) || 0, "highlight")} as ${name}.` +
+                (skipped ? ` ${count(skipped, "highlight")} couldn't be placed in this copy of the book.` : "") +
+                " Put it in the book's .sdr folder on the device (or KOReader's export folder) and open the book.";
+        } catch (e) {
+            status.textContent = `Couldn't export: ${errorMessage(e)}`;
+        }
+    });
+
+    byId("ko-import").addEventListener("click", () => fileInput.click());
+    fileInput.addEventListener("change", async () => {
+        const file = fileInput.files?.[0];
+        fileInput.value = ""; // the same file can be chosen again
+        if (!file) return;
+        status.textContent = "Importing…";
+        try {
+            const res = await fetch(url, { method: "POST", credentials: "same-origin", body: await file.text() });
+            if (!res.ok) throw new Error((await res.text()).trim() || `HTTP ${res.status}`);
+            const r = (await res.json()) as ImportResult;
+            await sync();
+            const parts = [`Added ${count(r.added, "highlight")}`];
+            if (r.updated) parts.push(`updated ${r.updated}`);
+            if (r.unchanged) parts.push(`${r.unchanged} already here`);
+            let text = `${parts.join(", ")}.`;
+            if (r.skipped) text += ` ${count(r.skipped, "highlight")} couldn't be found in this copy of the book.`;
+            if (r.bookmarks) text += ` ${count(r.bookmarks, "page bookmark")} left out.`;
+            status.textContent = text;
+        } catch (e) {
+            status.textContent = `Couldn't import: ${errorMessage(e)}`;
+        }
+    });
+}
 
 export function setupAnnotationUI(opts: AnnotationUIOptions): AnnotationUI {
     const { store } = opts;
@@ -199,6 +267,8 @@ export function setupAnnotationUI(opts: AnnotationUIOptions): AnnotationUI {
             list.append(el("li", { className: "bookmark-item annot-item" }, go, edit, del));
         }
     }
+
+    if (opts.koreader) setupKOReader(opts.koreader);
 
     return {
         offerNew(at, text, make) {

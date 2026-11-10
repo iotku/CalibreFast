@@ -618,6 +618,7 @@ const notesUI = setupAnnotationUI({
     },
     compare: (a, b) => a.page - b.page || a.created_at - b.created_at,
     toast: chrome.toast,
+    koreader: sync.signedIn ? { uuid, format: "epub", sync: () => store.load() } : undefined,
 });
 void store.load();
 

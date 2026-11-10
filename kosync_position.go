@@ -163,10 +163,17 @@ func (b *epubBook) content(i int) (*xnode, error) {
 
 // parseXML builds the element tree of an XML (or XHTML) document. Names are
 // local and lower-case, as crengine names elements in its XPointers.
+// keepAttrs is for the package document: attributes are kept, and it is read
+// as XML proper.
 func parseXML(data []byte, keepAttrs bool) (*xnode, error) {
 	d := xml.NewDecoder(bytes.NewReader(data))
 	d.Strict = false
-	d.AutoClose = xml.HTMLAutoClose
+	if !keepAttrs {
+		// Content documents may leave <br> or <img> open, as HTML does. The
+		// package document is plain XML, and an EPUB 3 one has <meta> with
+		// text inside, which this would close too early.
+		d.AutoClose = xml.HTMLAutoClose
+	}
 	d.Entity = xml.HTMLEntity
 	d.CharsetReader = func(_ string, r io.Reader) (io.Reader, error) { return r, nil } // only tags matter
 	var root *xnode

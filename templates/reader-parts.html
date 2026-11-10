@@ -116,6 +116,16 @@
     </div>
     <div id="panel-notes" class="r-panel" role="tabpanel" aria-labelledby="tab-notes" hidden>
         <ul id="annotation-list" class="toc-list annotation-list"></ul>
+        {{/* Shown when signed in (web/annotation-ui.ts): KOReader's own annotations file, out and in. */}}
+        <div id="koreader-tools" class="r-tools" hidden>
+            <h3>KOReader</h3>
+            <div class="r-seg">
+                <button type="button" id="ko-export" title="Download these highlights as a file KOReader imports">Export</button>
+                <button type="button" id="ko-import" title="Add highlights from a file exported by KOReader">Import…</button>
+            </div>
+            <input type="file" id="ko-file" accept=".lua,text/plain" hidden>
+            <p id="ko-status" class="toc-empty" role="status"></p>
+        </div>
     </div>
     {{ if .Search }}
     <div id="panel-search" class="r-panel" role="tabpanel" aria-labelledby="tab-search" hidden>

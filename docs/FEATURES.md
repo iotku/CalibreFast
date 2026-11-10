@@ -176,6 +176,7 @@ Both only offer choices. Nothing is saved until **Apply Changes**.
   - They stay on the same words whatever the font size, layout or zoom.
   - Kept in the browser and, when signed in, synced: an edit or delete on one device reaches the others, and the newest change wins. Not signed in, they stay on that device.
   - Scanned PDFs have no text to select, so they can't be highlighted yet.
+  - **KOReader:** **Notes → KOReader** exports them as the annotations file KOReader imports, and imports the one KOReader exports ([KOREADER.md](KOREADER.md#highlights-and-notes)). Neither direction deletes anything.
 - **EPUB reader loads the whole book up front** (with a progress label), then reads offline: chapters, images and fonts come from memory, with no requests at chapter boundaries.
 - **Reading position and bookmarks:** kept in the browser and, when signed in, synced to the server, so another device can resume.
   - The newest position wins.
