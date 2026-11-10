@@ -90,6 +90,37 @@ func ensureDir(path string) error {
 	return os.MkdirAll(filepath.Dir(path), 0755)
 }
 
+// bookCoverStamp loads the modification timestamp (shared coverStamp format) from cache
+// OR fallsbacks to os.stat if modTimeCache can't find the uuid
+func bookCoverStamp(uuid string) (string, error) {
+	// Prefer Calibre's cached modification timestamp.
+	if value, ok := modTimeCache.Load(uuid); ok {
+		if lastModified, ok := value.(string); ok {
+			if stamp := coverStamp(lastModified); stamp != "" {
+				return stamp, nil
+			}
+		}
+	}
+
+	// Fallback: resolve the original cover's modification time.
+	path, ok := uuidPathIndex.Load(uuid)
+	if !ok {
+		var err error
+		path, err = resolveBookPath(uuid)
+		if err != nil {
+			return "", err
+		}
+	}
+
+	origPath := filepath.Join(baseDir, path.(string), "cover.jpg")
+	info, err := os.Stat(origPath)
+	if err != nil {
+		return "", err
+	}
+
+	return info.ModTime().UTC().Format("20060102150405"), nil
+}
+
 func coverThumbHandler(w http.ResponseWriter, r *http.Request) {
 	uuid := strings.TrimPrefix(r.URL.Path, "/cover-thumb/")
 	if !isSafeUUIDComponent(uuid) {
@@ -98,25 +129,39 @@ func coverThumbHandler(w http.ResponseWriter, r *http.Request) {
 	}
 	defer thumbRequestStarted()()
 
-	// A request the browser cancels (a cover scrolled away) stops before the
-	// next expensive step and leaves its thumbnail to the idle-time backlog.
 	ctx := r.Context()
+
+	// Fast path: serve cached thumbnails without waiting for imageSem.
+	if data, ok := readCachedThumb(uuid); ok {
+		writeThumb(w, data, true)
+		return
+	}
+
 	select {
 	case imageSem <- struct{}{}:
+
+	// A request the browser cancels (a cover scrolled away) stops before the
+	// next expensive step and leaves its thumbnail to the idle-time backlog.
 	case <-ctx.Done():
 		backlogThumb(uuid)
 		return
 	}
 	defer func() { <-imageSem }()
 
-	data, cacheHit, err := loadThumb(uuid, ctx.Err)
+	// Another request may have generated the thumbnail while we waited.
+	if data, ok := readCachedThumb(uuid); ok {
+		writeThumb(w, data, true)
+		return
+	}
+
+	data, _, err := loadThumb(uuid, ctx.Err)
 	switch {
 	case errors.Is(err, context.Canceled):
 		backlogThumb(uuid)
 	case err != nil:
 		http.NotFound(w, r)
 	default:
-		writeThumb(w, data, cacheHit)
+		writeThumb(w, data, false)
 	}
 }
 
@@ -137,7 +182,13 @@ func loadThumb(uuid string, abort func() error) (data []byte, cacheHit bool, err
 		return nil, false, err
 	}
 
-	thumbPath := thumbCachePath(uuid)
+
+	stamp, err := bookCoverStamp(uuid)
+	if err != nil {
+		return nil, false, err
+	}
+
+	thumbPath := thumbCachePath(uuid, stamp)
 	if thumbStat, err := os.Stat(thumbPath); err == nil && !thumbStat.ModTime().Before(origStat.ModTime()) {
 		if data, err := os.ReadFile(thumbPath); err == nil {
 			return data, true, nil
@@ -176,10 +227,23 @@ const (
 	thumbQuality = 80
 )
 
-// thumbCachePath is the cached thumbnail for a book. The directory is
-// versioned: bump it when thumbnail settings change so old ones regenerate.
-func thumbCachePath(uuid string) string {
-	return filepath.Join(cacheDir, "covers", "thumb-v2", uuid+".jpg")
+// thumbCachePath is the cached thumbnail for a book. Once we're production ready,
+// consider changing the path name (e.g. thumb-v2) to ensure fresh generation
+func thumbCachePath(uuid, stamp string) string {
+	return filepath.Join(cacheDir, "covers", "thumb", uuid+"-"+stamp+".jpg")
+}
+
+// readCachedThumb returns the cached thumbnail for the book's current cover
+// version without requiring the image generation semaphore. It uses Calibre's
+// cached modification timestamp, falling back to the filesystem if unavailable.
+func readCachedThumb(uuid string) ([]byte, bool) {
+	stamp, err := bookCoverStamp(uuid)
+	if err != nil {
+		return nil, false
+	}
+
+	data, err := os.ReadFile(thumbCachePath(uuid, stamp))
+	return data, err == nil
 }
 
 // makeThumb returns a thumbnail of the cover image, never larger than the
