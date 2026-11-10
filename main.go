@@ -630,8 +630,16 @@ func GetOptionsForBook(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	// The editor doesn't show library identifiers (calibre, uuid): saving
+	// keeps the book's own. Copies, so the cached options keep theirs.
+	shown := make([]UploadedBookMeta, len(metas))
+	for i, m := range metas {
+		shown[i] = *m
+		_, shown[i].Identifiers = splitLibraryIdentifiers(m.Identifiers)
+	}
+
 	w.Header().Set("content-type", "application/json")
-	json.NewEncoder(w).Encode(metas)
+	json.NewEncoder(w).Encode(shown)
 }
 
 type ApplyMetadataRequest struct {

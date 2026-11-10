@@ -634,7 +634,8 @@ func TestNormalizeDate(t *testing.T) {
 }
 
 // Identifiers are curated user data: scheme-less ones, values containing
-// separators, and OPF id attributes must all survive an editor save.
+// separators, and OPF id attributes must all survive an editor save. Library
+// identifiers (calibre, uuid) aren't shown in the editor and stay as they were.
 func TestApplyMetadataHandler_PreservesIdentifiers(t *testing.T) {
 	db, tempDir := setupTestDB(t)
 	defer os.RemoveAll(tempDir)
@@ -644,25 +645,56 @@ func TestApplyMetadataHandler_PreservesIdentifiers(t *testing.T) {
 	calibreDB, baseDir = db, tempDir
 	defer func() { calibreDB, baseDir = origDB, origBaseDir }()
 
-	_, bookUUID, bookPath, err := insertBookIntoCalibreDB(db, &UploadedBookMeta{
+	bookID, bookUUID, bookPath, err := insertBookIntoCalibreDB(db, &UploadedBookMeta{
 		OPFMetadata: OPFMetadata{Title: "Ids", Creators: []string{"A"}},
 	}, nil)
 	if err != nil {
 		t.Fatalf("insert failed: %v", err)
 	}
-	_ = os.MkdirAll(filepath.Join(tempDir, bookPath), 0755)
+	opfPath := filepath.Join(tempDir, bookPath, "metadata.opf")
+	_ = os.MkdirAll(filepath.Dir(opfPath), 0755)
+	library := []opfIdentifier{
+		{Scheme: "calibre", Value: "7", ID: "calibre_id"},
+		{Scheme: "uuid", Value: bookUUID, ID: "uuid_id"},
+		{Value: "urn:uuid:5a1d2c3e-1111-4222-8333-944455556666", ID: "uid"}, // an EPUB's package id
+	}
+	if err := writeOPF(&OPF{Metadata: OPFMetadata{
+		Title: "Ids", Creators: []string{"A"},
+		Identifiers: append(slices.Clone(library), opfIdentifier{Scheme: "isbn", Value: "9780000000002"}),
+	}}, opfPath); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := db.Exec(`INSERT INTO identifiers (book, type, val) VALUES (?, 'calibre', '7')`, bookID); err != nil {
+		t.Fatal(err)
+	}
 
 	mux := http.NewServeMux()
+	mux.HandleFunc("GET /metadata/{uuid}", GetOptionsForBook)
 	mux.HandleFunc("POST /metadata/{uuid}/apply", applyMetadataHandler)
 	server := httptest.NewServer(mux)
 	defer server.Close()
 
+	// The editor sees only the ISBN.
+	getResp, err := http.Get(server.URL + "/metadata/" + bookUUID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var metas []UploadedBookMeta
+	err = json.NewDecoder(getResp.Body).Decode(&metas)
+	getResp.Body.Close()
+	if err != nil || len(metas) == 0 {
+		t.Fatalf("GET /metadata: %v %v", metas, err)
+	}
+	if want := []opfIdentifier{{Scheme: "isbn", Value: "9780000000002"}}; !slices.Equal(metas[0].Identifiers, want) {
+		t.Errorf("editor's identifiers = %#v, want %#v", metas[0].Identifiers, want)
+	}
+
+	// A save carries the editor's identifiers. A uuid in it (typed by hand) is ignored.
 	payload := `{
 		"title": "Ids", "creators": "A",
 		"identifiers": [
 			{"scheme": "isbn", "value": "9781112223334"},
-			{"scheme": "uuid", "value": "` + bookUUID + `", "id": "uuid_id"},
-			{"scheme": "calibre", "value": "7", "id": "calibre_id"},
+			{"scheme": "UUID", "value": "typed-by-hand"},
 			{"scheme": "", "value": "http://example.com/a,b;c"},
 			{"scheme": "", "value": "orphan-no-scheme"},
 			{"scheme": "", "value": ""}
@@ -677,30 +709,39 @@ func TestApplyMetadataHandler_PreservesIdentifiers(t *testing.T) {
 		t.Fatalf("expected 200, got %d", resp.StatusCode)
 	}
 
-	opf, err := loadOPF(filepath.Join(tempDir, bookPath, "metadata.opf"))
+	opf, err := loadOPF(opfPath)
 	if err != nil {
 		t.Fatalf("load opf: %v", err)
 	}
-	want := []opfIdentifier{
-		{Scheme: "isbn", Value: "9781112223334"},
-		{Scheme: "uuid", Value: bookUUID, ID: "uuid_id"},
-		{Scheme: "calibre", Value: "7", ID: "calibre_id"},
-		{Scheme: "", Value: "http://example.com/a,b;c"},
-		{Scheme: "", Value: "orphan-no-scheme"},
-	}
+	want := append(slices.Clone(library),
+		opfIdentifier{Scheme: "isbn", Value: "9781112223334"},
+		opfIdentifier{Scheme: "", Value: "http://example.com/a,b;c"},
+		opfIdentifier{Scheme: "", Value: "orphan-no-scheme"},
+	)
 	if !slices.Equal(opf.Metadata.Identifiers, want) {
 		t.Errorf("OPF identifiers:\n got %#v\nwant %#v", opf.Metadata.Identifiers, want)
 	}
 
-	// Scheme-less identifiers can't go in Calibre's table, but typed ones must.
+	// Scheme-less identifiers can't go in Calibre's table, but typed ones must;
+	// the book's calibre row stays.
 	var n int
 	_ = db.QueryRow(`SELECT COUNT(*) FROM identifiers WHERE type = ''`).Scan(&n)
 	if n != 0 {
 		t.Errorf("expected no empty-type rows in DB, got %d", n)
 	}
-	_ = db.QueryRow(`SELECT COUNT(*) FROM identifiers i JOIN books b ON b.id = i.book WHERE b.uuid = ?`, bookUUID).Scan(&n)
-	if n != 3 {
-		t.Errorf("expected 3 typed identifiers in DB, got %d", n)
+	rows, err := db.Query(`SELECT type || '=' || val FROM identifiers WHERE book = ? ORDER BY type`, bookID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer rows.Close()
+	var got []string
+	for rows.Next() {
+		var s string
+		rows.Scan(&s)
+		got = append(got, s)
+	}
+	if want := []string{"calibre=7", "isbn=9781112223334"}; !slices.Equal(got, want) {
+		t.Errorf("DB identifiers = %q, want %q", got, want)
 	}
 }
 

@@ -5,7 +5,7 @@ See also: [FEATURES.md](FEATURES.md) for behaviour, [SECURITY.md](SECURITY.md) f
 ## Data sources
 
 - **`metadata.db`** (Calibre's SQLite database) is the index for listing, searching and filtering.
-- **`metadata.opf`** in each book folder is what the book page and the metadata editor read. Edits write both.
+- **`metadata.opf`** in each book folder is what the book page and the metadata editor read. Edits write both. The editor never sees library identifiers (`calibre`, `uuid`, a scheme-less `urn:uuid:`: `isLibraryIdentifier`), and a save keeps the book's own as they are (`updateBookInCalibreDB`).
 - **`calibrefast-groups.json`** in the library root holds user-defined groups. It's the only file CalibreFast adds to a library.
 
 ## Main library pages
@@ -85,14 +85,14 @@ Both are behind `requireWrites` and only add options to the metadata editor (`we
 - **`/metadata/{uuid}/isbns`** (`isbn.go`) finds ISBNs in the book's files. GET reads EPUB (package identifiers, then the first 5 and last 3 spine documents' visible text), MOBI and AZW3 (EXTH record 104). It names the book's PDF, if any.
   - Go has no reliable PDF text extraction, so the editor reads the PDF with pdf.js: the XMP packet and the first and last few pages, with range requests and `disableAutoFetch`. It POSTs them to the same endpoint.
   - All parsing, check digits, ISBN-13 normalisation, labels and ranking happen on the server, so there's one implementation.
-- **`/metadata/lookup?source=openlibrary|wikidata|google&isbn=…`** (or `&title=…&author=…`, not for Wikidata) (`lookup.go`) asks one source per request. The editor asks Open Library; Wikidata only if Open Library doesn't know the ISBN; others when the admin clicks **Try …**. The answer is mapped to an `UploadedBookMeta` (Format "Open Library", "Wikidata", "Google Books"), which the editor adds as one more source, with `External` set.
+- **`/metadata/lookup?source=openlibrary|wikidata|google&isbn=…`** (or `&title=…&author=…`, not for Wikidata) (`lookup.go`) asks one source per request. The editor asks Open Library; Wikidata only if Open Library doesn't know the ISBN; others when the admin clicks **Try …**. The answer is mapped to an `UploadedBookMeta` (Format "Open Library", "Wikidata", "Google Books"), which the editor adds as one more source, with `External` set, once the admin keeps it from the comparison dialog (a rejected answer never reaches the form).
   - **Open Library:** `/isbn/{isbn}.json` (the edition), then its work (description, subjects) and authors. Without an ISBN, `/search.json`.
   - **Wikidata:** two SPARQL queries on `query.wikidata.org`. The first finds the edition by ISBN (P212/P957) and its work (P629). Wikidata stores ISBNs hyphenated, and where the hyphens go depends on the ISBN agency's ranges, so it asks for every possible hyphenation (`isbnHyphenations`, under 60): an exact match is an index lookup, a normalised one a timeout. The second reads both items' values one per row (title, date, authors with P1545 order, publisher, language codes, genre and main subject labels), with the QIDs written in as constants for the same reason.
   - **Google Books:** `/volumes?q=isbn:…`, with `CF_GOOGLE_BOOKS_KEY` if set. No covers.
   - Answers, including "no match", are cached in memory for 24 hours (500 entries). Errors aren't.
   - **Limits** (`serviceLimit`, one per site): a token bucket and a daily cap (Open Library 20 then 1/s, 1,000 a day; Wikidata 10 then 1 per 2s, 500 a day; Google 5 then 1 per 10s, 100 a day). A 429 pauses that site for its `Retry-After`. Over a limit, requests are refused with a message, not queued.
   - Requests carry `User-Agent: CalibreFast/<version> (+https://github.com/iotku/CalibreFast)` and nothing about the library or user. `-no-lookups` refuses both endpoints and hides the lookup; `-no-google-books` refuses Google.
-- **`/metadata/lookup/cover?src=openlibrary&id=…`** fetches a lookup's cover for the cover picker, only when the admin clicks **Cover from Open Library**. The server builds the URL from a cover id it checks, so it can't be pointed elsewhere. The browser never contacts the third party, and the canvas the picker re-encodes from isn't cross-origin.
+- **`/metadata/lookup/cover?src=openlibrary&id=…`** fetches a lookup's cover for the cover picker, only when the admin clicks **Look up cover online**. That button asks `/metadata/lookup?source=openlibrary` for the ISBN in the top bar's lookup box (cached, so a later lookup of it is free) and adds any cover from a kept lookup. The server builds the URL from a cover id it checks, so it can't be pointed elsewhere. The browser never contacts the third party, and the canvas the picker re-encodes from isn't cross-origin.
 
 ## Accounts and per-user data
 

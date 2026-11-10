@@ -1,6 +1,6 @@
 // Reusable Cover Picker component for upload and book-edit pages.
-import { errorMessage } from "./dom.js";
-import type { CoverCandidate } from "./types.js";
+import { api, errorMessage } from "./dom.js";
+import type { CoverCandidate, LookupResult } from "./types.js";
 import { EPUBJS_URL, JSZIP_URL, openPdf } from "./vendor.js";
 
 /** Called after a cover is saved for a book. */
@@ -25,6 +25,11 @@ interface TextBlock {
 export interface CoverPickerOptions {
     isEditPage?: boolean;
     autoSelectDefault?: boolean;
+    /**
+     * The editor's ISBN lookup box (absent with -no-lookups). With an ISBN in
+     * it, the picker offers to look up Open Library's cover for that ISBN.
+     */
+    isbnInput?: HTMLInputElement | null;
 }
 
 /** A canvas's 2D context; these canvases are always 2D-capable. */
@@ -286,28 +291,61 @@ export function buildCoverPicker(
         actions.appendChild(epubBtn);
     }
 
-    // Covers from an online lookup in the metadata editor (web/isbn-tools.ts).
-    // They're only fetched (through the server) when this button is clicked.
-    if (isEditPage) {
-        let lookupBtn: HTMLButtonElement | null = null;
-        let covers: CoverCandidate[] = [];
-        const render: StripRenderer = (strip, status) => {
+    // Covers from Open Library, in the metadata editor with lookups on: for
+    // the ISBN in the lookup box (the book's, or one found in its files), and
+    // from a lookup the admin kept (web/isbn-tools.ts). Nothing is fetched
+    // until this button is clicked, and then only through the server.
+    const isbnInput = isEditPage ? options.isbnInput : null;
+    if (isbnInput) {
+        const btn = document.createElement("button");
+        btn.type = "button";
+        btn.textContent = "Look up cover online";
+        actions.appendChild(btn);
+
+        let kept: CoverCandidate[] = [];
+        const byIsbn = new Map<string, CoverCandidate[]>();
+        const isbn = (): string => isbnInput.value.replace(/[^0-9Xx]/g, "");
+        const update = (): void => {
+            const n = isbn();
+            btn.hidden = !n && !kept.length;
+            btn.title = n ? `Asks Open Library for the cover of ISBN ${n}` : "The cover from the Open Library lookup";
+        };
+
+        let showing = 0; // the latest render: an older one's lookup may finish later
+        const render: StripRenderer = async (strip, status) => {
+            const me = ++showing;
+            const n = isbn();
+            let found: CoverCandidate[] = byIsbn.get(n) ?? [];
+            let note = "";
+            if (n && !byIsbn.has(n)) {
+                status.textContent = `Looking up ISBN ${n} on Open Library…`;
+                try {
+                    const r = await api<LookupResult>("GET", `/metadata/lookup?${new URLSearchParams({ source: "openlibrary", isbn: n })}`);
+                    found = r.cover ? [{ source: r.source, url: r.cover }] : [];
+                    if (r.option) byIsbn.set(n, found); // not errors: a rate limit passes
+                    else note = `Open Library: ${r.error || "no match"}`;
+                } catch (err) {
+                    note = `Lookup failed: ${errorMessage(err)}`;
+                }
+                if (me !== showing || !btn.classList.contains("active")) return;
+            }
+            const covers = [...found, ...kept.filter((k) => !found.some((f) => f.url === k.url))];
+            if (!covers.length) {
+                status.textContent = note || `Open Library has no cover for ISBN ${n}.`;
+                return;
+            }
             status.textContent = "Cover from Open Library: click it to use it";
             for (const c of covers) renderImageThumb(uuid, c.url, c.source, strip, picker, onCoverSaved, false, updateRevertBtn);
         };
+
+        btn.addEventListener("click", () => showPageStrip(btn, picker, render, { loading: "Loading cover…" }));
+        isbnInput.addEventListener("input", update);
         document.addEventListener("cf:cover-candidates", (e) => {
-            covers = (e as CustomEvent<CoverCandidate[]>).detail;
-            if (!lookupBtn) {
-                const btn = document.createElement("button");
-                btn.type = "button";
-                btn.textContent = "Cover from Open Library";
-                btn.addEventListener("click", () => showPageStrip(btn, picker, render, { loading: "Loading cover…" }));
-                actions.appendChild(btn);
-                lookupBtn = btn;
-            } else if (lookupBtn.classList.contains("active")) {
-                showPageStrip(lookupBtn, picker, render, { toggle: false, loading: "Loading cover…" });
-            }
+            kept = (e as CustomEvent<CoverCandidate[]>).detail;
+            update();
+            if (btn.classList.contains("active")) showPageStrip(btn, picker, render, { toggle: false, loading: "Loading cover…" });
         });
+        update();
     }
 
     picker.appendChild(actions);

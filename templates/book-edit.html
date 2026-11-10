@@ -51,6 +51,7 @@
             /* ── Book Preview Banner ── */
             .book-banner {
                 display: flex;
+                flex-wrap: wrap; /* the cover picker is a row of its own */
                 gap: 1.5rem;
                 align-items: center;
                 background: var(--surface);
@@ -92,6 +93,23 @@
 
             .cover-picker-section[hidden] {
                 display: none;
+            }
+
+            /* The cover picker opens inside the banner, on its own row under
+               the cover: part of the banner, not a card inside it. */
+            .book-banner > .cover-picker-section {
+                flex: 0 0 100%;
+                margin: 0;
+                text-align: left;
+            }
+
+            .book-banner .cover-picker {
+                margin: 0;
+                padding: 1rem 0 0;
+                background: none;
+                border: none;
+                border-top: 1px solid var(--border);
+                border-radius: 0;
             }
 
             /* ── ISBN lookup in the top bar ── */
@@ -1058,6 +1076,10 @@
                 color: var(--accent-hover);
             }
 
+            .btn-add-id[hidden] {
+                display: none;
+            }
+
             .btn-add-id:disabled {
                 opacity: 0.5;
                 cursor: progress;
@@ -1082,7 +1104,15 @@
                 color: var(--muted);
             }
 
+            .isbn-panel-head {
+                display: flex;
+                align-items: center;
+                gap: 10px;
+            }
+
             .isbn-panel .isbn-status {
+                flex: 1;
+                min-width: 0;
                 margin-top: 0;
             }
 
@@ -1288,6 +1318,8 @@
                         Tip: Click the pills under each field (e.g. <strong>current</strong>, <strong>epub</strong>, <strong>pdf</strong>, or <strong>Open Library</strong> after a lookup) to use that source's value; green means it matches. Click the cover to change it. After you change a field, its <strong>edited</strong> pill restores your changes and shows what changed vs <strong>current</strong>. <strong>Compare changes</strong> at the bottom lists every changed field.
                     </p>
                 </div>
+                <!-- The cover picker, under the cover; opened by clicking it -->
+                <div id="cover-picker-section" class="cover-picker-section" hidden></div>
             </div>
 
             <!-- Online lookup: what was found, and the other sources to try -->
@@ -1295,9 +1327,6 @@
                 <p id="lookup-status" class="lookup-status"></p>
                 <div id="lookup-actions" class="lookup-actions"></div>
             </div>
-
-            <!-- Cover Picker Container (opened by clicking the cover) -->
-            <div id="cover-picker-section" class="cover-picker-section" hidden></div>
 
             <!-- Status Banner -->
             <div id="edit-status" class="edit-status"></div>
@@ -1381,6 +1410,7 @@
                                 <button type="button" id="btn-add-identifier" class="btn-add-id">
                                     + Add Identifier
                                 </button>
+                                <!-- Until the files are searched; then the results' Refresh -->
                                 <button type="button" id="btn-find-isbns" class="btn-add-id" title="Look for ISBNs in the book's EPUB, MOBI, AZW3 and PDF files">
                                     Find ISBNs in files
                                 </button>
@@ -1389,7 +1419,10 @@
                         </div>
                         <!-- ISBNs found in the book's files (web/isbn-tools.ts) -->
                         <div id="isbn-panel" class="isbn-panel" hidden>
-                            <p id="isbn-status" class="isbn-status"></p>
+                            <div class="isbn-panel-head">
+                                <p id="isbn-status" class="isbn-status"></p>
+                                <button type="button" id="btn-refresh-isbns" class="meta-source-btn" title="Look through the book's EPUB, MOBI, AZW3 and PDF files again">↻ Refresh</button>
+                            </div>
                             <ul id="isbn-candidates" class="isbn-candidates"></ul>
                         </div>
                     </fieldset>
@@ -1434,7 +1467,8 @@
                 </footer>
             </dialog>
 
-            <!-- A lookup's metadata vs the current metadata -->
+            <!-- A lookup's metadata vs the current metadata. Closing it (✕, Esc,
+                 a click outside) rejects a new answer (web/isbn-tools.ts). -->
             <dialog id="lookup-dialog" class="compare-dialog" aria-labelledby="lookup-title">
                 <header class="compare-header">
                     <h2 id="lookup-title">Found online</h2>
@@ -1443,7 +1477,8 @@
                 <div id="lookup-body"></div>
                 <footer class="compare-footer">
                     <span>The cover isn't changed.</span>
-                    <form method="dialog"><button class="btn-secondary">Pick fields in the form</button></form>
+                    <button type="button" id="lookup-reject" class="btn-secondary" title="Wrong book: don't offer these values in the form">Reject</button>
+                    <button type="button" id="lookup-keep" class="btn-secondary">Pick fields in the form</button>
                     <button type="button" id="lookup-accept" class="btn-primary">Accept all and apply</button>
                 </footer>
             </dialog>
@@ -1466,7 +1501,7 @@
             if (coverSection && coverBtn) {
                 mountCoverPicker(coverSection, uuid, null, () => {
                     document.getElementById("edit-cover-img").src = `/cover-thumb/${uuid}?t=${Date.now()}`;
-                }, { isEditPage: true });
+                }, { isEditPage: true, isbnInput: document.getElementById("isbn-lookup-input") });
                 coverBtn.addEventListener("click", () => {
                     coverSection.hidden = !coverSection.hidden;
                     coverBtn.setAttribute("aria-expanded", String(!coverSection.hidden));
