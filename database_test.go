@@ -661,7 +661,7 @@ func TestApplyMetadataHandler_PreservesIdentifiers(t *testing.T) {
 	if err := writeOPF(&OPF{Metadata: OPFMetadata{
 		Title: "Ids", Creators: []string{"A"},
 		Identifiers: append(slices.Clone(library), opfIdentifier{Scheme: "isbn", Value: "9780000000002"}),
-	}}, opfPath); err != nil {
+	}}, opfPath, bookUUID); err != nil {
 		t.Fatal(err)
 	}
 	if _, err := db.Exec(`INSERT INTO identifiers (book, type, val) VALUES (?, 'calibre', '7')`, bookID); err != nil {

@@ -329,8 +329,8 @@ func TestWriteOPFUniqueIdentifierIsBookUUID(t *testing.T) {
 	}
 }
 
-// testEPUB returns a minimal EPUB whose OPF has the given dc:identifier XML.
-func testEPUB(t *testing.T, identifiers string) []byte {
+// epubWithIdentifiers returns a minimal EPUB whose OPF has the given dc:identifier XML.
+func epubWithIdentifiers(t *testing.T, identifiers string) []byte {
 	t.Helper()
 	var buf bytes.Buffer
 	zw := zip.NewWriter(&buf)
@@ -383,7 +383,7 @@ func TestUploadThenSetISBN_UUIDIDStaysOnBookUUID(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	fw.Write(testEPUB(t, `<dc:identifier id="uid">`+testEPUBUUID+`</dc:identifier>`))
+	fw.Write(epubWithIdentifiers(t, `<dc:identifier id="uid">`+testEPUBUUID+`</dc:identifier>`))
 	mw.Close()
 	form, err := multipart.NewReader(&body, mw.Boundary()).ReadForm(1 << 20)
 	if err != nil {
@@ -429,22 +429,25 @@ func TestUploadThenSetISBN_UUIDIDStaysOnBookUUID(t *testing.T) {
 		}
 	}
 
-	// The editor sends back the identifiers it loaded, with their ids, plus
-	// the new ISBN.
-	apply([]map[string]string{
-		{"scheme": "uuid", "value": res.UUID, "id": "uuid_id"},
-		{"scheme": "", "value": testEPUBUUID, "id": "uid"},
-		{"scheme": "isbn", "value": testISBN, "id": ""},
-	})
+	// The editor doesn't see library identifiers (calibre, uuid, urn:uuid:);
+	// it sends the ISBN, and the save keeps the file's own.
+	apply([]map[string]string{{"scheme": "isbn", "value": testISBN, "id": ""}})
 	want := []opfIdentifier{bookID, {Value: testEPUBUUID, ID: "uid"}, {Scheme: "isbn", Value: testISBN}}
 	check("after setting an ISBN", want)
 
-	// A file saved before this fix (the ISBN holds uuid_id, no uuid of the
-	// book's own) is repaired by the next save, and removing the book's uuid
-	// in the editor doesn't remove it from the file.
-	apply([]map[string]string{
-		{"scheme": "", "value": testEPUBUUID, "id": "uid"},
-		{"scheme": "isbn", "value": testISBN, "id": "uuid_id"},
-	})
+	// A file saved before this fix: no uuid of the book's own, and the ISBN
+	// holds uuid_id (which the editor sends back). The next save repairs it.
+	old := `<?xml version='1.0' encoding='utf-8'?>
+<package xmlns="http://www.idpf.org/2007/opf" unique-identifier="uuid_id" version="2.0">
+  <metadata xmlns:dc="http://purl.org/dc/elements/1.1/" xmlns:opf="http://www.idpf.org/2007/opf">
+    <dc:title>Uploaded</dc:title>
+    <dc:identifier id="uid">` + testEPUBUUID + `</dc:identifier>
+    <dc:identifier opf:scheme="isbn" id="uuid_id">` + testISBN + `</dc:identifier>
+  </metadata>
+</package>`
+	if err := os.WriteFile(opfPath, []byte(old), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	apply([]map[string]string{{"scheme": "isbn", "value": testISBN, "id": "uuid_id"}})
 	check("after saving a file written by the old code", want)
 }
