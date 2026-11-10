@@ -42,6 +42,7 @@ declare namespace EpubJS {
     /** A rendered chapter (its iframe's document). */
     interface Contents {
         document: Document;
+        window: Window;
     }
     interface Rendition {
         display(target?: string): Promise<void>;
@@ -49,6 +50,10 @@ declare namespace EpubJS {
         prev(): Promise<void>;
         on(event: "relocated", cb: (location: Location) => void): void;
         on(event: "rendered", cb: (section: Section, view: View) => void): void;
+        /** A text selection was made (it fires once the selection stops changing). */
+        on(event: "selected", cb: (cfiRange: string, contents: Contents) => void): void;
+        /** The DOM range of a CFI, when its chapter is on screen. */
+        getRange(cfi: string): Range | undefined;
         /** Lays the chapter out again for the container's size, at the same place. */
         resize(): void;
         /** "paginated" or "scrolled-doc". */

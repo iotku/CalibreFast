@@ -41,6 +41,7 @@ Books that match nothing in the library still sync between your devices: Calibre
   - **EPUB:** KOReader and the web reader describe positions differently, so CalibreFast translates them. You land on the same chapter, and usually the same paragraph; the exact word within it isn't kept.
   - A device reading back its own position gets exactly what it saved.
 - **Other formats** (MOBI, AZW3, DjVu, …) sync between devices only.
+- **Highlights and notes don't sync with KOReader.** Its Progress sync protocol carries one thing, the reading position: the plugin's client (`KOSyncClient.lua`) has only register, authorize, `update_progress` and `get_progress`, and the reference server has no other routes. KOReader keeps highlights in a file next to each book on the device. Highlights made in CalibreFast's web readers sync between browsers.
 - **Reading status:** reading a library book on a device marks it as *reading*, and 97% or more as *finished*, as the web readers do.
 
 When the web reader holds the newest position, KOReader shows it as coming from the device **CalibreFast**.

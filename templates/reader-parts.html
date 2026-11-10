@@ -32,6 +32,8 @@
     <symbol id="i-plus" viewBox="0 0 24 24"><path d="M6 12h12M12 6v12"/></symbol>
     <symbol id="i-loupe" viewBox="0 0 24 24"><circle cx="10.5" cy="10.5" r="6"/><path d="M15 15l5 5M8 10.5h5M10.5 8v5"/></symbol>
     <symbol id="i-note" viewBox="0 0 24 24"><path d="M5 5h14v10l-4 4H5zM15 19v-4h4M8 9h8M8 12h5"/></symbol>
+    <symbol id="i-copy" viewBox="0 0 24 24"><path d="M9 9h10v11H9zM15 9V5H5v11h4"/></symbol>
+    <symbol id="i-trash" viewBox="0 0 24 24"><path d="M5 7h14M10 7V4h4v3M7 7l1 13h8l1-13M10 11v6M14 11v6"/></symbol>
 </svg>
 {{ end }}
 
@@ -72,6 +74,29 @@
 </footer>
 <div id="reader-mini" class="r-mini" aria-hidden="true"></div>
 <div id="reader-toast" class="r-toast" role="status"></div>
+
+{{/* Highlights and notes (web/annotation-ui.ts). The colour buttons are added by the script. */}}
+<div id="annot-bar" class="r-annot" role="toolbar" aria-label="Highlight and note" hidden>
+    <button id="annot-note" class="r-btn" type="button" title="Note" aria-label="Add or edit a note">
+        <svg class="r-icon"><use href="#i-note"/></svg>
+    </button>
+    <button id="annot-copy" class="r-btn" type="button" title="Copy" aria-label="Copy the text">
+        <svg class="r-icon"><use href="#i-copy"/></svg>
+    </button>
+    <button id="annot-delete" class="r-btn" type="button" title="Delete highlight" aria-label="Delete highlight" hidden>
+        <svg class="r-icon"><use href="#i-trash"/></svg>
+    </button>
+</div>
+<dialog id="note-dialog" class="r-dialog" aria-label="Note">
+    <form method="dialog">
+        <blockquote id="note-quote"></blockquote>
+        <textarea id="note-text" rows="5" maxlength="4000" placeholder="Your note" aria-label="Your note"></textarea>
+        <div class="r-dialog-actions">
+            <button type="submit" value="cancel">Cancel</button>
+            <button type="submit" value="save" class="r-primary">Save</button>
+        </div>
+    </form>
+</dialog>
 {{ end }}
 
 {{/* Sidebar. .Search adds the in-book search tab (EPUB). */}}
@@ -80,6 +105,7 @@
     <div class="r-tabs" role="tablist">
         <button type="button" role="tab" data-tab="contents" id="tab-contents" aria-controls="panel-contents">Contents</button>
         <button type="button" role="tab" data-tab="bookmarks" id="tab-bookmarks" aria-controls="panel-bookmarks">Bookmarks</button>
+        <button type="button" role="tab" data-tab="notes" id="tab-notes" aria-controls="panel-notes">Notes</button>
         {{ if .Search }}<button type="button" role="tab" data-tab="search" id="tab-search" aria-controls="panel-search">Search</button>{{ end }}
     </div>
     <div id="panel-contents" class="r-panel" role="tabpanel" aria-labelledby="tab-contents">
@@ -87,6 +113,9 @@
     </div>
     <div id="panel-bookmarks" class="r-panel" role="tabpanel" aria-labelledby="tab-bookmarks" hidden>
         <ul id="bookmark-list" class="toc-list bookmark-list"></ul>
+    </div>
+    <div id="panel-notes" class="r-panel" role="tabpanel" aria-labelledby="tab-notes" hidden>
+        <ul id="annotation-list" class="toc-list annotation-list"></ul>
     </div>
     {{ if .Search }}
     <div id="panel-search" class="r-panel" role="tabpanel" aria-labelledby="tab-search" hidden>

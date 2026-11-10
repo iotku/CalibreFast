@@ -14,7 +14,8 @@ func TestReaderPages(t *testing.T) {
 		`id="toc-sidebar"`, `id="toc-btn"`, `id="settings-sheet"`, `id="settings-btn"`, `id="bookmark-btn"`,
 		`id="prev-btn"`, `id="next-btn"`, `id="scrubber"`, `id="progress-label"`, `id="reader-mini"`,
 		`id="reader-toast"`, `id="chapter-title"`, `id="toc-list"`, `id="bookmark-list"`, `id="sync-status"`,
-		`data-setting="theme"`,
+		`data-setting="theme"`, `id="annot-bar"`, `id="annot-note"`, `id="annot-copy"`, `id="annot-delete"`,
+		`id="note-dialog"`, `id="note-text"`, `id="note-quote"`, `id="annotation-list"`,
 	}
 	for _, tc := range []struct {
 		name   string
