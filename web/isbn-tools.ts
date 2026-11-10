@@ -88,12 +88,14 @@ async function readPdf(uuid: string): Promise<{ xmp: string; pages: string[] }> 
 
 export function mountIsbnTools(host: IsbnToolsHost): void {
     const findEl = maybeId("btn-find-isbns", HTMLButtonElement);
+    const refreshEl = maybeId("btn-refresh-isbns", HTMLButtonElement);
     const panelEl = maybeId("isbn-panel");
     const statusEl = maybeId("isbn-status");
     const listEl = maybeId("isbn-candidates");
-    if (!findEl || !panelEl || !statusEl || !listEl) return;
+    if (!findEl || !refreshEl || !panelEl || !statusEl || !listEl) return;
     // Non-null from here on (also inside the functions below).
     const findBtn: HTMLButtonElement = findEl;
+    const refreshBtn: HTMLButtonElement = refreshEl;
     const panel: HTMLElement = panelEl;
     const status: HTMLElement = statusEl;
     const list: HTMLElement = listEl;
@@ -167,7 +169,8 @@ export function mountIsbnTools(host: IsbnToolsHost): void {
     async function find(): Promise<void> {
         if (finding) return;
         finding = true;
-        findBtn.disabled = true;
+        refreshBtn.disabled = true;
+        findBtn.hidden = true; // the results have Refresh
         panel.hidden = false;
         say("Looking through the book's files…");
         const url = `/metadata/${encodeURIComponent(host.uuid)}/isbns`;
@@ -188,13 +191,15 @@ export function mountIsbnTools(host: IsbnToolsHost): void {
             say(`Couldn't search the book's files: ${errorMessage(err)}`, true);
         } finally {
             finding = false;
-            findBtn.disabled = false;
+            refreshBtn.disabled = false;
         }
     }
     findBtn.addEventListener("click", () => void find());
+    refreshBtn.addEventListener("click", () => void find());
 
-    // A book without an ISBN gets a search of its own files right away.
-    // That never contacts another site: only the Look up buttons do.
+    // A book without an ISBN gets a search of its own files right away;
+    // one with an ISBN only on a click. Neither contacts another site: only
+    // the Look up buttons do.
     if (!host.currentIsbn()) void find();
 }
 

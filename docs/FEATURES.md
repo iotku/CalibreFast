@@ -105,7 +105,7 @@ Authors are shown by name everywhere ("Alan A. A. Donovan & Brian W. Kernighan")
 
 Both only offer choices. Nothing is saved until **Apply Changes**.
 
-- **Find ISBNs in files** (under Identifiers) looks in the book's own files. It runs by itself when the book has no ISBN.
+- **ISBNs in the book's files** are listed under Identifiers. For a book without an ISBN they're looked for when the editor opens; otherwise **Find ISBNs in files** looks. **↻ Refresh**, next to the list, looks again.
   - **EPUB:** the package's identifiers, then the text of the first 5 and last 3 chapters, where copyright pages are. An EPUB 3 `dc:source` ISBN is the print edition.
   - **MOBI/AZW3:** the ISBN in the file's EXTH header.
   - **PDF:** the XMP metadata, then the text of the first 5 and last 3 pages, read in the browser with pdf.js. Only those pages are downloaded.

@@ -1076,6 +1076,10 @@
                 color: var(--accent-hover);
             }
 
+            .btn-add-id[hidden] {
+                display: none;
+            }
+
             .btn-add-id:disabled {
                 opacity: 0.5;
                 cursor: progress;
@@ -1100,7 +1104,15 @@
                 color: var(--muted);
             }
 
+            .isbn-panel-head {
+                display: flex;
+                align-items: center;
+                gap: 10px;
+            }
+
             .isbn-panel .isbn-status {
+                flex: 1;
+                min-width: 0;
                 margin-top: 0;
             }
 
@@ -1398,6 +1410,7 @@
                                 <button type="button" id="btn-add-identifier" class="btn-add-id">
                                     + Add Identifier
                                 </button>
+                                <!-- Until the files are searched; then the results' Refresh -->
                                 <button type="button" id="btn-find-isbns" class="btn-add-id" title="Look for ISBNs in the book's EPUB, MOBI, AZW3 and PDF files">
                                     Find ISBNs in files
                                 </button>
@@ -1406,7 +1419,10 @@
                         </div>
                         <!-- ISBNs found in the book's files (web/isbn-tools.ts) -->
                         <div id="isbn-panel" class="isbn-panel" hidden>
-                            <p id="isbn-status" class="isbn-status"></p>
+                            <div class="isbn-panel-head">
+                                <p id="isbn-status" class="isbn-status"></p>
+                                <button type="button" id="btn-refresh-isbns" class="meta-source-btn" title="Look through the book's EPUB, MOBI, AZW3 and PDF files again">↻ Refresh</button>
+                            </div>
                             <ul id="isbn-candidates" class="isbn-candidates"></ul>
                         </div>
                     </fieldset>
