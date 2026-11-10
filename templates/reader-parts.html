@@ -1,0 +1,120 @@
+{{/* Shared by the EPUB and PDF readers (reader.html, reader-pdf.html);
+     behaviour is in web/reader-chrome.ts, styles in web/reader.css. */}}
+
+{{ define "reader-head" }}
+    <meta charset="utf-8">
+    <title>{{ if .BookTitle }}{{ .BookTitle }} — {{ end }}{{ .Title }}</title>
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
+    <meta name="color-scheme" content="light dark">
+    <meta name="theme-color" content="">
+    <link rel="stylesheet" href="{{ asset "reader.css" }}">
+    <!-- The saved theme, before the first paint (web/reader-settings.ts keeps it). -->
+    <script>
+        try {
+            document.documentElement.dataset.theme = JSON.parse(localStorage.getItem("cf-reader-settings") || "{}").theme || "auto";
+        } catch (e) {
+            document.documentElement.dataset.theme = "auto";
+        }
+    </script>
+{{ end }}
+
+{{/* Icons: 24px, drawn with the current text colour. */}}
+{{ define "reader-icons" }}
+<svg class="r-sprite" aria-hidden="true">
+    <symbol id="i-back" viewBox="0 0 24 24"><path d="M15 5l-7 7 7 7"/></symbol>
+    <symbol id="i-prev" viewBox="0 0 24 24"><path d="M14.5 6l-6 6 6 6"/></symbol>
+    <symbol id="i-next" viewBox="0 0 24 24"><path d="M9.5 6l6 6-6 6"/></symbol>
+    <symbol id="i-list" viewBox="0 0 24 24"><path d="M9 6h11M9 12h11M9 18h11M4.5 6h.01M4.5 12h.01M4.5 18h.01"/></symbol>
+    <symbol id="i-bookmark" viewBox="0 0 24 24"><path d="M7 4h10v16l-5-4-5 4z"/></symbol>
+    <symbol id="i-search" viewBox="0 0 24 24"><circle cx="10.5" cy="10.5" r="6"/><path d="M15 15l5 5"/></symbol>
+    <symbol id="i-close" viewBox="0 0 24 24"><path d="M6 6l12 12M18 6L6 18"/></symbol>
+    <symbol id="i-minus" viewBox="0 0 24 24"><path d="M6 12h12"/></symbol>
+    <symbol id="i-plus" viewBox="0 0 24 24"><path d="M6 12h12M12 6v12"/></symbol>
+    <symbol id="i-loupe" viewBox="0 0 24 24"><circle cx="10.5" cy="10.5" r="6"/><path d="M15 15l5 5M8 10.5h5M10.5 8v5"/></symbol>
+    <symbol id="i-note" viewBox="0 0 24 24"><path d="M5 5h14v10l-4 4H5zM15 19v-4h4M8 9h8M8 12h5"/></symbol>
+</svg>
+{{ end }}
+
+{{/* Top bar. The page's own tool buttons go between "reader-top-start" and "reader-top-end". */}}
+{{ define "reader-top-start" }}
+<header class="r-bar r-top">
+    <button class="r-btn btn-back" type="button" title="Back to the library" aria-label="Back to the library">
+        <svg class="r-icon"><use href="#i-back"/></svg>
+    </button>
+    <div class="r-title">
+        <span id="book-title">{{ .BookTitle }}</span>
+        <span id="chapter-title" hidden></span>
+    </div>
+{{ end }}
+{{ define "reader-top-end" }}
+    <button id="bookmark-btn" class="r-btn" type="button" title="Bookmark this page" aria-label="Bookmark this page">
+        <svg class="r-icon"><use href="#i-bookmark"/></svg>
+    </button>
+    <button id="toc-btn" class="r-btn" type="button" title="Contents and bookmarks" aria-label="Contents and bookmarks" aria-controls="toc-sidebar" aria-expanded="false">
+        <svg class="r-icon"><use href="#i-list"/></svg>
+    </button>
+    <button id="settings-btn" class="r-btn r-btn-text" type="button" title="Reading settings" aria-label="Reading settings" aria-controls="settings-sheet" aria-expanded="false">Aa</button>
+</header>
+{{ end }}
+
+{{ define "reader-bottom" }}
+<footer class="r-bar r-bottom">
+    <button id="prev-btn" class="r-btn" type="button" title="Previous page" aria-label="Previous page">
+        <svg class="r-icon"><use href="#i-prev"/></svg>
+    </button>
+    <div class="r-scrub">
+        <input type="range" id="scrubber" min="0" max="1000" value="0" step="1" aria-label="Position in the book">
+        <div id="progress-label" class="r-position">—</div>
+    </div>
+    <button id="next-btn" class="r-btn" type="button" title="Next page" aria-label="Next page">
+        <svg class="r-icon"><use href="#i-next"/></svg>
+    </button>
+</footer>
+<div id="reader-mini" class="r-mini" aria-hidden="true"></div>
+<div id="reader-toast" class="r-toast" role="status"></div>
+{{ end }}
+
+{{/* Sidebar. .Search adds the in-book search tab (EPUB). */}}
+{{ define "reader-sidebar" }}
+<aside id="toc-sidebar" class="r-sidebar" aria-label="Contents, bookmarks and search">
+    <div class="r-tabs" role="tablist">
+        <button type="button" role="tab" data-tab="contents" id="tab-contents" aria-controls="panel-contents">Contents</button>
+        <button type="button" role="tab" data-tab="bookmarks" id="tab-bookmarks" aria-controls="panel-bookmarks">Bookmarks</button>
+        {{ if .Search }}<button type="button" role="tab" data-tab="search" id="tab-search" aria-controls="panel-search">Search</button>{{ end }}
+    </div>
+    <div id="panel-contents" class="r-panel" role="tabpanel" aria-labelledby="tab-contents">
+        <ul id="toc-list" class="toc-list"></ul>
+    </div>
+    <div id="panel-bookmarks" class="r-panel" role="tabpanel" aria-labelledby="tab-bookmarks" hidden>
+        <ul id="bookmark-list" class="toc-list bookmark-list"></ul>
+    </div>
+    {{ if .Search }}
+    <div id="panel-search" class="r-panel" role="tabpanel" aria-labelledby="tab-search" hidden>
+        <form id="search-form" class="r-search" role="search">
+            <input type="search" id="search-input" placeholder="Search in this book" aria-label="Search in this book" autocomplete="off" enterkeyhint="search">
+        </form>
+        <p id="search-status" class="toc-empty" role="status"></p>
+        <ul id="search-results" class="toc-list search-results"></ul>
+    </div>
+    {{ end }}
+</aside>
+{{ end }}
+
+{{/* Settings sheet. The page's own groups go between "reader-settings-start" and "-end". */}}
+{{ define "reader-settings-start" }}
+<section id="settings-sheet" class="r-sheet" role="dialog" aria-label="Reading settings">
+    <div class="r-group">
+        <h3 id="set-theme">Theme</h3>
+        <div class="r-seg r-themes" role="group" aria-labelledby="set-theme">
+            <button type="button" data-setting="theme" data-value="auto" class="sw-auto">Auto</button>
+            <button type="button" data-setting="theme" data-value="light" class="sw-light">Light</button>
+            <button type="button" data-setting="theme" data-value="sepia" class="sw-sepia">Sepia</button>
+            <button type="button" data-setting="theme" data-value="dark" class="sw-dark">Dark</button>
+            <button type="button" data-setting="theme" data-value="black" class="sw-black">Black</button>
+        </div>
+    </div>
+{{ end }}
+{{ define "reader-settings-end" }}
+    <p class="r-sheet-foot"><span id="sync-status" role="status"></span></p>
+</section>
+{{ end }}

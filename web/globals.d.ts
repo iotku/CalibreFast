@@ -28,6 +28,9 @@ declare namespace EpubJS {
         /** Absolute path inside the book, e.g. "/OEBPS/Text/ch1.xhtml". */
         url: string;
         load(request: (url: string) => Promise<unknown>): Promise<Element>;
+        /** Matches in the loaded chapter's text. */
+        find(query: string): { cfi: string; excerpt: string }[];
+        unload(): void;
     }
     interface Spine {
         length?: number;
@@ -36,13 +39,26 @@ declare namespace EpubJS {
     interface View {
         document: Document;
     }
+    /** A rendered chapter (its iframe's document). */
+    interface Contents {
+        document: Document;
+    }
     interface Rendition {
         display(target?: string): Promise<void>;
         next(): Promise<void>;
         prev(): Promise<void>;
         on(event: "relocated", cb: (location: Location) => void): void;
         on(event: "rendered", cb: (section: Section, view: View) => void): void;
-        themes: { fontSize(size: string): void };
+        /** Lays the chapter out again for the container's size, at the same place. */
+        resize(): void;
+        /** "paginated" or "scrolled-doc". */
+        flow(flow: string): void;
+        getContents(): Contents[];
+        hooks: { content: { register(fn: (contents: Contents) => void): void } };
+        annotations: {
+            highlight(cfi: string, data?: object, cb?: () => void, className?: string, styles?: Record<string, string>): void;
+            remove(cfi: string, type: string): void;
+        };
     }
     interface Book {
         ready: Promise<void>;
@@ -51,11 +67,13 @@ declare namespace EpubJS {
         locations: {
             generate(chars: number): Promise<string[]>;
             percentageFromCfi(cfi: string): number;
+            cfiFromPercentage(percentage: number): string;
             locationFromCfi(cfi: string): number;
             length(): number;
         };
         /** Print page numbers, when the book has a page list. */
         pageList?: { pages: string[]; lastPage: number; pageFromCfi(cfi: string): number };
+        packaging?: { metadata?: { title?: string; language?: string; direction?: string } };
         renderTo(element: string | Element, options: { width: string; height: string; flow: string }): Rendition;
         coverUrl(): Promise<string | null>;
         load(path: string): Promise<unknown>;

@@ -1,41 +1,77 @@
 <!doctype html>
 <html lang="en">
 <head>
-    <meta charset="utf-8">
-    <title>Reader — {{ .Title }}</title>
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <link rel="stylesheet" href="{{ asset "style.css" }}">
+    {{ template "reader-head" . }}
     <!-- JSZip lets epub.js open the whole .epub from memory (web/reader.ts). -->
     <script src="/static/vendor/jszip@3.10.2/dist/jszip.min.js"></script>
     <script src="/static/vendor/epubjs@0.3.93/dist/epub.min.js"></script>
 </head>
-<body class="reader-page">
-<header class="top-bar">
-    <button class="btn-back" type="button">&#8592; Back</button>
+<body class="reader-page reader-epub">
+{{ template "reader-icons" }}
+{{ template "reader-top-start" . }}
+    <button id="search-btn" class="r-btn" type="button" title="Search in this book" aria-label="Search in this book">
+        <svg class="r-icon"><use href="#i-search"/></svg>
+    </button>
+{{ template "reader-top-end" . }}
 
-    <div class="top-bar-center-abs top-bar-controls">
-        <button id="prev-btn" class="btn-icon">&#8249;</button>
-        <span id="progress-label" class="reader-progress">—</span>
-        <button id="next-btn" class="btn-icon">&#8250;</button>
+{{ template "reader-sidebar" . }}
+
+{{ template "reader-settings-start" . }}
+    <div class="r-group">
+        <h3 id="set-font">Font</h3>
+        <div class="r-seg" role="group" aria-labelledby="set-font">
+            <button type="button" data-setting="font" data-value="publisher">Original</button>
+            <button type="button" data-setting="font" data-value="serif" class="f-serif">Serif</button>
+            <button type="button" data-setting="font" data-value="sans" class="f-sans">Sans</button>
+            <button type="button" data-setting="font" data-value="mono" class="f-mono">Mono</button>
+        </div>
     </div>
-
-    <div class="top-bar-controls">
-        <span id="sync-status" class="reader-sync" role="status"></span>
-        <button id="bookmark-btn" class="btn-icon" title="Bookmark this page" aria-label="Bookmark this page">🔖</button>
-        <button id="toc-btn" class="btn-standard" aria-controls="toc-sidebar" aria-expanded="false">Contents</button>
-        <button id="font-down" class="btn-icon">A-</button>
-        <button id="font-up" class="btn-icon">A+</button>
+    <div class="r-group r-row">
+        <h3 id="set-size">Size</h3>
+        <div class="r-stepper" role="group" aria-labelledby="set-size">
+            <button type="button" data-setting="fontSize" data-step="-10" data-min="60" data-max="250" aria-label="Smaller text" class="r-small-a">A</button>
+            <output data-shows="fontSize" data-suffix="%"></output>
+            <button type="button" data-setting="fontSize" data-step="10" data-min="60" data-max="250" aria-label="Larger text" class="r-big-a">A</button>
+        </div>
     </div>
-</header>
+    <div class="r-group">
+        <h3 id="set-lh">Line spacing</h3>
+        <div class="r-seg" role="group" aria-labelledby="set-lh">
+            <button type="button" data-setting="lineHeight" data-value="0">Original</button>
+            <button type="button" data-setting="lineHeight" data-value="1.3">Tight</button>
+            <button type="button" data-setting="lineHeight" data-value="1.55">Normal</button>
+            <button type="button" data-setting="lineHeight" data-value="1.85">Loose</button>
+        </div>
+    </div>
+    <div class="r-group">
+        <h3 id="set-margin">Margins</h3>
+        <div class="r-seg" role="group" aria-labelledby="set-margin">
+            <button type="button" data-setting="margin" data-value="narrow">Narrow</button>
+            <button type="button" data-setting="margin" data-value="medium">Medium</button>
+            <button type="button" data-setting="margin" data-value="wide">Wide</button>
+        </div>
+    </div>
+    <div class="r-group">
+        <h3 id="set-align">Alignment</h3>
+        <div class="r-seg" role="group" aria-labelledby="set-align">
+            <button type="button" data-setting="align" data-value="publisher">Original</button>
+            <button type="button" data-setting="align" data-value="left">Left</button>
+            <button type="button" data-setting="align" data-value="justify">Justified</button>
+        </div>
+        <label class="r-check"><input type="checkbox" data-setting="hyphens"> Hyphenate words</label>
+    </div>
+    <div class="r-group">
+        <h3 id="set-flow">Layout</h3>
+        <div class="r-seg" role="group" aria-labelledby="set-flow">
+            <button type="button" data-setting="flow" data-value="paginated">Pages</button>
+            <button type="button" data-setting="flow" data-value="scrolled">Scrolling</button>
+        </div>
+    </div>
+{{ template "reader-settings-end" . }}
 
-<aside id="toc-sidebar" class="toc-sidebar" aria-label="Contents and bookmarks">
-    <h2>Contents</h2>
-    <ul id="toc-list" class="toc-list"></ul>
-    <h2>Bookmarks</h2>
-    <ul id="bookmark-list" class="toc-list bookmark-list"></ul>
-</aside>
+<main id="reader-container"></main>
 
-<div id="reader-container"></div>
+{{ template "reader-bottom" . }}
 
 <script type="module" src="{{ asset "reader.js" }}"></script>
 </body>
