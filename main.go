@@ -164,6 +164,25 @@ type PageData struct {
 	Title string
 }
 
+// ReaderPageData is what the readers' templates need (templates/reader-parts.html).
+type ReaderPageData struct {
+	Title     string
+	BookTitle string // "" when ?uuid names no book; the page says so itself
+	Search    bool   // offer in-book search (EPUB)
+}
+
+// readerPage serves a reader's page. The book itself is fetched by the
+// page's script, from /download.
+func readerPage(name string, search bool) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		data := ReaderPageData{Title: SiteTitle, Search: search}
+		_ = calibreDB.QueryRow(`SELECT title FROM books WHERE uuid = ?`, r.URL.Query().Get("uuid")).Scan(&data.BookTitle)
+		if err := templates.ExecuteTemplate(w, name, data); err != nil {
+			http.Error(w, err.Error(), 500)
+		}
+	}
+}
+
 type EditBookPageData struct { // TODO I Hate this, these page structs are all over the place, we should unify them
 	UUID         string
 	Metadata     *OPFMetadata
@@ -545,20 +564,8 @@ func serveLibraryHTTP() {
 
 	http.HandleFunc("/api/search", searchHandler)
 
-	http.HandleFunc("/read", requireReader(func(w http.ResponseWriter, r *http.Request) {
-		err := templates.ExecuteTemplate(w, "reader.html", PageData{Title: SiteTitle})
-		if err != nil {
-			http.Error(w, err.Error(), 500)
-		}
-	}))
-
-	// TODO: Can we combine this with the /read endpoint?
-	http.HandleFunc("/read-pdf", requireReader(func(w http.ResponseWriter, r *http.Request) {
-		err := templates.ExecuteTemplate(w, "reader-pdf.html", PageData{Title: SiteTitle})
-		if err != nil {
-			http.Error(w, err.Error(), 500)
-		}
-	}))
+	http.HandleFunc("/read", requireReader(readerPage("reader.html", true)))
+	http.HandleFunc("/read-pdf", requireReader(readerPage("reader-pdf.html", false)))
 
 	http.HandleFunc("/view/", requireReader(viewHandler))
 

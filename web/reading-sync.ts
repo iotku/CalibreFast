@@ -252,7 +252,7 @@ export function renderBookmarks(listEl: HTMLElement, items: Bookmark[], { onGo, 
     if (items.length === 0) {
         const li = document.createElement("li");
         li.className = "bookmark-empty";
-        li.textContent = "No bookmarks yet. Use 🔖 to add one.";
+        li.textContent = "No bookmarks yet. The bookmark button in the top bar adds one.";
         listEl.append(li);
         return;
     }

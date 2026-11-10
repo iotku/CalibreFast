@@ -1,6 +1,7 @@
-import { byId, maybeId } from "./dom.js";
+import { byId } from "./dom.js";
+import { setupChrome } from "./reader-chrome.js";
+import { getSettings, onSettingsChange, setSettings } from "./reader-settings.js";
 import { createReadingSync, renderBookmarks, type Bookmark, type BookmarkHandlers } from "./reading-sync.js";
-import { setupSidebar } from "./reader-sidebar.js";
 import { openPdf } from "./vendor.js";
 
 const params = new URLSearchParams(window.location.search);
@@ -12,17 +13,20 @@ if (!uuidParam) {
 }
 const uuid: string = uuidParam;
 
-const progressLabel = byId("progress-label");
-const sidebar = setupSidebar();
-const syncLabel = maybeId("sync-status");
-const setSync = (text: string): void => {
-    if (syncLabel) syncLabel.textContent = text;
-};
+const container = byId("pdf-container");
+const chrome = setupChrome({
+    onScrub(fraction, done) {
+        const page = Math.min(numPages(), Math.max(1, Math.round(fraction * (numPages() - 1)) + 1));
+        if (!done) return `Page ${page} of ${numPages()}`;
+        void renderPage(page);
+    },
+});
+chrome.setScrubbable(false);
 
 // Resume from this device or the server (whichever is newer).
-const sync = await createReadingSync(uuid, "pdf", { legacyKey: `pdf-page-${uuid}`, onStatus: setSync });
+const sync = await createReadingSync(uuid, "pdf", { legacyKey: `pdf-page-${uuid}`, onStatus: chrome.setStatus });
 const saved = await sync.loadProgress();
-if (!sync.signedIn) setSync("Saved on this device");
+if (!sync.signedIn) chrome.setStatus("Position saved on this device");
 
 let pdf: PdfJS.Document | null = null;
 
@@ -37,27 +41,10 @@ let currentPage = parseInt(saved?.position || "1", 10) || 1;
 // The first render is just opening the book; only moving away from it is
 // saved (and marks the book as being read).
 let openingPage: number | null = null;
-let scale = parseFloat(localStorage.getItem("pdf-scale") || "1.5");
-let rendering = false;
-let lastWasDual = false; // updated each renderPage
-const dualToggle = byId("dual-toggle", HTMLInputElement);
-dualToggle.checked = localStorage.getItem("pdf-dual") === "true";
+let scale = getSettings().pdfScale;
+/** Whether the last render showed two pages (dual is on and they fit). */
+let shownDual = false;
 
-dualToggle.addEventListener("change", () => {
-    localStorage.setItem("pdf-dual", String(dualToggle.checked));
-    renderPage(currentPage);
-});
-
-function isDual(): boolean { return dualToggle.checked; }
-async function isWideEnough(): Promise<boolean> {
-    const page = await requirePdf().getPage(currentPage);
-    const viewport = page.getViewport({ scale });
-    return window.innerWidth >= viewport.width * 2 + 4; // +4 for the gap
-}
-
-async function effectiveDual(): Promise<boolean> {
-    return dualToggle.checked && await isWideEnough();
-}
 async function drawPage(pageNum: number, canvas: HTMLCanvasElement): Promise<void> {
     if (pageNum < 1 || pageNum > numPages()) return;
     const page = await requirePdf().getPage(pageNum);
@@ -69,140 +56,118 @@ async function drawPage(pageNum: number, canvas: HTMLCanvasElement): Promise<voi
     await page.render({ canvasContext: ctx, viewport }).promise;
 }
 
+/** The scale at which the page (or two) fills the window. */
+async function fitScale(dual: boolean): Promise<number> {
+    const page = await requirePdf().getPage(currentPage);
+    const viewport = page.getViewport({ scale: 1 });
+    return Math.min(window.innerHeight / viewport.height, (window.innerWidth / (dual ? 2 : 1) - 8) / viewport.width);
+}
+
+// One render at a time; a request made meanwhile replaces any waiting one.
+let rendering = false;
+let waiting: number | null = null;
+
 async function renderPage(pageNum: number): Promise<void> {
-    if (rendering) return;
+    if (rendering) {
+        waiting = pageNum;
+        return;
+    }
     rendering = true;
+    try {
+        currentPage = pageNum;
+        const s = getSettings();
+        if (s.pdfFit) scale = await fitScale(s.pdfDual && window.innerWidth > window.innerHeight);
+        const first = await requirePdf().getPage(pageNum);
+        const dual = s.pdfDual && window.innerWidth >= first.getViewport({ scale }).width * 2 + 4;
+        shownDual = dual;
 
-    const container = byId("pdf-container");
-    container.innerHTML = "";
+        const canvases = [document.createElement("canvas")];
+        if (dual && pageNum < numPages()) canvases.push(document.createElement("canvas"));
+        await Promise.all(canvases.map((c, i) => drawPage(pageNum + i, c)));
+        const spread = document.createElement("div");
+        spread.className = "pdf-spread";
+        spread.append(...canvases);
+        container.replaceChildren(spread);
+        container.scrollTo(0, 0);
 
-    const dual = await effectiveDual();
-    lastWasDual = dual;
-    if (dual) {
-        const wrapper = document.createElement("div");
-        wrapper.style.cssText = "display:flex; gap:4px; justify-content:center; align-items:flex-start;";
+        const last = pageNum + canvases.length - 1;
+        const text = last > pageNum ? `Pages ${pageNum}–${last} of ${numPages()}` : `Page ${pageNum} of ${numPages()}`;
+        chrome.setPosition(text, numPages() > 1 ? (pageNum - 1) / (numPages() - 1) : 0);
+        byId("zoom-label").textContent = `${Math.round(scale * 100)}%`;
 
-        const left = document.createElement("canvas");
-        const right = document.createElement("canvas");
-        wrapper.appendChild(left);
-        wrapper.appendChild(right);
-        container.appendChild(wrapper);
-
-        await Promise.all([
-            drawPage(pageNum, left),
-            drawPage(pageNum + 1, right),
-        ]);
-
-        progressLabel.textContent = `${pageNum}-${Math.min(pageNum + 1, numPages())} / ${numPages()}`;
-    } else {
-        const canvas = document.createElement("canvas");
-        container.appendChild(canvas);
-        await drawPage(pageNum, canvas);
-        progressLabel.textContent = `${pageNum} / ${numPages()}`;
+        if (openingPage === null) {
+            openingPage = pageNum;
+        } else if (pageNum !== openingPage) {
+            openingPage = -1; // moved: from now on every page change is saved
+            sync.saveProgress(pageNum, last / numPages());
+        }
+    } finally {
+        rendering = false;
+        if (waiting !== null) {
+            const next = waiting;
+            waiting = null;
+            void renderPage(next);
+        }
     }
+}
 
-    currentPage = pageNum;
-    if (openingPage === null) {
-        openingPage = pageNum;
-    } else if (pageNum !== openingPage) {
-        openingPage = -1; // moved: from now on every page change is saved
-        const lastShown = dual ? Math.min(pageNum + 1, numPages()) : pageNum;
-        sync.saveProgress(pageNum, lastShown / numPages());
-    }
-    rendering = false;
+/** Forward (1) or back (-1) by what is on screen: one page, or two. */
+function turn(dir: 1 | -1, fromPage = true): void {
+    if (fromPage) chrome.hideBars();
+    const to = Math.min(numPages(), Math.max(1, currentPage + dir * (shownDual ? 2 : 1)));
+    if (to !== currentPage) void renderPage(to);
 }
 
 async function init(): Promise<void> {
-    pdf = await openPdf(`/download/${uuid}/pdf`);
-    currentPage = Math.min(currentPage, numPages());
-    await renderToc();
-    if (fitToggle.checked) {
-        await fitToScale();
-    } else {
-        renderPage(currentPage);
+    try {
+        pdf = await openPdf(`/download/${encodeURIComponent(uuid)}/pdf`);
+    } catch (err) {
+        container.className = "reader-message";
+        container.textContent = "Couldn't load this PDF.";
+        throw err;
     }
-}
-
-init();
-
-// update prev/next to step by 2 in dual mode
-byId("prev-btn").addEventListener("click", () => {
-    const step = isDual() ? 2 : 1;
-    if (currentPage > 1) renderPage(Math.max(1, currentPage - step));
-});
-
-byId("next-btn").addEventListener("click", () => {
-    const step = isDual() ? 2 : 1;
-    if (currentPage < numPages()) renderPage(Math.min(numPages(), currentPage + step));
-});
-
-window.addEventListener("keydown", (e) => {
-    const step = isDual() ? 2 : 1;
-    if (e.key === "ArrowLeft" && currentPage > 1) renderPage(Math.max(1, currentPage - step));
-    if (e.key === "ArrowRight" && currentPage < numPages()) renderPage(Math.min(numPages(), currentPage + step));
-});
-byId("font-up").addEventListener("click", () => {
-    scale = Math.min(scale + 0.25, 4);
-    localStorage.setItem("pdf-scale", String(scale));
-    renderPage(currentPage);
-});
-
-byId("font-down").addEventListener("click", () => {
-    scale = Math.max(scale - 0.25, 0.5);
-    localStorage.setItem("pdf-scale", String(scale));
-    renderPage(currentPage);
-});
-
-function availableHeight(): number {
-    return window.innerHeight - (document.querySelector<HTMLElement>(".top-bar")?.offsetHeight ?? 0);
-}
-
-const fitToggle = byId("fit-toggle", HTMLInputElement);
-fitToggle.checked = localStorage.getItem("pdf-fit") === "true";
-
-async function fitToScale(): Promise<void> {
-    const page = await requirePdf().getPage(currentPage);
-    const viewport = page.getViewport({ scale: 1 });
-    const divisor = lastWasDual ? 2 : 1;
-    const heightScale = availableHeight() / viewport.height;
-    const widthScale = (window.innerWidth / divisor - 8) / viewport.width;
-    scale = Math.min(heightScale, widthScale);
-    localStorage.setItem("pdf-scale", String(scale));
+    currentPage = Math.min(currentPage, numPages());
+    chrome.setScrubbable(numPages() > 1);
+    await renderToc();
     await renderPage(currentPage);
 }
+void init();
 
-async function applyFit(): Promise<void> {
-    if (fitToggle.checked) {
-        localStorage.setItem("pdf-fit", "true");
-        await fitToScale();
-    } else {
-        localStorage.setItem("pdf-fit", "false");
-    }
+byId("prev-btn").addEventListener("click", () => turn(-1, false));
+byId("next-btn").addEventListener("click", () => turn(1, false));
+document.querySelector(".btn-back")?.addEventListener("click", () => history.back());
+
+window.addEventListener("keydown", (e) => {
+    if (e.ctrlKey || e.metaKey || e.altKey) return;
+    // Keys belong to the control that has focus (the scrubber, a tab).
+    if (e.target instanceof Element && e.target.closest(".r-bar, .r-sidebar, .r-sheet")) return;
+    if (e.key === "ArrowRight" || e.key === "PageDown" || (e.key === " " && !e.shiftKey)) turn(1);
+    else if (e.key === "ArrowLeft" || e.key === "PageUp" || e.key === " ") turn(-1);
+    else return;
+    e.preventDefault();
+});
+
+// ---- settings ----
+
+onSettingsChange((s, changed) => {
+    if (!pdf) return;
+    if (changed.includes("pdfFit") && !s.pdfFit) return; // nothing changes until the next zoom
+    if (changed.some((k) => k === "pdfDual" || k === "pdfFit")) void renderPage(currentPage);
+});
+
+function zoomBy(step: number): void {
+    scale = Math.min(4, Math.max(0.5, scale + step));
+    setSettings({ pdfFit: false, pdfScale: scale });
+    if (pdf) void renderPage(currentPage);
 }
+byId("zoom-in").addEventListener("click", () => zoomBy(0.25));
+byId("zoom-out").addEventListener("click", () => zoomBy(-0.25));
 
-fitToggle.addEventListener("change", applyFit);
-
-// resize handler — only refit if fit mode is active
 window.addEventListener("resize", () => {
-    if (fitToggle.checked && pdf) fitToScale();
+    if (getSettings().pdfFit && pdf) void renderPage(currentPage);
 });
 
-// disable zoom buttons when fit is active since fit overrides scale
-byId("font-up").addEventListener("click", () => {
-    fitToggle.checked = false;
-    localStorage.setItem("pdf-fit", "false");
-    scale = Math.min(scale + 0.25, 4);
-    localStorage.setItem("pdf-scale", String(scale));
-    renderPage(currentPage);
-});
-
-byId("font-down").addEventListener("click", () => {
-    fitToggle.checked = false;
-    localStorage.setItem("pdf-fit", "false");
-    scale = Math.max(scale - 0.25, 0.5);
-    localStorage.setItem("pdf-scale", String(scale));
-    renderPage(currentPage);
-});
+// ---- contents ----
 
 async function renderToc(): Promise<void> {
     const outline = await requirePdf().getOutline();
@@ -213,70 +178,63 @@ async function renderToc(): Promise<void> {
         return;
     }
 
-    async function buildToc(items: PdfJS.OutlineItem[], el: HTMLElement): Promise<void> {
+    function buildToc(items: PdfJS.OutlineItem[], el: HTMLElement): void {
         for (const item of items) {
             const li = document.createElement("li");
             const a = document.createElement("a");
             a.textContent = item.title;
             a.href = "#";
-
             a.addEventListener("click", async (e) => {
                 e.preventDefault();
-                if (item.dest) {
-                    const dest = typeof item.dest === "string"
-                        ? await requirePdf().getDestination(item.dest)
-                        : item.dest;
-
-                    if (dest?.[0] !== undefined) {
-                        const pageIndex = await requirePdf().getPageIndex(dest[0]);
-                        void renderPage(pageIndex + 1); // pdf.js is 0-indexed
-                    }
-                }
-                sidebar.close();
+                chrome.sidebar.close();
+                if (!item.dest) return;
+                const dest = typeof item.dest === "string" ? await requirePdf().getDestination(item.dest) : item.dest;
+                if (dest?.[0] === undefined) return;
+                const pageIndex = await requirePdf().getPageIndex(dest[0]);
+                void renderPage(pageIndex + 1); // pdf.js is 0-indexed
             });
-
             li.appendChild(a);
-
             if (item.items?.length) {
                 const sub = document.createElement("ul");
-                await buildToc(item.items, sub);
+                buildToc(item.items, sub);
                 li.appendChild(sub);
             }
-
             el.appendChild(li);
         }
     }
-
-    await buildToc(outline, list);
+    buildToc(outline, list);
 }
 
-// scroll to navigate
-byId("pdf-container").addEventListener("wheel", (e) => {
-    e.preventDefault();
-    if (e.deltaY > 0) {
-        // scroll down = next
-        if (currentPage < numPages()) renderPage(Math.min(numPages(), currentPage + (effectiveDualSync() ? 2 : 1)));
-    } else {
-        // scroll up = prev
-        if (currentPage > 1) renderPage(Math.max(1, currentPage - (effectiveDualSync() ? 2 : 1)));
-    }
-}, { passive: false });
+// ---- the page: wheel and taps ----
 
-// click left/right half to navigate
-byId("pdf-container").addEventListener("click", (e) => {
-    const mid = window.innerWidth / 2;
-    if (e.clientX < mid) {
-        if (currentPage > 1) renderPage(Math.max(1, currentPage - (effectiveDualSync() ? 2 : 1)));
-    } else {
-        if (currentPage < numPages()) renderPage(Math.min(numPages(), currentPage + (effectiveDualSync() ? 2 : 1)));
-    }
+// The wheel turns pages when the page fits the window (one per gesture);
+// when it doesn't, it scrolls.
+let wheelAt = 0;
+container.addEventListener(
+    "wheel",
+    (e) => {
+        if (e.ctrlKey || container.scrollHeight > container.clientHeight + 1 || container.scrollWidth > container.clientWidth + 1) return;
+        e.preventDefault();
+        if (Math.abs(e.deltaY) < 4 || e.timeStamp - wheelAt < 350) return;
+        wheelAt = e.timeStamp;
+        turn(e.deltaY > 0 ? 1 : -1);
+    },
+    { passive: false },
+);
+
+// A tap on the left or right third turns the page; the middle shows or
+// hides the bars.
+container.addEventListener("click", (e) => {
+    if (e.clientX < window.innerWidth * 0.3) turn(-1);
+    else if (e.clientX > window.innerWidth * 0.7) turn(1);
+    else chrome.toggleBars();
 });
 
 // ---- bookmarks ----
 const bookmarkHandlers: BookmarkHandlers = {
     onGo: (b) => {
-        renderPage(Math.min(numPages(), Math.max(1, parseInt(b.position, 10) || 1)));
-        sidebar.close();
+        void renderPage(Math.min(numPages(), Math.max(1, parseInt(b.position, 10) || 1)));
+        chrome.sidebar.close();
     },
     onDelete: (b) => {
         sync.removeBookmark(b.id);
@@ -284,12 +242,9 @@ const bookmarkHandlers: BookmarkHandlers = {
     },
 };
 const showBookmarks = (items: Bookmark[]): void => renderBookmarks(byId("bookmark-list"), items, bookmarkHandlers);
-sync.loadBookmarks().then(showBookmarks);
-byId("bookmark-btn")?.addEventListener("click", () => {
+void sync.loadBookmarks().then(showBookmarks);
+byId("bookmark-btn").addEventListener("click", () => {
     sync.addBookmark(currentPage, `Page ${currentPage}${pdf ? ` of ${numPages()}` : ""}`);
     showBookmarks(sync.bookmarks());
-    setSync("Bookmark added");
+    chrome.toast("Bookmark added");
 });
-function effectiveDualSync(): boolean {
-    return lastWasDual;
-}

@@ -1,46 +1,37 @@
 <!doctype html>
 <html lang="en">
 <head>
-    <meta charset="utf-8">
-    <title>Reader — {{ .Title }}</title>
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <link rel="stylesheet" href="{{ asset "style.css" }}">
+    {{ template "reader-head" . }}
     <!-- pdf.js, fetched alongside reader-pdf.js instead of after it (web/vendor.ts). -->
     <link rel="modulepreload" href="/static/vendor/pdfjs-dist@5.7.284/build/pdf.min.mjs">
 </head>
-<body class="reader-page">
-<header class="top-bar">
-    <button class="btn-back" onclick="history.back()">&#8592; Back</button>
-    <div class="top-bar-center-abs top-bar-controls">
-        <button id="prev-btn" class="btn-icon">&#8249;</button>
-        <span id="progress-label" class="reader-progress-pdf">— / —</span>
-        <button id="next-btn" class="btn-icon">&#8250;</button>
+<body class="reader-page reader-pdf">
+{{ template "reader-icons" }}
+{{ template "reader-top-start" . }}
+{{ template "reader-top-end" . }}
+
+{{ template "reader-sidebar" . }}
+
+{{ template "reader-settings-start" . }}
+    <div class="r-group">
+        <h3 id="set-pages">Pages</h3>
+        <label class="r-check"><input type="checkbox" data-setting="pdfDual"> Two pages side by side</label>
+        <label class="r-check"><input type="checkbox" data-setting="pdfFit"> Fit the page to the window</label>
     </div>
-    <div class="top-bar-controls">
-        <span id="sync-status" class="reader-sync" role="status"></span>
-        <button id="bookmark-btn" class="btn-icon" title="Bookmark this page" aria-label="Bookmark this page">🔖</button>
-        <button id="toc-btn" class="btn-standard" aria-controls="toc-sidebar" aria-expanded="false">Contents</button>
-        <label class="reader-label">
-            <input type="checkbox" id="dual-toggle" class="reader-checkbox" />
-            Dual
-        </label>
-        <button id="font-down" class="btn-icon">A-</button>
-        <label class="reader-label">
-            <input type="checkbox" id="fit-toggle" class="reader-checkbox" />
-            Fit
-        </label>
-        <button id="font-up" class="btn-icon">A+</button>
+    <div class="r-group r-row">
+        <h3 id="set-zoom">Zoom</h3>
+        <div class="r-stepper" role="group" aria-labelledby="set-zoom">
+            <button type="button" id="zoom-out" aria-label="Zoom out"><svg class="r-icon"><use href="#i-minus"/></svg></button>
+            <output id="zoom-label"></output>
+            <button type="button" id="zoom-in" aria-label="Zoom in"><svg class="r-icon"><use href="#i-plus"/></svg></button>
+        </div>
     </div>
-</header>
-<aside id="toc-sidebar" class="toc-sidebar" aria-label="Contents and bookmarks">
-    <h2>Contents</h2>
-    <ul id="toc-list" class="toc-list"></ul>
-    <h2>Bookmarks</h2>
-    <ul id="bookmark-list" class="toc-list bookmark-list"></ul>
-</aside>
-<div id="pdf-container">
-    <canvas id="pdf-canvas"></canvas>
-</div>
+{{ template "reader-settings-end" . }}
+
+<main id="pdf-container"></main>
+
+{{ template "reader-bottom" . }}
+
 <script type="module" src="{{ asset "reader-pdf.js" }}"></script>
 </body>
 </html>

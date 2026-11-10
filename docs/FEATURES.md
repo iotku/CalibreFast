@@ -152,6 +152,14 @@ Both only offer choices. Nothing is saved until **Apply Changes**.
   - In the grid, books you're reading have a ring and a bar along the bottom showing how far along you are.
   - The popup shows where you are and when it was saved, e.g. "Page 5 of 25 · synced 2 minutes ago from Kobo Clara" (EPUBs show a percentage). The newest position wins, from the web readers or a KOReader device.
   - Automatic changes only move forward and never override a status you set yourself.
+- **Readers** (EPUB and PDF) share their controls:
+  - **Bars.** A top bar (back, title and chapter, bookmark, contents, settings) and a bottom bar (previous/next, a scrubber, the position). A tap or click in the middle of the page hides and shows them; turning a page from the page hides them. Escape does the same, and Tab brings them back for the keyboard. While they're hidden the position stays in small print at the bottom.
+  - **Turning pages:** tap or click the left or right third, swipe (EPUB), the wheel, ←/→, PageUp/PageDown, Space/Shift+Space. Right-to-left EPUBs turn the other way.
+  - **Themes:** light, sepia, dark and black, or the system's light/dark setting (the default). Dark themes recolour an EPUB's text and backgrounds and leave its images alone. PDF pages keep their own colours.
+  - **Sidebar:** Contents (the current chapter is marked), Bookmarks, and for EPUBs Search.
+  - **Settings are per device** (a phone and a desktop want different sizes).
+- **EPUB settings:** font (the book's own, serif, sans-serif, monospace: fonts already on the device, nothing is downloaded), size, line spacing, margins, alignment, hyphenation, and pages or continuous scrolling within a chapter.
+- **EPUB search** (the magnifier, or Ctrl/⌘+F) goes through the book a chapter at a time and lists matches with their chapter and page. Choosing one goes there and highlights it; Back returns.
 - **EPUB reader loads the whole book up front** (with a progress label), then reads offline: chapters, images and fonts come from memory, with no requests at chapter boundaries.
 - **Reading position and bookmarks:** kept in the browser and, when signed in, synced to the server, so another device can resume.
   - The newest position wins.
