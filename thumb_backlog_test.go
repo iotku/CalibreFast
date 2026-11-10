@@ -39,6 +39,12 @@ func TestCoverThumbCancelledWhileWaiting(t *testing.T) {
 		}
 	}()
 
+	// The handler's cache check looks the book up first; seed its path so
+	// that lookup doesn't need Calibre's database (there's no cover.jpg
+	// there, so there's no cached thumbnail either).
+	uuidPathIndex.Store("c-3", "nowhere/c-3")
+	defer uuidPathIndex.Delete("c-3")
+
 	ctx, cancel := context.WithCancel(context.Background())
 	cancel()
 	req := httptest.NewRequest("GET", "/cover-thumb/c-3", nil).WithContext(ctx)
