@@ -41,10 +41,40 @@ Books that match nothing in the library still sync between your devices: Calibre
   - **EPUB:** KOReader and the web reader describe positions differently, so CalibreFast translates them. You land on the same chapter, and usually the same paragraph; the exact word within it isn't kept.
   - A device reading back its own position gets exactly what it saved.
 - **Other formats** (MOBI, AZW3, DjVu, …) sync between devices only.
-- **Highlights and notes don't sync with KOReader.** Its Progress sync protocol carries one thing, the reading position: the plugin's client (`KOSyncClient.lua`) has only register, authorize, `update_progress` and `get_progress`, and the reference server has no other routes. KOReader keeps highlights in a file next to each book on the device. Highlights made in CalibreFast's web readers sync between browsers.
+- **Highlights and notes** don't travel with Progress sync, which carries only the reading position. They move as a file instead: see [Highlights and notes](#highlights-and-notes).
 - **Reading status:** reading a library book on a device marks it as *reading*, and 97% or more as *finished*, as the web readers do.
 
 When the web reader holds the newest position, KOReader shows it as coming from the device **CalibreFast**.
+
+## Highlights and notes
+
+KOReader's Progress sync has no place for highlights: its client only sends and asks for a position. But KOReader has its own file for moving annotations between devices, `<book file name>.annotations.lua`, and CalibreFast reads and writes it. You carry the file across yourself, or let a folder-sync tool (Syncthing, a cloud folder) do it.
+
+Both directions are in the web reader's sidebar, under **Notes → KOReader**, when you're signed in. EPUB and PDF each have their own file.
+
+### From KOReader to CalibreFast
+
+1. In KOReader, open the book, open the bookmark list (**☰ → Bookmarks**), tap the menu in its corner and choose **Export annotations**. Or turn on **Bookmarks → Settings → Export annotations on book closing**.
+2. The file appears in the book's `.sdr` folder next to it (or in the folder chosen under **Export / import folder**), as `Title - Author.epub.annotations.lua`.
+3. In CalibreFast, open the same book in the web reader and choose **Notes → KOReader → Import…**.
+
+- Highlights keep their text, note, colour, chapter, page and dates. Underlines and strike-throughs become highlights.
+- **Nothing is removed.** A highlight missing from the file stays; one you deleted in CalibreFast doesn't come back from the same file.
+- Importing a file again adds nothing twice. A note or colour changed on the device since is updated, if that change is the newer one.
+- Page bookmarks aren't highlights and are left out.
+- **EPUB:** the highlight is placed by KOReader's position. If the text there isn't the highlighted text, the text is looked for near it; a highlight whose text isn't in CalibreFast's copy of the book is skipped, and the count is shown.
+- **PDF:** highlights of text are placed by their boxes on the page.
+
+### From CalibreFast to KOReader
+
+1. In the web reader choose **Notes → KOReader → Export**. The browser downloads `Title - Author.epub.annotations.lua`.
+2. Put the file in the book's `.sdr` folder on the device (for `Book.epub` that is `Book.sdr`, beside it), or in KOReader's **Export / import folder**. The name must be the book's file name on the device plus `.annotations.lua`: rename it if the book is named differently there.
+3. Open the book in KOReader. It merges the file in and deletes it.
+
+- **Nothing on the device is removed**, whatever **Keep all annotations on import** is set to: the file is dated so that KOReader only adds and updates.
+- **EPUB positions are converted by rule and haven't been checked on a device.** KOReader counts the characters of a paragraph its own way (it collapses runs of spaces, for one); CalibreFast follows the rules in KOReader's source. If a highlight shows up shifted or not at all, please report the book.
+- The device's copy of the book should be the one in the library, as for Progress sync.
+- This needs KOReader 2025.04 or newer.
 
 ## HTTPS
 
@@ -81,5 +111,6 @@ The protocol is that of KOReader's `kosync.koplugin` and the [reference sync ser
 - Authenticated requests carry `x-auth-user` (the username) and `x-auth-key` (the MD5 of the sync key).
 - The `Accept: application/vnd.koreader.v1+json` header is accepted but not required.
 - The implementation is in `kosync.go` (API and keys), `kosync_digest.go` (fingerprints) and `kosync_position.go` (EPUB position translation).
+- Annotation files: `koreader_annotations.go` (the two endpoints), `koreader_lua.go` (reading KOReader's Lua files as data) and `koreader_text.go` (exact text positions). To check them against a real export, put `book.epub` and its `book.epub.annotations.lua` in a folder, point `KOREADER_ANNOTATIONS` at it and run `go test -run KOReaderAnnotationsFixture`.
 
 To check the fingerprint against KOReader's own test files, point `KOREADER_TEST_DATA` at a checkout of [koreader/test-data](https://github.com/koreader/test-data) and run `go test -run Fixture`.

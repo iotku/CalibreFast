@@ -520,6 +520,7 @@ const notesUI = setupAnnotationUI({
         return (p?.page ?? 0) - (q?.page ?? 0) || (p?.rects[0]?.[1] ?? 0) - (q?.rects[0]?.[1] ?? 0);
     },
     toast: chrome.toast,
+    koreader: sync.signedIn ? { uuid, format: "pdf", sync: () => store.load() } : undefined,
 });
 void store.load();
 

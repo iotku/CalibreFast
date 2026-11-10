@@ -645,6 +645,24 @@ input {
     white-space: pre-wrap;
 }
 
+/* Export and import, under the list. */
+.r-tools {
+    margin: 16px 4px 0;
+    padding: 12px 8px 0;
+    border-top: 1px solid var(--chrome-border);
+}
+
+.r-tools h3 {
+    margin: 0 0 8px;
+    font-size: 12px;
+    font-weight: 600;
+    color: var(--chrome-muted);
+}
+
+.r-tools .toc-empty {
+    padding: 8px 0 0;
+}
+
 /* A PDF page's highlights: under the text layer, so text stays selectable. */
 .pdf-marks {
     position: absolute;

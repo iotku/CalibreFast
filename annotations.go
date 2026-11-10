@@ -126,16 +126,7 @@ func annotationPutHandler(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 	}
-	// Ids are scoped to the user; an id never moves to another book, and
-	// where an annotation is (format, anchor, created_at) never changes.
-	if _, err := appDB.Exec(`
-		INSERT INTO annotations (user_id, book_uuid, client_id, format, anchor, text, note, color, chapter, page, created_at, updated_at, deleted)
-		VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-		ON CONFLICT(user_id, client_id) DO UPDATE SET
-			text = excluded.text, note = excluded.note, color = excluded.color,
-			updated_at = excluded.updated_at, deleted = excluded.deleted
-		WHERE annotations.book_uuid = excluded.book_uuid AND excluded.updated_at >= annotations.updated_at`,
-		u.ID, uuid, id, in.Format, in.Anchor, in.Text, in.Note, in.Color, in.Chapter, in.Page, in.CreatedAt, in.UpdatedAt, in.Deleted); err != nil {
+	if err := storeAnnotation(u.ID, uuid, id, in); err != nil {
 		http.Error(w, "could not save", http.StatusInternalServerError)
 		return
 	}
@@ -149,7 +140,25 @@ func annotationPutHandler(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, http.StatusOK, stored)
 }
 
+// storeAnnotation adds an annotation, or applies a change to one unless a
+// newer change is stored. Ids are scoped to the user; an id never moves to
+// another book, and where an annotation is (format, anchor, created_at)
+// never changes.
+func storeAnnotation(userID int64, uuid, id string, in annotationRec) error {
+	_, err := appDB.Exec(`
+		INSERT INTO annotations (user_id, book_uuid, client_id, format, anchor, text, note, color, chapter, page, created_at, updated_at, deleted)
+		VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+		ON CONFLICT(user_id, client_id) DO UPDATE SET
+			text = excluded.text, note = excluded.note, color = excluded.color,
+			updated_at = excluded.updated_at, deleted = excluded.deleted
+		WHERE annotations.book_uuid = excluded.book_uuid AND excluded.updated_at >= annotations.updated_at`,
+		userID, uuid, id, in.Format, in.Anchor, in.Text, in.Note, in.Color, in.Chapter, in.Page, in.CreatedAt, in.UpdatedAt, in.Deleted)
+	return err
+}
+
 func registerAnnotationRoutes() {
 	http.HandleFunc("GET /api/me/annotations/{uuid}", requireUser(annotationsGetHandler))
 	http.HandleFunc("PUT /api/me/annotations/{uuid}/{id}", requireUser(annotationPutHandler))
+	http.HandleFunc("GET /api/me/annotations/{uuid}/koreader", requireUser(koreaderExportHandler))
+	http.HandleFunc("POST /api/me/annotations/{uuid}/koreader", requireUser(koreaderImportHandler))
 }
