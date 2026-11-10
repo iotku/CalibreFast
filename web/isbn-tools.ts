@@ -1,8 +1,8 @@
 // The metadata editor's ISBN tools: find ISBNs in the book's own files, and
 // look the book up online. Both only offer choices: a found ISBN goes into
-// the form when the admin clicks Use, and a lookup's answer becomes a source
-// like "current", picked field by field or all at once. Nothing is saved
-// until Apply.
+// the form when the admin clicks Use, and a lookup's answer, unless rejected,
+// becomes a source like "current", picked field by field or all at once.
+// Nothing is saved until Apply.
 //
 // Lookups are kept to a minimum: one source per request, only on a click.
 // Open Library first; Wikidata only if Open Library doesn't know the ISBN;
@@ -221,72 +221,125 @@ function mountLookup(host: IsbnToolsHost): { lookUpIsbn(isbn: string): void; sug
 
     input.value = host.currentIsbn();
 
-    // ---- The dialog: a source vs the current metadata ----------------------
+    // ---- The current lookup ----------------------------------------------
 
-    let shown: MetaSource | null = null;
-    function openDialog(meta: MetaSource): void {
-        shown = meta;
+    type Query = { isbn: string } | { title: string; author: string };
+    let query: Query | null = null;
+    // This lookup's: sources asked, sources kept, and what the others said.
+    let tried = new Set<Source>();
+    let keptNow = new Set<Source>();
+    let notes: string[] = [];
+    let busy = false;
+
+    // ---- Answers: kept in the form, or waiting in the dialog --------------
+    //
+    // A new answer waits in the dialog. Keeping it (Pick fields, Accept all)
+    // puts its pills under the fields, replacing that source's earlier
+    // answer; rejecting it (Reject, ✕, Esc, a click outside) leaves the form
+    // as it was, earlier answers included.
+
+    interface Answer {
+        source: Source;
+        meta: MetaSource;
+        cover: string;
+    }
+    /** Answers in the form, by source; they outlive a new lookup, as their pills do. */
+    const kept = new Map<Source, Answer>();
+    /** The answer in the dialog that hasn't been kept or rejected. */
+    let pending: Answer | null = null;
+    /** The answer the dialog shows (pending, or a kept one to compare again). */
+    let shown: Answer | null = null;
+
+    const rejectBtn = maybeId("lookup-reject", HTMLButtonElement);
+
+    function openDialog(answer: Answer, isNew: boolean): void {
+        shown = answer;
+        pending = isNew ? answer : null;
+        if (rejectBtn) rejectBtn.hidden = !isNew;
         const title = maybeId("lookup-title");
-        if (title) title.textContent = `${meta.Format} vs current metadata`;
-        maybeId("lookup-body")?.replaceChildren(...host.preview(meta));
+        if (title) title.textContent = `${answer.meta.Format} vs current metadata`;
+        maybeId("lookup-body")?.replaceChildren(...host.preview(answer.meta));
         if (!dialog.open) dialog.showModal();
     }
-    maybeId("lookup-accept", HTMLButtonElement)?.addEventListener("click", () => {
+
+    function keep(answer: Answer): void {
+        pending = null;
+        if (kept.get(answer.source) === answer) return;
+        host.addSource(answer.meta);
+        kept.set(answer.source, answer);
+        keptNow.add(answer.source);
+        if (answer.cover) {
+            document.dispatchEvent(new CustomEvent<CoverCandidate[]>("cf:cover-candidates", { detail: [{ source: answer.source, url: answer.cover }] }));
+        }
+        renderBar();
+    }
+
+    maybeId("lookup-keep", HTMLButtonElement)?.addEventListener("click", () => {
+        if (shown) keep(shown);
         dialog.close();
-        if (shown) host.acceptAll(shown);
     });
+    maybeId("lookup-accept", HTMLButtonElement)?.addEventListener("click", () => {
+        if (!shown) return;
+        keep(shown);
+        dialog.close();
+        host.acceptAll(shown.meta);
+    });
+    rejectBtn?.addEventListener("click", () => dialog.close());
     // Click outside the dialog box (on the backdrop) closes it.
     dialog.addEventListener("click", (e) => {
         const r = dialog.getBoundingClientRect();
         if (e.clientX < r.left || e.clientX > r.right || e.clientY < r.top || e.clientY > r.bottom) dialog.close();
     });
+    // However it closed, an answer that wasn't kept is rejected.
+    dialog.addEventListener("close", () => {
+        if (!pending) return;
+        notes.push(`${SOURCE_NAMES[pending.source]}: rejected`);
+        pending = null;
+        renderBar();
+    });
 
     // ---- Asking the sources ------------------------------------------------
 
-    type Query = { isbn: string } | { title: string; author: string };
-    let query: Query | null = null;
-    let tried = new Set<Source>();
-    const found = new Map<Source, MetaSource>();
-    let notes: string[] = [];
-    let hasCover = false;
-    let busy = false;
-
-    /** Asks one source; true if it knew the book. */
-    async function ask(source: Source): Promise<boolean> {
-        if (!query) return false;
+    /** Asks one source for its answer. */
+    async function ask(source: Source): Promise<Answer | null> {
+        if (!query) return null;
         tried.add(source);
         const r = await api<LookupResult>("GET", `/metadata/lookup?${new URLSearchParams({ source, ...query })}`);
         if (!r.option) {
             notes.push(`${SOURCE_NAMES[source]}: ${r.error || "no match"}`);
-            return false;
+            return null;
         }
-        const meta: MetaSource = { ...r.option, External: true };
-        host.addSource(meta);
-        found.set(source, meta);
-        if (r.cover) {
-            document.dispatchEvent(new CustomEvent<CoverCandidate[]>("cf:cover-candidates", { detail: [{ source: r.source, url: r.cover }] }));
-            hasCover = true;
-        }
-        return true;
+        return { source, meta: { ...r.option, External: true }, cover: r.cover ?? "" };
     }
 
-    /** What's been found so far, in words. */
+    /** Shows a new answer in the dialog. */
+    function offer(answer: Answer): void {
+        renderBar(`Found on ${SOURCE_NAMES[answer.source]}.`);
+        openDialog(answer, true);
+    }
+
+    const names = (sources: Source[]): string => sources.map((s) => SOURCE_NAMES[s]).join(" and ");
+
+    /** How this lookup went and what's in the form, in words. */
     function summary(): string {
-        if (!found.size) return "No match.";
-        const names = [...found.keys()].map((s) => SOURCE_NAMES[s]).join(" and ");
-        return `Found on ${names}: the values are under each field` +
-            (hasCover ? ", and Open Library's cover is in the cover picker (click the book's cover)." : ".");
+        const parts = notes.length ? [`${notes.join("; ")}.`] : [];
+        const now = [...kept.keys()].filter((s) => keptNow.has(s));
+        const earlier = [...kept.keys()].filter((s) => !keptNow.has(s));
+        if (now.length) parts.push(`Values from ${names(now)} are under each field.`);
+        if (earlier.length) parts.push(`Values from an earlier ${names(earlier)} lookup are still under each field.`);
+        if (kept.get("openlibrary")?.cover) parts.push("Open Library's cover is in the cover picker (click the book's cover).");
+        return parts.join(" ") || "No match.";
     }
 
-    /** Shows text (by default, what's been found), with the sources still to try. */
+    /** Shows text (by default, the summary), with the sources still to try. */
     function renderBar(text = summary(), isError = false): void {
         bar.hidden = false;
-        barStatus.textContent = notes.length ? `${text} (${notes.join("; ")})` : text;
+        barStatus.textContent = text;
         barStatus.classList.toggle("error", isError);
         const buttons: HTMLButtonElement[] = [];
-        for (const [source, meta] of found) {
-            const b = el("button", { type: "button", className: "meta-source-btn" }, `Compare ${SOURCE_NAMES[source]}`);
-            b.addEventListener("click", () => openDialog(meta));
+        for (const answer of kept.values()) {
+            const b = el("button", { type: "button", className: "meta-source-btn" }, `Compare ${SOURCE_NAMES[answer.source]}`);
+            b.addEventListener("click", () => openDialog(answer, false));
             buttons.push(b);
         }
         const others: Source[] = [];
@@ -300,9 +353,9 @@ function mountLookup(host: IsbnToolsHost): { lookUpIsbn(isbn: string): void; sug
                 : "Sends the ISBN to Wikidata";
             b.addEventListener("click", () => void run(async () => {
                 renderBar(`Asking ${SOURCE_NAMES[source]}…`);
-                const hit = await ask(source);
-                renderBar();
-                if (hit) openDialog(found.get(source)!);
+                const answer = await ask(source);
+                if (answer) offer(answer);
+                else renderBar();
             }));
             buttons.push(b);
         }
@@ -329,17 +382,16 @@ function mountLookup(host: IsbnToolsHost): { lookUpIsbn(isbn: string): void; sug
         void run(async () => {
             query = q;
             tried = new Set();
-            found.clear();
+            keptNow = new Set();
             notes = [];
-            hasCover = false;
             renderBar("isbn" in q ? `Looking up ${q.isbn} on Open Library…` : `Searching Open Library for “${q.title}”…`);
-            let hit: Source | null = (await ask("openlibrary")) ? "openlibrary" : null;
-            if (!hit && "isbn" in q) {
+            let answer = await ask("openlibrary");
+            if (!answer && "isbn" in q) {
                 renderBar("Not on Open Library; asking Wikidata…");
-                if (await ask("wikidata")) hit = "wikidata";
+                answer = await ask("wikidata");
             }
-            renderBar();
-            if (hit) openDialog(found.get(hit)!);
+            if (answer) offer(answer);
+            else renderBar();
         });
     }
 

@@ -1434,7 +1434,8 @@
                 </footer>
             </dialog>
 
-            <!-- A lookup's metadata vs the current metadata -->
+            <!-- A lookup's metadata vs the current metadata. Closing it (✕, Esc,
+                 a click outside) rejects a new answer (web/isbn-tools.ts). -->
             <dialog id="lookup-dialog" class="compare-dialog" aria-labelledby="lookup-title">
                 <header class="compare-header">
                     <h2 id="lookup-title">Found online</h2>
@@ -1443,7 +1444,8 @@
                 <div id="lookup-body"></div>
                 <footer class="compare-footer">
                     <span>The cover isn't changed.</span>
-                    <form method="dialog"><button class="btn-secondary">Pick fields in the form</button></form>
+                    <button type="button" id="lookup-reject" class="btn-secondary" title="Wrong book: don't offer these values in the form">Reject</button>
+                    <button type="button" id="lookup-keep" class="btn-secondary">Pick fields in the form</button>
                     <button type="button" id="lookup-accept" class="btn-primary">Accept all and apply</button>
                 </footer>
             </dialog>
