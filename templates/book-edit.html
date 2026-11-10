@@ -90,7 +90,8 @@
             }
 
             /* ── Cover dialog (web/cover-dialog.ts) ── */
-            .cover-dialog {
+            /* Wider than the other dialogs (.compare-dialog, below) */
+            .compare-dialog.cover-dialog {
                 width: min(1100px, calc(100vw - 32px));
                 max-height: 92vh;
             }
@@ -151,9 +152,18 @@
                 color: #e59999;
             }
 
+            /* The choices beside the large view. --cover-h is the room a
+               large cover has without the dialog scrolling. */
+            .cover-layout {
+                --cover-h: max(240px, calc(92vh - 350px));
+                display: grid;
+                grid-template-columns: 290px minmax(0, 1fr);
+                gap: 14px;
+                align-items: start;
+            }
+
             /* One or two choices, large */
             .cover-view {
-                margin-bottom: 16px;
                 padding: 12px;
                 background: rgba(0, 0, 0, 0.25);
                 border: 1px solid var(--border);
@@ -167,7 +177,6 @@
             .cover-view-head {
                 display: flex;
                 justify-content: flex-end;
-                gap: 8px;
                 margin-bottom: 10px;
             }
 
@@ -178,7 +187,8 @@
 
             .cover-view-items {
                 display: grid;
-                grid-template-columns: repeat(auto-fit, minmax(260px, 1fr));
+                grid-auto-flow: column;
+                grid-auto-columns: minmax(0, 1fr);
                 gap: 16px;
             }
 
@@ -193,8 +203,10 @@
 
             .cover-view-frame {
                 max-width: 100%;
-                max-height: 62vh;
+                max-height: var(--cover-h);
                 overflow: auto;
+                scrollbar-width: thin;
+                scrollbar-color: var(--border) transparent;
                 background: #111;
                 border-radius: 6px;
             }
@@ -202,7 +214,7 @@
             .cover-view-frame img {
                 display: block;
                 max-width: 100%;
-                max-height: 62vh;
+                max-height: var(--cover-h);
             }
 
             /* Pixel for pixel: the frame scrolls */
@@ -235,18 +247,22 @@
             .cover-choices {
                 list-style: none;
                 margin: 0;
-                padding: 0;
+                padding: 2px;
                 display: grid;
-                grid-template-columns: repeat(auto-fill, minmax(170px, 1fr));
-                gap: 12px;
+                grid-template-columns: repeat(2, minmax(0, 1fr));
+                gap: 8px;
+                max-height: calc(var(--cover-h) + 150px);
+                overflow-y: auto;
+                scrollbar-width: thin;
+                scrollbar-color: var(--border) transparent;
             }
 
             .cover-card {
                 width: 100%;
                 display: flex;
                 flex-direction: column;
-                gap: 4px;
-                padding: 8px;
+                gap: 2px;
+                padding: 6px;
                 font: inherit;
                 text-align: left;
                 color: var(--text);
@@ -267,7 +283,7 @@
 
             .cover-card img {
                 width: 100%;
-                height: 240px;
+                height: 150px;
                 object-fit: contain;
                 background: #111;
                 border-radius: 4px;
@@ -284,13 +300,26 @@
                 color: var(--muted);
             }
 
-            @media (max-width: 480px) {
+            /* Narrow: the choices are a strip above the large view */
+            @media (max-width: 800px) {
+                .cover-layout {
+                    --cover-h: 56vh;
+                    grid-template-columns: minmax(0, 1fr);
+                }
+
                 .cover-choices {
-                    grid-template-columns: repeat(2, minmax(0, 1fr));
+                    display: flex;
+                    max-height: none;
+                    overflow-x: auto;
+                    padding-bottom: 8px;
+                }
+
+                .cover-choices li {
+                    flex: 0 0 120px;
                 }
 
                 .cover-card img {
-                    height: 180px;
+                    height: 120px;
                 }
             }
 
@@ -1686,14 +1715,16 @@
                         <button type="button" id="cover-revert" class="cover-tool cover-tool-revert" hidden>↺ Revert to previous cover</button>
                     </div>
                     <p id="cover-status" class="cover-status" role="status"></p>
-                    <section id="cover-view" class="cover-view" aria-label="Selected covers" hidden>
-                        <div class="cover-view-head">
-                            <button type="button" id="cover-actual" class="cover-tool" aria-pressed="false" title="One image pixel per screen pixel">Actual pixels</button>
-                            <button type="button" id="cover-view-close" class="cover-tool">Hide</button>
-                        </div>
-                        <div id="cover-view-items" class="cover-view-items"></div>
-                    </section>
-                    <ul id="cover-choices" class="cover-choices"></ul>
+                    <!-- Every choice in a column (a strip on narrow screens); the selected one or two, large, beside it -->
+                    <div class="cover-layout">
+                        <ul id="cover-choices" class="cover-choices"></ul>
+                        <section id="cover-view" class="cover-view" aria-label="Selected covers" hidden>
+                            <div class="cover-view-head">
+                                <button type="button" id="cover-actual" class="cover-tool" aria-pressed="false" title="One image pixel per screen pixel">Actual pixels</button>
+                            </div>
+                            <div id="cover-view-items" class="cover-view-items"></div>
+                        </section>
+                    </div>
                 </div>
             </dialog>
         </main>

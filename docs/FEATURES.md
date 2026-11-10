@@ -100,7 +100,7 @@ Authors are shown by name everywhere ("Alan A. A. Donovan & Brian W. Kernighan")
   - ↑/↓ highlight a suggestion; Enter, Tab or a click takes it.
 - **Cover dialog:** clicking the cover (it's usually right already) opens every cover the book could have, large enough to compare quality, each with its size in pixels and bytes.
   - **Choices:** the current cover and the first 5 pages of the book's PDF and EPUB, loaded when the dialog opens. Also **Upload image…**, and **Look up cover online**: with an ISBN in the lookup box (the book's own, or one found in its files), it asks Open Library for that ISBN's cover, and it also shows the cover from a kept lookup.
-  - **Comparing:** click a cover to see it large; click another to see the two side by side. An upload or an online cover is shown next to the current one. **Actual pixels** shows them pixel for pixel.
+  - **Comparing:** the current cover starts shown large. Click another to see the two side by side (a third replaces the older one; clicking one again hides it). An upload or an online cover is shown next to the current one. **Actual pixels** shows them pixel for pixel.
   - **Use this cover** saves it right away, without **Apply Changes**. **Revert** brings back the previous one.
 - **Apply Changes** saves and opens the book page. It's off until you change a field (what the editor fills in or tidies when it loads doesn't count), and off again if you undo your changes.
 

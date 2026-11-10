@@ -4,8 +4,9 @@
 //     EPUB (loaded when the dialog first opens), an uploaded image, and Open
 //     Library's cover for the ISBN in the lookup box. That one goes to another
 //     site (through the server), so only on a click.
-//   - Clicking a choice shows it large; a second click on another shows the
-//     two side by side. "Actual pixels" shows them pixel for pixel.
+//   - The choices are a column; the current cover starts shown large beside it.
+//     Clicking a choice shows it large too, two at most, side by side (a
+//     third replaces the older one). "Actual pixels" shows them pixel for pixel.
 //   - "Use this cover" saves at once (covers don't wait for Apply). Revert
 //     brings back the cover before the last change.
 
@@ -53,7 +54,8 @@ export function mountCoverDialog({ uuid, opener, isbnInput, onChanged }: CoverDi
         status.textContent = text;
         status.classList.toggle("error", isError);
     };
-    const describe = (c: CoverChoice): string => `${c.width} × ${c.height} px · ${formatBytes(c.bytes)}`;
+    const pixels = (c: CoverChoice): string => `${c.width} × ${c.height} px`;
+    const describe = (c: CoverChoice): string => `${pixels(c)} · ${formatBytes(c.bytes)}`;
 
     // ---- Choices and the large view -------------------------------------------
 
@@ -69,7 +71,8 @@ export function mountCoverDialog({ uuid, opener, isbnInput, onChanged }: CoverDi
             { type: "button", className: "cover-card", title: `Show ${choice.label} large` },
             el("img", { src: choice.src, alt: choice.label }),
             el("span", { className: "cover-card-label" }, choice.label),
-            el("span", { className: "cover-card-size" }, describe(choice)),
+            el("span", { className: "cover-card-size" }, pixels(choice)),
+            el("span", { className: "cover-card-size" }, formatBytes(choice.bytes)),
         );
         card.setAttribute("aria-pressed", "false");
         card.addEventListener("click", () => toggle(choice));
@@ -118,10 +121,6 @@ export function mountCoverDialog({ uuid, opener, isbnInput, onChanged }: CoverDi
         actual = !actual;
         renderView();
     });
-    maybeId("cover-view-close", HTMLButtonElement)?.addEventListener("click", () => {
-        selected = [];
-        renderView();
-    });
 
     // ---- Saving -------------------------------------------------------------------
 
@@ -135,7 +134,8 @@ export function mountCoverDialog({ uuid, opener, isbnInput, onChanged }: CoverDi
         dialog.classList.add("busy");
         try {
             const message = await work();
-            currentStale = true; // the "current" choice is reloaded next time
+            currentStale = true; // the "current" choice is reloaded next time,
+            selected = []; // and shown large again
             dialog.close();
             onChanged(message);
         } catch (err) {
@@ -169,6 +169,7 @@ export function mountCoverDialog({ uuid, opener, isbnInput, onChanged }: CoverDi
         if (current) remove(current);
         current = fresh;
         add(current, { first: true });
+        if (current && !selected.length) selected = [current]; // a click on another compares with it
         renderView();
     }
 
@@ -197,7 +198,7 @@ export function mountCoverDialog({ uuid, opener, isbnInput, onChanged }: CoverDi
     }
 
     const hint = (): string =>
-        cards.size ? "Click a cover to see it large; click another to compare the two." : "No covers to show: upload one.";
+        cards.size ? "Click a cover to see it large next to the one shown; click it again to hide it." : "No covers to show: upload one.";
 
     fileEl.addEventListener("change", async () => {
         const file = fileEl.files?.[0];
@@ -271,7 +272,7 @@ export function mountCoverDialog({ uuid, opener, isbnInput, onChanged }: CoverDi
 
     opener.addEventListener("click", () => {
         if (!dialog.open) dialog.showModal();
-        say(hint());
+        say(filesLoaded ? hint() : "Loading the book's covers…");
         void fetchCoverStatus(uuid).then((s) => (revertBtn.hidden = !s.hasBackup));
         void (async () => {
             if (currentStale) await loadCurrent();
