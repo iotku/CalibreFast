@@ -843,7 +843,8 @@
                 font-size: 1rem;
             }
 
-            #compare-body {
+            #compare-body,
+            #lookup-body {
                 padding: 6px 18px 18px;
             }
 
@@ -1012,6 +1013,12 @@
                 color: var(--accent);
                 background: rgba(200, 169, 110, 0.12);
                 border-color: var(--accent);
+            }
+
+            .field-note {
+                margin: 6px 0 0;
+                font-size: 0.8rem;
+                color: var(--muted);
             }
 
             .date-raw-note {
@@ -1317,7 +1324,8 @@
 
                         <fieldset class="meta-field">
                             <legend>Author(s)</legend>
-                            <input type="text" name="creators" class="meta-input" placeholder="e.g. Alan A. A. Donovan, Brian W. Kernighan" />
+                            <input type="text" name="creators" class="meta-input" placeholder="e.g. Alan A. A. Donovan & Brian W. Kernighan" />
+                            <p id="creators-saved-as" class="field-note" hidden></p>
                             <div class="meta-source-buttons" data-field="creators"></div>
                         </fieldset>
                     </div>

@@ -3,6 +3,7 @@ import { attachSuggest } from "./suggest.js";
 import { createDescriptionEditor } from "./description.js";
 import { errorMessage, maybeId } from "./dom.js";
 import { isbnDigits, mountIsbnTools } from "./isbn-tools.js";
+import { joinAuthors, parseAuthors } from "./authors.js";
 import type { MetaSource } from "./types.js";
 
 type FieldKind = "string" | "date" | "list" | "identifiers";
@@ -59,7 +60,8 @@ function fieldValue(meta: MetaSource, key: FieldKey, kind: FieldKind): string {
       return typeof v === "string" ? v : "";
     }
     case "list":
-      return metaList(meta, key).join(", ");
+      // Authors' names can hold commas ("Donovan, Alan"): "A & B", as Calibre.
+      return key === "creators" ? joinAuthors(metaList(meta, key)) : metaList(meta, key).join(", ");
     case "identifiers":
       return (meta.Identifiers || [])
         .map((id) => `${id.Scheme}: ${id.Value}`)
@@ -665,7 +667,8 @@ export function computeChanges(current: MetaSource | null, values: FormValues): 
   for (const { key, kind } of FIELDS) {
     const label = FIELD_LABELS[key] || key;
     if (kind === "list") {
-      const d = listDiff(metaList(current, key), parseList(values[key as TextKey]));
+      const after = key === "creators" ? parseAuthors(values.creators) : parseList(values[key as TextKey]);
+      const d = listDiff(metaList(current, key), after);
       if (d.added.length || d.removed.length || d.reordered) changes.push({ key, label, kind: "list", ...d });
     } else if (kind === "identifiers") {
       const fmt = (scheme: string, value: string): string => `${scheme || "(no type)"}: ${value}`;
@@ -754,7 +757,20 @@ export async function mountMetadataEditor(uuid: string, form: HTMLFormElement): 
 
     // Library-backed suggestions for the plain list/single-value fields.
     const creatorsInput = form.querySelector<HTMLInputElement>('[name="creators"]');
-    if (creatorsInput) attachSuggest(creatorsInput, { category: "author", multi: true });
+    if (creatorsInput) {
+      attachSuggest(creatorsInput, { category: "author", multi: true, separators: "&;" });
+      // How the field will be saved, when that differs from what's typed
+      // ("Hailu, Gebreyesus; Negash, Ghirmai" → two authors, first name first).
+      const savedAs = maybeId("creators-saved-as");
+      const showSavedAs = (): void => {
+        if (!savedAs) return;
+        const typed = creatorsInput.value.trim().replace(/\s+/g, " ");
+        const saved = joinAuthors(parseAuthors(typed));
+        savedAs.hidden = !typed || saved === typed;
+        savedAs.textContent = `Saved as: ${saved}`;
+      };
+      creatorsInput.addEventListener("input", showSavedAs);
+    }
     const publisherInput = form.querySelector<HTMLInputElement>('[name="publisher"]');
     if (publisherInput) attachSuggest(publisherInput, { category: "publisher" });
 
@@ -779,7 +795,7 @@ export async function mountMetadataEditor(uuid: string, form: HTMLFormElement): 
       currentIsbn: () => form.querySelector<HTMLInputElement>('[name="identifier_isbn"]')?.value.trim() ?? "",
       titleAndAuthor: () => ({
         title: titleInput?.value.trim() ?? "",
-        author: parseList(creatorsInput?.value ?? "")[0] ?? "",
+        author: parseAuthors(creatorsInput?.value)[0] ?? "",
       }),
       useIsbn: editor.useIsbn,
       addSource: editor.addSource,

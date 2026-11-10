@@ -12,6 +12,8 @@ See also: [FEATURES.md](FEATURES.md) for behaviour, [SECURITY.md](SECURITY.md) f
 
 On startup CalibreFast queries `metadata.db` and writes paginated JSON (`pages/page1.json`, `page2.json`, …, `booksPerPage` = 60 books each). The frontend fetches these directly as static files, so browsing never hits the database. `pages/page1.json` is regenerated after uploads and edits.
 
+Each book's `authors` is its authors' names in Calibre's order, `A & B` (`bookAuthorsSQL` in `authors.go`), in every grid: not `books.author_sort`, which is the "Last, First" sort form. `authors.go`'s `parseAuthors` reads author lists (editor, uploads); `web/authors.ts` has the same rules for the editor.
+
 `index.html` asks for `pageN.json?v=<pagesVersion>`, a stamp that changes whenever the files are rewritten, so with a matching `v` they're cached for good (`servePages`). Anything else is revalidated.
 
 ## Filtered views, overview pages and search

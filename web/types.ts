@@ -5,7 +5,8 @@
 export interface Book {
     uuid: string;
     title: string;
-    author_sort: string;
+    /** Author names, "A & B" (Go: bookAuthorsSQL). */
+    authors: string;
     series_index: number;
     pubdate: string;
     path: string;
