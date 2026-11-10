@@ -13,7 +13,7 @@
             <option value="reading" {{ if eq .Status "reading" }}selected{{ end }}>Reading</option>
             <option value="finished" {{ if eq .Status "finished" }}selected{{ end }}>Finished</option>
         </select>
-        <span class="book-status-note">{{ if and .Status (eq .StatusSource "auto") }}set by the reader{{ end }}</span>
+        <span class="book-status-note" data-progress="{{ .Progress }}">{{ if .Progress }}{{ .Progress }}{{ else if and .Status (eq .StatusSource "auto") }}set by the reader{{ end }}</span>
     </div>
     <details class="book-shelves">
         <summary>Shelves<span class="book-shelves-count">{{ if .OnShelves }} ({{ .OnShelves }}){{ end }}</span></summary>

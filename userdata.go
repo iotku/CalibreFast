@@ -13,6 +13,7 @@ import (
 	"net/url"
 	"strconv"
 	"strings"
+	"time"
 )
 
 // ---------------------------------------------------------------------------
@@ -305,6 +306,7 @@ type BookUserActionsData struct {
 	Favorite     bool
 	Status       string
 	StatusSource string
+	Progress     string // where the user is, e.g. "Page 5 of 25 · synced 2 minutes ago" (bookprogress.go)
 	Shelves      []shelfMark
 	OnShelves    int
 }
@@ -321,6 +323,9 @@ func bookUserActionsHandler(w http.ResponseWriter, r *http.Request) {
 		var one int
 		data.Favorite = appDB.QueryRow(`SELECT 1 FROM favorites WHERE user_id = ? AND book_uuid = ?`, u.ID, uuid).Scan(&one) == nil
 		data.Status, data.StatusSource = readStatus(u.ID, uuid)
+		if p, ok := latestProgress(u.ID, uuid)[uuid]; ok {
+			data.Progress = progressNote(uuid, p, time.Now())
+		}
 		data.Shelves = shelfMarks(u, uuid)
 		for _, s := range data.Shelves {
 			if s.Has {

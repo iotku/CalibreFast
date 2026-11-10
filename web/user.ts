@@ -73,7 +73,8 @@ function bind(controls: HTMLElement): void {
         try {
             const res = await api<StatusResponse>("PUT", `/api/me/books/${uuid}/status`, { status: status.value });
             current = res.status;
-            if (note) note.textContent = res.status && res.status_source === "auto" ? "set by the reader" : "";
+            if (note) note.textContent = note.dataset["progress"] || (res.status && res.status_source === "auto" ? "set by the reader" : "");
+            document.dispatchEvent(new CustomEvent("cf:status", { detail: { uuid, status: res.status } })); // the grid re-marks its cards
         } catch {
             status.value = current;
         }

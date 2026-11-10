@@ -325,6 +325,28 @@ input[type="number"],
     }
 }
 
+/* A book being read: a ring, and how far along at the bottom (reading.ts) */
+.book.is-reading {
+    box-shadow:
+        0 0 0 2px var(--accent, #c8a96e),
+        var(--shadow-small);
+}
+
+.book-progress {
+    position: absolute;
+    inset: auto 0 0;
+    z-index: 3; /* over the hover overlay */
+    height: 5px;
+    background: rgba(0, 0, 0, 0.6);
+    pointer-events: none;
+}
+
+.book-progress > span {
+    display: block;
+    height: 100%;
+    background: var(--accent, #c8a96e);
+}
+
 .cover-wrapper {
     position: relative;
     aspect-ratio: 2 / 3;

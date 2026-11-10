@@ -200,6 +200,7 @@ func bookmarkDeleteHandler(w http.ResponseWriter, r *http.Request) {
 }
 
 func registerProgressRoutes() {
+	http.HandleFunc("GET /api/me/reading", requireUser(readingHandler))
 	http.HandleFunc("GET /api/me/progress/{uuid}", requireUser(progressGetHandler))
 	http.HandleFunc("PUT /api/me/progress/{uuid}", requireUser(progressPutHandler))
 	http.HandleFunc("GET /api/me/bookmarks/{uuid}", requireUser(bookmarksGetHandler))
