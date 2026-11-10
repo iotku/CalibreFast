@@ -129,7 +129,7 @@ func initCalibreDB() {
 
 type Book struct {
 	Title        string  `json:"title"`
-	AuthorSort   string  `json:"author_sort"`
+	Authors      string  `json:"authors"` // names, "A & B" (bookAuthorsSQL)
 	SeriesIndex  float64 `json:"series_index"`
 	PubDate      string  `json:"pubdate"`
 	Path         string  `json:"path"` // e.g "Author Name/Book Title" not direct link to specific file format
@@ -316,7 +316,7 @@ func searchHandler(w http.ResponseWriter, r *http.Request) {
 SELECT
     b.uuid,
     b.title,
-    GROUP_CONCAT(COALESCE(a.sort, a.name, ''), ' & ') as author_sort,
+    ` + bookAuthorsSQL + ` AS authors,
     b.pubdate,
     b.path,
     b.last_modified` + searchWhere + `
@@ -362,7 +362,7 @@ func encodeBooksJSONFromRows(rows *sql.Rows, w http.ResponseWriter) error {
 	books := make([]Book, 0)
 	for rows.Next() {
 		var b Book
-		if err := rows.Scan(&b.UUID, &b.Title, &b.AuthorSort, &b.PubDate, &b.Path, &b.LastModified); err != nil {
+		if err := rows.Scan(&b.UUID, &b.Title, &b.Authors, &b.PubDate, &b.Path, &b.LastModified); err != nil {
 			continue
 		}
 		b.LastModified = coverStamp(b.LastModified)
@@ -683,30 +683,13 @@ func (l *identifierList) UnmarshalJSON(data []byte) error {
 	return nil
 }
 
+// parseCreatorsString reads the editor's authors field (parseAuthors), with
+// "Unknown" for none, as Calibre does.
 func parseCreatorsString(s string) []string {
-	s = strings.TrimSpace(s)
-	if s == "" {
-		return []string{"Unknown"}
+	if creators := parseAuthors(s); len(creators) > 0 {
+		return creators
 	}
-	var raw []string
-	if strings.Contains(s, ",") {
-		raw = strings.Split(s, ",")
-	} else if strings.Contains(s, " & ") {
-		raw = strings.Split(s, " & ")
-	} else {
-		raw = []string{s}
-	}
-	creators := make([]string, 0, len(raw))
-	for _, a := range raw {
-		trimmed := strings.TrimSpace(a)
-		if trimmed != "" {
-			creators = append(creators, trimmed)
-		}
-	}
-	if len(creators) == 0 {
-		return []string{"Unknown"}
-	}
-	return creators
+	return []string{"Unknown"}
 }
 
 func parseSubjectsString(s string) []string {
@@ -914,7 +897,7 @@ func generatePages() {
 	}
 
 	// create paginated entries as json for each book in metadata.db (booksPerPage per page)
-	rows, err := db.Query("SELECT title, author_sort, series_index, pubdate, path, uuid, last_modified FROM books ORDER BY timestamp DESC")
+	rows, err := db.Query("SELECT b.title, " + bookAuthorsSQL + ", b.series_index, b.pubdate, b.path, b.uuid, b.last_modified FROM books b ORDER BY b.timestamp DESC")
 	if err != nil {
 		panic(err)
 	}
@@ -933,7 +916,7 @@ func generatePages() {
 
 		err = rows.Scan(
 			&book.Title,
-			&book.AuthorSort,
+			&book.Authors,
 			&book.SeriesIndex,
 			&book.PubDate,
 			&book.Path,

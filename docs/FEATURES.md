@@ -48,6 +48,17 @@ Groups combine values that mean the same thing without editing any books. For ex
   - The previous version is kept as `.bak`.
   - If the file can't be read, grouping goes read-only rather than overwriting it.
 
+## Authors
+
+Authors are shown by name everywhere ("Alan A. A. Donovan & Brian W. Kernighan"): the grids, the book popup and the editor. The "Last, First" form is only used for sorting.
+
+- **Reading a list of authors** (the editor's field, an uploaded file's creators):
+  - `;` and `&` separate authors: `Hailu, Gebreyesus; Negash, Ghirmai; Chrisman, Laura` is three authors.
+  - Without them, commas separate authors only if every part is a full name (`Alan Donovan, Brian Kernighan`). Otherwise the comma is inside one name (`Donovan, Alan`).
+  - `Last, First` becomes `First Last`. Suffixes (`King, Jr.`) and names with two commas are left alone.
+  - Repeats are dropped.
+- **The editor** writes several authors as `A & B`, as Calibre does. When what you typed would be saved differently, a **Saved as:** line under the field shows how. **Compare changes** shows it too.
+
 ## Search
 
 `/search?q=…` matches titles and authors, using the same grid and navigation as the library.

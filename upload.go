@@ -503,6 +503,8 @@ func processUploadGroup(files []*multipart.FileHeader) UploadResult { // TODO: H
 				FileName: fh.Filename,
 			}
 		}
+		// "Last, First; Last, First" in one creator becomes separate authors.
+		meta.Creators = normalizeAuthors(meta.Creators)
 		metas = append(metas, meta)
 
 		tmp, err := os.CreateTemp("", "calibrefast-upload-*."+ext)
@@ -633,9 +635,9 @@ func cleanupTemps(entries []formatEntry) {
 // generatePage1 rewrites pages/page1.json with the booksPerPage most recently added books.
 func generatePage1() {
 	rows, err := calibreDB.Query(`
-		SELECT title, author_sort, series_index, pubdate, path, uuid, last_modified
-		FROM books
-		ORDER BY timestamp DESC
+		SELECT b.title, `+bookAuthorsSQL+`, b.series_index, b.pubdate, b.path, b.uuid, b.last_modified
+		FROM books b
+		ORDER BY b.timestamp DESC
 		LIMIT ?`, booksPerPage)
 	if err != nil {
 		log.Println("generatePage1: query failed:", err)
@@ -646,7 +648,7 @@ func generatePage1() {
 	books := make([]Book, 0, booksPerPage)
 	for rows.Next() {
 		var b Book
-		if err := rows.Scan(&b.Title, &b.AuthorSort, &b.SeriesIndex, &b.PubDate, &b.Path, &b.UUID, &b.LastModified); err != nil {
+		if err := rows.Scan(&b.Title, &b.Authors, &b.SeriesIndex, &b.PubDate, &b.Path, &b.UUID, &b.LastModified); err != nil {
 			continue
 		}
 		uuidPathIndex.Store(b.UUID, b.Path)

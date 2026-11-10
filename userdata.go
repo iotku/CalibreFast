@@ -33,13 +33,10 @@ func booksByUUIDs(uuids []string) ([]Book, error) {
 		return out, nil
 	}
 	rows, err := calibreDB.Query(`
-		SELECT b.uuid, b.title, COALESCE(GROUP_CONCAT(DISTINCT a.sort), ''),
+		SELECT b.uuid, b.title, `+bookAuthorsSQL+`,
 		       b.pubdate, b.path, b.last_modified
 		FROM books b
-		LEFT JOIN books_authors_link bal ON bal.book = b.id
-		LEFT JOIN authors a ON a.id = bal.author
-		WHERE b.uuid IN (`+placeholders(len(uuids))+`)
-		GROUP BY b.id`, toArgs(uuids)...)
+		WHERE b.uuid IN (`+placeholders(len(uuids))+`)`, toArgs(uuids)...)
 	if err != nil {
 		return nil, err
 	}
@@ -47,7 +44,7 @@ func booksByUUIDs(uuids []string) ([]Book, error) {
 	byUUID := map[string]Book{}
 	for rows.Next() {
 		var b Book
-		if err := rows.Scan(&b.UUID, &b.Title, &b.AuthorSort, &b.PubDate, &b.Path, &b.LastModified); err != nil {
+		if err := rows.Scan(&b.UUID, &b.Title, &b.Authors, &b.PubDate, &b.Path, &b.LastModified); err != nil {
 			continue
 		}
 		b.LastModified = coverStamp(b.LastModified)

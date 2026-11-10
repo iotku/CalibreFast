@@ -7,8 +7,9 @@
  * Enter keeps doing whatever the field normally does with the typed text.
  * Arrow keys pick a suggestion; Enter/Tab/click accept it.
  *
- * multi: the field holds a comma-separated list; only the item after the last
- * comma is completed, and items already present aren't suggested.
+ * multi: the field holds a list (separated by commas, or by the characters in
+ * separators); only the item after the last separator is completed, and
+ * items already present aren't suggested.
  */
 
 import type { ValueSuggestion } from "./types.js";
@@ -16,8 +17,10 @@ import type { ValueSuggestion } from "./types.js";
 export interface SuggestOptions {
     /** Category key on the server: "author", "publisher", "tag", "language". */
     category: string;
-    /** The field holds a comma-separated list. */
+    /** The field holds a list. */
     multi?: boolean;
+    /** Characters that separate a list's items (default ","). */
+    separators?: string;
     /** Values not to suggest (e.g. chips already added). */
     exclude?: () => string[];
     /** Called after a suggestion is accepted. */
@@ -47,7 +50,7 @@ let uid = 0;
 
 export function attachSuggest(
     input: HTMLInputElement,
-    { category, multi = false, exclude = () => [], onPick = null }: SuggestOptions,
+    { category, multi = false, separators = ",", exclude = () => [], onPick = null }: SuggestOptions,
 ): void {
     const id = `suggest-${++uid}`;
     const list = document.createElement("ul");
@@ -76,9 +79,11 @@ export function attachSuggest(
     let active = -1;
     let picking = false; // our own input event after a pick shouldn't reopen
 
+    /** Where the last item starts (after the last separator). */
+    const itemStart = (v: string): number => Math.max(...[...separators].map((c) => v.lastIndexOf(c))) + 1;
     const token = (): string => {
         const v = input.value;
-        return multi ? v.slice(v.lastIndexOf(",") + 1) : v;
+        return multi ? v.slice(itemStart(v)) : v;
     };
 
     function close(): void {
@@ -104,7 +109,7 @@ export function attachSuggest(
     function pick(value: string): void {
         if (multi) {
             const v = input.value;
-            const head = v.slice(0, v.lastIndexOf(",") + 1);
+            const head = v.slice(0, itemStart(v));
             input.value = (head ? `${head.trimEnd()} ` : "") + value;
         } else {
             input.value = value;
@@ -127,7 +132,10 @@ export function attachSuggest(
 
         const taken = new Set(exclude().map(lower));
         if (multi) {
-            for (const t of input.value.split(",").slice(0, -1)) taken.add(lower(t.trim()));
+            const v = input.value;
+            for (const t of v.slice(0, itemStart(v)).split(new RegExp(`[${separators.replace(/[\]\\^-]/g, "\\$&")}]`))) {
+                taken.add(lower(t.trim()));
+            }
         }
         const starts: ValueSuggestion[] = [];
         const contains: ValueSuggestion[] = [];

@@ -363,14 +363,11 @@ func filteredBooksHandler(w http.ResponseWriter, r *http.Request, c *category) {
 	offset := (page - 1) * booksPerPage
 
 	query := fmt.Sprintf(`
-		SELECT b.uuid, b.title,
-			GROUP_CONCAT(DISTINCT a.sort) AS author_sort,
+		SELECT b.uuid, b.title, `+bookAuthorsSQL+` AS authors,
 			b.pubdate, b.path, b.last_modified
 		FROM books b
 		JOIN %s x ON x.book = b.id
 		JOIN %s t ON t.id = x.%s
-		LEFT JOIN books_authors_link bal ON bal.book = b.id
-		LEFT JOIN authors a ON a.id = bal.author
 		WHERE t.%s IN (%s)
 		GROUP BY b.id
 		ORDER BY b.sort

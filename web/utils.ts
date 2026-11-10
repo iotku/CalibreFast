@@ -38,10 +38,10 @@ export function colorFromBook(book: Pick<Book, "uuid">): string {
 
 /**
  * Generate a text-based cover canvas for books without cover images
- * @param book - Book object with title and author_sort
+ * @param book - Book object with title and authors
  * @returns Canvas element with book info
  */
-export function generateCoverText(book: Pick<Book, "uuid" | "title" | "author_sort">): HTMLCanvasElement {
+export function generateCoverText(book: Pick<Book, "uuid" | "title" | "authors">): HTMLCanvasElement {
     const canvas = document.createElement("canvas");
     canvas.className = "cover-text";
     canvas.width = 200;
@@ -64,7 +64,7 @@ export function generateCoverText(book: Pick<Book, "uuid" | "title" | "author_so
     wrapText(ctx, book.title, 100, 120, 180, 20);
 
     ctx.font = "12px sans-serif";
-    ctx.fillText(book.author_sort || "", 100, 260);
+    ctx.fillText(book.authors || "", 100, 260);
 
     return canvas;
 }
@@ -119,7 +119,7 @@ export function coverUrl(book: Pick<Book, "uuid" | "last_modified">): string {
  */
 export function renderBookCard(book: Book, coverReady = false): string {
     const title = escapeHtml(book.title || "Untitled");
-    const author = escapeHtml(book.author_sort || "Unknown Author");
+    const author = escapeHtml(book.authors || "Unknown Author");
     const uuid = escapeHtml(book.uuid);
     const hue = coverHue(book);
     const cover = escapeHtml(coverUrl(book));
