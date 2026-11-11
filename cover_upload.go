@@ -134,17 +134,13 @@ func uploadCoverHandler(w http.ResponseWriter, r *http.Request) {
 	now := time.Now()
 	_ = os.Chtimes(coverPath, now, now)
 
-	// Update has_cover in the database
-	if _, err := calibreDB.Exec(`UPDATE books SET has_cover = 1 WHERE uuid = ?`, uuid); err != nil {
-		log.Printf("upload-cover: failed to set has_cover for %s: %v", uuid, err)
-	}
-
-	// Invalidate thumbnail cache
+	// Remove the old cover's thumbnail, then give the new cover a new stamp.
 	coverStamp, _ := bookCoverStamp(uuid)
 	thumbPath := thumbCachePath(uuid, coverStamp)
 	if err := os.Remove(thumbPath); err != nil && !os.IsNotExist(err) {
 		log.Printf("upload-cover: failed to remove thumbnail cache for %s: %v", uuid, err)
 	}
+	coverChanged(uuid)
 
 	hasBackup := false
 	if _, err := os.Stat(backupPath); err == nil {
@@ -233,16 +229,13 @@ func revertCoverHandler(w http.ResponseWriter, r *http.Request) {
 	now := time.Now()
 	_ = os.Chtimes(coverPath, now, now)
 
-	// Invalidate thumbnail cache
+	// Remove the old cover's thumbnail, then give the restored cover a new stamp.
 	bookStamp, _ := bookCoverStamp(uuid)
 	thumbPath := thumbCachePath(uuid, bookStamp)
 	if err := os.Remove(thumbPath); err != nil && !os.IsNotExist(err) {
 		log.Printf("revert-cover: failed to remove thumbnail cache for %s: %v", uuid, err)
 	}
-
-	if _, err := calibreDB.Exec(`UPDATE books SET has_cover = 1 WHERE uuid = ?`, uuid); err != nil {
-		log.Printf("revert-cover: failed to set has_cover for %s: %v", uuid, err)
-	}
+	coverChanged(uuid)
 
 	w.Header().Set("Content-Type", "application/json")
 	fmt.Fprintf(w, `{"success":true,"reverted":true,"hasBackup":true}`)

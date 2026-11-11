@@ -651,10 +651,15 @@ func generatePage1() {
 		if err := rows.Scan(&b.Title, &b.Authors, &b.SeriesIndex, &b.PubDate, &b.Path, &b.UUID, &b.LastModified); err != nil {
 			continue
 		}
+		b.LastModified = coverStamp(b.LastModified) // as generatePages does
+		modTimeCache.Store(b.UUID, b.LastModified)
 		uuidPathIndex.Store(b.UUID, b.Path)
+		pageOfBook.Store(b.UUID, 1)
 		books = append(books, b)
 	}
 
+	pagesMu.Lock()
+	defer pagesMu.Unlock()
 	if err := writePage(1, books); err != nil {
 		log.Println("generatePage1: write failed:", err)
 		return

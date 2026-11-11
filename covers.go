@@ -3,6 +3,7 @@ package main
 import (
 	"bytes"
 	"context"
+	"encoding/json"
 	"errors"
 	"image"
 	"image/jpeg"
@@ -15,6 +16,7 @@ import (
 	"strconv"
 	"strings"
 	"sync"
+	"time"
 
 	"golang.org/x/image/draw"
 )
@@ -182,7 +184,6 @@ func loadThumb(uuid string, abort func() error) (data []byte, cacheHit bool, err
 		return nil, false, err
 	}
 
-
 	stamp, err := bookCoverStamp(uuid)
 	if err != nil {
 		return nil, false, err
@@ -300,4 +301,67 @@ func resizeToWidth(img image.Image, width int) image.Image {
 	)
 
 	return dst
+}
+
+// pageOfBook maps a book's uuid to the pages/*.json file listing it, so a
+// change to one book rewrites only that page.
+var pageOfBook sync.Map // map[string]int
+
+// pagesMu serialises rewrites of pages/*.json after startup.
+var pagesMu sync.Mutex
+
+// coverChanged records a new cover.jpg in metadata.db, as Calibre does: the
+// book has a cover and was modified now. Then bookChanged gives the cover a
+// new stamp, so browsers fetch it again instead of reusing the old image.
+func coverChanged(uuid string) {
+	if _, err := calibreDB.Exec(`UPDATE books SET has_cover = 1, last_modified = ? WHERE uuid = ?`,
+		calibreDateTime(time.Now()), uuid); err != nil {
+		log.Printf("cover: failed to update %s in metadata.db: %v", uuid, err)
+	}
+	bookChanged(uuid)
+}
+
+// bookChanged refreshes what's cached about a book after its row in
+// metadata.db changed: its cover stamp (the ?t= on cover URLs) and its entry
+// in the library grid's pages.
+func bookChanged(uuid string) {
+	var b Book
+	err := calibreDB.QueryRow(`SELECT b.title, `+bookAuthorsSQL+`, b.series_index, b.pubdate, b.path, b.uuid, b.last_modified
+		FROM books b WHERE b.uuid = ?`, uuid).
+		Scan(&b.Title, &b.Authors, &b.SeriesIndex, &b.PubDate, &b.Path, &b.UUID, &b.LastModified)
+	if err != nil {
+		log.Printf("bookChanged %s: %v", uuid, err)
+		return
+	}
+	b.LastModified = coverStamp(b.LastModified)
+	modTimeCache.Store(uuid, b.LastModified)
+	uuidPathIndex.Store(uuid, b.Path)
+
+	page, ok := pageOfBook.Load(uuid)
+	if !ok {
+		return
+	}
+	pagesMu.Lock()
+	defer pagesMu.Unlock()
+	data, err := os.ReadFile(filepath.Join("pages", "page"+strconv.Itoa(page.(int))+".json"))
+	if err != nil {
+		log.Printf("bookChanged %s: %v", uuid, err)
+		return
+	}
+	var books []Book
+	if err := json.Unmarshal(data, &books); err != nil {
+		log.Printf("bookChanged %s: %v", uuid, err)
+		return
+	}
+	for i := range books {
+		if books[i].UUID == uuid {
+			books[i] = b
+			if err := writePage(page.(int), books); err != nil {
+				log.Printf("bookChanged %s: %v", uuid, err)
+				return
+			}
+			pagesVersion.Store(time.Now().UnixNano())
+			return
+		}
+	}
 }
