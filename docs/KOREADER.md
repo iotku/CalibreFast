@@ -80,7 +80,7 @@ Both directions are in the web reader's sidebar, under **Notes → KOReader**, w
 
 KOReader sends your username and an MD5 of the sync key with every request.
 - On your home network, plain HTTP is fine.
-- **Anywhere else, use HTTPS:** serve CalibreFast through a reverse proxy with a certificate, set `-public-url https://…`, and enter the `https://` address in KOReader.
+- **Anywhere else, use HTTPS:** serve CalibreFast through a reverse proxy with a certificate, set `-public-url https://…`, and enter the `https://` address in KOReader. Without `-public-url`, the account page still shows `https://` when the proxy sends `X-Forwarded-Proto` (or `Forwarded`), or when you open the page over HTTPS.
 
 Over plain HTTP, anyone who can watch the traffic can copy the key and change your reading positions. They still can't sign in or reach the library. If that may have happened, replace the key.
 
