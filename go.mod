@@ -1,6 +1,6 @@
 module CalibreFast
 
-go 1.25.0
+go 1.26.0
 
 require (
 	github.com/fsnotify/fsnotify v1.10.1
@@ -9,7 +9,7 @@ require (
 	github.com/microcosm-cc/bluemonday v1.0.27
 	github.com/pdfcpu/pdfcpu v0.12.1
 	golang.org/x/crypto v0.51.0
-	golang.org/x/image v0.40.0
+	golang.org/x/image v0.47.0
 )
 
 require (
@@ -22,7 +22,7 @@ require (
 	github.com/mattn/go-runewidth v0.0.23 // indirect
 	github.com/pkg/errors v0.9.1 // indirect
 	golang.org/x/net v0.54.0 // indirect
-	golang.org/x/sys v0.44.0 // indirect
-	golang.org/x/text v0.37.0 // indirect
+	golang.org/x/sys v0.49.0 // indirect
+	golang.org/x/text v0.43.0 // indirect
 	gopkg.in/yaml.v2 v2.4.0 // indirect
 )
