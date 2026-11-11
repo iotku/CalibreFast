@@ -127,8 +127,7 @@ export function createPdfView(opts: PdfViewOptions): PdfView {
     container.replaceChildren(spread);
 
     const dpr = (): number => window.devicePixelRatio || 1;
-    /** Two pages only when the window is wider than tall. */
-    const dualNow = (): boolean => layout.dual && container.offsetWidth > container.offsetHeight;
+    const dualNow = (): boolean => layout.dual;
 
     function spreadPages(page: number): number[] {
         if (!dualNow()) return [page];
@@ -147,7 +146,17 @@ export function createPdfView(opts: PdfViewOptions): PdfView {
         const byWidth = (container.offsetWidth - gap) / w;
         return mode === "width" ? byWidth : Math.min(byWidth, container.offsetHeight / h);
     }
-    const minScale = (): number => Math.min(ACTUAL_SIZE / 4, fitScale("page") / 2);
+    /**
+     * Zooming out stops once the whole spread is on screen: any further would
+     * only shrink it, showing nothing more.
+     */
+    const clampScale = (s: number, of: PageView[] = views): number => Math.max(Math.min(MAX_SCALE, s), fitScale("page", of));
+    /** The scale the layout asks for: a fit, or the one set by hand (within its limits). */
+    function layoutScale(of: PageView[] = views): number {
+        // Zoomed all the way out is fitting the page, and stays so as the window or the pages change.
+        if (layout.zoom === "custom" && of.length && scale <= fitScale("page", of)) layout = { ...layout, zoom: "page" };
+        return layout.zoom === "custom" ? clampScale(scale, of) : fitScale(layout.zoom, of);
+    }
 
     /** Page boxes at the current scale, on whole device pixels so canvases map 1:1. */
     function applyScale(of: PageView[] = views): void {
@@ -394,7 +403,7 @@ export function createPdfView(opts: PdfViewOptions): PdfView {
                 textLayer: null,
             };
         });
-        if (layout.zoom !== "custom") scale = fitScale(layout.zoom, next);
+        scale = layoutScale(next);
         applyScale(next);
         // The old spread stays until the new one has its picture.
         await Promise.all(next.map(renderBase));
@@ -402,9 +411,13 @@ export function createPdfView(opts: PdfViewOptions): PdfView {
             discard(next);
             return;
         }
+        // Zoomed (or the window resized) while it was drawn: the old spread took that, not this one.
+        const drawnAt = scale;
+        scale = layoutScale(next);
+        applyScale(next);
+        if (scale !== drawnAt) settleSoon();
         discard(views);
         views = next;
-        shownDual = dualNow();
         first = nums[0] ?? 1;
         spread.classList.toggle("rtl", layout.rtl);
         spread.replaceChildren(...next.map((v) => v.el));
@@ -430,12 +443,13 @@ export function createPdfView(opts: PdfViewOptions): PdfView {
     }
 
     function setScale(next: number, anchor?: Anchor): void {
-        next = Math.min(MAX_SCALE, Math.max(minScale(), next));
+        next = clampScale(next);
         if (next === scale) return;
         const c = container.getBoundingClientRect();
         const a = anchor ?? anchorAt(c.left + c.width / 2, c.top + c.height / 2);
         scale = next;
         layout = { ...layout, zoom: "custom", scale };
+        layoutScale(); // at the limit, it's a fit again
         applyScale();
         // Scroll so the anchored point is back under the fingers (or pointer).
         const r = spread.getBoundingClientRect();
@@ -445,20 +459,17 @@ export function createPdfView(opts: PdfViewOptions): PdfView {
         opts.onZoom(scale);
     }
 
-    // The window changed size: fit again, and two pages may now be one.
+    // The window changed size: fit again.
     let lastSize = "";
-    let shownDual = false;
     new ResizeObserver(() => {
         const size = `${container.clientWidth}x${container.clientHeight}`;
         const before = lastSize;
         lastSize = size;
         if (before === "" || size === before || !views.length) return;
-        if (dualNow() !== shownDual) void show(first);
-        else if (layout.zoom !== "custom") {
-            scale = fitScale(layout.zoom);
-            applyScale();
-            settleSoon();
-        } else settleSoon();
+        // A scale set by hand stays, unless the window grew past it.
+        scale = layoutScale();
+        applyScale();
+        settleSoon();
     }).observe(container);
 
     function viewOf(page: number): PageView | undefined {
@@ -494,7 +505,7 @@ export function createPdfView(opts: PdfViewOptions): PdfView {
                 await show(first);
                 return;
             }
-            if (next.zoom !== "custom") scale = fitScale(next.zoom);
+            scale = layoutScale();
             applyScale();
             settleSoon();
         },

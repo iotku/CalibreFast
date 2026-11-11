@@ -38,6 +38,20 @@ if (!sync.signedIn) chrome.setStatus("Position saved on this device");
 
 // ---- layout from the settings -------------------------------------------------
 
+// Two pages in a window wider than tall, one otherwise, following the window
+// as it turns, until the reader chooses for themself (for this visit).
+const wide = (): boolean => container.offsetWidth > container.offsetHeight;
+let dualChosen = false;
+let dualFollowing = false; // the change under way is ours, not the reader's
+function followWindow(): void {
+    if (dualChosen) return;
+    dualFollowing = true;
+    setSettings({ pdfDual: wide() });
+    dualFollowing = false;
+}
+followWindow();
+window.addEventListener("resize", followWindow);
+
 /** The scale set by hand (pinch, wheel, the zoom buttons), until a fit is chosen again. */
 let handZoom: number | null = null;
 
@@ -85,10 +99,20 @@ function showDirection(): void {
 }
 showDirection();
 
-onSettingsChange((_s, changed) => {
+onSettingsChange((s, changed) => {
     showDirection();
-    showZoom();
-    if (changed.some((k) => k.startsWith("pdf"))) applyLayout();
+    if (!changed.some((k) => k.startsWith("pdf"))) return showZoom();
+    // One page's zoom doesn't suit two (or the other way round): fit the new spread.
+    if (changed.includes("pdfDual") || changed.includes("pdfCover")) handZoom = null;
+    if (changed.includes("pdfDual") && !dualFollowing) dualChosen = true;
+    const asked = dualChosen && changed.includes("pdfDual");
+    void view?.setLayout(layoutFor(s)).then(() => {
+        showZoom();
+        // Two pages were asked for and one is showing: say why.
+        if (asked && s.pdfDual && s.pdfCover && view && view.first === 1 && view.last === 1 && view.numPages > 1) {
+            chrome.toast("The first page stands alone, as a cover. Two pages show from the next.");
+        }
+    });
 });
 
 // ---- position ---------------------------------------------------------------
