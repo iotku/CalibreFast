@@ -191,8 +191,16 @@ func mergeMeta(metas []*UploadedBookMeta) *UploadedBookMeta {
 		}
 	}
 
-	if merged.Title == "" {
+	// A title from any file's metadata beats a filename; only when none has
+	// one does the first file's name (an EPUB's, if there is one) stand in.
+	if strings.TrimSpace(merged.Title) == "" {
 		merged.Title = "Unknown"
+		for _, m := range sorted {
+			if stem := strings.TrimSuffix(m.FileName, filepath.Ext(m.FileName)); stem != "" {
+				merged.Title = stem
+				break
+			}
+		}
 	}
 	if len(merged.Creators) == 0 {
 		merged.Creators = []string{"Unknown"}
@@ -453,9 +461,9 @@ func groupFilesByStem(files []*multipart.FileHeader) map[string][]*multipart.Fil
 }
 
 // readBookMeta reads the metadata a book file holds. p is where the file is
-// now (it may be a temporary file) and name what it is called. A file that
-// can't be read, or says nothing, still gets a title (its name) and an
-// "Unknown" author.
+// now (it may be a temporary file) and name what it is called. Fields the
+// file doesn't hold stay empty, so that mergeMeta prefers another format's
+// real metadata; mergeMeta fills in the filename and "Unknown" last.
 func readBookMeta(p, name string) *UploadedBookMeta {
 	ext := strings.ToLower(strings.TrimPrefix(filepath.Ext(name), "."))
 	meta := &UploadedBookMeta{Format: ext, FileName: name}
@@ -476,14 +484,8 @@ func readBookMeta(p, name string) *UploadedBookMeta {
 		}
 		f.Close()
 	}
-	if strings.TrimSpace(meta.Title) == "" {
-		meta.Title = strings.TrimSuffix(name, filepath.Ext(name))
-	}
 	// One creator can hold "A & B"; other lists are left for the editor's Split.
 	meta.Creators = splitCreators(meta.Creators)
-	if len(meta.Creators) == 0 {
-		meta.Creators = []string{"Unknown"}
-	}
 	return meta
 }
 
