@@ -87,7 +87,7 @@ func (b *epubBook) readPackage() error {
 			Path string `xml:"full-path,attr"`
 		} `xml:"rootfiles>rootfile"`
 	}
-	if err := xml.Unmarshal(data, &container); err != nil || len(container.Rootfiles) == 0 {
+	if err := xmlUnmarshal(data, &container); err != nil || len(container.Rootfiles) == 0 {
 		return errors.New("no package document")
 	}
 	opfPath := container.Rootfiles[0].Path
@@ -166,7 +166,7 @@ func (b *epubBook) content(i int) (*xnode, error) {
 // keepAttrs is for the package document: attributes are kept, and it is read
 // as XML proper.
 func parseXML(data []byte, keepAttrs bool) (*xnode, error) {
-	d := xml.NewDecoder(bytes.NewReader(data))
+	d := xml.NewDecoder(bytes.NewReader(xml11To10(data)))
 	d.Strict = false
 	if !keepAttrs {
 		// Content documents may leave <br> or <img> open, as HTML does. The
