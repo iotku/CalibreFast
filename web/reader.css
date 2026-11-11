@@ -331,18 +331,18 @@ input {
 .r-sidebar {
     position: fixed;
     top: var(--bar-top, var(--bar-h));
-    left: 0;
+    right: 0;
     bottom: 0;
     z-index: 25;
     width: min(340px, 88vw);
     box-sizing: border-box;
     display: flex;
     flex-direction: column;
-    padding-left: var(--safe-left);
+    padding-right: var(--safe-right);
     background: var(--chrome-bg);
-    border-right: 1px solid var(--chrome-border);
-    box-shadow: 4px 0 24px rgba(0, 0, 0, 0.18);
-    transform: translateX(-100%);
+    border-left: 1px solid var(--chrome-border);
+    box-shadow: -4px 0 24px rgba(0, 0, 0, 0.18);
+    transform: translateX(100%);
     visibility: hidden;
     transition:
         transform 0.18s ease,
