@@ -148,8 +148,9 @@ Both only offer choices. Nothing is saved until **Apply Changes**.
   - an **invite** to create an account, optionally as an admin, even with registration closed
 
   They work once, expire after 1 hour / 1 day / 7 days, can be revoked, and aren't used up by chat link previews.
-- **Favorites and status:** the book popup has ★ Favorite and a status menu (not started / reading / finished). Lists are at `/me/favorites`, `/me/reading` and `/me/finished`.
-  - Turning a page in a reader marks a book as reading; reaching ≥ 97% marks it finished.
+- **Favorites and status:** the book popup has ★ Favorite and a status menu (not started / want to read / reading / finished). Lists are at `/me/favorites`, `/me/wanted`, `/me/reading` and `/me/finished`.
+  - Turning a page in a reader marks a book as reading; reaching ≥ 97% marks it finished. Starting a book you wanted takes it off Want to read.
+  - **On the covers** (with a mouse): hovering a book in the grid shows ☆ Favorite in the top left, and in the top right a button that depends on the book's status: not started, a bookmark that adds it to (or removes it from) Want to read; reading, ▶ to open the reader in the format you last read; finished, a check mark. On touch screens use the popup.
   - In the grid, books you're reading have a ring and a bar along the bottom showing how far along you are.
   - The popup shows where you are and when it was saved, e.g. "Page 5 of 25 · synced 2 minutes ago from Kobo Clara" (EPUBs show a percentage). The newest position wins, from the web readers or a KOReader device.
   - Automatic changes only move forward and never override a status you set yourself.
