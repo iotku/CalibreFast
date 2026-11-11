@@ -153,6 +153,7 @@ function init(bar: HTMLElement): void {
             "div",
             { className: "tb-menu-list", hidden: true },
             el("a", { href: "/me/favorites", textContent: "★ Favorites", ...current("favorites") }),
+            el("a", { href: "/me/wanted", textContent: "Want to read", ...current("wanted") }),
             el("a", { href: "/me/reading", textContent: "Reading", ...current("reading") }),
             el("a", { href: "/me/finished", textContent: "Finished", ...current("finished") }),
             el("hr"),

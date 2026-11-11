@@ -124,7 +124,7 @@ Both are behind `requireWrites` and only add options to the metadata editor (`we
 - `auth.go`: passwords, sessions and the `withAuth` middleware that puts the user in the request context. The guards are `requireUser`, `requireAdminUser`, `requireReader` (book contents unless `-public-read`) and `requireWrites`.
 - `oauth.go`: GitHub/Google sign-in.
 - `userdata.go`: favorites, reading status and the `/me/...` lists. `progress.go`: reader position and bookmarks. `annotations.go`: highlights and notes. `shelves.go`: bookshelves.
-- `bookprogress.go`: the newest position per book (web readers or a matched KOReader device; nothing is hashed). It serves `/api/me/reading`, which `web/reading.ts` uses to mark cards in the grid and caches in localStorage, and the book popup's "Page 5 of 25 · synced …" note. PDF page counts come from pdfcpu, which reads only the page tree, cached per file.
+- `bookprogress.go`: the newest position per book (web readers or a matched KOReader device; nothing is hashed). It serves `/api/me/reading` (books being read and where to resume them, plus the user's favorite, wanted and finished books), which `web/reading.ts` uses to mark cards in the grid and draw the buttons over their covers, and caches in localStorage, and the book popup's "Page 5 of 25 · synced …" note. PDF page counts come from pdfcpu, which reads only the page tree, cached per file.
 - The app database stores book UUIDs; book details for lists come from `metadata.db`.
 
 ## KOReader progress sync

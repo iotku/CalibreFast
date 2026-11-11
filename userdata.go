@@ -165,6 +165,8 @@ func meListHandler(w http.ResponseWriter, r *http.Request) {
 	switch r.PathValue("list") {
 	case "favorites":
 		serveUUIDList(w, r, favoritesList(u))
+	case "wanted":
+		serveUUIDList(w, r, statusList(u, "wanted", "Want to read", "Nothing here yet. Hover over a cover and click the bookmark to add it."))
 	case "reading":
 		serveUUIDList(w, r, statusList(u, "reading", "Reading", "Nothing in progress. Books you open in the reader, or mark as reading, appear here."))
 	case "finished":
@@ -180,7 +182,7 @@ func meListHandler(w http.ResponseWriter, r *http.Request) {
 
 type bookState struct {
 	Favorite     bool        `json:"favorite"`
-	Status       string      `json:"status"`        // "", "reading", "finished"
+	Status       string      `json:"status"`        // "", "wanted", "reading", "finished"
 	StatusSource string      `json:"status_source"` // "manual" | "auto"
 	Shelves      []shelfMark `json:"shelves"`
 }
@@ -236,13 +238,14 @@ func setFavoriteHandler(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, http.StatusOK, map[string]bool{"favorite": req.Favorite})
 }
 
-var errBadStatus = errors.New(`status must be "", "reading" or "finished"`)
+var errBadStatus = errors.New(`status must be "", "wanted", "reading" or "finished"`)
 
 // setStatus records a status. Manual changes always apply. Automatic ones
-// (from reader progress) only move forward: none → reading → finished, and
-// never override a status the user chose themselves for that stage.
+// (from reader progress) only move forward: none or wanted → reading →
+// finished, and never override a status the user chose themselves for that
+// stage. Starting a wanted book takes it off "want to read".
 func setStatus(userID int64, uuid, status, source string) error {
-	if status != "" && status != "reading" && status != "finished" {
+	if status != "" && status != "wanted" && status != "reading" && status != "finished" {
 		return errBadStatus
 	}
 	if source == "manual" {
@@ -256,7 +259,7 @@ func setStatus(userID int64, uuid, status, source string) error {
 		return err
 	}
 	cur, _ := readStatus(userID, uuid)
-	rank := map[string]int{"": 0, "reading": 1, "finished": 2}
+	rank := map[string]int{"": 0, "wanted": 0, "reading": 1, "finished": 2}
 	if rank[status] <= rank[cur] {
 		// Not an advance. Still bump "reading" so recently read books sort first.
 		if status == "reading" && cur == "reading" {

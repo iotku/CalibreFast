@@ -28,7 +28,8 @@ import { byId, maybeId } from "./dom.js";
 import type { Book } from "./types.js";
 import { coverUrl, renderBookCard } from "./utils.js";
 import { setupBookClickHandlers, loadBook, HASH_PREFIX } from "./modal.js";
-import { cachedReading, fetchReading, markCard, type Reading } from "./reading.js";
+import { cachedMarks, coverAction, fetchMarks, markCard, type Marks } from "./reading.js";
+import { forgetControls } from "./user.js";
 
 const RENDER_AHEAD = 1; // screens of rows in the DOM past the viewport, in the scroll direction
 const RENDER_BEHIND = 0.5; // ...and the other way
@@ -67,7 +68,7 @@ const pageCache = new Map<number, Book[]>(); // page -> books
 const loading = new Map<number, PageLoad>(); // page -> in-flight fetch
 const failedAt = new Map<number, number>(); // page -> when its fetch last failed
 const cards = new Map<number, HTMLElement>(); // book index -> its card in the DOM
-let reading: Reading = cachedReading(); // books the user is reading -> how far (reading.ts)
+let marks: Marks = cachedMarks(); // the user's reading, wanted, finished and favorite books (reading.ts)
 let readingFetchedAt = 0;
 
 // Elements. #books is required; the page-nav controls are optional.
@@ -186,15 +187,14 @@ window.addEventListener("DOMContentLoaded", () => {
 /* ------------------------------------------------------------------ */
 
 function markReading(el: HTMLElement): void {
-    const uuid = el.dataset["uuid"];
-    if (uuid) markCard(el, reading.get(uuid));
+    markCard(el, marks);
 }
 
 async function refreshReading(): Promise<void> {
     readingFetchedAt = Date.now();
-    const fresh = await fetchReading();
+    const fresh = await fetchMarks();
     if (!fresh) return;
-    reading = fresh;
+    marks = fresh;
     for (const el of cards.values()) markReading(el);
 }
 
@@ -208,6 +208,22 @@ function setupReading(): void {
         if (document.visibilityState === "visible" && Date.now() - readingFetchedAt > READING_REFRESH_MS) void refreshReading();
     });
     document.addEventListener("cf:status", () => void refreshReading());
+
+    // The buttons over a card's cover (reading.ts). The "continue reading"
+    // one is a plain link.
+    document.addEventListener("click", (e) => {
+        const btn = e.target instanceof Element ? e.target.closest<HTMLButtonElement>(".cover-actions button") : null;
+        const uuid = btn?.closest<HTMLElement>(".book")?.dataset["uuid"];
+        if (!btn || !uuid) return;
+        e.preventDefault();
+        const repaint = (): void => {
+            for (const el of cards.values()) if (el.dataset["uuid"] === uuid) markReading(el);
+        };
+        void coverAction(btn.dataset["action"] ?? "", uuid, marks, repaint).then(() => {
+            forgetControls(uuid); // the popup's prefetched controls are out of date
+            void refreshReading(); // and the cached marks
+        });
+    });
 }
 
 /**

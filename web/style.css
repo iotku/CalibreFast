@@ -347,6 +347,76 @@ input[type="number"],
     background: var(--accent, #c8a96e);
 }
 
+/* Buttons over the cover on hover (reading.ts): favorite top left; want to
+   read / continue reading / finished top right. Touch screens use the
+   book popup's controls instead. */
+.cover-actions {
+    position: absolute;
+    inset: 0 0 auto;
+    z-index: 4; /* over the info overlay and the progress bar */
+    display: flex;
+    justify-content: space-between;
+    padding: 8px;
+    pointer-events: none;
+    opacity: 0;
+    transition: opacity 150ms ease;
+}
+
+.book:hover .cover-actions,
+.book:focus-within .cover-actions {
+    opacity: 1;
+}
+
+.cover-action {
+    pointer-events: auto;
+    display: grid;
+    place-items: center;
+    width: 34px;
+    height: 34px;
+    padding: 0;
+    border: 1px solid var(--border-medium);
+    border-radius: var(--radius-medium);
+    background: rgba(0, 0, 0, 0.6);
+    color: #fff;
+    font-size: 20px;
+    line-height: 1;
+    cursor: pointer;
+    text-decoration: none;
+}
+
+.cover-action:hover,
+.cover-action:focus-visible {
+    background: rgba(0, 0, 0, 0.85);
+    border-color: var(--accent, #c8a96e);
+}
+
+.cover-action svg {
+    width: 18px;
+    height: 18px;
+}
+
+.cover-action.is-on,
+.cover-read,
+.cover-done {
+    color: var(--accent, #c8a96e);
+}
+
+.cover-done {
+    cursor: default;
+}
+
+@media (hover: none) {
+    .cover-actions {
+        display: none;
+    }
+}
+
+@media (prefers-reduced-motion: reduce) {
+    .cover-actions {
+        transition: none;
+    }
+}
+
 .cover-wrapper {
     position: relative;
     aspect-ratio: 2 / 3;
