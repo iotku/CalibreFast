@@ -1,5 +1,6 @@
 import { createChipInput, parseList, uniqueItems, type ChipInput } from "./chips.js";
 import { attachSuggest } from "./suggest.js";
+import { languageChipLabel, languageKey, loadLanguageCodes, preferredLanguageCode } from "./languages.js";
 import type { BookTarget } from "./book-target.js";
 import { createDescriptionEditor } from "./description.js";
 import { closeOnBackdropClick, errorMessage, maybeId } from "./dom.js";
@@ -747,22 +748,37 @@ export async function mountMetadataEditor(book: BookTarget, form: HTMLFormElemen
 
   try {
     // Tags and languages are edited as chips over their (hidden) inputs.
-    const chipFields: { name: string; placeholder: string; category: string; placeholders: string[] }[] = [
+    const languages = {
+      // Chips read "English (eng)"; suggestions prefer the 3-letter code and
+      // skip languages the book already has under any code ("en" vs "eng").
+      labelFor: languageChipLabel,
+      canonical: preferredLanguageCode,
+      key: languageKey,
+    };
+    const chipFields: {
+      name: string;
+      placeholder: string;
+      category: string;
+      placeholders: string[];
+      lang?: typeof languages;
+    }[] = [
       { name: "subjects", placeholder: "Add tags (comma separated)…", category: "tag", placeholders: [] },
       // "und" (undetermined) disappears as soon as a real language is added.
-      { name: "languages", placeholder: "e.g. eng, fra, deu", category: "language", placeholders: ["und"] },
+      { name: "languages", placeholder: "e.g. eng, fra, deu", category: "language", placeholders: ["und"], lang: languages },
     ];
     const chipInputs = chipFields
-      .map(({ name, placeholder, category, placeholders }) => {
+      .map(({ name, placeholder, category, placeholders, lang }) => {
         const backing = form.querySelector<HTMLInputElement>(`[name="${name}"]`);
         if (!backing) return null;
-        const chips = createChipInput(backing, { placeholder, placeholders });
+        const chips = createChipInput(backing, { placeholder, placeholders, ...(lang && { labelFor: lang.labelFor }) });
         attachSuggest(chips.textInput, {
           category,
           multi: true,
           exclude: chips.activeValues,
+          ...(lang && { canonical: lang.canonical, key: lang.key }),
           onPick: () => chips.commitPending(), // picking a suggestion adds it
         });
+        if (lang) void loadLanguageCodes().then(() => chips.rerender());
         return chips;
       })
       .filter((c): c is ChipInput => c !== null);

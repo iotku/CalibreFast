@@ -10,6 +10,10 @@
  * multi: the field holds a list (separated by commas, or by the characters in
  * separators); only the item after the last separator is completed, and
  * items already present aren't suggested.
+ *
+ * canonical: values that mean the same thing (e.g. languages "en" and "eng")
+ * are offered once, in their canonical form, and not at all when the field
+ * already holds one of them.
  */
 
 import type { ValueSuggestion } from "./types.js";
@@ -23,6 +27,13 @@ export interface SuggestOptions {
     separators?: string;
     /** Values not to suggest (e.g. chips already added). */
     exclude?: () => string[];
+    /**
+     * Preferred form of a value; values with the same canonical form (ignoring
+     * case) count as one. Default: the value itself.
+     */
+    canonical?: (value: string) => string;
+    /** Identity of a value for that comparison. Default: canonical, lowercased. */
+    key?: (value: string) => string;
     /** Called after a suggestion is accepted. */
     onPick?: ((value: string) => void) | null;
 }
@@ -50,7 +61,7 @@ let uid = 0;
 
 export function attachSuggest(
     input: HTMLInputElement,
-    { category, multi = false, separators = ",", exclude = () => [], onPick = null }: SuggestOptions,
+    { category, multi = false, separators = ",", exclude = () => [], canonical = (v) => v, key = (v) => lower(canonical(v)), onPick = null }: SuggestOptions,
 ): void {
     const id = `suggest-${++uid}`;
     const list = document.createElement("ul");
@@ -130,21 +141,25 @@ export function attachSuggest(
         if (lower(token().trim()) !== q) return; // typed on meanwhile
         if (document.activeElement !== input) return close(); // focus moved on meanwhile
 
-        const taken = new Set(exclude().map(lower));
+        const taken = new Set(exclude().map(key));
         if (multi) {
             const v = input.value;
             for (const t of v.slice(0, itemStart(v)).split(new RegExp(`[${separators.replace(/[\]\\^-]/g, "\\$&")}]`))) {
-                taken.add(lower(t.trim()));
+                if (t.trim()) taken.add(key(t.trim()));
             }
         }
         const starts: ValueSuggestion[] = [];
         const contains: ValueSuggestion[] = [];
+        const offered = new Set<string>();
         for (const v of values) {
-            const val = lower(v.value);
-            if (taken.has(val)) continue; // exact matches stay listed
-            const hay = [val, lower(v.label || "")];
-            if (hay.some((h) => h.startsWith(q))) starts.push(v);
-            else if (hay.some((h) => h.includes(q))) contains.push(v);
+            const k = key(v.value);
+            if (taken.has(k) || offered.has(k)) continue; // exact matches stay listed
+            const hay = [lower(v.value), k, lower(v.label || "")];
+            const s: ValueSuggestion = { ...v, value: canonical(v.value) };
+            if (hay.some((h) => h.startsWith(q))) starts.push(s);
+            else if (hay.some((h) => h.includes(q))) contains.push(s);
+            else continue;
+            offered.add(k);
             if (starts.length >= MAX) break;
         }
         shown = starts.concat(contains).slice(0, MAX);

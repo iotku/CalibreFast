@@ -1,6 +1,10 @@
 package main
 
-import "testing"
+import (
+	"encoding/json"
+	"net/http/httptest"
+	"testing"
+)
 
 func TestLanguageDisplayName(t *testing.T) {
 	cases := []struct {
@@ -43,5 +47,24 @@ func TestLanguageTableHasNoConflictingCodes(t *testing.T) {
 	}
 	if len(languageTable) < 100 {
 		t.Errorf("expected at least 100 languages, have %d", len(languageTable))
+	}
+}
+
+func TestLanguageCodesHandler(t *testing.T) {
+	rec := httptest.NewRecorder()
+	languageCodesHandler(rec, httptest.NewRequest("GET", "/api/languages/codes", nil))
+	var got map[string]languageCode
+	if err := json.Unmarshal(rec.Body.Bytes(), &got); err != nil {
+		t.Fatal(err)
+	}
+	for code, want := range map[string]languageCode{
+		"en":  {"English", "eng"},
+		"eng": {"English", "eng"},
+		"fre": {"French", "fra"},
+		"fil": {"Filipino", "fil"},
+	} {
+		if got[code] != want {
+			t.Errorf("%s = %+v; want %+v", code, got[code], want)
+		}
 	}
 }
