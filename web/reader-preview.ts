@@ -54,17 +54,22 @@ export function previewSync(onStatus: (text: string) => void): ReadingSync {
 
 /**
  * The top bar's Back: leaves the reader, skipping its `depth` in-book jumps.
- * A preview opened in a tab of its own closes it, back to the editor.
+ * A preview closes its tab (or split view, or window) instead: it was opened
+ * beside the editor, which is still there. If the browser won't close it,
+ * `onStuck` says so; a preview never navigates away.
  */
-export function leaveReader(book: ReaderBook, depth: number): void {
+export function leaveReader(book: ReaderBook, depth: number, onStuck: (text: string) => void): void {
     if (!book.preview) {
         history.go(-(depth + 1));
         return;
     }
     window.close();
-    // Still here: the browser wouldn't close this tab, or it isn't one of its own.
-    setTimeout(() => {
-        if (history.length > depth + 1) history.go(-(depth + 1));
-        else window.location.href = book.editor;
-    }, 150);
+    // Still here: the browser keeps tabs it didn't let a script open.
+    setTimeout(() => onStuck("Preview — close this tab when you're done"), 150);
 }
+
+/**
+ * In-book jumps in a preview don't add history entries: a tab with more than
+ * one may not be closed by a script, and Back has to close it.
+ */
+export const keepsHistory = (book: ReaderBook): boolean => !book.preview;

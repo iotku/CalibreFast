@@ -5,7 +5,7 @@ import { byId, errorMessage, maybeId, modalOpen } from "./dom.js";
 import { openEpub } from "./epub-open.js";
 import { canInflate, openBuffer, openRemote, type EpubSource } from "./epub-source.js";
 import { pageColors, setupChrome } from "./reader-chrome.js";
-import { leaveReader, previewSync, readerBook, type ReaderBook } from "./reader-preview.js";
+import { keepsHistory, leaveReader, previewSync, readerBook, type ReaderBook } from "./reader-preview.js";
 import { getSettings, onSettingsChange, type ReaderSettings } from "./reader-settings.js";
 import { createReadingSync, renderBookmarks, type Bookmark, type BookmarkHandlers } from "./reading-sync.js";
 
@@ -348,6 +348,7 @@ rendition.on("relocated", (loc) => {
 
 /** Call before an in-book jump: the current spot stays behind as a Back entry. */
 function pushJump(): void {
+    if (!keepsHistory(target)) return;
     history.pushState({ depth: (state().depth ?? 0) + 1 } satisfies ReaderState, "");
 }
 
@@ -358,7 +359,7 @@ window.addEventListener("popstate", () => {
 });
 
 // The top-bar Back leaves the reader, skipping the in-book jumps.
-document.querySelector(".btn-back")?.addEventListener("click", () => leaveReader(target, state().depth ?? 0));
+document.querySelector(".btn-back")?.addEventListener("click", () => leaveReader(target, state().depth ?? 0, chrome.setStatus));
 
 // ---- turning pages ----------------------------------------------------------
 
