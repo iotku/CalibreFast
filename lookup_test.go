@@ -376,7 +376,8 @@ const wikidataValuesFixture = `{"results": {"bindings": [
 	{"from": {"value": "Q2"}, "kind": {"value": "author"}, "ref": {"value": "http://www.wikidata.org/entity/Q5"}, "value": {"value": "Alan Donovan", "xml:lang": "mul"}, "ord": {"value": "1"}},
 	{"from": {"value": "Q2"}, "kind": {"value": "author"}, "ref": {"value": "http://www.wikidata.org/entity/Q5"}, "value": {"value": "Alan A. A. Donovan", "xml:lang": "en"}, "ord": {"value": "1"}},
 	{"from": {"value": "Q2"}, "kind": {"value": "subject"}, "ref": {"value": "http://www.wikidata.org/entity/Q7"}, "value": {"value": "Go", "xml:lang": "en"}},
-	{"from": {"value": "Q1"}, "kind": {"value": "subject"}, "ref": {"value": "http://www.wikidata.org/entity/Q8"}, "value": {"value": "textbook", "xml:lang": "en"}}
+	{"from": {"value": "Q1"}, "kind": {"value": "subject"}, "ref": {"value": "http://www.wikidata.org/entity/Q8"}, "value": {"value": "textbook", "xml:lang": "en"}},
+	{"from": {"value": "Q1"}, "kind": {"value": "subject"}, "ref": {"value": "http://www.wikidata.org/entity/Q9"}, "value": {"value": " GO ", "xml:lang": "en"}}
 ]}}`
 
 func TestWikidataLookup(t *testing.T) {
