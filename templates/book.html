@@ -159,6 +159,6 @@
     <img class="thumbnail" alt="Cover" src="/cover-thumb/{{ .UUID }}{{ if .ModTime }}?t={{ .ModTime }}{{ end }}"
         onload="this.classList.add('loaded')" onerror="this.remove()" />
     <img class="cover-full" alt="" aria-hidden="true" decoding="async"
-        src="/cover/{{ .UUID }}{{ if .ModTime }}?t={{ .ModTime }}{{ end }}" onload="this.classList.add('loaded')" onerror="this.remove()" />
+        src="/cover/{{ .UUID }}?t={{ .CoverStamp }}" onload="this.classList.add('loaded')" onerror="this.remove()" />
     {{ end }}
 </span>{{ end }}

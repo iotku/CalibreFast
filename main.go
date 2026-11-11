@@ -841,8 +841,7 @@ func applyMetadataHandler(w http.ResponseWriter, r *http.Request) {
 		bookMetadataCache.Store(uuid, updated)
 	}
 
-	// New cover stamp and grid entry (last_modified changed), then page1.json
-	bookChanged(uuid)
+	// Refresh page1.json cache
 	generatePage1()
 	refreshAllCaches()
 
@@ -951,7 +950,6 @@ func generatePages() {
 
 		// cache cover path
 		uuidPathIndex.Store(book.UUID, book.Path)
-		pageOfBook.Store(book.UUID, page)
 
 		// add book to the arrays
 		books = append(books, book)

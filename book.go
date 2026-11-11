@@ -7,6 +7,7 @@ import (
 	"net/http"
 	"os"
 	"path/filepath"
+	"strconv"
 	"strings"
 	"time"
 	"unicode/utf16"
@@ -41,8 +42,9 @@ type BookPageData struct {
 
 	Writable bool // server started with -allow-writes (shows the Edit button)
 
-	Formats []string
-	ModTime string
+	Formats    []string
+	ModTime    string // cache-buster for cover-thumb (matches the library grid's)
+	CoverStamp string // cache-buster for the full cover: cover.jpg's modification time
 
 	HasCover bool // cover.jpg exists; otherwise only the placeholder is shown
 	CoverHue int  // placeholder colour, as on the book's library card
@@ -149,8 +151,9 @@ func bookHandler(w http.ResponseWriter, r *http.Request) {
 			),
 		),
 
-		Formats: formats,
-		ModTime: modTime.(string), // cache-busting modtime for cover.jpg and cover-thumb.jpg
+		Formats:    formats,
+		ModTime:    modTime.(string),
+		CoverStamp: strconv.FormatInt(coverTime, 36),
 
 		HasCover: hasCover,
 		CoverHue: coverHue(uuid),
