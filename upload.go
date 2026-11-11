@@ -2,6 +2,7 @@ package main
 
 import (
 	"archive/zip"
+	"context"
 	"database/sql"
 	"encoding/json"
 	"encoding/xml"
@@ -111,7 +112,7 @@ func extractPDFMeta(r io.ReadSeeker, filename string) *OPF {
 	meta := &opf.Metadata
 	meta.Languages = []string{undefinedLanguage} // undetermined; caller can override
 
-	info, err := pdfapi.PDFInfo(r, filename, nil, false, nil)
+	info, err := pdfapi.PDFInfo(context.Background(), r, filename, nil, false, nil)
 	if err != nil {
 		log.Printf("upload: pdfcpu PDFInfo failed for %s: %v", filename, err)
 	} else {
