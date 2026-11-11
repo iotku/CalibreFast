@@ -169,9 +169,9 @@ Start the server with `-watch-dir /path/to/folder` (and `-allow-writes`). Books 
   - an **invite** to create an account, optionally as an admin, even with registration closed
 
   They work once, expire after 1 hour / 1 day / 7 days, can be revoked, and aren't used up by chat link previews.
-- **Favorites and status:** the book popup has ★ Favorite and a status menu (not started / want to read / reading / finished). Lists are at `/me/favorites`, `/me/wanted`, `/me/reading` and `/me/finished`.
+- **Favorites and status:** the book popup has ★ Favorite and a status menu (not reading / want to read / reading / finished). Lists are at `/me/favorites`, `/me/wanted`, `/me/reading` and `/me/finished`.
   - Turning a page in a reader marks a book as reading; reaching ≥ 97% marks it finished. Starting a book you wanted takes it off Want to read.
-  - **On the covers** (with a mouse): hovering a book in the grid shows ☆ Favorite in the top left, and in the top right a button that depends on the book's status: not started, a bookmark that adds it to (or removes it from) Want to read; reading, ▶ to open the reader in the format you last read; finished, a check mark. On touch screens use the popup.
+  - **On the covers** (with a mouse): hovering a book in the grid shows ☆ Favorite in the top left, and in the top right a button that depends on the book's status: not reading, a bookmark that adds it to (or removes it from) Want to read; reading, ▶ to open the reader in the format you last read; finished, a check mark. On touch screens use the popup.
   - In the grid, books you're reading have a ring and a bar along the bottom showing how far along you are.
   - The popup shows where you are and when it was saved, e.g. "Page 5 of 25 · synced 2 minutes ago from Kobo Clara" (EPUBs show a percentage). The newest position wins, from the web readers or a KOReader device.
   - Automatic changes only move forward and never override a status you set yourself.
@@ -202,7 +202,7 @@ Start the server with `-watch-dir /path/to/folder` (and `-allow-writes`). Books 
   - **KOReader:** **Notes → KOReader** exports them as the annotations file KOReader imports, and imports the one KOReader exports ([KOREADER.md](KOREADER.md#highlights-and-notes)). Neither direction deletes anything.
 - **EPUB reader opens quickly, then keeps the book:** it reads only what the first page needs, then fetches the rest of the book in the background. Page numbers and search work once the whole book has arrived.
   - **Offline reading:** the book is kept in the browser, so reopening it needs no download. On HTTPS (or localhost), a kept book also opens with no connection to the server; any other page then shows **Offline**, a list of the kept books.
-  - A kept book is removed when it hasn't been opened for a week, when it's set back to **Not started**, or when you sign out.
+  - A kept book is removed when it hasn't been opened for a week, when it's set back to **Not reading**, or when you sign out.
 - **Reading position and bookmarks:** kept in the browser and, when signed in, synced to the server, so another device can resume.
   - The newest position wins.
   - Changes made offline are pushed when the connection returns.

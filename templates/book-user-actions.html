@@ -9,7 +9,7 @@
             {{ if .Favorite }}★{{ else }}☆{{ end }} Favorite
         </button>
         <select class="book-status" title="Reading status" aria-label="Reading status">
-            <option value="" {{ if eq .Status "" }}selected{{ end }}>Not started</option>
+            <option value="" {{ if eq .Status "" }}selected{{ end }}>Not reading</option>
             <option value="wanted" {{ if eq .Status "wanted" }}selected{{ end }}>Want to read</option>
             <option value="reading" {{ if eq .Status "reading" }}selected{{ end }}>Reading</option>
             <option value="finished" {{ if eq .Status "finished" }}selected{{ end }}>Finished</option>
