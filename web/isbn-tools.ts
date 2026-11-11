@@ -231,6 +231,16 @@ function mountLookup(host: IsbnToolsHost): { lookUpIsbn(isbn: string): void; sug
         input.dispatchEvent(new Event("input"));
     };
     setIsbn(host.currentIsbn());
+    // Added or discarded: the box is that book's no longer, while the next
+    // book's page loads. (Capture: the editor's events don't bubble.)
+    for (const done of ["metadata-applied", "metadata-discarded"]) {
+        document.addEventListener(done, () => setIsbn(""), { capture: true });
+    }
+    // Back to this page from the browser's cache: the box shows this book's
+    // ISBN again, not whatever the browser kept in it.
+    window.addEventListener("pageshow", (e) => {
+        if (e.persisted) setIsbn(host.currentIsbn());
+    });
 
     // ---- The current lookup ----------------------------------------------
 
