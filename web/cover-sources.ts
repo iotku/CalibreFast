@@ -3,6 +3,7 @@
 // that knows its size and saves itself as the cover. Used by the upload
 // page's strip (cover-picker.ts) and the editor's dialog (cover-dialog.ts).
 
+import type { BookTarget } from "./book-target.js";
 import { EPUBJS_URL, JSZIP_URL, openPdf } from "./vendor.js";
 
 /** Response of /upload-cover, /revert-cover and /cover-status. */
@@ -53,23 +54,23 @@ export function formatBytes(n: number): string {
 
 // ---- Saving ------------------------------------------------------------------
 
-async function postCover(uuid: string, body: string | FormData): Promise<CoverStatus> {
-    const resp = await fetch(`/upload-cover/${encodeURIComponent(uuid)}`, { method: "POST", body });
+async function postCover(book: BookTarget, body: string | FormData): Promise<CoverStatus> {
+    const resp = await fetch(book.saveCover, { method: "POST", body });
     if (!resp.ok) throw new Error(await resp.text());
     return resp.json();
 }
 
 /** Brings back the cover before the last change. */
-export async function revertCover(uuid: string): Promise<CoverStatus> {
-    const resp = await fetch(`/revert-cover/${encodeURIComponent(uuid)}`, { method: "POST" });
+export async function revertCover(book: BookTarget): Promise<CoverStatus> {
+    const resp = await fetch(book.revertCover, { method: "POST" });
     if (!resp.ok) throw new Error(await resp.text());
     return resp.json();
 }
 
 /** Whether the book has a cover, and one to revert to. */
-export async function fetchCoverStatus(uuid: string): Promise<CoverStatus> {
+export async function fetchCoverStatus(book: BookTarget): Promise<CoverStatus> {
     try {
-        const resp = await fetch(`/cover-status/${encodeURIComponent(uuid)}`);
+        const resp = await fetch(book.coverStatus);
         if (resp.ok) return resp.json();
     } catch {
         /* ignore */
@@ -92,7 +93,7 @@ async function decode(src: string): Promise<HTMLImageElement> {
 // ---- Choices -------------------------------------------------------------------
 
 /** A rendered page: shown and saved as the same JPEG. */
-async function canvasChoice(uuid: string, label: string, canvas: HTMLCanvasElement): Promise<CoverChoice> {
+async function canvasChoice(book: BookTarget, label: string, canvas: HTMLCanvasElement): Promise<CoverChoice> {
     const blob = await jpegBlob(canvas);
     return {
         label,
@@ -100,12 +101,12 @@ async function canvasChoice(uuid: string, label: string, canvas: HTMLCanvasEleme
         width: canvas.width,
         height: canvas.height,
         bytes: blob.size,
-        save: () => postCover(uuid, canvas.toDataURL("image/jpeg", 0.92)),
+        save: () => postCover(book, canvas.toDataURL("image/jpeg", 0.92)),
     };
 }
 
 /** An image at a same-origin (or blob:) URL; null if it can't be loaded. */
-export async function imageChoice(uuid: string, url: string, label: string): Promise<CoverChoice | null> {
+export async function imageChoice(book: BookTarget, url: string, label: string): Promise<CoverChoice | null> {
     try {
         const resp = await fetch(url, { credentials: "same-origin" });
         if (!resp.ok) return null;
@@ -124,7 +125,7 @@ export async function imageChoice(uuid: string, url: string, label: string): Pro
                 canvas.width = Math.round(img.naturalWidth * s);
                 canvas.height = Math.round(img.naturalHeight * s);
                 ctx2d(canvas).drawImage(img, 0, 0, canvas.width, canvas.height);
-                return postCover(uuid, canvas.toDataURL("image/jpeg", 0.92));
+                return postCover(book, canvas.toDataURL("image/jpeg", 0.92));
             },
         };
     } catch {
@@ -133,14 +134,14 @@ export async function imageChoice(uuid: string, url: string, label: string): Pro
 }
 
 /** The book's cover as it is now; null if it has none. */
-export async function currentCover(uuid: string): Promise<CoverChoice | null> {
-    const c = await imageChoice(uuid, `/cover/${encodeURIComponent(uuid)}?t=${Date.now()}`, "Current cover");
+export async function currentCover(book: BookTarget): Promise<CoverChoice | null> {
+    const c = await imageChoice(book, `${book.cover}?t=${Date.now()}`, "Current cover");
     if (c) delete c.save;
     return c;
 }
 
 /** An image file picked by the admin; saved as uploaded. */
-export async function fileChoice(uuid: string, file: File): Promise<CoverChoice> {
+export async function fileChoice(book: BookTarget, file: File): Promise<CoverChoice> {
     const src = URL.createObjectURL(file);
     const img = await decode(src);
     const fd = new FormData();
@@ -151,13 +152,13 @@ export async function fileChoice(uuid: string, file: File): Promise<CoverChoice>
         width: img.naturalWidth,
         height: img.naturalHeight,
         bytes: file.size,
-        save: () => postCover(uuid, fd),
+        save: () => postCover(book, fd),
     };
 }
 
 /** The first pages of the book's PDF, rendered as they would be saved. */
-export async function* pdfPages(uuid: string): AsyncGenerator<CoverChoice> {
-    const pdf = await openPdf(`/download/${encodeURIComponent(uuid)}/pdf`);
+export async function* pdfPages(book: BookTarget): AsyncGenerator<CoverChoice> {
+    const pdf = await openPdf(book.file("pdf"));
     try {
         for (let n = 1; n <= Math.min(pdf.numPages, PAGES); n++) {
             const page = await pdf.getPage(n);
@@ -167,7 +168,7 @@ export async function* pdfPages(uuid: string): AsyncGenerator<CoverChoice> {
             canvas.width = Math.round(viewport.width);
             canvas.height = Math.round(viewport.height);
             await page.render({ canvasContext: ctx2d(canvas), viewport }).promise;
-            yield await canvasChoice(uuid, `PDF page ${n}`, canvas);
+            yield await canvasChoice(book, `PDF page ${n}`, canvas);
         }
     } finally {
         void pdf.destroy();
@@ -189,11 +190,11 @@ function loadScript(src: string): Promise<void> {
  * The EPUB's declared cover, then its first sections: each section's first
  * image, or its text drawn as a page. The same picture is offered once.
  */
-export async function* epubPages(uuid: string): AsyncGenerator<CoverChoice> {
+export async function* epubPages(target: BookTarget): AsyncGenerator<CoverChoice> {
     // JSZip first: epub.js opens the whole .epub from memory with it.
     if (!("JSZip" in window)) await loadScript(JSZIP_URL);
     if (typeof window.ePub === "undefined") await loadScript(EPUBJS_URL);
-    const res = await fetch(`/download/${encodeURIComponent(uuid)}/epub`, { credentials: "same-origin" });
+    const res = await fetch(target.file("epub"), { credentials: "same-origin" });
     if (!res.ok) throw new Error(`HTTP ${res.status}`);
     const book = ePub(await res.arrayBuffer());
     await book.ready;
@@ -209,7 +210,7 @@ export async function* epubPages(uuid: string): AsyncGenerator<CoverChoice> {
 
     try {
         const coverUrl = await book.coverUrl();
-        const cover = coverUrl ? await imageChoice(uuid, coverUrl, "EPUB cover") : null;
+        const cover = coverUrl ? await imageChoice(target, coverUrl, "EPUB cover") : null;
         if (fresh(cover)) yield cover;
     } catch {
         /* no declared cover */
@@ -229,7 +230,7 @@ export async function* epubPages(uuid: string): AsyncGenerator<CoverChoice> {
                 // and data: URLs are left alone.
                 const resolved = new URL(rawSrc, `epub:${section.url}`);
                 const url = resolved.protocol === "epub:" ? await book.archive.createUrl(resolved.pathname, { base64: false }) : rawSrc;
-                const c = await imageChoice(uuid, url, label);
+                const c = await imageChoice(target, url, label);
                 if (fresh(c)) yield c;
                 continue;
             }
@@ -237,7 +238,7 @@ export async function* epubPages(uuid: string): AsyncGenerator<CoverChoice> {
             canvas.width = TEXT_PAGE.width;
             canvas.height = TEXT_PAGE.height;
             drawTextPage(ctx2d(canvas), canvas.width, canvas.height, sectionBlocks(doc), label);
-            const c = await canvasChoice(uuid, label, canvas);
+            const c = await canvasChoice(target, label, canvas);
             if (fresh(c)) yield c;
         } catch (err: unknown) {
             console.warn("Could not load EPUB section", i, err);

@@ -107,7 +107,19 @@ Each book's `authors` is its authors' names in Calibre's order, `A & B` (`bookAu
 - **Guards.**
   - Every endpoint that changes the library is wrapped in `requireWrites` (`main.go`), which requires `-allow-writes` and a signed-in admin.
   - The whole server is wrapped in `csrfProtect`, Go's `http.CrossOriginProtection`.
-- **Read-only mode** writes only CalibreFast's own caches (`./pages` and `-cachedir`).
+- **Read-only mode** writes only CalibreFast's own caches (`./pages` and `-cachedir`). `-watch-dir` is ignored without `-allow-writes`: taking files out of a folder is a change too.
+
+## Watch folder and import queue
+
+`imports.go`. `-watch-dir` books wait outside the library until an admin adds them.
+
+- **Scanning** (`folderWatcher.scan`, every `watchInterval`): a walk of the folder, no filesystem notifications. A file is finished when its size and modification time are the same in two scans. Files are grouped by folder and name without extension; a group is taken when all of it is finished. A file that can't be taken is logged once and left until it changes.
+- **The queue** (`importInbox`) is the folders under `<datadir>/imports/<id>/`: the book's files under their own names, `item.json` (a `pendingImport`: what each file says, and their `mergeMeta` as the starting metadata) and `cover.jpg` once one is chosen. Not in the app database: a waiting book is its folder. A folder without a valid `item.json` is logged and skipped, never deleted.
+- **Review** is the metadata editor. `templates/book-edit.html` renders for a waiting book when `EditBookPageData.Import` is set, and the browser code takes a `BookTarget` (`web/book-target.ts`): the addresses for a library book (`libraryBook`) or a waiting one (`pendingImport`). `web/metadata.ts`, `isbn-tools.ts`, `cover-dialog.ts` and `cover-sources.ts` only use those, so both kinds share one editor.
+  - `/import/{id}/metadata`, `/isbns`, `/formats`, `/file/{format}`, `/cover`, `/cover/status`, `/cover/revert` mirror the library's endpoints, on the queue's folder. Cover saving is shared (`readCoverUpload`, `saveCoverJPEG`, `revertCoverIn` in `cover_upload.go`).
+  - `mountCoverDialog`'s `autoDefault` gives a coverless waiting book the EPUB's cover or the PDF's first page.
+- **Adding** (`POST /import/{id}/apply` → `importInbox.approve`): `addBookToLibrary` (`upload.go`, shared with uploads: the row in `metadata.db`, `metadata.opf`, the files moved in; undone if a step fails, with the files moved back), then the cover, then `updateBookInCalibreDB`, the same write as the editor's Apply. The book is taken out of the queue first, so two requests can't both add it, and put back if adding fails.
+- `/api/me` reports `pending_imports` to admins, for the top bar (`web/nav.ts`). `/import` is `templates/imports.html` and `web/imports.ts`, which polls `/api/imports`.
 
 ## ISBNs and online lookups
 

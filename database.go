@@ -212,13 +212,13 @@ func deleteBookFromCalibreDB(db *sql.DB, bookID int64) error { // TODO: NEEDS TE
 		"books_series_link",
 		"books_publishers_link",
 		"books_languages_link",
+		"comments",
 		"data",
 		"identifiers",
 	}
 
 	for _, table := range tables {
-		_, err := tx.Exec(`DELETE FROM `+table+` WHERE book = ?`, bookID)
-		if err != nil {
+		if _, err = tx.Exec(`DELETE FROM `+table+` WHERE book = ?`, bookID); err != nil {
 			return fmt.Errorf("delete from %s: %w", table, err)
 		}
 	}
@@ -228,15 +228,18 @@ func deleteBookFromCalibreDB(db *sql.DB, bookID int64) error { // TODO: NEEDS TE
 	// Finally delete the book itself
 	res, err := tx.Exec(`DELETE FROM books WHERE id = ?`, bookID)
 	if err != nil {
-		return fmt.Errorf("delete book: %w", err)
+		err = fmt.Errorf("delete book: %w", err)
+		return err
 	}
 
 	n, _ := res.RowsAffected()
 	if n != 1 {
-		return fmt.Errorf("expected to delete 1 book, deleted %d", n)
+		err = fmt.Errorf("expected to delete 1 book, deleted %d", n)
+		return err
 	}
 
-	return nil
+	err = tx.Commit()
+	return err
 }
 
 // updateBookInCalibreDB updates a book's metadata in the Calibre database and its on-disk metadata.opf.

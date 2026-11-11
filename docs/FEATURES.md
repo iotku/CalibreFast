@@ -140,6 +140,25 @@ Both only offer choices. Nothing is saved until **Apply Changes**.
 - Files with the same name and different formats (`Book.epub` + `Book.pdf`) become one book with both formats.
 - Metadata is read from EPUB and PDF files. Afterwards the editor lets you pick each field's value from each format. `metadata.opf` gets the book's uuid as `<dc:identifier opf:scheme="uuid" id="uuid_id">`; the file's own identifiers (an EPUB's `urn:uuid:`, its ISBN) are kept with their ids.
 
+## Watch folder and import queue
+
+Start the server with `-watch-dir /path/to/folder` (and `-allow-writes`). Books put in that folder are **not** added to the library: they wait for an admin's review.
+
+- **What is taken:** EPUB, PDF, MOBI, AZW3 and DjVu files, in the folder and its subfolders, checked every few seconds.
+  - A file is taken once it has stopped changing, so a copy in progress is left alone.
+  - Files in one folder with the same name and different formats (`Book.epub` + `Book.pdf`) are one book.
+  - Hidden files and folders (`.name`), symbolic links and empty files are ignored. Other files are left where they are.
+- **Taken files are moved** out of the watch folder into the queue (in `-datadir`), so the folder shows what is still to come.
+- **The queue** (`/import`, **Review imports** in the user menu, and an inbox icon with a count in the top bar while books wait) lists each book with its files. It updates by itself.
+- **Reviewing a book** uses the metadata editor, on the waiting book:
+  - **current** is what the files say (the best of each format, as on upload); each file's own values are pills under the fields. A file that says nothing gets its file name as the title.
+  - **ISBNs** are looked for in the files right away, and **Look up** fetches metadata from Open Library, Wikidata or Google Books to compare and pick from, as in the editor. **Accept all** fills the form; it doesn't add the book.
+  - **The cover:** click it for the cover dialog (pages of the PDF and EPUB, an upload, Open Library's cover). A book with no cover yet gets its EPUB's cover, or its PDF's first page, until you choose another.
+  - **Add to library** adds the book with the form's values, the chosen cover and all its files, then opens the next book in the queue (or the added book, after the last one).
+  - **Discard** deletes the book's files from the queue, after a confirmation. They are not put back in the watch folder.
+- **Nothing reaches `metadata.db` or the library folder before Add to library.** Leaving the page keeps the book waiting; the form's edits aren't saved until then (the cover is).
+- Waiting books survive a restart, and can still be reviewed when the server runs without `-watch-dir`.
+
 ## Accounts, favorites, progress and shelves
 
 - **Accounts:** password, or GitHub/Google sign-in. Admins manage users at `/admin/users`. See [SECURITY.md](SECURITY.md) for who can do what.

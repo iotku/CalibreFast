@@ -13,11 +13,17 @@
 import {
     type CoverChoice, currentCover, epubPages, fetchCoverStatus, fileChoice, formatBytes, imageChoice, pdfPages, revertCover,
 } from "./cover-sources.js";
+import type { BookTarget } from "./book-target.js";
 import { api, closeOnBackdropClick, el, errorMessage, maybeId } from "./dom.js";
 import type { CoverCandidate, LookupResult } from "./types.js";
 
 export interface CoverDialogOptions {
-    uuid: string;
+    book: BookTarget;
+    /**
+     * A book without a cover gets one right away: its EPUB's cover, else its
+     * PDF's first page, as on upload. For books waiting in the import queue.
+     */
+    autoDefault?: boolean;
     /** The banner's cover button: it opens the dialog. */
     opener: HTMLElement;
     /** The editor's ISBN lookup box; null with -no-lookups (no online covers). */
@@ -29,7 +35,7 @@ export interface CoverDialogOptions {
 /** At most this many choices are shown large at once (side by side). */
 const COMPARE = 2;
 
-export function mountCoverDialog({ uuid, opener, isbnInput, onChanged }: CoverDialogOptions): void {
+export function mountCoverDialog({ book, autoDefault = false, opener, isbnInput, onChanged }: CoverDialogOptions): void {
     const dialogEl = maybeId("cover-dialog", HTMLDialogElement);
     const listEl = maybeId("cover-choices");
     const viewEl = maybeId("cover-view");
@@ -105,7 +111,7 @@ export function mountCoverDialog({ uuid, opener, isbnInput, onChanged }: CoverDi
             if (actual) img.style.width = `${c.width / window.devicePixelRatio}px`;
             const pick = c.save
                 ? el("button", { type: "button", className: "btn-primary" }, "Use this cover")
-                : el("span", { className: "cover-view-note" }, "The book's cover now");
+                : el("span", { className: "cover-view-note" }, book.pending ? "The cover chosen so far" : "The book's cover now");
             if (pick instanceof HTMLButtonElement) pick.addEventListener("click", () => void use(c));
             return el(
                 "figure",
@@ -150,12 +156,14 @@ export function mountCoverDialog({ uuid, opener, isbnInput, onChanged }: CoverDi
         say(`Saving ${choice.label} as the cover…`);
         const res = await choice.save!();
         revertBtn.hidden = !res.hasBackup;
-        return `✓ Cover saved (${choice.label}). Covers are saved right away; Apply Changes is for the fields.`;
+        return book.pending
+            ? `✓ ${choice.label} is the cover the book will be added with.`
+            : `✓ Cover saved (${choice.label}). Covers are saved right away; Apply Changes is for the fields.`;
     });
 
     revertBtn.addEventListener("click", () => void run(async () => {
         say("Bringing back the previous cover…");
-        const res = await revertCover(uuid);
+        const res = await revertCover(book);
         revertBtn.hidden = !res.hasBackup;
         return "✓ The previous cover is back.";
     }));
@@ -165,7 +173,7 @@ export function mountCoverDialog({ uuid, opener, isbnInput, onChanged }: CoverDi
     /** The current cover, first in the list (reloaded after a change). */
     async function loadCurrent(): Promise<void> {
         currentStale = false;
-        const fresh = await currentCover(uuid);
+        const fresh = await currentCover(book);
         if (current) remove(current);
         current = fresh;
         add(current, { first: true });
@@ -178,14 +186,14 @@ export function mountCoverDialog({ uuid, opener, isbnInput, onChanged }: CoverDi
         filesLoaded = true;
         let formats: string[] = [];
         try {
-            formats = await api<string[]>("GET", `/formats/${encodeURIComponent(uuid)}`);
+            formats = await api<string[]>("GET", book.formats);
         } catch {
             /* the current cover and an upload still work */
         }
         const notes: string[] = [];
         const sources: [string, () => AsyncGenerator<CoverChoice>][] = [];
-        if (formats.includes("pdf")) sources.push(["PDF", () => pdfPages(uuid)]);
-        if (formats.includes("epub")) sources.push(["EPUB", () => epubPages(uuid)]);
+        if (formats.includes("pdf")) sources.push(["PDF", () => pdfPages(book)]);
+        if (formats.includes("epub")) sources.push(["EPUB", () => epubPages(book)]);
         for (const [name, source] of sources) {
             say(`Loading the ${name}'s first pages…`);
             try {
@@ -205,7 +213,7 @@ export function mountCoverDialog({ uuid, opener, isbnInput, onChanged }: CoverDi
         fileEl.value = "";
         if (!file) return;
         try {
-            const choice = await fileChoice(uuid, file);
+            const choice = await fileChoice(book, file);
             add(choice, { first: true });
             selected = current ? [current, choice] : [choice]; // against the cover it would replace
             renderView();
@@ -248,7 +256,7 @@ export function mountCoverDialog({ uuid, opener, isbnInput, onChanged }: CoverDi
             for (const url of urls) {
                 if (online.has(url)) continue;
                 online.add(url);
-                const choice = await imageChoice(uuid, url, "Open Library");
+                const choice = await imageChoice(book, url, "Open Library");
                 if (choice) {
                     add(choice, { first: true });
                     added.push(choice);
@@ -273,7 +281,7 @@ export function mountCoverDialog({ uuid, opener, isbnInput, onChanged }: CoverDi
     opener.addEventListener("click", () => {
         if (!dialog.open) dialog.showModal();
         say(filesLoaded ? hint() : "Loading the book's covers…");
-        void fetchCoverStatus(uuid).then((s) => (revertBtn.hidden = !s.hasBackup));
+        void fetchCoverStatus(book).then((s) => (revertBtn.hidden = !s.hasBackup));
         void (async () => {
             if (currentStale) await loadCurrent();
             if (!filesLoaded) await loadBookFiles();
@@ -281,4 +289,25 @@ export function mountCoverDialog({ uuid, opener, isbnInput, onChanged }: CoverDi
         })();
     });
     closeOnBackdropClick(dialog);
+
+    // ---- A default cover ---------------------------------------------------------------
+
+    if (autoDefault) {
+        void (async () => {
+            if ((await fetchCoverStatus(book)).hasCover || filesLoaded) return;
+            await loadBookFiles(); // the choices are then ready when the dialog opens
+            // As on upload: the EPUB's own cover, else the first page offered.
+            const choices = [...cards.keys()].filter((c) => c.save);
+            const first = choices.find((c) => c.label === "EPUB cover") ?? choices[0];
+            if (!first?.save || busy || (await fetchCoverStatus(book)).hasCover) return; // the admin already chose
+            try {
+                await first.save();
+                currentStale = true;
+                if (dialog.open) await loadCurrent();
+                onChanged(`✓ ${first.label} is the cover for now. Click the cover to choose another.`);
+            } catch (err) {
+                console.warn("Couldn't save a default cover:", err);
+            }
+        })();
+    }
 }

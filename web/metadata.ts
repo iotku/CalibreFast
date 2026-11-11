@@ -1,5 +1,6 @@
 import { createChipInput, parseList, uniqueItems, type ChipInput } from "./chips.js";
 import { attachSuggest } from "./suggest.js";
+import type { BookTarget } from "./book-target.js";
 import { createDescriptionEditor } from "./description.js";
 import { closeOnBackdropClick, errorMessage, maybeId } from "./dom.js";
 import { isbnDigits, mountIsbnTools } from "./isbn-tools.js";
@@ -98,8 +99,8 @@ function dropOldLookup(buttons: HTMLButtonElement[], meta: MetaSource): void {
   }
 }
 
-export async function fetchMetas(uuid: string): Promise<MetaSource[]> {
-  const res = await fetch(`/metadata/${uuid}`);
+export async function fetchMetas(book: BookTarget): Promise<MetaSource[]> {
+  const res = await fetch(book.metadata, { credentials: "same-origin" });
   if (!res.ok) throw new Error(`Failed to load metadata: HTTP ${res.status}`);
   return (await res.json()) as MetaSource[];
 }
@@ -561,11 +562,15 @@ export interface MetadataForm {
   useIsbn(isbn: string): void;
   /** What taking every value a lookup has would change, vs current. */
   preview(meta: MetaSource): HTMLElement[];
-  /** Take every value a lookup has (its pills), then apply. */
+  /**
+   * Take every value a lookup has (its pills), then apply. A book waiting in
+   * the import queue isn't applied: that would add it to the library before
+   * its cover and the rest are looked at.
+   */
   acceptAll(meta: MetaSource): void;
 }
 
-export function populateMetadataForm(form: HTMLFormElement, metas: MetaSource[]): MetadataForm {
+export function populateMetadataForm(form: HTMLFormElement, metas: MetaSource[], { applyOnAccept = true } = {}): MetadataForm {
   const current = metas.find((m) => m.Format === "current") || metas[0] || null;
   const adders: AddSource[] = [];
   let identifiers: IdentifierField | null = null;
@@ -586,7 +591,7 @@ export function populateMetadataForm(form: HTMLFormElement, metas: MetaSource[])
       for (const btn of form.querySelectorAll<HTMLButtonElement>(".meta-source-btn[data-external]")) {
         if (btn.dataset["format"] === meta.Format) btn.click();
       }
-      form.requestSubmit();
+      if (applyOnAccept) form.requestSubmit();
     },
   };
 }
@@ -624,8 +629,15 @@ export function collectValues(form: HTMLFormElement): FormValues {
   return values;
 }
 
-export async function applyValues(uuid: string, values: FormValues): Promise<unknown> {
-  const res = await fetch(`/metadata/${uuid}/apply`, {
+/** What applying answers; next is the import queue's next book, if any. */
+export interface ApplyResult {
+  uuid: string;
+  title: string;
+  next?: string;
+}
+
+export async function applyValues(book: BookTarget, values: FormValues): Promise<ApplyResult> {
+  const res = await fetch(book.apply, {
     method: "POST",
     headers: { "content-type": "application/json" },
     body: JSON.stringify(values),
@@ -634,7 +646,7 @@ export async function applyValues(uuid: string, values: FormValues): Promise<unk
     const text = await res.text();
     throw new Error(text || `HTTP ${res.status}`);
   }
-  return res.json();
+  return (await res.json()) as ApplyResult;
 }
 
 // ---------------------------------------------------------------------------
@@ -725,10 +737,13 @@ function renderChanges(changes: Change[], { compact = false }: { compact?: boole
 
 // form must already exist in the DOM with inputs named per FIELDS
 // and a `.meta-source-buttons[data-field="key"]` container next to each one.
-export async function mountMetadataEditor(uuid: string, form: HTMLFormElement): Promise<MetaSource[] | undefined> {
+// For a book waiting in the import queue (book.pending), applying adds it to
+// the library with the form's values, changed or not.
+export async function mountMetadataEditor(book: BookTarget, form: HTMLFormElement): Promise<MetaSource[] | undefined> {
   const statusEl = maybeId("edit-status");
   const saveBtn = maybeId("btn-save", HTMLButtonElement) ?? form.querySelector<HTMLButtonElement>('button[type="submit"]');
   const headerTitle = maybeId("edit-header-title");
+  const applyLabel = saveBtn?.textContent ?? "Apply Changes";
 
   try {
     // Tags and languages are edited as chips over their (hidden) inputs.
@@ -794,12 +809,12 @@ export async function mountMetadataEditor(uuid: string, form: HTMLFormElement): 
 
     const commitPending = (): void => chipInputs.forEach((c) => c.commitPending());
 
-    const metas = await fetchMetas(uuid);
-    const editor = populateMetadataForm(form, metas);
+    const metas = await fetchMetas(book);
+    const editor = populateMetadataForm(form, metas, { applyOnAccept: !book.pending });
 
     // Find ISBNs in the book's files; look the book up online.
     mountIsbnTools({
-      uuid,
+      book,
       form,
       currentIsbn: () => form.querySelector<HTMLInputElement>('[name="identifier_isbn"]')?.value.trim() ?? "",
       titleAndAuthor: () => ({
@@ -861,15 +876,20 @@ export async function mountMetadataEditor(uuid: string, form: HTMLFormElement): 
     const snapshot = (): string => JSON.stringify(collectValues(form));
     let baseline = snapshot();
     let saving = false;
+    let added = false; // a waiting book, now in the library
+    // Discarded from the import queue (the page's Discard): nothing left to lose.
+    form.addEventListener("metadata-discarded", () => {
+      added = true;
+    });
     const isDirty = (): boolean =>
-      !saving &&
+      !saving && !added &&
       (chipInputs.some((c) => c.textInput.value.trim()) || snapshot() !== baseline);
 
     // Apply Changes is only for changes the admin made: off until the form
     // differs from what was loaded (what the editor itself filled in or tidied
     // is part of that), and off again when the changes are undone.
     const updateApply = (): void => {
-      if (!saveBtn || saving) return;
+      if (!saveBtn || saving || book.pending) return; // a waiting book can always be added
       const dirty = isDirty();
       saveBtn.disabled = !dirty;
       saveBtn.title = dirty ? "" : "Nothing to apply: no field has been changed";
@@ -905,7 +925,7 @@ export async function mountMetadataEditor(uuid: string, form: HTMLFormElement): 
       commitPending(); // half-typed tag/language text is never dropped
       // Every way to apply (the button, Enter, Accept all, the leave prompt)
       // comes here: nothing changed, nothing saved.
-      if (!isDirty()) {
+      if (!book.pending && !isDirty()) {
         if (statusEl) {
           statusEl.className = "edit-status pending";
           statusEl.textContent = "Nothing to apply: no field has been changed.";
@@ -917,26 +937,34 @@ export async function mountMetadataEditor(uuid: string, form: HTMLFormElement): 
 
       if (saveBtn) {
         saveBtn.disabled = true;
-        saveBtn.textContent = "Applying Changes…";
+        saveBtn.textContent = book.pending ? "Adding…" : "Applying Changes…";
       }
       if (statusEl) {
         statusEl.className = "edit-status pending";
-        statusEl.textContent = "Saving metadata to Calibre library…";
+        statusEl.textContent = book.pending ? "Adding the book to the Calibre library…" : "Saving metadata to Calibre library…";
       }
 
       try {
         saving = true;
-        const result = await applyValues(uuid, values);
+        const result = await applyValues(book, values);
         baseline = JSON.stringify(values); // applied: nothing unsaved now
+        added = true;
         if (statusEl) {
           statusEl.className = "edit-status success";
-          statusEl.textContent = "✓ Metadata applied. Opening the book…";
+          statusEl.textContent = !book.pending
+            ? "✓ Metadata applied. Opening the book…"
+            : result.next ? "✓ Added to the library. Opening the next book to review…" : "✓ Added to the library. Opening the book…";
         }
         form.dispatchEvent(
           new CustomEvent("metadata-applied", { detail: result }),
         );
-        // The book page with the changes (?applied= skips its 30s cache).
-        location.assign(`/book/get/${encodeURIComponent(uuid)}?applied=${Date.now()}`);
+        if (book.pending && result.next) {
+          // On through the queue; the next page says what was just added.
+          location.assign(`/import/${encodeURIComponent(result.next)}?added=${encodeURIComponent(result.uuid)}`);
+        } else {
+          // The book page with the changes (?applied= skips its 30s cache).
+          location.assign(`/book/get/${encodeURIComponent(result.uuid)}?applied=${Date.now()}`);
+        }
       } catch (err) {
         console.error("Apply metadata failed:", err);
         if (statusEl) {
@@ -945,7 +973,11 @@ export async function mountMetadataEditor(uuid: string, form: HTMLFormElement): 
         }
       } finally {
         saving = false; // a failed apply leaves the changes unsaved (guard back on)
-        if (saveBtn) saveBtn.textContent = "Apply Changes";
+        if (saveBtn) {
+          saveBtn.textContent = applyLabel;
+          // A waiting book is gone from the queue once added: no second click.
+          if (book.pending) saveBtn.disabled = added;
+        }
         updateApply();
       }
     });

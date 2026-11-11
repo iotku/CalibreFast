@@ -3,6 +3,7 @@ package main
 import (
 	"bytes"
 	"encoding/base64"
+	"errors"
 	"fmt"
 	"image"
 	"image/jpeg"
@@ -16,13 +17,9 @@ import (
 	"time"
 )
 
-// uploadCoverHandler handles POST /upload-cover/{uuid}
-// It accepts either:
-//   - A multipart form with a "cover" file field (JPG/PNG image upload)
-//   - A JSON body with a base64 data URL in "dataUrl" field (page screenshot)
-//
-// The image is decoded, re-encoded as JPEG, and saved as cover.jpg in the book directory.
-// The thumbnail cache is invalidated and has_cover is set to 1 in the database.
+// uploadCoverHandler handles POST /upload-cover/{uuid}: the image in the
+// request (readCoverUpload) becomes the book's cover.jpg. The thumbnail cache
+// is invalidated and has_cover is set to 1 in the database.
 func uploadCoverHandler(w http.ResponseWriter, r *http.Request) {
 	if r.Method != http.MethodPost {
 		http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
@@ -41,98 +38,16 @@ func uploadCoverHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	var img image.Image
-
-	contentType := r.Header.Get("Content-Type")
-
-	if strings.HasPrefix(contentType, "multipart/form-data") {
-		// Image file upload
-		if err := r.ParseMultipartForm(32 << 20); err != nil { // 32 MB max
-			http.Error(w, "failed to parse form: "+err.Error(), http.StatusBadRequest)
-			return
-		}
-
-		file, header, err := r.FormFile("cover")
-		if err != nil {
-			http.Error(w, "missing cover file: "+err.Error(), http.StatusBadRequest)
-			return
-		}
-		defer file.Close()
-
-		ext := strings.ToLower(filepath.Ext(header.Filename))
-		if ext != ".jpg" && ext != ".jpeg" && ext != ".png" {
-			http.Error(w, "unsupported image format (use JPG or PNG)", http.StatusBadRequest)
-			return
-		}
-
-		img, _, err = image.Decode(file)
-		if err != nil {
-			http.Error(w, "failed to decode image: "+err.Error(), http.StatusBadRequest)
-			return
-		}
-
-	} else {
-		// Base64 data URL from page screenshot
-		body, err := io.ReadAll(io.LimitReader(r.Body, 32<<20))
-		if err != nil {
-			http.Error(w, "failed to read body", http.StatusBadRequest)
-			return
-		}
-
-		dataUrl := string(body)
-
-		// Parse data URL: data:image/png;base64,iVBOR...
-		if !strings.HasPrefix(dataUrl, "data:image/") {
-			http.Error(w, "expected a data:image/ URL", http.StatusBadRequest)
-			return
-		}
-
-		commaIdx := strings.Index(dataUrl, ",")
-		if commaIdx < 0 {
-			http.Error(w, "malformed data URL", http.StatusBadRequest)
-			return
-		}
-
-		b64Data := dataUrl[commaIdx+1:]
-		imgData, err := base64.StdEncoding.DecodeString(b64Data)
-		if err != nil {
-			http.Error(w, "failed to decode base64: "+err.Error(), http.StatusBadRequest)
-			return
-		}
-
-		img, _, err = image.Decode(bytes.NewReader(imgData))
-		if err != nil {
-			http.Error(w, "failed to decode image from data URL: "+err.Error(), http.StatusBadRequest)
-			return
-		}
-	}
-
-	// Save as cover.jpg
-	destDir := filepath.Join(baseDir, bookPath)
-	coverPath := filepath.Join(destDir, "cover.jpg")
-	backupPath := filepath.Join(destDir, "cover_backup.jpg")
-
-	// If cover.jpg already exists, back it up to cover_backup.jpg so it can be reverted
-	if _, err := os.Stat(coverPath); err == nil {
-		_ = copyFile(coverPath, backupPath)
-	}
-
-	outFile, err := os.Create(coverPath)
+	img, err := readCoverUpload(r)
 	if err != nil {
-		http.Error(w, "failed to create cover file: "+err.Error(), http.StatusInternalServerError)
+		http.Error(w, err.Error(), http.StatusBadRequest)
 		return
 	}
-
-	if err := jpeg.Encode(outFile, img, &jpeg.Options{Quality: 90}); err != nil {
-		outFile.Close()
-		os.Remove(coverPath)
-		http.Error(w, "failed to encode JPEG: "+err.Error(), http.StatusInternalServerError)
+	hasBackup, err := saveCoverJPEG(filepath.Join(baseDir, bookPath), img)
+	if err != nil {
+		http.Error(w, err.Error(), http.StatusInternalServerError)
 		return
 	}
-	outFile.Close()
-
-	now := time.Now()
-	_ = os.Chtimes(coverPath, now, now)
 
 	// Remove the old cover's thumbnail, then give the new cover a new stamp.
 	coverStamp, _ := bookCoverStamp(uuid)
@@ -142,13 +57,118 @@ func uploadCoverHandler(w http.ResponseWriter, r *http.Request) {
 	}
 	coverChanged(uuid)
 
-	hasBackup := false
-	if _, err := os.Stat(backupPath); err == nil {
-		hasBackup = true
-	}
-
 	w.Header().Set("Content-Type", "application/json")
 	fmt.Fprintf(w, `{"success":true,"uuid":%q,"hasBackup":%t}`, uuid, hasBackup)
+}
+
+// readCoverUpload decodes the image a cover request carries: either a
+// multipart form with a "cover" file field (a JPG or PNG upload), or a body
+// that is a base64 data URL (a page of the book, drawn by the browser).
+// Its errors are the client's (400).
+func readCoverUpload(r *http.Request) (image.Image, error) {
+	if strings.HasPrefix(r.Header.Get("Content-Type"), "multipart/form-data") {
+		if err := r.ParseMultipartForm(32 << 20); err != nil { // 32 MB max
+			return nil, fmt.Errorf("failed to parse form: %w", err)
+		}
+		file, header, err := r.FormFile("cover")
+		if err != nil {
+			return nil, fmt.Errorf("missing cover file: %w", err)
+		}
+		defer file.Close()
+
+		ext := strings.ToLower(filepath.Ext(header.Filename))
+		if ext != ".jpg" && ext != ".jpeg" && ext != ".png" {
+			return nil, errors.New("unsupported image format (use JPG or PNG)")
+		}
+		img, _, err := image.Decode(file)
+		if err != nil {
+			return nil, fmt.Errorf("failed to decode image: %w", err)
+		}
+		return img, nil
+	}
+
+	body, err := io.ReadAll(io.LimitReader(r.Body, 32<<20))
+	if err != nil {
+		return nil, errors.New("failed to read body")
+	}
+	// data:image/png;base64,iVBOR...
+	dataURL := string(body)
+	if !strings.HasPrefix(dataURL, "data:image/") {
+		return nil, errors.New("expected a data:image/ URL")
+	}
+	_, b64, ok := strings.Cut(dataURL, ",")
+	if !ok {
+		return nil, errors.New("malformed data URL")
+	}
+	imgData, err := base64.StdEncoding.DecodeString(b64)
+	if err != nil {
+		return nil, fmt.Errorf("failed to decode base64: %w", err)
+	}
+	img, _, err := image.Decode(bytes.NewReader(imgData))
+	if err != nil {
+		return nil, fmt.Errorf("failed to decode image from data URL: %w", err)
+	}
+	return img, nil
+}
+
+// saveCoverJPEG writes img as dir/cover.jpg. The cover it replaces is kept as
+// cover_backup.jpg, so the change can be reverted (revertCoverIn).
+func saveCoverJPEG(dir string, img image.Image) (hasBackup bool, err error) {
+	coverPath := filepath.Join(dir, "cover.jpg")
+	backupPath := filepath.Join(dir, "cover_backup.jpg")
+	if _, err := os.Stat(coverPath); err == nil {
+		_ = copyFile(coverPath, backupPath)
+	}
+
+	outFile, err := os.Create(coverPath)
+	if err != nil {
+		return false, fmt.Errorf("failed to create cover file: %w", err)
+	}
+	if err := jpeg.Encode(outFile, img, &jpeg.Options{Quality: 90}); err != nil {
+		outFile.Close()
+		os.Remove(coverPath)
+		return false, fmt.Errorf("failed to encode JPEG: %w", err)
+	}
+	if err := outFile.Close(); err != nil {
+		return false, fmt.Errorf("failed to write cover file: %w", err)
+	}
+	now := time.Now()
+	_ = os.Chtimes(coverPath, now, now)
+
+	_, hasBackup = coverFilesIn(dir)
+	return hasBackup, nil
+}
+
+// coverFilesIn reports whether dir has a cover, and a previous one to revert to.
+func coverFilesIn(dir string) (hasCover, hasBackup bool) {
+	_, cErr := os.Stat(filepath.Join(dir, "cover.jpg"))
+	_, bErr := os.Stat(filepath.Join(dir, "cover_backup.jpg"))
+	return cErr == nil, bErr == nil
+}
+
+var errNoCoverBackup = errors.New("no previous cover to revert to")
+
+// revertCoverIn swaps dir's cover.jpg and cover_backup.jpg, so a revert can
+// itself be undone.
+func revertCoverIn(dir string) error {
+	coverPath := filepath.Join(dir, "cover.jpg")
+	backupPath := filepath.Join(dir, "cover_backup.jpg")
+	if _, err := os.Stat(backupPath); err != nil {
+		return errNoCoverBackup
+	}
+	tempPath := filepath.Join(dir, "cover_temp.jpg")
+	if _, err := os.Stat(coverPath); err == nil {
+		_ = copyFile(coverPath, tempPath)
+	}
+	if err := copyFile(backupPath, coverPath); err != nil {
+		return fmt.Errorf("failed to restore backup cover: %w", err)
+	}
+	if _, err := os.Stat(tempPath); err == nil {
+		_ = os.Rename(tempPath, backupPath)
+	}
+	now := time.Now()
+	_ = os.Chtimes(coverPath, now, now)
+	return nil
 }
 
 // coverStatusHandler handles GET /cover-status/{uuid}
@@ -166,20 +186,7 @@ func coverStatusHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	destDir := filepath.Join(baseDir, bookPath)
-	coverPath := filepath.Join(destDir, "cover.jpg")
-	backupPath := filepath.Join(destDir, "cover_backup.jpg")
-
-	hasCover := false
-	if _, err := os.Stat(coverPath); err == nil {
-		hasCover = true
-	}
-
-	hasBackup := false
-	if _, err := os.Stat(backupPath); err == nil {
-		hasBackup = true
-	}
-
+	hasCover, hasBackup := coverFilesIn(filepath.Join(baseDir, bookPath))
 	w.Header().Set("Content-Type", "application/json")
 	fmt.Fprintf(w, `{"hasCover":%t,"hasBackup":%t}`, hasCover, hasBackup)
 }
@@ -204,30 +211,14 @@ func revertCoverHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	destDir := filepath.Join(baseDir, bookPath)
-	coverPath := filepath.Join(destDir, "cover.jpg")
-	backupPath := filepath.Join(destDir, "cover_backup.jpg")
-
-	if _, err := os.Stat(backupPath); err != nil {
-		http.Error(w, "no previous cover to revert to", http.StatusBadRequest)
+	if err := revertCoverIn(filepath.Join(baseDir, bookPath)); err != nil {
+		status := http.StatusInternalServerError
+		if errors.Is(err, errNoCoverBackup) {
+			status = http.StatusBadRequest
+		}
+		http.Error(w, err.Error(), status)
 		return
 	}
-
-	// Swap current cover and backup so user can undo if desired
-	tempPath := filepath.Join(destDir, "cover_temp.jpg")
-	if _, err := os.Stat(coverPath); err == nil {
-		_ = copyFile(coverPath, tempPath)
-	}
-	if err := copyFile(backupPath, coverPath); err != nil {
-		http.Error(w, "failed to restore backup cover: "+err.Error(), http.StatusInternalServerError)
-		return
-	}
-	if _, err := os.Stat(tempPath); err == nil {
-		_ = os.Rename(tempPath, backupPath)
-	}
-
-	now := time.Now()
-	_ = os.Chtimes(coverPath, now, now)
 
 	// Remove the old cover's thumbnail, then give the restored cover a new stamp.
 	bookStamp, _ := bookCoverStamp(uuid)

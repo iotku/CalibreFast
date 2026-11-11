@@ -27,6 +27,11 @@ export interface MeResponse {
     user: User | null;
     can_edit_library?: boolean;
     registration?: boolean;
+    /**
+     * Books from the watch folder waiting for review. Only sent to those who
+     * can review them, when there is a watch folder or something is waiting.
+     */
+    pending_imports?: number;
 }
 
 /** A library value suggestion (Go: groupValuesHandler). */
@@ -91,4 +96,33 @@ export interface LookupResult {
 export interface CoverCandidate {
     source: string;
     url: string;
+}
+
+/** One file of a book waiting in the import queue (Go: importFile in imports.go). */
+export interface ImportFile {
+    name: string;
+    format: string;
+    size: number;
+}
+
+/** A book waiting in the import queue (Go: importSummary). */
+export interface ImportSummary {
+    id: string;
+    title: string;
+    authors: string[] | null;
+    files: ImportFile[];
+    /** The folder inside the watch folder it came from; "" for its top. */
+    from: string;
+    added: string;
+    has_cover: boolean;
+}
+
+/** GET /api/imports (Go: importQueue). */
+export interface ImportQueue {
+    watching: boolean;
+    folder?: string;
+    /** Files in the watch folder not taken yet (still being copied, or just seen). */
+    settling: number;
+    problem?: string;
+    items: ImportSummary[];
 }

@@ -1,0 +1,28 @@
+<!doctype html>
+<html lang="en">
+<head>
+    <meta charset="utf-8">
+    <title>Review imports — {{ .Title }}</title>
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <link rel="stylesheet" href="{{ asset "style.css" }}">
+</head>
+<body class="auth-body">
+{{ $tb := topbar "Active" "imports" "Title" "Review imports" }}
+{{ template "topbar-start" $tb }}
+{{ template "topbar-end" $tb }}
+<!-- Books from the watch folder, waiting for review (web/imports.ts) -->
+<main class="auth-main auth-wide">
+    <section class="auth-card">
+        <h1 id="imports-count">Review imports</h1>
+        <p id="imports-folder" class="auth-muted"></p>
+        <p id="imports-problem" class="auth-error" hidden></p>
+        <p id="imports-status" class="auth-notice" role="status" hidden></p>
+        <ul id="imports-list" class="import-list" hidden></ul>
+        <p id="imports-empty" class="auth-muted" hidden>
+            Nothing is added to the library until you review it here: check the metadata (or look the book up by ISBN), choose the cover, then add it.
+        </p>
+    </section>
+</main>
+<script type="module" src="{{ asset "imports.js" }}"></script>
+</body>
+</html>
