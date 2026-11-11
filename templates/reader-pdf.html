@@ -5,7 +5,7 @@
     <!-- pdf.js, fetched alongside reader-pdf.js instead of after it (web/vendor.ts). -->
     <link rel="modulepreload" href="/static/vendor/pdfjs-dist@5.7.284/build/pdf.min.mjs">
 </head>
-<body class="reader-page reader-pdf">
+<body class="reader-page reader-pdf"{{ if .Preview }} data-preview{{ end }}>
 {{ template "reader-icons" }}
 {{ template "reader-top-start" . }}
     <button id="loupe-btn" class="r-btn r-mouse-only" type="button" title="Magnifier (M)" aria-label="Magnifier" aria-pressed="false">

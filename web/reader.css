@@ -253,6 +253,26 @@ input {
     color: var(--chrome-muted);
 }
 
+/* Preview (opened from the metadata editor): nothing is saved, so there are
+   no bookmarks or notes to offer (web/reader-preview.ts). */
+.r-preview {
+    flex-shrink: 0;
+    padding: 2px 8px;
+    border: 1px solid currentColor;
+    border-radius: 999px;
+    font-size: 11px;
+    font-weight: 600;
+    letter-spacing: 0.04em;
+    text-transform: uppercase;
+    color: var(--chrome-muted);
+}
+
+body[data-preview] #bookmark-btn,
+body[data-preview] #tab-bookmarks,
+body[data-preview] #tab-notes {
+    display: none;
+}
+
 .r-scrub {
     flex: 1;
     min-width: 0;

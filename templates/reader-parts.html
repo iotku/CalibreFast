@@ -47,6 +47,7 @@
         <span id="book-title">{{ .BookTitle }}</span>
         <span id="chapter-title" hidden></span>
     </div>
+    {{ if .Preview }}<span class="r-preview" title="Opened to look something up: your place, bookmarks, highlights and reading status aren't saved">Preview</span>{{ end }}
 {{ end }}
 {{ define "reader-top-end" }}
     <button id="bookmark-btn" class="r-btn" type="button" title="Bookmark this page" aria-label="Bookmark this page">

@@ -5,18 +5,20 @@ import { setupPdfGestures } from "./pdf-gestures.js";
 import { setupLoupe } from "./pdf-loupe.js";
 import { ACTUAL_SIZE, createPdfView, type PdfView, type ViewLayout } from "./pdf-view.js";
 import { setupChrome } from "./reader-chrome.js";
+import { leaveReader, previewSync, readerBook, type ReaderBook } from "./reader-preview.js";
 import { getSettings, onSettingsChange, setSettings, type ReaderSettings } from "./reader-settings.js";
 import { createReadingSync, renderBookmarks, type Bookmark, type BookmarkHandlers } from "./reading-sync.js";
 import { loadPdfJs, openPdf } from "./vendor.js";
 
-const params = new URLSearchParams(window.location.search);
-const uuidParam = params.get("uuid");
-
-if (!uuidParam) {
+const found = readerBook();
+if (!found) {
     document.body.innerHTML = "<p>No book specified.</p>";
     throw new Error("missing uuid");
 }
-const uuid: string = uuidParam;
+const target: ReaderBook = found;
+const uuid: string = target.id;
+/** Opened from the metadata editor: nothing is saved (reader-preview.ts). */
+const preview = target.preview;
 
 const container = byId("pdf-container");
 let view: PdfView | null = null;
@@ -32,9 +34,11 @@ const chrome = setupChrome({
 chrome.setScrubbable(false);
 
 // Resume from this device or the server (whichever is newer).
-const sync = await createReadingSync(uuid, "pdf", { legacyKey: `pdf-page-${uuid}`, onStatus: chrome.setStatus });
+const sync = preview
+    ? previewSync(chrome.setStatus)
+    : await createReadingSync(uuid, "pdf", { legacyKey: `pdf-page-${uuid}`, onStatus: chrome.setStatus });
 const saved = await sync.loadProgress();
-if (!sync.signedIn) chrome.setStatus("Position saved on this device");
+if (!sync.signedIn && !preview) chrome.setStatus("Position saved on this device");
 
 // ---- layout from the settings -------------------------------------------------
 
@@ -165,7 +169,7 @@ window.addEventListener("popstate", () => {
     if (page && page !== view?.first) void view?.show(page);
 });
 // The top-bar Back leaves the reader, skipping the in-book jumps.
-document.querySelector(".btn-back")?.addEventListener("click", () => history.go(-((state().depth ?? 0) + 1)));
+document.querySelector(".btn-back")?.addEventListener("click", () => leaveReader(target, state().depth ?? 0));
 
 async function destPage(dest: PdfJS.Dest, pdf: PdfJS.Document): Promise<number | null> {
     try {
@@ -397,7 +401,7 @@ async function renderToc(pdf: PdfJS.Document): Promise<void> {
 async function init(): Promise<void> {
     let pdf: PdfJS.Document;
     try {
-        pdf = await openPdf(`/download/${encodeURIComponent(uuid)}/pdf`);
+        pdf = await openPdf(target.file("pdf"));
     } catch (err) {
         container.className = "reader-message";
         container.textContent = "Couldn't load this PDF.";
@@ -434,9 +438,12 @@ function anchorOf(a: Annotation): PdfAnchor | null {
     return anchors.get(a.id) ?? null;
 }
 
+/** The highlights to show: none in a preview. */
+const marks = (): Annotation[] => (preview ? [] : store.list());
+
 function drawMarks(): void {
     if (!view) return;
-    const all = store.list();
+    const all = marks();
     for (let page = view.first; page <= view.last; page++) {
         const pageEl = view.pageElement(page);
         const size = view.pageSize(page);
@@ -471,7 +478,7 @@ function highlightAt(x: number, y: number): { annotation: Annotation; rect: DOMR
     const pageEl = p ? view?.pageElement(p.page) : null;
     const size = p ? view?.pageSize(p.page) : null;
     if (!p || !pageEl || !size) return null;
-    for (const a of store.list()) {
+    for (const a of marks()) {
         const anchor = anchorOf(a);
         if (anchor?.page !== p.page) continue;
         if (!anchor.rects.some(([x0, y0, x1, y1]) => p.x >= x0 - 1 && p.x <= x1 + 1 && p.y >= y0 - 1 && p.y <= y1 + 1)) continue;
@@ -548,7 +555,8 @@ const notesUI = setupAnnotationUI({
     toast: chrome.toast,
     koreader: sync.signedIn ? { uuid, format: "pdf", sync: () => store.load() } : undefined,
 });
-void store.load();
+// A preview shows no highlights and makes none (selecting text still copies).
+if (!preview) void store.load();
 
 // Offer to highlight once a selection in a page's text has stopped changing
 // and the pointer is up.
@@ -557,6 +565,7 @@ let offerTimer: ReturnType<typeof setTimeout> | undefined;
 function offerSelection(): void {
     clearTimeout(offerTimer);
     offerTimer = setTimeout(() => {
+        if (preview) return;
         const selection = window.getSelection();
         const text = selection?.toString().trim() ?? "";
         if (selecting || !selection?.rangeCount || selection.isCollapsed || !text) return;
@@ -592,7 +601,7 @@ const bookmarkHandlers: BookmarkHandlers = {
 const showBookmarks = (items: Bookmark[]): void => renderBookmarks(byId("bookmark-list"), items, bookmarkHandlers);
 void sync.loadBookmarks().then(showBookmarks);
 byId("bookmark-btn").addEventListener("click", () => {
-    if (!view) return;
+    if (!view || preview) return;
     sync.addBookmark(view.first, `Page ${view.first} of ${numPages()}`);
     showBookmarks(sync.bookmarks());
     chrome.toast("Bookmark added");

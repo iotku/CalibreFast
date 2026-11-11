@@ -1532,6 +1532,10 @@
             <button type="submit" class="tb-btn" title="Sends this ISBN to Open Library, and to Wikidata if Open Library doesn't know it">Look up</button>
         </form>
         {{ end }}
+        {{ if .ReadLink }}
+        <!-- Preview mode: nothing about reading it is saved (web/reader-preview.ts) -->
+        <a href="{{ .ReadLink }}" target="_blank" class="tb-btn tb-view-book" title="Open the book in the reader to look things up, in a new tab. Your place and reading status aren't changed.">Read</a>
+        {{ end }}
         {{ if .Import }}
         <a href="/import" class="tb-btn tb-view-book">Queue{{ if gt .Import.Waiting 1 }} ({{ .Import.Waiting }}){{ end }}</a>
         {{ else }}

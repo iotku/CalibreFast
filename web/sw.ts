@@ -116,7 +116,8 @@ sw.addEventListener("fetch", (e) => {
         return;
     }
     if (req.mode !== "navigate") return;
-    if (url.pathname === "/read" && url.searchParams.get("uuid")) {
+    // A preview (web/reader-preview.ts) isn't kept: the book isn't either.
+    if (url.pathname === "/read" && url.searchParams.get("uuid") && !url.searchParams.get("preview")) {
         e.respondWith(readerPage(req, readerKey(url.searchParams.get("uuid") ?? "")));
         return;
     }

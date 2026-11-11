@@ -772,8 +772,13 @@ func importReviewPage(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 	w.Header().Set("Cache-Control", "no-store")
+	formats := make([]string, len(it.Files))
+	for i, f := range it.Files {
+		formats[i] = f.Format
+	}
 	logErr(templates.ExecuteTemplate(w, "book-edit.html", EditBookPageData{
 		Import:      page,
+		ReadLink:    previewReadLink("import", it.ID, formats),
 		Lookups:     !noLookups,
 		GoogleBooks: !noLookups && !noGoogleBooks,
 	}), "render import review")

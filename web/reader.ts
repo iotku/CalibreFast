@@ -5,17 +5,19 @@ import { byId, errorMessage, maybeId, modalOpen } from "./dom.js";
 import { openEpub } from "./epub-open.js";
 import { canInflate, openBuffer, openRemote, type EpubSource } from "./epub-source.js";
 import { pageColors, setupChrome } from "./reader-chrome.js";
+import { leaveReader, previewSync, readerBook, type ReaderBook } from "./reader-preview.js";
 import { getSettings, onSettingsChange, type ReaderSettings } from "./reader-settings.js";
 import { createReadingSync, renderBookmarks, type Bookmark, type BookmarkHandlers } from "./reading-sync.js";
 
-const params = new URLSearchParams(window.location.search);
-const uuidParam = params.get("uuid");
-
-if (!uuidParam) {
+const found = readerBook();
+if (!found) {
     document.body.innerHTML = "<p>No book specified.</p>";
     throw new Error("missing uuid");
 }
-const uuid: string = uuidParam;
+const target: ReaderBook = found;
+const uuid: string = target.id;
+/** Opened from the metadata editor: nothing is kept or saved (reader-preview.ts). */
+const preview = target.preview;
 
 const container = byId("reader-container");
 const settings = getSettings;
@@ -36,9 +38,10 @@ chrome.setScrubbable(false);
  *   - browsers without DecompressionStream download it whole first, as before.
  * Chapters are always rendered by epub.js in a sandboxed iframe without
  * scripts; nothing from the book is served by our origin as a page.
+ * A preview neither uses nor keeps a copy in this browser.
  */
-registerWorker();
-const downloadUrl = `/download/${encodeURIComponent(uuid)}/epub`;
+if (!preview) registerWorker();
+const downloadUrl = target.file("epub");
 /** Below this the whole file is fetched at once: it usually beats the ranges. */
 const SMALL_BOOK = 3 << 20;
 
@@ -72,7 +75,7 @@ let book: EpubJS.Book;
 /** A file's path inside the book from a URL epub.js made. */
 let pathOf = (url: string): string => decodeURIComponent(url.replace(/^\/+/, "").split("#")[0] ?? "");
 try {
-    cached = await getBook(uuid).catch(() => null);
+    cached = preview ? null : await getBook(uuid).catch(() => null);
     if (cached && canInflate) {
         source = openBuffer(new Uint8Array(await cached.bytes.arrayBuffer()), cached.lastModified);
     } else if (canInflate) {
@@ -103,6 +106,7 @@ try {
 
 /** Keep the whole file in this browser, with the book's title for the offline page. */
 async function keepCopy(buf: Uint8Array, lastModified: string, locations?: string): Promise<void> {
+    if (preview) return;
     await book.ready;
     const meta = book.packaging?.metadata;
     await putBook({
@@ -151,7 +155,7 @@ if (cached) {
             chrome.toast("A newer copy of this book was downloaded. Reopen it to see it.");
         })
         .catch(() => {}); // offline
-} else if (source) {
+} else if (source && !preview) {
     void sweep(undefined, uuid).catch(() => {}); // the server answered: tidy up other kept books
 }
 if (!cached && source?.whole) {
@@ -259,9 +263,11 @@ new ResizeObserver(() => {
 
 // ---- position: resume (local or synced), save as the reader moves ----------
 
-const sync = await createReadingSync(uuid, "epub", { legacyKey: `reader-cfi-${uuid}`, onStatus: chrome.setStatus });
+const sync = preview
+    ? previewSync(chrome.setStatus)
+    : await createReadingSync(uuid, "epub", { legacyKey: `reader-cfi-${uuid}`, onStatus: chrome.setStatus });
 const saved = await sync.loadProgress();
-if (!sync.signedIn) chrome.setStatus("Position saved on this device");
+if (!sync.signedIn && !preview) chrome.setStatus("Position saved on this device");
 
 let locationsReady = false;
 let currentCfi: string | null = null;
@@ -352,7 +358,7 @@ window.addEventListener("popstate", () => {
 });
 
 // The top-bar Back leaves the reader, skipping the in-book jumps.
-document.querySelector(".btn-back")?.addEventListener("click", () => history.go(-((state().depth ?? 0) + 1)));
+document.querySelector(".btn-back")?.addEventListener("click", () => leaveReader(target, state().depth ?? 0));
 
 // ---- turning pages ----------------------------------------------------------
 
@@ -461,7 +467,7 @@ rendition.on("rendered", (section, view) => {
                 followLink(href, section);
                 return;
             }
-            const hit = highlightAt(doc, e.clientX, e.clientY);
+            const hit = preview ? null : highlightAt(doc, e.clientX, e.clientY);
             if (hit) {
                 notesUI.offerExisting(toScreen(doc, hit.rect), hit.annotation);
                 return;
@@ -575,7 +581,7 @@ void book.ready
         await wholeDone;
         await book.locations.generate(CHARS_PER_PAGE);
         const saved = book.locations.save();
-        void updateBook(uuid, { locations: saved }).catch(() => {});
+        if (!preview) void updateBook(uuid, { locations: saved }).catch(() => {});
     })
     .then(() => {
         locationsReady = true;
@@ -661,7 +667,7 @@ const showBookmarks = (items: Bookmark[]): void => renderBookmarks(byId("bookmar
 void sync.loadBookmarks().then(showBookmarks);
 
 byId("bookmark-btn").addEventListener("click", () => {
-    if (!currentCfi) return;
+    if (!currentCfi || preview) return;
     const page = pageText(currentCfi);
     sync.addBookmark(currentCfi, `${currentTocEntry()?.label || "Bookmark"}${page ? ` — ${page.split(" of ")[0]}` : ""}`);
     showBookmarks(sync.bookmarks());
@@ -740,9 +746,11 @@ const notesUI = setupAnnotationUI({
     toast: chrome.toast,
     koreader: sync.signedIn ? { uuid, format: "epub", sync: () => store.load() } : undefined,
 });
-void store.load();
+// A preview shows no highlights and makes none (selecting text still copies).
+if (!preview) void store.load();
 
 rendition.on("selected", (cfiRange, contents) => {
+    if (preview) return;
     const selection = contents.window.getSelection();
     const text = selection?.toString().trim() ?? "";
     if (!selection?.rangeCount || !text) return;

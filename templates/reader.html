@@ -6,7 +6,7 @@
     <script src="/static/vendor/jszip@3.10.2/dist/jszip.min.js"></script>
     <script src="/static/vendor/epubjs@0.3.93/dist/epub.min.js"></script>
 </head>
-<body class="reader-page reader-epub">
+<body class="reader-page reader-epub"{{ if .Preview }} data-preview{{ end }}>
 {{ template "reader-icons" }}
 {{ template "reader-top-start" . }}
     <button id="search-btn" class="r-btn" type="button" title="Search in this book" aria-label="Search in this book">
