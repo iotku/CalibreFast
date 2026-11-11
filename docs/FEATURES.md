@@ -153,11 +153,12 @@ Start the server with `-watch-dir /path/to/folder` (and `-allow-writes`). Books 
   - Files in one folder with the same name and different formats (`Book.epub` + `Book.pdf`) are one book.
   - Hidden files and folders (`.name`), symbolic links and empty files are ignored. Other files are left where they are.
 - **Taken files are moved** out of the watch folder into the queue (in `-datadir`), so the folder shows what is still to come.
-- **The queue** (`/import`, **Review imports** in the user menu, and an inbox icon with a count in the top bar while books wait) lists each book with its files. It updates by itself.
+- **The queue** (`/import`, **Review imports** in the user menu, and an inbox icon with a count in the top bar while books wait) lists each book with its cover and files. It updates by itself.
+- **Covers are taken from the files** when a book arrives: the cover its EPUB declares, else its PDF's first page when that page is a single picture (a scan, or a cover image). Books already waiting get one when the server starts.
 - **Reviewing a book** uses the metadata editor, on the waiting book:
   - **current** is what the files say (the best of each format, as on upload); each file's own values are pills under the fields. A file that says nothing gets its file name as the title.
   - **ISBNs** are looked for in the files right away, and **Look up** fetches metadata from Open Library, Wikidata or Google Books to compare and pick from, as in the editor. **Accept all** fills the form; it doesn't add the book.
-  - **The cover:** click it for the cover dialog (pages of the PDF and EPUB, an upload, Open Library's cover). A book with no cover yet gets its EPUB's cover, or its PDF's first page, until you choose another.
+  - **The cover:** click it for the cover dialog (pages of the PDF and EPUB, an upload, Open Library's cover). A book that already has a cover isn't opened in the browser until you click it. One with no cover yet (an EPUB without a declared cover, a PDF whose first page is text) gets its EPUB's first pictures or its PDF's first page, drawn in the browser, until you choose another.
   - **Add to library** adds the book with the form's values, the chosen cover and all its files, then opens the next book in the queue (or the added book, after the last one).
   - **Discard** deletes the book's files from the queue, after a confirmation. They are not put back in the watch folder.
 - **Nothing reaches `metadata.db` or the library folder before Add to library.** Leaving the page keeps the book waiting; the form's edits aren't saved until then (the cover is).

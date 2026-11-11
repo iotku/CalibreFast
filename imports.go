@@ -13,7 +13,8 @@ package main
 // discards it.
 //
 // A waiting book is a folder: its files under their own names, item.json
-// (what was read from them) and, once chosen, cover.jpg. It lives in
+// (what was read from them) and cover.jpg: taken from the files when they
+// arrive if possible (import_covers.go), else chosen on the review page. It lives in
 // -datadir, not the library, so Calibre never sees a half-imported book.
 
 import (
@@ -242,6 +243,9 @@ func (b *importInbox) stage(paths []string, from string) (*pendingImport, error)
 	if err := os.WriteFile(filepath.Join(dir, "item.json"), data, 0o600); err != nil {
 		return fail(err)
 	}
+	// Its cover from its files, if one can be had without a browser
+	// (import_covers.go); else the review page picks one.
+	extractImportCover(dir, it.Files)
 	b.put(it)
 	return it, nil
 }
@@ -650,6 +654,7 @@ func startImports() {
 	}
 	if n := imports.count(); n > 0 {
 		log.Printf("import queue: %d book(s) waiting for review at /import", n)
+		go backfillImportCovers(imports)
 	}
 	if watchDir == "" {
 		if watchForcePolling {
