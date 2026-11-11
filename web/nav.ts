@@ -37,6 +37,7 @@ const STAR = "M12 3l2.8 5.7 6.2.9-4.5 4.4 1.1 6.2L12 17.3 6.4 20.2l1.1-6.2L3 9.6
 const BOOK = "M2 4h6a4 4 0 0 1 4 4v12a3 3 0 0 0-3-3H2zM22 4h-6a4 4 0 0 0-4 4v12a3 3 0 0 1 3-3h7z";
 const BOOKMARK = "M6 3h12a1 1 0 0 1 1 1v17l-7-4.5L5 21V4a1 1 0 0 1 1-1z";
 const UPLOAD = "M12 15V4M7 9l5-5 5 5M4 15v4a1 1 0 0 0 1 1h14a1 1 0 0 0 1-1v-4";
+const INBOX = "M3 13l3-8h12l3 8M3 13v5a1 1 0 0 0 1 1h16a1 1 0 0 0 1-1v-5M3 13h5l1 2h6l1-2h5";
 
 function init(bar: HTMLElement): void {
     const user = bar.querySelector<HTMLElement>(".tb-user");
@@ -110,6 +111,8 @@ function init(bar: HTMLElement): void {
         username: string | null;
         isAdmin: boolean;
         canEdit: boolean;
+        /** Books waiting in the import queue; null when there is no queue to show. */
+        imports?: number | null;
     }
     const cache = {
         get(): string | null {
@@ -147,6 +150,15 @@ function init(bar: HTMLElement): void {
             return a;
         };
 
+        // Books from the watch folder to review: in the bar while any wait.
+        const imports = st.canEdit ? (st.imports ?? null) : null;
+        let importsShortcut: HTMLAnchorElement | null = null;
+        if (imports) {
+            importsShortcut = shortcut("/import", `${imports} new book${imports === 1 ? "" : "s"} to review`, INBOX, "imports");
+            importsShortcut.classList.add("tb-has-badge");
+            importsShortcut.append(el("span", { className: "tb-badge", textContent: imports > 99 ? "99+" : String(imports) }));
+        }
+
         const btn = el("button", { type: "button", className: "tb-user-btn", title: name, ariaLabel: `Account menu for ${name}` });
         btn.setAttribute("aria-haspopup", "true");
         btn.setAttribute("aria-expanded", "false");
@@ -169,6 +181,7 @@ function init(bar: HTMLElement): void {
             el("a", { href: "/me/finished", textContent: "Finished", ...current("finished") }),
             el("hr"),
             ...(st.canEdit ? [el("a", { href: "/upload", textContent: "Upload books", ...current("upload") })] : []),
+            ...(imports !== null ? [el("a", { href: "/import", textContent: imports ? `Review imports (${imports})` : "Review imports", ...current("imports") })] : []),
             ...(st.isAdmin ? [el("a", { href: "/admin/users", textContent: "Manage users" })] : []),
             el("a", { href: "/account", textContent: "Account" }),
             logout,
@@ -178,6 +191,7 @@ function init(bar: HTMLElement): void {
         });
 
         userEl.replaceChildren(
+            ...(importsShortcut ? [importsShortcut] : []),
             ...(st.canEdit ? [shortcut("/upload", "Upload books", UPLOAD, "upload")] : []),
             shortcut("/me/wanted", "Want to read", BOOKMARK, "wanted"),
             shortcut("/me/favorites", "Favorites", STAR, "favorites"),
@@ -199,7 +213,12 @@ function init(bar: HTMLElement): void {
         .then(async (r) => ({ ok: r.ok, body: (await r.json()) as MeResponse }))
         .then(({ ok, body }) => {
             const u = ok ? body.user : null;
-            const st: MeState = { username: u?.username ?? null, isAdmin: !!u?.is_admin, canEdit: !!body.can_edit_library };
+            const st: MeState = {
+                username: u?.username ?? null,
+                isAdmin: !!u?.is_admin,
+                canEdit: !!body.can_edit_library,
+                imports: body.pending_imports ?? null,
+            };
             const json = JSON.stringify(st);
             cache.set(json);
             // Books kept for offline reading belong to whoever read them

@@ -3,6 +3,7 @@
 // autoSelectDefault, the EPUB's cover (or the PDF's first page) is saved
 // right away. The metadata editor uses cover-dialog.ts instead.
 
+import { libraryBook } from "./book-target.js";
 import { errorMessage } from "./dom.js";
 import { type CoverChoice, epubPages, fileChoice, pdfPages } from "./cover-sources.js";
 
@@ -19,6 +20,7 @@ export function buildCoverPicker(
     onCoverSaved: CoverSaved = null,
     options: CoverPickerOptions = {},
 ): HTMLDivElement {
+    const book = libraryBook(uuid);
     const picker = document.createElement("div");
     picker.className = "cover-picker";
     picker.innerHTML = `
@@ -77,7 +79,7 @@ export function buildCoverPicker(
         if (!file) return;
         pages.classList.add("visible");
         try {
-            await save(await fileChoice(uuid, file), null);
+            await save(await fileChoice(book, file), null);
         } catch (err: unknown) {
             status.textContent = "Upload failed: " + errorMessage(err);
         } finally {
@@ -119,13 +121,13 @@ export function buildCoverPicker(
         actions.appendChild(btn);
         return btn;
     };
-    const pdfBtn = formats.includes("pdf") ? sourceButton("Pick from PDF pages", () => pdfPages(uuid)) : null;
-    const epubBtn = formats.includes("epub") ? sourceButton("Pick from EPUB pages", () => epubPages(uuid)) : null;
+    const pdfBtn = formats.includes("pdf") ? sourceButton("Pick from PDF pages", () => pdfPages(book)) : null;
+    const epubBtn = formats.includes("epub") ? sourceButton("Pick from EPUB pages", () => epubPages(book)) : null;
 
     // On upload: the EPUB's cover, else the PDF's first page.
     if (options.autoSelectDefault) {
-        if (epubBtn) void show(epubBtn, epubPages(uuid), true);
-        else if (pdfBtn) void show(pdfBtn, pdfPages(uuid), true);
+        if (epubBtn) void show(epubBtn, epubPages(book), true);
+        else if (pdfBtn) void show(pdfBtn, pdfPages(book), true);
     }
 
     return picker;

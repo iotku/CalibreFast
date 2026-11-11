@@ -3,7 +3,7 @@
     <head>
         <meta charset="UTF-8" />
         <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-        <title>Edit Metadata — CalibreFast</title>
+        <title>{{ if .Import }}Review import{{ else }}Edit Metadata{{ end }} — CalibreFast</title>
         <link rel="stylesheet" href="{{ asset "style.css" }}" />
         <link rel="preconnect" href="https://fonts.googleapis.com" />
         <link
@@ -424,6 +424,24 @@
                 font-family: var(--mono);
                 font-size: 0.72rem;
                 color: var(--muted);
+            }
+
+            /* A waiting book's files (import queue) */
+            .book-banner-meta.import-files {
+                flex-wrap: wrap;
+                gap: 6px;
+            }
+
+            .btn-discard {
+                margin-left: auto;
+                color: #e59999;
+                border-color: rgba(186, 122, 122, 0.45);
+            }
+
+            .btn-discard:hover {
+                color: #f0b3b3;
+                border-color: #ba7a7a;
+                background: var(--error-bg);
             }
 
             .uuid-badge {
@@ -1492,6 +1510,10 @@
                 color: #e59999;
             }
 
+            .added-note {
+                margin-bottom: 1rem;
+            }
+
             .status-link {
                 color: var(--accent);
                 text-decoration: underline;
@@ -1501,7 +1523,7 @@
         </style>
     </head>
     <body>
-{{ $tb := topbar "Title" "Edit metadata" "NoSearch" .Lookups }}
+{{ $tb := topbar "Title" (or (and .Import "Review import") "Edit metadata") "NoSearch" .Lookups }}
 {{ template "topbar-start" $tb }}
         {{ if .Lookups }}
         <!-- Look the book up online by ISBN (web/isbn-tools.ts) -->
@@ -1510,7 +1532,11 @@
             <button type="submit" class="tb-btn" title="Sends this ISBN to Open Library, and to Wikidata if Open Library doesn't know it">Look up</button>
         </form>
         {{ end }}
+        {{ if .Import }}
+        <a href="/import" class="tb-btn tb-view-book">Queue{{ if gt .Import.Waiting 1 }} ({{ .Import.Waiting }}){{ end }}</a>
+        {{ else }}
         <a href="/book/get/{{.UUID}}" class="tb-btn tb-view-book">View book</a>
+        {{ end }}
 {{ template "topbar-end" $tb }}
 
         <main class="edit-container">
@@ -1519,7 +1545,7 @@
                 <!-- Opens the cover dialog: the cover is usually right. -->
                 <button type="button" id="edit-cover-btn" class="book-banner-cover-btn" title="Change the cover" aria-haspopup="dialog">
                     <img
-                        src="/cover-thumb/{{.UUID}}{{ if .CoverModTime }}?t={{ .CoverModTime }}{{ end }}"
+                        {{ if .Import }}{{ if .Import.HasCover }}src="/import/{{ .Import.ID }}/cover"{{ end }}{{ else }}src="/cover-thumb/{{.UUID}}{{ if .CoverModTime }}?t={{ .CoverModTime }}{{ end }}"{{ end }}
                         alt="Cover (click to change)"
                         class="book-banner-cover"
                         id="edit-cover-img"
@@ -1528,10 +1554,20 @@
                 </button>
                 <div class="book-banner-info">
                     <h1 class="book-banner-title" id="edit-header-title">Loading book…</h1>
+                    {{ if .Import }}
+                    <div class="book-banner-meta import-files">
+                        <span>Not in the library yet{{ if .Import.From }} · from {{ .Import.From }}{{ end }}:</span>
+                        {{ range .Import.Files }}<span class="uuid-badge">{{ .Name }}</span>{{ end }}
+                    </div>
+                    <p class="banner-hint">
+                        This book came from the watch folder. Check its metadata, choose its cover (click it), then <strong>Add to library</strong>. <strong>current</strong> is what its files say.
+                    </p>
+                    {{ else }}
                     <div class="book-banner-meta">
                         <span>UUID:</span>
                         <span class="uuid-badge">{{.UUID}}</span>
                     </div>
+                    {{ end }}
                     <p class="banner-hint">
                         Tip: Click the pills under each field (e.g. <strong>current</strong>, <strong>epub</strong>, <strong>pdf</strong>, or <strong>Open Library</strong> after a lookup) to use that source's value; green means it matches. Click the cover to change it. After you change a field, its <strong>edited</strong> pill restores your changes and shows what changed vs <strong>current</strong>. <strong>Compare changes</strong> at the bottom lists every changed field.
                     </p>
@@ -1545,10 +1581,14 @@
             </div>
 
             <!-- Status Banner -->
+            {{ if and .Import .Import.AddedUUID }}
+            <!-- Working through the import queue: the book added just before this one -->
+            <div class="edit-status success added-note">✓ Added “{{ .Import.AddedTitle }}” to the library. This is the next book to review. <a class="status-link" href="/book/get/{{ .Import.AddedUUID }}">View the added book</a></div>
+            {{ end }}
             <div id="edit-status" class="edit-status"></div>
 
             <!-- Metadata Edit Form -->
-            <form id="metadata-form" data-uuid="{{.UUID}}">
+            <form id="metadata-form" data-uuid="{{.UUID}}"{{ if .Import }} data-import="{{ .Import.ID }}"{{ end }}>
                 <div class="form-grid">
                     <!-- Title, swap button, Author(s): one grid cell so the spacing
                          around the swap button can be set exactly. -->
@@ -1660,16 +1700,21 @@
 
                 <div class="edit-actions">
                     <div class="action-buttons">
-                        <button type="submit" id="btn-save" class="btn-primary">
-                            Apply Changes
-                        </button>
+                        <button type="submit" id="btn-save" class="btn-primary">{{ if .Import }}Add to library{{ else }}Apply Changes{{ end }}</button>
                         <button type="button" id="btn-compare" class="btn-secondary">
                             Compare changes
                         </button>
+                        {{ if .Import }}
+                        <a href="/import" class="btn-secondary">Back to the queue</a>
+                        {{ else }}
                         <button type="button" onclick="history.back()" class="btn-secondary">
                             Cancel
                         </button>
+                        {{ end }}
                     </div>
+                    {{ if .Import }}
+                    <button type="button" id="btn-discard" class="btn-secondary btn-discard" title="Delete this book's files from the import queue">Discard</button>
+                    {{ end }}
                 </div>
             </form>
 
@@ -1680,9 +1725,9 @@
                 </header>
                 <div id="compare-body"></div>
                 <footer id="compare-leave-actions" class="compare-footer" hidden>
-                    <span>Apply these changes before leaving?</span>
+                    <span>{{ if .Import }}Add the book with these changes before leaving?{{ else }}Apply these changes before leaving?{{ end }}</span>
                     <form method="dialog"><button class="btn-secondary">Keep editing</button></form>
-                    <button type="button" id="compare-apply" class="btn-primary">Apply changes</button>
+                    <button type="button" id="compare-apply" class="btn-primary">{{ if .Import }}Add to library{{ else }}Apply changes{{ end }}</button>
                 </footer>
             </dialog>
 
@@ -1698,7 +1743,7 @@
                     <span>The cover isn't changed.</span>
                     <button type="button" id="lookup-reject" class="btn-secondary" title="Wrong book: don't offer these values in the form">Reject</button>
                     <button type="button" id="lookup-keep" class="btn-secondary">Pick fields in the form</button>
-                    <button type="button" id="lookup-accept" class="btn-primary">Accept all and apply</button>
+                    <button type="button" id="lookup-accept" class="btn-primary">{{ if .Import }}Accept all{{ else }}Accept all and apply{{ end }}</button>
                 </footer>
             </dialog>
 
@@ -1732,12 +1777,14 @@
         <!-- Sanitizes the description editor's HTML (web/description.ts). -->
         <script src="/static/vendor/dompurify@3.2.6/dist/purify.min.js"></script>
         <script type="module">
-            import { mountMetadataEditor } from {{ asset "metadata.js" }};
+import { mountMetadataEditor } from {{ asset "metadata.js" }};
             import { mountCoverDialog } from {{ asset "cover-dialog.js" }};
+            import { libraryBook, pendingImport } from {{ asset "book-target.js" }};
 
             const form = document.getElementById("metadata-form");
-            const uuid = form.dataset.uuid;
-            mountMetadataEditor(uuid, form).catch((err) => {
+            // A book in the library, or one waiting in the import queue.
+            const book = form.dataset.import ? pendingImport(form.dataset.import) : libraryBook(form.dataset.uuid);
+            mountMetadataEditor(book, form).catch((err) => {
                 console.error("Error mounting metadata editor:", err);
             });
 
@@ -1745,16 +1792,34 @@
             const editStatus = document.getElementById("edit-status");
             if (coverBtn) {
                 mountCoverDialog({
-                    uuid,
+                    book,
+                    autoDefault: book.pending,
                     opener: coverBtn,
                     isbnInput: document.getElementById("isbn-lookup-input"),
                     onChanged(message) {
-                        document.getElementById("edit-cover-img").src = `/cover-thumb/${uuid}?t=${Date.now()}`;
+                        document.getElementById("edit-cover-img").src = book.pending
+                            ? `${book.cover}?t=${Date.now()}`
+                            : `/cover-thumb/${book.id}?t=${Date.now()}`;
                         editStatus.className = "edit-status success";
                         editStatus.textContent = message;
                     },
                 });
             }
+
+            // Import queue: delete the waiting book instead of adding it.
+            document.getElementById("btn-discard")?.addEventListener("click", async (e) => {
+                if (!confirm("Discard this book?\n\nIts files are deleted from the import queue. This can't be undone.")) return;
+                e.currentTarget.disabled = true;
+                const res = await fetch(`/import/${encodeURIComponent(book.id)}/discard`, { method: "POST" });
+                if (res.ok) {
+                    form.dispatchEvent(new CustomEvent("metadata-discarded"));
+                    location.assign("/import");
+                    return;
+                }
+                editStatus.className = "edit-status error";
+                editStatus.textContent = `✕ Couldn't discard the book: ${await res.text()}`;
+                document.getElementById("btn-discard").disabled = false;
+            });
         </script>
     </body>
 </html>

@@ -8,13 +8,14 @@
 // Open Library first; Wikidata only if Open Library doesn't know the ISBN;
 // other sources only when the admin clicks "Try …".
 
+import type { BookTarget } from "./book-target.js";
 import { api, closeOnBackdropClick, el, errorMessage, maybeId } from "./dom.js";
 import type { CoverCandidate, IsbnCandidate, IsbnResponse, LookupResult, MetaSource } from "./types.js";
 import { openPdf } from "./vendor.js";
 
 /** What the tools need from the editor. */
 export interface IsbnToolsHost {
-    uuid: string;
+    book: BookTarget;
     form: HTMLFormElement;
     /** The ISBN field's value. */
     currentIsbn(): string;
@@ -61,8 +62,8 @@ export function isbnDigits(value: string): string {
  * with pdf.js (Go has no reliable PDF text extraction). Only those pages are
  * fetched, with range requests.
  */
-async function readPdf(uuid: string): Promise<{ xmp: string; pages: string[] }> {
-    const pdf = await openPdf(`/download/${encodeURIComponent(uuid)}/pdf`, { disableAutoFetch: true, disableStream: true });
+async function readPdf(book: BookTarget): Promise<{ xmp: string; pages: string[] }> {
+    const pdf = await openPdf(book.file("pdf"), { disableAutoFetch: true, disableStream: true });
     try {
         let xmp = "";
         try {
@@ -173,13 +174,13 @@ export function mountIsbnTools(host: IsbnToolsHost): void {
         findBtn.hidden = true; // the results have Refresh
         panel.hidden = false;
         say("Looking through the book's files…");
-        const url = `/metadata/${encodeURIComponent(host.uuid)}/isbns`;
+        const url = host.book.isbns;
         try {
             let res = await api<IsbnResponse>("GET", url);
             if (res.pdf) {
                 show(res, `Reading ${res.pdf}…`);
                 try {
-                    res = await api<IsbnResponse>("POST", url, await readPdf(host.uuid));
+                    res = await api<IsbnResponse>("POST", url, await readPdf(host.book));
                     show(res);
                 } catch (err) {
                     show(res, `Couldn't read ${res.pdf}: ${errorMessage(err)}`);

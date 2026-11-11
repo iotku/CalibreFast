@@ -95,6 +95,9 @@ CalibreFast writes to the same `metadata.db` and book folders that the Calibre d
 - **`-datadir`** (default `./data`) holds `calibrefast.db`: accounts, sessions, sync key hashes, favorites, progress (including KOReader devices' positions and names), bookmarks, highlights and notes, and shelves. It also caches the fingerprints KOReader uses for library files.
   - The directory is created `0700` and the database file is `0600`, because it holds password hashes and session tokens.
   - **Keep it out of version control** (`/data/` is in `.gitignore`) and back it up separately from the library.
+- **`-datadir/imports`** holds books from the watch folder (`-watch-dir`) until an admin adds or discards them: the book files themselves, moved out of the watch folder. Only admins on a server with `-allow-writes` can list, download, add or discard them.
+  - The watcher runs with the server's own file permissions and **moves** files, so point `-watch-dir` at a folder meant for it. The server refuses one that overlaps the library or `-datadir`.
+  - Waiting files are untrusted like any other book: they are only parsed for metadata, and shown to the admin reviewing them.
 - **`calibrefast-groups.json`** in the library folder holds groups. It's the only file CalibreFast adds to a library.
 - **Read-only caches:** `./pages` and `-cachedir` (cover thumbnails). Nothing else is written unless an admin edits with `-allow-writes`.
 

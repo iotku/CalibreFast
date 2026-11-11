@@ -562,7 +562,12 @@ func meHandler(w http.ResponseWriter, r *http.Request) {
 		_ = json.NewEncoder(w).Encode(map[string]any{"user": nil, "registration": allowRegistrations})
 		return
 	}
-	_ = json.NewEncoder(w).Encode(map[string]any{"user": u, "can_edit_library": canEditLibrary(r)})
+	me := map[string]any{"user": u, "can_edit_library": canEditLibrary(r)}
+	// Books from the watch folder waiting for review (imports.go).
+	if n := imports.count(); canEditLibrary(r) && (n > 0 || watching()) {
+		me["pending_imports"] = n
+	}
+	_ = json.NewEncoder(w).Encode(me)
 }
 
 // ---------------------------------------------------------------------------

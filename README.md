@@ -31,6 +31,7 @@ CalibreFast reads directly from your Calibre `metadata.db` and serves your libra
 - **Groups** merge values that mean the same thing, like `en`/`eng`/`en-US` → English, without editing any books.
 - **Metadata editor:** tag and language chips, autocomplete from your library, a formatted description editor, side-by-side comparison of your changes, and safeguards so curated metadata isn't lost. It can find ISBNs in the book's own files and look books up by ISBN on Open Library and Wikidata (Google Books on request), offering their metadata to pick from or accept in one go.
 - **Uploads:** EPUB/PDF metadata is read automatically, and multiple formats of one book are combined.
+- **Watch folder:** books dropped into a folder wait in a review queue. An admin checks the metadata (with ISBN lookups), chooses the cover, then adds each one to the library.
 - **Accounts:** username/password, or GitHub/Google sign-in. Admins manage users, and can send someone a one-time sign-in or invite link (e.g. over Discord).
 - **Favorites and reading status:** star books, and track what you want to read, are reading and have finished, straight from the covers in the grid. The readers update this as you go, and a cover's ▶ picks up where you left off.
 - **Resume anywhere:** your reading position and bookmarks sync between devices, and are kept locally too in case the server is down.
@@ -80,6 +81,8 @@ Then open [http://localhost:8080](http://localhost:8080) and sign in. Add more u
 | `-port` | Port to listen on (default `8080`) |
 | `-datadir` | Where CalibreFast keeps its own database: accounts, favorites, progress, shelves (default `./data`) |
 | `-allow-writes` | Let **admins** edit metadata, upload, change covers and manage groups. Off by default. |
+| `-watch-dir` | A folder to watch for new books. The system reports changes to it (checked every 30 seconds where it can't). Books are moved out of it into a review queue (`/import`) and only join the library when an admin adds them. Needs `-allow-writes`; must not be inside the library or `-datadir`. |
+| `-watch-dir-force-polling` | Check `-watch-dir` every 30 seconds instead of waiting for the system to report changes. For folders on network or container mounts (NFS, SMB, some bind mounts) where new books aren't noticed. |
 | `-public` | Let anyone browse the catalog without signing in. **By default the whole library is private:** nothing (not even covers or book IDs) is shown until you sign in. |
 | `-public-read` | Public read-only mode: anyone can also read and download books (implies `-public`) |
 | `-allow-registrations` | Let anyone create an account from the sign-in page. **Bots will try to sign up:** only use on a trusted network, such as a Tailscale network shared with people you trust. |

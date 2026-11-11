@@ -2,7 +2,6 @@ package main
 
 import (
 	"archive/zip"
-	"bytes"
 	"database/sql"
 	"encoding/json"
 	"encoding/xml"
@@ -105,14 +104,14 @@ func extractEPUBMeta(r io.ReaderAt, size int64, filename string) (*UploadedBookM
 }
 
 // --- PDF metadata extraction via pdfcpu ---
-func extractPDFMeta(data []byte, filename string) *OPF {
+func extractPDFMeta(r io.ReadSeeker, filename string) *OPF {
 	opf := &OPF{
 		Metadata: OPFMetadata{},
 	}
 	meta := &opf.Metadata
 	meta.Languages = []string{undefinedLanguage} // undetermined; caller can override
 
-	info, err := pdfapi.PDFInfo(bytes.NewReader(data), filename, nil, false, nil)
+	info, err := pdfapi.PDFInfo(r, filename, nil, false, nil)
 	if err != nil {
 		log.Printf("upload: pdfcpu PDFInfo failed for %s: %v", filename, err)
 	} else {
@@ -192,8 +191,16 @@ func mergeMeta(metas []*UploadedBookMeta) *UploadedBookMeta {
 		}
 	}
 
-	if merged.Title == "" {
+	// A title from any file's metadata beats a filename; only when none has
+	// one does the first file's name (an EPUB's, if there is one) stand in.
+	if strings.TrimSpace(merged.Title) == "" {
 		merged.Title = "Unknown"
+		for _, m := range sorted {
+			if stem := strings.TrimSuffix(m.FileName, filepath.Ext(m.FileName)); stem != "" {
+				merged.Title = stem
+				break
+			}
+		}
 	}
 	if len(merged.Creators) == 0 {
 		merged.Creators = []string{"Unknown"}
@@ -453,147 +460,65 @@ func groupFilesByStem(files []*multipart.FileHeader) map[string][]*multipart.Fil
 	return groups
 }
 
+// readBookMeta reads the metadata a book file holds. p is where the file is
+// now (it may be a temporary file) and name what it is called. Fields the
+// file doesn't hold stay empty, so that mergeMeta prefers another format's
+// real metadata; mergeMeta fills in the filename and "Unknown" last.
+func readBookMeta(p, name string) *UploadedBookMeta {
+	ext := strings.ToLower(strings.TrimPrefix(filepath.Ext(name), "."))
+	meta := &UploadedBookMeta{Format: ext, FileName: name}
+	if f, err := os.Open(p); err != nil {
+		log.Printf("book metadata: %s: %v", name, err)
+	} else {
+		switch ext {
+		case "epub":
+			if st, err := f.Stat(); err != nil {
+				log.Printf("book metadata: %s: %v", name, err)
+			} else if m, err := extractEPUBMeta(f, st.Size(), name); err != nil {
+				log.Printf("book metadata: epub meta extraction failed for %s: %v", name, err)
+			} else {
+				meta = m
+			}
+		case "pdf":
+			meta.OPFMetadata = extractPDFMeta(f, name).Metadata
+		}
+		f.Close()
+	}
+	// One creator can hold "A & B"; other lists are left for the editor's Split.
+	meta.Creators = splitCreators(meta.Creators)
+	return meta
+}
+
 func processUploadGroup(files []*multipart.FileHeader) UploadResult { // TODO: How does this determine pairs, does this actually work at all?
 	var metas []*UploadedBookMeta
 	var entries []formatEntry
 
 	for _, fh := range files {
-		f, err := fh.Open()
-		if err != nil {
-			log.Println("upload: open file header:", err)
-			continue
-		}
-		data, err := io.ReadAll(f)
-		f.Close()
-		if err != nil {
-			log.Println("upload: read file:", err)
-			continue
-		}
-
 		ext := strings.ToLower(strings.TrimPrefix(filepath.Ext(fh.Filename), "."))
-
-		var meta *UploadedBookMeta
-		switch ext {
-		case "epub":
-			meta, err = extractEPUBMeta(bytes.NewReader(data), int64(len(data)), fh.Filename)
-			if err != nil {
-				log.Printf("upload: epub meta extraction failed for %s: %v", fh.Filename, err)
-				meta = &UploadedBookMeta{
-					OPFMetadata: OPFMetadata{
-						Title:    strings.TrimSuffix(fh.Filename, filepath.Ext(fh.Filename)),
-						Creators: []string{"Unknown"},
-					},
-					Format:   "epub",
-					FileName: fh.Filename,
-				}
-			}
-		case "pdf":
-			meta = &UploadedBookMeta{ // TODO check for extractPDFMeta failure
-				OPFMetadata: extractPDFMeta(data, fh.Filename).Metadata,
-				Format:      "pdf",
-				FileName:    fh.Filename,
-			}
-		default:
-			meta = &UploadedBookMeta{
-				OPFMetadata: OPFMetadata{
-					Title:    strings.TrimSuffix(fh.Filename, filepath.Ext(fh.Filename)),
-					Creators: []string{"Unknown"},
-				},
-				Format:   ext,
-				FileName: fh.Filename,
-			}
-		}
-		// One creator can hold "A & B"; other lists are left for the editor's Split.
-		meta.Creators = splitCreators(meta.Creators)
-		metas = append(metas, meta)
-
-		tmp, err := os.CreateTemp("", "calibrefast-upload-*."+ext)
+		tmpPath, size, err := saveUploadTemp(fh, ext)
 		if err != nil {
-			log.Println("upload: create temp:", err)
+			log.Println("upload:", fh.Filename, err)
 			continue
 		}
-		if _, err := tmp.Write(data); err != nil {
-			tmp.Close()
-			log.Println("upload: write temp:", err)
-			continue
-		}
-		tmp.Close()
-
+		metas = append(metas, readBookMeta(tmpPath, fh.Filename))
 		entries = append(entries, formatEntry{
 			Ext:      ext,
 			Filename: fh.Filename,
-			Size:     int64(len(data)),
-			TempPath: tmp.Name(),
+			Size:     size,
+			TempPath: tmpPath,
 		})
 	}
 
 	merged := mergeMeta(metas)
 
-	// Try to insert into database first
-	bookID, bookUUID, bookPath, err := insertBookIntoCalibreDB(calibreDB, merged, entries)
+	bookUUID, _, err := addBookToLibrary(merged, entries)
 	if err != nil {
-		return UploadResult{Error: "failed to insert into database: " + err.Error()}
+		cleanupTemps(entries)
+		return UploadResult{Error: err.Error()}
 	}
 
 	// Store all the metadatas for each format so we can retrieve them later to present to the user to select
 	bookMetadataCache.Store(bookUUID, metas)
-
-	destDir := filepath.Join(baseDir, bookPath) // NOTE: bookPath is santisized in insertBookIntoCalibre DB
-	if err := os.MkdirAll(destDir, 0o755); err != nil {
-		logErr(deleteBookFromCalibreDB(calibreDB, bookID), "couldn't delete book "+strconv.FormatInt(bookID, 10)+"from calibreDB")
-
-		cleanupTemps(entries)
-		return UploadResult{Error: "failed to create book directory: " + err.Error()}
-	}
-
-	// Write metadata.opf
-	opfPath := filepath.Join(destDir, "metadata.opf")
-	var bookOPF = &OPF{
-		Metadata: OPFMetadata{ // TODO: Can we get things to a state where we can just pass in `merged` directly?
-			Title:       merged.Title,
-			Description: merged.Description,
-			Publisher:   merged.Publisher,
-			Date:        merged.Date,
-			Languages:   merged.Languages,
-			Identifiers: merged.Identifiers,
-			Subjects:    merged.Subjects,
-			Creators:    merged.Creators,
-			Meta:        merged.Meta,
-			// {Name: "calibre:series", Content: "Addison-Wesley Professional Computing Series"},
-			// {Name: "calibre:series_index", Content: "1"},
-			// {Name: "calibre:rating", Content: "10"},
-			// {Name: "calibre:timestamp", Content: "2015-10-26T00:00:00+00:00"},
-		},
-	}
-	if err := writeOPF(bookOPF, opfPath, bookUUID); err != nil {
-		logErr(deleteBookFromCalibreDB(calibreDB, bookID), "couldn't delete book "+strconv.FormatInt(bookID, 10)+" from calibreDB")
-		cleanupTemps(entries)
-		return UploadResult{Error: "failed to write metadata.opf: " + err.Error()}
-	}
-
-	baseName := sanitizePath(merged.Title)
-	for i := range entries {
-		dest := filepath.Join(destDir, baseName+"."+entries[i].Ext)
-		if _, err := os.Stat(dest); err == nil {
-			// Avoid overwriting an existing file
-			dest = filepath.Join(destDir, baseName+"_"+strconv.FormatInt(time.Now().UnixNano(), 36)+"."+entries[i].Ext)
-		}
-		if err := os.Rename(entries[i].TempPath, dest); err != nil {
-			// os.Rename fails across mount points; fall back to copy+delete
-			if err2 := copyFile(entries[i].TempPath, dest); err2 != nil {
-				log.Printf("upload: failed to move %s to %s: %v / %v", entries[i].TempPath, dest, err, err2)
-				os.Remove(entries[i].TempPath)
-				continue
-			}
-			os.Remove(entries[i].TempPath)
-		}
-		entries[i].Filename = filepath.Base(dest)
-		entries[i].TempPath = ""
-	}
-
-	if bookUUID != "" {
-		uuidPathIndex.Store(bookUUID, bookPath)
-	}
 
 	formats := make([]string, 0, len(entries))
 	for _, e := range entries {
@@ -608,6 +533,117 @@ func processUploadGroup(files []*multipart.FileHeader) UploadResult { // TODO: H
 	}
 }
 
+// saveUploadTemp writes an uploaded file to a temporary file.
+func saveUploadTemp(fh *multipart.FileHeader, ext string) (path string, size int64, err error) {
+	f, err := fh.Open()
+	if err != nil {
+		return "", 0, err
+	}
+	defer f.Close()
+	tmp, err := os.CreateTemp("", "calibrefast-upload-*."+ext)
+	if err != nil {
+		return "", 0, err
+	}
+	size, err = io.Copy(tmp, f)
+	if cErr := tmp.Close(); err == nil {
+		err = cErr
+	}
+	if err != nil {
+		os.Remove(tmp.Name())
+		return "", 0, err
+	}
+	return tmp.Name(), size, nil
+}
+
+// addBookToLibrary adds a book to metadata.db, writes its metadata.opf and
+// moves its files (each entry's TempPath) into the library; the entries then
+// name the files as they are there. If any step fails, nothing of the book is
+// left in the library and its files are back where they were.
+func addBookToLibrary(meta *UploadedBookMeta, entries []formatEntry) (bookUUID, bookPath string, err error) {
+	if len(entries) == 0 {
+		return "", "", errors.New("no book files")
+	}
+	bookID, bookUUID, bookPath, err := insertBookIntoCalibreDB(calibreDB, meta, entries)
+	if err != nil {
+		return "", "", fmt.Errorf("failed to insert into database: %w", err)
+	}
+
+	destDir := filepath.Join(baseDir, bookPath) // NOTE: bookPath is sanitized in insertBookIntoCalibreDB
+	opfPath := filepath.Join(destDir, "metadata.opf")
+	type move struct{ from, to string }
+	var moved []move
+	undo := func() {
+		for _, m := range moved {
+			logErr(moveFile(m.to, m.from), "couldn't move "+m.to+" back")
+		}
+		os.Remove(opfPath)
+		os.Remove(destDir) // only if nothing else is in it
+		logErr(deleteBookFromCalibreDB(calibreDB, bookID), "couldn't delete book "+strconv.FormatInt(bookID, 10)+" from calibreDB")
+	}
+
+	if err := os.MkdirAll(destDir, 0o755); err != nil {
+		undo()
+		return "", "", fmt.Errorf("failed to create book directory: %w", err)
+	}
+
+	bookOPF := &OPF{
+		Metadata: OPFMetadata{ // TODO: Can we get things to a state where we can just pass in `merged` directly?
+			Title:       meta.Title,
+			Description: meta.Description,
+			Publisher:   meta.Publisher,
+			Date:        meta.Date,
+			Languages:   meta.Languages,
+			Identifiers: meta.Identifiers,
+			Subjects:    meta.Subjects,
+			Creators:    meta.Creators,
+			Meta:        meta.Meta,
+		},
+	}
+	if err := writeOPF(bookOPF, opfPath, bookUUID); err != nil {
+		undo()
+		return "", "", fmt.Errorf("failed to write metadata.opf: %w", err)
+	}
+
+	baseName := sanitizePath(meta.Title)
+	for i := range entries {
+		dest := filepath.Join(destDir, baseName+"."+entries[i].Ext)
+		if _, err := os.Stat(dest); err == nil {
+			// Avoid overwriting an existing file
+			dest = filepath.Join(destDir, baseName+"_"+strconv.FormatInt(time.Now().UnixNano(), 36)+"."+entries[i].Ext)
+		}
+		if err := moveFile(entries[i].TempPath, dest); err != nil {
+			undo()
+			return "", "", fmt.Errorf("failed to move %s into the library: %w", entries[i].Filename, err)
+		}
+		moved = append(moved, move{entries[i].TempPath, dest})
+	}
+	for i, m := range moved {
+		entries[i].Filename = filepath.Base(m.to)
+		entries[i].TempPath = ""
+	}
+
+	uuidPathIndex.Store(bookUUID, bookPath)
+	formatCache.Delete(bookUUID)
+	return bookUUID, bookPath, nil
+}
+
+// moveFile renames src to dst, copying when they are on different
+// filesystems. If it fails, src is still there and dst is not.
+func moveFile(src, dst string) error {
+	if err := os.Rename(src, dst); err == nil {
+		return nil
+	}
+	if err := copyFile(src, dst); err != nil {
+		os.Remove(dst)
+		return err
+	}
+	if err := os.Remove(src); err != nil {
+		os.Remove(dst)
+		return err
+	}
+	return nil
+}
+
 func copyFile(src, dst string) error {
 	in, err := os.Open(src)
 	if err != nil {
@@ -618,8 +654,10 @@ func copyFile(src, dst string) error {
 	if err != nil {
 		return err
 	}
-	defer out.Close()
 	_, err = io.Copy(out, in)
+	if cErr := out.Close(); err == nil {
+		err = cErr
+	}
 	return err
 }
 

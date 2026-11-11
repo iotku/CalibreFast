@@ -731,6 +731,28 @@ input[type="number"],
     border-color: var(--border-medium);
 }
 
+/* A count on a bar icon: books waiting in the import queue (web/nav.ts) */
+.site-bar .tb-has-badge {
+    position: relative;
+}
+
+.tb-badge {
+    position: absolute;
+    top: -3px;
+    right: -5px;
+    min-width: 16px;
+    height: 16px;
+    padding: 0 4px;
+    box-sizing: border-box;
+    font-size: 10px;
+    font-weight: 600;
+    line-height: 16px;
+    text-align: center;
+    color: #111;
+    background: #c8a96e;
+    border-radius: var(--radius-round);
+}
+
 .site-bar .tb-btn {
     height: 34px;
     padding: 0 12px;
@@ -2533,4 +2555,90 @@ label.group-row span {
 .offline-author {
     color: var(--text-muted);
     font-size: var(--font-size-small);
+}
+
+/* ── Import queue (templates/imports.html, web/imports.ts) ── */
+.import-list {
+    list-style: none;
+    margin: 1rem 0 0;
+    padding: 0;
+}
+
+.import-row {
+    display: flex;
+    align-items: center;
+    gap: 14px;
+    padding: 12px 0;
+    border-top: 1px solid var(--border-subtle);
+}
+
+.import-cover-link {
+    flex-shrink: 0;
+    text-decoration: none;
+}
+
+.import-cover {
+    display: block;
+    width: 52px;
+    height: 76px;
+    object-fit: cover;
+    background: var(--bg-primary);
+    border: 1px solid var(--border-light);
+    border-radius: var(--radius-small);
+}
+
+.import-cover-none {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 0.65rem;
+    letter-spacing: 0.08em;
+    text-transform: uppercase;
+    color: var(--text-muted);
+}
+
+.import-info {
+    flex: 1;
+    min-width: 0;
+}
+
+.import-title {
+    display: block;
+    font-size: 1rem;
+    color: var(--text-primary);
+    text-decoration: none;
+    overflow-wrap: anywhere;
+}
+
+.import-title:hover {
+    text-decoration: underline;
+}
+
+.import-authors {
+    margin: 2px 0 4px;
+    font-size: 0.9rem;
+    color: var(--text-secondary);
+}
+
+.import-files {
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+}
+
+.import-actions {
+    display: flex;
+    flex-shrink: 0;
+    gap: 8px;
+}
+
+@media (max-width: 560px) {
+    .import-row {
+        flex-wrap: wrap;
+    }
+
+    .import-actions {
+        width: 100%;
+        justify-content: flex-end;
+    }
 }

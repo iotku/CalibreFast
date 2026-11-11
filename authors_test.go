@@ -73,3 +73,19 @@ func TestUniqueTags(t *testing.T) {
 		t.Errorf("uniqueTags(nil) = %q", got)
 	}
 }
+
+func TestMergeMetaPrefersMetadataTitleOverFilename(t *testing.T) {
+	epub := &UploadedBookMeta{OPFMetadata: OPFMetadata{Title: "Dune", Creators: []string{"Frank Herbert"}}, Format: "epub", FileName: "dune.epub"}
+	pdf := &UploadedBookMeta{Format: "pdf", FileName: "Frank Herbert - Dune (1965) [scan].pdf"}
+	for _, order := range [][]*UploadedBookMeta{{epub, pdf}, {pdf, epub}} {
+		m := mergeMeta(order)
+		if m.Title != "Dune" || !reflect.DeepEqual(m.Creators, []string{"Frank Herbert"}) {
+			t.Errorf("merged = %q by %q; want Dune by Frank Herbert", m.Title, m.Creators)
+		}
+	}
+	// No metadata title anywhere: the EPUB's filename stands in.
+	m := mergeMeta([]*UploadedBookMeta{{Format: "pdf", FileName: "a long pdf name.pdf"}, {Format: "epub", FileName: "short.epub"}})
+	if m.Title != "short" || !reflect.DeepEqual(m.Creators, []string{"Unknown"}) {
+		t.Errorf("merged = %q by %q; want short by Unknown", m.Title, m.Creators)
+	}
+}

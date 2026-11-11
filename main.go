@@ -189,8 +189,9 @@ type EditBookPageData struct { // TODO I Hate this, these page structs are all o
 	Date         string // YYYY-MM-DD for <input type="date">, "" if missing/unparseable
 	RawDate      string // original dc:date when it couldn't be parsed (kept on save)
 	CoverModTime int64
-	Lookups      bool // show the ISBN lookup (Open Library, Wikidata); off with -no-lookups
-	GoogleBooks  bool // offer Google Books as a last resort; off with -no-google-books
+	Import       *importPageData // a book waiting in the import queue (imports.go); nil for one in the library
+	Lookups      bool            // show the ISBN lookup (Open Library, Wikidata); off with -no-lookups
+	GoogleBooks  bool            // offer Google Books as a last resort; off with -no-google-books
 }
 
 func writePage(page int, books []Book) error {
@@ -243,6 +244,8 @@ func main() {
 	flag.BoolVar(&noLookups, "no-lookups", false, "never look books up online (hides the metadata editor's ISBN lookup)")
 	flag.BoolVar(&noGoogleBooks, "no-google-books", false, "never offer Google Books in the metadata editor (Open Library and Wikidata only)")
 	flag.StringVar(&publicURL, "public-url", "", "external base URL, e.g. https://books.example.com (needed for GitHub/Google sign-in)")
+	flag.StringVar(&watchDir, "watch-dir", "", "folder to watch for new books; they wait in the import queue for an admin to review (needs -allow-writes)")
+	flag.BoolVar(&watchForcePolling, "watch-dir-force-polling", false, "check -watch-dir every 30 seconds instead of relying on the system to report changes (for network and container mounts where it doesn't)")
 	createUserName := flag.String("create-user", "", "create a user (or reset their password) and exit; password from $CF_PASSWORD or stdin")
 	createAdmin := flag.Bool("admin", false, "with -create-user: make the user an admin")
 	flag.Parse()
@@ -295,6 +298,7 @@ func main() {
 	initCalibreDB()
 	groups = loadGroups(filepath.Join(baseDir, groupsFileName))
 	preloadCaches()
+	startImports()
 	serveLibraryHTTP()
 }
 
@@ -475,6 +479,9 @@ func serveLibraryHTTP() {
 	http.HandleFunc("/upload-cover/{uuid}", requireWrites(uploadCoverHandler))
 	http.HandleFunc("/cover-status/{uuid}", coverStatusHandler)
 	http.HandleFunc("/revert-cover/{uuid}", requireWrites(revertCoverHandler))
+
+	// The watch folder's import queue (imports.go)
+	registerImportRoutes()
 
 	// Individual Book metadata editor
 	http.HandleFunc("/book/edit/{uuid}", requireWrites(func(w http.ResponseWriter, r *http.Request) {
@@ -786,6 +793,25 @@ func unparseableStoredDate(uuid string) string {
 	return ""
 }
 
+// metadataFromRequest is the metadata the editor sent, tidied: a book always
+// has a title and an author ("Unknown", as Calibre does).
+func metadataFromRequest(req ApplyMetadataRequest) OPFMetadata {
+	title := strings.TrimSpace(req.Title)
+	if title == "" {
+		title = "Unknown"
+	}
+	return OPFMetadata{
+		Title:       title,
+		Creators:    parseCreatorsString(req.Creators),
+		Description: strings.TrimSpace(req.Description),
+		Publisher:   strings.TrimSpace(req.Publisher),
+		Date:        normalizeDate(req.Date),
+		Languages:   requestLanguages(req),
+		Subjects:    parseSubjectsString(req.Subjects),
+		Identifiers: req.Identifiers,
+	}
+}
+
 func applyMetadataHandler(w http.ResponseWriter, r *http.Request) {
 	if r.Method != http.MethodPost {
 		http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
@@ -803,11 +829,6 @@ func applyMetadataHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	title := strings.TrimSpace(req.Title)
-	if title == "" {
-		title = "Unknown"
-	}
-
 	// <input type="date"> can't display a date we couldn't parse, so it comes
 	// back empty. Don't let that silently overwrite the stored value.
 	if strings.TrimSpace(req.Date) == "" {
@@ -816,16 +837,7 @@ func applyMetadataHandler(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 
-	meta := OPFMetadata{
-		Title:       title,
-		Creators:    parseCreatorsString(req.Creators),
-		Description: strings.TrimSpace(req.Description),
-		Publisher:   strings.TrimSpace(req.Publisher),
-		Date:        normalizeDate(req.Date),
-		Languages:   requestLanguages(req),
-		Subjects:    parseSubjectsString(req.Subjects),
-		Identifiers: req.Identifiers,
-	}
+	meta := metadataFromRequest(req)
 
 	bookPath, err := updateBookInCalibreDB(calibreDB, baseDir, uuid, &meta)
 	if err != nil {
