@@ -5,7 +5,7 @@ import { setupPdfGestures } from "./pdf-gestures.js";
 import { setupLoupe } from "./pdf-loupe.js";
 import { ACTUAL_SIZE, createPdfView, type PdfView, type ViewLayout } from "./pdf-view.js";
 import { setupChrome } from "./reader-chrome.js";
-import { leaveReader, previewSync, readerBook, type ReaderBook } from "./reader-preview.js";
+import { keepsHistory, leaveReader, previewSync, readerBook, type ReaderBook } from "./reader-preview.js";
 import { getSettings, onSettingsChange, setSettings, type ReaderSettings } from "./reader-settings.js";
 import { createReadingSync, renderBookmarks, type Bookmark, type BookmarkHandlers } from "./reading-sync.js";
 import { loadPdfJs, openPdf } from "./vendor.js";
@@ -160,7 +160,7 @@ const turnSide = (side: 1 | -1, fromPage = true): void => turn(getSettings().pdf
 
 /** Goes to a page from somewhere else in the book; Back returns. */
 function jump(page: number): void {
-    history.pushState({ depth: (state().depth ?? 0) + 1 } satisfies PdfState, "");
+    if (keepsHistory(target)) history.pushState({ depth: (state().depth ?? 0) + 1 } satisfies PdfState, "");
     void view?.show(page);
 }
 window.addEventListener("popstate", () => {
@@ -169,7 +169,7 @@ window.addEventListener("popstate", () => {
     if (page && page !== view?.first) void view?.show(page);
 });
 // The top-bar Back leaves the reader, skipping the in-book jumps.
-document.querySelector(".btn-back")?.addEventListener("click", () => leaveReader(target, state().depth ?? 0));
+document.querySelector(".btn-back")?.addEventListener("click", () => leaveReader(target, state().depth ?? 0, chrome.setStatus));
 
 async function destPage(dest: PdfJS.Dest, pdf: PdfJS.Document): Promise<number | null> {
     try {

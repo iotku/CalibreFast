@@ -1534,7 +1534,7 @@
         {{ end }}
         {{ if .ReadLink }}
         <!-- Preview mode: nothing about reading it is saved (web/reader-preview.ts) -->
-        <a href="{{ .ReadLink }}" target="_blank" class="tb-btn tb-view-book" title="Open the book in the reader to look things up, in a new tab. Your place and reading status aren't changed.">Read</a>
+        <a href="{{ .ReadLink }}" target="_blank" id="read-preview" class="tb-btn tb-view-book" title="Open the book in the reader to look things up, in a new tab. Your place and reading status aren't changed.">Read</a>
         {{ end }}
         {{ if .Import }}
         <a href="/import" class="tb-btn tb-view-book">Queue{{ if gt .Import.Waiting 1 }} ({{ .Import.Waiting }}){{ end }}</a>
@@ -1810,6 +1810,13 @@ import { mountMetadataEditor } from {{ asset "metadata.js" }};
                     },
                 });
             }
+
+            // Read: opened by script, so the preview's Back may close it again
+            // (browsers only let a script close a tab a script opened).
+            document.getElementById("read-preview")?.addEventListener("click", (e) => {
+                if (e.button !== 0 || e.ctrlKey || e.metaKey || e.shiftKey || e.altKey) return;
+                if (window.open(e.currentTarget.href, "_blank")) e.preventDefault();
+            });
 
             // Import queue: delete the waiting book instead of adding it.
             document.getElementById("btn-discard")?.addEventListener("click", async (e) => {
