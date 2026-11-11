@@ -197,18 +197,31 @@ export function setupAnnotationUI(opts: AnnotationUIOptions): AnnotationUI {
     // ---- the note editor ----------------------------------------------------
 
     let editing: Annotation | null = null;
-    function editNote(a: Annotation): void {
+    /** The highlight was made only to carry this note: cancelling takes it away again. */
+    let editingIsNew = false;
+    function editNote(a: Annotation, isNew = false): void {
         editing = a;
+        editingIsNew = isNew;
         noteQuote.textContent = a.text;
         noteQuote.hidden = !a.text;
         noteQuote.style.setProperty("--hl", colorValue(a.color));
         noteText.value = a.note;
+        dialog.returnValue = "cancel";
+        // Its own history entry (the reader's state, marked), so the
+        // browser's Back closes the editor instead of leaving the book.
+        history.pushState({ ...(history.state as object | null), noteEditor: true }, "");
         dialog.showModal();
         noteText.focus();
     }
+    const inEditorEntry = (): boolean => (history.state as { noteEditor?: boolean } | null)?.noteEditor === true;
+    window.addEventListener("popstate", () => {
+        if (dialog.open && !inEditorEntry()) dialog.close("cancel");
+    });
     dialog.addEventListener("close", () => {
         if (editing && dialog.returnValue === "save") store.update(editing.id, { note: noteText.value.trim() });
+        else if (editing && editingIsNew) store.remove(editing.id);
         editing = null;
+        if (inEditorEntry()) history.back(); // closed by a button or Escape: drop the entry
     });
     // Ctrl/⌘+Enter saves, as in most note boxes.
     noteText.addEventListener("keydown", (e) => {
@@ -216,9 +229,10 @@ export function setupAnnotationUI(opts: AnnotationUIOptions): AnnotationUI {
     });
 
     noteBtn.addEventListener("click", () => {
+        const isNew = !!target && !("existing" in target);
         const a = resolve(lastColor());
         hide();
-        if (a) editNote(a);
+        if (a) editNote(a, isNew);
     });
     copyBtn.addEventListener("click", () => {
         const text = target && "existing" in target ? target.existing.text : (target?.text ?? "");
