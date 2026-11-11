@@ -43,7 +43,11 @@ func main() {
 // assetRe matches {{ asset "name" }} in templates.
 var assetRe = regexp.MustCompile(`\basset\s+"([^"]+)"`)
 
-// entries returns the asset names the templates use, sorted.
+// workerEntries are built without a template naming them: the service
+// worker, which the server serves at /sw.js (sw.go).
+var workerEntries = []string{"sw.js"}
+
+// entries returns the asset names the templates use, and workerEntries, sorted.
 func entries(root string) ([]string, error) {
 	files, err := filepath.Glob(filepath.Join(root, "templates", "*.html"))
 	if err != nil {
@@ -59,6 +63,7 @@ func entries(root string) ([]string, error) {
 			names = append(names, string(m[1]))
 		}
 	}
+	names = append(names, workerEntries...)
 	slices.Sort(names)
 	return slices.Compact(names), nil
 }

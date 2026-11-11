@@ -6,6 +6,7 @@
  *   - opens/closes the ☰ menu (narrow screens), the user menu and the
  *     search box (narrow screens); a click outside or Escape closes them
  */
+import { keepOnlyUser, registerWorker } from "./book-cache.js";
 import { el, withPageScheme } from "./dom.js";
 
 // Addresses the server wrote for this site (e.g. the device sync server on
@@ -155,7 +156,10 @@ function init(bar: HTMLElement): void {
         );
 
         const logout = el("form", { method: "post", action: "/logout" }, el("button", { type: "submit", textContent: "Sign out" }));
-        logout.addEventListener("submit", () => cache.set(null));
+        logout.addEventListener("submit", () => {
+            cache.set(null);
+            void keepOnlyUser(null).catch(() => {});
+        });
         const list = el(
             "div",
             { className: "tb-menu-list", hidden: true },
@@ -198,6 +202,8 @@ function init(bar: HTMLElement): void {
             const st: MeState = { username: u?.username ?? null, isAdmin: !!u?.is_admin, canEdit: !!body.can_edit_library };
             const json = JSON.stringify(st);
             cache.set(json);
+            // Books kept for offline reading belong to whoever read them.
+            void keepOnlyUser(st.username).catch(() => {});
             if (json !== shown) render(st);
         })
         .catch(() => {
@@ -208,3 +214,4 @@ function init(bar: HTMLElement): void {
 // Last, so the constants above are initialized (init may render synchronously).
 const bar = document.querySelector<HTMLElement>(".site-bar");
 if (bar) init(bar);
+registerWorker();

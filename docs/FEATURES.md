@@ -179,7 +179,9 @@ Both only offer choices. Nothing is saved until **Apply Changes**.
   - Kept in the browser and, when signed in, synced: an edit or delete on one device reaches the others, and the newest change wins. Not signed in, they stay on that device.
   - Scanned PDFs have no text to select, so they can't be highlighted yet.
   - **KOReader:** **Notes → KOReader** exports them as the annotations file KOReader imports, and imports the one KOReader exports ([KOREADER.md](KOREADER.md#highlights-and-notes)). Neither direction deletes anything.
-- **EPUB reader loads the whole book up front** (with a progress label), then reads offline: chapters, images and fonts come from memory, with no requests at chapter boundaries.
+- **EPUB reader opens quickly, then keeps the book:** it reads only what the first page needs, then fetches the rest of the book in the background. Page numbers and search work once the whole book has arrived.
+  - **Offline reading:** the book is kept in the browser, so reopening it needs no download. On HTTPS (or localhost), a kept book also opens with no connection to the server; any other page then shows **Offline**, a list of the kept books.
+  - A kept book is removed when it hasn't been opened for a week, when it's set back to **Not started**, or when you sign out.
 - **Reading position and bookmarks:** kept in the browser and, when signed in, synced to the server, so another device can resume.
   - The newest position wins.
   - Changes made offline are pushed when the connection returns.
