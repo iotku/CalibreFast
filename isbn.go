@@ -419,7 +419,7 @@ var (
 // and whitespace collapsed. It's lenient: a malformed document gives the
 // text up to the error.
 func xhtmlText(data []byte) string {
-	d := xml.NewDecoder(bytes.NewReader(data))
+	d := xml.NewDecoder(bytes.NewReader(xml11To10(data)))
 	d.Strict = false
 	d.AutoClose = xml.HTMLAutoClose
 	d.Entity = xml.HTMLEntity
@@ -520,7 +520,7 @@ func epubISBNs(p, file string) ([]isbnCandidate, error) {
 			IDRef string `xml:"idref,attr"`
 		} `xml:"spine>itemref"`
 	}
-	if err := xml.Unmarshal(data, &pkg); err != nil {
+	if err := xmlUnmarshal(data, &pkg); err != nil {
 		return nil, err
 	}
 
@@ -687,7 +687,7 @@ func xmpISBNs(xmp, file string) []isbnCandidate {
 		out = append(out, isbnCandidate{ISBN13: isbn, File: file, Source: "xmp", Label: label})
 	}
 
-	d := xml.NewDecoder(strings.NewReader(xmp))
+	d := xml.NewDecoder(bytes.NewReader(xml11To10([]byte(xmp))))
 	d.Strict = false
 	var stack []string
 	for {

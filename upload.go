@@ -5,7 +5,6 @@ import (
 	"context"
 	"database/sql"
 	"encoding/json"
-	"encoding/xml"
 	"errors"
 	"fmt"
 	"io"
@@ -42,7 +41,7 @@ func epubPackagePath(zr *zip.Reader) (string, error) {
 				FullPath string `xml:"full-path,attr"`
 			} `xml:"rootfiles>rootfile"`
 		}
-		if xml.Unmarshal(data, &c) == nil && len(c.Rootfiles) > 0 && c.Rootfiles[0].FullPath != "" {
+		if xmlUnmarshal(data, &c) == nil && len(c.Rootfiles) > 0 && c.Rootfiles[0].FullPath != "" {
 			return c.Rootfiles[0].FullPath, nil
 		}
 	}
@@ -94,7 +93,7 @@ func extractEPUBMeta(r io.ReaderAt, size int64, filename string) (*UploadedBookM
 	}
 
 	var pkg OPF
-	if err := xml.Unmarshal(opfData, &pkg); err != nil {
+	if err := xmlUnmarshal(opfData, &pkg); err != nil {
 		return nil, fmt.Errorf("failed to parse OPF: %w", err)
 	}
 

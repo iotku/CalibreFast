@@ -78,7 +78,7 @@ func loadOPF(path string) (*OPF, error) {
 
 	var opf OPF
 
-	err = xml.Unmarshal(data, &opf)
+	err = xmlUnmarshal(data, &opf)
 	if err != nil {
 		return nil, err
 	}

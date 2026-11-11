@@ -12,7 +12,6 @@ import (
 	"archive/zip"
 	"bytes"
 	"context"
-	"encoding/xml"
 	"errors"
 	"fmt"
 	"image"
@@ -143,7 +142,7 @@ type epubManifest struct {
 // whose id is "cover" or "cover-image".
 func epubCoverHref(opfPath string, opfData []byte) (string, error) {
 	var m epubManifest
-	if err := xml.Unmarshal(opfData, &m); err != nil {
+	if err := xmlUnmarshal(opfData, &m); err != nil {
 		return "", fmt.Errorf("parsing the OPF: %w", err)
 	}
 	isImage := func(mt string) bool { return strings.HasPrefix(strings.ToLower(mt), "image/") }

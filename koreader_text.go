@@ -57,7 +57,7 @@ type textPoint struct {
 }
 
 func parseChapter(data []byte) (*chapter, error) {
-	d := xml.NewDecoder(bytes.NewReader(data))
+	d := xml.NewDecoder(bytes.NewReader(xml11To10(data)))
 	d.Strict = false
 	d.AutoClose = xml.HTMLAutoClose
 	d.Entity = xml.HTMLEntity
