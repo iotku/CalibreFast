@@ -43,6 +43,11 @@ export function closeOnBackdropClick(dialog: HTMLDialogElement): void {
     });
 }
 
+/** Whether a modal dialog is open: the keyboard is its own until it closes. */
+export function modalOpen(): boolean {
+    return document.querySelector("dialog[open]") !== null;
+}
+
 /** Message from an unknown thrown value. */
 export function errorMessage(err: unknown): string {
     return err instanceof Error ? err.message : String(err);
@@ -77,4 +82,15 @@ export function statusLine(id: string): (text: string, isError?: boolean) => voi
         el.textContent = text;
         el.className = isError ? "auth-error" : "auth-notice";
     };
+}
+
+/**
+ * A URL the server made for this site, with the page's own scheme: behind an
+ * HTTPS reverse proxy the server may only see plain HTTP and write http://.
+ * Only a URL for this very host is changed.
+ */
+export function withPageScheme(url: string): string {
+    const plain = `http://${location.host}`;
+    if (location.protocol !== "https:" || !(url === plain || url.startsWith(plain + "/"))) return url;
+    return "https://" + url.slice("http://".length);
 }

@@ -9,7 +9,7 @@
  * toggleBars(), closePanels() and friends.
  */
 
-import { byId, maybeId } from "./dom.js";
+import { byId, maybeId, modalOpen } from "./dom.js";
 import { bindSettingControls, getSettings, onSettingsChange } from "./reader-settings.js";
 
 export interface Panel {
@@ -30,6 +30,11 @@ export interface Chrome {
     showBars(): void;
     hideBars(): void;
     toggleBars(): void;
+    /**
+     * The mouse is at viewport height y (for pointers that don't come to the
+     * document itself, as in the EPUB reader's chapter iframes).
+     */
+    pointerAt(y: number): void;
     /** Closes any open panel. True if one was open (the press that did it shouldn't also turn the page). */
     closePanels(): boolean;
     /** The line under the book's title. */
@@ -100,8 +105,45 @@ export function setupChrome(opts: ChromeOptions): Chrome {
         if (anyOpen()) return; // a panel hangs off the bars
         // Don't pull the bar from under a keyboard user.
         if (bars.some((b) => b.matches(":focus-within") && b.querySelector(":focus-visible"))) return;
+        revealed = false;
         setBars(true);
     };
+
+    // With a mouse, the bars come out when it nears the top or bottom edge
+    // and go again a moment after it leaves (unless something there is in
+    // use). Bars shown any other way stay until hidden as usual.
+    const finePointer = matchMedia("(hover: hover) and (pointer: fine)");
+    const EDGE = 24; // px beyond a bar's own height
+    let revealed = false;
+    let leaveTimer: ReturnType<typeof setTimeout> | undefined;
+    const nearEdge = (y: number): boolean => {
+        const top = bars.find((b) => b.classList.contains("r-top"))?.offsetHeight ?? 0;
+        const bottom = bars.find((b) => b.classList.contains("r-bottom"))?.offsetHeight ?? 0;
+        return y <= top + EDGE || y >= window.innerHeight - bottom - EDGE;
+    };
+    const left = (): void => {
+        if (!revealed || leaveTimer !== undefined) return;
+        leaveTimer = setTimeout(() => {
+            leaveTimer = undefined;
+            // In use: a typed-in field. (Panels are checked by hideBars.)
+            if (revealed && !bars.some((b) => b.querySelector("input:focus:not([type=range]), select:focus"))) hideBars();
+        }, 600);
+    };
+    const pointerAt = (y: number): void => {
+        if (!finePointer.matches) return;
+        if (!nearEdge(y)) return left();
+        clearTimeout(leaveTimer);
+        leaveTimer = undefined;
+        if (barsHidden()) {
+            showBars();
+            revealed = true;
+        }
+    };
+    document.addEventListener("mousemove", (e) => pointerAt(e.clientY));
+    // Out of the window altogether.
+    document.addEventListener("mouseout", (e) => {
+        if (!e.relatedTarget) left();
+    });
 
     // The sidebar starts below the top bar and the sheet above the bottom one.
     const measure = (): void => {
@@ -190,6 +232,7 @@ export function setupChrome(opts: ChromeOptions): Chrome {
     bindSettingControls(sheetEl);
 
     document.addEventListener("keydown", (e) => {
+        if (modalOpen()) return; // Escape there closes the dialog, nothing else
         if (e.key === "Escape") {
             if (!closePanels()) setBars(!barsHidden());
         } else if (e.key === "Tab" && barsHidden()) {
@@ -254,6 +297,7 @@ export function setupChrome(opts: ChromeOptions): Chrome {
         showBars,
         hideBars,
         toggleBars: () => (barsHidden() ? showBars() : hideBars()),
+        pointerAt,
         closePanels,
         setChapter(text) {
             chapter.textContent = text;

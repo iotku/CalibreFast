@@ -9,8 +9,11 @@ import (
 	"fmt"
 	"math"
 	"net/http"
+	"net/url"
 	"os"
+	"path/filepath"
 	"strconv"
+	"strings"
 	"sync"
 	"time"
 
@@ -90,35 +93,90 @@ func latestProgress(userID int64, only string) map[string]bookProgress {
 	return out
 }
 
-// readingHandler: GET /api/me/reading — the books the user is reading, and
-// how far along each is (0..1, null when no position is known). The username
-// says whose list a browser has cached.
+// readingHandler: GET /api/me/reading — what the library grid marks on the
+// user's cards: the books being read and how far along each is (0..1, null
+// when no position is known), where to resume each, and the books that are
+// favorites, wanted ("want to read") or finished. The username says whose
+// answer a browser has cached.
 func readingHandler(w http.ResponseWriter, r *http.Request) {
 	u := currentUser(r)
-	rows, err := appDB.Query(`SELECT book_uuid FROM reading_status WHERE user_id = ? AND status = 'reading'`, u.ID)
+	reading := map[string]*float64{}
+	resume := map[string]string{}
+	wanted, finished, favorites := []string{}, []string{}, []string{}
+
+	rows, err := appDB.Query(`SELECT book_uuid, status FROM reading_status WHERE user_id = ?`, u.ID)
 	if err != nil {
 		http.Error(w, "query failed", http.StatusInternalServerError)
 		return
 	}
-	var uuids []string
+	var readingUUIDs []string
 	for rows.Next() {
-		var uuid string
-		if rows.Scan(&uuid) == nil {
-			uuids = append(uuids, uuid)
+		var uuid, status string
+		if rows.Scan(&uuid, &status) != nil {
+			continue
+		}
+		switch status {
+		case "reading":
+			readingUUIDs = append(readingUUIDs, uuid)
+		case "wanted":
+			wanted = append(wanted, uuid)
+		case "finished":
+			finished = append(finished, uuid)
 		}
 	}
 	rows.Close()
+	if favorites, err = scanStrings(appDB.Query(`SELECT book_uuid FROM favorites WHERE user_id = ?`, u.ID)); err != nil {
+		http.Error(w, "query failed", http.StatusInternalServerError)
+		return
+	}
+	if favorites == nil {
+		favorites = []string{}
+	}
+
 	progress := latestProgress(u.ID, "")
-	out := make(map[string]*float64, len(uuids))
-	for _, uuid := range uuids {
-		if p, ok := progress[uuid]; ok {
+	for _, uuid := range readingUUIDs {
+		p, ok := progress[uuid]
+		if ok {
 			pct := math.Round(p.Percent*1000) / 1000
-			out[uuid] = &pct
+			reading[uuid] = &pct
 		} else {
-			out[uuid] = nil
+			reading[uuid] = nil
+		}
+		if url := resumeURL(uuid, p.Format); url != "" {
+			resume[uuid] = url
 		}
 	}
-	writeJSON(w, http.StatusOK, map[string]any{"user": u.Username, "reading": out})
+	writeJSON(w, http.StatusOK, map[string]any{
+		"user": u.Username, "reading": reading, "resume": resume,
+		"wanted": wanted, "finished": finished, "favorites": favorites,
+	})
+}
+
+// resumeURL is the web reader for a book, in the format last read when there
+// is one (format: "epub", "pdf", or a KOReader device's format), else EPUB,
+// else PDF. "" when the book has neither.
+func resumeURL(uuid, format string) string {
+	readers := map[string]string{"epub": "/read?uuid=", "pdf": "/read-pdf?uuid="}
+	q := url.QueryEscape(uuid)
+	if r, ok := readers[strings.ToLower(format)]; ok {
+		return r + q
+	}
+	path, ok := uuidPathIndex.Load(uuid)
+	if !ok {
+		var err error
+		if path, err = resolveBookPath(uuid); err != nil {
+			return ""
+		}
+	}
+	files := resolveFormats(uuid, baseDir, path.(string))
+	for _, ext := range []string{"epub", "pdf"} {
+		for _, f := range files {
+			if strings.EqualFold(filepath.Ext(f), "."+ext) {
+				return readers[ext] + q
+			}
+		}
+	}
+	return ""
 }
 
 // progressNote describes a position for the book popup, e.g. "Page 5 of 25 ·

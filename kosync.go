@@ -499,14 +499,7 @@ type syncKeyInfo struct {
 
 // kosyncServerURL is the address to enter in KOReader.
 func kosyncServerURL(r *http.Request) string {
-	if publicURL != "" {
-		return strings.TrimRight(publicURL, "/") + kosyncPrefix
-	}
-	scheme := "http"
-	if r.TLS != nil {
-		scheme = "https"
-	}
-	return scheme + "://" + r.Host + kosyncPrefix
+	return baseURL(r) + kosyncPrefix
 }
 
 func formatDay(unix int64) string { return time.Unix(unix, 0).Format("2 Jan 2006 15:04") }

@@ -93,6 +93,7 @@ Authors are shown by name everywhere ("Alan A. A. Donovan & Brian W. Kernighan")
 - **Compare changes** lists every changed field before and after.
 - **Tags and languages are edited as chips:**
   - Type in the box above the chips, then press Enter or **Add**. Commas separate several values; typing a comma doesn't add anything on its own.
+  - A field never holds the same value twice (ignoring case): adding one that's already there, or a source or lookup offering it again, keeps the field's spelling. The server drops repeats too when saving.
   - Click anywhere on a chip, except its ×, to edit it in place.
   - **Split ;** breaks tags that were glued together with semicolons. **Split all** does every such tag at once.
 - **Autocomplete** for authors, publisher, tags and languages offers only values in your library; languages match by name too.
@@ -147,8 +148,9 @@ Both only offer choices. Nothing is saved until **Apply Changes**.
   - an **invite** to create an account, optionally as an admin, even with registration closed
 
   They work once, expire after 1 hour / 1 day / 7 days, can be revoked, and aren't used up by chat link previews.
-- **Favorites and status:** the book popup has ★ Favorite and a status menu (not started / reading / finished). Lists are at `/me/favorites`, `/me/reading` and `/me/finished`.
-  - Turning a page in a reader marks a book as reading; reaching ≥ 97% marks it finished.
+- **Favorites and status:** the book popup has ★ Favorite and a status menu (not started / want to read / reading / finished). Lists are at `/me/favorites`, `/me/wanted`, `/me/reading` and `/me/finished`.
+  - Turning a page in a reader marks a book as reading; reaching ≥ 97% marks it finished. Starting a book you wanted takes it off Want to read.
+  - **On the covers** (with a mouse): hovering a book in the grid shows ☆ Favorite in the top left, and in the top right a button that depends on the book's status: not started, a bookmark that adds it to (or removes it from) Want to read; reading, ▶ to open the reader in the format you last read; finished, a check mark. On touch screens use the popup.
   - In the grid, books you're reading have a ring and a bar along the bottom showing how far along you are.
   - The popup shows where you are and when it was saved, e.g. "Page 5 of 25 · synced 2 minutes ago from Kobo Clara" (EPUBs show a percentage). The newest position wins, from the web readers or a KOReader device.
   - Automatic changes only move forward and never override a status you set yourself.
@@ -167,7 +169,7 @@ Both only offer choices. Nothing is saved until **Apply Changes**.
   - **Turning pages:** as above, plus swipe. While a page is zoomed wider than the window, swipes and taps move and don't turn. A taller page (Fit width) scrolls with the wheel, Space and PageDown, and turns at its end. Home/End go to the first and last page.
   - **Magnifier** (mouse only; the button in the top bar, or `M`): a lens follows the pointer and shows what's under it, drawn from the PDF at 2.5× (the wheel changes that, from 1.5× to 8×), so a scan's small print is readable without zooming the page. Esc or `M` turns it off.
   - **Text** can be selected and copied. **Links** work: web links open in a new tab, links within the document go there and Back returns.
-  - **Two pages side by side,** when the window is wider than tall. **First page on its own** (on by default) keeps a cover from pushing every later pair off by one. **Right to left (manga)** puts the first page of a pair on the right and reverses what "forward" means for taps, swipes, the arrow keys, the bottom bar's buttons and the scrubber; it applies to single pages too.
+  - **Two pages side by side:** on when the reader opens in a window wider than tall, off in a taller one, and following the window as it turns until you tick or untick it yourself (which then holds for that visit, in either shape). **First page on its own** (on by default) keeps a cover from pushing every later pair off by one. **Right to left (manga)** puts the first page of a pair on the right and reverses what "forward" means for taps, swipes, the arrow keys, the bottom bar's buttons and the scrubber; it applies to single pages too.
   - **Contents** marks the current chapter; scanned and CJK PDFs get the fonts and character maps they need from the server.
 - **Highlights and notes** (EPUB, and PDFs that have text):
   - Select text and a small toolbar offers six colours, **Note** (highlights and opens the note editor) and **Copy**.

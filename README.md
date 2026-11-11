@@ -32,7 +32,7 @@ CalibreFast reads directly from your Calibre `metadata.db` and serves your libra
 - **Metadata editor:** tag and language chips, autocomplete from your library, a formatted description editor, side-by-side comparison of your changes, and safeguards so curated metadata isn't lost. It can find ISBNs in the book's own files and look books up by ISBN on Open Library and Wikidata (Google Books on request), offering their metadata to pick from or accept in one go.
 - **Uploads:** EPUB/PDF metadata is read automatically, and multiple formats of one book are combined.
 - **Accounts:** username/password, or GitHub/Google sign-in. Admins manage users, and can send someone a one-time sign-in or invite link (e.g. over Discord).
-- **Favorites and reading status:** star books, and track what you're reading and have finished. The readers update this as you go.
+- **Favorites and reading status:** star books, and track what you want to read, are reading and have finished, straight from the covers in the grid. The readers update this as you go, and a cover's ▶ picks up where you left off.
 - **Resume anywhere:** your reading position and bookmarks sync between devices, and are kept locally too in case the server is down.
 - **KOReader sync:** use CalibreFast as KOReader's progress sync server, so positions follow you between your Kobo, Kindle or phone and the web readers.
 - **Bookshelves:** your own private shelves, plus global shelves that admins curate for everyone.
@@ -50,6 +50,14 @@ See [docs/FEATURES.md](docs/FEATURES.md) for the details.
 ## Getting started
 
 Requires Go 1.25+ and a Calibre library with a `metadata.db`.
+
+**Starting from nothing?** CalibreFast doesn't create libraries itself: the database format belongs to Calibre, so let Calibre make it and every Calibre tool and front end can read it. Either open Calibre and choose a new, empty folder as the library, or use Calibre's command line:
+
+```bash
+calibredb --library-path /path/to/new/library list
+```
+
+That creates an empty library (`metadata.db` and all) in that folder. Point `-basedir` at it.
 
 ```bash
 git clone https://github.com/iotku/CalibreFast.git

@@ -23,7 +23,10 @@ export interface ReaderSettings {
     flow: "paginated" | "scrolled";
 
     // ---- PDF ----
-    /** Two pages side by side, when the window is wider than tall. */
+    /**
+     * Two pages side by side. The PDF reader sets this from the window's
+     * shape when it opens (wide: two), so what is stored is only the last visit's.
+     */
     pdfDual: boolean;
     /** Right to left (manga): spreads are swapped and "forward" is to the left. */
     pdfRtl: boolean;

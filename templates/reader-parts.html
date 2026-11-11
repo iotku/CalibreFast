@@ -76,7 +76,9 @@
 <div id="reader-toast" class="r-toast" role="status"></div>
 
 {{/* Highlights and notes (web/annotation-ui.ts). The colour buttons are added by the script. */}}
-<div id="annot-bar" class="r-annot" role="toolbar" aria-label="Highlight and note" hidden>
+<div id="annot-bar" class="r-annot" hidden>
+    <p id="annot-bar-note" class="r-annot-note" hidden></p>
+    <div id="annot-tools" class="r-annot-tools" role="toolbar" aria-label="Highlight and note">
     <button id="annot-note" class="r-btn" type="button" title="Note" aria-label="Add or edit a note">
         <svg class="r-icon"><use href="#i-note"/></svg>
     </button>
@@ -86,6 +88,7 @@
     <button id="annot-delete" class="r-btn" type="button" title="Delete highlight" aria-label="Delete highlight" hidden>
         <svg class="r-icon"><use href="#i-trash"/></svg>
     </button>
+    </div>
 </div>
 <dialog id="note-dialog" class="r-dialog" aria-label="Note">
     <form method="dialog">

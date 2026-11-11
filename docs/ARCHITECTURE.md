@@ -63,8 +63,8 @@ Each book's `authors` is its authors' names in Calibre's order, `A & B` (`bookAu
     - **Export** dates the file 1970, because KOReader's import removes its own annotations that are older than the file and not in it.
     - A PDF's rectangles are in points from the page's top left on both sides.
 - **Top bar.** Every page except the readers uses the shared bar in `templates/topbar.html`: `{{ template "topbar-start" (topbar …) }}`, the page's own tools (pager, Group button), then `{{ template "topbar-end" … }}`. The `topbar` template function (main.go) takes key/value pairs: `Active` nav item, `Title`, `Query`, and so on.
-  - The signed-in part (★ Favorites, Reading, user menu) is filled by `web/nav.ts` from `/api/me`, so pages stay identical for everyone and cacheable. `nav.ts` also opens and closes the ☰ menu, user menu and mobile search.
-  - Wide screens show everything inline. At 1000px or less the browse links move into ☰; at 640px or less search becomes an icon and Favorites/Reading move into the user menu.
+  - The signed-in part (Want to read, ★ Favorites, Reading, user menu) is filled by `web/nav.ts` from `/api/me`, so pages stay identical for everyone and cacheable. `nav.ts` also opens and closes the ☰ menu, user menu and mobile search.
+  - Wide screens show everything inline. At 1000px or less the browse links move into ☰; at 640px or less search becomes an icon and Want to read/Favorites/Reading move into the user menu.
   - A book page opened directly (no `HX-Request` header) gets the bar; the modal's copy doesn't (`Vary: HX-Request`).
 - **Scroll engine.** `web/app-htmx.ts` drives the main library, filtered views and search.
   - **One grid, addressed by book index.** Pages are only how the data arrives. Every row is the same height (cards have a fixed aspect ratio), so row `r` starts at `r × rowH`, and a book's place follows from its index and the column count. `measure()` reads both from the layout.
@@ -92,7 +92,8 @@ Each book's `authors` is its authors' names in Calibre's order, `A & B` (`bookAu
   - Its thumbnail goes to a backlog (`thumb_backlog.go`), made one at a time once no thumbnail requests have come in for 2 seconds. A new request stops the backlog's current one, which goes back in the queue.
 - **Cover loading in the browser** (`pumpCovers` in `web/app-htmx.ts`): covers on screen first, a few at a time (`maxCovers`: 4 over HTTP/1.1, which leaves room for page JSON under the browser's 6 connections per host; 10 over HTTP/2 or 3; 2–4 when Chromium estimates a 2G/3G link); off-screen covers only start once the viewport is done, and in-flight ones that scroll away are cancelled (by removing `src`) and re-queued. While the book modal loads, grid covers are cancelled and wait until every image in the modal has arrived (`cf:modal-busy` from `web/modal.ts`).
 - **Scripts, styles and libraries** (`/static/dist/` and `/static/vendor/`, `assets.go`) are held in memory, gzipped once at startup, and served with `Cache-Control: public, max-age=31536000, immutable`. Their URLs change with their content (a content hash, or the library's version), so returning visitors make no requests for them until a new build. A restart picks up a new build.
-- **Book pages** use an `ETag` built from the OPF modification time, the groups version and whether the viewer may edit, plus `max-age=30`.
+- **Book pages** use an `ETag` built from the OPF modification time, the groups version and whether the viewer may edit and the cover's modification time, with `no-cache`: every open revalidates (a cheap 304), so an edit or new cover shows at once.
+- **Full covers** (`/cover/`) are revalidated on every request; the book page links them with `?t=` set from `cover.jpg`'s modification time, so a new cover gets a new URL. A new or reverted cover also sets `last_modified` and `has_cover` in `metadata.db` (`coverChanged` in `covers.go`), as Calibre does.
 
 ## Writes
 
@@ -123,7 +124,7 @@ Both are behind `requireWrites` and only add options to the metadata editor (`we
 - `auth.go`: passwords, sessions and the `withAuth` middleware that puts the user in the request context. The guards are `requireUser`, `requireAdminUser`, `requireReader` (book contents unless `-public-read`) and `requireWrites`.
 - `oauth.go`: GitHub/Google sign-in.
 - `userdata.go`: favorites, reading status and the `/me/...` lists. `progress.go`: reader position and bookmarks. `annotations.go`: highlights and notes. `shelves.go`: bookshelves.
-- `bookprogress.go`: the newest position per book (web readers or a matched KOReader device; nothing is hashed). It serves `/api/me/reading`, which `web/reading.ts` uses to mark cards in the grid and caches in localStorage, and the book popup's "Page 5 of 25 · synced …" note. PDF page counts come from pdfcpu, which reads only the page tree, cached per file.
+- `bookprogress.go`: the newest position per book (web readers or a matched KOReader device; nothing is hashed). It serves `/api/me/reading` (books being read and where to resume them, plus the user's favorite, wanted and finished books), which `web/reading.ts` uses to mark cards in the grid and draw the buttons over their covers, and caches in localStorage, and the book popup's "Page 5 of 25 · synced …" note. PDF page counts come from pdfcpu, which reads only the page tree, cached per file.
 - The app database stores book UUIDs; book details for lists come from `metadata.db`.
 
 ## KOReader progress sync

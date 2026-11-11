@@ -37,10 +37,25 @@ export type ChipInput = HTMLDivElement & {
 };
 
 export function parseList(value: string | null | undefined): string[] {
-    return (value || "")
-        .split(",")
-        .map((s) => s.trim())
-        .filter(Boolean);
+    return uniqueItems((value || "").split(","));
+}
+
+/**
+ * Items trimmed, without empty ones or repeats (ignoring case): the first
+ * spelling stays. A chip field never holds the same value twice (Go:
+ * uniqueTags in main.go).
+ */
+export function uniqueItems(items: string[]): string[] {
+    const out: string[] = [];
+    const seen = new Set<string>();
+    for (const raw of items) {
+        const t = raw.trim();
+        if (t && !seen.has(lower(t))) {
+            seen.add(lower(t));
+            out.push(t);
+        }
+    }
+    return out;
 }
 
 /**
@@ -300,17 +315,20 @@ export function createChipInput(
 
     /**
      * External changes (initial load, source buttons): items no longer present
-     * are struck through rather than dropped.
+     * are struck through rather than dropped. A value the field already has,
+     * in any case, keeps the field's spelling.
      */
     backing.addEventListener("input", () => {
         if (emitting) return;
-        const next = parseList(backing.value);
+        const known = new Map(chips.map((c) => [lower(c.text), c.text]));
+        const next = parseList(backing.value).map((t) => known.get(lower(t)) ?? t);
         const nextKeys = new Set(next.map(lower));
         const prevActive = active().filter((c) => !nextKeys.has(lower(c.text)));
         const prevRemoved = chips.filter(
             (c) => c.removed && !nextKeys.has(lower(c.text)),
         );
         chips = next.map((t) => ({ text: t, removed: false }));
+        if (next.join(", ") !== backing.value) emit(); // the backing value without repeats
         for (const c of [...prevActive, ...prevRemoved]) {
             chips.push({ text: c.text, removed: true });
         }

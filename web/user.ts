@@ -34,6 +34,11 @@ export function prefetchControls(uuid: string): void {
     prefetched.set(uuid, { html: fetchControls(uuid), expires: now + PREFETCH_TTL_MS });
 }
 
+/** Forget a prefetch of a book's controls (its state changed elsewhere). */
+export function forgetControls(uuid: string): void {
+    prefetched.delete(uuid);
+}
+
 /** (Re)load the controls into their container. A prefetch is used once; fresh skips it. */
 async function loadControls(container: HTMLElement, fresh = false): Promise<void> {
     const uuid = container.dataset["uuid"] ?? "";
@@ -61,6 +66,7 @@ function bind(controls: HTMLElement): void {
         paint(want); // optimistic
         try {
             await api("PUT", `/api/me/books/${uuid}/favorite`, { favorite: want });
+            document.dispatchEvent(new CustomEvent("cf:status", { detail: { uuid } })); // the grid re-marks its cards
         } catch {
             paint(!want);
         }

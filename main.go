@@ -708,19 +708,23 @@ func parseCreatorsString(s string) []string {
 }
 
 func parseSubjectsString(s string) []string {
-	s = strings.TrimSpace(s)
-	if s == "" {
-		return []string{}
-	}
-	raw := strings.Split(s, ",")
-	subjects := make([]string, 0, len(raw))
-	for _, sub := range raw {
-		trimmed := strings.TrimSpace(sub)
-		if trimmed != "" {
-			subjects = append(subjects, trimmed)
+	return uniqueTags(strings.Split(s, ","))
+}
+
+// uniqueTags trims tags and drops empty ones and repeats, ignoring case: the
+// first spelling stays. A book never has the same tag twice, whether it came
+// from the editor, a file or a lookup.
+func uniqueTags(tags []string) []string {
+	out := make([]string, 0, len(tags))
+	seen := map[string]bool{}
+	for _, t := range tags {
+		t = strings.TrimSpace(t)
+		if k := strings.ToLower(t); t != "" && !seen[k] {
+			seen[k] = true
+			out = append(out, t)
 		}
 	}
-	return subjects
+	return out
 }
 
 func parseIdentifiersString(s string) []opfIdentifier {

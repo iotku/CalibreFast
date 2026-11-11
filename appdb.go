@@ -165,6 +165,22 @@ var migrations = []string{
 	);
 	CREATE INDEX annotations_book ON annotations(user_id, book_uuid);
 	`,
+	// 7: "want to read" is a reading status (SQLite can't alter a CHECK, so
+	// the table is rebuilt)
+	`
+	CREATE TABLE reading_status_new (
+		user_id    INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+		book_uuid  TEXT    NOT NULL,
+		status     TEXT    NOT NULL CHECK (status IN ('wanted', 'reading', 'finished')),
+		source     TEXT    NOT NULL CHECK (source IN ('manual', 'auto')),
+		updated_at INTEGER NOT NULL,
+		PRIMARY KEY (user_id, book_uuid)
+	);
+	INSERT INTO reading_status_new (user_id, book_uuid, status, source, updated_at)
+		SELECT user_id, book_uuid, status, source, updated_at FROM reading_status;
+	DROP TABLE reading_status;
+	ALTER TABLE reading_status_new RENAME TO reading_status;
+	`,
 }
 
 // openAppDB opens (creating if needed) and migrates the app database.
