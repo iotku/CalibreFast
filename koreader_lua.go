@@ -301,7 +301,11 @@ func (p *luaParser) table(depth int) (any, error) {
 			t.hash[k] = v
 		case float64:
 			if k == math.Trunc(k) && k >= 1 && k <= maxLuaItems {
-				numbered[int(k)] = v
+				// Re-check as an integer: k is already in range, but CodeQL
+				// only recognises integer bounds checks before narrowing.
+				if i := int64(k); i >= 1 && i <= maxLuaItems {
+					numbered[int(i)] = v
+				}
 			} else {
 				t.hash[strconv.FormatFloat(k, 'g', -1, 64)] = v
 			}
