@@ -399,12 +399,18 @@ input[type="number"],
     justify-content: space-between;
     padding: 8px;
     pointer-events: none;
+}
+
+/* Hidden until the card is hovered or focused, except a favorite's ★,
+   which always shows so favorites stand out in the grid. */
+.cover-action {
     opacity: 0;
     transition: opacity 150ms ease;
 }
 
-.book:hover .cover-actions,
-.book:focus-within .cover-actions {
+.book:hover .cover-action,
+.book:focus-within .cover-action,
+.cover-fav.is-on {
     opacity: 1;
 }
 
@@ -446,14 +452,20 @@ input[type="number"],
     cursor: default;
 }
 
+/* Touch screens use the popup's controls, but still show a favorite's ★
+   (as a mark only: a tap opens the popup as usual). */
 @media (hover: none) {
-    .cover-actions {
+    .cover-action:not(.cover-fav.is-on) {
         display: none;
+    }
+
+    .cover-fav.is-on {
+        pointer-events: none;
     }
 }
 
 @media (prefers-reduced-motion: reduce) {
-    .cover-actions {
+    .cover-action {
         transition: none;
     }
 }

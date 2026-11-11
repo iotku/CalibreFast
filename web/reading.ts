@@ -3,7 +3,7 @@
  * reading status (dashed for want to read; solid for reading and finished,
  * with a bar along the bottom showing how far along, full once finished),
  * and every card gets two buttons over its cover on hover:
- *   - top left: favorite (☆/★);
+ *   - top left: favorite (☆/★; a ★ stays shown without hover);
  *   - top right, by reading status: "want to read" for a book not started
  *     (a toggle: /me/wanted), "continue reading" for one being read (opens
  *     the reader in the format last read), a check mark once finished.
