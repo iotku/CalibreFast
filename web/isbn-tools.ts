@@ -198,6 +198,23 @@ export function mountIsbnTools(host: IsbnToolsHost): void {
     findBtn.addEventListener("click", () => void find());
     refreshBtn.addEventListener("click", () => void find());
 
+    // The ISBN field's own Look up button, shown while the field has an ISBN.
+    const lookupIsbnBtn = maybeId("btn-lookup-isbn", HTMLButtonElement);
+    if (lookupIsbnBtn && lookups) {
+        const sync = (): void => {
+            lookupIsbnBtn.hidden = !host.currentIsbn();
+        };
+        sync();
+        // The field changes by typing, and by clicks anywhere: pills, Use,
+        // Undo, the lookup dialog's Accept all.
+        document.addEventListener("input", sync);
+        document.addEventListener("click", () => requestAnimationFrame(sync));
+        lookupIsbnBtn.addEventListener("click", () => {
+            const isbn = host.currentIsbn();
+            if (isbn) lookups.lookUpIsbn(isbn);
+        });
+    }
+
     // A book without an ISBN gets a search of its own files right away;
     // one with an ISBN only on a click. Neither contacts another site: only
     // the Look up buttons do.
