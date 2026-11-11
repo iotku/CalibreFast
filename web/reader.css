@@ -921,13 +921,14 @@ input {
 }
 
 /* ============================================
-   EPUB: the chapter fills the window but for the margins and the
-   position line; the bars come and go over it, so the text never reflows.
+   EPUB: the chapter fills the window between the bars (as web/reader-chrome.ts
+   measures them), so no line of text is ever under one and the text doesn't
+   reflow as they come and go. The position line sits in the bottom bar's place.
    ============================================ */
 #reader-container {
     position: fixed;
-    top: calc(var(--safe-top) + 14px);
-    bottom: calc(var(--safe-bottom) + 26px);
+    top: calc(var(--bar-top, calc(var(--bar-h) + var(--safe-top))) + 10px);
+    bottom: calc(var(--bar-bottom, calc(56px + var(--safe-bottom))) + 10px);
     left: calc(var(--safe-left) + var(--r-margin));
     right: calc(var(--safe-right) + var(--r-margin));
     --r-margin: max(14px, 6vw);
