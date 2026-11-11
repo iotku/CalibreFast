@@ -24,6 +24,8 @@ export interface ChipInputOptions {
     placeholder?: string;
     splitOn?: string;
     placeholders?: string[];
+    /** Text shown on a chip for a value (default: the value). */
+    labelFor?: (value: string) => string;
 }
 
 /** The chip widget's root element, with its small public API. */
@@ -34,6 +36,8 @@ export type ChipInput = HTMLDivElement & {
     activeValues(): string[];
     /** The entry text box (for attaching autocomplete). */
     textInput: HTMLInputElement;
+    /** Redraw the chips (e.g. once labelFor has its data). */
+    rerender(): void;
 };
 
 export function parseList(value: string | null | undefined): string[] {
@@ -65,7 +69,7 @@ export function uniqueItems(items: string[]): string[] {
  */
 export function createChipInput(
     backing: HTMLInputElement,
-    { placeholder = "", splitOn = ";", placeholders = [] }: ChipInputOptions = {},
+    { placeholder = "", splitOn = ";", placeholders = [], labelFor = (v) => v }: ChipInputOptions = {},
 ): ChipInput {
     const placeholderSet = new Set(placeholders.map((p) => p.toLowerCase()));
     let chips: Chip[] = [];
@@ -249,7 +253,7 @@ export function createChipInput(
             el.classList.toggle("removed", chip.removed);
             const label = document.createElement("span");
             label.className = "chip-label";
-            label.textContent = chip.text;
+            label.textContent = labelFor(chip.text);
             el.append(label);
             if (!chip.removed) {
                 // Anywhere on the chip edits it, except its own buttons (×, Split).
@@ -283,7 +287,7 @@ export function createChipInput(
             x.type = "button";
             x.className = "chip-btn";
             x.textContent = chip.removed ? "Undo" : "×";
-            x.title = chip.removed ? `Keep ${chip.text}` : `Remove ${chip.text}`;
+            x.title = chip.removed ? `Keep ${labelFor(chip.text)}` : `Remove ${labelFor(chip.text)}`;
             x.addEventListener("click", () => toggle(chip));
             el.append(x);
             return el;
@@ -340,6 +344,7 @@ export function createChipInput(
     /** Active chip values (for autocomplete exclusion). */
     root.activeValues = () => active().map((c) => c.text);
     root.textInput = text;
+    root.rerender = render;
     render();
     return root;
 }

@@ -1,6 +1,8 @@
 package main
 
 import (
+	"encoding/json"
+	"net/http"
 	"slices"
 	"strings"
 )
@@ -202,4 +204,24 @@ func canonicalLanguage(code string) string {
 		}
 	}
 	return c
+}
+
+// languageCode is one known code in the table the metadata editor uses to
+// label language chips and merge suggestions: its language's name and the
+// 3-letter code to prefer for it.
+type languageCode struct {
+	Name      string `json:"name"`
+	Canonical string `json:"code"`
+}
+
+// languageCodesHandler: GET /api/languages/codes — every known code ("en",
+// "eng", "fre", …) mapped to its language's name and preferred code.
+func languageCodesHandler(w http.ResponseWriter, r *http.Request) {
+	out := make(map[string]languageCode, len(languageNames))
+	for code, name := range languageNames {
+		out[code] = languageCode{Name: name, Canonical: canonicalLanguage(code)}
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.Header().Set("Cache-Control", "max-age=86400")
+	logErr(json.NewEncoder(w).Encode(out), "encode language codes")
 }

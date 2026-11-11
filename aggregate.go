@@ -529,5 +529,6 @@ func registerCategoryRoutes() {
 		logErr(json.NewEncoder(w).Encode(groups.snapshot()), "encode groups")
 	})
 	http.HandleFunc("GET /api/groups/{cat}/values", groupValuesHandler)
+	http.HandleFunc("GET /api/languages/codes", languageCodesHandler)
 	http.HandleFunc("PUT /api/groups/{cat}/{value...}", requireWrites(groupPutHandler))
 }
