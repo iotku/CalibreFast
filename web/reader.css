@@ -943,6 +943,16 @@ body[data-margin="wide"] #reader-container {
     --r-margin: max(22px, 13vw);
 }
 
+/* Touch: no hover reveals the bars by accident, and a phone (in landscape
+   above all) can't spare their height, so the text takes the window but for
+   a slim margin and the position line; the bars, when tapped up, go over it. */
+@media (hover: none) {
+    #reader-container {
+        top: calc(var(--safe-top) + 12px);
+        bottom: calc(var(--safe-bottom) + 24px);
+    }
+}
+
 .reader-message {
     padding: 72px 16px;
     text-align: center;
