@@ -7,6 +7,7 @@ import (
 	"net/http"
 	"os"
 	"path/filepath"
+	"strconv"
 	"strings"
 	"time"
 	"unicode/utf16"
@@ -41,8 +42,9 @@ type BookPageData struct {
 
 	Writable bool // server started with -allow-writes (shows the Edit button)
 
-	Formats []string
-	ModTime string
+	Formats    []string
+	ModTime    string // cache-buster for cover-thumb (matches the library grid's)
+	CoverStamp string // cache-buster for the full cover: cover.jpg's modification time
 
 	HasCover bool // cover.jpg exists; otherwise only the placeholder is shown
 	CoverHue int  // placeholder colour, as on the book's library card
@@ -79,21 +81,28 @@ func bookHandler(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, err.Error(), http.StatusInternalServerError)
 		return
 	}
-	_, err = os.Stat(filepath.Join(baseDir, path, "cover.jpg"))
+	coverStat, err := os.Stat(filepath.Join(baseDir, path, "cover.jpg"))
 	hasCover := err == nil
+	var coverTime int64
+	if hasCover {
+		coverTime = coverStat.ModTime().UnixNano()
+	}
 
 	// Groups version: the language label depends on group names.
 	// Varies with whether this viewer may edit (shows the Edit button).
 	// Server start time: a restart (e.g. after updating templates) must not
 	// keep serving browsers a cached page in the old layout.
-	// Whether there's a cover (an upload adds one without touching the OPF).
+	// The cover's modification time (a new cover doesn't touch the OPF), so
+	// the page links to the new one.
 	// The modal (an htmx request) gets the bare fragment; a direct visit gets
 	// the full page with the top bar.
 	standalone := r.Header.Get("HX-Request") == ""
-	etag := fmt.Sprintf(`"%x-%x-%t-%x-%t-%t"`, opfStat.ModTime().UnixNano(), groups.currentVersion(), canEditLibrary(r), serverStarted, standalone, hasCover)
+	etag := fmt.Sprintf(`"%x-%x-%t-%x-%t-%x"`, opfStat.ModTime().UnixNano(), groups.currentVersion(), canEditLibrary(r), serverStarted, standalone, coverTime)
 	w.Header().Set("ETag", etag)
 	w.Header().Set("Vary", "HX-Request")
-	w.Header().Set("Cache-Control", "private, max-age=30")
+	// Revalidated every time (a cheap 304), so a cover or metadata change
+	// shows as soon as the book is opened again.
+	w.Header().Set("Cache-Control", "private, no-cache")
 	if r.Header.Get("If-None-Match") == etag {
 		w.WriteHeader(http.StatusNotModified)
 		return
@@ -142,8 +151,9 @@ func bookHandler(w http.ResponseWriter, r *http.Request) {
 			),
 		),
 
-		Formats: formats,
-		ModTime: modTime.(string), // cache-busting modtime for cover.jpg and cover-thumb.jpg
+		Formats:    formats,
+		ModTime:    modTime.(string),
+		CoverStamp: strconv.FormatInt(coverTime, 36),
 
 		HasCover: hasCover,
 		CoverHue: coverHue(uuid),

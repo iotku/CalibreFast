@@ -15,6 +15,7 @@ import (
 	"strconv"
 	"strings"
 	"sync"
+	"time"
 
 	"golang.org/x/image/draw"
 )
@@ -182,7 +183,6 @@ func loadThumb(uuid string, abort func() error) (data []byte, cacheHit bool, err
 		return nil, false, err
 	}
 
-
 	stamp, err := bookCoverStamp(uuid)
 	if err != nil {
 		return nil, false, err
@@ -300,4 +300,13 @@ func resizeToWidth(img image.Image, width int) image.Image {
 	)
 
 	return dst
+}
+
+// coverChanged records a new cover.jpg in metadata.db, as Calibre does: the
+// book has a cover and was modified now.
+func coverChanged(uuid string) {
+	if _, err := calibreDB.Exec(`UPDATE books SET has_cover = 1, last_modified = ? WHERE uuid = ?`,
+		calibreDateTime(time.Now()), uuid); err != nil {
+		log.Printf("cover: failed to update %s in metadata.db: %v", uuid, err)
+	}
 }
