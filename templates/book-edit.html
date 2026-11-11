@@ -1321,6 +1321,23 @@
                 cursor: progress;
             }
 
+            .btn-lookup-isbn {
+                flex-shrink: 0;
+                align-self: stretch;
+                border-style: solid;
+            }
+
+            /* Phones: room for the ISBN itself. */
+            @media (max-width: 480px) {
+                .isbn-row .identifier-type-label {
+                    width: auto;
+                }
+
+                .btn-lookup-isbn-text {
+                    display: none;
+                }
+            }
+
             .identifier-actions {
                 display: flex;
                 flex-wrap: wrap;
@@ -1665,6 +1682,13 @@
                                     class="meta-input identifier-val-input"
                                     placeholder="e.g. 9780134190440"
                                 />
+                                {{ if .Lookups }}
+                                <!-- Look up the ISBN in the field (web/isbn-tools.ts); hidden while it's empty -->
+                                <button type="button" id="btn-lookup-isbn" class="btn-add-id btn-lookup-isbn" aria-label="Look up this ISBN" title="Look this ISBN up online (Open Library, then Wikidata)" hidden>
+                                    <svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="11" cy="11" r="7"/><path d="m20 20-4-4"/></svg>
+                                    <span class="btn-lookup-isbn-text">Look up</span>
+                                </button>
+                                {{ end }}
                             </div>
                             <!-- Dynamic Other Identifier Rows -->
                             <div id="custom-identifiers-list" class="identifiers-container identifiers-list"></div>
