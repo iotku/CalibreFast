@@ -1,6 +1,6 @@
 import { colorValue, setupAnnotationUI } from "./annotation-ui.js";
 import { createAnnotationStore, parsePdfAnchor, type Annotation, type PdfAnchor } from "./annotations.js";
-import { byId, maybeId } from "./dom.js";
+import { byId, maybeId, modalOpen } from "./dom.js";
 import { setupPdfGestures } from "./pdf-gestures.js";
 import { setupLoupe } from "./pdf-loupe.js";
 import { ACTUAL_SIZE, createPdfView, type PdfView, type ViewLayout } from "./pdf-view.js";
@@ -136,8 +136,9 @@ function jump(page: number): void {
     void view?.show(page);
 }
 window.addEventListener("popstate", () => {
+    // Back out of the note editor lands on the entry for the page already shown.
     const page = state().page;
-    if (page) void view?.show(page);
+    if (page && page !== view?.first) void view?.show(page);
 });
 // The top-bar Back leaves the reader, skipping the in-book jumps.
 document.querySelector(".btn-back")?.addEventListener("click", () => history.go(-((state().depth ?? 0) + 1)));
@@ -243,6 +244,7 @@ container.addEventListener(
 window.addEventListener(
     "keydown",
     (e) => {
+        if (modalOpen()) return; // typing a note
         if (e.key === "Escape" && loupe.isOn()) {
             loupe.set(false);
             e.stopImmediatePropagation(); // not also the bars

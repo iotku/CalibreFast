@@ -1,6 +1,6 @@
 import { colorValue, setupAnnotationUI } from "./annotation-ui.js";
 import { createAnnotationStore, type Annotation } from "./annotations.js";
-import { byId, errorMessage, maybeId } from "./dom.js";
+import { byId, errorMessage, maybeId, modalOpen } from "./dom.js";
 import { pageColors, setupChrome } from "./reader-chrome.js";
 import { getSettings, onSettingsChange, type ReaderSettings } from "./reader-settings.js";
 import { createReadingSync, renderBookmarks, type Bookmark, type BookmarkHandlers } from "./reading-sync.js";
@@ -245,8 +245,9 @@ function pushJump(): void {
 }
 
 window.addEventListener("popstate", () => {
+    // Back out of the note editor lands on the entry for where we already are.
     const cfi = state().cfi;
-    if (cfi) void rendition.display(cfi);
+    if (cfi && cfi !== currentCfi) void rendition.display(cfi);
 });
 
 // The top-bar Back leaves the reader, skipping the in-book jumps.
@@ -286,6 +287,7 @@ byId("prev-btn").addEventListener("click", () => turn(-1, false));
 byId("next-btn").addEventListener("click", () => turn(1, false));
 
 function onKey(e: KeyboardEvent): void {
+    if (modalOpen()) return; // typing a note
     if (e.ctrlKey || e.metaKey || e.altKey) {
         if ((e.ctrlKey || e.metaKey) && e.key === "f") {
             e.preventDefault();

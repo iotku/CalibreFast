@@ -9,7 +9,7 @@
  * toggleBars(), closePanels() and friends.
  */
 
-import { byId, maybeId } from "./dom.js";
+import { byId, maybeId, modalOpen } from "./dom.js";
 import { bindSettingControls, getSettings, onSettingsChange } from "./reader-settings.js";
 
 export interface Panel {
@@ -190,6 +190,7 @@ export function setupChrome(opts: ChromeOptions): Chrome {
     bindSettingControls(sheetEl);
 
     document.addEventListener("keydown", (e) => {
+        if (modalOpen()) return; // Escape there closes the dialog, nothing else
         if (e.key === "Escape") {
             if (!closePanels()) setBars(!barsHidden());
         } else if (e.key === "Tab" && barsHidden()) {

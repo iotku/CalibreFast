@@ -43,6 +43,11 @@ export function closeOnBackdropClick(dialog: HTMLDialogElement): void {
     });
 }
 
+/** Whether a modal dialog is open: the keyboard is its own until it closes. */
+export function modalOpen(): boolean {
+    return document.querySelector("dialog[open]") !== null;
+}
+
 /** Message from an unknown thrown value. */
 export function errorMessage(err: unknown): string {
     return err instanceof Error ? err.message : String(err);
