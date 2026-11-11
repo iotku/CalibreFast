@@ -1,4 +1,4 @@
-import { createChipInput, parseList, type ChipInput } from "./chips.js";
+import { createChipInput, parseList, uniqueItems, type ChipInput } from "./chips.js";
 import { attachSuggest } from "./suggest.js";
 import { createDescriptionEditor } from "./description.js";
 import { closeOnBackdropClick, errorMessage, maybeId } from "./dom.js";
@@ -49,7 +49,8 @@ function metaProp(meta: MetaSource, key: FieldKey): unknown {
 }
 function metaList(meta: MetaSource | null, key: FieldKey): string[] {
   const v = meta ? metaProp(meta, key) : null;
-  return Array.isArray(v) ? (v as string[]) : [];
+  // A source's tags or languages without repeats (any case), as the chips hold them.
+  return Array.isArray(v) ? uniqueItems(v as string[]) : [];
 }
 
 function fieldValue(meta: MetaSource, key: FieldKey, kind: FieldKind): string {

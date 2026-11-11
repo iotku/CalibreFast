@@ -210,6 +210,7 @@ func (l *bookLookup) lookup(ctx context.Context, source string, q lookupQuery) l
 	res.Source = source
 	if res.Option != nil {
 		res.Option.Format = source
+		res.Option.Subjects = uniqueTags(res.Option.Subjects)
 	}
 	l.cache.put(key, *res)
 	return *res
@@ -773,9 +774,10 @@ func wikidataOption(isbn, item string, rows []wikidataValue) *UploadedBookMeta {
 		}
 	}
 	for _, s := range labels(subjects) {
-		if !slices.Contains(m.Subjects, s.Value) && len(m.Subjects) < 15 {
-			m.Subjects = append(m.Subjects, s.Value)
-		}
+		m.Subjects = append(m.Subjects, s.Value)
+	}
+	if m.Subjects = uniqueTags(m.Subjects); len(m.Subjects) > 15 {
+		m.Subjects = m.Subjects[:15]
 	}
 	return m
 }

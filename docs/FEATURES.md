@@ -93,6 +93,7 @@ Authors are shown by name everywhere ("Alan A. A. Donovan & Brian W. Kernighan")
 - **Compare changes** lists every changed field before and after.
 - **Tags and languages are edited as chips:**
   - Type in the box above the chips, then press Enter or **Add**. Commas separate several values; typing a comma doesn't add anything on its own.
+  - A field never holds the same value twice (ignoring case): adding one that's already there, or a source or lookup offering it again, keeps the field's spelling. The server drops repeats too when saving.
   - Click anywhere on a chip, except its ×, to edit it in place.
   - **Split ;** breaks tags that were glued together with semicolons. **Split all** does every such tag at once.
 - **Autocomplete** for authors, publisher, tags and languages offers only values in your library; languages match by name too.

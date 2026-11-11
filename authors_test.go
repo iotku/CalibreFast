@@ -61,3 +61,15 @@ func TestBookAuthorsSQL(t *testing.T) {
 		t.Errorf("grid authors = %q (author_sort is %q)", got, sortForm)
 	}
 }
+
+// A book never has the same tag twice: tags are trimmed and repeats, in any
+// case, dropped, keeping the first spelling.
+func TestUniqueTags(t *testing.T) {
+	got := parseSubjectsString(" Programming, go ,programming,, Go,PROGRAMMING , Fiction")
+	if want := []string{"Programming", "go", "Fiction"}; !reflect.DeepEqual(got, want) {
+		t.Errorf("parseSubjectsString = %q, want %q", got, want)
+	}
+	if got := uniqueTags(nil); len(got) != 0 {
+		t.Errorf("uniqueTags(nil) = %q", got)
+	}
+}

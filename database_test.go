@@ -805,6 +805,65 @@ func TestApplyMetadataHandler_KeepsUnparseableDate(t *testing.T) {
 
 // A book with several languages must keep all of them (in order) through an
 // editor save, in both metadata.opf and Calibre's link table.
+// Tags sent twice (in any case) are saved once, in the OPF and the database.
+func TestApplyMetadataHandler_DedupesTags(t *testing.T) {
+	db, tempDir := setupTestDB(t)
+	defer os.RemoveAll(tempDir)
+	defer db.Close()
+	origDB, origBaseDir := calibreDB, baseDir
+	calibreDB, baseDir = db, tempDir
+	defer func() { calibreDB, baseDir = origDB, origBaseDir }()
+
+	_, bookUUID, bookPath, err := insertBookIntoCalibreDB(db, &UploadedBookMeta{
+		OPFMetadata: OPFMetadata{Title: "Tags", Creators: []string{"A"}, Subjects: []string{"Go", "go", " Go "}},
+	}, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	_ = os.MkdirAll(filepath.Join(tempDir, bookPath), 0755)
+	tagsOf := func() []string {
+		rows, err := db.Query(`SELECT t.name FROM books_tags_link l JOIN tags t ON t.id = l.tag JOIN books b ON b.id = l.book WHERE b.uuid = ? ORDER BY t.name`, bookUUID)
+		if err != nil {
+			t.Fatal(err)
+		}
+		defer rows.Close()
+		var out []string
+		for rows.Next() {
+			var s string
+			rows.Scan(&s)
+			out = append(out, s)
+		}
+		return out
+	}
+	if got := tagsOf(); !slices.Equal(got, []string{"Go"}) {
+		t.Errorf("after upload: %q", got)
+	}
+
+	mux := http.NewServeMux()
+	mux.HandleFunc("POST /metadata/{uuid}/apply", applyMetadataHandler)
+	server := httptest.NewServer(mux)
+	defer server.Close()
+	payload := `{"title": "Tags", "creators": "A", "subjects": "Programming, Go, programming, GO, Fiction"}`
+	resp, err := http.Post(server.URL+"/metadata/"+bookUUID+"/apply", "application/json", strings.NewReader(payload))
+	if err != nil {
+		t.Fatal(err)
+	}
+	resp.Body.Close()
+	if resp.StatusCode != http.StatusOK {
+		t.Fatalf("expected 200, got %d", resp.StatusCode)
+	}
+	if got := tagsOf(); !slices.Equal(got, []string{"Fiction", "Go", "Programming"}) {
+		t.Errorf("after save: %q", got)
+	}
+	opf, err := loadOPF(filepath.Join(tempDir, bookPath, "metadata.opf"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if want := []string{"Programming", "Go", "Fiction"}; !slices.Equal(opf.Metadata.Subjects, want) {
+		t.Errorf("OPF subjects = %q, want %q", opf.Metadata.Subjects, want)
+	}
+}
+
 func TestApplyMetadataHandler_MultipleLanguages(t *testing.T) {
 	db, tempDir := setupTestDB(t)
 	defer os.RemoveAll(tempDir)

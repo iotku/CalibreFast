@@ -41,6 +41,7 @@ func calibreDateTime(t time.Time) string {
 // insertBookIntoCalibreDB inserts a book and all its formats into metadata.db,
 // following Calibre's schema exactly so the library remains Calibre-compatible.
 func insertBookIntoCalibreDB(db *sql.DB, meta *UploadedBookMeta, formats []formatEntry) (bookID int64, bookUUID string, bookPath string, retErr error) {
+	meta.Subjects = uniqueTags(meta.Subjects)
 	tx, err := db.Begin()
 	if err != nil {
 		return 0, "", "", fmt.Errorf("begin tx: %w", err)
@@ -242,6 +243,7 @@ func deleteBookFromCalibreDB(db *sql.DB, bookID int64) error { // TODO: NEEDS TE
 // It ensures strict Calibre database compatibility, including cleaning up orphaned authors, tags,
 // publishers, and languages when the edited book was the only book linked to them.
 func updateBookInCalibreDB(db *sql.DB, baseDir string, bookUUID string, meta *OPFMetadata) (string, error) {
+	meta.Subjects = uniqueTags(meta.Subjects)
 	var bookID int64
 	var bookPath string
 	err := db.QueryRow(`SELECT id, path FROM books WHERE uuid = ?`, bookUUID).Scan(&bookID, &bookPath)
