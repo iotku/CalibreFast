@@ -72,7 +72,6 @@ let book: EpubJS.Book;
 /** A file's path inside the book from a URL epub.js made. */
 let pathOf = (url: string): string => decodeURIComponent(url.replace(/^\/+/, "").split("#")[0] ?? "");
 try {
-    await sweep().catch(() => {});
     cached = await getBook(uuid).catch(() => null);
     if (cached && canInflate) {
         source = openBuffer(new Uint8Array(await cached.bytes.arrayBuffer()), cached.lastModified);
@@ -144,6 +143,7 @@ if (cached) {
     // The copy kept here may be out of date: check, and fetch the new one for next time.
     void fetch(downloadUrl, { method: "HEAD", credentials: "same-origin" })
         .then(async (res) => {
+            if (res.ok) void sweep(undefined, uuid).catch(() => {}); // online: tidy up other kept books
             const lm = res.headers.get("last-modified") ?? "";
             if (!res.ok || !lm || lm === cached?.lastModified) return;
             const { buf, lastModified } = await downloadBook();
@@ -151,7 +151,10 @@ if (cached) {
             chrome.toast("A newer copy of this book was downloaded. Reopen it to see it.");
         })
         .catch(() => {}); // offline
-} else if (source?.whole) {
+} else if (source) {
+    void sweep(undefined, uuid).catch(() => {}); // the server answered: tidy up other kept books
+}
+if (!cached && source?.whole) {
     // Downloaded whole (small book, or no Range support): keep it.
     void source.complete.then((buf) => keepCopy(buf, source?.lastModified ?? "")).catch(() => {});
 }

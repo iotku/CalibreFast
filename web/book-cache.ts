@@ -98,10 +98,15 @@ export async function keepOnlyUser(user: string | null): Promise<void> {
  * Drop books not opened for a week. With statuses (the grid's answer from
  * /api/me/reading), also drop books moved back to "not started", and note
  * the others' statuses for next time.
+ *
+ * Only call this after the server has answered: offline, a kept book may be
+ * the only way to read it, however long ago it was opened. keep is never
+ * dropped (the book being opened).
  */
-export async function sweep(statusOf?: (uuid: string) => string): Promise<void> {
+export async function sweep(statusOf?: (uuid: string) => string, keep?: string): Promise<void> {
     const now = Date.now();
     for (const b of await listBooks()) {
+        if (b.uuid === keep) continue;
         if (now - b.lastOpened > MAX_AGE_MS) {
             await deleteBook(b.uuid);
             continue;

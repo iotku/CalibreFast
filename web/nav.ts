@@ -202,8 +202,9 @@ function init(bar: HTMLElement): void {
             const st: MeState = { username: u?.username ?? null, isAdmin: !!u?.is_admin, canEdit: !!body.can_edit_library };
             const json = JSON.stringify(st);
             cache.set(json);
-            // Books kept for offline reading belong to whoever read them.
-            void keepOnlyUser(st.username).catch(() => {});
+            // Books kept for offline reading belong to whoever read them
+            // (only on a real answer: an error isn't a sign-out).
+            if (ok) void keepOnlyUser(st.username).catch(() => {});
             if (json !== shown) render(st);
         })
         .catch(() => {
