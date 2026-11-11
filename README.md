@@ -81,7 +81,8 @@ Then open [http://localhost:8080](http://localhost:8080) and sign in. Add more u
 | `-port` | Port to listen on (default `8080`) |
 | `-datadir` | Where CalibreFast keeps its own database: accounts, favorites, progress, shelves (default `./data`) |
 | `-allow-writes` | Let **admins** edit metadata, upload, change covers and manage groups. Off by default. |
-| `-watch-dir` | A folder to watch for new books. They are moved out of it into a review queue (`/import`) and only join the library when an admin adds them. Needs `-allow-writes`; must not be inside the library or `-datadir`. |
+| `-watch-dir` | A folder to watch for new books. The system reports changes to it (checked every 30 seconds where it can't). Books are moved out of it into a review queue (`/import`) and only join the library when an admin adds them. Needs `-allow-writes`; must not be inside the library or `-datadir`. |
+| `-watch-dir-force-polling` | Check `-watch-dir` every 30 seconds instead of waiting for the system to report changes. For folders on network or container mounts (NFS, SMB, some bind mounts) where new books aren't noticed. |
 | `-public` | Let anyone browse the catalog without signing in. **By default the whole library is private:** nothing (not even covers or book IDs) is shown until you sign in. |
 | `-public-read` | Public read-only mode: anyone can also read and download books (implies `-public`) |
 | `-allow-registrations` | Let anyone create an account from the sign-in page. **Bots will try to sign up:** only use on a trusted network, such as a Tailscale network shared with people you trust. |

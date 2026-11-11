@@ -121,6 +121,8 @@ export interface ImportSummary {
 export interface ImportQueue {
     watching: boolean;
     folder?: string;
+    /** The folder is checked on a timer: the system doesn't report changes to it. */
+    polling?: boolean;
     /** Files in the watch folder not taken yet (still being copied, or just seen). */
     settling: number;
     problem?: string;

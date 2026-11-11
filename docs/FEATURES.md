@@ -144,8 +144,10 @@ Both only offer choices. Nothing is saved until **Apply Changes**.
 
 Start the server with `-watch-dir /path/to/folder` (and `-allow-writes`). Books put in that folder are **not** added to the library: they wait for an admin's review.
 
-- **What is taken:** EPUB, PDF, MOBI, AZW3 and DjVu files, in the folder and its subfolders, checked every few seconds.
-  - A file is taken once it has stopped changing, so a copy in progress is left alone.
+- **What is taken:** EPUB, PDF, MOBI, AZW3 and DjVu files, in the folder and its subfolders.
+  - The operating system tells CalibreFast when something there changes, so an idle folder costs nothing and a new book shows up within seconds. Where it can't (some network and container mounts, or too many folders for the system's limit), the folder is checked every 30 seconds instead; the log and the queue page say so.
+  - Some mounts (NFS, SMB, some container bind mounts) accept being watched but never report anything, so books put there aren't noticed. Start the server with `-watch-dir-force-polling` to check such a folder every 30 seconds regardless.
+  - A file is taken once it has been unchanged for 5 seconds, so a copy in progress is left alone.
   - Files in one folder with the same name and different formats (`Book.epub` + `Book.pdf`) are one book.
   - Hidden files and folders (`.name`), symbolic links and empty files are ignored. Other files are left where they are.
 - **Taken files are moved** out of the watch folder into the queue (in `-datadir`), so the folder shows what is still to come.

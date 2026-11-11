@@ -2,7 +2,8 @@ package main
 
 // The watch folder and its import queue.
 //
-// With -watch-dir, book files that appear in that folder are moved into
+// With -watch-dir, book files that appear in that folder (the operating
+// system says when; see folderWatcher.run) are moved into
 // <datadir>/imports/<id>/ and wait there: nothing is added to metadata.db or
 // the library folder until an admin reviews the book at /import/<id>, which
 // is the metadata editor (templates/book-edit.html) pointed at the waiting
@@ -29,12 +30,17 @@ import (
 	"sync"
 	"time"
 
+	"github.com/fsnotify/fsnotify"
 	"github.com/google/uuid"
 )
 
 var (
 	// watchDir is -watch-dir: the folder watched for new books ("" for none).
 	watchDir string
+	// watchForcePolling is -watch-dir-force-polling: scan on a timer even
+	// where the folder can be watched. Some mounts (NFS, SMB, some container
+	// bind mounts) accept a watch and then never report anything.
+	watchForcePolling bool
 	// imports is the queue. It is opened even without -watch-dir, so books
 	// left from an earlier run can still be reviewed.
 	imports *importInbox
@@ -42,10 +48,17 @@ var (
 	watcher *folderWatcher
 )
 
-// watchInterval is how often the watch folder is scanned. A file is taken
-// once it's the same in two scans, so this is also how long a copy has to
-// stall to be mistaken for a finished one.
-const watchInterval = 5 * time.Second
+const (
+	// watchSettle is how long a file must stay the same (size and
+	// modification time) before it's taken: how long a copy has to stall to
+	// be mistaken for a finished one.
+	watchSettle = 5 * time.Second
+	// watchDebounce gathers a burst of filesystem events into one scan.
+	watchDebounce = 500 * time.Millisecond
+	// watchPollInterval is how often the folder is scanned where the
+	// operating system can't report changes to it.
+	watchPollInterval = 30 * time.Second
+)
 
 func watching() bool { return watcher != nil }
 
@@ -302,25 +315,37 @@ func (b *importInbox) approve(id string, meta OPFMetadata) (bookUUID string, err
 // ---------------------------------------------------------------------------
 
 // fileStamp is what tells a file that is still being copied from one that's
-// done: its size and modification time, the same in two scans.
+// done: its size and modification time, unchanged for a while.
 type fileStamp struct {
 	size int64
 	mod  int64
+}
+
+// seenFile is a file's stamp and when a scan first saw it that way.
+type seenFile struct {
+	fileStamp
+	since time.Time
 }
 
 type folderWatcher struct {
 	dir   string
 	inbox *importInbox
 
-	mu      sync.Mutex
-	seen    map[string]fileStamp // every book file in the last scan
-	failed  map[string]fileStamp // ones that couldn't be taken; left alone until they change
-	waiting int                  // book files seen but not taken yet
-	lastErr string               // why the last scan failed or left a file behind
+	settle    time.Duration // how long a file must be unchanged; 0: just since the scan before
+	forcePoll bool          // never watch for events: scan on a timer (-watch-dir-force-polling)
+
+	mu       sync.Mutex
+	seen     map[string]seenFile  // every book file in the last scan
+	failed   map[string]fileStamp // ones that couldn't be taken; left alone until they change
+	dirs     []string             // the folder and its subfolders, as of the last scan
+	waiting  int                  // book files seen but not taken yet
+	settling int                  // those of them a later scan may take without anything changing
+	lastErr  string               // why the last scan failed or left a file behind
+	polling  bool                 // scanning on a timer: the OS isn't reporting changes
 }
 
 func newFolderWatcher(dir string, inbox *importInbox) *folderWatcher {
-	return &folderWatcher{dir: dir, inbox: inbox, seen: map[string]fileStamp{}, failed: map[string]fileStamp{}}
+	return &folderWatcher{dir: dir, inbox: inbox, seen: map[string]seenFile{}, failed: map[string]fileStamp{}}
 }
 
 // isBookFile reports whether name has a book format's extension, in any case.
@@ -336,9 +361,10 @@ func (w *folderWatcher) scan() int {
 	w.mu.Lock()
 	defer w.mu.Unlock()
 
-	now := map[string]fileStamp{}
+	at := time.Now()
+	now := map[string]seenFile{}
 	groups := map[string][]string{} // folder + name without extension -> its files
-	var order []string
+	var order, dirs []string
 	err := filepath.WalkDir(w.dir, func(p string, d fs.DirEntry, err error) error {
 		if err != nil {
 			if p == w.dir {
@@ -353,6 +379,10 @@ func (w *folderWatcher) scan() int {
 			}
 			return nil
 		}
+		if d.IsDir() {
+			dirs = append(dirs, p)
+			return nil
+		}
 		if !d.Type().IsRegular() || !isBookFile(name) {
 			return nil
 		}
@@ -360,7 +390,11 @@ func (w *folderWatcher) scan() int {
 		if err != nil {
 			return nil // gone again
 		}
-		now[p] = fileStamp{info.Size(), info.ModTime().UnixNano()}
+		st := seenFile{fileStamp{info.Size(), info.ModTime().UnixNano()}, at}
+		if prev, ok := w.seen[p]; ok && prev.fileStamp == st.fileStamp {
+			st.since = prev.since
+		}
+		now[p] = st
 		key := filepath.Dir(p) + "\x00" + strings.ToLower(strings.TrimSuffix(name, filepath.Ext(name)))
 		if _, ok := groups[key]; !ok {
 			order = append(order, key)
@@ -380,7 +414,8 @@ func (w *folderWatcher) scan() int {
 		finished := true
 		for _, p := range paths {
 			st := now[p]
-			if prev, ok := w.seen[p]; !ok || prev != st || st.size == 0 || w.failed[p] == st {
+			if prev, ok := w.seen[p]; !ok || prev.fileStamp != st.fileStamp || at.Sub(st.since) < w.settle ||
+				st.size == 0 || w.failed[p] == st.fileStamp {
 				finished = false
 			}
 		}
@@ -405,7 +440,7 @@ func (w *folderWatcher) scan() int {
 		if err != nil {
 			scanErr = fmt.Sprintf("couldn't take %s: %v", take[0], err)
 			for _, p := range take {
-				w.failed[p] = now[p]
+				w.failed[p] = now[p].fileStamp
 			}
 			continue
 		}
@@ -424,7 +459,15 @@ func (w *folderWatcher) scan() int {
 	if scanErr == "" && len(w.failed) > 0 {
 		scanErr = w.lastErr // still true: those files are still there
 	}
-	w.seen, w.waiting = now, len(now)
+	// Empty files and ones that couldn't be taken only matter again when
+	// they change; the rest are taken by a later scan as they are.
+	settling := 0
+	for p, st := range now {
+		if st.size > 0 && w.failed[p] != st.fileStamp {
+			settling++
+		}
+	}
+	w.seen, w.dirs, w.waiting, w.settling = now, dirs, len(now), settling
 	w.note(scanErr)
 	return taken
 }
@@ -438,17 +481,128 @@ func (w *folderWatcher) note(problem string) {
 	w.lastErr = problem
 }
 
-func (w *folderWatcher) run(interval time.Duration) {
+// run watches the folder until the program ends. The operating system
+// reports changes to it (inotify, kqueue, ReadDirectoryChangesW; fsnotify),
+// so nothing is read while nothing happens: an event leads to a scan, and
+// scans go on every watchSettle while files are still settling. Where the
+// folder can't be watched that way, it is scanned every watchPollInterval.
+func (w *folderWatcher) run() {
+	if w.forcePoll {
+		w.poll(nil)
+		return
+	}
+	fsw, err := fsnotify.NewWatcher()
+	if err != nil {
+		w.poll(err)
+		return
+	}
+	defer fsw.Close()
+
+	watched := map[string]bool{}
+	// follow watches the folders the last scan found. Watches aren't
+	// recursive, so each subfolder needs its own.
+	follow := func() error {
+		w.mu.Lock()
+		dirs := slices.Clone(w.dirs)
+		w.mu.Unlock()
+		current := make(map[string]bool, len(dirs))
+		for _, d := range dirs {
+			current[d] = true
+			if watched[d] {
+				continue
+			}
+			if err := fsw.Add(d); err != nil {
+				if d != w.dir && errors.Is(err, fs.ErrNotExist) {
+					continue // removed since the scan
+				}
+				return fmt.Errorf("%s: %w", d, err)
+			}
+			watched[d] = true
+		}
+		for d := range watched {
+			if !current[d] { // gone; its watch went with it
+				delete(watched, d)
+			}
+		}
+		return nil
+	}
+
+	// Watch, then scan: nothing that arrives in between is missed. A scan
+	// finds new subfolders, which are then watched and scanned once more.
+	if err := fsw.Add(w.dir); err != nil {
+		w.poll(err)
+		return
+	}
+	watched[w.dir] = true
+	log.Printf("watch folder: watching %s for changes", w.dir)
+
+	timer := time.NewTimer(0)
+	pending := true // a scan is due when the timer fires
+	schedule := func(d time.Duration) {
+		timer.Reset(d)
+		pending = true
+	}
 	for {
-		w.scan()
-		time.Sleep(interval)
+		select {
+		case _, ok := <-fsw.Events:
+			if !ok {
+				w.poll(errors.New("the watcher stopped"))
+				return
+			}
+			// A scan already due sooner than a settle away is soon enough.
+			if !pending {
+				schedule(watchDebounce)
+			}
+		case err, ok := <-fsw.Errors:
+			if !ok {
+				w.poll(errors.New("the watcher stopped"))
+				return
+			}
+			// Typically events were dropped (too many at once): look.
+			log.Println("watch folder:", err)
+			schedule(watchDebounce)
+		case <-timer.C:
+			pending = false
+			before := len(watched)
+			w.scan()
+			if err := follow(); err != nil {
+				w.poll(err)
+				return
+			}
+			w.mu.Lock()
+			settling := w.settling
+			w.mu.Unlock()
+			switch {
+			case len(watched) > before:
+				schedule(watchDebounce) // files may have arrived in a new subfolder before it was watched
+			case settling > 0:
+				schedule(w.settle)
+			}
+		}
 	}
 }
 
-func (w *folderWatcher) status() (waiting int, problem string) {
+// poll scans the folder on a timer, for when it can't be watched (why) or
+// the admin asked for it (nil).
+func (w *folderWatcher) poll(why error) {
+	if why == nil {
+		log.Printf("watch folder: -watch-dir-force-polling: checking %s every %s", w.dir, watchPollInterval)
+	} else {
+		log.Printf("watch folder: the system can't report changes to %s (%v); checking it every %s instead", w.dir, why, watchPollInterval)
+	}
+	w.mu.Lock()
+	w.polling = true
+	w.mu.Unlock()
+	for {
+		w.scan()
+		time.Sleep(watchPollInterval)
+	}
+}
+
+func (w *folderWatcher) status() (waiting int, problem string, polling bool) {
 	w.mu.Lock()
 	defer w.mu.Unlock()
-	return w.waiting, w.lastErr
+	return w.waiting, w.lastErr, w.polling
 }
 
 // insideDir reports whether p is dir or somewhere under it.
@@ -498,6 +652,9 @@ func startImports() {
 		log.Printf("import queue: %d book(s) waiting for review at /import", n)
 	}
 	if watchDir == "" {
+		if watchForcePolling {
+			log.Println("-watch-dir-force-polling does nothing without -watch-dir")
+		}
 		return
 	}
 	if !allowWrites {
@@ -509,8 +666,9 @@ func startImports() {
 		log.Fatalf("-watch-dir %s: %v", watchDir, err)
 	}
 	watcher = newFolderWatcher(watchDir, imports)
+	watcher.settle, watcher.forcePoll = watchSettle, watchForcePolling
 	log.Printf("-watch-dir: books put in %s wait for an admin's review at /import", watchDir)
-	go watcher.run(watchInterval)
+	go watcher.run()
 }
 
 // ---------------------------------------------------------------------------
@@ -545,6 +703,7 @@ type importSummary struct {
 type importQueue struct {
 	Watching bool            `json:"watching"`
 	Folder   string          `json:"folder,omitempty"`  // the watch folder
+	Polling  bool            `json:"polling,omitempty"` // it is checked on a timer: the OS doesn't report changes to it
 	Settling int             `json:"settling"`          // files in it not taken yet (still being copied, or just seen)
 	Problem  string          `json:"problem,omitempty"` // why a file can't be taken
 	Items    []importSummary `json:"items"`
@@ -588,7 +747,7 @@ func importQueueHandler(w http.ResponseWriter, r *http.Request) {
 	q := importQueue{Watching: watching(), Items: []importSummary{}}
 	if watcher != nil {
 		q.Folder = watcher.dir
-		q.Settling, q.Problem = watcher.status()
+		q.Settling, q.Problem, q.Polling = watcher.status()
 	}
 	for _, it := range imports.list() {
 		hasCover, _ := coverFilesIn(imports.itemDir(it.ID))

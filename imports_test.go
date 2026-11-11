@@ -13,6 +13,7 @@ import (
 	"slices"
 	"strings"
 	"testing"
+	"time"
 )
 
 // importTestEPUB is an EPUB with a title, an author, an ISBN and its own uuid.
@@ -62,7 +63,7 @@ func TestWatchFolderTakesFinishedBooks(t *testing.T) {
 	if n := w.scan(); n != 0 || w.inbox.count() != 0 {
 		t.Fatalf("first scan took %d book(s)", n)
 	}
-	if waiting, _ := w.status(); waiting != 4 {
+	if waiting, _, _ := w.status(); waiting != 4 {
 		t.Errorf("waiting = %d, want 4 book files", waiting)
 	}
 	if n := w.scan(); n != 2 {
@@ -422,4 +423,71 @@ func TestNextImport(t *testing.T) {
 	if got := nextImport(list[:1], "a"); got != "" {
 		t.Errorf("the only book has a next: %q", got)
 	}
+}
+
+// A file must be unchanged for the settle time, however often it's looked at.
+func TestWatchFolderSettleTime(t *testing.T) {
+	w, dir := newTestWatcher(t)
+	w.settle = 150 * time.Millisecond
+	writeTestFile(t, filepath.Join(dir, "Book.epub"), importTestEPUB(t))
+	w.scan()
+	if n := w.scan(); n != 0 {
+		t.Fatal("taken by two scans in quick succession")
+	}
+	if w.settling != 1 {
+		t.Errorf("settling = %d: another scan is needed", w.settling)
+	}
+	time.Sleep(200 * time.Millisecond)
+	if n := w.scan(); n != 1 || w.settling != 0 {
+		t.Fatalf("after the settle time: took %d, %d still settling", n, w.settling)
+	}
+}
+
+// The real thing: no scans until the system reports a change.
+func TestWatchFolderRunFollowsEvents(t *testing.T) {
+	if testing.Short() {
+		t.Skip("waits on filesystem events; skipped with -short")
+	}
+	w, dir := newTestWatcher(t)
+	w.settle = 200 * time.Millisecond
+	go w.run()
+	time.Sleep(300 * time.Millisecond) // the first scan, of an empty folder
+
+	wait := func(want int) {
+		t.Helper()
+		for deadline := time.Now().Add(10 * time.Second); time.Now().Before(deadline); time.Sleep(50 * time.Millisecond) {
+			if w.inbox.count() == want {
+				return
+			}
+		}
+		_, problem, polling := w.status()
+		t.Fatalf("%d book(s) in the queue, want %d (polling=%v, problem=%q)", w.inbox.count(), want, polling, problem)
+	}
+	writeTestFile(t, filepath.Join(dir, "First.epub"), importTestEPUB(t))
+	wait(1)
+	// A folder made later is watched too.
+	writeTestFile(t, filepath.Join(dir, "later", "Second.epub"), importTestEPUB(t))
+	wait(2)
+	if _, _, polling := w.status(); polling {
+		t.Error("fell back to polling on a system that can watch folders")
+	}
+}
+
+// -watch-dir-force-polling: scans on a timer, no watching.
+func TestWatchFolderForcePolling(t *testing.T) {
+	w, dir := newTestWatcher(t)
+	w.forcePoll = true
+	writeTestFile(t, filepath.Join(dir, "Book.epub"), importTestEPUB(t))
+	go w.run()
+	for deadline := time.Now().Add(5 * time.Second); time.Now().Before(deadline); time.Sleep(20 * time.Millisecond) {
+		if _, _, polling := w.status(); polling {
+			// Only the first scan has run; the next is a poll interval away.
+			time.Sleep(100 * time.Millisecond)
+			if waiting, _, _ := w.status(); waiting != 1 || w.inbox.count() != 0 {
+				t.Errorf("after the first poll: %d waiting, %d taken", waiting, w.inbox.count())
+			}
+			return
+		}
+	}
+	t.Fatal("never started polling")
 }

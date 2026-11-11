@@ -245,6 +245,7 @@ func main() {
 	flag.BoolVar(&noGoogleBooks, "no-google-books", false, "never offer Google Books in the metadata editor (Open Library and Wikidata only)")
 	flag.StringVar(&publicURL, "public-url", "", "external base URL, e.g. https://books.example.com (needed for GitHub/Google sign-in)")
 	flag.StringVar(&watchDir, "watch-dir", "", "folder to watch for new books; they wait in the import queue for an admin to review (needs -allow-writes)")
+	flag.BoolVar(&watchForcePolling, "watch-dir-force-polling", false, "check -watch-dir every 30 seconds instead of relying on the system to report changes (for network and container mounts where it doesn't)")
 	createUserName := flag.String("create-user", "", "create a user (or reset their password) and exit; password from $CF_PASSWORD or stdin")
 	createAdmin := flag.Bool("admin", false, "with -create-user: make the user an admin")
 	flag.Parse()

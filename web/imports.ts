@@ -67,7 +67,7 @@ function render(q: ImportQueue): void {
 
     const parts: string[] = [];
     if (q.watching) {
-        parts.push(`Watching ${q.folder ?? "the watch folder"}: books put there appear here within a few seconds.`);
+        parts.push(`Watching ${q.folder ?? "the watch folder"}: books put there appear here ${q.polling ? "within a minute (the folder is checked every 30 seconds)" : "within a few seconds"}.`);
         if (q.settling) {
             parts.push(q.problem
                 ? `${q.settling} file${q.settling === 1 ? "" : "s"} there can't be taken.`
