@@ -6,7 +6,13 @@
  *   - opens/closes the ☰ menu (narrow screens), the user menu and the
  *     search box (narrow screens); a click outside or Escape closes them
  */
-import { el } from "./dom.js";
+import { el, withPageScheme } from "./dom.js";
+
+// Addresses the server wrote for this site (e.g. the device sync server on
+// the account page): use the page's scheme, which a proxy may hide from it.
+for (const code of document.querySelectorAll<HTMLElement>(".same-origin-url")) {
+    code.textContent = withPageScheme(code.textContent ?? "");
+}
 import type { MeResponse } from "./types.js";
 
 

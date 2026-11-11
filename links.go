@@ -90,16 +90,36 @@ func markLinkUsedBy(token string, userID int64) {
 	_, _ = appDB.Exec(`UPDATE login_links SET used_by = ? WHERE token_hash = ?`, userID, hashToken(token))
 }
 
-// baseURL for generated links: -public-url, or the address the admin used.
+// baseURL for generated links: -public-url, or the address the visitor used.
+// Behind an HTTPS reverse proxy CalibreFast itself serves plain HTTP; the
+// proxy's X-Forwarded-Proto (or Forwarded: proto=) says the visitor used
+// HTTPS. The header only changes the scheme of links shown to whoever sent
+// it, so trusting it is harmless.
 func baseURL(r *http.Request) string {
 	if publicURL != "" {
 		return strings.TrimRight(publicURL, "/")
 	}
 	scheme := "http"
-	if r.TLS != nil {
+	if r.TLS != nil || forwardedHTTPS(r) {
 		scheme = "https"
 	}
 	return scheme + "://" + r.Host
+}
+
+// forwardedHTTPS: a reverse proxy says the visitor's request was HTTPS.
+func forwardedHTTPS(r *http.Request) bool {
+	proto, _, _ := strings.Cut(r.Header.Get("X-Forwarded-Proto"), ",")
+	if strings.EqualFold(strings.TrimSpace(proto), "https") {
+		return true
+	}
+	first, _, _ := strings.Cut(r.Header.Get("Forwarded"), ",")
+	for _, kv := range strings.Split(first, ";") {
+		k, v, _ := strings.Cut(strings.TrimSpace(kv), "=")
+		if strings.EqualFold(k, "proto") && strings.EqualFold(strings.Trim(v, `"`), "https") {
+			return true
+		}
+	}
+	return false
 }
 
 // ---------------------------------------------------------------------------

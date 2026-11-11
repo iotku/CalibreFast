@@ -47,7 +47,7 @@
         </div>
         {{ end }}
         <dl class="sync-facts">
-            <dt>Server</dt><dd><code>{{ .SyncURL }}</code></dd>
+            <dt>Server</dt><dd><code class="same-origin-url">{{ .SyncURL }}</code></dd>
             <dt>Username</dt><dd><code>{{ .User.Username }}</code></dd>
             <dt>Sync key</dt>
             <dd>{{ if .SyncKey }}Created {{ .SyncKey.Created }}{{ if .SyncKey.LastUsed }}, last used {{ .SyncKey.LastUsed }}{{ end }}{{ if .SyncKey.LastDevice }} (latest position from {{ .SyncKey.LastDevice }}){{ end }}{{ else }}None{{ end }}</dd>

@@ -83,3 +83,14 @@ export function statusLine(id: string): (text: string, isError?: boolean) => voi
         el.className = isError ? "auth-error" : "auth-notice";
     };
 }
+
+/**
+ * A URL the server made for this site, with the page's own scheme: behind an
+ * HTTPS reverse proxy the server may only see plain HTTP and write http://.
+ * Only a URL for this very host is changed.
+ */
+export function withPageScheme(url: string): string {
+    const plain = `http://${location.host}`;
+    if (location.protocol !== "https:" || !(url === plain || url.startsWith(plain + "/"))) return url;
+    return "https://" + url.slice("http://".length);
+}

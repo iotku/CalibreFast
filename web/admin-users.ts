@@ -1,6 +1,6 @@
 // Admin user management (calls /api/admin/users) and one-time links
 // (/api/admin/links).
-import { api, byId, el, errorMessage, statusLine } from "./dom.js";
+import { api, byId, el, errorMessage, statusLine, withPageScheme } from "./dom.js";
 
 const say = statusLine("admin-status");
 const table = byId("users-table", HTMLTableElement);
@@ -100,7 +100,7 @@ function showLink(label: string, url: string): void {
     byId("link-output").hidden = false;
     byId("link-output-label").textContent = label;
     const input = byId("link-url", HTMLInputElement);
-    input.value = url;
+    input.value = withPageScheme(url);
     input.focus();
     input.select();
     byId("links").scrollIntoView({ behavior: "smooth", block: "start" });
