@@ -75,32 +75,23 @@ function hashUuid(): string | null {
 /* ------------------------------------------------------------------ */
 
 const LOADING_HTML = '<p class="modal-loading">Loading...</p>';
-/** The longest the grid waits for the modal; it then loads covers anyway. */
-const BUSY_MAX_MS = 6000;
 let busy = false;
-let busyTimer: ReturnType<typeof setTimeout> | undefined;
 
 /**
  * Tell the grid (app-htmx.ts) to stop loading covers while the modal loads,
  * so on slow connections the book and its cover get all the bandwidth.
  */
 function setBusy(b: boolean): void {
-    clearTimeout(busyTimer);
-    if (b) busyTimer = setTimeout(() => setBusy(false), BUSY_MAX_MS); // a cover that never settles mustn't hold the grid
     if (b === busy) return;
     busy = b;
     document.dispatchEvent(new CustomEvent<boolean>("cf:modal-busy", { detail: b }));
 }
 
-/**
- * Busy ends once the book has arrived and its cover images (thumbnail, full
- * cover) have loaded or failed. Other images (e.g. in a description) don't
- * count: one that never loads would hold the grid's covers back.
- */
+/** Busy ends once the book has arrived and every image in it has loaded (or failed). */
 function checkIdle(): void {
     const body = bodyEl();
     if (!busy || !body || body.querySelector(".modal-loading")) return;
-    const pending = [...body.querySelectorAll<HTMLImageElement>(".cover-stack img")].filter((img) => !img.complete);
+    const pending = [...body.querySelectorAll("img")].filter((img) => !img.complete);
     if (pending.length === 0) {
         setBusy(false);
         return;
