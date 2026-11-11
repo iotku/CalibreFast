@@ -51,6 +51,14 @@ See [docs/FEATURES.md](docs/FEATURES.md) for the details.
 
 Requires Go 1.25+ and a Calibre library with a `metadata.db`.
 
+**Starting from nothing?** CalibreFast doesn't create libraries itself: the database format belongs to Calibre, so let Calibre make it and every Calibre tool and front end can read it. Either open Calibre and choose a new, empty folder as the library, or use Calibre's command line:
+
+```bash
+calibredb --library-path /path/to/new/library list
+```
+
+That creates an empty library (`metadata.db` and all) in that folder. Point `-basedir` at it.
+
 ```bash
 git clone https://github.com/iotku/CalibreFast.git
 cd CalibreFast
