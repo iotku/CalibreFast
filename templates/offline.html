@@ -1,0 +1,22 @@
+<!doctype html>
+<html lang="en">
+<head>
+    <meta charset="utf-8">
+    <title>Offline — {{ .Title }}</title>
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <link rel="stylesheet" href="{{ asset "style.css" }}">
+</head>
+<body class="auth-body">
+{{/* Shown by the service worker (web/sw.ts) when the server can't be reached. */}}
+<main class="auth-main">
+    <section class="auth-card">
+        <h1>Offline</h1>
+        <p class="auth-muted" id="offline-intro">The library can't be reached. Books kept on this device can still be read:</p>
+        <ul class="offline-books" id="offline-books"></ul>
+        <p class="auth-muted" id="offline-none" hidden>No books are kept on this device. Books you open in the EPUB reader are kept for a week after you last open them.</p>
+        <p><a class="meta-link" href="/">Try the library again</a></p>
+    </section>
+</main>
+<script type="module" src="{{ asset "offline.js" }}"></script>
+</body>
+</html>

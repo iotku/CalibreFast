@@ -74,7 +74,7 @@ Browsers let any website send requests to a server on your network (cross-site r
 
 ## Book content is untrusted
 
-EPUBs can contain scripts and arbitrary HTML. The server only ever sends the whole `.epub` as a download. The reader unpacks it in the browser, and epub.js shows each chapter in a sandboxed iframe with scripts disabled. Book descriptions are sanitized on the server (bluemonday) and in the metadata editor (DOMPurify).
+EPUBs can contain scripts and arbitrary HTML. The server only ever sends the `.epub` itself, as a download (whole, or byte ranges of it). The reader unpacks it in the browser, and epub.js shows each chapter in a sandboxed iframe with scripts disabled; the book's images and styles reach the chapter as `blob:` URLs, never from our origin. Kept books (for offline reading) stay in that browser's storage, belong to the user who read them, and are removed on sign-out. Book descriptions are sanitized on the server (bluemonday) and in the metadata editor (DOMPurify).
 
 ## Online lookups
 

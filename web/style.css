@@ -2501,3 +2501,36 @@ label.group-row span {
 @media (prefers-reduced-motion: reduce) {
     .throbber-dot { animation: none; opacity: 0.6; }
 }
+
+/* ============================================
+   Offline page (templates/offline.html)
+   ============================================ */
+
+.offline-books {
+    list-style: none;
+    margin: 0.75rem 0;
+    padding: 0;
+    display: grid;
+    gap: 0.4rem;
+}
+
+.offline-books a {
+    display: flex;
+    flex-direction: column;
+    padding: 0.6rem 0.75rem;
+    border: 1px solid var(--border-light);
+    border-radius: var(--radius-medium);
+    color: var(--text-primary);
+    text-decoration: none;
+}
+
+.offline-books a:hover,
+.offline-books a:focus-visible {
+    border-color: var(--border-medium);
+    background: var(--bg-elevated);
+}
+
+.offline-author {
+    color: var(--text-muted);
+    font-size: var(--font-size-small);
+}
