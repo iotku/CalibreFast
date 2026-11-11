@@ -169,14 +169,31 @@ type ReaderPageData struct {
 	Title     string
 	BookTitle string // "" when ?uuid names no book; the page says so itself
 	Search    bool   // offer in-book search (EPUB)
+	// Preview: opened from the metadata editor to look something up. Nothing
+	// is saved (position, bookmarks, highlights, the reading status, a copy
+	// kept offline); web/reader-preview.ts. Always so for a book in the
+	// import queue (?import=<id>), which isn't in the library yet.
+	Preview bool
 }
 
 // readerPage serves a reader's page. The book itself is fetched by the
-// page's script, from /download.
+// page's script, from /download (or /import/{id}/file for a waiting book).
 func readerPage(name string, search bool) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
-		data := ReaderPageData{Title: SiteTitle, Search: search}
-		_ = calibreDB.QueryRow(`SELECT title FROM books WHERE uuid = ?`, r.URL.Query().Get("uuid")).Scan(&data.BookTitle)
+		q := r.URL.Query()
+		data := ReaderPageData{Title: SiteTitle, Search: search, Preview: q.Get("preview") != "" || q.Has("import")}
+		if id := q.Get("import"); id != "" {
+			if isSafeUUIDComponent(id) {
+				if it := imports.get(id); it != nil {
+					data.BookTitle = it.Merged.Title
+				}
+			}
+		} else {
+			_ = calibreDB.QueryRow(`SELECT title FROM books WHERE uuid = ?`, q.Get("uuid")).Scan(&data.BookTitle)
+		}
+		if data.Preview {
+			w.Header().Set("Cache-Control", "no-store")
+		}
 		if err := templates.ExecuteTemplate(w, name, data); err != nil {
 			http.Error(w, err.Error(), 500)
 		}
@@ -190,6 +207,7 @@ type EditBookPageData struct { // TODO I Hate this, these page structs are all o
 	RawDate      string // original dc:date when it couldn't be parsed (kept on save)
 	CoverModTime int64
 	Import       *importPageData // a book waiting in the import queue (imports.go); nil for one in the library
+	ReadLink     string          // the book in a reader's preview mode, to look things up ("" without an EPUB or PDF)
 	Lookups      bool            // show the ISBN lookup (Open Library, Wikidata); off with -no-lookups
 	GoogleBooks  bool            // offer Google Books as a last resort; off with -no-google-books
 }
@@ -530,6 +548,7 @@ func serveLibraryHTTP() {
 			Date:         dateStr,
 			RawDate:      rawDate,
 			CoverModTime: coverModTime,
+			ReadLink:     previewReadLink("uuid", uuid, extractFormats(resolveFormats(uuid, baseDir, bookPath.(string)))),
 			Lookups:      !noLookups,
 			GoogleBooks:  !noLookups && !noGoogleBooks,
 		}
@@ -1047,6 +1066,24 @@ func formatsHandler(w http.ResponseWriter, r *http.Request) {
 
 	w.Header().Set("Content-Type", "application/json")
 	logErr(json.NewEncoder(w).Encode(formats), "failed to encode formats json")
+}
+
+// previewReadLink is a book's reader in preview mode (ReaderPageData.Preview),
+// for the metadata editor: EPUB when there is one, else PDF, else "". param
+// names the book: "uuid" in the library, "import" in the import queue.
+func previewReadLink(param, id string, formats []string) string {
+	q := param + "=" + url.QueryEscape(id) + "&preview=1"
+	for _, f := range formats {
+		if strings.EqualFold(f, "epub") {
+			return "/read?" + q
+		}
+	}
+	for _, f := range formats {
+		if strings.EqualFold(f, "pdf") {
+			return "/read-pdf?" + q
+		}
+	}
+	return ""
 }
 
 func extractFormats(files []string) []string {

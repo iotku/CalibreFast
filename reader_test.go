@@ -46,3 +46,38 @@ func TestReaderPages(t *testing.T) {
 		}
 	}
 }
+
+// A preview (opened from the metadata editor) is marked on the page, which
+// hides the bookmark and notes controls (web/reader.css).
+func TestReaderPreviewPage(t *testing.T) {
+	for _, name := range []string{"reader.html", "reader-pdf.html"} {
+		for _, preview := range []bool{false, true} {
+			var buf bytes.Buffer
+			if err := templates.ExecuteTemplate(&buf, name, ReaderPageData{Title: "Library", Preview: preview}); err != nil {
+				t.Fatalf("%s: %v", name, err)
+			}
+			html := buf.String()
+			if got := strings.Contains(html, " data-preview>") && strings.Contains(html, `class="r-preview"`); got != preview {
+				t.Errorf("%s preview=%v: marked as preview: %v", name, preview, got)
+			}
+		}
+	}
+}
+
+func TestPreviewReadLink(t *testing.T) {
+	for _, tc := range []struct {
+		param, id string
+		formats   []string
+		want      string
+	}{
+		{"uuid", "abc-1", []string{"pdf", "EPUB"}, "/read?uuid=abc-1&preview=1"},
+		{"uuid", "abc-1", []string{"mobi", "pdf"}, "/read-pdf?uuid=abc-1&preview=1"},
+		{"import", "x y", []string{"epub"}, "/read?import=x+y&preview=1"},
+		{"uuid", "abc-1", []string{"mobi"}, ""},
+		{"uuid", "abc-1", nil, ""},
+	} {
+		if got := previewReadLink(tc.param, tc.id, tc.formats); got != tc.want {
+			t.Errorf("previewReadLink(%q, %q, %v) = %q, want %q", tc.param, tc.id, tc.formats, got, tc.want)
+		}
+	}
+}

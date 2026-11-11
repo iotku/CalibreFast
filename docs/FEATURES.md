@@ -66,6 +66,8 @@ Authors are shown by name everywhere ("Alan A. A. Donovan & Brian W. Kernighan")
 
 `/book/edit/<uuid>` (needs an admin and `-allow-writes`) writes both `metadata.db` and the book's `metadata.opf`.
 
+**Read** in the top bar (and on a book waiting in the import queue) opens the book's EPUB, or else its PDF, in a new tab to look things up (the copyright page, an ISBN, the series). It's a **preview**: your place, bookmarks, highlights and reading status aren't saved or changed, no copy is kept for offline reading, and Back closes the tab.
+
 ### Nothing is lost by accident
 
 - **Identifiers**
