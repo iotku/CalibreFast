@@ -127,6 +127,7 @@ function setupKOReader({ uuid, format, sync }: { uuid: string; format: string; s
 export function setupAnnotationUI(opts: AnnotationUIOptions): AnnotationUI {
     const { store } = opts;
     const bar = byId("annot-bar");
+    const barNote = byId("annot-bar-note");
     const noteBtn = byId("annot-note");
     const copyBtn = byId("annot-copy");
     const deleteBtn = byId("annot-delete");
@@ -154,7 +155,7 @@ export function setupAnnotationUI(opts: AnnotationUIOptions): AnnotationUI {
         b.addEventListener("click", () => pick(c));
         return b;
     });
-    bar.prepend(...colorButtons);
+    byId("annot-tools").prepend(...colorButtons);
 
     function hide(): void {
         bar.hidden = true;
@@ -164,7 +165,10 @@ export function setupAnnotationUI(opts: AnnotationUIOptions): AnnotationUI {
     /** Above the selection when there's room, otherwise below; never off screen. */
     function show(at: DOMRect, current: string | null): void {
         bar.hidden = false;
-        deleteBtn.hidden = !target || !("existing" in target);
+        const existing = target && "existing" in target ? target.existing : null;
+        deleteBtn.hidden = !existing;
+        barNote.textContent = existing?.note ?? "";
+        barNote.hidden = !existing?.note;
         COLORS.forEach((c, i) => colorButtons[i]?.setAttribute("aria-pressed", String(c === current)));
         const w = bar.offsetWidth;
         const h = bar.offsetHeight;
