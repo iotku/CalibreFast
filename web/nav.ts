@@ -28,6 +28,7 @@ function icon(path: string): SVGSVGElement {
 }
 const STAR = "M12 3l2.8 5.7 6.2.9-4.5 4.4 1.1 6.2L12 17.3 6.4 20.2l1.1-6.2L3 9.6l6.2-.9z";
 const BOOK = "M2 4h6a4 4 0 0 1 4 4v12a3 3 0 0 0-3-3H2zM22 4h-6a4 4 0 0 0-4 4v12a3 3 0 0 1 3-3h7z";
+const BOOKMARK = "M6 3h12a1 1 0 0 1 1 1v17l-7-4.5L5 21V4a1 1 0 0 1 1-1z";
 const UPLOAD = "M12 15V4M7 9l5-5 5 5M4 15v4a1 1 0 0 0 1 1h14a1 1 0 0 0 1-1v-4";
 
 function init(bar: HTMLElement): void {
@@ -168,6 +169,7 @@ function init(bar: HTMLElement): void {
 
         userEl.replaceChildren(
             ...(st.canEdit ? [shortcut("/upload", "Upload books", UPLOAD, "upload")] : []),
+            shortcut("/me/wanted", "Want to read", BOOKMARK, "wanted"),
             shortcut("/me/favorites", "Favorites", STAR, "favorites"),
             shortcut("/me/reading", "Reading", BOOK, "reading"),
             el("div", { className: "tb-menu" }, btn, list),

@@ -63,8 +63,8 @@ Each book's `authors` is its authors' names in Calibre's order, `A & B` (`bookAu
     - **Export** dates the file 1970, because KOReader's import removes its own annotations that are older than the file and not in it.
     - A PDF's rectangles are in points from the page's top left on both sides.
 - **Top bar.** Every page except the readers uses the shared bar in `templates/topbar.html`: `{{ template "topbar-start" (topbar …) }}`, the page's own tools (pager, Group button), then `{{ template "topbar-end" … }}`. The `topbar` template function (main.go) takes key/value pairs: `Active` nav item, `Title`, `Query`, and so on.
-  - The signed-in part (★ Favorites, Reading, user menu) is filled by `web/nav.ts` from `/api/me`, so pages stay identical for everyone and cacheable. `nav.ts` also opens and closes the ☰ menu, user menu and mobile search.
-  - Wide screens show everything inline. At 1000px or less the browse links move into ☰; at 640px or less search becomes an icon and Favorites/Reading move into the user menu.
+  - The signed-in part (Want to read, ★ Favorites, Reading, user menu) is filled by `web/nav.ts` from `/api/me`, so pages stay identical for everyone and cacheable. `nav.ts` also opens and closes the ☰ menu, user menu and mobile search.
+  - Wide screens show everything inline. At 1000px or less the browse links move into ☰; at 640px or less search becomes an icon and Want to read/Favorites/Reading move into the user menu.
   - A book page opened directly (no `HX-Request` header) gets the bar; the modal's copy doesn't (`Vary: HX-Request`).
 - **Scroll engine.** `web/app-htmx.ts` drives the main library, filtered views and search.
   - **One grid, addressed by book index.** Pages are only how the data arrives. Every row is the same height (cards have a fixed aspect ratio), so row `r` starts at `r × rowH`, and a book's place follows from its index and the column count. `measure()` reads both from the layout.
