@@ -155,6 +155,12 @@ onSettingsChange((s, changed) => {
     clearTimeout(relayoutTimer);
     relayoutTimer = setTimeout(() => rendition.resize(), 150);
 });
+// The page's box moves with the bars' measured heights, which epub.js
+// (watching only the window) wouldn't notice.
+new ResizeObserver(() => {
+    clearTimeout(relayoutTimer);
+    relayoutTimer = setTimeout(() => rendition.resize(), 150);
+}).observe(container);
 
 // ---- position: resume (local or synced), save as the reader moves ----------
 
