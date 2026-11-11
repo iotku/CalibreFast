@@ -38,7 +38,13 @@
     <section class="auth-card" id="device-sync">
         <h2>Device sync</h2>
         {{ if .SyncNotice }}<p class="auth-notice" role="status">{{ .SyncNotice }}</p>{{ end }}
-        <p class="auth-muted">KOReader (on Kobo, Kindle, PocketBook or Android) can sync reading positions with the readers here. In KOReader, open a book, then Tools → Progress sync: set Custom sync server to the address below, then Login with your username and sync key.</p>
+        <p class="sync-intro">Syncs reading positions between these readers and KOReader (Kobo, Kindle, PocketBook, Android, Linux, macOS). Other apps with KOReader progress sync, such as Readest, should work too.</p>
+        <ol class="sync-steps">
+            <li>{{ if .SyncKey }}Use your sync key, or replace it below if you lost it.{{ else }}Create a sync key below.{{ end }}</li>
+            <li>In KOReader, open a book, then <b>Tools → Progress sync → Custom sync server</b>, and enter the server address.</li>
+            <li><b>Login</b> with your username, and the sync key as the password.</li>
+            <li>For books sent by Calibre rather than downloaded from here, set <b>Document matching method</b> to <b>Filename</b>.</li>
+        </ol>
         {{ if .NewSyncKey }}
         <div class="sync-new-key" role="status">
             <p>Your sync key. Enter it as the password in KOReader:</p>
@@ -64,8 +70,7 @@
             </form>
             {{ end }}
         </div>
-        {{ if .SyncKey }}<p class="auth-muted">Replacing or revoking the key stops devices that use it from syncing. Positions already synced are kept.</p>{{ end }}
-        <p class="auth-muted">Books downloaded from this library are recognised as they are. For books Calibre sent to the device, set KOReader's Document matching method to Filename. Use HTTPS when syncing over the internet.</p>
+        {{ if .SyncKey }}<p class="auth-muted">Replacing or revoking the key signs out devices using it; synced positions are kept.</p>{{ end }}
     </section>
 
     {{ if .Providers }}
