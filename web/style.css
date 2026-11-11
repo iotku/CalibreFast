@@ -27,6 +27,14 @@
     --text-muted: #888;
     --text-link: #aaa;
 
+    /* Colors - Reading status on the cards (reading.ts). Hues far apart
+       (blue / gold / green), and each also differs in shape, so they don't
+       rely on color alone: want to read is a dashed ring, reading a solid
+       ring with a partial bar, finished a solid ring with a full bar. */
+    --status-wanted: #6aa7e8;
+    --status-reading: #c8a96e;
+    --status-finished: #5fbf7f;
+
     /* Colors - Borders */
     --border-subtle: rgba(255, 255, 255, 0.08);
     --border-light: rgba(255, 255, 255, 0.1);
@@ -341,11 +349,28 @@ input[type="number"],
     }
 }
 
-/* A book being read: a ring, and how far along at the bottom (reading.ts) */
+/* Reading status (reading.ts): a ring in the status's color. Being read and
+   finished also get a bar along the bottom (how far along; full once done). */
 .book.is-reading {
     box-shadow:
-        0 0 0 2px var(--accent, #c8a96e),
+        0 0 0 2px var(--status-reading),
         var(--shadow-small);
+}
+
+.book.is-finished {
+    box-shadow:
+        0 0 0 2px var(--status-finished),
+        var(--shadow-small);
+}
+
+/* Not started yet, so the ring is dashed */
+.book.is-wanted {
+    outline: 2px dashed var(--status-wanted);
+    outline-offset: 0;
+}
+
+.book.is-finished .book-progress > span {
+    background: var(--status-finished);
 }
 
 .book-progress {
@@ -360,7 +385,7 @@ input[type="number"],
 .book-progress > span {
     display: block;
     height: 100%;
-    background: var(--accent, #c8a96e);
+    background: var(--status-reading);
 }
 
 /* Buttons over the cover on hover (reading.ts): favorite top left; want to
