@@ -230,6 +230,7 @@ input[type="number"],
     box-shadow: var(--shadow-small);
     cursor: pointer;
     isolation: isolate;
+    container-type: inline-size; /* the info text sizes from the card's width (cqi) */
     content-visibility: auto;
     contain-intrinsic-size: auto 300px;
 }
@@ -251,7 +252,7 @@ input[type="number"],
     display: flex;
     flex-direction: column;
     justify-content: flex-end;
-    padding: 18px;
+    padding: clamp(10px, 7cqi, 20px);
     color: white;
 
     background: linear-gradient(
@@ -278,17 +279,32 @@ input[type="number"],
 
 /* Typography */
 
+/* Title and authors: two lines each at most, then an ellipsis. Sized from
+   the card's width, within limits that keep them readable on a small card
+   and in proportion on a large one. */
+.book h2,
+.book-author {
+    display: -webkit-box;
+    -webkit-box-orient: vertical;
+    -webkit-line-clamp: 2;
+    line-clamp: 2;
+    overflow: hidden;
+    overflow-wrap: anywhere;
+    flex-shrink: 0;
+}
+
 .book h2 {
-    margin: 0 0 8px;
-    font-size: var(--font-size-large);
+    margin: 0 0 clamp(4px, 3cqi, 8px);
+    font-size: clamp(13px, 7.5cqi, 20px);
     line-height: 1.2;
     font-weight: 600;
 }
 
 .book-author {
     color: rgba(255, 255, 255, 0.8);
-    font-size: var(--font-size-small);
-    margin-bottom: 8px;
+    font-size: clamp(11.5px, 6cqi, 15px);
+    line-height: 1.3;
+    margin-bottom: clamp(4px, 3cqi, 8px);
 }
 
 .book-date {
