@@ -1,7 +1,8 @@
 /**
- * The signed-in user's marks on the library grid's cards: books being read
- * get a ring and a bar along the bottom, and every card gets two buttons
- * over its cover on hover:
+ * The signed-in user's marks on the library grid's cards: a ring colored by
+ * reading status (dashed for want to read; solid for reading and finished,
+ * with a bar along the bottom showing how far along, full once finished),
+ * and every card gets two buttons over its cover on hover:
  *   - top left: favorite (☆/★);
  *   - top right, by reading status: "want to read" for a book not started
  *     (a toggle: /me/wanted), "continue reading" for one being read (opens
@@ -94,17 +95,22 @@ export async function fetchMarks(): Promise<Marks | null> {
     }
 }
 
-/** Mark a card: reading ring and bar, and the buttons over its cover. */
+/** Mark a card: status ring and bar, and the buttons over its cover. */
 export function markCard(card: HTMLElement, marks: Marks): void {
     const uuid = card.dataset["uuid"];
     if (!uuid) return;
-    const progress = marks.reading.has(uuid) ? (marks.reading.get(uuid) ?? null) : undefined;
-    card.classList.toggle("is-reading", progress !== undefined);
-    paintProgress(card, progress);
+    // Same precedence as the right button (rightState).
+    const finished = marks.finished.has(uuid);
+    const reading = !finished && marks.reading.has(uuid);
+    const wanted = !finished && !reading && marks.wanted.has(uuid);
+    card.classList.toggle("is-finished", finished);
+    card.classList.toggle("is-reading", reading);
+    card.classList.toggle("is-wanted", wanted);
+    paintProgress(card, finished ? 1 : reading ? (marks.reading.get(uuid) ?? null) : undefined, finished);
     paintActions(card, uuid, marks);
 }
 
-function paintProgress(card: HTMLElement, progress: number | null | undefined): void {
+function paintProgress(card: HTMLElement, progress: number | null | undefined, finished = false): void {
     let bar = card.querySelector<HTMLElement>(".book-progress");
     if (progress === undefined || progress === null) {
         bar?.remove();
@@ -121,8 +127,9 @@ function paintProgress(card: HTMLElement, progress: number | null | undefined): 
     }
     const pct = Math.round(progress * 100);
     bar.setAttribute("aria-valuenow", String(pct));
-    bar.setAttribute("aria-label", `${pct}% read`);
-    bar.title = `${pct}% read`;
+    const label = finished ? "Finished" : `${pct}% read`;
+    bar.setAttribute("aria-label", label);
+    bar.title = label;
     (bar.firstElementChild as HTMLElement).style.width = `${Math.max(0, Math.min(100, progress * 100))}%`;
 }
 
