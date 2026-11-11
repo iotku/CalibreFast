@@ -28,12 +28,17 @@ declare namespace EpubJS {
         /** Absolute path inside the book, e.g. "/OEBPS/Text/ch1.xhtml". */
         url: string;
         load(request: (url: string) => Promise<unknown>): Promise<Element>;
+        /** The loaded chapter (while loaded). */
+        document?: Document;
+        /** The chapter's markup as it will be rendered (set while rendering). */
+        output?: string;
         /** Matches in the loaded chapter's text. */
         find(query: string): { cfi: string; excerpt: string }[];
         unload(): void;
     }
     interface Spine {
         length?: number;
+        hooks: { serialize: { register(fn: (output: string, section: Section) => Promise<void> | void): void } };
         get(target: number | string): Section | null;
     }
     interface View {
@@ -71,6 +76,9 @@ declare namespace EpubJS {
         navigation: { toc: NavItem[] };
         locations: {
             generate(chars: number): Promise<string[]>;
+            /** The generated locations, to store and load() later. */
+            save(): string;
+            load(locations: string): string[];
             percentageFromCfi(cfi: string): number;
             cfiFromPercentage(percentage: number): string;
             locationFromCfi(cfi: string): number;
@@ -78,7 +86,7 @@ declare namespace EpubJS {
         };
         /** Print page numbers, when the book has a page list. */
         pageList?: { pages: string[]; lastPage: number; pageFromCfi(cfi: string): number };
-        packaging?: { metadata?: { title?: string; language?: string; direction?: string } };
+        packaging?: { metadata?: { title?: string; creator?: string; language?: string; direction?: string } };
         renderTo(element: string | Element, options: { width: string; height: string; flow: string }): Rendition;
         coverUrl(): Promise<string | null>;
         load(path: string): Promise<unknown>;
@@ -86,8 +94,17 @@ declare namespace EpubJS {
         archive: { createUrl(path: string, options?: { base64?: boolean }): Promise<string> };
     }
 }
-/** Opening from an ArrayBuffer of the whole .epub needs the JSZip global. */
-declare function ePub(source: string | ArrayBuffer): EpubJS.Book;
+/**
+ * Opening from an ArrayBuffer of the whole .epub needs the JSZip global. A
+ * URL with requestMethod reads every file through that function instead.
+ */
+declare function ePub(
+    source: string | ArrayBuffer,
+    options?: {
+        requestMethod?: (url: string, type?: string | null) => Promise<unknown>;
+        replacements?: "none" | "blobUrl" | "base64";
+    },
+): EpubJS.Book;
 interface Window {
     ePub?: typeof ePub;
 }

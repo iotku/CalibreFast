@@ -30,6 +30,7 @@ import { coverUrl, renderBookCard } from "./utils.js";
 import { setupBookClickHandlers, loadBook, HASH_PREFIX } from "./modal.js";
 import { cachedMarks, coverAction, fetchMarks, markCard, type Marks } from "./reading.js";
 import { forgetControls } from "./user.js";
+import { sweep } from "./book-cache.js";
 
 const RENDER_AHEAD = 1; // screens of rows in the DOM past the viewport, in the scroll direction
 const RENDER_BEHIND = 0.5; // ...and the other way
@@ -196,6 +197,12 @@ async function refreshReading(): Promise<void> {
     if (!fresh) return;
     marks = fresh;
     for (const el of cards.values()) markReading(el);
+    // Books kept for offline reading: drop old ones and ones back to "not started".
+    if (marks.signedIn) {
+        const m = marks;
+        const statusOf = (u: string): string => (m.finished.has(u) ? "finished" : m.reading.has(u) ? "reading" : m.wanted.has(u) ? "wanted" : "");
+        void sweep(statusOf).catch(() => {});
+    }
 }
 
 /** Fetch now; again when the user comes back (from the reader, another tab) or changes a status in the popup. */

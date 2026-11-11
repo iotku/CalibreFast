@@ -572,6 +572,7 @@ func serveLibraryHTTP() {
 	// authors/publishers/tags/languages: aggregate pages, filtered pages,
 	// JSON APIs and the group editor API
 	registerCategoryRoutes()
+	registerWorkerRoutes() // offline reading (sw.go)
 
 	log.Println("Listening on :" + hostPort)
 	registerAuthRoutes()

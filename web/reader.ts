@@ -1,6 +1,9 @@
 import { colorValue, setupAnnotationUI } from "./annotation-ui.js";
 import { createAnnotationStore, type Annotation } from "./annotations.js";
+import { currentUser, getBook, putBook, registerWorker, sweep, updateBook, type CachedBook } from "./book-cache.js";
 import { byId, errorMessage, maybeId, modalOpen } from "./dom.js";
+import { openEpub } from "./epub-open.js";
+import { canInflate, openBuffer, openRemote, type EpubSource } from "./epub-source.js";
 import { pageColors, setupChrome } from "./reader-chrome.js";
 import { getSettings, onSettingsChange, type ReaderSettings } from "./reader-settings.js";
 import { createReadingSync, renderBookmarks, type Bookmark, type BookmarkHandlers } from "./reading-sync.js";
@@ -25,13 +28,23 @@ const chrome = setupChrome({
 chrome.setScrubbable(false);
 
 /**
- * The whole .epub is downloaded once and opened from memory: chapters,
- * images, styles and fonts never touch the network again, so the rest of the
- * book reads offline. (epub.js renders each chapter in a sandboxed iframe
- * without scripts.)
+ * Opening a book:
+ *   - a copy kept in this browser (book-cache.ts) opens at once, offline too;
+ *   - otherwise only what the first page needs is read from the server
+ *     (epub-source.ts: HTTP ranges of the .epub), and the whole file follows
+ *     in the background, to be kept for next time and for offline reading;
+ *   - browsers without DecompressionStream download it whole first, as before.
+ * Chapters are always rendered by epub.js in a sandboxed iframe without
+ * scripts; nothing from the book is served by our origin as a page.
  */
-async function downloadBook(): Promise<ArrayBuffer> {
-    const res = await fetch(`/download/${encodeURIComponent(uuid)}/epub`, { credentials: "same-origin" });
+registerWorker();
+const downloadUrl = `/download/${encodeURIComponent(uuid)}/epub`;
+/** Below this the whole file is fetched at once: it usually beats the ranges. */
+const SMALL_BOOK = 3 << 20;
+
+/** The whole .epub, streamed; onProgress gets the fraction (or MB when the size is unknown). */
+async function downloadBook(onProgress?: (text: string) => void): Promise<{ buf: Uint8Array; lastModified: string }> {
+    const res = await fetch(downloadUrl, { credentials: "same-origin" });
     if (!res.ok || !res.body) throw new Error(`HTTP ${res.status}`);
     const total = Number(res.headers.get("content-length")) || 0;
     const chunks: Uint8Array[] = [];
@@ -42,7 +55,7 @@ async function downloadBook(): Promise<ArrayBuffer> {
         if (done) break;
         chunks.push(value);
         got += value.length;
-        chrome.setPosition(total ? `Loading ${Math.round((got / total) * 100)}%` : `Loading ${(got / 1048576).toFixed(1)} MB`);
+        onProgress?.(total ? `Loading ${Math.round((got / total) * 100)}%` : `Loading ${(got / 1048576).toFixed(1)} MB`);
     }
     const buf = new Uint8Array(got);
     let at = 0;
@@ -50,20 +63,102 @@ async function downloadBook(): Promise<ArrayBuffer> {
         buf.set(c, at);
         at += c.length;
     }
-    chrome.setPosition("—");
-    return buf.buffer;
+    return { buf, lastModified: res.headers.get("last-modified") ?? "" };
 }
 
-let data: ArrayBuffer;
+let source: EpubSource | null = null;
+let cached: CachedBook | null = null;
+let book: EpubJS.Book;
+/** A file's path inside the book from a URL epub.js made. */
+let pathOf = (url: string): string => decodeURIComponent(url.replace(/^\/+/, "").split("#")[0] ?? "");
 try {
-    data = await downloadBook();
+    cached = await getBook(uuid).catch(() => null);
+    if (cached && canInflate) {
+        source = openBuffer(new Uint8Array(await cached.bytes.arrayBuffer()), cached.lastModified);
+    } else if (canInflate) {
+        source = await openRemote(downloadUrl).catch((err: unknown) => {
+            console.warn("reading the book in parts failed, downloading it whole:", err);
+            return null;
+        });
+        if (!source) {
+            const { buf, lastModified } = await downloadBook((t) => chrome.setPosition(t));
+            source = openBuffer(buf, lastModified);
+        }
+    }
+    if (source) {
+        const opened = openEpub(source, uuid);
+        book = opened.book;
+        pathOf = opened.pathOf;
+    } else {
+        const { buf } = await downloadBook((t) => chrome.setPosition(t));
+        book = ePub(buf.buffer as ArrayBuffer); // JSZip, in memory
+    }
+    chrome.setPosition("—");
 } catch (err) {
     chrome.setPosition("Failed to load");
     container.className = "reader-message";
     container.textContent = `Couldn't load this book (${errorMessage(err)}).`;
     throw err;
 }
-const book = ePub(data);
+
+/** Keep the whole file in this browser, with the book's title for the offline page. */
+async function keepCopy(buf: Uint8Array, lastModified: string, locations?: string): Promise<void> {
+    await book.ready;
+    const meta = book.packaging?.metadata;
+    await putBook({
+        uuid,
+        user: currentUser(),
+        bytes: new Blob([buf as BlobPart], { type: "application/epub+zip" }),
+        lastModified,
+        size: buf.length,
+        title: meta?.title || document.title,
+        authors: meta?.creator ?? "",
+        locations,
+        lastOpened: Date.now(),
+        statusSeen: cached?.statusSeen,
+    });
+}
+
+/**
+ * The rest of the book in the background (when it was read in parts), then
+ * kept for next time. Resolves when that is over, whether it worked or not:
+ * page numbers and search wait for it, and otherwise read chapter by chapter.
+ */
+let wholeDone: Promise<void> = Promise.resolve();
+function fetchRest(): void {
+    const src = source;
+    if (!src || src.whole) return;
+    wholeDone = downloadBook()
+        .then(async ({ buf, lastModified }) => {
+            // The file changed since the first page was read: keep the new one for next time only.
+            if (lastModified === src.lastModified) src.useBuffer(buf);
+            await keepCopy(buf, lastModified);
+        })
+        .catch((err: unknown) => console.warn("downloading the rest of the book failed:", err));
+}
+if (source && !source.whole && source.size < SMALL_BOOK) fetchRest();
+
+if (cached) {
+    void updateBook(uuid, { lastOpened: Date.now() }).catch(() => {});
+    // The copy kept here may be out of date: check, and fetch the new one for next time.
+    void fetch(downloadUrl, { method: "HEAD", credentials: "same-origin" })
+        .then(async (res) => {
+            if (res.ok) void sweep(undefined, uuid).catch(() => {}); // online: tidy up other kept books
+            const lm = res.headers.get("last-modified") ?? "";
+            if (!res.ok || !lm || lm === cached?.lastModified) return;
+            const { buf, lastModified } = await downloadBook();
+            await keepCopy(buf, lastModified);
+            chrome.toast("A newer copy of this book was downloaded. Reopen it to see it.");
+        })
+        .catch(() => {}); // offline
+} else if (source) {
+    void sweep(undefined, uuid).catch(() => {}); // the server answered: tidy up other kept books
+}
+if (!cached && source?.whole) {
+    // Downloaded whole (small book, or no Range support): keep it.
+    void source.complete.then((buf) => keepCopy(buf, source?.lastModified ?? "")).catch(() => {});
+}
+
 const epubFlow = (s: ReaderSettings): string => (s.flow === "scrolled" ? "scrolled-doc" : "paginated");
 const rendition = book.renderTo(container, { width: "100%", height: "100%", flow: epubFlow(settings()) });
 
@@ -427,16 +522,16 @@ rendition.on("rendered", (section, view) => {
 });
 
 function followLink(href: string, section: EpubJS.Section): void {
-    const url = new URL(href, `epub:${section.url}`);
+    const url = new URL(href, `epub:/${pathOf(section.url)}`);
     if (url.protocol !== "epub:") {
         if (/^(https?|mailto):$/.test(url.protocol)) window.open(url.href, "_blank", "noopener,noreferrer");
         return;
     }
     // Same-book target: find its spine item (by path), keep the #anchor.
-    const path = decodeURIComponent(url.pathname);
+    const path = pathOf(url.pathname);
     for (let i = 0; i < (book.spine.length ?? 0); i++) {
         const item = book.spine.get(i);
-        if (item && decodeURIComponent(item.url) === path) {
+        if (item && pathOf(item.url) === path) {
             pushJump();
             void rendition.display(item.href + url.hash);
             return;
@@ -466,8 +561,22 @@ try {
     await rendition.display();
 }
 
+// Larger books read in parts: the rest comes once the first page is up.
+fetchRest();
+
+// Page numbers need every chapter: from the copy kept here, or generated
+// once the whole book has arrived (then kept with it).
 void book.ready
-    .then(() => book.locations.generate(CHARS_PER_PAGE))
+    .then(async () => {
+        if (cached?.locations) {
+            book.locations.load(cached.locations);
+            return;
+        }
+        await wholeDone;
+        await book.locations.generate(CHARS_PER_PAGE);
+        const saved = book.locations.save();
+        void updateBook(uuid, { locations: saved }).catch(() => {});
+    })
     .then(() => {
         locationsReady = true;
         if (currentCfi) currentPercent = book.locations.percentageFromCfi(currentCfi) || 0;
@@ -679,6 +788,7 @@ async function search(query: string): Promise<void> {
     }
     searchStatus.textContent = "Searching…";
     await book.ready;
+    await wholeDone; // every chapter: from memory once the whole book is here
     let hits = 0;
     const count = book.spine.length ?? 0;
     for (let i = 0; i < count && hits < MAX_HITS; i++) {

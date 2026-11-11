@@ -1,15 +1,17 @@
 {
   "admin-users.js": "admin-users-F3VAAM53.js",
-  "app-htmx.js": "app-htmx-JA6FXDRH.js",
+  "app-htmx.js": "app-htmx-CPW66RHU.js",
   "cover-dialog.js": "cover-dialog-I5QBHFAD.js",
   "cover-picker.js": "cover-picker-HWLRU5HU.js",
   "groups.js": "groups-YW3NPRKD.js",
   "metadata.js": "metadata-F34DCQCN.js",
-  "nav.js": "nav-5HAOP4FA.js",
+  "nav.js": "nav-GLL62HOO.js",
+  "offline.js": "offline-RQVNXO3R.js",
   "reader-pdf.js": "reader-pdf-WGNLBO7X.js",
   "reader.css": "reader-TU5EYFEL.css",
-  "reader.js": "reader-PA2IIB6O.js",
+  "reader.js": "reader-6IO3CZIM.js",
   "shelves.js": "shelves-PYXOHTI6.js",
-  "style.css": "style-V2XOKSYL.css",
+  "style.css": "style-IZF5JN7T.css",
+  "sw.js": "sw-Y6EXCHF6.js",
   "user.js": "user-HQMMWJ23.js"
 }
