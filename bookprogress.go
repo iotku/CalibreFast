@@ -6,6 +6,7 @@ package main
 // minutes ago from Kobo Clara").
 
 import (
+	"context"
 	"fmt"
 	"math"
 	"net/http"
@@ -256,7 +257,7 @@ func pdfPageCount(uuid string) int {
 	}
 	c = pdfCount{size: fi.Size(), mtime: fi.ModTime().UnixNano()}
 	if f, err := os.Open(path); err == nil {
-		if ctx, err := pdfapi.ReadContext(f, model.NewDefaultConfiguration()); err == nil && ctx.EnsurePageCount() == nil {
+		if ctx, err := pdfapi.ReadContext(context.Background(), f, model.NewDefaultConfiguration()); err == nil && ctx.EnsurePageCount() == nil {
 			c.pages = ctx.PageCount
 		}
 		f.Close()
