@@ -80,7 +80,8 @@ func newFakeLookupServers(t *testing.T) *fakeLookupServers {
 		}
 		reply(w, `{"docs": [{"key": "/works/OL17348524W", "title": "The Go Programming Language",
 			"author_name": ["Alan A. A. Donovan", "Brian W. Kernighan"], "first_publish_year": 2015,
-			"publisher": ["Addison-Wesley", "Pearson"], "language": ["chi", "eng"], "subject": ["Programming"], "cover_i": 7427319},
+			"publisher": ["Addison-Wesley", "Pearson"], "language": ["chi", "eng"], "subject": ["Programming"], "cover_i": 7427319,
+			"isbn": ["0134190440", "9787111558422", "not an isbn"]},
 			{"key": "/works/OL99W", "title": "Go Programming Language Workbook", "author_name": ["Someone Else"],
 			"language": ["eng"]},
 			{"key": "../../etc/passwd", "title": "Odd key"}]}`)
@@ -123,6 +124,7 @@ func newFakeLookupServers(t *testing.T) *fakeLookupServers {
 		openLibrary: olServer.URL,
 		olCovers:    olServer.URL,
 		googleBooks: gbServer.URL,
+		googleKey:   "test-key",
 		cache:       newLookupCache(time.Hour, 100),
 		limits: map[string]*serviceLimit{
 			openLibraryName: newServiceLimit(100, 100, 1000),
@@ -324,6 +326,24 @@ func TestLookupHandler(t *testing.T) {
 	if g := f.hits["google"].Load(); g != 0 {
 		t.Errorf("Google Books asked: %d", g)
 	}
+	// A title search marks the matches with an edition of match_isbn
+	// (an ISBN-10 here: compared as ISBN-13s), without sending it anywhere.
+	rec = get("title=the+go+programming+language&author=Donovan&match_isbn=0-13-419044-0")
+	res = lookupResult{}
+	if rec.Code != 200 || json.Unmarshal(rec.Body.Bytes(), &res) != nil || len(res.Matches) != 3 {
+		t.Fatalf("search: %d %s", rec.Code, rec.Body)
+	}
+	if !res.Matches[0].HasISBN || res.Matches[1].HasISBN || res.Matches[2].HasISBN {
+		t.Errorf("hasIsbn: %v %v %v", res.Matches[0].HasISBN, res.Matches[1].HasISBN, res.Matches[2].HasISBN)
+	}
+	if strings.Contains(rec.Body.String(), "9787111558422") {
+		t.Error("the editions' ISBNs went to the browser")
+	}
+	// From the cache, for another ISBN: the cached answer wasn't marked.
+	rec = get("title=the+go+programming+language&author=Donovan&match_isbn=9780306406157")
+	if strings.Contains(rec.Body.String(), "hasIsbn") || f.hits["search"].Load() != 1 {
+		t.Errorf("second search: %d searches, %s", f.hits["search"].Load(), rec.Body)
+	}
 	if rec := get("source=google&isbn=9780134190440"); rec.Code != 200 || !strings.Contains(rec.Body.String(), "authoritative") {
 		t.Errorf("google: %d %s", rec.Code, rec.Body)
 	}
@@ -335,6 +355,11 @@ func TestLookupHandler(t *testing.T) {
 
 	origNoGoogle := noGoogleBooks
 	defer func() { noGoogleBooks = origNoGoogle }()
+	f.lookup.googleKey = "" // no API key: not offered
+	if rec := get("source=google&isbn=9780134190440"); rec.Code != http.StatusForbidden || googleBooksEnabled() {
+		t.Errorf("no CF_GOOGLE_BOOKS_KEY: got %d, want 403", rec.Code)
+	}
+	f.lookup.googleKey = "test-key"
 	noGoogleBooks = true
 	if rec := get("source=google&isbn=9780134190440"); rec.Code != http.StatusForbidden {
 		t.Errorf("-no-google-books: got %d, want 403", rec.Code)

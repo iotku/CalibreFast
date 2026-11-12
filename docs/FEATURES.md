@@ -66,7 +66,7 @@ Authors are shown by name everywhere ("Alan A. A. Donovan & Brian W. Kernighan")
 
 `/book/edit/<uuid>` (needs an admin and `-allow-writes`) writes both `metadata.db` and the book's `metadata.opf`.
 
-**Read** in the top bar (and on a book waiting in the import queue) opens the book's EPUB, or else its PDF, in a new tab to look things up (the copyright page, an ISBN, the series). It's a **preview**: your place, bookmarks, highlights and reading status aren't saved or changed, no copy is kept for offline reading, and Back closes the tab (or split view, or window) rather than going back to the editor. In-book jumps in a preview add no history, since browsers only let a page close a tab with a single history entry.
+**Preview Book** in the editor's top bar (and on a book waiting in the import queue) opens the book's EPUB, or else its PDF, in a new tab to look things up (the copyright page, an ISBN, the series). It's a **preview**: your place, bookmarks, highlights and reading status aren't saved or changed, no copy is kept for offline reading, and Back closes the tab (or split view, or window) rather than going back to the editor. In-book jumps in a preview add no history, since browsers only let a page close a tab with a single history entry.
 
 ### Nothing is lost by accident
 
@@ -123,10 +123,11 @@ Both only offer choices. Nothing is saved until **Apply Changes**.
 - **The lookup bar** at the top of the editor searches Open Library two ways:
   - **Search ISBN** searches by the ISBN in the bar's box: that one edition, the likeliest match. The box shows the form's ISBN and follows it; when the book has none, type it there. A valid ISBN (checked before anything is sent) also goes into the ISBN field, crossing out a different one with **Undo**.
   - **Search title & author** searches by the form's title and first author: up to 5 books, best first.
+  - **The likely match is ticked for you:** the only one a search finds, or, in a title search, the books with an edition of the form's ISBN (the server compares the ISBN with Open Library's edition lists; it isn't sent). Untick it if it's the wrong book.
   - The ISBN field's search button, and each ISBN found in the files, search by that ISBN.
   - **Matches** are listed with their authors, year, publisher, language and identifiers. **Tick** the right ones: each becomes a source under every field (**Open Library**, **Open Library 2**, …), so their values can be compared and picked one by one. Matches with the same value for a field share one pill there (**Open Library +2**; hover for which). Unticking one takes it away again. Ticked matches stay at the top of the list through a new search.
   - **Compare** shows one match against the current metadata. **Pick fields in the form** ticks it; **Accept all and apply** takes every value it has (never the cover), saves, and opens the book page.
-  - **Try Google Books** asks Google for the same book, as one more match to tick. Google Books often has the best description; `-no-google-books` hides it.
+  - **Try Google Books** asks Google for the same book, as one more match to tick. It's offered only when the server has a Google Books API key (`CF_GOOGLE_BOOKS_KEY`), and not with `-no-google-books`.
   - A match's identifier pill adds identifiers (ISBN, `olid`, `google`) without crossing anything out.
   - Open Library's cover, when it has one, is fetched only when you click **Look up cover online** in the cover dialog.
   - **Only on a click:** nothing is sent when the editor opens, on upload, or when an ISBN is found, and each click asks one site at a time. Answers are cached, each site has rate and daily limits, and `-no-lookups` turns lookups off.
@@ -163,7 +164,7 @@ Start the server with `-watch-dir /path/to/folder` (and `-allow-writes`). Books 
 - **Covers are taken from the files** when a book arrives: the cover its EPUB declares, else its PDF's first page when that page is a single picture (a scan, or a cover image). Books already waiting get one when the server starts.
 - **Reviewing a book** uses the metadata editor, on the waiting book:
   - **current** is what the files say (the best of each format, as on upload); each file's own values are pills under the fields. A file that says nothing gets its file name as the title.
-  - **ISBNs** are looked for in the files right away, and the lookup bar fetches metadata from Open Library or Google Books to compare and pick from, as in the editor. **Accept all** fills the form; it doesn't add the book.
+  - **ISBNs** are looked for in the files right away, and the lookup bar fetches metadata from Open Library (or Google Books, with an API key) to compare and pick from, as in the editor. **Accept all** fills the form; it doesn't add the book.
   - **The cover:** click it for the cover dialog (pages of the PDF and EPUB, an upload, Open Library's cover). A book that already has a cover isn't opened in the browser until you click it. One with no cover yet (an EPUB without a declared cover, a PDF whose first page is text) gets its EPUB's first pictures or its PDF's first page, drawn in the browser, until you choose another.
   - **Add to library** adds the book with the form's values, the chosen cover and all its files, then opens the next book in the queue (or the added book, after the last one).
   - **Discard** deletes the book's files from the queue, after a confirmation. They are not put back in the watch folder.

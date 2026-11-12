@@ -78,13 +78,13 @@ EPUBs can contain scripts and arbitrary HTML. The server only ever sends the `.e
 
 ## Online lookups
 
-The metadata editor's lookup bar sends a book's ISBN (**Search ISBN**) or its title and first author (**Search title & author**) to Open Library. Google Books is asked only when an admin clicks **Try Google Books**. The cover dialog's **Look up cover online** sends the ISBN to Open Library too. That tells those sites a book is in your library.
+The metadata editor's lookup bar sends a book's ISBN (**Search ISBN**) or its title and first author (**Search title & author**) to Open Library. Google Books is asked only when an admin clicks **Try Google Books**, which is offered only when the server has a Google Books API key. The cover dialog's **Look up cover online** sends the ISBN to Open Library too. That tells those sites a book is in your library.
 
 - **Only on a click** by an admin, on a server with `-allow-writes`, one site at a time. Opening the editor, uploading, or finding ISBNs in a book's files sends nothing.
 - **Only the query** is sent, with a generic User-Agent. No account, library name or cookies.
 - **Covers are fetched by the server**, from URLs it builds itself, and only when asked for, so your browser doesn't contact those sites.
 - **Limits:** each site has a rate and daily limit, and CalibreFast backs off when a site says to (HTTP 429).
-- **`-no-lookups`** turns lookups off entirely; **`-no-google-books`** turns off Google only.
+- **`-no-lookups`** turns lookups off entirely; **`-no-google-books`** (or leaving `CF_GOOGLE_BOOKS_KEY` unset) turns off Google only.
 
 ## Writes can conflict with Calibre itself
 

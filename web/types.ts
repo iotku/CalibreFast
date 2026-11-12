@@ -89,6 +89,8 @@ export interface LookupMatch {
     option: MetaSource;
     /** Same-origin URL of its cover. */
     cover?: string;
+    /** One of its editions has the ISBN asked about (match_isbn). */
+    hasIsbn?: boolean;
 }
 
 /** A source's answer (Go: lookupResult in lookup.go). */
