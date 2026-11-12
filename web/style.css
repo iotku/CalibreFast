@@ -2892,6 +2892,10 @@ body.selecting .book.selected .cover-wrapper {
     margin-top: 1.5rem;
 }
 
+.bin-merge-note a {
+    color: var(--text-primary);
+}
+
 .bin-batch-head {
     display: flex;
     flex-wrap: wrap;

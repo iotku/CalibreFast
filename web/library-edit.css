@@ -1,0 +1,497 @@
+/* The bulk metadata editor (templates/library-edit.html, web/library-edit.ts).
+   The page doesn't scroll: the table does, both ways, under its sticky head. */
+
+.lt-body {
+    overflow: hidden;
+}
+
+.lt-main {
+    box-sizing: border-box;
+    height: 100dvh;
+    padding: calc(var(--topbar-total) + 10px) var(--page-padding) 0;
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+}
+
+.lt-toolbar {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 8px 14px;
+}
+
+.lt-toolbar .lt-search {
+    flex: 1 1 260px;
+    max-width: 420px;
+    height: 34px;
+    padding: 0 10px;
+    border: 1px solid var(--border-medium);
+    border-radius: var(--radius-small);
+    background: var(--bg-surface);
+    color: var(--text-primary);
+    font: inherit;
+}
+
+.lt-tool {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    font-size: 0.9rem;
+    color: var(--text-secondary);
+    cursor: pointer;
+}
+
+.lt-tool select {
+    height: 30px;
+    background: var(--bg-surface);
+    color: var(--text-primary);
+    border: 1px solid var(--border-medium);
+    border-radius: var(--radius-small);
+    font: inherit;
+}
+
+.lt-count {
+    font-size: 0.85rem;
+    color: var(--text-muted);
+}
+
+.lt-help {
+    font-size: 0.85rem;
+    color: var(--text-secondary);
+    position: relative;
+}
+
+.lt-help summary {
+    cursor: pointer;
+    color: var(--text-link);
+}
+
+.lt-help-body {
+    position: absolute;
+    right: 0;
+    z-index: 20;
+    width: min(440px, calc(100vw - 32px));
+    margin-top: 6px;
+    padding: 10px 14px;
+    background: var(--bg-elevated);
+    border: 1px solid var(--border-medium);
+    border-radius: var(--radius-medium);
+    box-shadow: var(--shadow-medium);
+}
+
+.lt-help-body ul {
+    padding-left: 1.1rem;
+}
+
+.lt-help code,
+.lt-hint code {
+    font-size: 0.8rem;
+    color: var(--text-primary);
+}
+
+.lt-status {
+    flex: 1 1 200px;
+    min-width: 0;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+    font-size: 0.85rem;
+    color: var(--text-secondary);
+}
+
+.lt-status.ok {
+    color: var(--status-finished);
+}
+
+.lt-status.error {
+    color: #e59999;
+}
+
+/* ── The table ── */
+
+.lt-scroll {
+    flex: 1;
+    min-height: 0;
+    overflow: auto;
+    border: 1px solid var(--border-light);
+    border-radius: var(--radius-small);
+    background: var(--bg-secondary);
+}
+
+.lt-has-selection .lt-scroll {
+    margin-bottom: 76px; /* above the selection bar */
+}
+
+.lt-table {
+    --lt-cols: 34px minmax(220px, 2.2fr) minmax(150px, 1.4fr) 140px 150px 96px 140px minmax(180px, 2fr) 110px 96px 116px;
+    min-width: 1460px;
+}
+
+.lt-row {
+    display: grid;
+    grid-template-columns: var(--lt-cols);
+    align-items: center;
+    height: 34px;
+    box-sizing: border-box;
+    border-bottom: 1px solid var(--border-subtle);
+    font-size: 0.85rem;
+}
+
+.lt-head {
+    position: sticky;
+    top: 0;
+    z-index: 5;
+    background: var(--bg-elevated);
+    box-shadow: 0 1px 0 var(--border-medium);
+}
+
+.lt-head .lt-row {
+    border-bottom: 0;
+}
+
+.lt-rows {
+    position: relative;
+}
+
+.lt-rows .lt-row {
+    position: absolute;
+    left: 0;
+    right: 0;
+}
+
+.lt-rows .lt-row:hover {
+    background: rgba(255, 255, 255, 0.035);
+}
+
+.lt-rows .lt-row[aria-selected="true"] {
+    background: rgba(200, 169, 110, 0.12);
+}
+
+.lt-row.lt-group-odd {
+    background: rgba(255, 255, 255, 0.025);
+}
+
+.lt-row.lt-group-start {
+    border-top: 1px solid var(--border-medium);
+}
+
+.lt-cell {
+    min-width: 0;
+    padding: 0 6px;
+    overflow: hidden;
+    white-space: nowrap;
+    text-overflow: ellipsis;
+    color: var(--text-primary);
+}
+
+.lt-check {
+    display: flex;
+    justify-content: center;
+}
+
+.lt-check input {
+    margin: 0;
+    width: 15px;
+    height: 15px;
+    cursor: pointer;
+}
+
+.lt-col-authors,
+.lt-col-series,
+.lt-col-publisher,
+.lt-col-pubdate,
+.lt-col-added {
+    color: var(--text-secondary);
+}
+
+.lt-col-pubdate,
+.lt-col-added {
+    font-variant-numeric: tabular-nums;
+}
+
+.lt-editable {
+    cursor: text;
+}
+
+.lt-sort {
+    all: unset;
+    cursor: pointer;
+    font-weight: 600;
+    font-size: 0.8rem;
+    letter-spacing: 0.03em;
+    color: var(--text-secondary);
+}
+
+.lt-sort:hover,
+.lt-sort[data-sort="asc"],
+.lt-sort[data-sort="desc"] {
+    color: var(--text-primary);
+}
+
+.lt-sort[data-sort="asc"]::after {
+    content: " ▲";
+    font-size: 0.65rem;
+}
+
+.lt-sort[data-sort="desc"]::after {
+    content: " ▼";
+    font-size: 0.65rem;
+}
+
+.lt-sort:focus-visible {
+    outline: 2px solid var(--status-reading);
+    outline-offset: 2px;
+}
+
+.lt-table .lt-filter,
+.lt-table .lt-cell-input {
+    width: 100%;
+    box-sizing: border-box;
+    height: 26px;
+    padding: 0 6px;
+    border: 1px solid var(--border-medium);
+    border-radius: var(--radius-small);
+    background: var(--bg-surface);
+    color: var(--text-primary);
+    font: inherit;
+    font-size: 0.8rem;
+}
+
+.lt-cell.lt-editing {
+    overflow: visible;
+    padding: 0 2px;
+}
+
+.lt-table .lt-cell-input {
+    height: 28px;
+    font-size: 0.85rem;
+    border-color: var(--status-reading);
+}
+
+.lt-chip {
+    display: inline-block;
+    max-width: 100%;
+    margin-right: 4px;
+    padding: 1px 7px;
+    border: 1px solid var(--border-medium);
+    border-radius: var(--radius-round);
+    background: rgba(255, 255, 255, 0.04);
+    color: var(--text-secondary);
+    font: inherit;
+    font-size: 0.75rem;
+    line-height: 1.5;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    vertical-align: middle;
+    cursor: pointer;
+}
+
+.lt-chip:hover {
+    color: var(--text-primary);
+    border-color: var(--status-reading);
+}
+
+.lt-col-formats .lt-chip {
+    text-transform: uppercase;
+    font-size: 0.68rem;
+    letter-spacing: 0.04em;
+}
+
+.lt-actions {
+    display: flex;
+    gap: 6px;
+    align-items: center;
+}
+
+.lt-action {
+    padding: 2px 8px;
+    border: 1px solid var(--border-medium);
+    border-radius: var(--radius-small);
+    background: transparent;
+    color: var(--text-link);
+    font: inherit;
+    font-size: 0.75rem;
+    text-decoration: none;
+    cursor: pointer;
+}
+
+.lt-action:hover {
+    color: var(--text-primary);
+}
+
+.lt-merge-group {
+    border-color: var(--status-reading);
+    color: var(--status-reading);
+}
+
+.lt-empty {
+    padding: 2rem;
+    text-align: center;
+    color: var(--text-muted);
+}
+
+/* ── The dialog ── */
+
+.lt-dialog {
+    width: min(620px, calc(100vw - 32px));
+    max-height: calc(100dvh - 48px);
+    padding: 18px 20px;
+    background: var(--bg-elevated);
+    color: var(--text-primary);
+    border: 1px solid var(--border-medium);
+    border-radius: var(--radius-large);
+    box-shadow: var(--shadow-medium);
+}
+
+.lt-dialog::backdrop {
+    background: var(--bg-modal-overlay);
+}
+
+.lt-dialog h2 {
+    margin: 0 0 10px;
+    font-size: 1.15rem;
+}
+
+.lt-fieldset {
+    margin: 0 0 12px;
+    padding: 8px 12px 10px;
+    border: 1px solid var(--border-light);
+    border-radius: var(--radius-medium);
+}
+
+.lt-fieldset legend {
+    padding: 0 4px;
+    font-size: 0.8rem;
+    font-weight: 600;
+    letter-spacing: 0.04em;
+    text-transform: uppercase;
+    color: var(--text-muted);
+}
+
+.lt-hint {
+    margin: 0 0 6px;
+    font-size: 0.8rem;
+    color: var(--text-muted);
+}
+
+.lt-chips {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 5px;
+    max-height: 140px;
+    overflow: auto;
+    margin-bottom: 8px;
+}
+
+.lt-chip-count span {
+    margin-left: 6px;
+    font-size: 0.7rem;
+    color: var(--text-muted);
+}
+
+.lt-chip-count[aria-pressed="true"] {
+    text-decoration: line-through;
+    border-color: #ba7a7a;
+    color: #e59999;
+    background: rgba(186, 122, 122, 0.15);
+}
+
+.lt-field {
+    display: grid;
+    grid-template-columns: 150px 1fr;
+    align-items: center;
+    gap: 8px;
+    margin-top: 6px;
+    font-size: 0.85rem;
+    color: var(--text-secondary);
+}
+
+.lt-dialog .lt-field input:not([type="checkbox"]) {
+    width: 100%;
+    box-sizing: border-box;
+    height: 30px;
+    padding: 0 8px;
+    border: 1px solid var(--border-medium);
+    border-radius: var(--radius-small);
+    background: var(--bg-surface);
+    color: var(--text-primary);
+    font: inherit;
+    min-width: 0;
+}
+
+.lt-dialog-actions {
+    display: flex;
+    justify-content: flex-end;
+    gap: 8px;
+}
+
+.btn-primary-action {
+    border-color: var(--status-reading);
+    color: var(--status-reading);
+}
+
+.btn-primary-action:disabled {
+    opacity: 0.5;
+}
+
+@media (max-width: 640px) {
+    .lt-field {
+        grid-template-columns: 1fr;
+    }
+}
+
+/* Library autocomplete (web/suggest.ts), as in the metadata editor */
+.suggest-wrap {
+    position: relative;
+    min-width: 0;
+}
+
+.suggest-list {
+    position: absolute;
+    top: calc(100% + 2px);
+    left: 0;
+    right: 0;
+    min-width: 200px;
+    z-index: 30;
+    max-height: 260px;
+    overflow-y: auto;
+    margin: 0;
+    padding: 4px;
+    box-sizing: border-box;
+    list-style: none;
+    background: var(--bg-elevated);
+    border: 1px solid var(--border-medium);
+    border-radius: 6px;
+    box-shadow: var(--shadow-medium);
+    white-space: normal;
+}
+
+.suggest-list[hidden] {
+    display: none;
+}
+
+.suggest-list li {
+    padding: 6px 10px;
+    font-size: 0.85rem;
+    border-radius: 4px;
+    cursor: pointer;
+    overflow-wrap: anywhere;
+}
+
+.suggest-list li[aria-selected="true"],
+.suggest-list li:hover {
+    background: rgba(200, 169, 110, 0.14);
+}
+
+.suggest-sub {
+    margin-left: 6px;
+    font-size: 0.75rem;
+    color: var(--text-muted);
+}
+
+/* A cell being edited: above the rows after it, so its suggestions show. */
+.lt-rows .lt-row:has(.lt-editing) {
+    z-index: 3;
+    background: var(--bg-elevated);
+}

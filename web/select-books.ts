@@ -1,7 +1,9 @@
-// Choosing books in a grid to remove them (admins, with -allow-writes).
-// "Select" in the top bar, or a long press on a card on a touch screen,
-// turns taps on cards into ticks; a bar at the bottom counts them and opens
-// the confirmation (delete-books.ts). The
+// Choosing books in a grid to merge, edit or remove them (admins, with
+// -allow-writes). "Select" in the top bar, or a long press on a card on a
+// touch screen, turns taps on cards into ticks; a bar at the bottom counts
+// them and offers Merge (the metadata editor's merge mode, Go: merge.go),
+// Edit in table (the bulk editor, library-edit.ts) and Remove (the
+// confirmation, delete-books.ts). The
 // choice survives scrolling: cards are marked again as they're re-rendered
 // (markSelected, from app-htmx.ts).
 
@@ -16,6 +18,13 @@ let selecting = false;
 let bar: HTMLElement | null = null;
 let countEl: HTMLElement | null = null;
 let removeBtn: HTMLButtonElement | null = null;
+let mergeBtn: HTMLButtonElement | null = null;
+let tableBtn: HTMLButtonElement | null = null;
+
+/** At most this many books are merged at once (Go: mergeMaxBooks). */
+const MERGE_MAX = 20;
+/** sessionStorage: the books to show in the bulk editor (library-edit.ts). */
+export const BULK_SELECTION_KEY = "cf-bulk-selection";
 let toggleBtn: HTMLButtonElement | null = null;
 
 /** Mark a freshly rendered card if it's chosen. */
@@ -41,6 +50,12 @@ function update(): void {
         removeBtn.disabled = n === 0;
         removeBtn.textContent = n ? `Remove ${n} from library…` : "Remove from library…";
     }
+    if (mergeBtn) {
+        mergeBtn.disabled = n < 2 || n > MERGE_MAX;
+        mergeBtn.title = n > MERGE_MAX ? `At most ${MERGE_MAX} books at a time` : "Make the selected books one book, with every format: pick its metadata, cover and files";
+        mergeBtn.textContent = n >= 2 ? `Merge ${n}…` : "Merge…";
+    }
+    if (tableBtn) tableBtn.disabled = n === 0;
 }
 
 function setSelecting(grid: HTMLElement, on: boolean): void {
@@ -62,7 +77,7 @@ export function setupSelection(grid: HTMLElement): void {
         if (!tools) return;
         ready = true;
 
-        toggleBtn = el("button", { type: "button", className: "tb-btn tb-select-btn", title: "Select books to remove them from the library" }, "Select");
+        toggleBtn = el("button", { type: "button", className: "tb-btn tb-select-btn", title: "Select books to merge, edit or remove them" }, "Select");
         toggleBtn.setAttribute("aria-pressed", "false");
         toggleBtn.addEventListener("click", () => setSelecting(grid, !selecting));
         tools.append(toggleBtn);
@@ -71,7 +86,9 @@ export function setupSelection(grid: HTMLElement): void {
         removeBtn = el("button", { type: "button", className: "btn-action btn-danger", disabled: true });
         const clear = el("button", { type: "button", className: "btn-action" }, "Clear");
         const done = el("button", { type: "button", className: "btn-action" }, "Done");
-        bar = el("div", { className: "select-bar", hidden: true }, countEl, el("span", { className: "select-bar-actions" }, clear, done, removeBtn));
+        mergeBtn = el("button", { type: "button", className: "btn-action", disabled: true }, "Merge…");
+        tableBtn = el("button", { type: "button", className: "btn-action", disabled: true, title: "Open the selected books in the bulk editor's table" }, "Edit in table");
+        bar = el("div", { className: "select-bar", hidden: true }, countEl, el("span", { className: "select-bar-actions" }, clear, done, tableBtn, mergeBtn, removeBtn));
         bar.setAttribute("aria-label", "Selected books");
         document.body.append(bar);
 
@@ -81,6 +98,18 @@ export function setupSelection(grid: HTMLElement): void {
             update();
         });
         done.addEventListener("click", () => setSelecting(grid, false));
+        mergeBtn.addEventListener("click", () => {
+            const q = new URLSearchParams({ ids: [...chosen.keys()].join(",") });
+            location.assign(`/book/merge?${q}`);
+        });
+        tableBtn.addEventListener("click", () => {
+            try {
+                sessionStorage.setItem(BULK_SELECTION_KEY, JSON.stringify([...chosen.keys()]));
+            } catch {
+                /* no storage: the table opens with every book */
+            }
+            location.assign("/library/edit?selected=1");
+        });
         removeBtn.addEventListener("click", async () => {
             if (await deleteBooks([...chosen.values()])) location.reload();
         });

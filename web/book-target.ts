@@ -8,6 +8,10 @@ export interface BookTarget {
     id: string;
     /** Waiting in the import queue: not in the library yet. */
     pending: boolean;
+    /** Merging several library books into this one (Go: merge.go). */
+    merge?: boolean;
+    /** More to send with the form's values when applying (a merge's choices). */
+    extra?: () => Record<string, unknown>;
     /** GET: the metadata sources ("current", then each file's). */
     metadata: string;
     /** POST the form's values: saves them, or adds a waiting book to the library. */
@@ -59,5 +63,21 @@ export function pendingImport(importId: string): BookTarget {
         saveCover: `${base}/cover`,
         revertCover: `${base}/cover/revert`,
         coverStatus: `${base}/cover/status`,
+    };
+}
+
+/**
+ * Several library books being merged into one (Go: merge.go): the editor
+ * edits the merged book's metadata, its sources are every book's, and
+ * applying merges them. Everything else is the kept book's.
+ */
+export function mergeBooks(keep: string, ids: string[], extra: () => Record<string, unknown>): BookTarget {
+    const q = `ids=${ids.map(encodeURIComponent).join(",")}&keep=${encodeURIComponent(keep)}`;
+    return {
+        ...libraryBook(keep),
+        merge: true,
+        metadata: `/merge/metadata?${q}`,
+        apply: "/merge/apply",
+        extra,
     };
 }
