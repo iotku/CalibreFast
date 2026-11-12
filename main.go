@@ -332,8 +332,6 @@ func main() {
 	}
 	generatePages()
 	initCalibreDB()
-	// Files older versions recorded under the wrong name (calibre_names.go).
-	repairFormatNames(calibreDB, baseDir, allowWrites)
 	if allowWrites {
 		if err := checkVirtualTables(context.Background(), calibreDB, "main"); err != nil {
 			log.Println("WARNING: removing and restoring books won't work:", err)
@@ -533,6 +531,7 @@ func serveLibraryHTTP() {
 	// Merging books, and the bulk metadata editor (merge.go, bulk_edit.go)
 	registerMergeRoutes()
 	registerBulkEditRoutes()
+	registerLibraryRepairRoutes()
 	registerNotDuplicateRoutes()
 
 	// Individual Book metadata editor

@@ -259,3 +259,11 @@ export interface FormatRepair {
     formats: number;
     skipped: { uuid: string; error: string }[];
 }
+
+/** GET /api/admin/repairs: what the Library repairs would change (Go: repairCheck in library_repairs.go). */
+export interface RepairCheck {
+    /** Formats whose data.name isn't their file's name. */
+    misnamed: { uuid: string; title: string; format: string; from: string; to: string }[];
+    /** Books with no data rows whose folders hold book files. */
+    unlisted: { uuid: string; title: string; formats: string[]; ambiguous: string[] }[];
+}

@@ -2288,6 +2288,17 @@ label.group-row span {
     padding: 0.4rem 0;
 }
 
+/* Library repairs (templates/library-repairs.html) */
+.repair-list {
+    max-height: 22rem;
+    overflow: auto;
+    margin: 0.75rem 0;
+    padding-left: 1.25rem;
+    overflow-wrap: anywhere;
+}
+.repair-list li { margin: 0.2rem 0; }
+.repair-list a { color: var(--text-primary); }
+
 .admin-users {
     width: 100%;
     border-collapse: collapse;

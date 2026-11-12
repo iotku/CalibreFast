@@ -219,6 +219,13 @@ Start the server with `-watch-dir /path/to/folder` (and `-allow-writes`). Books 
 - **Nothing reaches `metadata.db` or the library folder before Add to library.** Leaving the page keeps the book waiting; the form's edits aren't saved until then (the cover is).
 - Waiting books survive a restart, and can still be reviewed when the server runs without `-watch-dir`.
 
+## Library repairs
+
+`/admin/repairs` (**Library repairs** in the user menu; admins, `-allow-writes`): fixes for `metadata.db` that a library shouldn't need, for books added by older versions of CalibreFast or changed outside Calibre. Nothing runs by itself, at startup or otherwise: **Check the library** looks at every book's files (slow on a big library), lists what each repair would change, and each list has its own Repair button. Only the database is modified; no file is renamed, moved or removed.
+
+- **File names Calibre can't find**: a format whose `data.name` isn't its file's name. The repair points it at the one file in the book's folder with that format's extension; a format with no such file, or several, is left alone.
+- **Files metadata.db doesn't list**: a book with no formats in `metadata.db` whose folder holds book files. The repair adds a row for each format with exactly one file. The bulk editor shows and repairs these too.
+
 ## Removing books and the Recycling Bin
 
 Admins on a server with `-allow-writes` can remove books from the library. Nothing is deleted: removed books go to the Recycling Bin, and only the server's owner can empty it.

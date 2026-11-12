@@ -123,6 +123,7 @@ func TestBulkEditAndMergeRoutesNeedWrites(t *testing.T) {
 		registerMergeRoutes()
 		registerBulkEditRoutes()
 		registerNotDuplicateRoutes()
+		registerLibraryRepairRoutes()
 	})
 	admin, _ := createUser("admin1", "correct horse battery", true)
 
@@ -131,6 +132,9 @@ func TestBulkEditAndMergeRoutesNeedWrites(t *testing.T) {
 		{"GET", "/api/library/table"},
 		{"POST", "/api/library/bulk"},
 		{"POST", "/api/library/repair-formats"},
+		{"GET", "/admin/repairs"},
+		{"GET", "/api/admin/repairs"},
+		{"POST", "/api/admin/repairs/format-names"},
 		{"POST", "/api/library/not-duplicates"},
 		{"DELETE", "/api/library/not-duplicates/1"},
 		{"GET", "/book/merge?ids=a,b"},
