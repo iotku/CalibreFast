@@ -22,7 +22,13 @@ func setupRecycleLibrary(t *testing.T) *sql.DB {
 	t.Cleanup(func() { db.Close(); os.RemoveAll(dir) })
 	origDB, origBase, origData, origRecycle := calibreDB, baseDir, dataDir, recycleDir
 	calibreDB, baseDir, dataDir, recycleDir = db, dir, t.TempDir(), ""
-	t.Cleanup(func() { calibreDB, baseDir, dataDir, recycleDir = origDB, origBase, origData, origRecycle })
+	t.Cleanup(func() {
+		// Changes queued for this library are applied while it's still here;
+		// later tests start with no catalog.
+		logErr(catalogFlush(), "test cleanup: catalog")
+		libraryCatalog.Store(nil)
+		calibreDB, baseDir, dataDir, recycleDir = origDB, origBase, origData, origRecycle
+	})
 	t.Chdir(t.TempDir()) // pages/*.json
 	setupTestAppDB(t)
 	if _, err := db.Exec(`
@@ -409,7 +415,7 @@ func TestRecyclePagesEditedInPlace(t *testing.T) {
 		}
 	}
 	generatePages()
-	total := totalBooks
+	total := int(totalBooks.Load())
 	page1, _ := readPage(1)
 	page2Before, _ := os.ReadFile(pageFile(2))
 	victim := page1[7]
@@ -425,8 +431,8 @@ func TestRecyclePagesEditedInPlace(t *testing.T) {
 	if page2, _ := os.ReadFile(pageFile(2)); !bytes.Equal(page2, page2Before) {
 		t.Fatal("page 2 was rewritten")
 	}
-	if totalBooks != total {
-		t.Fatalf("totalBooks %d, want %d (the gap keeps the other pages in place)", totalBooks, total)
+	if int(totalBooks.Load()) != total {
+		t.Fatalf("totalBooks %d, want %d (the gap keeps the other pages in place)", totalBooks.Load(), total)
 	}
 
 	// Restored in the same run: back in its place.
@@ -443,13 +449,13 @@ func TestRecyclePagesEditedInPlace(t *testing.T) {
 		t.Fatal(err)
 	}
 	generatePages()
-	total = totalBooks
+	total = int(totalBooks.Load())
 	if _, err := restoreRecycled(batch.ID, nil, "admin"); err != nil {
 		t.Fatal(err)
 	}
 	last, _ := readPage(2)
-	if last[len(last)-1].UUID != victim.UUID || totalBooks != total+1 {
-		t.Fatalf("after a restart: last page ends with %s, totalBooks %d (was %d)", last[len(last)-1].UUID, totalBooks, total)
+	if last[len(last)-1].UUID != victim.UUID || int(totalBooks.Load()) != total+1 {
+		t.Fatalf("after a restart: last page ends with %s, totalBooks %d (was %d)", last[len(last)-1].UUID, totalBooks.Load(), total)
 	}
 }
 

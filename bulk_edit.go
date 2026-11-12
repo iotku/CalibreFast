@@ -365,8 +365,7 @@ func bulkEditBooks(uuids []string, edit *bulkEdit) bulkResult {
 	res.Changed = len(changed)
 	if len(changed) > 0 {
 		catalogChanged(changed...)
-		logErr(refreshInPages(changed), "bulk edit: couldn't update the library pages")
-		generatePage1()
+		refreshLibraryPages()
 		refreshAllCaches()
 		for chunk := range slices.Chunk(changed, 500) {
 			rows, err := tableBooks(calibreDB, chunk)

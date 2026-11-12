@@ -145,26 +145,24 @@ func TestBulkEditHTTP(t *testing.T) {
 	}
 }
 
-func TestRefreshInPages(t *testing.T) {
+// A bulk edit shows in the library pages at once.
+func TestBulkEditUpdatesPages(t *testing.T) {
 	db := setupRecycleLibrary(t)
 	a := addOPFTestBook(t, db, "Alpha", []string{"Ann"}, nil, nil)
-	b := addOPFTestBook(t, db, "Beta", []string{"Bob"}, nil, nil)
-	pagesMu.Lock()
-	if err := writePage(3, []Book{{Title: "Alpha", UUID: a.uuid}, {Title: "Beta", UUID: b.uuid}}); err != nil {
+	addOPFTestBook(t, db, "Beta", []string{"Bob"}, nil, nil)
+	if err := writeLibraryPages(); err != nil {
 		t.Fatal(err)
 	}
-	notePage(a.uuid, 3)
-	notePage(b.uuid, 3)
-	pagesMu.Unlock()
 
 	title := "Alpha Renamed"
 	bulkEditBooks([]string{a.uuid}, &bulkEdit{Title: &title})
-	books, err := readPage(3)
+	books, err := readPage(1)
 	if err != nil {
 		t.Fatal(err)
 	}
-	if books[0].Title != "Alpha Renamed" || books[0].Authors != "Ann" || books[1].Title != "Beta" {
-		t.Errorf("page 3 %+v", books)
+	i := slices.IndexFunc(books, func(b Book) bool { return b.UUID == a.uuid })
+	if len(books) != 2 || i < 0 || books[i].Title != "Alpha Renamed" || books[i].Authors != "Ann" {
+		t.Errorf("page 1 %+v", books)
 	}
 }
 

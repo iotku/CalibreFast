@@ -10,6 +10,7 @@ package main
 // shows the missing slot as empty (MISSING in web/app-htmx.ts).
 
 import (
+	"bytes"
 	"encoding/json"
 	"errors"
 	"io/fs"
@@ -148,7 +149,8 @@ func restoreToPages(uuid string) error {
 		return err
 	}
 	b.LastModified = coverStamp(b.LastModified)
-	page := max(1, (totalBooks+booksPerPage-1)/booksPerPage)
+	total := int(totalBooks.Load())
+	page := max(1, (total+booksPerPage-1)/booksPerPage)
 	books, err := readPage(page)
 	if errors.Is(err, fs.ErrNotExist) {
 		books, err = nil, nil
@@ -164,80 +166,46 @@ func restoreToPages(uuid string) error {
 		return err
 	}
 	notePage(uuid, page)
-	totalBooks = max(totalBooks, (page-1)*booksPerPage+len(books))
+	totalBooks.Store(int64(max(total, (page-1)*booksPerPage+len(books))))
 	return nil
 }
 
-// refreshInPages rewrites the books' entries in the page files that hold
-// them, after their metadata changed (bulk edits, merges), so the grid
-// shows the new titles and authors before the next full rewrite.
-func refreshInPages(uuids []string) error {
-	pagesMu.Lock()
-	defer pagesMu.Unlock()
-	pages := map[int]bool{}
-	wanted := map[string]bool{}
-	for _, u := range uuids {
-		if v, ok := bookPages.Load(u); ok {
-			wanted[u] = true
-			for _, p := range v.([]int) {
-				pages[p] = true
-			}
+// writePagesFromCatalog writes pages/*.json from the catalog: every book
+// not removed, newest added first, booksPerPage per page. Only files whose
+// contents change are written, so after an edit only the pages holding the
+// edited books are, and the others stay cached in browsers. Sets totalBooks,
+// and pagesVersion when anything was written. Callers hold pagesMu.
+func writePagesFromCatalog(c *catalog) (changed bool, err error) {
+	bookPages.Clear()
+	pageSlots.Clear()
+	order := c.latest()
+	for start := 0; start < len(order); start += booksPerPage {
+		page := start/booksPerPage + 1
+		books := make([]Book, 0, booksPerPage)
+		for _, i := range order[start:min(start+booksPerPage, len(order))] {
+			b := c.books[i].Book
+			modTimeCache.Store(b.UUID, b.LastModified)
+			uuidPathIndex.Store(b.UUID, b.Path)
+			notePage(b.UUID, page)
+			books = append(books, b)
 		}
-	}
-	if len(wanted) == 0 {
-		return nil
-	}
-	fresh := map[string]Book{}
-	list := make([]string, 0, len(wanted))
-	for u := range wanted {
-		list = append(list, u)
-	}
-	for chunk := range slices.Chunk(list, 500) {
-		rows, err := calibreDB.Query(`SELECT b.title, `+bookAuthorsSQL+`, b.series_index, b.pubdate, b.path, b.uuid, b.last_modified
-			FROM books b WHERE b.uuid IN (`+placeholders(len(chunk))+`)`, toArgs(chunk)...)
+		data, err := json.Marshal(books)
 		if err != nil {
-			return err
+			return changed, err
 		}
-		for rows.Next() {
-			var b Book
-			if err := rows.Scan(&b.Title, &b.Authors, &b.SeriesIndex, &b.PubDate, &b.Path, &b.UUID, &b.LastModified); err != nil {
-				rows.Close()
-				return err
-			}
-			b.LastModified = coverStamp(b.LastModified)
-			fresh[b.UUID] = b
+		if old, err := os.ReadFile(pageFile(page)); err == nil && bytes.Equal(old, data) {
+			continue
 		}
-		rows.Close()
-		if err := rows.Err(); err != nil {
-			return err
+		if err := writePageJSON(page, data); err != nil {
+			return changed, err
 		}
+		changed = true
 	}
-	var errs []error
-	changed := false
-	for page := range pages {
-		books, err := readPage(page)
-		if err != nil {
-			errs = append(errs, err)
-			continue
-		}
-		edited := false
-		for i, b := range books {
-			if nb, ok := fresh[b.UUID]; ok && nb != b {
-				books[i] = nb
-				edited = true
-			}
-		}
-		if !edited {
-			continue
-		}
-		if err := writePage(page, books); err != nil {
-			errs = append(errs, err)
-			continue
-		}
+	if total := int64(len(order)); totalBooks.Swap(total) != total {
 		changed = true
 	}
 	if changed {
 		pagesVersion.Store(time.Now().UnixNano())
 	}
-	return errors.Join(errs...)
+	return changed, nil
 }

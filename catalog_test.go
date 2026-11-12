@@ -7,6 +7,7 @@ import (
 	"os"
 	"path/filepath"
 	"slices"
+	"strconv"
 	"strings"
 	"sync"
 	"testing"
@@ -309,7 +310,7 @@ func TestApplyMetadataUpdatesCatalog(t *testing.T) {
 	if err := os.MkdirAll(filepath.Join(baseDir, b.Path), 0o755); err != nil {
 		t.Fatal(err)
 	}
-	t.Chdir(t.TempDir()) // generatePage1 writes ./pages
+	t.Chdir(t.TempDir()) // refreshLibraryPages writes ./pages
 
 	mux := http.NewServeMux()
 	mux.HandleFunc("POST /metadata/{uuid}/apply", applyMetadataHandler)
@@ -369,4 +370,45 @@ func TestCatalogConcurrentReads(t *testing.T) {
 	close(stop)
 	wg.Wait()
 	checkCatalogMatchesDB(t, db, currentCatalog())
+}
+
+// An upload goes to the front of Latest: every page shifts along by one, so
+// no book drops out of the pages, and the grid's count includes it.
+func TestRefreshLibraryPagesAfterUpload(t *testing.T) {
+	db := catalogFixture(t)
+	t.Chdir(t.TempDir())
+	var uuids []string // oldest first
+	for i := range booksPerPage + 1 {
+		uuids = append(uuids, addTestBook(t, db, "Book "+strconv.Itoa(i), []string{"A"}, nil, ""))
+	}
+	if err := writeLibraryPages(); err != nil {
+		t.Fatal(err)
+	}
+	if n := totalBooks.Load(); n != int64(booksPerPage+1) {
+		t.Fatalf("totalBooks %d", n)
+	}
+
+	added := addTestBook(t, db, "New", []string{"A"}, nil, "")
+	catalogChanged(added)
+	refreshLibraryPages()
+
+	if n := totalBooks.Load(); n != int64(booksPerPage+2) {
+		t.Errorf("totalBooks %d after an upload, want %d", n, booksPerPage+2)
+	}
+	page1, _ := readPage(1)
+	page2, _ := readPage(2)
+	if len(page1) != booksPerPage || page1[0].UUID != added {
+		t.Fatalf("page 1 should start with the new book: %d books, first %s", len(page1), page1[0].UUID)
+	}
+	// The two oldest are on page 2, in order: none dropped out.
+	if len(page2) != 2 || page2[0].UUID != uuids[1] || page2[1].UUID != uuids[0] {
+		t.Errorf("page 2 %+v", page2)
+	}
+
+	// Nothing changed: no file is written and browsers keep their copies.
+	v := pagesVersion.Load()
+	refreshLibraryPages()
+	if pagesVersion.Load() != v {
+		t.Error("a refresh with nothing changed gave the pages a new stamp")
+	}
 }

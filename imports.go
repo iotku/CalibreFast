@@ -882,7 +882,7 @@ func importApplyHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	catalogChanged(bookUUID)
-	generatePage1()
+	refreshLibraryPages()
 	refreshAllCaches()
 	writeJSON(w, http.StatusOK, map[string]any{"success": true, "uuid": bookUUID, "title": meta.Title, "next": next})
 }

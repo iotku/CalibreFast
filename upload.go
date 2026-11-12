@@ -448,7 +448,7 @@ func uploadHandler(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 
-	generatePage1()
+	refreshLibraryPages()
 	refreshAllCaches()
 
 	w.Header().Set("Content-Type", "application/json")
@@ -704,9 +704,26 @@ func cleanupTemps(entries []formatEntry) {
 	}
 }
 
-// TODO: I would just want to prepend the new books (we don't actually care if page1 becomes more than 30 books, it'll be regenerated on the next run)
-// generatePage1 rewrites pages/page1.json with the booksPerPage most recently added books.
-func generatePage1() {
+// refreshLibraryPages brings pages/*.json up to date after books were added
+// or edited: the catalog's queued changes are applied, then the pages are
+// written from it in Latest order (only the files that change). So a new
+// book shifts the others along instead of pushing one off page 1, and the
+// grid's count (totalBooks) includes it.
+func refreshLibraryPages() {
+	if libraryCatalog.Load() == nil {
+		writePage1FromDB() // no catalog (tests that don't build one)
+		return
+	}
+	logErr(catalogFlush(), "library pages: couldn't apply the catalog's changes")
+	pagesMu.Lock()
+	defer pagesMu.Unlock()
+	_, err := writePagesFromCatalog(currentCatalog())
+	logErr(err, "library pages: couldn't write")
+}
+
+// writePage1FromDB rewrites pages/page1.json with the booksPerPage most
+// recently added books, from metadata.db.
+func writePage1FromDB() {
 	pagesMu.Lock()
 	defer pagesMu.Unlock()
 	rows, err := calibreDB.Query(`
@@ -715,7 +732,7 @@ func generatePage1() {
 		ORDER BY b.timestamp DESC
 		LIMIT ?`, booksPerPage)
 	if err != nil {
-		log.Println("generatePage1: query failed:", err)
+		log.Println("library pages: query failed:", err)
 		return
 	}
 	defer rows.Close()
@@ -733,7 +750,7 @@ func generatePage1() {
 	}
 
 	if err := writePage(1, books); err != nil {
-		log.Println("generatePage1: write failed:", err)
+		log.Println("library pages: write failed:", err)
 		return
 	}
 	pagesVersion.Store(time.Now().UnixNano())

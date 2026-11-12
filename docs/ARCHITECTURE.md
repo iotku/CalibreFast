@@ -10,7 +10,7 @@ See also: [FEATURES.md](FEATURES.md) for behaviour, [SECURITY.md](SECURITY.md) f
 
 ## Main library pages
 
-On startup CalibreFast queries `metadata.db` and writes paginated JSON (`pages/page1.json`, `page2.json`, …, `booksPerPage` = 60 books each). The frontend fetches these directly as static files, so browsing never hits the database. `pages/page1.json` is regenerated after uploads and edits; removing or restoring a book edits only the pages that hold it (`library_pages.go`).
+On startup CalibreFast queries `metadata.db` and writes paginated JSON (`pages/page1.json`, `page2.json`, …, `booksPerPage` = 60 books each). The frontend fetches these directly as static files, so browsing never hits the database. After uploads and edits the pages are written again from the catalog (`refreshLibraryPages`; below), in order and only where a file's contents change, so a new book shifts the others along and the count includes it; removing or restoring a book edits only the pages that hold it (`library_pages.go`).
 
 Each book's `authors` is its authors' names in Calibre's order, `A & B` (`bookAuthorsSQL` in `authors.go`), in every grid: not `books.author_sort`, which is the "Last, First" sort form. `authors.go`'s `splitAuthors` reads author lists (editor, uploads) on `&` only; `web/authors.ts` reads the editor's field the same way. Other ways of writing them (`;`, `Last, First`) are only rewritten by the editor's Split button (`tidyAuthors`).
 
@@ -142,7 +142,7 @@ Each book's `authors` is its authors' names in Calibre's order, `A & B` (`bookAu
   A failure after step 2 doesn't undo it: the answer is 200 with `warning`, which the editor shows.
 - **Bulk editor** (`bulk_edit.go`, `templates/library-edit.html`, `web/library-edit.ts`). `GET /api/library/table` is every book as a `tableBook`, one query with `group_concat` subqueries; a book with no `data` rows gets its folder's formats (`folderFormats`, through `resolveFormats`) and `formats_from_folder`. `loadMergeBooks` falls back the same way. `POST /api/library/repair-formats` (`addUnlistedFormats` in `calibre_names.go`) adds `data` rows for those books: one per format with exactly one file in the folder, `name` its file name without the extension. The browser does filtering, sorting and duplicate grouping, and draws only the rows on screen (fixed 34px rows, absolutely placed in a body as tall as all of them). `POST /api/library/bulk` takes uuids and a `bulkEdit` (set, add or remove fields), applies it to each book's `metadata.opf` (`bookEditMetadata`) and saves changed ones with `updateBookInCalibreDB`, then answers the changed rows.
 - **Not duplicates** (`not_duplicates.go`): sets of book uuids an admin marked as different books (`not_duplicate_sets`, `not_duplicate_books` in the app database), sent with the table. The browser hides a look-alike group only when one set holds every book in it, so a newcomer brings the group back; `dupes=marked` shows the sets, `DELETE /api/library/not-duplicates/{id}` unmarks one.
-- **Grid pages after edits** (`refreshInPages` in `library_pages.go`): the edited books' entries are rewritten in the page files that hold them, so the grid shows new titles and authors before the next full rewrite.
+- **Grid pages after edits** (`refreshLibraryPages`): the pages are written again from the catalog, and only the files whose contents change are replaced, so the grid shows new titles and authors at once.
 
 ## Removing books and the Recycling Bin
 

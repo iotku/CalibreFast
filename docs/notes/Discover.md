@@ -7,7 +7,7 @@ Phase 1 as built, where it differs from section 1 below:
 - `has_cover` is kept but not trusted for thumbnails: a missing `cover.jpg` is remembered after the first look (`noCover`), so a stale `has_cover = 0` never hides a real cover.
 - `libraryIO` counts statements prepared on `metadata.db` (an SQLite authorizer on the `sqlite3_calibre` driver) and the cover and folder reads under `-basedir`. The startup build uses its own connection and isn't counted.
 - The "every write endpoint" test is per path for now: the editor's Apply has an HTTP test; the other paths call `catalogChanged`/`catalogRemoved` beside their existing page updates. Format-name repairs change only `data.name`, which the catalog doesn't hold.
-- Found while testing, not fixed here: `generatePage1` (after an upload) doesn't update `totalBooks`, so the grid keeps the startup count until a restart.
+- Found while testing and fixed: after an upload only page 1 was rewritten and `totalBooks` kept its startup value, so new books could be hidden until a restart and books pushed off page 1 were on no page. The pages are now written again from the catalog after uploads and edits (`refreshLibraryPages`), only where a file changes.
 
 ## Goal
 

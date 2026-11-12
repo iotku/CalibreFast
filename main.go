@@ -147,7 +147,7 @@ type IndexPageData struct {
 
 var (
 	// totalBooks is how many books pages/*.json hold, set when they're written.
-	totalBooks int
+	totalBooks atomic.Int64
 	// pagesVersion changes whenever pages/*.json are rewritten. index.html
 	// requests pageN.json?v=<it>, so the files can be cached for good.
 	pagesVersion atomic.Int64
@@ -216,7 +216,10 @@ func writePage(page int, books []Book) error {
 	if err != nil {
 		return err
 	}
+	return writePageJSON(page, data)
+}
 
+func writePageJSON(page int, data []byte) error {
 	if err := os.MkdirAll("pages", 0o755); err != nil {
 		return err
 	}
@@ -482,7 +485,7 @@ func indexHandler(w http.ResponseWriter, r *http.Request) {
 	}
 	data := IndexPageData{
 		Title:        "Library",
-		TotalBooks:   totalBooks,
+		TotalBooks:   int(totalBooks.Load()),
 		PagesVersion: currentPagesVersion(),
 	}
 
@@ -501,9 +504,9 @@ func serveLibraryHTTP() {
 
 	http.HandleFunc("/library-info", func(w http.ResponseWriter, r *http.Request) {
 		logErr(json.NewEncoder(w).Encode(LibraryInfo{
-			TotalBooks: totalBooks,
+			TotalBooks: int(totalBooks.Load()),
 			PageSize:   booksPerPage,
-			TotalPages: (totalBooks + booksPerPage - 1) / booksPerPage,
+			TotalPages: (int(totalBooks.Load()) + booksPerPage - 1) / booksPerPage,
 		}), "could not encode library info")
 	})
 
@@ -928,7 +931,7 @@ func applyMetadataHandler(w http.ResponseWriter, r *http.Request) {
 
 	// Refresh page1.json cache
 	catalogChanged(uuid)
-	generatePage1()
+	refreshLibraryPages()
 	refreshAllCaches()
 
 	w.Header().Set("Content-Type", "application/json")
@@ -1004,34 +1007,17 @@ func writeLibraryPages() error {
 	defer db.Close()
 
 	// The catalog first (a few sequential reads of metadata.db), then the
-	// pages from it: Latest order, booksPerPage per page.
+	// pages from it.
 	cat, err := buildCatalog(db)
 	if err != nil {
 		return err
 	}
-	page := 1
-	books := make([]Book, 0, booksPerPage)
-	for i := range cat.books {
-		book := cat.books[i].Book
-		modTimeCache.Store(book.UUID, book.LastModified)
-		uuidPathIndex.Store(book.UUID, book.Path)
-		notePage(book.UUID, page)
-		books = append(books, book)
-		if len(books) >= booksPerPage {
-			if err := writePage(page, books); err != nil {
-				return err
-			}
-			page++
-			books = make([]Book, 0, booksPerPage)
-		}
-	}
-	if len(books) > 0 {
-		if err := writePage(page, books); err != nil {
-			return err
-		}
-	}
 	libraryCatalog.Store(cat)
-	totalBooks = (page-1)*booksPerPage + len(books)
+	if _, err := writePagesFromCatalog(cat); err != nil {
+		return err
+	}
+	// A new stamp every start, even when no file changed: an older run may
+	// have served other contents under the stamp it would otherwise keep.
 	pagesVersion.Store(time.Now().UnixNano())
 	return nil
 }

@@ -14,6 +14,7 @@ package main
 //     files keep their gaps (library_pages.go).
 
 import (
+	"cmp"
 	"database/sql"
 	"log"
 	"maps"
@@ -25,8 +26,9 @@ import (
 )
 
 type catalogBook struct {
-	Book            // the grid entry, as in pages/*.json
-	ID        int64 // books.id
+	Book             // the grid entry, as in pages/*.json
+	ID        int64  // books.id
+	Timestamp string // books.timestamp: when it was added (Latest order)
 	TagIDs    []int32
 	AuthorIDs []int32
 	Series    int32    // 0 if none
@@ -72,6 +74,26 @@ func (c *catalog) lookup(uuid string) (catalogBook, bool) {
 	return c.books[i], true
 }
 
+// latest lists the books not removed, newest added first (as
+// ORDER BY timestamp DESC, id DESC: books added since the full build were
+// appended at the end).
+func (c *catalog) latest() []int32 {
+	order := make([]int32, 0, len(c.books))
+	for i := range c.books {
+		if !c.books[i].Removed {
+			order = append(order, int32(i))
+		}
+	}
+	slices.SortStableFunc(order, func(a, b int32) int {
+		x, y := &c.books[a], &c.books[b]
+		if n := strings.Compare(y.Timestamp, x.Timestamp); n != 0 {
+			return n
+		}
+		return cmp.Compare(y.ID, x.ID)
+	})
+	return order
+}
+
 // live counts the books not removed.
 func (c *catalog) live() int {
 	n := 0
@@ -95,7 +117,7 @@ type queryer interface {
 // Latest order, each table in one sequential pass. Otherwise only those
 // books (by books.id), through the link tables' (book, x) indexes.
 func loadCatalogBooks(db queryer, uuids []string, names *catalog) ([]catalogBook, error) {
-	q := `SELECT b.id, b.title, b.series_index, b.pubdate, b.path, b.uuid, b.last_modified, COALESCE(b.has_cover, 0)
+	q := `SELECT b.id, b.timestamp, b.title, b.series_index, b.pubdate, b.path, b.uuid, b.last_modified, COALESCE(b.has_cover, 0)
 		FROM books b`
 	var args []any
 	if uuids != nil {
@@ -111,7 +133,7 @@ func loadCatalogBooks(db queryer, uuids []string, names *catalog) ([]catalogBook
 	at := map[int64]int{}
 	for rows.Next() {
 		var b catalogBook
-		if err := rows.Scan(&b.ID, &b.Title, &b.SeriesIndex, &b.PubDate, &b.Path, &b.UUID, &b.LastModified, &b.HasCover); err != nil {
+		if err := rows.Scan(&b.ID, &b.Timestamp, &b.Title, &b.SeriesIndex, &b.PubDate, &b.Path, &b.UUID, &b.LastModified, &b.HasCover); err != nil {
 			rows.Close()
 			return nil, err
 		}
@@ -259,6 +281,9 @@ func catalogEnqueue(uuids []string, reread bool) {
 	for _, u := range uuids {
 		noCover.Delete(u)
 	}
+	if libraryCatalog.Load() == nil {
+		return // not built yet: the build reads everything
+	}
 	catalogQueue.Lock()
 	defer catalogQueue.Unlock()
 	if catalogQueue.ops == nil {
@@ -285,7 +310,7 @@ func catalogFlush() error {
 	catalogQueue.scheduled = false
 	catalogQueue.Unlock()
 	old := libraryCatalog.Load()
-	if len(ops) == 0 || calibreDB == nil || old == nil {
+	if len(ops) == 0 || old == nil || calibreDB == nil {
 		return nil // nothing to apply, or no catalog built (yet): the build reads everything
 	}
 	var reread, removed []string
