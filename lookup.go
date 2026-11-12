@@ -3,6 +3,7 @@ package main
 // Looking a book up online, for the metadata editor (/metadata/lookup).
 // Open Library: by ISBN when the book has one, else (or when the ISBN finds
 // nothing) by title and author, which can find several books. Google Books
+// (only with an API key, CF_GOOGLE_BOOKS_KEY)
 // only when the admin asks for it (it often has the best description). The
 // matches the admin picks become options in the editor, next to "current"
 // and the uploaded formats. Nothing is written until the admin applies
@@ -20,7 +21,8 @@ package main
 //     (serviceLimit), and a 429 pauses it for its Retry-After
 //   - covers come from Open Library only, fetched by the server, and only
 //     when the admin asks
-//   - -no-lookups turns everything off; -no-google-books turns off Google
+//   - -no-lookups turns everything off; -no-google-books turns off Google,
+//     as does having no CF_GOOGLE_BOOKS_KEY
 
 import (
 	"context"
@@ -96,8 +98,9 @@ func appVersion() string {
 	return "dev"
 }
 
-// configureLookups reads the optional Google Books API key. Without one,
-// Google counts requests against a shared quota that's often used up.
+// configureLookups reads the optional Google Books API key. Google Books is
+// offered only with one: without, Google counts requests against a shared
+// quota that's usually used up, and Open Library is the focus anyway.
 func configureLookups() {
 	bookLookups.googleKey = os.Getenv("CF_GOOGLE_BOOKS_KEY")
 	switch {
@@ -105,7 +108,14 @@ func configureLookups() {
 		log.Println("-no-lookups: the metadata editor won't look books up online")
 	case noGoogleBooks:
 		log.Println("-no-google-books: the metadata editor won't offer Google Books")
+	case bookLookups.googleKey == "":
+		log.Println("no CF_GOOGLE_BOOKS_KEY: the metadata editor won't offer Google Books")
 	}
+}
+
+// googleBooksEnabled: the editor offers Google Books (Try Google Books).
+func googleBooksEnabled() bool {
+	return !noLookups && !noGoogleBooks && bookLookups.googleKey != ""
 }
 
 // requireLookups refuses lookups when -no-lookups is set.
@@ -172,8 +182,8 @@ func lookupHandler(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "unknown source", http.StatusBadRequest)
 		return
 	}
-	if name == googleBooksName && noGoogleBooks {
-		http.Error(w, "Google Books is turned off on this server (-no-google-books).", http.StatusForbidden)
+	if name == googleBooksName && !googleBooksEnabled() {
+		http.Error(w, "Google Books is turned off on this server (-no-google-books, or no CF_GOOGLE_BOOKS_KEY).", http.StatusForbidden)
 		return
 	}
 	q := lookupQuery{

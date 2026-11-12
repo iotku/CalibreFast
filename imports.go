@@ -785,7 +785,7 @@ func importReviewPage(w http.ResponseWriter, r *http.Request) {
 		Import:      page,
 		ReadLink:    previewReadLink("import", it.ID, formats),
 		Lookups:     !noLookups,
-		GoogleBooks: !noLookups && !noGoogleBooks,
+		GoogleBooks: googleBooksEnabled(),
 	}), "render import review")
 }
 

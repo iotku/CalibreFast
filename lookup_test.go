@@ -124,6 +124,7 @@ func newFakeLookupServers(t *testing.T) *fakeLookupServers {
 		openLibrary: olServer.URL,
 		olCovers:    olServer.URL,
 		googleBooks: gbServer.URL,
+		googleKey:   "test-key",
 		cache:       newLookupCache(time.Hour, 100),
 		limits: map[string]*serviceLimit{
 			openLibraryName: newServiceLimit(100, 100, 1000),
@@ -354,6 +355,11 @@ func TestLookupHandler(t *testing.T) {
 
 	origNoGoogle := noGoogleBooks
 	defer func() { noGoogleBooks = origNoGoogle }()
+	f.lookup.googleKey = "" // no API key: not offered
+	if rec := get("source=google&isbn=9780134190440"); rec.Code != http.StatusForbidden || googleBooksEnabled() {
+		t.Errorf("no CF_GOOGLE_BOOKS_KEY: got %d, want 403", rec.Code)
+	}
+	f.lookup.googleKey = "test-key"
 	noGoogleBooks = true
 	if rec := get("source=google&isbn=9780134190440"); rec.Code != http.StatusForbidden {
 		t.Errorf("-no-google-books: got %d, want 403", rec.Code)

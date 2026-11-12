@@ -209,7 +209,7 @@ type EditBookPageData struct { // TODO I Hate this, these page structs are all o
 	Import       *importPageData // a book waiting in the import queue (imports.go); nil for one in the library
 	ReadLink     string          // the book in a reader's preview mode, to look things up ("" without an EPUB or PDF)
 	Lookups      bool            // show the online lookup (Open Library); off with -no-lookups
-	GoogleBooks  bool            // offer Google Books as a last resort; off with -no-google-books
+	GoogleBooks  bool            // offer Google Books: only with CF_GOOGLE_BOOKS_KEY, and not -no-google-books
 }
 
 func writePage(page int, books []Book) error {
@@ -550,7 +550,7 @@ func serveLibraryHTTP() {
 			CoverModTime: coverModTime,
 			ReadLink:     previewReadLink("uuid", uuid, extractFormats(resolveFormats(uuid, baseDir, bookPath.(string)))),
 			Lookups:      !noLookups,
-			GoogleBooks:  !noLookups && !noGoogleBooks,
+			GoogleBooks:  googleBooksEnabled(),
 		}
 
 		err = templates.ExecuteTemplate(w, "book-edit.html", EditBookPageData)
