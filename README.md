@@ -82,7 +82,7 @@ Then open [http://localhost:8080](http://localhost:8080) and sign in. Add more u
 | `-cachedir` | Where to store cover thumbnails (default: the current directory) |
 | `-port` | Port to listen on (default `8080`) |
 | `-datadir` | Where CalibreFast keeps its own database: accounts, favorites, progress, shelves (default `./data`) |
-| `-allow-writes` | Let **admins** edit metadata, upload, change covers, manage groups and remove books (to the Recycling Bin). Off by default. |
+| `-allow-writes` | Let **admins** edit metadata, upload, change covers, manage groups and remove books (to the Recycling Bin). Off by default: without it the library's `metadata.db` is opened read-only, so the server can't change your library. |
 | `-watch-dir` | A folder to watch for new books. The system reports changes to it (checked every 30 seconds where it can't). Books are moved out of it into a review queue (`/import`) and only join the library when an admin adds them. Needs `-allow-writes`; must not be inside the library or `-datadir`. |
 | `-watch-dir-force-polling` | Check `-watch-dir` every 30 seconds instead of waiting for the system to report changes. For folders on network or container mounts (NFS, SMB, some bind mounts) where new books aren't noticed. |
 | `-public` | Let anyone browse the catalog without signing in. **By default the whole library is private:** nothing (not even covers or book IDs) is shown until you sign in. |

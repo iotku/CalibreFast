@@ -110,12 +110,41 @@ func registerCalibreDriver() {
 	})
 }
 
+// calibreDSN is how metadata.db at path is opened: as an SQLite URI, so the
+// path is passed on exactly (go-sqlite3 would take a "?" in a plain path for
+// the start of its options). Read-only opens the file read-only (mode=ro):
+// nothing done through that connection can change the library, whatever the
+// code asks for. Read-write is mode=rw, which never creates a missing file.
+// SQLite's locks apply either way, so reads stay consistent while Calibre
+// writes.
+func calibreDSN(path string, readOnly bool) string {
+	mode := "rw"
+	if readOnly {
+		mode = "ro"
+	}
+	abs, err := filepath.Abs(path)
+	if err != nil {
+		abs = path
+	}
+	p := filepath.ToSlash(abs)
+	if !strings.HasPrefix(p, "/") {
+		p = "/" + p // Windows: file:/C:/…
+	}
+	// Escape the path (spaces, %, ?, #) so SQLite reads it back unchanged.
+	return "file:" + (&url.URL{Path: p}).EscapedPath() + "?mode=" + mode
+}
+
 func initCalibreDB() {
 	registerCalibreDriver()
 	var err error
-	calibreDB, err = sql.Open("sqlite3_calibre", filepath.Join(baseDir, "metadata.db"))
+	// Without -allow-writes the library is opened read-only, so trying the
+	// server on a library is safe: metadata.db can't be changed.
+	calibreDB, err = sql.Open("sqlite3_calibre", calibreDSN(filepath.Join(baseDir, "metadata.db"), !allowWrites))
 	if err != nil {
 		log.Fatal("failed to open search db: ", err)
+	}
+	if !allowWrites {
+		log.Println("read-only mode: metadata.db is opened read-only")
 	}
 	// TODO: Performance, maybe we can increase this later
 	calibreDB.SetMaxOpenConns(1) // supposedly, sqlite doesn't like concurrent writers, reads are fine with 1
@@ -995,7 +1024,8 @@ func writeLibraryPages() error {
 	defer pagesMu.Unlock()
 	bookPages.Clear()
 	pageSlots.Clear()
-	db, err := sql.Open("sqlite3", filepath.Join(baseDir, "metadata.db"))
+	// Only reads: read-only even with -allow-writes.
+	db, err := sql.Open("sqlite3", calibreDSN(filepath.Join(baseDir, "metadata.db"), true))
 	if err != nil {
 		return err
 	}
