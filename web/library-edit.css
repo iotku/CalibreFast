@@ -496,16 +496,11 @@
     background: var(--bg-elevated);
 }
 
-/* A column's filter box and its empty/default tick box */
-.lt-filter-cell {
+/* A column's label, and its empty/default tick box */
+.lt-head-cell {
     display: flex;
     align-items: center;
-    gap: 4px;
-}
-
-.lt-table .lt-filter-cell .lt-filter {
-    flex: 1;
-    min-width: 0;
+    gap: 6px;
 }
 
 .lt-blank {
@@ -535,4 +530,86 @@
 
 .lt-unlisted[hidden] {
     display: none;
+}
+
+/* A box with its ✕ (clearable() in library-edit.ts) */
+.lt-clearable {
+    position: relative;
+    display: flex;
+    align-items: center;
+    min-width: 0;
+}
+
+.lt-table .lt-clearable .lt-filter {
+    padding-right: 22px;
+}
+
+.lt-toolbar .lt-search-wrap {
+    flex: 1 1 260px;
+    max-width: 420px;
+}
+
+.lt-toolbar .lt-search-wrap .lt-search {
+    flex: 1;
+    max-width: none;
+    padding-right: 30px;
+}
+
+.lt-x {
+    position: absolute;
+    right: 2px;
+    width: 22px;
+    height: 22px;
+    padding: 0;
+    border: 0;
+    border-radius: 50%;
+    background: transparent;
+    color: var(--text-muted);
+    font-size: 0.75rem;
+    line-height: 1;
+    cursor: pointer;
+}
+
+.lt-search-wrap .lt-x {
+    right: 5px;
+    width: 26px;
+    height: 26px;
+}
+
+.lt-x:hover,
+.lt-x:focus-visible {
+    color: var(--text-primary);
+    background: rgba(255, 255, 255, 0.08);
+}
+
+/* Nothing to clear: no ✕ (both boxes have placeholders) */
+.lt-clearable input:placeholder-shown + .lt-x {
+    display: none;
+}
+
+.lt-clearable input::-webkit-search-cancel-button {
+    -webkit-appearance: none;
+    appearance: none;
+}
+
+/* Before a tags or languages cell's chips: edits the cell */
+.lt-cell-edit {
+    display: inline-grid;
+    place-items: center;
+    width: 22px;
+    height: 22px;
+    margin-right: 4px;
+    padding: 0;
+    vertical-align: middle;
+    border: 1px solid transparent;
+    border-radius: var(--radius-small);
+    background: transparent;
+    color: var(--text-muted);
+    cursor: pointer;
+}
+
+.lt-cell-edit:hover,
+.lt-cell-edit:focus-visible {
+    color: var(--status-reading);
+    border-color: var(--border-medium);
 }

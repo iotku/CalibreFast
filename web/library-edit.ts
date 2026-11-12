@@ -60,6 +60,8 @@ const COLUMNS: Column[] = [
 /** What the Formats filter matches for files only in a book's folder, not in metadata.db. */
 const FOLDER_ONLY = "folder only";
 
+const PENCIL = `<svg viewBox="0 0 24 24" width="13" height="13" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 20h9"/><path d="M16.5 3.5a2.1 2.1 0 0 1 3 3L7 19l-4 1 1-4Z"/></svg>`;
+
 /** Lower case, without accents: what searches compare. */
 function fold(s: string): string {
     return s.normalize("NFD").replace(/\p{M}/gu, "").toLowerCase();
@@ -212,6 +214,21 @@ const sortButtons = new Map<ColKey, HTMLButtonElement>();
 const filterInputs = new Map<ColKey, HTMLInputElement>();
 const datalists = new Map<ColKey, HTMLDataListElement>();
 
+/**
+ * The box with a ✕ after it that empties it (as typing would: an "input"
+ * event), shown while there's something to clear. Browsers' own search-box
+ * ✕ is hidden (library-edit.css): Firefox has none, and it's tiny.
+ */
+function clearable(input: HTMLInputElement, label: string): HTMLElement {
+    const x = el("button", { type: "button", className: "lt-x", title: label, ariaLabel: label }, "✕");
+    x.addEventListener("click", () => {
+        input.value = "";
+        input.dispatchEvent(new Event("input", { bubbles: true }));
+        input.focus();
+    });
+    return el("span", { className: "lt-clearable" }, input, x);
+}
+
 function buildHead(): void {
     const titles = el("div", { className: "lt-row lt-head-row", role: "row" }, el("span", { className: "lt-cell lt-check" }, allBox));
     const boxes = el("div", { className: "lt-row lt-filter-row", role: "row" }, el("span", { className: "lt-cell lt-check" }));
@@ -223,7 +240,21 @@ function buildHead(): void {
             refresh();
         });
         sortButtons.set(c.key, btn);
-        titles.append(el("span", { className: `lt-cell lt-col-${c.key}`, role: "columnheader" }, btn));
+        // Beside the label: only books with nothing (or the default) in this column.
+        const blank = el("input", {
+            type: "checkbox",
+            className: "lt-blank",
+            checked: blankOnly.has(c.key),
+            title: `Only books with no ${c.label.toLowerCase()}, or the default one (Unknown, und)`,
+            ariaLabel: `Only books with an empty or default ${c.label.toLowerCase()}`,
+        });
+        blank.addEventListener("change", () => {
+            if (blank.checked) blankOnly.add(c.key);
+            else blankOnly.delete(c.key);
+            refresh();
+        });
+        blankBoxes.set(c.key, blank);
+        titles.append(el("span", { className: `lt-cell lt-col-${c.key} lt-head-cell`, role: "columnheader" }, btn, blank));
 
         const input = el("input", {
             type: "search",
@@ -245,20 +276,7 @@ function buildHead(): void {
             scheduleRefresh();
         });
         filterInputs.set(c.key, input);
-        const blank = el("input", {
-            type: "checkbox",
-            className: "lt-blank",
-            checked: blankOnly.has(c.key),
-            title: `Only books with no ${c.label.toLowerCase()}, or the default one (Unknown, und)`,
-            ariaLabel: `Only books with an empty or default ${c.label.toLowerCase()}`,
-        });
-        blank.addEventListener("change", () => {
-            if (blank.checked) blankOnly.add(c.key);
-            else blankOnly.delete(c.key);
-            refresh();
-        });
-        blankBoxes.set(c.key, blank);
-        boxes.append(el("span", { className: `lt-cell lt-col-${c.key} lt-filter-cell` }, input, blank));
+        boxes.append(el("span", { className: `lt-cell lt-col-${c.key}` }, clearable(input, `Clear the ${c.label.toLowerCase()} filter`)));
     }
     titles.append(el("span", { className: "lt-cell lt-actions", role: "columnheader" }));
     boxes.append(el("span", { className: "lt-cell lt-actions" }));
@@ -425,6 +443,12 @@ function rowElement(r: Row, i: number): HTMLElement {
         if (c.items) {
             const values = c.items(b);
             const unlisted = c.key === "formats" && b.formats_from_folder;
+            if (c.edit) {
+                // The chips filter when clicked: this edits the cell (as a double-click does).
+                const pen = el("button", { type: "button", className: "lt-cell-edit", title: `Edit ${c.label.toLowerCase()}`, ariaLabel: `Edit the ${c.label.toLowerCase()} of “${b.title}”` });
+                pen.innerHTML = PENCIL;
+                cell.append(pen);
+            }
             for (const v of values) {
                 const ch = chip(c.key, v);
                 ch.dataset["value"] = v;
@@ -532,6 +556,12 @@ body.addEventListener("click", (e) => {
     if (!row || !uuid) return;
     if (target instanceof HTMLInputElement && target.type === "checkbox") {
         toggle(uuid, target.checked, e.shiftKey);
+        return;
+    }
+    const pen = target.closest<HTMLElement>(".lt-cell-edit");
+    if (pen) {
+        const cell = pen.closest<HTMLElement>(".lt-editable");
+        if (cell) startEdit(cell);
         return;
     }
     if (target.closest(".lt-notdup")) {
@@ -647,11 +677,15 @@ let editing: { cell: HTMLElement; input: HTMLInputElement } | null = null;
 
 body.addEventListener("dblclick", (e) => {
     const cell = (e.target as HTMLElement).closest<HTMLElement>(".lt-editable");
-    const uuid = cell?.closest<HTMLElement>(".lt-row")?.dataset["uuid"];
-    const col = COLUMNS.find((c) => c.key === cell?.dataset["col"]);
+    if (cell && startEdit(cell)) e.preventDefault();
+});
+
+/** Edit a cell in place; false if it can't be edited (now). */
+function startEdit(cell: HTMLElement): boolean {
+    const uuid = cell.closest<HTMLElement>(".lt-row")?.dataset["uuid"];
+    const col = COLUMNS.find((c) => c.key === cell.dataset["col"]);
     const r = rows.find((x) => x.b.uuid === uuid);
-    if (!cell || !uuid || !col?.edit || !r || editing) return;
-    e.preventDefault();
+    if (!uuid || !col?.edit || !r || editing) return false;
     const field = col.edit;
     const before = cellValue(r.b, field);
     const input = el("input", { type: field === "date" ? "date" : "text", className: "lt-cell-input", value: before, ariaLabel: col.label });
@@ -700,7 +734,8 @@ body.addEventListener("dblclick", (e) => {
             if (document.activeElement !== input) void finish(true);
         }, 150);
     });
-});
+    return true;
+}
 
 // The dialog.
 const dialog = byId("bulk-dialog", HTMLDialogElement);
@@ -837,6 +872,13 @@ form.addEventListener("submit", async (e) => {
 // Toolbar, the URL, keys
 // ---------------------------------------------------------------------------
 
+{
+    const spot = el("span");
+    searchInput.replaceWith(spot);
+    const wrap = clearable(searchInput, "Clear the search");
+    wrap.classList.add("lt-search-wrap");
+    spot.replaceWith(wrap);
+}
 searchInput.addEventListener("input", () => {
     search = searchInput.value;
     scheduleRefresh();
