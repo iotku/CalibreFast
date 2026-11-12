@@ -49,6 +49,26 @@
                 </div>
             </section>
 
+            {{/* Filled for the signed-in user from /api/me/home; for a signed-out
+                 visitor, Continue reading is what was read on this device. */}}
+            <section class="row" id="row-reading" aria-labelledby="row-reading-title" hidden>
+                <header class="row-head">
+                    <h2 id="row-reading-title">Continue reading<span class="row-sub" id="row-reading-device" hidden> on this device</span></h2>
+                    <a href="/me/reading" class="row-all" hidden>See all</a>
+                </header>
+                <p class="row-hint" hidden>Books you open in the reader, or mark as reading, appear here.</p>
+                <div class="row-books"></div>
+            </section>
+
+            <section class="row" id="row-wanted" aria-labelledby="row-wanted-title" hidden>
+                <header class="row-head">
+                    <h2 id="row-wanted-title">Want to read</h2>
+                    <a href="/me/wanted" class="row-all" hidden>See all</a>
+                </header>
+                <p class="row-hint" hidden>Hover over a cover and click the bookmark to add a book here.</p>
+                <div class="row-books"></div>
+            </section>
+
             <section class="row" id="row-shuffle" aria-labelledby="row-shuffle-title" hidden>
                 <header class="row-head">
                     <h2 id="row-shuffle-title">Shuffle</h2>

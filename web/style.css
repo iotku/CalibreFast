@@ -343,6 +343,18 @@ input[type="number"],
     color: var(--text-link);
     white-space: nowrap;
 }
+.row-sub {
+    font-weight: normal;
+    color: var(--text-muted);
+    font-size: var(--font-size-normal);
+}
+.row-hint {
+    margin: 0;
+    padding: var(--gap-large);
+    border: 1px dashed var(--border-light);
+    border-radius: var(--radius-large);
+    color: var(--text-muted);
+}
 .row-tools {
     display: flex;
     gap: var(--gap-medium);

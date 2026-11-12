@@ -1,6 +1,8 @@
 # Plan: Discover home page
 
-Status: proposal. Done so far: guest and per-user reading data kept apart (first half of phase 5, PR #98); phase 1, the catalog (#99); metadata.db read-only without `-allow-writes` (#100); phase 1b, the catalog snapshot (#101); phase 2, Shuffle (#102); phase 3, the Discover page with the introduction, Shuffle and Recently added, and `/latest`.
+Status: proposal. Done so far: guest and per-user reading data kept apart (first half of phase 5, PR #98); phase 1, the catalog (#99); metadata.db read-only without `-allow-writes` (#100); phase 1b, the catalog snapshot (#101); phase 2, Shuffle (#102); phase 3, the Discover page with the introduction, Shuffle and Recently added, and `/latest` (#104, #105); phase 4, Continue reading and Want to read.
+
+Phase 4 as built: `/api/me/home` also carries the marks, so the page makes one personal request (plus the top bar's `/api/me`). `/api/books` answers from the catalog only. For a guest, a book in Continue reading doesn't fold the introduction: its sign-in line is how that reading would follow them.
 
 Phase 3 as built: the Shuffle row's finished books come from the signed-in user's marks only; signed-out visitors' finished-on-this-device books are skipped once phase 4 indexes them (`cf-local-reading`). Only Latest was added to the top bar. Nothing links to `/shuffle` (decided after #104: a link to the whole order breaks the illusion); the row has **Shuffle** (next strip, in place) and **Previous** (back through the last 20 strips, kept across reloads) instead. The grid's cover pump wasn't moved into a shared module: Discover has a small one of its own for its ≤24-card rows, sharing only `maxCovers` (`web/cover-limits.ts`) and `setupCoverStates` (now in `web/utils.ts`).
 

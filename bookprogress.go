@@ -95,44 +95,56 @@ func latestProgress(userID int64, only string) map[string]bookProgress {
 	return out
 }
 
-// readingHandler: GET /api/me/reading — what the library grid marks on the
-// user's cards: the books being read and how far along each is (0..1, null
-// when no position is known), where to resume each, and the books that are
-// favorites, wanted ("want to read") or finished. The username says whose
-// answer a browser has cached.
-func readingHandler(w http.ResponseWriter, r *http.Request) {
-	u := currentUser(r)
-	reading := map[string]*float64{}
-	resume := map[string]string{}
-	wanted, finished, favorites := []string{}, []string{}, []string{}
+// readingMarks is what the library grid marks on the user's cards: the
+// books being read and how far along each is (0..1, null when no position
+// is known), where to resume each, and the books that are favorites, wanted
+// ("want to read") or finished. The username says whose answer a browser
+// has cached.
+type readingMarks struct {
+	User      string              `json:"user"`
+	Reading   map[string]*float64 `json:"reading"`
+	Resume    map[string]string   `json:"resume"`
+	Wanted    []string            `json:"wanted"`
+	Finished  []string            `json:"finished"`
+	Favorites []string            `json:"favorites"`
+}
 
-	rows, err := appDB.Query(`SELECT book_uuid, status FROM reading_status WHERE user_id = ?`, u.ID)
+// userReading reads a user's marks, and when each book's status last
+// changed or it was last read (ms): the newer of the two.
+func userReading(u *User) (readingMarks, map[string]int64, error) {
+	m := readingMarks{
+		User: u.Username, Reading: map[string]*float64{}, Resume: map[string]string{},
+		Wanted: []string{}, Finished: []string{}, Favorites: []string{},
+	}
+	active := map[string]int64{}
+	rows, err := appDB.Query(`SELECT book_uuid, status, updated_at FROM reading_status WHERE user_id = ?`, u.ID)
 	if err != nil {
-		http.Error(w, "query failed", http.StatusInternalServerError)
-		return
+		return m, nil, err
 	}
 	var readingUUIDs []string
 	for rows.Next() {
 		var uuid, status string
-		if rows.Scan(&uuid, &status) != nil {
+		var at int64
+		if rows.Scan(&uuid, &status, &at) != nil {
 			continue
 		}
+		active[uuid] = at * 1000 // seconds (nowUnix)
 		switch status {
 		case "reading":
 			readingUUIDs = append(readingUUIDs, uuid)
 		case "wanted":
-			wanted = append(wanted, uuid)
+			m.Wanted = append(m.Wanted, uuid)
 		case "finished":
-			finished = append(finished, uuid)
+			m.Finished = append(m.Finished, uuid)
 		}
 	}
 	rows.Close()
-	if favorites, err = scanStrings(appDB.Query(`SELECT book_uuid FROM favorites WHERE user_id = ?`, u.ID)); err != nil {
-		http.Error(w, "query failed", http.StatusInternalServerError)
-		return
+	favorites, err := scanStrings(appDB.Query(`SELECT book_uuid FROM favorites WHERE user_id = ?`, u.ID))
+	if err != nil {
+		return m, nil, err
 	}
-	if favorites == nil {
-		favorites = []string{}
+	if favorites != nil {
+		m.Favorites = favorites
 	}
 
 	progress := latestProgress(u.ID, "")
@@ -140,18 +152,26 @@ func readingHandler(w http.ResponseWriter, r *http.Request) {
 		p, ok := progress[uuid]
 		if ok {
 			pct := math.Round(p.Percent*1000) / 1000
-			reading[uuid] = &pct
+			m.Reading[uuid] = &pct
+			active[uuid] = max(active[uuid], p.UpdatedAt)
 		} else {
-			reading[uuid] = nil
+			m.Reading[uuid] = nil
 		}
 		if url := resumeURL(uuid, p.Format); url != "" {
-			resume[uuid] = url
+			m.Resume[uuid] = url
 		}
 	}
-	writeJSON(w, http.StatusOK, map[string]any{
-		"user": u.Username, "reading": reading, "resume": resume,
-		"wanted": wanted, "finished": finished, "favorites": favorites,
-	})
+	return m, active, nil
+}
+
+// readingHandler: GET /api/me/reading, the user's readingMarks.
+func readingHandler(w http.ResponseWriter, r *http.Request) {
+	m, _, err := userReading(currentUser(r))
+	if err != nil {
+		http.Error(w, "query failed", http.StatusInternalServerError)
+		return
+	}
+	writeJSON(w, http.StatusOK, m)
 }
 
 // resumeURL is the web reader for a book, in the format last read when there
