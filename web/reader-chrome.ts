@@ -10,6 +10,7 @@
  * toggleBars(), closePanels() and friends.
  */
 
+import { SYNC_PARAM } from "./guest-sync.js";
 import { byId, maybeId, modalOpen } from "./dom.js";
 import { bindSettingControls, getSettings, onSettingsChange } from "./reader-settings.js";
 
@@ -463,16 +464,16 @@ export function setupChrome(opts: ChromeOptions): Chrome {
 }
 
 /**
- * For a signed-out reader: the top bar's Sign in. It goes through signing in
- * (or creating an account) to /account/import for just this book, which adds
- * the place, bookmarks and highlights made here to the account (asking only
- * if the account's place differs), then back to this page.
+ * For a signed-out reader: the top bar's Sign in. After signing in (or
+ * creating an account) it comes straight back to this page, marked so the
+ * reader adds what was read here to the account (syncGuestBook,
+ * guest-sync.ts).
  */
-export function offerSignIn(uuid: string): void {
+export function offerSignIn(): void {
     const link = document.getElementById("reader-signin");
     if (!(link instanceof HTMLAnchorElement)) return;
-    const back = location.pathname + location.search;
-    const sync = `/account/import?book=${encodeURIComponent(uuid)}&next=${encodeURIComponent(back)}`;
-    link.href = `/login?next=${encodeURIComponent(sync)}`;
+    const back = new URL(location.href);
+    back.searchParams.set(SYNC_PARAM, "1");
+    link.href = `/login?next=${encodeURIComponent(back.pathname + back.search)}`;
     link.hidden = false;
 }
