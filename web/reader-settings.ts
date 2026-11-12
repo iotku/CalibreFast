@@ -38,6 +38,13 @@ export interface ReaderSettings {
      */
     pdfZoom: "page" | "width";
 
+    // ---- both, with a mouse ----
+    /**
+     * How long (ms) a bar the mouse brought all the way out stays after the
+     * pointer moves away. 0: until hidden by hand (its handle, Escape, a click
+     * on the page).
+     */
+    barLinger: number;
 }
 
 /** What each setting with a fixed set of choices may be (anything else stored is ignored). */
@@ -48,6 +55,7 @@ const CHOICES: Partial<Record<keyof ReaderSettings, readonly string[]>> = {
     align: ["publisher", "left", "justify"],
     flow: ["paginated", "scrolled"],
     pdfZoom: ["page", "width"],
+    barLinger: ["250", "500", "1000", "0"],
 };
 
 const KEY = "cf-reader-settings";
@@ -74,6 +82,7 @@ function defaults(): ReaderSettings {
         pdfRtl: false,
         pdfCover: true,
         pdfZoom: "page",
+        barLinger: 500,
     };
 }
 

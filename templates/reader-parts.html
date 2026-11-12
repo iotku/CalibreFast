@@ -159,6 +159,15 @@
     </div>
 {{ end }}
 {{ define "reader-settings-end" }}
+    <div class="r-group r-mouse-only">
+        <h3 id="set-linger">Bars after the mouse leaves</h3>
+        <div class="r-seg" role="group" aria-labelledby="set-linger">
+            <button type="button" data-setting="barLinger" data-value="250">¼ s</button>
+            <button type="button" data-setting="barLinger" data-value="500">½ s</button>
+            <button type="button" data-setting="barLinger" data-value="1000">1 s</button>
+            <button type="button" data-setting="barLinger" data-value="0" title="Hide a bar with its handle, Escape or a click on the page">Until hidden</button>
+        </div>
+    </div>
     <p class="r-sheet-foot"><span id="sync-status" role="status"></span></p>
 </section>
 {{ end }}
