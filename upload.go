@@ -442,6 +442,11 @@ func uploadHandler(w http.ResponseWriter, r *http.Request) {
 	for _, group := range groups {
 		results = append(results, processUploadGroup(group, override))
 	}
+	for _, res := range results {
+		if res.UUID != "" && res.Error == "" && res.Duplicate == nil {
+			catalogChanged(res.UUID)
+		}
+	}
 
 	generatePage1()
 	refreshAllCaches()

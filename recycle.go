@@ -275,6 +275,7 @@ func recycleBooks(uuids []string, by string) (*recycleBatch, error) {
 		forgetBook(b.UUID)
 		removed[i] = b.UUID
 	}
+	catalogRemoved(removed...)
 	logErr(removeFromPages(removed), "recycling bin: couldn't take the books out of the library pages")
 	refreshAllCaches()
 
@@ -311,6 +312,7 @@ func forgetBook(uuid string) {
 	uuidPathIndex.Delete(uuid)
 	formatCache.Delete(uuid)
 	modTimeCache.Delete(uuid)
+	noCover.Delete(uuid)
 }
 
 func dirSize(dir string) int64 {
@@ -891,6 +893,7 @@ func restoreRecycled(batchID string, uuids []string, by string) ([]restoreResult
 			b.RestoredAt = time.Now().UTC().Format(time.RFC3339)
 			b.RestoredBy = by
 			changed = true
+			catalogChanged(b.UUID)
 			logErr(restoreToPages(b.UUID), "recycling bin: couldn't put "+b.UUID+" back in the library pages")
 			log.Printf("recycling bin: %s restored %q (%s) from batch %s", by, b.Title, b.UUID, batch.ID)
 		}

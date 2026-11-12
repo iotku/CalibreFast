@@ -94,6 +94,7 @@ func registerCalibreDriver() {
 		sql.Register("sqlite3_calibre",
 			&sqlite3.SQLiteDriver{
 				ConnectHook: func(conn *sqlite3.SQLiteConn) error {
+					conn.RegisterAuthorizer(countLibraryStatements)
 					if err := conn.RegisterFunc("title_sort", titleSort, true); err != nil {
 						return err
 					}
@@ -926,6 +927,7 @@ func applyMetadataHandler(w http.ResponseWriter, r *http.Request) {
 	}
 
 	// Refresh page1.json cache
+	catalogChanged(uuid)
 	generatePage1()
 	refreshAllCaches()
 
@@ -1001,46 +1003,21 @@ func writeLibraryPages() error {
 	}
 	defer db.Close()
 
-	// create paginated entries as json for each book in metadata.db (booksPerPage per page)
-	rows, err := db.Query("SELECT b.title, " + bookAuthorsSQL + ", b.series_index, b.pubdate, b.path, b.uuid, b.last_modified FROM books b ORDER BY b.timestamp DESC")
+	// The catalog first (a few sequential reads of metadata.db), then the
+	// pages from it: Latest order, booksPerPage per page.
+	cat, err := buildCatalog(db)
 	if err != nil {
 		return err
 	}
-	defer rows.Close()
 	page := 1
 	books := make([]Book, 0, booksPerPage)
-
-	for rows.Next() {
-		var book Book
-
-		err = rows.Scan(
-			&book.Title,
-			&book.Authors,
-			&book.SeriesIndex,
-			&book.PubDate,
-			&book.Path,
-			&book.UUID,
-			&book.LastModified,
-		)
-		if err != nil {
-			return err
-		}
-
-		timeStr := coverStamp(book.LastModified)
-		book.LastModified = timeStr
-
-		// cache last Modified time for book from database
-		modTimeCache.Store(book.UUID, timeStr)
-
-		// cache cover path
+	for i := range cat.books {
+		book := cat.books[i].Book
+		modTimeCache.Store(book.UUID, book.LastModified)
 		uuidPathIndex.Store(book.UUID, book.Path)
 		notePage(book.UUID, page)
-
-		// add book to the arrays
 		books = append(books, book)
-
 		if len(books) >= booksPerPage {
-			// save to file
 			if err := writePage(page, books); err != nil {
 				return err
 			}
@@ -1048,18 +1025,12 @@ func writeLibraryPages() error {
 			books = make([]Book, 0, booksPerPage)
 		}
 	}
-
-	// write final partial page
 	if len(books) > 0 {
-		err = writePage(page, books)
-		if err != nil {
+		if err := writePage(page, books); err != nil {
 			return err
 		}
 	}
-
-	if err := rows.Err(); err != nil {
-		return err
-	}
+	libraryCatalog.Store(cat)
 	totalBooks = (page-1)*booksPerPage + len(books)
 	pagesVersion.Store(time.Now().UnixNano())
 	return nil
@@ -1075,7 +1046,7 @@ func resolveFormats(uuid, baseDir, path string) []string {
 	// check baseDir in filesystem for e-book matching formats
 	full := filepath.Join(baseDir, path)
 
-	entries, err := os.ReadDir(full)
+	entries, err := libraryReadDir(full)
 	if err != nil {
 		return []string{}
 	}

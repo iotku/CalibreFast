@@ -13,6 +13,7 @@ import (
 	"net/url"
 	"os"
 	"path/filepath"
+	"slices"
 	"strconv"
 	"strings"
 	"sync"
@@ -161,6 +162,16 @@ func resumeURL(uuid, format string) string {
 	q := url.QueryEscape(uuid)
 	if r, ok := readers[strings.ToLower(format)]; ok {
 		return r + q
+	}
+	// The catalog knows the formats from metadata.db; the book's folder (on
+	// the library's storage) is only listed for books with no data rows.
+	if b, ok := currentCatalog().lookup(uuid); ok && len(b.Formats) > 0 {
+		for _, ext := range []string{"epub", "pdf"} {
+			if slices.Contains(b.Formats, ext) {
+				return readers[ext] + q
+			}
+		}
+		return ""
 	}
 	path, ok := uuidPathIndex.Load(uuid)
 	if !ok {

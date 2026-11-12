@@ -72,6 +72,7 @@ func repairFormatsHandler(w http.ResponseWriter, r *http.Request) {
 	}
 	if res.Formats > 0 {
 		log.Printf("repair formats: %s added %d format row(s) to %d book(s)", currentUser(r).Username, res.Formats, res.Books)
+		catalogChanged(res.UUIDs...)
 		refreshAllCaches()
 	}
 	w.Header().Set("Content-Type", "application/json")
@@ -363,6 +364,7 @@ func bulkEditBooks(uuids []string, edit *bulkEdit) bulkResult {
 	}
 	res.Changed = len(changed)
 	if len(changed) > 0 {
+		catalogChanged(changed...)
 		logErr(refreshInPages(changed), "bulk edit: couldn't update the library pages")
 		generatePage1()
 		refreshAllCaches()

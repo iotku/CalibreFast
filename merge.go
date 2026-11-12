@@ -585,6 +585,7 @@ func mergeBooks(req *mergeRequest, by string) (*mergeResult, error) {
 
 	formatCache.Delete(keep.UUID)
 	bookMetadataCache.Delete(keep.UUID)
+	catalogChanged(keep.UUID)
 	logErr(refreshInPages([]string{keep.UUID}), "merge: couldn't update the library pages")
 	generatePage1()
 	refreshAllCaches()
