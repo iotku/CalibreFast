@@ -360,8 +360,13 @@ func main() {
 	if _, err := os.Stat(dbPath); err != nil {
 		log.Fatal("metadata.db not found at: ", dbPath)
 	}
-	generatePages()
 	initCalibreDB()
+	// Before the catalog is read: what it's read from is the state that
+	// counts as unchanged (catalog_snapshot.go).
+	if err := trackLibraryChanges(); err != nil {
+		log.Println("catalog snapshot: can't follow changes to metadata.db, so none will be saved:", err)
+	}
+	generatePages()
 	if allowWrites {
 		if err := checkVirtualTables(context.Background(), calibreDB, "main"); err != nil {
 			log.Println("WARNING: removing and restoring books won't work:", err)
@@ -1022,23 +1027,17 @@ func generatePages() {
 	}
 }
 
-// writeLibraryPages writes pages/*.json from metadata.db, at startup.
+// writeLibraryPages writes pages/*.json from the catalog, at startup: the
+// snapshot when the library hasn't changed since it was saved, else read
+// from metadata.db. The page files are on local storage; only those whose
+// contents differ are written.
 // Removing and restoring books only edit the pages concerned (library_pages.go).
 func writeLibraryPages() error {
 	pagesMu.Lock()
 	defer pagesMu.Unlock()
 	bookPages.Clear()
 	pageSlots.Clear()
-	// Only reads: read-only even with -allow-writes.
-	db, err := sql.Open("sqlite3", calibreDSN(filepath.Join(baseDir, "metadata.db"), true))
-	if err != nil {
-		return err
-	}
-	defer db.Close()
-
-	// The catalog first (a few sequential reads of metadata.db), then the
-	// pages from it.
-	cat, err := buildCatalog(db)
+	cat, err := loadOrBuildCatalog()
 	if err != nil {
 		return err
 	}
