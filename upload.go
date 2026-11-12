@@ -721,6 +721,7 @@ func generatePage1() {
 		if err := rows.Scan(&b.Title, &b.Authors, &b.SeriesIndex, &b.PubDate, &b.Path, &b.UUID, &b.LastModified); err != nil {
 			continue
 		}
+		b.LastModified = coverStamp(b.LastModified)
 		uuidPathIndex.Store(b.UUID, b.Path)
 		notePage(b.UUID, 1)
 		books = append(books, b)
