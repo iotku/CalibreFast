@@ -9,6 +9,7 @@ package main
 //go:generate go -C tools run ./jsbuild
 
 import (
+	"context"
 	"database/sql"
 	"encoding/json"
 	"errors"
@@ -327,6 +328,11 @@ func main() {
 	}
 	generatePages()
 	initCalibreDB()
+	if allowWrites {
+		if err := checkVirtualTables(context.Background(), calibreDB, "main"); err != nil {
+			log.Println("WARNING: removing and restoring books won't work:", err)
+		}
+	}
 	groups = loadGroups(filepath.Join(baseDir, groupsFileName))
 	preloadCaches()
 	startImports()
