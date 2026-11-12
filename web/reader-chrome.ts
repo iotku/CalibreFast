@@ -1,7 +1,8 @@
 /**
  * What both readers share around the page (templates/reader-parts.html):
  *   - a top bar (back, title, tools) and a bottom bar (previous/next, a
- *     scrubber, the position), which hide together while reading;
+ *     scrubber, the position), which hide together while reading and, with a
+ *     mouse, each slide out as it nears their edge;
  *   - panels: the Contents/Bookmarks/Search sidebar and the settings sheet;
  *   - the theme (light, sepia, dark, black, or the system's).
  *
@@ -31,10 +32,11 @@ export interface Chrome {
     hideBars(): void;
     toggleBars(): void;
     /**
-     * The mouse is at viewport height y (for pointers that don't come to the
-     * document itself, as in the EPUB reader's chapter iframes).
+     * The mouse is at viewport height y, or null when it has left the window
+     * (for pointers that don't come to the document itself, as in the EPUB
+     * reader's chapter iframes).
      */
-    pointerAt(y: number): void;
+    pointerAt(y: number | null): void;
     /** Closes any open panel. True if one was open (the press that did it shouldn't also turn the page). */
     closePanels(): boolean;
     /** The line under the book's title. */
@@ -98,51 +100,96 @@ export function setupChrome(opts: ChromeOptions): Chrome {
     const barsHidden = (): boolean => body.classList.contains("bars-hidden");
     const setBars = (hidden: boolean): void => {
         body.classList.toggle("bars-hidden", hidden);
-        for (const b of bars) b.inert = hidden;
+        if (!hidden) revealed = false;
+        render();
     };
     const showBars = (): void => setBars(false);
     const hideBars = (): void => {
         if (anyOpen()) return; // a panel hangs off the bars
         // Don't pull the bar from under a keyboard user.
         if (bars.some((b) => b.matches(":focus-within") && b.querySelector(":focus-visible"))) return;
-        revealed = false;
         setBars(true);
     };
 
-    // With a mouse, the bars come out when it nears the top or bottom edge
-    // and go again a moment after it leaves (unless something there is in
-    // use). Bars shown any other way stay until hidden as usual.
+    // With a mouse, a hidden bar slides and fades in as the pointer nears its
+    // edge of the window, in step with how near it is, and out again as the
+    // pointer moves away. Each bar goes by its own edge. A bar holds while it
+    // is in use (a typed-in field, the scrubber being dragged), and a panel
+    // opened from a peeking bar keeps both out until it closes. The handle on a
+    // bar's inner edge puts it away until the pointer has left that edge, for
+    // getting at what's underneath. Bars shown any other way (a tap, a key)
+    // stay until hidden as usual.
     const finePointer = matchMedia("(hover: hover) and (pointer: fine)");
-    const EDGE = 24; // px beyond a bar's own height
-    let revealed = false;
-    let leaveTimer: ReturnType<typeof setTimeout> | undefined;
-    const nearEdge = (y: number): boolean => {
-        const top = bars.find((b) => b.classList.contains("r-top"))?.offsetHeight ?? 0;
-        const bottom = bars.find((b) => b.classList.contains("r-bottom"))?.offsetHeight ?? 0;
-        return y <= top + EDGE || y >= window.innerHeight - bottom - EDGE;
+    const FULL = 24; // px beyond a bar's own height where it's all the way out
+    const RAMP = 72; // px over which it comes out, beyond that
+    const peek = new Map<HTMLElement, number>(bars.map((b) => [b, 0]));
+    const stowed = new Set<HTMLElement>(); // put away by the handle
+    let held: HTMLElement | null = null; // a press began on this bar
+    let revealed = false; // shown by a panel opened while peeking
+    let lastY: number | null = null;
+    const inUse = (b: HTMLElement): boolean =>
+        b === held || !!b.querySelector("input:focus:not([type=range]), select:focus");
+    // 0..1: how far out the bar is for a pointer at y (null: not over the window).
+    const nearness = (b: HTMLElement, y: number | null): number => {
+        if (y === null) return 0;
+        const d = b.classList.contains("r-top") ? y - b.offsetHeight : window.innerHeight - b.offsetHeight - y;
+        return Math.min(1, Math.max(0, 1 - (d - FULL) / RAMP));
     };
-    const left = (): void => {
-        if (!revealed || leaveTimer !== undefined) return;
-        leaveTimer = setTimeout(() => {
-            leaveTimer = undefined;
-            // In use: a typed-in field. (Panels are checked by hideBars.)
-            if (revealed && !bars.some((b) => b.querySelector("input:focus:not([type=range]), select:focus"))) hideBars();
-        }, 600);
-    };
-    const pointerAt = (y: number): void => {
-        if (!finePointer.matches) return;
-        if (!nearEdge(y)) return left();
-        clearTimeout(leaveTimer);
-        leaveTimer = undefined;
-        if (barsHidden()) {
-            showBars();
-            revealed = true;
+    function render(): void {
+        const hidden = barsHidden();
+        for (const b of bars) {
+            const show = !hidden ? 1 : (peek.get(b) ?? 0);
+            b.classList.toggle("r-peek", hidden && show > 0);
+            if (hidden && show > 0) b.style.setProperty("--show", show.toFixed(3));
+            else b.style.removeProperty("--show");
+            b.inert = show === 0;
         }
+    }
+    const pointerAt = (y: number | null): void => {
+        if (!finePointer.matches) return;
+        lastY = y;
+        // Back to following the pointer once the panel that held the bars is closed.
+        if (revealed && !anyOpen()) {
+            revealed = false;
+            hideBars();
+        }
+        for (const b of bars) {
+            let n = nearness(b, y);
+            if (n === 0) stowed.delete(b);
+            if (stowed.has(b)) n = 0;
+            else if (inUse(b) && (peek.get(b) ?? 0) > 0) n = 1;
+            peek.set(b, n);
+        }
+        render();
     };
     document.addEventListener("mousemove", (e) => pointerAt(e.clientY));
     // Out of the window altogether.
     document.addEventListener("mouseout", (e) => {
-        if (!e.relatedTarget) left();
+        if (!e.relatedTarget) pointerAt(null);
+    });
+    for (const b of bars) {
+        b.addEventListener("pointerdown", () => (held = b));
+        const handle = document.createElement("button");
+        handle.type = "button";
+        handle.className = "r-handle";
+        handle.title = "Hide the bar";
+        handle.setAttribute("aria-label", "Hide the bar");
+        handle.addEventListener("click", (e) => {
+            e.stopPropagation();
+            if (!barsHidden()) {
+                if (anyOpen()) closePanels();
+                hideBars();
+                if (!barsHidden()) return; // a keyboard user is in the bar
+            }
+            stowed.add(b);
+            pointerAt(lastY);
+        });
+        b.append(handle);
+    }
+    document.addEventListener("pointerup", () => {
+        if (!held) return;
+        held = null;
+        pointerAt(lastY);
     });
 
     // The sidebar starts below the top bar and the sheet above the bottom one.
@@ -163,7 +210,10 @@ export function setupChrome(opts: ChromeOptions): Chrome {
             isOpen: () => el.classList.contains("open"),
             open() {
                 for (const p of panels) if (p.panel !== panel) p.panel.close();
+                // Opened from a bar the mouse brought out: back to following the mouse once it's closed.
+                const peeking = barsHidden() && finePointer.matches;
                 showBars();
+                revealed = peeking;
                 el.classList.add("open");
                 el.inert = false;
                 btn?.setAttribute("aria-expanded", "true");
