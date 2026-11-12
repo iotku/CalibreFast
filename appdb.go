@@ -181,6 +181,21 @@ var migrations = []string{
 	DROP TABLE reading_status;
 	ALTER TABLE reading_status_new RENAME TO reading_status;
 	`,
+	// 8: books an admin marked as not duplicates of each other, so the bulk
+	// editor's duplicates view leaves them out (not_duplicates.go)
+	`
+	CREATE TABLE not_duplicate_sets (
+		id         INTEGER PRIMARY KEY,
+		created_by TEXT    NOT NULL DEFAULT '',
+		created_at INTEGER NOT NULL
+	);
+	CREATE TABLE not_duplicate_books (
+		set_id    INTEGER NOT NULL REFERENCES not_duplicate_sets(id) ON DELETE CASCADE,
+		book_uuid TEXT    NOT NULL,
+		PRIMARY KEY (set_id, book_uuid)
+	);
+	CREATE INDEX not_duplicate_books_book ON not_duplicate_books(book_uuid);
+	`,
 }
 
 // openAppDB opens (creating if needed) and migrates the app database.

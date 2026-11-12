@@ -89,6 +89,8 @@ type recycleBatch struct {
 	DeletedAt string         `json:"deleted_at"` // RFC 3339
 	DeletedBy string         `json:"deleted_by"`
 	Books     []recycledBook `json:"books"`
+	// MergedInto: the batch is the books a merge took into another (merge.go).
+	MergedInto *mergeNote `json:"merged_into,omitempty"`
 }
 
 func (b *recycleBatch) dir() string { return filepath.Join(recycleBinDir(), b.ID) }
@@ -1061,10 +1063,11 @@ type recycleBookView struct {
 }
 
 type recycleBatchView struct {
-	ID        string            `json:"id"`
-	DeletedAt string            `json:"deleted_at"`
-	DeletedBy string            `json:"deleted_by"`
-	Books     []recycleBookView `json:"books"`
+	ID         string            `json:"id"`
+	DeletedAt  string            `json:"deleted_at"`
+	DeletedBy  string            `json:"deleted_by"`
+	Books      []recycleBookView `json:"books"`
+	MergedInto *mergeNote        `json:"merged_into,omitempty"`
 }
 
 func recycleBinHandler(w http.ResponseWriter, r *http.Request) {
@@ -1075,7 +1078,7 @@ func recycleBinHandler(w http.ResponseWriter, r *http.Request) {
 	}
 	views := []recycleBatchView{}
 	for _, b := range batches {
-		v := recycleBatchView{ID: b.ID, DeletedAt: b.DeletedAt, DeletedBy: b.DeletedBy, Books: []recycleBookView{}}
+		v := recycleBatchView{ID: b.ID, DeletedAt: b.DeletedAt, DeletedBy: b.DeletedBy, Books: []recycleBookView{}, MergedInto: b.MergedInto}
 		for i := range b.Books {
 			bk := &b.Books[i]
 			v.Books = append(v.Books, recycleBookView{*bk, bk.RestoredAt == "" && b.inBin(bk)})

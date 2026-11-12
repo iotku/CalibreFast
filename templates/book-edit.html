@@ -3,7 +3,7 @@
     <head>
         <meta charset="UTF-8" />
         <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-        <title>{{ if .Import }}Review import{{ else }}Edit Metadata{{ end }} — CalibreFast</title>
+        <title>{{ if .Merge }}Merge books{{ else if .Import }}Review import{{ else }}Edit Metadata{{ end }} — CalibreFast</title>
         <link rel="stylesheet" href="{{ asset "style.css" }}" />
         <link rel="preconnect" href="https://fonts.googleapis.com" />
         <link
@@ -13,13 +13,15 @@
         <link rel="stylesheet" href="{{ asset "book-edit.css" }}" />
     </head>
     <body>
-{{ $tb := topbar "Title" (or (and .Import "Review import") "Edit metadata") "NoSearch" true }}
+{{ $tb := topbar "Title" (or (and .Merge "Merge books") (and .Import "Review import") "Edit metadata") "NoSearch" true }}
 {{ template "topbar-start" $tb }}
         {{ if .ReadLink }}
         <!-- Preview mode: nothing about reading it is saved (web/reader-preview.ts) -->
         <a href="{{ .ReadLink }}" target="_blank" id="read-preview" class="tb-btn tb-view-book" title="Open the book in the reader to look things up, in a new tab. Your place and reading status aren't changed.">Preview Book</a>
         {{ end }}
-        {{ if .Import }}
+        {{ if .Merge }}
+        <a href="/library/edit" class="tb-btn tb-view-book">Bulk edit</a>
+        {{ else if .Import }}
         <a href="/import" class="tb-btn tb-view-book">Queue{{ if gt .Import.Waiting 1 }} ({{ .Import.Waiting }}){{ end }}</a>
         {{ else }}
         <a href="/book/get/{{.UUID}}" class="tb-btn tb-view-book">View book</a>
@@ -29,6 +31,10 @@
         <main class="edit-container">
             <!-- Book Preview Banner -->
             <div class="book-banner">
+                {{ if .Merge }}
+                <!-- The cover the merged book will have: chosen below -->
+                <img src="/cover-thumb/{{.UUID}}{{ if .CoverModTime }}?t={{ .CoverModTime }}{{ end }}" alt="Cover" class="book-banner-cover" id="edit-cover-img" />
+                {{ else }}
                 <!-- Opens the cover dialog: the cover is usually right. -->
                 <button type="button" id="edit-cover-btn" class="book-banner-cover-btn" title="Change the cover" aria-haspopup="dialog">
                     <img
@@ -39,9 +45,18 @@
                     />
                     <span class="book-banner-cover-hint">Change</span>
                 </button>
+                {{ end }}
                 <div class="book-banner-info">
                     <h1 class="book-banner-title" id="edit-header-title">Loading book…</h1>
-                    {{ if .Import }}
+                    {{ if .Merge }}
+                    <div class="book-banner-meta">
+                        <span>Merging {{ len .Merge.Books }} books into one. The kept record:</span>
+                        <span class="uuid-badge">{{.UUID}}</span>
+                    </div>
+                    <p class="banner-hint">
+                        Choose each field's value from the pills: <strong>current</strong> is the kept book's metadata, <strong>B</strong>, <strong>C</strong>… the other books', and <strong>A epub</strong>, <strong>B pdf</strong>… what each book's files say. Then pick the cover and the files below, and <strong>Merge</strong>.
+                    </p>
+                    {{ else if .Import }}
                     <div class="book-banner-meta import-files">
                         <span>Not in the library yet{{ if .Import.From }} · from {{ .Import.From }}{{ end }}:</span>
                         {{ range .Import.Files }}<span class="uuid-badge">{{ .Name }}</span>{{ end }}
@@ -55,9 +70,11 @@
                         <span class="uuid-badge">{{.UUID}}</span>
                     </div>
                     {{ end }}
+                    {{ if not .Merge }}
                     <p class="banner-hint">
                         Tip: Click the pills under each field (e.g. <strong>current</strong>, <strong>epub</strong>, <strong>pdf</strong>, or <strong>Open Library</strong> after a lookup) to use that source's value; green means it matches. Click the cover to change it. After you change a field, its <strong>edited</strong> pill restores your changes and shows what changed vs <strong>current</strong>. <strong>Compare changes</strong> at the bottom lists every changed field.
                     </p>
+                    {{ end }}
                 </div>
             </div>
 
@@ -81,6 +98,56 @@
                 </ul>
             </section>
             {{ end }}{{ end }}
+
+            {{ with .Merge }}
+            <!-- The books being merged: which record, cover and files to keep (merge.go) -->
+            <section id="merge-panel" class="merge-panel" aria-label="Books being merged" data-ids="{{ .IDs }}" data-keep="{{ .Keep }}">
+                <ul class="merge-books">
+                    {{ range .Books }}
+                    <li class="merge-book{{ if eq .UUID $.Merge.Keep }} kept{{ end }}">
+                        <span class="merge-letter" aria-label="Book {{ .Letter }}">{{ .Letter }}</span>
+                        <label class="merge-cover-pick" title="{{ if .HasCover }}Use this book's cover{{ else }}This book has no cover{{ end }}">
+                            <input type="radio" name="merge-cover" value="{{ .UUID }}"{{ if and .HasCover (eq .UUID $.Merge.Keep) }} checked{{ end }}{{ if not .HasCover }} disabled{{ end }} />
+                            {{ if .HasCover }}<img src="/cover-thumb/{{ .UUID }}?t={{ .CoverModTime }}" alt="Cover of {{ .Title }}" loading="lazy" />{{ else }}<span class="merge-nocover">No cover</span>{{ end }}
+                        </label>
+                        <div class="merge-book-info">
+                            <a href="/book/get/{{ .UUID }}" target="_blank" class="merge-book-title">{{ .Title }}</a>
+                            <span class="merge-book-authors">{{ .Authors }}</span>
+                            <span class="merge-book-formats">{{ range .FormatList }}<span class="uuid-badge">{{ . }}</span>{{ else }}<span class="auth-muted">no files</span>{{ end }}</span>
+                            <label class="merge-keep" title="This book's link, readers' places, notes and shelves stay; the others' are copied to it">
+                                <input type="radio" name="merge-keep" value="{{ .UUID }}"{{ if eq .UUID $.Merge.Keep }} checked{{ end }} />
+                                {{ if eq .UUID $.Merge.Keep }}Kept record{{ else }}Keep this record instead{{ end }}
+                            </label>
+                        </div>
+                    </li>
+                    {{ end }}
+                </ul>
+                {{ if .Formats }}
+                <div class="merge-formats">
+                    <h2 class="merge-heading">Files to keep</h2>
+                    <ul>
+                        {{ range .Formats }}
+                        <li class="merge-format">
+                            <span class="merge-format-name">{{ .Ext }}</span>
+                            {{ $ext := .Ext }}{{ $different := .Different }}
+                            {{ range .Choices }}
+                            <span class="merge-format-choice">
+                                <label><input type="radio" name="format-{{ $ext }}" data-format="{{ $ext }}" value="{{ .UUID }}"{{ if .Chosen }} checked{{ end }} /> {{ .Letter }}{{ if .Size }} <span class="auth-muted">({{ .Size }})</span>{{ end }}</label>
+                                {{ if $different }}{{ if .SameAs }}<span class="merge-same" title="Byte for byte the same file as {{ .SameAs }}'s">= {{ .SameAs }}</span>{{ else }}<a class="merge-download" href="/download/{{ .UUID }}/{{ $ext }}" download title="Download {{ .Letter }}'s {{ $ext }} to compare">Download</a>{{ end }}{{ end }}
+                            </span>
+                            {{ end }}
+                            {{ if .Identical }}<span class="merge-same" title="SHA-256 of every file is the same">identical files</span>{{ else if .Different }}<span class="merge-differ">files differ</span>{{ end }}
+                        </li>
+                        {{ end }}
+                    </ul>
+                </div>
+                {{ end }}
+                <p class="banner-hint">
+                    The other books go to the <a href="/recycle-bin" target="_blank">Recycling Bin</a>, whole, so each can be restored as it was. A file of the kept book's that another replaces is kept in the bin too.
+                    Readers' favorites, places, bookmarks, highlights and shelves are copied to the kept book.
+                </p>
+            </section>
+            {{ end }}
 
             {{ if .Lookups }}
             <!-- Online lookup (web/isbn-tools.ts): Open Library by ISBN, or by title
@@ -116,7 +183,7 @@
             <div id="edit-status" class="edit-status"></div>
 
             <!-- Metadata Edit Form -->
-            <form id="metadata-form" data-uuid="{{.UUID}}"{{ if .Import }} data-import="{{ .Import.ID }}"{{ end }}>
+            <form id="metadata-form" data-uuid="{{.UUID}}"{{ if .Import }} data-import="{{ .Import.ID }}"{{ end }}{{ if .Merge }} data-merge="{{ .Merge.IDs }}"{{ end }}>
                 <div class="form-grid">
                     <!-- Title, swap button, Author(s): one grid cell so the spacing
                          around the swap button can be set exactly. -->
@@ -237,7 +304,7 @@
 
                 <div class="edit-actions">
                     <div class="action-buttons">
-                        <button type="submit" id="btn-save" class="btn-primary">{{ if .Import }}Add to library{{ else }}Apply Changes{{ end }}</button>
+                        <button type="submit" id="btn-save" class="btn-primary">{{ if .Merge }}Merge {{ len .Merge.Books }} books{{ else if .Import }}Add to library{{ else }}Apply Changes{{ end }}</button>
                         <button type="button" id="btn-compare" class="btn-secondary">
                             Compare changes
                         </button>
@@ -262,9 +329,9 @@
                 </header>
                 <div id="compare-body"></div>
                 <footer id="compare-leave-actions" class="compare-footer" hidden>
-                    <span>{{ if .Import }}Add the book with these changes before leaving?{{ else }}Apply these changes before leaving?{{ end }}</span>
+                    <span>{{ if .Merge }}Merge the books before leaving?{{ else if .Import }}Add the book with these changes before leaving?{{ else }}Apply these changes before leaving?{{ end }}</span>
                     <form method="dialog"><button class="btn-secondary">Keep editing</button></form>
-                    <button type="button" id="compare-apply" class="btn-primary">{{ if .Import }}Add to library{{ else }}Apply changes{{ end }}</button>
+                    <button type="button" id="compare-apply" class="btn-primary">{{ if .Merge }}Merge{{ else if .Import }}Add to library{{ else }}Apply changes{{ end }}</button>
                 </footer>
             </dialog>
 
@@ -278,7 +345,7 @@
                 <footer class="compare-footer">
                     <span>The cover isn't changed.</span>
                     <button type="button" id="lookup-keep" class="btn-secondary" title="Tick it: its values become pills under each field">Pick fields in the form</button>
-                    <button type="button" id="lookup-accept" class="btn-primary">{{ if .Import }}Accept all{{ else }}Accept all and apply{{ end }}</button>
+                    <button type="button" id="lookup-accept" class="btn-primary">{{ if or .Import .Merge }}Accept all{{ else }}Accept all and apply{{ end }}</button>
                 </footer>
             </dialog>
 
@@ -314,11 +381,46 @@
         <script type="module">
 import { mountMetadataEditor } from {{ asset "metadata.js" }};
             import { mountCoverDialog } from {{ asset "cover-dialog.js" }};
-            import { libraryBook, pendingImport } from {{ asset "book-target.js" }};
+            import { libraryBook, mergeBooks, pendingImport } from {{ asset "book-target.js" }};
 
             const form = document.getElementById("metadata-form");
-            // A book in the library, or one waiting in the import queue.
-            const book = form.dataset.import ? pendingImport(form.dataset.import) : libraryBook(form.dataset.uuid);
+            const mergePanel = document.getElementById("merge-panel");
+            // A book in the library, one waiting in the import queue, or
+            // books being merged into one.
+            const book = form.dataset.import
+                ? pendingImport(form.dataset.import)
+                : form.dataset.merge
+                  ? mergeBooks(form.dataset.uuid, form.dataset.merge.split(","), () => ({
+                        keep: form.dataset.uuid,
+                        uuids: form.dataset.merge.split(","),
+                        cover: mergePanel.querySelector('[name="merge-cover"]:checked')?.value ?? "",
+                        formats: Object.fromEntries(
+                            [...mergePanel.querySelectorAll("input[data-format]:checked")].map((r) => [r.dataset.format, r.value]),
+                        ),
+                    }))
+                  : libraryBook(form.dataset.uuid);
+            if (mergePanel) {
+                // No cover of the kept book's: the first book's that has one.
+                if (!mergePanel.querySelector('[name="merge-cover"]:checked')) {
+                    const first = mergePanel.querySelector('[name="merge-cover"]:not(:disabled)');
+                    if (first) first.checked = true;
+                }
+                const showCover = () => {
+                    const img = mergePanel.querySelector('[name="merge-cover"]:checked + img');
+                    const banner = document.getElementById("edit-cover-img");
+                    if (img) banner.src = img.src;
+                    else banner.removeAttribute("src");
+                };
+                showCover();
+                mergePanel.addEventListener("change", (e) => {
+                    if (e.target.name === "merge-cover") showCover();
+                    // Another record to keep: the page again, with its metadata as current.
+                    if (e.target.name === "merge-keep") {
+                        const q = new URLSearchParams({ ids: mergePanel.dataset.ids, keep: e.target.value });
+                        location.assign(`/book/merge?${q}`);
+                    }
+                });
+            }
             mountMetadataEditor(book, form).catch((err) => {
                 console.error("Error mounting metadata editor:", err);
             });

@@ -391,11 +391,11 @@ func updateBookInCalibreDB(db *sql.DB, baseDir string, bookUUID string, meta *OP
 		if err != nil {
 			return "", fmt.Errorf("upsert publisher %q: %w", pubTrimmed, err)
 		}
-		if _, err = tx.Exec(`INSERT OR IGNORE INTO books_publishers_link (book, publisher) VALUES (?, ?)`, bookID, newPubID); err != nil {
-			return "", fmt.Errorf("link publisher: %w", err)
-		}
 	}
 
+	// The old link goes before the new one is made: Calibre's
+	// books_publishers_link is UNIQUE(book), so while it's there the new
+	// link would be ignored, and the book left with no publisher.
 	for _, oldID := range oldPubIDs {
 		if oldID != newPubID {
 			if _, dErr := tx.Exec(`DELETE FROM books_publishers_link WHERE book = ? AND publisher = ?`, bookID, oldID); dErr != nil {
@@ -407,6 +407,11 @@ func updateBookInCalibreDB(db *sql.DB, baseDir string, bookUUID string, meta *OP
 					return "", fmt.Errorf("clean up orphan publisher %d: %w", oldID, delErr)
 				}
 			}
+		}
+	}
+	if newPubID != 0 {
+		if _, err = tx.Exec(`INSERT OR IGNORE INTO books_publishers_link (book, publisher) VALUES (?, ?)`, bookID, newPubID); err != nil {
+			return "", fmt.Errorf("link publisher: %w", err)
 		}
 	}
 

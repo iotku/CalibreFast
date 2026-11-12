@@ -181,6 +181,15 @@ export interface RecycleBatch {
     deleted_at: string;
     deleted_by: string;
     books: RecycledBook[];
+    /** The books a merge took into another (Go: mergeNote in merge.go). */
+    merged_into?: MergeNote;
+}
+
+/** Go: mergeNote. replaced: the kept book's files the merge replaced, in the batch's replaced/ folder. */
+export interface MergeNote {
+    uuid: string;
+    title: string;
+    replaced?: string[];
 }
 
 /** GET /api/recycle-bin (Go: recycleBinHandler). */
@@ -192,4 +201,61 @@ export interface RecycleBin {
 /** POST /api/recycle-bin/{batch}/restore (Go: restoreResult). */
 export interface RestoreResponse {
     results: { uuid: string; title: string; error?: string }[];
+}
+
+/** A row of the bulk editor, GET /api/library/table (Go: tableBook in bulk_edit.go). */
+export interface TableBook {
+    id: number;
+    uuid: string;
+    title: string;
+    authors: string;
+    series: string;
+    series_index: number;
+    publisher: string;
+    /** YYYY-MM-DD, "" for none. */
+    pubdate: string;
+    added: string;
+    tags: string[];
+    languages: string[];
+    formats: string[];
+    /** metadata.db lists no files: formats are what's in the book's folder (Go: FormatsFromFolder). */
+    formats_from_folder?: boolean;
+    isbn: string;
+    has_cover: boolean;
+}
+
+/** What to change in each book (Go: bulkEdit). Fields left out stay as they are. */
+export interface BulkEdit {
+    title?: string;
+    authors?: string;
+    publisher?: string;
+    date?: string;
+    tags?: string;
+    add_tags?: string[];
+    remove_tags?: string[];
+    languages?: string;
+    add_languages?: string[];
+    remove_languages?: string[];
+}
+
+/** POST /api/library/bulk (Go: bulkResult). */
+export interface BulkResult {
+    changed: number;
+    unchanged: number;
+    failed: { uuid: string; error: string }[];
+    /** The changed books' rows, as they are now. */
+    books: TableBook[];
+}
+
+/** Books marked as not duplicates of each other (Go: notDuplicateSet in not_duplicates.go). */
+export interface NotDuplicateSet {
+    id: number;
+    uuids: string[];
+}
+
+/** POST /api/library/repair-formats (Go: unlistedRepair in calibre_names.go). */
+export interface FormatRepair {
+    books: number;
+    formats: number;
+    skipped: { uuid: string; error: string }[];
 }

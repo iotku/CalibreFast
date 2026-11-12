@@ -110,3 +110,51 @@ func TestRequireReader(t *testing.T) {
 		t.Errorf("public read-only mode, anonymous: %d", c)
 	}
 }
+
+// The routes merging, bulk editing and repairs add are all behind
+// requireWrites: on a server without -allow-writes even an admin is refused,
+// before anything is read or written.
+func TestBulkEditAndMergeRoutesNeedWrites(t *testing.T) {
+	setupTestAppDB(t)
+	orig := allowWrites
+	defer func() { allowWrites = orig }()
+	mux := http.NewServeMux()
+	withMux(mux, func() {
+		registerMergeRoutes()
+		registerBulkEditRoutes()
+		registerNotDuplicateRoutes()
+	})
+	admin, _ := createUser("admin1", "correct horse battery", true)
+
+	routes := []struct{ method, path string }{
+		{"GET", "/library/edit"},
+		{"GET", "/api/library/table"},
+		{"POST", "/api/library/bulk"},
+		{"POST", "/api/library/repair-formats"},
+		{"POST", "/api/library/not-duplicates"},
+		{"DELETE", "/api/library/not-duplicates/1"},
+		{"GET", "/book/merge?ids=a,b"},
+		{"GET", "/merge/metadata?ids=a,b"},
+		{"POST", "/merge/apply"},
+	}
+	// (That an admin gets through with -allow-writes is TestRequireWrites.)
+	allowWrites = false
+	for _, rt := range routes {
+		req := httptest.NewRequest(rt.method, rt.path, strings.NewReader("{}"))
+		req = req.WithContext(context.WithValue(req.Context(), userKey, admin))
+		rec := httptest.NewRecorder()
+		mux.ServeHTTP(rec, req)
+		if rec.Code != http.StatusForbidden || !strings.Contains(rec.Body.String(), "-allow-writes") {
+			t.Errorf("%s %s without -allow-writes: %d %q", rt.method, rt.path, rec.Code, rec.Body.String())
+		}
+	}
+}
+
+// withMux runs register with http.HandleFunc registering on mux, so a test
+// can serve the real routes without touching the default mux.
+func withMux(mux *http.ServeMux, register func()) {
+	orig := http.DefaultServeMux
+	http.DefaultServeMux = mux
+	defer func() { http.DefaultServeMux = orig }()
+	register()
+}

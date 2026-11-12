@@ -313,10 +313,6 @@ body {
     }
 }
 
-/* No library search here: the tools sit at the right. */
-.site-bar .tb-tools {
-    margin-left: auto;
-}
 
 /* ── Online lookup: the bar and its matches ── */
 .lookup-bar {
@@ -1657,4 +1653,213 @@ input[type="date"].meta-input::-webkit-calendar-picker-indicator:hover {
     text-decoration: underline;
     margin-left: auto;
     font-weight: 500;
+}
+
+/* ── Merging books (merge.go): the books, and what to keep of each ── */
+.merge-panel {
+    margin-bottom: 1.25rem;
+    padding: 12px 14px;
+    border: 1px solid var(--border);
+    border-radius: var(--radius);
+    background: var(--surface);
+}
+
+.merge-books {
+    list-style: none;
+    margin: 0;
+    padding: 0;
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(250px, 1fr));
+    gap: 10px;
+}
+
+.merge-book {
+    position: relative;
+    display: flex;
+    gap: 10px;
+    padding: 8px;
+    border: 1px solid var(--border);
+    border-radius: var(--radius);
+    min-width: 0;
+}
+
+.merge-book.kept {
+    border-color: var(--accent-dim);
+    background: rgba(200, 169, 110, 0.06);
+}
+
+.merge-letter {
+    position: absolute;
+    top: -8px;
+    left: -8px;
+    width: 22px;
+    height: 22px;
+    display: grid;
+    place-items: center;
+    border-radius: 50%;
+    background: var(--accent);
+    color: #111;
+    font: 600 0.75rem var(--mono);
+}
+
+.merge-cover-pick {
+    flex: none;
+    width: 64px;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 4px;
+    cursor: pointer;
+}
+
+.merge-cover-pick img,
+.merge-nocover {
+    width: 64px;
+    aspect-ratio: 2 / 3;
+    object-fit: cover;
+    border-radius: 4px;
+    border: 2px solid transparent;
+}
+
+.merge-cover-pick input:checked + img {
+    border-color: var(--accent);
+}
+
+.merge-cover-pick input {
+    order: 1;
+    margin: 0;
+    accent-color: var(--accent);
+}
+
+.merge-nocover {
+    display: grid;
+    place-items: center;
+    background: rgba(255, 255, 255, 0.04);
+    color: var(--muted);
+    font-size: 0.65rem;
+    text-align: center;
+}
+
+.merge-cover-pick:has(input:disabled) {
+    cursor: default;
+}
+
+.merge-book-info {
+    display: flex;
+    flex-direction: column;
+    gap: 3px;
+    min-width: 0;
+    font-size: 0.85rem;
+}
+
+.merge-book-title {
+    color: var(--text);
+    font-weight: 500;
+    overflow-wrap: anywhere;
+}
+
+.merge-book-authors {
+    color: var(--muted);
+    overflow-wrap: anywhere;
+}
+
+.merge-book-formats {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 4px;
+}
+
+.merge-keep {
+    margin-top: auto;
+    font-size: 0.78rem;
+    color: var(--muted);
+    cursor: pointer;
+}
+
+.merge-keep input {
+    accent-color: var(--accent);
+}
+
+.merge-book.kept .merge-keep {
+    color: var(--accent);
+}
+
+.merge-heading {
+    margin: 0 0 6px;
+    font: 500 0.8rem var(--sans);
+    letter-spacing: 0.06em;
+    text-transform: uppercase;
+    color: var(--muted);
+}
+
+.merge-formats {
+    margin-top: 12px;
+}
+
+.merge-formats ul {
+    list-style: none;
+    margin: 0;
+    padding: 0;
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+}
+
+.merge-format {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 4px 14px;
+    font-size: 0.85rem;
+}
+
+.merge-format-name {
+    min-width: 3.5em;
+    font: 500 0.75rem var(--mono);
+    text-transform: uppercase;
+}
+
+.merge-format-choice {
+    cursor: pointer;
+}
+
+.merge-format-choice input {
+    accent-color: var(--accent);
+}
+
+.merge-panel .banner-hint a {
+    color: var(--accent);
+}
+
+.merge-format-choice {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+}
+
+.merge-format-choice label {
+    cursor: pointer;
+}
+
+.merge-same,
+.merge-differ {
+    font: 0.72rem var(--mono);
+    color: var(--success);
+}
+
+.merge-differ {
+    color: var(--accent);
+}
+
+.merge-download {
+    padding: 1px 7px;
+    border: 1px solid var(--border);
+    border-radius: 4px;
+    color: var(--accent);
+    font-size: 0.75rem;
+    text-decoration: none;
+}
+
+.merge-download:hover {
+    border-color: var(--accent-dim);
 }

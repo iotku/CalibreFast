@@ -80,9 +80,22 @@ function batchSection(batch: RecycleBatch): HTMLElement {
     const head = el(
         "div",
         { className: "bin-batch-head" },
-        el("h2", {}, `Removed ${when(batch.deleted_at)}`),
+        el("h2", {}, `${batch.merged_into ? "Merged" : "Removed"} ${when(batch.deleted_at)}`),
         el("span", { className: "auth-muted" }, `by ${batch.deleted_by || "?"} · ${batch.books.length} book${batch.books.length === 1 ? "" : "s"}`),
     );
+    const merged = batch.merged_into;
+    const note = merged
+        ? el(
+              "p",
+              { className: "auth-muted bin-merge-note" },
+              "Merged into ",
+              el("a", { href: `/book/get/${encodeURIComponent(merged.uuid)}` }, `“${merged.title}”`),
+              ". Restoring one brings it back as its own book again; the merged book keeps the files it took.",
+              ...(merged.replaced?.length
+                  ? [` Its own files that the merge replaced (${merged.replaced.join(", ")}) are in this batch's replaced folder on the server.`]
+                  : []),
+          )
+        : null;
     const rows = batch.books.map((b) => bookRow(batch, b));
     if (waiting.length > 1) {
         const all = el("button", { type: "button", className: "btn-standard" }, `Restore all ${waiting.length}`);
@@ -92,7 +105,7 @@ function batchSection(batch: RecycleBatch): HTMLElement {
         });
         head.append(all);
     }
-    return el("section", { className: "bin-batch" }, head, el("ul", { className: "import-list" }, ...rows));
+    return el("section", { className: "bin-batch" }, head, ...(note ? [note] : []), el("ul", { className: "import-list" }, ...rows));
 }
 
 async function refresh(): Promise<void> {

@@ -157,6 +157,46 @@ Uploads and the import queue check the library before adding a book:
 - **An identical file** is never added again, override or not.
 - The import queue marks books that look already in the library, so you can discard them without opening them. The review page and the library's metadata editor say so at the top, linking the matching books. On review, the check is run again with your edited title and authors when you add the book.
 
+## Merging books
+
+The same book added twice (its EPUB once, its PDF another time, or two copies with different metadata) can be made one book, with every format (`-allow-writes`, admins).
+
+- **Choosing the books:** **Select** in the library's top bar, tick them, **Merge N…** in the bar; or in the bulk editor, tick them and **Merge…**, or **Merge N** on a group of look-alikes. Up to 20 at a time.
+- **The merge page** is the metadata editor for the merged book. Each book has a letter (A, B, C…):
+  - **The record to keep:** its uuid and link stay, so readers' places and shelves do too. The first book chosen, unless you pick another (the page reloads with its metadata as **current**).
+  - **Metadata:** pills under each field are **current** (the kept book's metadata), **B**, **C**… (the others'), and **A epub**, **B pdf**… (what each book's files say). Pick each field as in the editor; the ISBN tools and online lookup work too.
+  - **Cover:** any of the books' covers.
+  - **Files to keep:** every format any of them has. Where two books have the same format, pick whose file (the kept book's by default; sizes shown). The files are compared (SHA-256): **identical files** when it makes no difference which is kept; otherwise **files differ**, with **Download** on each distinct file to compare them yourself (a file identical to an earlier book's says `= A` instead).
+- **Merge N books** does it:
+  - the chosen files and cover are copied into the kept book's folder; a file of its own that one replaces goes to the Recycling Bin batch (`replaced/`), and its old cover becomes the cover to revert to;
+  - the other books go to the Recycling Bin whole, as one batch marked **Merged** that names the kept book. Restoring one brings it back as a separate book; the merged book keeps the files it took;
+  - readers' favorites, reading status, places, bookmarks, highlights and shelves for the other books are copied to the kept book (the newest status and place win). The originals stay with the old books for a restore;
+  - the metadata is saved as the editor saves it.
+- Afterwards the merged book opens.
+
+## Bulk metadata editor
+
+`/library/edit` (**Bulk edit** in the user menu; admins, `-allow-writes`): every book as a row of a table, to find duplicates and fix metadata across many books.
+
+- **Columns:** title, authors, series, publisher, published, languages, tags, formats, added. Click a heading to sort; click again to reverse.
+- **Formats** are the files `metadata.db` lists. A book it lists none for shows the book files in its folder instead (as its page and downloads find them), dashed: Calibre itself doesn't show those. `folder` in the Formats box finds such books. Merging takes their files too, and gives them `metadata.db` rows.
+  - While there are any, the toolbar says how many, with **Show** and **Add to metadata.db**. That adds a row for each format whose file is the only one of its kind in the book's folder, named as the file is, so Calibre lists it too. Only the database is modified, and only on a server started with `-allow-writes`. A format with several files in the folder is left alone and named in the result.
+- **Filtering** happens in the browser, as you type:
+  - the search box matches every column (each word somewhere); the ✕ in it, and in each column's box, clears it;
+  - each column's box filters that column: `word` contains it (any case or accent; in tags, languages and formats, any one of them does), `=Fiction` is exactly that, a lone `=` is empty, `!word` doesn't contain it (`!=`: not empty), `sci|fant` either, `<2000` and `>=2010-06` compare dates. The tick box beside each column's name shows only books with nothing in that column, or the default a book gets when nothing was known (title or author `Unknown`, language `und`). Tags, languages, formats, publisher and series boxes suggest the library's values with how many books have each;
+  - clicking a tag, language or format in a row filters by it;
+  - **Duplicates** shows only books that look like another, grouped: **Similar title** (case, accents, punctuation, a leading "The/A/An" and anything in brackets aside), **Similar title & authors**, or **Same ISBN**. Each group has a **Merge N** link (middle-click or Ctrl/⌘-click opens it in a new tab; the table reloads its rows when you come back to it) on its first row and a **Not Dupe** button on its second (the Edit, Merge and Not Dupe buttons are in the first column, before the tick box and the title, so they're reachable without scrolling sideways);
+  - **Not Dupe** marks the group's books as different books: the group no longer shows in any duplicates view. If another look-alike joins it later (a new upload), it shows again. **Duplicates → Marked not duplicates** lists every marked group, with **Unmark** to put it back. Markings are kept in CalibreFast's own database, not the library;
+  - **Only selected** shows the ticked books. The filters, sort and duplicates mode are kept in the address, so Back returns to the same view.
+- **Many tags or languages:** a cell shows what fits (the first one cut short only if it alone is too wide) and a **+N** button for the rest, which opens them all over the rows below; click a chip there to filter by it, ✎ to edit. Escape or a click elsewhere closes it.
+- **Selecting:** tick rows (Shift-click ticks a range), or the heading's box for every book shown. **Edit in table** in the library's selection bar opens the table with those books ticked.
+- **Editing one book in place:** double-click its title, authors, publisher, date, tags or languages (clicking a tag or language chip filters instead, so those cells have a ✎ button before the chips). Enter or leaving the box saves; Escape cancels.
+- **Editing the selected books** (**Edit…**):
+  - **Tags** and **Languages:** the ones the selected books have, with how many have each. Click to remove from all of them; **Add** adds to all; **Replace all with** sets them. Removing `en` removes `eng` too.
+  - **Authors**, **Publisher**, **Published:** set for every book (an empty publisher or date clears it).
+  - Each book's `metadata.opf` is changed and saved as the metadata editor saves it, with the rest of it as it was. A book the change makes no difference to isn't written. The result says how many changed.
+- **Remove…** removes the selected books (the usual confirmation and Recycling Bin).
+
 ## Watch folder and import queue
 
 Start the server with `-watch-dir /path/to/folder` (and `-allow-writes`). Books put in that folder are **not** added to the library: they wait for an admin's review.
@@ -184,7 +224,7 @@ Start the server with `-watch-dir /path/to/folder` (and `-allow-writes`). Books 
 Admins on a server with `-allow-writes` can remove books from the library. Nothing is deleted: removed books go to the Recycling Bin, and only the server's owner can empty it.
 
 - **Removing one book:** **Remove from library…** under **Edit metadata**, on the book's page or popup.
-- **Removing several:** **Select** in the top bar of the library, a filtered view or search results (or, on a touch screen, a long press on a book, which selects it too), then tap the books (a tick shows on each, and the choice survives scrolling) and **Remove N from library…** in the bar at the bottom. **Done** or Escape leaves selection.
+- **Removing several:** **Select** in the top bar of the library, a filtered view or search results (or, on a touch screen, a long press on a book, which selects it too), then tap the books (a tick shows on each, and the choice survives scrolling) and **Remove N from library…** in the bar at the bottom. **Done** or Escape leaves selection. The same bar offers **Merge N…** ([Merging books](#merging-books)) and **Edit in table** ([Bulk metadata editor](#bulk-metadata-editor)); the bulk editor can remove books too.
 - **Hard to do by accident:** the confirmation lists every book, explains what happens, and its button only works once `delete` is typed. Enter cancels until then.
 - **Undo:** the confirmation's result offers **Undo**, which puts everything straight back.
 - **What a removal does:** it's one batch in the bin (`-recycle-bin`, by default `<datadir>/recycle-bin/<batch>/`), made before anything changes:

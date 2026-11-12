@@ -719,6 +719,8 @@ export interface ApplyResult {
   uuid: string;
   title: string;
   next?: string;
+  /** Merged, but something went wrong on the way (Go: mergeApplyHandler). */
+  warning?: string;
 }
 
 /**
@@ -739,7 +741,7 @@ export async function applyValues(book: BookTarget, values: FormValues, { overri
   const res = await fetch(book.apply, {
     method: "POST",
     headers: { "content-type": "application/json" },
-    body: JSON.stringify(override ? { ...values, override: true } : values),
+    body: JSON.stringify({ ...values, ...book.extra?.(), ...(override && { override: true }) }),
   });
   if (!res.ok) {
     const text = await res.text();
@@ -847,6 +849,8 @@ export async function mountMetadataEditor(book: BookTarget, form: HTMLFormElemen
   const saveBtn = maybeId("btn-save", HTMLButtonElement) ?? form.querySelector<HTMLButtonElement>('button[type="submit"]');
   const headerTitle = maybeId("edit-header-title");
   const applyLabel = saveBtn?.textContent ?? "Apply Changes";
+  // A waiting book can always be added, and books always merged: changed or not.
+  const always = book.pending || !!book.merge;
 
   try {
     // Tags and languages are edited as chips over their (hidden) inputs.
@@ -1009,7 +1013,7 @@ export async function mountMetadataEditor(book: BookTarget, form: HTMLFormElemen
     // differs from what was loaded (what the editor itself filled in or tidied
     // is part of that), and off again when the changes are undone.
     const updateApply = (): void => {
-      if (!saveBtn || saving || book.pending) return; // a waiting book can always be added
+      if (!saveBtn || saving || always) return;
       const dirty = isDirty();
       saveBtn.disabled = !dirty;
       saveBtn.title = dirty ? "" : "Nothing to apply: no field has been changed";
@@ -1068,7 +1072,7 @@ export async function mountMetadataEditor(book: BookTarget, form: HTMLFormElemen
       commitPending(); // half-typed tag/language text is never dropped
       // Every way to apply (the button, Enter, Accept all, the leave prompt)
       // comes here: nothing changed, nothing saved.
-      if (!book.pending && !isDirty()) {
+      if (!always && !isDirty()) {
         if (statusEl) {
           statusEl.className = "edit-status pending";
           statusEl.textContent = "Nothing to apply: no field has been changed.";
@@ -1080,11 +1084,13 @@ export async function mountMetadataEditor(book: BookTarget, form: HTMLFormElemen
 
       if (saveBtn) {
         saveBtn.disabled = true;
-        saveBtn.textContent = book.pending ? "Adding…" : "Applying Changes…";
+        saveBtn.textContent = book.merge ? "Merging…" : book.pending ? "Adding…" : "Applying Changes…";
       }
       if (statusEl) {
         statusEl.className = "edit-status pending";
-        statusEl.textContent = book.pending ? "Adding the book to the Calibre library…" : "Saving metadata to Calibre library…";
+        statusEl.textContent = book.merge
+          ? "Merging the books…"
+          : book.pending ? "Adding the book to the Calibre library…" : "Saving metadata to Calibre library…";
       }
 
       // "Add anyway" on a possible duplicate: this one submit only.
@@ -1097,14 +1103,25 @@ export async function mountMetadataEditor(book: BookTarget, form: HTMLFormElemen
         added = true;
         if (statusEl) {
           statusEl.className = "edit-status success";
-          statusEl.textContent = !book.pending
+          statusEl.textContent = book.merge
+            ? "✓ Merged. Opening the book…"
+            : !book.pending
             ? "✓ Metadata applied. Opening the book…"
             : result.next ? "✓ Added to the library. Opening the next book to review…" : "✓ Added to the library. Opening the book…";
         }
         form.dispatchEvent(
           new CustomEvent("metadata-applied", { detail: result }),
         );
-        if (book.pending && result.next) {
+        if (result.warning && statusEl) {
+          // Stay, so the problem is read; the merged book is a link away.
+          statusEl.className = "edit-status error";
+          statusEl.textContent = `⚠ ${result.warning} `;
+          const link = document.createElement("a");
+          link.className = "status-link";
+          link.href = `/book/get/${encodeURIComponent(result.uuid)}`;
+          link.textContent = "Open the merged book";
+          statusEl.append(link);
+        } else if (book.pending && result.next) {
           // On through the queue; the next page says what was just added.
           location.assign(`/import/${encodeURIComponent(result.next)}?added=${encodeURIComponent(result.uuid)}`);
         } else {
@@ -1119,14 +1136,16 @@ export async function mountMetadataEditor(book: BookTarget, form: HTMLFormElemen
         console.error("Apply metadata failed:", err);
         if (statusEl) {
           statusEl.className = "edit-status error";
-          statusEl.textContent = `✕ Failed to apply metadata: ${errorMessage(err)}`;
+          statusEl.textContent = book.merge
+            ? `✕ Couldn't merge the books: ${errorMessage(err)}`
+            : `✕ Failed to apply metadata: ${errorMessage(err)}`;
         }
       } finally {
         saving = false; // a failed apply leaves the changes unsaved (guard back on)
         if (saveBtn) {
           saveBtn.textContent = applyLabel;
           // A waiting book is gone from the queue once added: no second click.
-          if (book.pending) saveBtn.disabled = added;
+          if (always) saveBtn.disabled = added;
         }
         updateApply();
       }

@@ -167,3 +167,77 @@ func restoreToPages(uuid string) error {
 	totalBooks = max(totalBooks, (page-1)*booksPerPage+len(books))
 	return nil
 }
+
+// refreshInPages rewrites the books' entries in the page files that hold
+// them, after their metadata changed (bulk edits, merges), so the grid
+// shows the new titles and authors before the next full rewrite.
+func refreshInPages(uuids []string) error {
+	pagesMu.Lock()
+	defer pagesMu.Unlock()
+	pages := map[int]bool{}
+	wanted := map[string]bool{}
+	for _, u := range uuids {
+		if v, ok := bookPages.Load(u); ok {
+			wanted[u] = true
+			for _, p := range v.([]int) {
+				pages[p] = true
+			}
+		}
+	}
+	if len(wanted) == 0 {
+		return nil
+	}
+	fresh := map[string]Book{}
+	list := make([]string, 0, len(wanted))
+	for u := range wanted {
+		list = append(list, u)
+	}
+	for chunk := range slices.Chunk(list, 500) {
+		rows, err := calibreDB.Query(`SELECT b.title, `+bookAuthorsSQL+`, b.series_index, b.pubdate, b.path, b.uuid, b.last_modified
+			FROM books b WHERE b.uuid IN (`+placeholders(len(chunk))+`)`, toArgs(chunk)...)
+		if err != nil {
+			return err
+		}
+		for rows.Next() {
+			var b Book
+			if err := rows.Scan(&b.Title, &b.Authors, &b.SeriesIndex, &b.PubDate, &b.Path, &b.UUID, &b.LastModified); err != nil {
+				rows.Close()
+				return err
+			}
+			b.LastModified = coverStamp(b.LastModified)
+			fresh[b.UUID] = b
+		}
+		rows.Close()
+		if err := rows.Err(); err != nil {
+			return err
+		}
+	}
+	var errs []error
+	changed := false
+	for page := range pages {
+		books, err := readPage(page)
+		if err != nil {
+			errs = append(errs, err)
+			continue
+		}
+		edited := false
+		for i, b := range books {
+			if nb, ok := fresh[b.UUID]; ok && nb != b {
+				books[i] = nb
+				edited = true
+			}
+		}
+		if !edited {
+			continue
+		}
+		if err := writePage(page, books); err != nil {
+			errs = append(errs, err)
+			continue
+		}
+		changed = true
+	}
+	if changed {
+		pagesVersion.Store(time.Now().UnixNano())
+	}
+	return errors.Join(errs...)
+}

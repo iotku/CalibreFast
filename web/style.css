@@ -718,6 +718,13 @@ input[type="number"],
     display: none;
 }
 
+/* Pages without the library search (NoSearch: the metadata editor, the
+   bulk editor): the search box isn't there to push the tools and user
+   menu to the right, so the title does. */
+.site-bar:not(:has(.tb-search)) .tb-title {
+    margin-right: auto;
+}
+
 .tb-pager {
     gap: 4px;
     font-size: 0.9rem;
@@ -2890,6 +2897,10 @@ body.selecting .book.selected .cover-wrapper {
 /* The Recycling Bin page */
 .bin-batch {
     margin-top: 1.5rem;
+}
+
+.bin-merge-note a {
+    color: var(--text-primary);
 }
 
 .bin-batch-head {

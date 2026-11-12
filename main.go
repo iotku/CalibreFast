@@ -213,6 +213,8 @@ type EditBookPageData struct { // TODO I Hate this, these page structs are all o
 	GoogleBooks  bool            // offer Google Books: only with CF_GOOGLE_BOOKS_KEY, and not -no-google-books
 	// Duplicates: books in the library this one may duplicate (duplicates.go).
 	Duplicates *duplicateCheck
+	// Merge: merging books into one (merge.go); UUID is the one kept.
+	Merge *mergePageData
 }
 
 func writePage(page int, books []Book) error {
@@ -527,6 +529,11 @@ func serveLibraryHTTP() {
 
 	// Removing books, and the Recycling Bin (recycle.go)
 	registerRecycleRoutes()
+
+	// Merging books, and the bulk metadata editor (merge.go, bulk_edit.go)
+	registerMergeRoutes()
+	registerBulkEditRoutes()
+	registerNotDuplicateRoutes()
 
 	// Individual Book metadata editor
 	http.HandleFunc("/book/edit/{uuid}", requireWrites(func(w http.ResponseWriter, r *http.Request) {
