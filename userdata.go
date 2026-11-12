@@ -22,17 +22,46 @@ import (
 
 // bookExists reports whether a UUID is in the Calibre library.
 func bookExists(uuid string) bool {
+	if _, ok := currentCatalog().lookup(uuid); ok {
+		return true
+	}
 	var one int
 	return calibreDB.QueryRow(`SELECT 1 FROM books WHERE uuid = ?`, uuid).Scan(&one) == nil
 }
 
 // booksByUUIDs returns grid entries for uuids, in the same order. Books no
-// longer in the library are skipped.
+// longer in the library are skipped. From the catalog; only books it doesn't
+// have yet (added a moment ago) are read from metadata.db.
 func booksByUUIDs(uuids []string) ([]Book, error) {
 	out := make([]Book, 0, len(uuids))
 	if len(uuids) == 0 {
 		return out, nil
 	}
+	cat := currentCatalog()
+	var missing []string
+	for _, u := range uuids {
+		if _, ok := cat.lookup(u); !ok {
+			missing = append(missing, u)
+		}
+	}
+	byUUID := map[string]Book{}
+	if len(missing) > 0 {
+		var err error
+		if byUUID, err = booksByUUIDsFromDB(missing); err != nil {
+			return nil, err
+		}
+	}
+	for _, u := range uuids {
+		if b, ok := cat.lookup(u); ok {
+			out = append(out, b.Book)
+		} else if b, ok := byUUID[u]; ok {
+			out = append(out, b)
+		}
+	}
+	return out, nil
+}
+
+func booksByUUIDsFromDB(uuids []string) (map[string]Book, error) {
 	rows, err := calibreDB.Query(`
 		SELECT b.uuid, b.title, `+bookAuthorsSQL+`,
 		       b.pubdate, b.path, b.last_modified
@@ -52,12 +81,7 @@ func booksByUUIDs(uuids []string) ([]Book, error) {
 		uuidPathIndex.Store(b.UUID, b.Path)
 		byUUID[b.UUID] = b
 	}
-	for _, u := range uuids {
-		if b, ok := byUUID[u]; ok {
-			out = append(out, b)
-		}
-	}
-	return out, rows.Err()
+	return byUUID, rows.Err()
 }
 
 // ---------------------------------------------------------------------------

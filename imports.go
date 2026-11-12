@@ -881,7 +881,8 @@ func importApplyHandler(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "Couldn't add the book to the library: "+err.Error(), http.StatusInternalServerError)
 		return
 	}
-	generatePage1()
+	catalogChanged(bookUUID)
+	refreshLibraryPages()
 	refreshAllCaches()
 	writeJSON(w, http.StatusOK, map[string]any{"success": true, "uuid": bookUUID, "title": meta.Title, "next": next})
 }

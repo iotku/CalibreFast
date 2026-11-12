@@ -220,6 +220,7 @@ type unlistedRepair struct {
 	Books   int           `json:"books"`   // books given rows
 	Formats int           `json:"formats"` // rows added
 	Skipped []bulkFailure `json:"skipped"` // formats with several files, for the admin to sort out
+	UUIDs   []string      `json:"-"`       // the books given rows
 }
 
 // addUnlistedFormats gives books with no data rows a row for each format
@@ -262,6 +263,7 @@ func addUnlistedFormats(db *sql.DB, libDir string, uuids []string) (unlistedRepa
 	for _, b := range books {
 		if len(b.add) > 0 {
 			formatCache.Delete(b.uuid)
+			res.UUIDs = append(res.UUIDs, b.uuid)
 			log.Printf("metadata.db: %s: added %d format row(s) for files in its folder", b.path, len(b.add))
 		}
 	}

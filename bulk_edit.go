@@ -72,6 +72,7 @@ func repairFormatsHandler(w http.ResponseWriter, r *http.Request) {
 	}
 	if res.Formats > 0 {
 		log.Printf("repair formats: %s added %d format row(s) to %d book(s)", currentUser(r).Username, res.Formats, res.Books)
+		catalogChanged(res.UUIDs...)
 		refreshAllCaches()
 	}
 	w.Header().Set("Content-Type", "application/json")
@@ -363,8 +364,8 @@ func bulkEditBooks(uuids []string, edit *bulkEdit) bulkResult {
 	}
 	res.Changed = len(changed)
 	if len(changed) > 0 {
-		logErr(refreshInPages(changed), "bulk edit: couldn't update the library pages")
-		generatePage1()
+		catalogChanged(changed...)
+		refreshLibraryPages()
 		refreshAllCaches()
 		for chunk := range slices.Chunk(changed, 500) {
 			rows, err := tableBooks(calibreDB, chunk)

@@ -6,6 +6,7 @@ import (
 	"errors"
 	"image"
 	"image/jpeg"
+	"io/fs"
 	"log"
 	"net/http"
 	"os"
@@ -22,7 +23,11 @@ import (
 
 var uuidPathIndex sync.Map // map[string]string uuid -> relative path to book dir
 var modTimeCache sync.Map  // map[string]int64 uuid -> last modified time of book from calibre database, used for cache-busting cover.jpg and cover-thumb.jpg
-var formatCache sync.Map   // map[string][]string uuid -> list of formats and their paths relative to the baseDir
+// noCover: uuid -> struct{}, books whose cover.jpg wasn't there when a
+// thumbnail was asked for. Cleared by coverChanged and catalogChanged.
+var noCover sync.Map
+
+var formatCache sync.Map // map[string][]string uuid -> list of formats and their paths relative to the baseDir
 
 // imageSem bounds cover-thumb requests in progress, across all clients: one
 // per core, since generating a thumbnail is CPU-bound (~80 ms and ~30 MB for
@@ -60,7 +65,7 @@ func coverHandler(w http.ResponseWriter, r *http.Request) {
 	}
 
 	// ensure file exists
-	f, err := os.Open(coverPath)
+	f, err := libraryOpen(coverPath)
 	if err != nil {
 		http.NotFound(w, r)
 		return
@@ -114,7 +119,7 @@ func bookCoverStamp(uuid string) (string, error) {
 	}
 
 	origPath := filepath.Join(baseDir, path.(string), "cover.jpg")
-	info, err := os.Stat(origPath)
+	info, err := libraryStat(origPath)
 	if err != nil {
 		return "", err
 	}
@@ -135,6 +140,12 @@ func coverThumbHandler(w http.ResponseWriter, r *http.Request) {
 	// Fast path: serve cached thumbnails without waiting for imageSem.
 	if data, ok := readCachedThumb(uuid); ok {
 		writeThumb(w, data, true)
+		return
+	}
+	// A book already found to have no cover isn't looked for again on the
+	// library (which may be slow storage) until its cover or entry changes.
+	if _, missing := noCover.Load(uuid); missing {
+		http.NotFound(w, r)
 		return
 	}
 
@@ -160,6 +171,9 @@ func coverThumbHandler(w http.ResponseWriter, r *http.Request) {
 	case errors.Is(err, context.Canceled):
 		backlogThumb(uuid)
 	case err != nil:
+		if errors.Is(err, fs.ErrNotExist) {
+			noCover.Store(uuid, struct{}{})
+		}
 		http.NotFound(w, r)
 	default:
 		writeThumb(w, data, false)
@@ -178,7 +192,7 @@ func loadThumb(uuid string, abort func() error) (data []byte, cacheHit bool, err
 		}
 	}
 	origPath := filepath.Join(baseDir, path.(string), "cover.jpg")
-	origStat, err := os.Stat(origPath)
+	origStat, err := libraryStat(origPath)
 	if err != nil {
 		return nil, false, err
 	}
@@ -198,7 +212,7 @@ func loadThumb(uuid string, abort func() error) (data []byte, cacheHit bool, err
 	if err := abort(); err != nil {
 		return nil, false, err
 	}
-	orig, err := os.ReadFile(origPath)
+	orig, err := libraryReadFile(origPath)
 	if err != nil {
 		return nil, false, err
 	}
@@ -305,8 +319,10 @@ func resizeToWidth(img image.Image, width int) image.Image {
 // coverChanged records a new cover.jpg in metadata.db, as Calibre does: the
 // book has a cover and was modified now.
 func coverChanged(uuid string) {
+	noCover.Delete(uuid)
 	if _, err := calibreDB.Exec(`UPDATE books SET has_cover = 1, last_modified = ? WHERE uuid = ?`,
 		calibreDateTime(time.Now()), uuid); err != nil {
 		log.Printf("cover: failed to update %s in metadata.db: %v", uuid, err)
 	}
+	catalogChanged(uuid)
 }

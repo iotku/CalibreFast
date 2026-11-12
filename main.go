@@ -94,6 +94,7 @@ func registerCalibreDriver() {
 		sql.Register("sqlite3_calibre",
 			&sqlite3.SQLiteDriver{
 				ConnectHook: func(conn *sqlite3.SQLiteConn) error {
+					conn.RegisterAuthorizer(countLibraryStatements)
 					if err := conn.RegisterFunc("title_sort", titleSort, true); err != nil {
 						return err
 					}
@@ -175,7 +176,7 @@ type IndexPageData struct {
 
 var (
 	// totalBooks is how many books pages/*.json hold, set when they're written.
-	totalBooks int
+	totalBooks atomic.Int64
 	// pagesVersion changes whenever pages/*.json are rewritten. index.html
 	// requests pageN.json?v=<it>, so the files can be cached for good.
 	pagesVersion atomic.Int64
@@ -244,7 +245,10 @@ func writePage(page int, books []Book) error {
 	if err != nil {
 		return err
 	}
+	return writePageJSON(page, data)
+}
 
+func writePageJSON(page int, data []byte) error {
 	if err := os.MkdirAll("pages", 0o755); err != nil {
 		return err
 	}
@@ -510,7 +514,7 @@ func indexHandler(w http.ResponseWriter, r *http.Request) {
 	}
 	data := IndexPageData{
 		Title:        "Library",
-		TotalBooks:   totalBooks,
+		TotalBooks:   int(totalBooks.Load()),
 		PagesVersion: currentPagesVersion(),
 	}
 
@@ -529,9 +533,9 @@ func serveLibraryHTTP() {
 
 	http.HandleFunc("/library-info", func(w http.ResponseWriter, r *http.Request) {
 		logErr(json.NewEncoder(w).Encode(LibraryInfo{
-			TotalBooks: totalBooks,
+			TotalBooks: int(totalBooks.Load()),
 			PageSize:   booksPerPage,
-			TotalPages: (totalBooks + booksPerPage - 1) / booksPerPage,
+			TotalPages: (int(totalBooks.Load()) + booksPerPage - 1) / booksPerPage,
 		}), "could not encode library info")
 	})
 
@@ -955,7 +959,8 @@ func applyMetadataHandler(w http.ResponseWriter, r *http.Request) {
 	}
 
 	// Refresh page1.json cache
-	generatePage1()
+	catalogChanged(uuid)
+	refreshLibraryPages()
 	refreshAllCaches()
 
 	w.Header().Set("Content-Type", "application/json")
@@ -1031,66 +1036,18 @@ func writeLibraryPages() error {
 	}
 	defer db.Close()
 
-	// create paginated entries as json for each book in metadata.db (booksPerPage per page)
-	rows, err := db.Query("SELECT b.title, " + bookAuthorsSQL + ", b.series_index, b.pubdate, b.path, b.uuid, b.last_modified FROM books b ORDER BY b.timestamp DESC")
+	// The catalog first (a few sequential reads of metadata.db), then the
+	// pages from it.
+	cat, err := buildCatalog(db)
 	if err != nil {
 		return err
 	}
-	defer rows.Close()
-	page := 1
-	books := make([]Book, 0, booksPerPage)
-
-	for rows.Next() {
-		var book Book
-
-		err = rows.Scan(
-			&book.Title,
-			&book.Authors,
-			&book.SeriesIndex,
-			&book.PubDate,
-			&book.Path,
-			&book.UUID,
-			&book.LastModified,
-		)
-		if err != nil {
-			return err
-		}
-
-		timeStr := coverStamp(book.LastModified)
-		book.LastModified = timeStr
-
-		// cache last Modified time for book from database
-		modTimeCache.Store(book.UUID, timeStr)
-
-		// cache cover path
-		uuidPathIndex.Store(book.UUID, book.Path)
-		notePage(book.UUID, page)
-
-		// add book to the arrays
-		books = append(books, book)
-
-		if len(books) >= booksPerPage {
-			// save to file
-			if err := writePage(page, books); err != nil {
-				return err
-			}
-			page++
-			books = make([]Book, 0, booksPerPage)
-		}
-	}
-
-	// write final partial page
-	if len(books) > 0 {
-		err = writePage(page, books)
-		if err != nil {
-			return err
-		}
-	}
-
-	if err := rows.Err(); err != nil {
+	libraryCatalog.Store(cat)
+	if _, err := writePagesFromCatalog(cat); err != nil {
 		return err
 	}
-	totalBooks = (page-1)*booksPerPage + len(books)
+	// A new stamp every start, even when no file changed: an older run may
+	// have served other contents under the stamp it would otherwise keep.
 	pagesVersion.Store(time.Now().UnixNano())
 	return nil
 }
@@ -1105,7 +1062,7 @@ func resolveFormats(uuid, baseDir, path string) []string {
 	// check baseDir in filesystem for e-book matching formats
 	full := filepath.Join(baseDir, path)
 
-	entries, err := os.ReadDir(full)
+	entries, err := libraryReadDir(full)
 	if err != nil {
 		return []string{}
 	}
