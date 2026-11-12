@@ -290,6 +290,20 @@ input {
     font-weight: 600;
 }
 
+/* Signed out: Sign in (offerSignIn, reader-chrome.ts). A link dressed as
+   a button, as wide as its word. */
+.r-signin {
+    width: auto;
+    padding: 0 10px;
+    font-size: 14px;
+    white-space: nowrap;
+    text-decoration: none;
+    color: inherit;
+}
+.r-signin[hidden] {
+    display: none;
+}
+
 /* Title and chapter: whatever width the buttons leave, never wrapping. */
 .r-title {
     flex: 1;

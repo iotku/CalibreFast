@@ -9,6 +9,7 @@
 import { keepOnlyUser, registerWorker } from "./book-cache.js";
 import { el, withPageScheme } from "./dom.js";
 import { forgetSynced } from "./local-keys.js";
+import { declineOffer, guestBookCount, offerDeclined, offerDeclinedForGood } from "./guest-data.js";
 
 // Addresses the server wrote for this site (e.g. the device sync server on
 // the account page): use the page's scheme, which a proxy may hide from it.
@@ -39,6 +40,35 @@ const BOOK = "M2 4h6a4 4 0 0 1 4 4v12a3 3 0 0 0-3-3H2zM22 4h-6a4 4 0 0 0-4 4v12a
 const BOOKMARK = "M6 3h12a1 1 0 0 1 1 1v17l-7-4.5L5 21V4a1 1 0 0 1 1-1z";
 const UPLOAD = "M12 15V4M7 9l5-5 5 5M4 15v4a1 1 0 0 0 1 1h14a1 1 0 0 0 1-1v-4";
 const INBOX = "M3 13l3-8h12l3 8M3 13v5a1 1 0 0 0 1 1h16a1 1 0 0 0 1-1v-5M3 13h5l1 2h6l1-2h5";
+
+/**
+ * The offer to add this device's signed-out reading to the account: a strip
+ * under the top bar, until the user reviews it, puts it off for this visit
+ * (Not now), or says it isn't theirs (never offered to this account again).
+ */
+function showGuestOffer(user: string, books: number): void {
+    document.querySelector(".guest-offer")?.remove();
+    if (!books || location.pathname === "/account/import" || offerDeclined(user)) return;
+    const strip = el(
+        "div",
+        { className: "guest-offer", role: "region", ariaLabel: "Reading on this device" },
+        el("span", {
+            textContent: `You read ${books === 1 ? "a book" : `${books} books`} on this device while signed out. Add ${books === 1 ? "it" : "them"} to your account?`,
+        }),
+    );
+    const later = el("button", { type: "button", className: "btn-standard", textContent: "Not now" });
+    const notMine = el("button", { type: "button", className: "btn-standard", textContent: "These aren't mine" });
+    later.addEventListener("click", () => {
+        declineOffer(user, false);
+        strip.remove();
+    });
+    notMine.addEventListener("click", () => {
+        declineOffer(user, true);
+        strip.remove();
+    });
+    strip.append(el("a", { className: "btn-standard btn-primary", href: "/account/import", textContent: "Review" }), later, notMine);
+    document.querySelector(".site-bar")?.after(strip);
+}
 
 function init(bar: HTMLElement): void {
     const user = bar.querySelector<HTMLElement>(".tb-user");
@@ -149,6 +179,10 @@ function init(bar: HTMLElement): void {
             return;
         }
         const name = st.username;
+        // Reading done here signed out, not offered to this account yet or
+        // put off: say so, under the bar (guest-data.ts, /account/import).
+        const guestBooks = offerDeclinedForGood(name) ? 0 : guestBookCount();
+        showGuestOffer(name, guestBooks);
         const shortcut = (href: string, label: string, path: string, key: string): HTMLAnchorElement => {
             const a = el("a", { className: "tb-icon tb-shortcut", href, title: label, ariaLabel: label, ...current(key) });
             a.append(icon(path));
@@ -192,6 +226,7 @@ function init(bar: HTMLElement): void {
             ...(st.canEdit ? [el("a", { href: "/recycle-bin", textContent: "Recycling Bin", ...current("recycle-bin") })] : []),
             ...(st.canEdit ? [el("a", { href: "/admin/repairs", textContent: "Library repairs", ...current("library-repairs") })] : []),
             ...(st.isAdmin ? [el("a", { href: "/admin/users", textContent: "Manage users" })] : []),
+            ...(guestBooks ? [el("a", { href: "/account/import", textContent: "Reading on this device" })] : []),
             el("a", { href: "/account", textContent: "Account" }),
             logout,
         );

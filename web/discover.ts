@@ -375,7 +375,6 @@ function guestMarks(): Marks {
 
 /** Continue reading, for a signed-out visitor: this device's books, newest first. */
 async function showGuest(): Promise<void> {
-    byId("row-wanted").hidden = true;
     const index = localReading();
     const uuids = Object.entries(index)
         .filter(([, e]) => e.percent < LOCAL_FINISHED)
@@ -396,6 +395,10 @@ async function showGuest(): Promise<void> {
             /* offline: nothing to show */
         }
     }
+    // Started from a stale "signed out" (the top bar's cache), and the server
+    // has since said otherwise: its rows stand.
+    if (serverSignedIn) return;
+    byId("row-wanted").hidden = true;
     byId("row-reading-device").hidden = false;
     fillRow("row-reading", books);
     // The introduction stays open for a guest (only Hide folds it): its
@@ -403,6 +406,8 @@ async function showGuest(): Promise<void> {
 }
 
 let homeFetchedAt = 0;
+/** What the server last said: signed in (true), out (false), or not yet asked. */
+let serverSignedIn: boolean | null = null;
 
 /** Fetch what's the user's (or note they're signed out) and show it. */
 async function refreshHome(): Promise<void> {
@@ -414,11 +419,13 @@ async function refreshHome(): Promise<void> {
         return; // offline: keep what's shown
     }
     if (res.status === 401) {
+        serverSignedIn = false;
         store.set(HOME_KEY, "null");
         marksFromAnswer(null);
         marks = guestMarks();
         await showGuest();
     } else if (res.ok) {
+        serverSignedIn = true;
         const h = (await res.json()) as HomeAnswer;
         store.set(HOME_KEY, JSON.stringify(h));
         marks = marksFromAnswer(h.marks);

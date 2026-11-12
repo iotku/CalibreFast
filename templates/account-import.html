@@ -1,0 +1,28 @@
+<!doctype html>
+<html lang="en">
+<head>
+    <meta charset="utf-8">
+    {{ robotsMeta }}
+    <title>{{ .Title }}</title>
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <link rel="stylesheet" href="{{ asset "style.css" }}">
+</head>
+<body class="auth-body">
+{{ $tb := topbar "Title" "Reading on this device" }}
+{{ template "topbar-start" $tb }}
+{{ template "topbar-end" $tb }}
+<main class="auth-main auth-wide">
+    <section class="auth-card import-card">
+        <h1>Reading on this device</h1>
+        <p>Books you read here while signed out. Add them to your account to keep your place, highlights and bookmarks on every device. Nothing already in your account is lost: highlights and bookmarks from both are kept, and where your place differs you choose which to keep.</p>
+        <p id="import-status" class="import-status" role="status">Looking at this device…</p>
+        <ul id="import-list" class="import-list"></ul>
+        <div class="import-actions" id="import-actions" hidden>
+            <button type="button" class="btn-standard btn-primary" id="import-apply">Add to my account</button>
+            <button type="button" class="btn-standard btn-danger" id="import-discard">Discard this device's reading</button>
+        </div>
+    </section>
+</main>
+<script type="module" src="{{ asset "account-import.js" }}"></script>
+</body>
+</html>

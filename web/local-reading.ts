@@ -18,7 +18,7 @@ export interface LocalReadingEntry {
 }
 
 /** At or past this, a book counts as finished on this device. */
-export const LOCAL_FINISHED = 0.98;
+export const LOCAL_FINISHED = 0.97; // as the server (finishedPercent in progress.go)
 
 const KEY = "cf-local-reading";
 const PROGRESS = /^cf-progress-(.+)-(epub|pdf)$/;

@@ -146,7 +146,7 @@ func TestLibraryPrivateByDefault(t *testing.T) {
 		"/shuffle": http.StatusUnauthorized, "/pages/shuffle/page1.json": http.StatusUnauthorized,
 		"/latest": http.StatusUnauthorized, "/?page=2": http.StatusUnauthorized,
 		"/api/books?uuids=x": http.StatusUnauthorized,
-		"/login": 200, "/register": 200, "/static/dist/style-X.css": 200, "/auth/github/start": 200, "/api/me": 200,
+		"/login":             200, "/register": 200, "/static/dist/style-X.css": 200, "/auth/github/start": 200, "/api/me": 200,
 	})
 	// Browsers are sent to the sign-in page instead.
 	req := httptest.NewRequest("GET", "/tag/x?page=2", nil)
@@ -259,6 +259,29 @@ func TestLoginPageRevealsNothing(t *testing.T) {
 	for _, leak := range []string{"Secret Stacks", "CalibreFast", `href="/"`, "/authors", "/search", "<script", "tb-nav", "user-nav"} {
 		if strings.Contains(body, leak) {
 			t.Errorf("sign-in page contains %q", leak)
+		}
+	}
+}
+
+// Creating an account goes on to where the visitor was headed (the reader's
+// Sign in, via /account/import), as signing in does; never off the site.
+func TestRegisterFollowsNext(t *testing.T) {
+	setupTestAppDB(t)
+	orig := allowRegistrations
+	allowRegistrations = true
+	t.Cleanup(func() { allowRegistrations = orig })
+	for i, c := range []struct{ next, want string }{
+		{"/account/import?book=b1&next=%2Fread%3Fuuid%3Db1", "/account/import?book=b1&next=%2Fread%3Fuuid%3Db1"},
+		{"//evil.example/x", "/"},
+		{"https://evil.example/", "/"},
+	} {
+		form := url.Values{"username": {"newuser" + string(rune('a'+i))}, "password": {"a long enough password"}, "password2": {"a long enough password"}, "next": {c.next}}
+		req := httptest.NewRequest(http.MethodPost, "/register", strings.NewReader(form.Encode()))
+		req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
+		rec := httptest.NewRecorder()
+		registerHandler(rec, req)
+		if rec.Code != http.StatusSeeOther || rec.Header().Get("Location") != c.want {
+			t.Errorf("next %q: %d %q, want %q", c.next, rec.Code, rec.Header().Get("Location"), c.want)
 		}
 	}
 }

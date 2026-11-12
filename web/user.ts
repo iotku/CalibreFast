@@ -147,6 +147,26 @@ new MutationObserver((records) => {
     for (const r of records) for (const n of r.addedNodes) scan(n);
 }).observe(document.documentElement, { childList: true, subtree: true });
 
+/**
+ * Coming back to a book page or popup that's still showing (Back from the
+ * reader restores the page as it was; another tab was in front): what was
+ * read meanwhile changed its status and progress, so load the controls
+ * again, fresh.
+ */
+const REFRESH_AFTER_MS = 5_000; // hidden at least this long
+let hiddenAt = 0;
+function refreshShownControls(): void {
+    prefetched.clear();
+    for (const c of document.querySelectorAll<HTMLElement>(".book-user-actions")) void loadControls(c, true);
+}
+window.addEventListener("pageshow", (e) => {
+    if (e.persisted) refreshShownControls();
+});
+document.addEventListener("visibilitychange", () => {
+    if (document.visibilityState === "hidden") hiddenAt = Date.now();
+    else if (hiddenAt && Date.now() - hiddenAt >= REFRESH_AFTER_MS) refreshShownControls();
+});
+
 scan(document.documentElement);
 
 // The book page's "Remove from library…" (admins): book.html, in the popup

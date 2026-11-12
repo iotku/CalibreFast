@@ -51,6 +51,8 @@
     {{ if .Preview }}<span class="r-preview" title="Opened to look something up: your place, bookmarks, highlights and reading status aren't saved">Preview</span>{{ end }}
 {{ end }}
 {{ define "reader-top-end" }}
+    {{/* Shown to signed-out readers (offerSignIn, reader-chrome.ts). */}}
+    <a id="reader-signin" class="r-btn r-btn-text r-signin" href="/login" hidden title="Sign in to keep your place, bookmarks and highlights on every device">Sign in</a>
     <button id="bookmark-btn" class="r-btn" type="button" title="Bookmark this page" aria-label="Bookmark this page">
         <svg class="r-icon"><use href="#i-bookmark"/></svg>
     </button>

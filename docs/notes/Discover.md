@@ -1,6 +1,8 @@
 # Plan: Discover home page
 
-Status: proposal. Done so far: guest and per-user reading data kept apart (first half of phase 5, PR #98); phase 1, the catalog (#99); metadata.db read-only without `-allow-writes` (#100); phase 1b, the catalog snapshot (#101); phase 2, Shuffle (#102); phase 3, the Discover page with the introduction, Shuffle and Recently added, and `/latest` (#104, #105); phase 4, Continue reading and Want to read.
+Status: proposal. Done so far: guest and per-user reading data kept apart (first half of phase 5, PR #98); phase 1, the catalog (#99); metadata.db read-only without `-allow-writes` (#100); phase 1b, the catalog snapshot (#101); phase 2, Shuffle (#102); phase 3, the Discover page with the introduction, Shuffle and Recently added, and `/latest` (#104, #105); phase 4, Continue reading and Want to read (#107); phase 5, bringing guest reading into an account.
+
+Phase 5 as built: the preview and the import take the same full records (not a summary), so the server compares and stores from one shape. "Mark finished" isn't a separate choice: a position at 97% or more makes the book finished, as the readers do. The import isn't one transaction (the app database is one connection, used by the storing helpers); every step is repeatable instead. Books the account already has are cleared from the device without being listed, so older copies of the user's own data never show up as conflicts. Directly opening `/account/import` works even after "these aren't mine": it's the user's deliberate choice.
 
 Phase 4 as built: `/api/me/home` also carries the marks, so the page makes one personal request (plus the top bar's `/api/me`). `/api/books` answers from the catalog only. For a guest, a book in Continue reading doesn't fold the introduction: its sign-in line is how that reading would follow them.
 
