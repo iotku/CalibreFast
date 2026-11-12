@@ -941,12 +941,12 @@ func importSaveCoverHandler(w http.ResponseWriter, r *http.Request) {
 	if it == nil {
 		return
 	}
-	img, err := readCoverUpload(r)
+	data, err := readCoverUpload(r)
 	if err != nil {
 		http.Error(w, err.Error(), http.StatusBadRequest)
 		return
 	}
-	hasBackup, err := saveCoverJPEG(imports.itemDir(it.ID), img)
+	hasBackup, err := saveCoverJPEG(imports.itemDir(it.ID), data)
 	if err != nil {
 		http.Error(w, err.Error(), http.StatusInternalServerError)
 		return

@@ -38,12 +38,12 @@ func uploadCoverHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	img, err := readCoverUpload(r)
+	data, err := readCoverUpload(r)
 	if err != nil {
 		http.Error(w, err.Error(), http.StatusBadRequest)
 		return
 	}
-	hasBackup, err := saveCoverJPEG(filepath.Join(baseDir, bookPath), img)
+	hasBackup, err := saveCoverJPEG(filepath.Join(baseDir, bookPath), data)
 	if err != nil {
 		http.Error(w, err.Error(), http.StatusInternalServerError)
 		return
@@ -61,33 +61,71 @@ func uploadCoverHandler(w http.ResponseWriter, r *http.Request) {
 	fmt.Fprintf(w, `{"success":true,"uuid":%q,"hasBackup":%t}`, uuid, hasBackup)
 }
 
-// readCoverUpload decodes the image a cover request carries: either a
-// multipart form with a "cover" file field (a JPG or PNG upload), or a body
+const (
+	// coverMaxWidth: a wider cover is scaled down to this. Narrower ones
+	// keep their size: thumbnails are made from the cover when needed.
+	coverMaxWidth = 2560
+	// coverKeepMaxBytes: a JPEG cover up to this size (and coverMaxWidth
+	// wide) is saved byte for byte, never re-compressed.
+	coverKeepMaxBytes = 5 << 20
+	// coverQuality is the JPEG quality of a cover that has to be encoded
+	// (another format, too wide, or too big).
+	coverQuality = 92
+	// coverUploadMaxBytes bounds a cover request.
+	coverUploadMaxBytes = 32 << 20
+)
+
+// coverJPEG is the cover.jpg to save for an image file's bytes. A JPEG at
+// most coverMaxWidth wide and coverKeepMaxBytes big is kept as it is:
+// re-encoding it would only lose quality. Anything else is decoded, scaled
+// down to coverMaxWidth if wider, and encoded once at coverQuality. Its
+// errors are about the image (the client's, for an upload).
+func coverJPEG(data []byte) ([]byte, error) {
+	// Decoded either way, so a kept file is known to be a whole image.
+	img, format, err := image.Decode(bytes.NewReader(data))
+	if err != nil {
+		return nil, fmt.Errorf("not an image that can be read (use JPG or PNG): %w", err)
+	}
+	if format == "jpeg" && img.Bounds().Dx() <= coverMaxWidth && len(data) <= coverKeepMaxBytes {
+		return data, nil
+	}
+	if img.Bounds().Dx() > coverMaxWidth {
+		img = resizeToWidth(img, coverMaxWidth)
+	}
+	var buf bytes.Buffer
+	if err := jpeg.Encode(&buf, img, &jpeg.Options{Quality: coverQuality}); err != nil {
+		return nil, fmt.Errorf("encoding the cover: %w", err)
+	}
+	return buf.Bytes(), nil
+}
+
+// readCoverUpload reads the cover a request carries, as cover.jpg's bytes
+// (coverJPEG): either a multipart form with a "cover" file field (an
+// uploaded image, or one from the book or a lookup, as it is), or a body
 // that is a base64 data URL (a page of the book, drawn by the browser).
 // Its errors are the client's (400).
-func readCoverUpload(r *http.Request) (image.Image, error) {
+func readCoverUpload(r *http.Request) ([]byte, error) {
 	if strings.HasPrefix(r.Header.Get("Content-Type"), "multipart/form-data") {
-		if err := r.ParseMultipartForm(32 << 20); err != nil { // 32 MB max
+		r.Body = http.MaxBytesReader(nil, r.Body, coverUploadMaxBytes+1<<20)
+		if err := r.ParseMultipartForm(coverUploadMaxBytes); err != nil {
 			return nil, fmt.Errorf("failed to parse form: %w", err)
 		}
-		file, header, err := r.FormFile("cover")
+		file, _, err := r.FormFile("cover")
 		if err != nil {
 			return nil, fmt.Errorf("missing cover file: %w", err)
 		}
 		defer file.Close()
-
-		ext := strings.ToLower(filepath.Ext(header.Filename))
-		if ext != ".jpg" && ext != ".jpeg" && ext != ".png" {
-			return nil, errors.New("unsupported image format (use JPG or PNG)")
-		}
-		img, _, err := image.Decode(file)
+		data, err := io.ReadAll(io.LimitReader(file, coverUploadMaxBytes+1))
 		if err != nil {
-			return nil, fmt.Errorf("failed to decode image: %w", err)
+			return nil, errors.New("failed to read the cover file")
 		}
-		return img, nil
+		if len(data) > coverUploadMaxBytes {
+			return nil, errors.New("the cover file is too big")
+		}
+		return coverJPEG(data)
 	}
 
-	body, err := io.ReadAll(io.LimitReader(r.Body, 32<<20))
+	body, err := io.ReadAll(io.LimitReader(r.Body, coverUploadMaxBytes))
 	if err != nil {
 		return nil, errors.New("failed to read body")
 	}
@@ -104,16 +142,13 @@ func readCoverUpload(r *http.Request) (image.Image, error) {
 	if err != nil {
 		return nil, fmt.Errorf("failed to decode base64: %w", err)
 	}
-	img, _, err := image.Decode(bytes.NewReader(imgData))
-	if err != nil {
-		return nil, fmt.Errorf("failed to decode image from data URL: %w", err)
-	}
-	return img, nil
+	return coverJPEG(imgData)
 }
 
-// saveCoverJPEG writes img as dir/cover.jpg. The cover it replaces is kept as
-// cover_backup.jpg, so the change can be reverted (revertCoverIn).
-func saveCoverJPEG(dir string, img image.Image) (hasBackup bool, err error) {
+// saveCoverJPEG writes data (from coverJPEG) as dir/cover.jpg. The cover it
+// replaces is kept as cover_backup.jpg, so the change can be reverted
+// (revertCoverIn).
+func saveCoverJPEG(dir string, data []byte) (hasBackup bool, err error) {
 	coverPath := filepath.Join(dir, "cover.jpg")
 	backupPath := filepath.Join(dir, "cover_backup.jpg")
 	if _, err := os.Stat(coverPath); err == nil {
@@ -124,10 +159,10 @@ func saveCoverJPEG(dir string, img image.Image) (hasBackup bool, err error) {
 	if err != nil {
 		return false, fmt.Errorf("failed to create cover file: %w", err)
 	}
-	if err := jpeg.Encode(outFile, img, &jpeg.Options{Quality: 90}); err != nil {
+	if _, err := outFile.Write(data); err != nil {
 		outFile.Close()
 		os.Remove(coverPath)
-		return false, fmt.Errorf("failed to encode JPEG: %w", err)
+		return false, fmt.Errorf("failed to write cover file: %w", err)
 	}
 	if err := outFile.Close(); err != nil {
 		return false, fmt.Errorf("failed to write cover file: %w", err)
