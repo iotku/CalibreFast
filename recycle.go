@@ -692,6 +692,20 @@ func restoreBookRows(ctx context.Context, bakPath, uuid string) (newID int64, er
 			continue
 		}
 		cols = slices.DeleteFunc(cols, func(c string) bool { return c == "id" })
+		// The book was inserted a moment ago, so any rows it has here are
+		// defaults Calibre's insert trigger made (newer Calibre gives each
+		// book a books_pages_link row): its own from the batch replace them,
+		// when the batch has any.
+		var saved int
+		if err = tx.QueryRowContext(ctx, `SELECT COUNT(*) FROM bak.`+quoteIdent(t.name)+` WHERE book = ?`, oldID).Scan(&saved); err != nil {
+			return 0, fmt.Errorf("read %s: %w", t.name, err)
+		}
+		if saved == 0 {
+			continue
+		}
+		if _, err = tx.ExecContext(ctx, `DELETE FROM main.`+quoteIdent(t.name)+` WHERE book = ?`, newID); err != nil {
+			return 0, fmt.Errorf("clear %s: %w", t.name, err)
+		}
 		e, isLink := linkedEntityOf(t)
 		if !isLink {
 			sel := make([]string, len(cols))
