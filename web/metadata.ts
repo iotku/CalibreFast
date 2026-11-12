@@ -6,7 +6,7 @@ import { createDescriptionEditor } from "./description.js";
 import { closeOnBackdropClick, errorMessage, maybeId } from "./dom.js";
 import { isbnDigits, mountIsbnTools } from "./isbn-tools.js";
 import { joinAuthors, splitAuthors, tidyAuthors } from "./authors.js";
-import type { MetaSource } from "./types.js";
+import type { DuplicateCheck, MetaSource } from "./types.js";
 
 type FieldKind = "string" | "date" | "list" | "identifiers";
 type FieldKey = "title" | "creators" | "description" | "publisher" | "date" | "languages" | "subjects" | "identifiers";
@@ -721,14 +721,32 @@ export interface ApplyResult {
   next?: string;
 }
 
-export async function applyValues(book: BookTarget, values: FormValues): Promise<ApplyResult> {
+/**
+ * Adding a waiting book was refused: it looks like one already in the
+ * library (Go: duplicateError in duplicates.go). Unless the library holds
+ * one of its files, sending it again with override adds it.
+ */
+export class DuplicateError extends Error {
+  constructor(message: string, readonly check: DuplicateCheck) {
+    super(message);
+  }
+  get sameFile(): boolean {
+    return this.check.books.some((b) => b.same_file);
+  }
+}
+
+export async function applyValues(book: BookTarget, values: FormValues, { override = false } = {}): Promise<ApplyResult> {
   const res = await fetch(book.apply, {
     method: "POST",
     headers: { "content-type": "application/json" },
-    body: JSON.stringify(values),
+    body: JSON.stringify(override ? { ...values, override: true } : values),
   });
   if (!res.ok) {
     const text = await res.text();
+    if (res.status === 409 && res.headers.get("content-type")?.includes("json")) {
+      const body = JSON.parse(text) as { error?: string; duplicate?: DuplicateCheck };
+      if (body.duplicate) throw new DuplicateError(body.error ?? "Possibly already in the library", body.duplicate);
+    }
     throw new Error(text || `HTTP ${res.status}`);
   }
   return (await res.json()) as ApplyResult;
@@ -1022,6 +1040,29 @@ export async function mountMetadataEditor(book: BookTarget, form: HTMLFormElemen
       headerTitle.textContent = current.Title || "Untitled Book";
     }
 
+    let overrideNext = false;
+    /** The book looks already in the library: say which, and offer to add it anyway. */
+    const showDuplicate = (err: DuplicateError) => {
+      if (!statusEl) return;
+      statusEl.className = err.sameFile ? "edit-status error" : "edit-status pending";
+      const names = err.check.books
+        .map((b) => `“${b.title}”${b.authors?.length ? ` by ${b.authors.join(" & ")}` : ""}`)
+        .join(", ");
+      statusEl.textContent = err.sameFile
+        ? `✕ Not added: the library already has this file (${names}). Discard it from the queue instead.`
+        : `⚠ Not added: possibly already in the library as ${names}.`;
+      if (err.sameFile) return;
+      const again = document.createElement("button");
+      again.type = "button";
+      again.className = "btn-standard btn-override";
+      again.textContent = "Add anyway";
+      again.addEventListener("click", () => {
+        overrideNext = true;
+        form.requestSubmit();
+      });
+      statusEl.append(again);
+    };
+
     form.addEventListener("submit", async (e) => {
       e.preventDefault();
       commitPending(); // half-typed tag/language text is never dropped
@@ -1046,9 +1087,12 @@ export async function mountMetadataEditor(book: BookTarget, form: HTMLFormElemen
         statusEl.textContent = book.pending ? "Adding the book to the Calibre library…" : "Saving metadata to Calibre library…";
       }
 
+      // "Add anyway" on a possible duplicate: this one submit only.
+      const override = overrideNext;
+      overrideNext = false;
       try {
         saving = true;
-        const result = await applyValues(book, values);
+        const result = await applyValues(book, values, { override });
         baseline = JSON.stringify(values); // applied: nothing unsaved now
         added = true;
         if (statusEl) {
@@ -1068,6 +1112,10 @@ export async function mountMetadataEditor(book: BookTarget, form: HTMLFormElemen
           location.assign(`/book/get/${encodeURIComponent(result.uuid)}?applied=${Date.now()}`);
         }
       } catch (err) {
+        if (err instanceof DuplicateError && statusEl) {
+          showDuplicate(err);
+          return;
+        }
         console.error("Apply metadata failed:", err);
         if (statusEl) {
           statusEl.className = "edit-status error";

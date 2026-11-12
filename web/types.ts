@@ -114,6 +114,22 @@ export interface ImportFile {
     size: number;
 }
 
+/** A library book that looks like one being added (Go: duplicateBook in duplicates.go). */
+export interface DuplicateBook {
+    uuid: string;
+    title: string;
+    authors: string[] | null;
+    /** Same title and authors. */
+    same_authors: boolean;
+    /** It holds a file identical to one being added: that can't be added again. */
+    same_file: boolean;
+}
+
+/** Library books a book may duplicate (Go: duplicateCheck). */
+export interface DuplicateCheck {
+    books: DuplicateBook[];
+}
+
 /** A book waiting in the import queue (Go: importSummary). */
 export interface ImportSummary {
     id: string;
@@ -124,6 +140,8 @@ export interface ImportSummary {
     from: string;
     added: string;
     has_cover: boolean;
+    /** Library books it may duplicate; absent for none. */
+    duplicate?: DuplicateCheck;
 }
 
 /** GET /api/imports (Go: importQueue). */
