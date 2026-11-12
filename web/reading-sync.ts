@@ -12,6 +12,8 @@
  */
 
 import { api } from "./dom.js";
+import { lastKnownUser, localKey, type Owner } from "./local-keys.js";
+import type { MeResponse } from "./types.js";
 
 export type BookFormat = "epub" | "pdf";
 
@@ -43,6 +45,8 @@ export interface Bookmark {
 
 export interface ReadingSync {
     signedIn: boolean;
+    /** Whose records these are (null: signed out). */
+    user: Owner;
     loadProgress(): Promise<LocalProgress | null>;
     saveProgress(position: string | number, percent: number): void;
     loadBookmarks(): Promise<Bookmark[]>;
@@ -77,21 +81,26 @@ export async function createReadingSync(
     format: BookFormat,
     { legacyKey, onStatus = () => {} }: { legacyKey?: string; onStatus?: (text: string) => void } = {},
 ): Promise<ReadingSync> {
-    const progressKey = `cf-progress-${uuid}-${format}`;
-    const bookmarksKey = `cf-bookmarks-${uuid}`;
-    const deletedKey = `cf-bookmarks-deleted-${uuid}`;
-
-    let signedIn = false;
+    // A signed-in user's records are under their name, a guest's under the
+    // plain names (local-keys.ts). Offline, whoever the top bar last saw
+    // signed in: their changes wait under their name and are sent once the
+    // server can be reached.
+    let user: Owner = null;
     try {
-        signedIn = (await fetch("/api/me", { credentials: "same-origin" })).ok;
+        const r = await fetch("/api/me", { credentials: "same-origin" });
+        if (r.ok) user = ((await r.json()) as MeResponse).user?.username ?? null;
     } catch {
-        /* offline */
+        user = lastKnownUser();
     }
+    const signedIn = user !== null;
+    const progressKey = localKey(user, `progress-${uuid}-${format}`);
+    const bookmarksKey = localKey(user, `bookmarks-${uuid}`);
+    const deletedKey = localKey(user, `bookmarks-deleted-${uuid}`);
 
     // ---- position ---------------------------------------------------------
 
     let local = LS.get<LocalProgress | null>(progressKey, null);
-    if (!local && legacyKey) {
+    if (!local && legacyKey && !signedIn) {
         // Older readers stored a bare position under another key.
         const legacy = localStorage.getItem(legacyKey);
         if (legacy && legacy !== "undefined") local = { position: legacy, percent: 0, updatedAt: 0 };
@@ -144,7 +153,7 @@ export async function createReadingSync(
             pending: signedIn,
         };
         LS.set(progressKey, local);
-        if (legacyKey) localStorage.setItem(legacyKey, String(position));
+        if (legacyKey && !signedIn) localStorage.setItem(legacyKey, String(position));
         clearTimeout(timer);
         timer = setTimeout(() => void push(), 1500);
     }
@@ -232,6 +241,7 @@ export async function createReadingSync(
 
     return {
         signedIn,
+        user,
         loadProgress,
         saveProgress,
         loadBookmarks,

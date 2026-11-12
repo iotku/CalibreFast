@@ -2,13 +2,14 @@
  * Highlights and notes for the built-in readers: the data and its sync.
  * (web/annotation-ui.ts is what the reader sees.)
  *
- * Kept in localStorage, so they work offline and when not signed in. When
- * signed in they sync with the server (annotations.go): every change carries
+ * Kept in localStorage, so they work offline and when not signed in; a guest
+ * and each user keep their own copy (local-keys.ts). When signed in they sync with the server (annotations.go): every change carries
  * this device's clock and the newest wins, and a delete is a change like any
  * other (a tombstone), so it reaches the other devices.
  */
 
 import { api } from "./dom.js";
+import { localKey, type Owner } from "./local-keys.js";
 import type { BookFormat } from "./reading-sync.js";
 
 /** Colours the readers offer, by KOReader's names for them. */
@@ -67,8 +68,13 @@ export interface AnnotationStore {
 const newId = (): string =>
     (crypto.randomUUID?.() ?? `${Date.now().toString(36)}-${Math.random().toString(36).slice(2)}`).slice(0, 64);
 
-export function createAnnotationStore(uuid: string, format: BookFormat, signedIn: boolean, onChange: () => void): AnnotationStore {
-    const key = `cf-annotations-${uuid}`;
+/**
+ * owner: the signed-in user (from ReadingSync), or null when signed out. Each
+ * keeps their own copy (local-keys.ts), and only a signed-in user's is sent.
+ */
+export function createAnnotationStore(uuid: string, format: BookFormat, owner: Owner, onChange: () => void): AnnotationStore {
+    const signedIn = owner !== null;
+    const key = localKey(owner, `annotations-${uuid}`);
     // Both formats' annotations, tombstones included until the server has them.
     let all: Annotation[] = [];
     try {

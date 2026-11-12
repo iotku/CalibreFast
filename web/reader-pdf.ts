@@ -537,7 +537,7 @@ function selectionAnchor(range: Range): PdfAnchor | null {
     return { page, rects: lines.slice(0, 200).map((l) => l.map(round) as [number, number, number, number]) };
 }
 
-const store = createAnnotationStore(uuid, "pdf", sync.signedIn, () => {
+const store = createAnnotationStore(uuid, "pdf", sync.user, () => {
     drawMarks();
     notesUI.renderList();
 });

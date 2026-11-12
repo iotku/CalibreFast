@@ -732,7 +732,7 @@ function highlightAt(doc: Document, x: number, y: number): { annotation: Annotat
     return null;
 }
 
-const store = createAnnotationStore(uuid, "epub", sync.signedIn, () => {
+const store = createAnnotationStore(uuid, "epub", sync.user, () => {
     drawHighlights();
     notesUI.renderList();
 });

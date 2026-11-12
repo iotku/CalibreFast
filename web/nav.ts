@@ -8,6 +8,7 @@
  */
 import { keepOnlyUser, registerWorker } from "./book-cache.js";
 import { el, withPageScheme } from "./dom.js";
+import { forgetSynced } from "./local-keys.js";
 
 // Addresses the server wrote for this site (e.g. the device sync server on
 // the account page): use the page's scheme, which a proxy may hide from it.
@@ -174,6 +175,7 @@ function init(bar: HTMLElement): void {
         const logout = el("form", { method: "post", action: "/logout" }, el("button", { type: "submit", textContent: "Sign out" }));
         logout.addEventListener("submit", () => {
             cache.set(null);
+            forgetSynced(name);
             void keepOnlyUser(null).catch(() => {});
         });
         const list = el(

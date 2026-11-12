@@ -43,6 +43,7 @@ export function previewSync(onStatus: (text: string) => void): ReadingSync {
     onStatus("Preview — nothing is saved");
     return {
         signedIn: false,
+        user: null,
         loadProgress: () => Promise.resolve(null),
         saveProgress: () => {},
         loadBookmarks: () => Promise.resolve([]),
