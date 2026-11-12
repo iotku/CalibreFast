@@ -120,8 +120,10 @@ export function setupChrome(opts: ChromeOptions): Chrome {
     // getting at what's underneath. Bars shown any other way (a tap, a key)
     // stay until hidden as usual.
     const finePointer = matchMedia("(hover: hover) and (pointer: fine)");
-    const FULL = 24; // px beyond a bar's own height where it's all the way out
-    const RAMP = 72; // px over which it comes out, beyond that
+    // All the way out once the pointer is at the bar itself (the handle,
+    // which hangs off it, only shows then); it starts coming out RAMP px before.
+    const FULL = 4;
+    const RAMP = 92;
     const peek = new Map<HTMLElement, number>(bars.map((b) => [b, 0]));
     const stowed = new Set<HTMLElement>(); // put away by the handle
     let held: HTMLElement | null = null; // a press began on this bar
@@ -130,9 +132,12 @@ export function setupChrome(opts: ChromeOptions): Chrome {
     const inUse = (b: HTMLElement): boolean =>
         b === held || !!b.querySelector("input:focus:not([type=range]), select:focus");
     // 0..1: how far out the bar is for a pointer at y (null: not over the window).
+    const HANDLE = 16; // px the handle hangs beyond a bar (web/reader.css), with a little slack
     const nearness = (b: HTMLElement, y: number | null): number => {
         if (y === null) return 0;
         const d = b.classList.contains("r-top") ? y - b.offsetHeight : window.innerHeight - b.offsetHeight - y;
+        // A bar that's out stays out while the pointer is on its way to the handle.
+        if (peek.get(b) === 1 && d <= HANDLE) return 1;
         return Math.min(1, Math.max(0, 1 - (d - FULL) / RAMP));
     };
     function render(): void {
@@ -140,6 +145,7 @@ export function setupChrome(opts: ChromeOptions): Chrome {
         for (const b of bars) {
             const show = !hidden ? 1 : (peek.get(b) ?? 0);
             b.classList.toggle("r-peek", hidden && show > 0);
+            b.classList.toggle("r-out", show === 1);
             if (hidden && show > 0) b.style.setProperty("--show", show.toFixed(3));
             else b.style.removeProperty("--show");
             b.inert = show === 0;

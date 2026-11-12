@@ -214,6 +214,14 @@ input {
         color: var(--chrome-muted);
         cursor: pointer;
         transform: translateX(-50%);
+        transition: opacity 0.15s ease-out;
+    }
+
+    /* Only once the bar is all the way out: it's on the bar's leading edge, and
+       shouldn't be what arrives first. */
+    .r-peek:not(.r-out) .r-handle {
+        opacity: 0;
+        pointer-events: none;
     }
 
     /* The grip: a short rounded line. */
