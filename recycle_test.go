@@ -24,6 +24,7 @@ func setupRecycleLibrary(t *testing.T) *sql.DB {
 	calibreDB, baseDir, dataDir, recycleDir = db, dir, t.TempDir(), ""
 	t.Cleanup(func() { calibreDB, baseDir, dataDir, recycleDir = origDB, origBase, origData, origRecycle })
 	t.Chdir(t.TempDir()) // pages/*.json
+	setupTestAppDB(t)
 	if _, err := db.Exec(`
 	CREATE TABLE custom_column_1 (id INTEGER PRIMARY KEY, value TEXT NOT NULL, UNIQUE(value));
 	CREATE TABLE books_custom_column_1_link (id INTEGER PRIMARY KEY, book INTEGER NOT NULL, value INTEGER NOT NULL, UNIQUE(book, value));
@@ -450,5 +451,70 @@ func TestRecyclePagesEditedInPlace(t *testing.T) {
 	last, _ := readPage(2)
 	if last[len(last)-1].UUID != victim.UUID || totalBooks != total+1 {
 		t.Fatalf("after a restart: last page ends with %s, totalBooks %d (was %d)", last[len(last)-1].UUID, totalBooks, total)
+	}
+}
+
+// Readers' bookmarks, notes and progress are kept with the batch, and a
+// restore adds back what's gone without overwriting what changed.
+func TestRecycleKeepsReaderData(t *testing.T) {
+	db := setupRecycleLibrary(t)
+	a := addRecycleTestBook(t, db, "Alpha", []string{"A"}, nil)
+	other := addRecycleTestBook(t, db, "Other", []string{"B"}, nil)
+	u, _ := createUser("reader", "longenough-pw", false)
+	gone, _ := createUser("leaver", "longenough-pw", false)
+	exec := func(q string, args ...any) {
+		t.Helper()
+		if _, err := appDB.Exec(q, args...); err != nil {
+			t.Fatalf("%s: %v", q, err)
+		}
+	}
+	for _, who := range []int64{u.ID, gone.ID} {
+		exec(`INSERT INTO bookmarks (user_id, book_uuid, client_id, format, position, label, created_at) VALUES (?, ?, ?, 'epub', 'epubcfi(/6/4)', 'Ch. 2', 1)`, who, a.uuid, "bm-"+itoa(who))
+		exec(`INSERT INTO annotations (user_id, book_uuid, client_id, format, anchor, text, note, created_at, updated_at) VALUES (?, ?, ?, 'epub', 'epubcfi(/6/4,/1:0,/1:5)', 'Hello', 'a note', 1, 1)`, who, a.uuid, "an-"+itoa(who))
+	}
+	exec(`INSERT INTO reading_progress (user_id, book_uuid, format, position, percent, updated_at) VALUES (?, ?, 'epub', 'old', 0.25, 1)`, u.ID, a.uuid)
+	exec(`INSERT INTO favorites (user_id, book_uuid, created_at) VALUES (?, ?, 1)`, u.ID, a.uuid)
+	exec(`INSERT INTO shelves (id, owner_id, name, created_at, updated_at) VALUES (7, ?, 'Mine', 1, 1)`, u.ID)
+	exec(`INSERT INTO shelf_books (shelf_id, book_uuid, added_at) VALUES (7, ?, 1)`, a.uuid)
+	exec(`INSERT INTO bookmarks (user_id, book_uuid, client_id, format, position, created_at) VALUES (?, ?, 'other-bm', 'epub', 'x', 1)`, u.ID, other.uuid)
+
+	batch, err := recycleBooks([]string{a.uuid}, "admin")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got := batch.Books[0].ReaderData; got["bookmarks"] != 2 || got["annotations"] != 2 || got["reading_progress"] != 1 || got["shelf_books"] != 1 {
+		t.Fatalf("counts: %v", got)
+	}
+	raw, _ := os.ReadFile(filepath.Join(batch.dir(), "reader-data.json"))
+	if !strings.Contains(string(raw), "a note") || strings.Contains(string(raw), "other-bm") {
+		t.Fatalf("reader-data.json:\n%s", raw)
+	}
+	// Removing the book doesn't touch them.
+	if n := count(t, appDB, `SELECT COUNT(*) FROM annotations WHERE book_uuid = ?`, a.uuid); n != 2 {
+		t.Fatalf("annotations after removal: %d", n)
+	}
+
+	// Meanwhile: some are lost, one changes, a user goes.
+	exec(`DELETE FROM bookmarks WHERE user_id = ? AND book_uuid = ?`, u.ID, a.uuid)
+	exec(`DELETE FROM annotations WHERE user_id = ? AND book_uuid = ?`, u.ID, a.uuid)
+	exec(`UPDATE reading_progress SET position = 'newer', updated_at = 2 WHERE user_id = ?`, u.ID)
+	exec(`DELETE FROM users WHERE id = ?`, gone.ID)
+
+	if res, err := restoreRecycled(batch.ID, nil, "admin"); err != nil || len(res) != 1 || res[0].Error != "" {
+		t.Fatalf("restore: %+v %v", res, err)
+	}
+	if n := count(t, appDB, `SELECT COUNT(*) FROM bookmarks WHERE user_id = ? AND book_uuid = ? AND label = 'Ch. 2'`, u.ID, a.uuid); n != 1 {
+		t.Errorf("bookmark not back: %d", n)
+	}
+	if n := count(t, appDB, `SELECT COUNT(*) FROM annotations WHERE user_id = ? AND book_uuid = ? AND note = 'a note'`, u.ID, a.uuid); n != 1 {
+		t.Errorf("annotation not back: %d", n)
+	}
+	var pos string
+	_ = appDB.QueryRow(`SELECT position FROM reading_progress WHERE user_id = ?`, u.ID).Scan(&pos)
+	if pos != "newer" {
+		t.Errorf("progress overwritten with the old copy: %q", pos)
+	}
+	if n := count(t, appDB, `SELECT COUNT(*) FROM bookmarks WHERE user_id = ?`, gone.ID); n != 0 {
+		t.Errorf("a deleted user's rows came back: %d", n)
 	}
 }

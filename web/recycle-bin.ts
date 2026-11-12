@@ -31,8 +31,24 @@ async function restore(batch: RecycleBatch, books: RecycledBook[], buttons: HTML
     await refresh();
 }
 
+const READER_DATA: [string, string, string][] = [
+    ["annotations", "highlight or note", "highlights and notes"],
+    ["bookmarks", "bookmark", "bookmarks"],
+    ["reading_progress", "reading position", "reading positions"],
+];
+
+/** "3 highlights and notes, 1 bookmark" kept for readers. */
+function readerData(counts: Record<string, number> | undefined): string {
+    return READER_DATA.filter(([k]) => counts?.[k])
+        .map(([k, one, many]) => `${counts![k]} ${counts![k] === 1 ? one : many}`)
+        .join(", ");
+}
+
 function bookRow(batch: RecycleBatch, b: RecycledBook): HTMLLIElement {
-    const details = [b.formats.map((f) => f.toUpperCase()).join(", "), b.no_files ? "no files" : formatBytes(b.size)].filter(Boolean).join(" · ");
+    const kept = readerData(b.reader_data);
+    const details = [b.formats.map((f) => f.toUpperCase()).join(", "), b.no_files ? "no files" : formatBytes(b.size), kept && `readers' ${kept} kept`]
+        .filter(Boolean)
+        .join(" · ");
     let action: HTMLElement;
     if (b.restored_at) {
         action = el("span", { className: "auth-muted" }, `Restored ${when(b.restored_at)}${b.restored_by ? ` by ${b.restored_by}` : ""}`);

@@ -140,6 +140,8 @@ export interface RecycledBook {
     formats: string[];
     size: number;
     no_files: boolean;
+    /** Readers' rows about it kept with the batch, by table (bookmarks, annotations, …). */
+    reader_data?: Record<string, number>;
     restored_at?: string;
     restored_by?: string;
     /** Still in the bin: it can be restored. */

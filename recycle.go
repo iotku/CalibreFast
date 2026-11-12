@@ -75,6 +75,9 @@ type recycledBook struct {
 	Formats []string `json:"formats"`
 	Size    int64    `json:"size"`     // bytes in its folder
 	NoFiles bool     `json:"no_files"` // its folder wasn't in the library: only rows were removed
+	// ReaderData counts readers' rows about it, by table (bookmarks,
+	// annotations, …), copied to reader-data.json (recycle_userdata.go).
+	ReaderData map[string]int `json:"reader_data,omitempty"`
 
 	RestoredAt string `json:"restored_at,omitempty"` // RFC 3339
 	RestoredBy string `json:"restored_by,omitempty"`
@@ -201,6 +204,10 @@ func recycleBooks(uuids []string, by string) (*recycleBatch, error) {
 	if _, err := calibreDB.Exec(`VACUUM INTO ?`, filepath.Join(batch.dir(), recycleDBFile)); err != nil {
 		abandon()
 		return nil, fmt.Errorf("couldn't back up metadata.db: %w", err)
+	}
+	if err := saveReaderData(batch); err != nil {
+		abandon()
+		return nil, fmt.Errorf("couldn't back up readers' bookmarks and notes: %w", err)
 	}
 	if err := batch.save(); err != nil {
 		abandon()
@@ -886,6 +893,13 @@ func (batch *recycleBatch) restoreOne(b *recycledBook, bakPath string) error {
 			}
 		}
 		return fmt.Errorf("couldn't add it back to metadata.db: %w", err)
+	}
+	// The book is back either way; readers' rows are there unless something
+	// removed them since.
+	if n, err := restoreReaderData(batch, b.UUID); err != nil {
+		log.Printf("recycling bin: %q is back, but its readers' data from batch %s couldn't be checked: %v", b.Title, batch.ID, err)
+	} else if n > 0 {
+		log.Printf("recycling bin: added back %d bookmark/note/progress row(s) for %q from batch %s", n, b.Title, batch.ID)
 	}
 	forgetBook(b.UUID)
 	return nil

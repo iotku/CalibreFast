@@ -47,7 +47,7 @@ export function deleteBooks(books: BookToDelete[]): Promise<boolean> {
             "div",
             { className: "delete-warning" },
             el("p", {}, `${n === 1 ? "This book disappears" : `These ${n} books disappear`} from the library for everyone: nobody can find, read or download ${n === 1 ? "it" : "them"}, and ${n === 1 ? "its" : "their"} files leave the library folder.`),
-            el("p", {}, "They are moved to the Recycling Bin, with a copy of metadata.db from just before, and can be restored from there until the server's owner empties it."),
+            el("p", {}, "They are moved to the Recycling Bin, with a copy of metadata.db from just before, and can be restored from there until the server's owner empties it. Readers' bookmarks, highlights, notes and places are kept and come back with them."),
         );
         const input = el("input", { type: "text", autocomplete: "off", spellcheck: false, ariaLabel: `Type ${CONFIRM_WORD} to confirm` });
         input.setAttribute("autocapitalize", "off");
