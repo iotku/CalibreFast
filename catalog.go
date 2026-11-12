@@ -18,6 +18,7 @@ import (
 	"database/sql"
 	"log"
 	"maps"
+	"math/rand/v2"
 	"slices"
 	"strings"
 	"sync"
@@ -43,6 +44,10 @@ type catalog struct {
 	tagNames    map[int32]string
 	authorNames map[int32]string
 	seriesNames map[int32]string
+	// shuffle: every slot of books in a random order, made at each start
+	// (Shuffle, docs/notes/Discover.md section 2). Books added while running
+	// go at the end, so the shuffle page files before them don't change.
+	shuffle []int32
 }
 
 var libraryCatalog atomic.Pointer[catalog]
@@ -91,6 +96,16 @@ func (c *catalog) latest() []int32 {
 		}
 		return cmp.Compare(y.ID, x.ID)
 	})
+	return order
+}
+
+// randomOrder is the slots from..to-1 in a random order (Fisher–Yates).
+func randomOrder(from, to int) []int32 {
+	order := make([]int32, 0, to-from)
+	for i := from; i < to; i++ {
+		order = append(order, int32(i))
+	}
+	rand.Shuffle(len(order), func(i, j int) { order[i], order[j] = order[j], order[i] })
 	return order
 }
 
@@ -247,6 +262,7 @@ func buildCatalog(db queryer) (*catalog, error) {
 	for i := range books {
 		c.byUUID[books[i].UUID] = int32(i)
 	}
+	c.shuffle = randomOrder(0, len(books))
 	log.Printf("catalog: %d books, %d tags, %d authors, %d series in %s",
 		len(books), len(c.tagNames), len(c.authorNames), len(c.seriesNames), time.Since(start).Round(time.Millisecond))
 	return c, nil
@@ -354,6 +370,7 @@ func applyCatalogChanges(db queryer, old *catalog, reread, removed []string) (*c
 		tagNames:    old.tagNames,
 		authorNames: old.authorNames,
 		seriesNames: old.seriesNames,
+		shuffle:     old.shuffle,
 	}
 	names := newCatalog()
 	found := map[string]bool{}
@@ -371,6 +388,9 @@ func applyCatalogChanges(db queryer, old *catalog, reread, removed []string) (*c
 				c.books = append(c.books, b)
 			}
 		}
+	}
+	if n := len(c.books); n > len(old.books) {
+		c.shuffle = append(slices.Clone(old.shuffle), randomOrder(len(old.books), n)...)
 	}
 	for _, u := range reread {
 		if !found[u] {

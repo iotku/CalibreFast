@@ -118,6 +118,7 @@ func loadCatalogSnapshot(key libraryKey) (*catalog, bool) {
 	for i := range c.books {
 		c.byUUID[c.books[i].UUID] = int32(i)
 	}
+	c.shuffle = randomOrder(0, len(c.books)) // a new order every start
 	return c, true
 }
 

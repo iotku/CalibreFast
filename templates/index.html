@@ -12,11 +12,11 @@
         <script src="/static/vendor/htmx.org@4.0.1/dist/ext/hx-preload.min.js"></script>
     </head>
     <body>
-{{ $tb := topbar }}
+{{ $tb := topbar "Title" .Heading }}
 {{ template "topbar-start" $tb }}
 {{ template "topbar-pager" }}
 {{ template "topbar-end" $tb }}
-        <div id="books" data-page-url="/pages/page{n}.json?v={{ .PagesVersion }}" data-page-size="{{ booksPerPage }}" data-total-books="{{ .TotalBooks }}"></div>
+        <div id="books" data-page-url="{{ .PagesDir }}page{n}.json?v={{ .Version }}" data-page-size="{{ booksPerPage }}" data-total-books="{{ .TotalBooks }}"{{ with .EmptyText }} data-empty-text="{{ . }}"{{ end }}></div>
         <div id="book-modal" class="modal-overlay">
             <div class="modal-content">
                 <button id="modal-close" aria-label="Close modal">✕</button>

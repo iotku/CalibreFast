@@ -169,9 +169,12 @@ type LibraryInfo struct {
 
 // IndexPageData is passed to index.html.
 type IndexPageData struct {
-	Title        string
-	TotalBooks   int
-	PagesVersion string
+	Title      string
+	Heading    string // shown in the top bar ("" for the library itself)
+	TotalBooks int
+	PagesDir   string // where the page files are: "/pages/", "/pages/shuffle/"
+	Version    string // pagesVersion, so the files can be cached for good
+	EmptyText  string
 }
 
 var (
@@ -249,21 +252,19 @@ func writePage(page int, books []Book) error {
 }
 
 func writePageJSON(page int, data []byte) error {
-	if err := os.MkdirAll("pages", 0o755); err != nil {
+	return writeJSONFile(pageFile(page), data)
+}
+
+// writeJSONFile writes and renames, so a request never sees half a file.
+func writeJSONFile(path string, data []byte) error {
+	if err := os.MkdirAll(filepath.Dir(path), 0o755); err != nil {
 		return err
 	}
-
-	filename := filepath.Join(
-		"pages",
-		"page"+strconv.Itoa(page)+".json",
-	)
-
-	// Write and rename, so a request never sees half a file.
-	tmp := filename + ".tmp"
+	tmp := path + ".tmp"
 	if err := os.WriteFile(tmp, data, 0o644); err != nil {
 		return err
 	}
-	return os.Rename(tmp, filename)
+	return os.Rename(tmp, path)
 }
 
 // servePages serves /pages/ from dir (pages/*.json). A request with the
@@ -518,9 +519,10 @@ func indexHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	data := IndexPageData{
-		Title:        "Library",
-		TotalBooks:   int(totalBooks.Load()),
-		PagesVersion: currentPagesVersion(),
+		Title:      "Library",
+		TotalBooks: int(totalBooks.Load()),
+		PagesDir:   "/pages/",
+		Version:    currentPagesVersion(),
 	}
 
 	err := templates.ExecuteTemplate(w, "index.html", data)
@@ -531,6 +533,7 @@ func indexHandler(w http.ResponseWriter, r *http.Request) {
 
 func serveLibraryHTTP() {
 	http.HandleFunc("/", indexHandler)
+	http.HandleFunc("GET /shuffle", shuffleHandler)
 	registerRobotsRoutes()
 
 	// serve generated json pages

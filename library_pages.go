@@ -19,6 +19,7 @@ import (
 	"slices"
 	"strconv"
 	"sync"
+	"sync/atomic"
 	"time"
 )
 
@@ -170,6 +171,81 @@ func restoreToPages(uuid string) error {
 	return nil
 }
 
+// shuffleTotal is how many books pages/shuffle/*.json hold.
+var shuffleTotal atomic.Int64
+
+func shufflePageFile(page int) string {
+	return filepath.Join("pages", "shuffle", "page"+strconv.Itoa(page)+".json")
+}
+
+// writeShufflePages writes pages/shuffle/pageN.json: the books not removed,
+// in the catalog's random order, booksPerPage per page. Like the library
+// pages, only files whose contents change are written: an edit rewrites the
+// page holding the book, an upload only the last page (new books go at the
+// end of the order). Sets shuffleTotal; doesn't bump pagesVersion (callers
+// do). Callers hold pagesMu.
+func writeShufflePages(c *catalog) (changed bool, err error) {
+	var books []Book
+	page := 1
+	flush := func() error {
+		data, err := json.Marshal(books)
+		if err != nil {
+			return err
+		}
+		path := shufflePageFile(page)
+		if old, err := os.ReadFile(path); err == nil && bytes.Equal(old, data) {
+			return nil
+		}
+		if err := writeJSONFile(path, data); err != nil {
+			return err
+		}
+		changed = true
+		return nil
+	}
+	n := 0
+	for _, i := range c.shuffle {
+		b := &c.books[i]
+		if b.Removed {
+			continue
+		}
+		books = append(books, b.Book)
+		n++
+		if len(books) == booksPerPage {
+			if err := flush(); err != nil {
+				return changed, err
+			}
+			page++
+			books = books[:0]
+		}
+	}
+	if len(books) > 0 {
+		if err := flush(); err != nil {
+			return changed, err
+		}
+	}
+	if shuffleTotal.Swap(int64(n)) != int64(n) {
+		changed = true
+	}
+	return changed, nil
+}
+
+// refreshShufflePages brings pages/shuffle/ up to date after books were
+// removed or restored (the library pages keep gaps then, but a random order
+// has no place to keep: the files after a removed book shift).
+func refreshShufflePages() {
+	if libraryCatalog.Load() == nil {
+		return
+	}
+	logErr(catalogFlush(), "shuffle pages: couldn't apply the catalog's changes")
+	pagesMu.Lock()
+	defer pagesMu.Unlock()
+	changed, err := writeShufflePages(currentCatalog())
+	logErr(err, "shuffle pages: couldn't write")
+	if changed {
+		pagesVersion.Store(time.Now().UnixNano())
+	}
+}
+
 // writePagesFromCatalog writes pages/*.json from the catalog: every book
 // not removed, newest added first, booksPerPage per page. Only files whose
 // contents change are written, so after an edit only the pages holding the
@@ -204,6 +280,11 @@ func writePagesFromCatalog(c *catalog) (changed bool, err error) {
 	if total := int64(len(order)); totalBooks.Swap(total) != total {
 		changed = true
 	}
+	shuffled, err := writeShufflePages(c)
+	if err != nil {
+		return changed, err
+	}
+	changed = changed || shuffled
 	if changed {
 		pagesVersion.Store(time.Now().UnixNano())
 	}

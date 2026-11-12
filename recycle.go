@@ -277,6 +277,7 @@ func recycleBooks(uuids []string, by string) (*recycleBatch, error) {
 	}
 	catalogRemoved(removed...)
 	logErr(removeFromPages(removed), "recycling bin: couldn't take the books out of the library pages")
+	refreshShufflePages()
 	refreshAllCaches()
 
 	titles := make([]string, len(batch.Books))
@@ -906,6 +907,7 @@ func restoreRecycled(batchID string, uuids []string, by string) ([]restoreResult
 	}
 	if changed {
 		logErr(batch.save(), "recycling bin: couldn't update "+batch.ID+"/"+recycleBatchFile)
+		refreshShufflePages()
 		refreshAllCaches()
 	}
 	return results, nil
