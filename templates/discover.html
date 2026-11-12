@@ -38,7 +38,6 @@
                         <a href="/shelves">Shelf</a>
                         <span>or see</span>
                         <a href="/latest">Latest</a>
-                        <a href="/shuffle">Shuffle</a>
                     </nav>
                     <p class="intro-account" id="intro-account" hidden>
                         An account keeps track of what you're reading on every device, a list of books you want to read, and suggestions from what you like.
@@ -53,7 +52,17 @@
             <section class="row" id="row-shuffle" aria-labelledby="row-shuffle-title" hidden>
                 <header class="row-head">
                     <h2 id="row-shuffle-title">Shuffle</h2>
-                    <a href="/shuffle">See all</a>
+                    {{/* No link to /shuffle: the row is a handful at a time, not a list to page through. */}}
+                    <div class="row-tools">
+                        <button type="button" class="row-btn" id="shuffle-back" disabled>
+                            <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M9 14L4 9l5-5"/><path d="M4 9h11a5 5 0 0 1 0 10h-3"/></svg>
+                            <span>Previous</span>
+                        </button>
+                        <button type="button" class="row-btn" id="shuffle-next">
+                            <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M16 3h5v5M4 20L21 3M21 16v5h-5M15 15l6 6M4 4l5 5"/></svg>
+                            <span>Shuffle</span>
+                        </button>
+                    </div>
                 </header>
                 <div class="row-books"></div>
             </section>

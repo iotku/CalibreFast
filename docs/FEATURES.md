@@ -6,7 +6,7 @@ Reference for how CalibreFast behaves, for people and AI tools working on the co
 
 - **The front page (`/`) is Discover**, the same layout for everyone:
   - **An introduction:** the library at a glance (books, authors, tags, languages), a search box and where to browse. For signed-out visitors (on a `-public` server) it adds a line on what an account is for, with Sign in, and Create an account when registration is open. **Hide** shrinks it to the counts line on that browser.
-  - **Shuffle:** about 12 books from the server's random order. Each load shows the next 12, so the same books don't come back until the whole library has gone by; the order is new after each server restart. Books you've finished are skipped. **See all** opens `/shuffle`, the whole order on the grid.
+  - **Shuffle:** about 12 books from the server's random order. Each load, and each click of **Shuffle**, shows the next 12, so the same books don't come back until the whole library has gone by; the order is new after each server restart. **Previous** goes back through the last 20 sets shown, also after a reload. Books you've finished are skipped. The page doesn't link to `/shuffle` (the whole order on the grid): the row is meant as a handful at a time, though the address works if typed in.
   - **Recently added:** the 12 newest. **See all** opens `/latest`.
   - Rows scroll sideways; a book opens in the same popup as the grid.
 - **Latest** (`/latest`, in the top bar) is every book, newest added first, on the grid. Old links to `/?page=N` go there.
