@@ -313,10 +313,6 @@ body {
     }
 }
 
-/* No library search here: the tools sit at the right. */
-.site-bar .tb-tools {
-    margin-left: auto;
-}
 
 /* ── Online lookup: the bar and its matches ── */
 .lookup-bar {
