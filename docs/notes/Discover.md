@@ -1,6 +1,6 @@
 # Plan: Discover home page
 
-Status: proposal, nothing implemented yet.
+Status: proposal. Done so far: guest and per-user reading data kept apart (first half of phase 5, PR #98).
 
 ## Goal
 
@@ -51,29 +51,47 @@ Every row has a **See all →** link to an existing full grid (`/me/reading`, `/
 Built inside `writeLibraryPages` (main.go:993), which already reads every book once in `timestamp DESC` order. Extend that query with `b.id` and keep a compact slice:
 
 ```go
+// One book. Tags and authors are ranges into the catalog's shared arenas,
+// so 100k books aren't 200k small slices.
 type catalogBook struct {
-    Book            // what the grid JSON already has
-    ID     int32    // calibre books.id, for link tables
-    Tags   []int32  // tag ids
-    Series int32    // 0 if none
+    Book                   // what the grid JSON already has
+    ID          int32      // calibre books.id, for link tables
+    tagLo, tagHi int32     // c.tagArena[tagLo:tagHi]: tag ids (groups resolved)
+    authLo, authHi int32   // c.authArena[authLo:authHi]: author ids
+    Series      int32      // 0 if none
+    Removed     bool       // tombstone (recycled in this run)
 }
 type catalog struct {
-    books   []catalogBook        // index = position in Latest order
-    byUUID  map[string]int32
-    byID    map[int32]int32
-    tagBooks map[int32][]int32   // posting lists, Latest order
-    tagNames []string            // id -> name (groups resolved, see below)
-    seriesBooks map[int32][]int32 // sorted by series_index
-    shuffle []int32              // permutation of books
-    removed []bool               // tombstones for this run
+    books       []catalogBook      // index = position in Latest order
+    byUUID      map[string]int32
+    tagArena, authArena []int32
+    tagBooks    map[int32][]int32  // tag -> books, Latest order
+    tagNames    map[int32]string   // groups resolved (below)
+    seriesBooks map[int32][]int32  // series -> books by series_index
+    shuffle     []int32            // permutation of books (section 2)
+    built       time.Time
 }
+var cat atomic.Pointer[catalog]
+func currentCatalog() *catalog  // never nil after startup
 ```
 
-Two more queries in the same connection: `SELECT book, tag FROM books_tags_link` and `SELECT book, series FROM books_series_link` (plus `tags`/`series` names). These are full scans of small integer tables; expect tens of ms on a 50k-book library even on the HDD, and they run while the page files are being written anyway. Measure with the existing startup log line.
+**Building** (`buildCatalog(db)`): the `writeLibraryPages` query gains `b.id`; the books are collected as the pages are written. Then three more queries on the same connection, each a full scan of a small integer link table plus its names: `books_tags_link`/`tags`, `books_authors_link`, `books_series_link`/`series`. Log one line: `catalog: 48211 books, 3104 tags, 812 series in 140ms`.
 
-Published behind an `atomic.Pointer[catalog]` so handlers read without locks; rebuilds swap the pointer.
+**Memory**: roughly the size of `pages/*.json` (~250 B/book: ~25 MB at 100k books) plus 4 B per tag/author link. Two existing caches hold copies of the same strings (`uuidPathIndex`: 19 uses, `modTimeCache`: 6). Later they can read from the catalog instead, which roughly evens out. Not part of phase 1.
 
-Also lets `booksByUUIDs` (userdata.go:31) answer from memory for every `/me/*` list, a free side benefit (keep the SQL path as fallback for misses).
+**Updating: rebuild and swap, debounced.** Every write path (upload, editor, bulk edit, merge, import approval, recycle and restore, group edits, library repairs) already ends in `refreshAllCaches()`. That calls `scheduleCatalogRebuild()`: after 2 s with no further calls, a goroutine builds a new catalog and swaps the pointer. That's one hook instead of eight, it's always correct, and a bulk edit of 500 books costs one rebuild. Handlers keep reading the old catalog meanwhile and never lock. The rebuild keeps the existing shuffle order for books it already had and inserts new ones at random places. The static shuffle files only change at restart, but `/shuffle` for signed-in users (built from the catalog) sees new books at once. Recycled books stay in the catalog as tombstones until restart, for the same reason as the page gaps (`removeFromPages`). If rebuilds turn out slow on big libraries, the known uuids at each call site allow incremental updates later. Measure first.
+
+**First users** (phase 1, no visible change):
+- `booksByUUIDs` (userdata.go:31) answers from the catalog: every `/me/*` list, shelves, and later `/api/me/home`. A miss (a book added since the last rebuild) falls back to the SQL it uses today.
+- `bookExists` (userdata.go:24), on every favorite and status change: catalog first, SQL on a miss.
+
+**Tests** (`catalog_test.go`, on the `setupTestDB` fixture):
+- After `writeLibraryPages`, every book in `metadata.db` is in the catalog with its exact tags, authors and series, in `timestamp DESC` order.
+- Tag groups collapse member tags into one id.
+- `booksByUUIDs` gives the same answer from the catalog as from SQL, including order and skipped missing uuids.
+- A rebuild after an insert keeps existing shuffle positions and contains the new book.
+- A recycled book is tombstoned and absent from `booksByUUIDs`.
+- `-race` run with handlers reading during a rebuild.
 
 **Tag groups**: map each member tag id to its group (`groups.all("tag")`) when building `tagBooks`, so "Science Fiction"/"Sci-Fi" count as one, matching `/tags`.
 
@@ -198,19 +216,16 @@ With `-public-read`, signed-out visitors can read, and `web/reading-sync.ts` kee
 
 When a visitor who read signed out signs in or signs up, they're offered to add that reading to their account, and shown any conflicts with what the account already has, so neither side's place or notes are lost.
 
-#### What the browser holds today (and the problem with it)
+#### Done first: guest and per-user records kept apart (PR #98)
 
-Per book, in localStorage: `cf-progress-<uuid>-<format>` (`{position, percent, updatedAt, pending}`), `cf-bookmarks-<uuid>` (+ `-deleted-`), `cf-annotations-<uuid>`. None of these say **whose** they are, and nothing clears them on sign-out. So today:
-- A guest position is saved with `pending: false`, so it's never sent when the same book is later opened signed in: it only wins locally if newer, and other devices never see it.
-- Guest annotations and bookmarks (`synced` unset) **are** sent, into whichever account next opens that book on this device, unasked.
-- After a signed-in user signs out, their cached copies look exactly like guest data.
+Per book, in localStorage: position (`progress-<uuid>-<format>`), bookmarks (`bookmarks-<uuid>`, `bookmarks-deleted-<uuid>`) and highlights (`annotations-<uuid>`).
 
-#### Fix first: owned local records
-
-- Every local record gets `owner`: the username when written signed in, `""` when signed out. `reading-sync.ts` and `annotations.ts` only send records whose owner is the signed-in user; guest records are left for the import below.
-- Records without `owner` (written before this change) count as guest data. The review below hides any that already match the account, so a user's own older cached copies don't show up as conflicts.
-- On sign-out (`nav.ts`), drop the user's **synced** per-book records (the server has them); keep unsynced ones, still owned by them, to send when they sign in again. They never become guest data.
-- `cf-local-reading` (section 5a) lists only guest books.
+- **Guest** records use the plain names (`cf-progress-…`). **Signed-in** records live under `cf-u/<username>/…` (`web/local-keys.ts`), and only those are sent. Guest data therefore never reaches an account except through the flow below.
+- Guest positions are saved with `pending: false` and guest highlights and bookmarks with `synced: false`. The import reads those as-is.
+- Records saved before #98 are under the plain names, so they're guest data too, including a signed-in user's changes that hadn't been sent. The review hides any that already match the account, so a user's own older copies don't show up as conflicts.
+- Sign-out drops the user's synced records and keeps unsent ones under their name, so they never become guest data.
+- **Still to do for the flow:** `cf-local-reading` (section 5a) indexes guest books only. The flow finds guest highlights and bookmarks by scanning for `cf-annotations-*` and `cf-bookmarks-*` keys. The scan runs once per sign-in, and only when the index or such a key exists.
+- After a successful import the guest records are deleted (the account now has them, under `cf-u/<username>/` once the reader next opens the book). Skipped books keep their guest records.
 
 #### The flow
 
@@ -249,11 +264,10 @@ The Discover "Continue reading" row switches from the device's guest list to `/a
 
 | Event | Catalog | Static files |
 |---|---|---|
-| Upload | append book, add to tag/series postings (one small query for its tags) | page1 already rewritten; shuffle/tag files untouched until restart |
-| Metadata / bulk edit | `refreshInPages` also updates catalog entries and their tags | tag files: rewritten from new postings (cheap: ≤40 files), bump `pagesVersion` |
-| Remove / restore | tombstone / un-tombstone | `removeFromPages` / `restoreToPages` also handle shuffle and tag files |
-| Group change | rebuild `tagBooks` (in `refreshAllCaches`) | rewrite tag files |
-| Discover tag settings | rebuild eligible set | rewrite tag files |
+| Upload, edit, bulk edit, merge, import, repairs | debounced rebuild from `refreshAllCaches` (section 1) | page1 as today; tag files rewritten after the rebuild, `pagesVersion` bumped; shuffle files untouched until restart |
+| Remove / restore | rebuild keeps removed books as tombstones | `removeFromPages` / `restoreToPages` also handle shuffle and tag files |
+| Group change | rebuild (`refreshAllCaches`) | rewrite tag files |
+| Discover tag settings | recompute the eligible set (no rebuild) | rewrite tag files |
 | Featured shelf change | — | rewrite `featured.json`, bump `featuredVersion` |
 | Status / favorite change | bump user marks version (recs and `/shuffle` caches) | — |
 
@@ -268,11 +282,11 @@ The Discover "Continue reading" row switches from the device's guest list to `/a
 
 ## Phases (each a PR)
 
-1. **Catalog index** built in `writeLibraryPages`; `booksByUUIDs` served from it. Tests: catalog matches metadata.db for TestData; startup time logged.
+1. **Catalog index** (section 1): built in `writeLibraryPages`, debounced rebuild from `refreshAllCaches`, `booksByUUIDs` and `bookExists` served from it. No visible change; startup time logged.
 2. **Shuffle pages** + `/shuffle` grid (static signed out, per-user without finished books signed in); removal/restore handling. Tests: permutation covers every book once; finished books absent from the signed-in pages; `servePages` caching.
 3. **Routes**: `/latest`, redirect `/?page=`, nav item, Discover shell with Shuffle (finished filtered) + Recently added, for everyone.
 4. **`/api/me/home`**: Reading (activity order) + Want to read rows; localStorage copy. Signed-out local reading row (`cf-local-reading`, `/api/books`).
-5. **Guest reading import**: `owner` on local records and the sign-out cleanup first (it fixes guest notes going into whichever account opens the book next, even without Discover), then preview, review page and apply. Tests: preview classifications (new / same / conflict, KOReader position counted), choosing the older side makes it newest, re-applying is a no-op, duplicate highlights keep both notes.
+5. **Guest reading import**: ~~records kept apart per owner~~ (done, #98), then preview, review page and apply. Tests: preview classifications (new / same / conflict, KOReader position counted), choosing the older side makes it newest, re-applying is a no-op, duplicate highlights keep both notes.
 6. **Pinned and featured shelves**: migration, pin endpoints, `featured` on `PATCH /api/shelves/{id}`, featured order, user pin order and `/shelves` order, `web/reorder.ts`, `featured.json`, shelf page and dashboard controls. Tests: featured-by-default, unpin sticks, re-feature doesn't override an unpin, first reorder freezes the list, other users' personal shelves never show.
 7. **Tag rows + admin include/deny + cutoff setting**.
 8. **Recommendations + next in series** (denied tags excluded).
@@ -286,6 +300,10 @@ The Discover "Continue reading" row switches from the device's guest list to `/a
 - Signing in or up offers to add this device's guest reading to the account, with a review of conflicts; nothing guest-made reaches an account without that.
 - Tag rows: 25% cutoff by default, adjustable; admin include and deny lists on top.
 - Shuffle leaves out finished books.
-
 - The dashboard's sections are in a fixed order for everyone (easier to explain and demonstrate); users reorder only their pinned shelf rows, within the shelves section.
 - Phase 5's first half (record ownership) fixes a leak that exists today, so it ships on its own ahead of Discover.
+
+## Open questions
+
+- How big is the largest library this should stay fast on (books, tags), and on what storage? The catalog's memory (~25 MB per 100k books) and the rebuild-on-write approach are sized for up to a few hundred thousand books on an HDD. Much larger would need incremental updates from the start.
+- Keep `-home=latest` (an admin can make `/latest` the landing page), or drop it to keep one layout everywhere?
