@@ -533,6 +533,7 @@ func serveLibraryHTTP() {
 	// Merging books, and the bulk metadata editor (merge.go, bulk_edit.go)
 	registerMergeRoutes()
 	registerBulkEditRoutes()
+	registerNotDuplicateRoutes()
 
 	// Individual Book metadata editor
 	http.HandleFunc("/book/edit/{uuid}", requireWrites(func(w http.ResponseWriter, r *http.Request) {

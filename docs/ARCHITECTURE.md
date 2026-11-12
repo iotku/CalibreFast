@@ -138,6 +138,7 @@ Each book's `authors` is its authors' names in Calibre's order, `A & B` (`bookAu
 
   A failure after step 2 doesn't undo it: the answer is 200 with `warning`, which the editor shows.
 - **Bulk editor** (`bulk_edit.go`, `templates/library-edit.html`, `web/library-edit.ts`). `GET /api/library/table` is every book as a `tableBook`, one query with `group_concat` subqueries. The browser does filtering, sorting and duplicate grouping, and draws only the rows on screen (fixed 34px rows, absolutely placed in a body as tall as all of them). `POST /api/library/bulk` takes uuids and a `bulkEdit` (set, add or remove fields), applies it to each book's `metadata.opf` (`bookEditMetadata`) and saves changed ones with `updateBookInCalibreDB`, then answers the changed rows.
+- **Not duplicates** (`not_duplicates.go`): sets of book uuids an admin marked as different books (`not_duplicate_sets`, `not_duplicate_books` in the app database), sent with the table. The browser hides a look-alike group only when one set holds every book in it, so a newcomer brings the group back; `dupes=marked` shows the sets, `DELETE /api/library/not-duplicates/{id}` unmarks one.
 - **Grid pages after edits** (`refreshInPages` in `library_pages.go`): the edited books' entries are rewritten in the page files that hold them, so the grid shows new titles and authors before the next full rewrite.
 
 ## Removing books and the Recycling Bin

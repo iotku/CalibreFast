@@ -244,3 +244,9 @@ export interface BulkResult {
     /** The changed books' rows, as they are now. */
     books: TableBook[];
 }
+
+/** Books marked as not duplicates of each other (Go: notDuplicateSet in not_duplicates.go). */
+export interface NotDuplicateSet {
+    id: number;
+    uuids: string[];
+}

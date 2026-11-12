@@ -13,7 +13,7 @@ import { api, byId, closeOnBackdropClick, el, errorMessage, modalOpen } from "./
 import { attachSuggest } from "./suggest.js";
 import { deleteBooks } from "./delete-books.js";
 import { languageChipLabel, languageKey, loadLanguageCodes } from "./languages.js";
-import type { BulkEdit, BulkResult, TableBook } from "./types.js";
+import type { BulkEdit, BulkResult, NotDuplicateSet, TableBook } from "./types.js";
 
 const ROW_H = 34; // px; .lt-row's height in library-edit.css
 const OVERSCAN = 8; // rows drawn beyond the screen, each way
@@ -147,7 +147,16 @@ const selected = new Set<string>();
 let lastClicked: string | null = null; // for shift-click ranges
 const filters: Partial<Record<ColKey, string>> = {};
 let search = "";
-let dupMode = "";
+let dupMode = ""; // "", a dupKeyOf mode, or MARKED
+/** dupMode for the groups marked as not duplicates (Go: not_duplicates.go). */
+const MARKED = "marked";
+let notDupSets: NotDuplicateSet[] = [];
+
+/** The table's answer: the rows, and the sets marked as not duplicates. */
+interface TableData {
+    books: TableBook[];
+    not_duplicates: NotDuplicateSet[];
+}
 let onlySelected = false;
 let sortKey: ColKey = "title";
 let sortDesc = false;
@@ -270,15 +279,29 @@ function applyFilters(): void {
     const tests = COLUMNS.map((c) => [c, compileFilter(filters[c.key] ?? "")] as const).filter(([, t]) => t !== null) as [Column, Test][];
     const words = fold(search).split(/\s+/).filter(Boolean);
 
-    let groups: Map<string, number> | null = null;
-    if (dupMode) {
+    let groups: Set<string> | null = null;
+    if (dupMode === MARKED) {
+        // Each marked set with at least two books still in the library.
+        const present = new Set(rows.map((r) => r.b.uuid));
+        const keyOf = new Map<string, string>();
+        for (const s of notDupSets) {
+            const here = s.uuids.filter((u) => present.has(u));
+            if (here.length < 2) continue;
+            for (const u of here) if (!keyOf.has(u)) keyOf.set(u, `set:${s.id}`);
+        }
+        for (const r of rows) r.dupKey = keyOf.get(r.b.uuid) ?? "";
+        groups = new Set(keyOf.values());
+    } else if (dupMode) {
         // Over the whole library: a book's duplicate may be filtered out.
-        const counts = new Map<string, number>();
+        const members = new Map<string, string[]>();
         for (const r of rows) {
             r.dupKey = dupKeyOf(r.b, dupMode);
-            if (r.dupKey) counts.set(r.dupKey, (counts.get(r.dupKey) ?? 0) + 1);
+            if (r.dupKey) members.set(r.dupKey, [...(members.get(r.dupKey) ?? []), r.b.uuid]);
         }
-        groups = new Map([...counts].filter(([, k]) => k > 1).map(([key], i) => [key, i]));
+        const sets = notDupSets.map((s) => new Set(s.uuids));
+        // A group whose books were all marked as not duplicates of each other isn't one.
+        const marked = (uuids: string[]): boolean => sets.some((s) => uuids.every((u) => s.has(u)));
+        groups = new Set([...members].filter(([, us]) => us.length > 1 && !marked(us)).map(([key]) => key));
     }
 
     shown = rows.filter((r) => {
@@ -319,7 +342,8 @@ function refresh(): void {
     }
     const groupsShown = dupMode && shown.length ? shown[shown.length - 1]!.group + 1 : 0;
     countEl.textContent =
-        `${n(shown.length)} of ${plural(rows.length, "book")}` + (dupMode ? ` · ${plural(groupsShown, "group")} of look-alikes` : "");
+        `${n(shown.length)} of ${plural(rows.length, "book")}` +
+        (dupMode === MARKED ? ` · ${plural(groupsShown, "group")} marked not duplicates` : dupMode ? ` · ${plural(groupsShown, "group")} of look-alikes` : "");
     table.setAttribute("aria-rowcount", String(shown.length));
     body.style.height = `${shown.length * ROW_H}px`;
     emptyEl.hidden = shown.length > 0 || rows.length === 0;
@@ -384,9 +408,15 @@ function rowElement(r: Row, i: number): HTMLElement {
     actions.append(
         el("a", { href: `/book/edit/${encodeURIComponent(b.uuid)}`, target: "_blank", className: "lt-action", title: "Open in the metadata editor (new tab)", ariaLabel: `Edit “${b.title}”` }, "Edit"),
     );
-    if (dupMode && (i === 0 || shown[i - 1]!.dupKey !== r.dupKey)) {
+    if (dupMode === MARKED && (i === 0 || shown[i - 1]!.dupKey !== r.dupKey)) {
+        const un = el("button", { type: "button", className: "lt-action lt-unmark", title: "They may be duplicates after all: show them in the duplicates view again" }, "Unmark");
+        un.dataset["set"] = r.dupKey.replace(/^set:/, "");
+        actions.append(un);
+    } else if (dupMode && (i === 0 || shown[i - 1]!.dupKey !== r.dupKey)) {
         const group = groupOf(r);
         const size = group.length;
+        const notDup = el("button", { type: "button", className: "lt-action lt-notdup", title: "These books only look alike: leave them out of the duplicates view (Duplicates → Marked not duplicates undoes it)" }, "Not duplicates");
+        actions.append(notDup);
         if (size > 1 && size <= MERGE_MAX) {
             // A link, so a middle click (or Ctrl/⌘-click) opens the merge in a new tab.
             actions.append(
@@ -466,6 +496,17 @@ body.addEventListener("click", (e) => {
         toggle(uuid, target.checked, e.shiftKey);
         return;
     }
+    if (target.closest(".lt-notdup")) {
+        const r = rows.find((x) => x.b.uuid === uuid);
+        // The whole group, filtered out or not: that's what the view compares.
+        if (r) void markNotDuplicates(rows.filter((x) => x.dupKey === r.dupKey).map((x) => x.b.uuid));
+        return;
+    }
+    const un = target.closest<HTMLElement>(".lt-unmark");
+    if (un) {
+        void unmarkNotDuplicates(Number(un.dataset["set"]));
+        return;
+    }
     const ch = target.closest<HTMLElement>(".lt-chip");
     if (ch) {
         const col = ch.closest<HTMLElement>(".lt-cell")?.dataset["col"] as ColKey | undefined;
@@ -477,6 +518,28 @@ body.addEventListener("click", (e) => {
         return;
     }
 });
+
+async function markNotDuplicates(uuids: string[]): Promise<void> {
+    try {
+        const set = await api<NotDuplicateSet>("POST", "/api/library/not-duplicates", { uuids });
+        notDupSets.push(set);
+        say(`Marked ${plural(uuids.length, "book")} as not duplicates. Duplicates → Marked not duplicates lists them, to unmark.`, "ok");
+        refresh();
+    } catch (err) {
+        say(`Couldn't mark them: ${errorMessage(err)}`, "error");
+    }
+}
+
+async function unmarkNotDuplicates(id: number): Promise<void> {
+    try {
+        await api("DELETE", `/api/library/not-duplicates/${id}`);
+        notDupSets = notDupSets.filter((s) => s.id !== id);
+        say("Unmarked: they show in the duplicates view again.", "ok");
+        refresh();
+    } catch (err) {
+        say(`Couldn't unmark them: ${errorMessage(err)}`, "error");
+    }
+}
 
 byId("lt-select-shown").addEventListener("click", () => {
     for (const r of shown) selected.add(r.b.uuid);
@@ -804,8 +867,9 @@ async function start(): Promise<void> {
     loadView();
     buildHead();
     try {
-        const [data] = await Promise.all([api<{ books: TableBook[] }>("GET", "/api/library/table"), loadLanguageCodes()]);
+        const [data] = await Promise.all([api<TableData>("GET", "/api/library/table"), loadLanguageCodes()]);
         rows = data.books.map(makeRow);
+        notDupSets = data.not_duplicates;
     } catch (err) {
         countEl.textContent = "";
         say(`Couldn't load the library: ${errorMessage(err)}`, "error");
@@ -834,10 +898,11 @@ async function reloadRows(): Promise<void> {
     reloading = true;
     reloadedAt = Date.now();
     try {
-        const data = await api<{ books: TableBook[] }>("GET", "/api/library/table");
+        const data = await api<TableData>("GET", "/api/library/table");
         if (editing || modalOpen()) return;
         const before = rows.length;
         rows = data.books.map(makeRow);
+        notDupSets = data.not_duplicates;
         loaded();
         if (rows.length < before) say(`${plural(before - rows.length, "book")} fewer since this page loaded (merged or removed elsewhere).`, "ok");
     } catch {

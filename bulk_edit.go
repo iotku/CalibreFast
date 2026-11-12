@@ -126,9 +126,15 @@ func libraryTableHandler(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, err.Error(), http.StatusInternalServerError)
 		return
 	}
+	notDups, err := notDuplicateSets()
+	if err != nil {
+		log.Println("library table: not duplicates:", err)
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+		return
+	}
 	w.Header().Set("Content-Type", "application/json")
 	w.Header().Set("Cache-Control", "no-store")
-	logErr(json.NewEncoder(w).Encode(map[string]any{"books": books}), "encode library table")
+	logErr(json.NewEncoder(w).Encode(map[string]any{"books": books, "not_duplicates": notDups}), "encode library table")
 }
 
 // bulkEdit is what to change in each book (TS: BulkEdit in web/types.ts).
