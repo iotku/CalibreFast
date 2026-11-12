@@ -18,6 +18,7 @@ CalibreFast has accounts, but it's a personal project: the authentication code i
 - **Default (private):** nothing is visible without signing in, apart from the sign-in page. Anonymous visitors can't see the catalog, covers or book IDs.
 - **`-public`:** anyone who can reach the server can browse the catalog (and global shelves). Reading and downloading still need an account.
 - **`-public-read`:** public read-only mode. Anyone can also read and download every book. Implies `-public`.
+- **Search engines** are kept out by default: `/robots.txt` disallows everything without naming any paths, every response carries `X-Robots-Tag: noindex`, and every page has a matching meta tag. Only `-public-read` together with `-robots-allowed` lets them index the library. The sign-in page and sign-in links are never indexed.
 
 ## Accounts
 

@@ -256,6 +256,7 @@ func main() {
 	flag.StringVar(&dataDir, "datadir", "data", "where CalibreFast keeps its own database (accounts, favorites, progress, shelves)")
 	flag.BoolVar(&publicCatalog, "public", false, "let anonymous visitors browse the library catalog (by default everything requires signing in)")
 	flag.BoolVar(&publicRead, "public-read", false, "public read-only mode: anonymous visitors can also read and download books (implies -public)")
+	flag.BoolVar(&allowRobots, "robots-allowed", false, "let search engines index the library (only with -public-read; otherwise robots.txt, X-Robots-Tag and a meta tag on every page tell them to stay out)")
 	flag.BoolVar(&allowRegistrations, "allow-registrations", false, "let anyone create an account from the web interface (only on trusted networks: bots will try)")
 	flag.BoolVar(&noLookups, "no-lookups", false, "never look books up online (hides the metadata editor's lookup bar)")
 	flag.BoolVar(&noGoogleBooks, "no-google-books", false, "never offer Google Books in the metadata editor (Open Library only)")
@@ -291,6 +292,9 @@ func main() {
 	}
 	if publicRead {
 		publicCatalog = true
+	}
+	if allowRobots && !publicRead {
+		log.Println("-robots-allowed has no effect without -public-read: search engines are still kept out")
 	}
 	pruneSessions()
 	configureOAuth()
@@ -446,6 +450,7 @@ var templates = template.Must(
 		"asset":        assetURL,
 		"booksPerPage": func() int { return booksPerPage },
 		"join":         strings.Join,
+		"robotsMeta":   robotsMeta,
 	}).ParseGlob("templates/*.html"),
 )
 
@@ -488,6 +493,7 @@ func indexHandler(w http.ResponseWriter, r *http.Request) {
 
 func serveLibraryHTTP() {
 	http.HandleFunc("/", indexHandler)
+	registerRobotsRoutes()
 
 	// serve generated json pages
 	http.Handle("/pages/", servePages("pages"))
@@ -641,7 +647,7 @@ func serveLibraryHTTP() {
 
 	log.Println("Listening on :" + hostPort)
 	registerAuthRoutes()
-	log.Fatal(http.ListenAndServe(":"+hostPort, csrfProtect(withAuth(http.DefaultServeMux))))
+	log.Fatal(http.ListenAndServe(":"+hostPort, robotsHeader(csrfProtect(withAuth(http.DefaultServeMux)))))
 }
 
 func logErr(err error, why string) {

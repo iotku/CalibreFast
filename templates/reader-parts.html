@@ -3,6 +3,7 @@
 
 {{ define "reader-head" }}
     <meta charset="utf-8">
+    {{ robotsMeta }}
     <title>{{ if .BookTitle }}{{ .BookTitle }} — {{ end }}{{ .Title }}</title>
     <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
     <meta name="color-scheme" content="light dark">

@@ -273,7 +273,7 @@ func canEditLibrary(r *http.Request) bool {
 // KOReader sync API, which checks its own credentials).
 func isPublicPath(p string) bool {
 	return p == "/login" || p == "/logout" || p == "/register" || p == "/api/me" ||
-		p == "/sw.js" || p == "/offline" || // no library data in either (sw.go)
+		p == "/sw.js" || p == "/offline" || p == "/robots.txt" || // no library data in either (sw.go)
 		strings.HasPrefix(p, "/l/") || isKosyncPath(p) ||
 		strings.HasPrefix(p, "/auth/") || strings.HasPrefix(p, "/static/")
 }
