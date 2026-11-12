@@ -102,6 +102,7 @@ func TestReadOnlyServerLeavesLibraryUntouched(t *testing.T) {
 			calibreDB.Close()
 		}
 		calibreDB, baseDir, allowWrites = origDB, origBase, origWrites
+		libraryCatalog.Store(nil) // writeLibraryPages built one for this library
 		_ = filepath.WalkDir(dir, func(p string, d fs.DirEntry, err error) error {
 			if err == nil {
 				_ = os.Chmod(p, 0o755) // so the temp dir can be removed
