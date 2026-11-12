@@ -16,6 +16,18 @@ Status: proposal. Done so far: guest and per-user reading data kept apart (first
 
 Every row has a **See all →** link to an existing full grid (`/me/reading`, `/me/wanted`, `/shelf/N`, `/tag/X`, `/latest`, `/shuffle`), so the scroll engine stays the one place for browsing a whole list.
 
+### Same layout for everyone
+
+Every visitor sees the same sections in the same order; there's no per-server or per-user choice of landing page. For anyone who isn't signed in, or has nothing tracked yet, the page doubles as an introduction to the app.
+
+**Introduction band** (top of the page, in place of Continue reading when there's nothing to continue):
+- The library at a glance: *48,211 books · 9,402 authors · 3,104 tags · 17 languages*. Counts come from the aggregate caches already in memory and are written into the HTML.
+- Search box, prominent (the same `/search`).
+- Short "browse by" links: Authors, Tags, Languages, Shelves, Latest, Shuffle.
+- Signed out: one line on what an account adds (*Track what you're reading on every device, keep a want-to-read list, get suggestions*), with **Sign in**, and **Create account** when registration is open. With `-public` but not `-public-read`, it also says reading needs an account.
+- Signed in with nothing tracked: the same band without the sign-in line. The rows that would be empty (Continue reading, Want to read, Recommended) show a one-line how-to in their place, e.g. *Hover a cover and click the bookmark to add it here*. These hints are shown the same way for everyone, so the page is easy to demonstrate.
+- The band shrinks to the stats line once the user has something in Continue reading, or after **Dismiss** (remembered per browser).
+
 ### Signed-out visitors (`-public` / `-public-read`)
 
 - **Continue reading** from this device: the readers already save positions locally when not signed in (`cf-progress-<uuid>-<format>` in `web/reading-sync.ts`). See [Local reading for signed-out visitors](#local-reading-for-signed-out-visitors).
@@ -44,6 +56,30 @@ Every row has a **See all →** link to an existing full grid (`/me/reading`, `/
 | `/pages/page1.json?v=` | immutable | already cached for anyone who has used `/latest` |
 | covers | existing thumbnail path | row-aware cover pump (below) |
 
+## Storage model
+
+The deployment this is designed for: the **library** (book folders and `metadata.db`) is on slow spinning storage or a network drive, possibly asleep; **CalibreFast** runs on a fast local SSD with `-datadir`, `-cachedir` and `pages/`. Target: **100k books** and well beyond.
+
+Rules, in order of preference:
+
+1. **A page load reads nothing from the library.** Discover, `/latest`, `/shuffle` and every grid are served from memory or from files on the SSD. That means no SQL against `metadata.db`, no `stat`, and no directory listings.
+2. **After a write, read back only what changed**, with indexed queries (`WHERE id IN (…)`) rather than table scans.
+3. **Restarts don't rescan the library** when it hasn't changed (catalog snapshot, below).
+4. **What's missing is remembered too** (no cover, no file), so it isn't looked up again on every request.
+
+What this finds in today's code (to fix along the way; each is small):
+
+| Hot path | Today | Change |
+|---|---|---|
+| `resumeURL` (`/api/me/reading`, and later the Continue reading row) | `resolveFormats` lists the book's folder on the library (`os.ReadDir`) the first time per run, per book | formats from the catalog (`data` table: format + name); folder listing only for books with no `data` rows (the `formats_from_folder` case) |
+| `/cover-thumb/` for a book **without** a cover | every request `stat`s the missing `cover.jpg` on the library | catalog's `has_cover`: answer 404 at once (the grid already shows a placeholder) |
+| `/cover-thumb/` cache miss | `os.Stat(cover.jpg)` twice (`loadThumb`, `bookCoverStamp`) | once |
+| Startup | full read of `books` + per-book page writes | snapshot when unchanged (below) |
+
+Cached thumbnails already avoid the library: the stamp comes from memory (`modTimeCache`) and the file from `-cachedir`.
+
+**Check it stays that way**: a counter of library operations (`libraryIO`: SQL on `calibreDB`, `stat`, open and `ReadDir` under `-basedir`), logged with the startup line and testable. A test loads Discover, `/latest`, `/shuffle`, `/api/me/home` and a page of thumbnails that are already cached, and asserts the counter didn't move.
+
 ## Server
 
 ### 1. In-memory catalog (`catalog.go`, new)
@@ -59,6 +95,8 @@ type catalogBook struct {
     tagLo, tagHi int32     // c.tagArena[tagLo:tagHi]: tag ids (groups resolved)
     authLo, authHi int32   // c.authArena[authLo:authHi]: author ids
     Series      int32      // 0 if none
+    HasCover    bool       // books.has_cover
+    Formats     uint8      // bitmask: epub, pdf, … from the data table
     Removed     bool       // tombstone (recycled in this run)
 }
 type catalog struct {
@@ -75,23 +113,49 @@ var cat atomic.Pointer[catalog]
 func currentCatalog() *catalog  // never nil after startup
 ```
 
-**Building** (`buildCatalog(db)`): the `writeLibraryPages` query gains `b.id`; the books are collected as the pages are written. Then three more queries on the same connection, each a full scan of a small integer link table plus its names: `books_tags_link`/`tags`, `books_authors_link`, `books_series_link`/`series`. Log one line: `catalog: 48211 books, 3104 tags, 812 series in 140ms`.
+**Building** (`buildCatalog(db)`): the `writeLibraryPages` query gains `b.id`; the books are collected as the pages are written. Then four more queries on the same connection, each a sequential read of a small integer link table plus its names: `books_tags_link`/`tags`, `books_authors_link`, `books_series_link`/`series`, `data` (book, format). Sequential reads matter on a spinning disk: one pass per table in rowid order, never per-book lookups. Log one line: `catalog: 48211 books, 3104 tags, 812 series in 140ms`.
 
 **Memory**: roughly the size of `pages/*.json` (~250 B/book: ~25 MB at 100k books) plus 4 B per tag/author link. Two existing caches hold copies of the same strings (`uuidPathIndex`: 19 uses, `modTimeCache`: 6). Later they can read from the catalog instead, which roughly evens out. Not part of phase 1.
 
-**Updating: rebuild and swap, debounced.** Every write path (upload, editor, bulk edit, merge, import approval, recycle and restore, group edits, library repairs) already ends in `refreshAllCaches()`. That calls `scheduleCatalogRebuild()`: after 2 s with no further calls, a goroutine builds a new catalog and swaps the pointer. That's one hook instead of eight, it's always correct, and a bulk edit of 500 books costs one rebuild. Handlers keep reading the old catalog meanwhile and never lock. The rebuild keeps the existing shuffle order for books it already had and inserts new ones at random places. The static shuffle files only change at restart, but `/shuffle` for signed-in users (built from the catalog) sees new books at once. Recycled books stay in the catalog as tombstones until restart, for the same reason as the page gaps (`removeFromPages`). If rebuilds turn out slow on big libraries, the known uuids at each call site allow incremental updates later. Measure first.
+**Updating: incremental, by book.** A full rebuild after each edit would re-read every table from the library: at 100k books on a network drive, tens of MB per edit. Instead:
+
+- The write paths already know which books they changed. Each calls `catalogChanged(uuids)` or `catalogRemoved(uuids)` next to its existing `refreshInPages`/`generatePage1`/`removeFromPages` call: upload, editor, bulk edit, merge, import approval, recycle, restore, library repairs, cover changes.
+- `catalogChanged` re-reads just those books: one `books` query by uuid, then the link tables by `book IN (…)` (each has a `(book, x)` unique index, so these are index lookups, not scans). Batches of 500.
+- It applies them to a **copy-on-write** catalog: the books slice and maps are cloned shallowly (pointers and ints: ~5 ms at 100k), the changed entries replaced, the affected tag, series and author postings rebuilt, and the pointer swapped. Readers never lock.
+- Changes arriving together (a bulk edit's batches) are coalesced: callers enqueue uuids, and one goroutine applies everything queued at most every 250 ms.
+- **Group changes** don't touch the library: they only re-map tag ids to groups in memory.
+- New books get random positions in the shuffle. Removed books stay as tombstones until restart, as the page gaps do (`removeFromPages`).
+- A missed call site only means a stale title or tag in a row until the next restart or external-change check, never a wrong book. `TestCatalogHooks` (below) lists the write endpoints and fails if one doesn't notify the catalog.
+
+**Snapshot on the SSD.** After a build or change (debounced, 5 s), the catalog is written to `<cachedir>/catalog.snap`: a versioned binary encoding (`encoding/gob`, or a hand-rolled one if gob's reflection is slow at 100k entries; measure). Alongside it go the `stat` key of `metadata.db` and its `-wal`/`-journal` files (size + mtime) and the library's `PRAGMA data_version`/schema cookie.
+
+- **Startup**: one `stat` of `metadata.db` (and its journal). If the key matches the snapshot's and the page files on the SSD carry the same stamp, load the snapshot (~30 MB from SSD, ~100 ms) and **skip `writeLibraryPages` entirely**. Nothing else is read from the library.
+- If the key differs (Calibre desktop edited the library, an older CalibreFast version), do the full sequential build as today, in the background:
+  - With a snapshot from before, serve from that snapshot while the build runs.
+  - Without one, the server waits for the build, as it does today.
+
+**External changes** (Calibre desktop or `calibre-server` writing the same `metadata.db` while CalibreFast runs; today only a restart picks them up):
+
+- **Only while the site is in use**: at most once a minute, a page load triggers a background `PRAGMA data_version` on the held connection. It never blocks the request. A fixed timer would wake a sleeping drive every minute, all night; this way an idle server leaves the library alone.
+- If another process committed, read the `books` table's `id, uuid, last_modified` in one sequential pass (~4 MB at 100k) and diff it against the catalog. Changed and new ids go through `catalogChanged`, missing ones through `catalogRemoved`, and the affected pages are rewritten.
+- `-library-poll=0` turns it off; `-library-poll=10m` checks less often.
+- Separate phase (10). SQLite's own locking over network filesystems is a known caveat and unchanged by this.
 
 **First users** (phase 1, no visible change):
-- `booksByUUIDs` (userdata.go:31) answers from the catalog: every `/me/*` list, shelves, and later `/api/me/home`. A miss (a book added since the last rebuild) falls back to the SQL it uses today.
+- `booksByUUIDs` (userdata.go:31) answers from the catalog: every `/me/*` list, shelves, and later `/api/me/home`. A miss falls back to the SQL it uses today (and counts in `libraryIO`, so tests show if it happens).
 - `bookExists` (userdata.go:24), on every favorite and status change: catalog first, SQL on a miss.
+- `resumeURL` and the thumbnail handler, per the table in **Storage model**.
 
 **Tests** (`catalog_test.go`, on the `setupTestDB` fixture):
 - After `writeLibraryPages`, every book in `metadata.db` is in the catalog with its exact tags, authors and series, in `timestamp DESC` order.
 - Tag groups collapse member tags into one id.
 - `booksByUUIDs` gives the same answer from the catalog as from SQL, including order and skipped missing uuids.
-- A rebuild after an insert keeps existing shuffle positions and contains the new book.
-- A recycled book is tombstoned and absent from `booksByUUIDs`.
-- `-race` run with handlers reading during a rebuild.
+- `catalogChanged` after an editor save, a bulk edit and an upload gives the same catalog as a fresh full build (tags, authors, series, formats, cover), and keeps existing shuffle positions.
+- A recycled book is tombstoned and absent from `booksByUUIDs`; a restored one comes back.
+- `TestCatalogHooks`: every write endpoint in the router (behind `requireWrites`) leaves the catalog equal to a fresh build afterwards.
+- Snapshot round-trip: write, reload, equal. A changed `metadata.db` key forces a build; an unchanged one reads nothing from the library (`libraryIO` = 1 stat).
+- `libraryIO` stays at zero across the page loads listed under **Storage model**.
+- `-race` run with handlers reading while changes are applied.
 
 **Tag groups**: map each member tag id to its group (`groups.all("tag")`) when building `tagBooks`, so "Science Fiction"/"Sci-Fi" count as one, matching `/tags`.
 
@@ -258,15 +322,16 @@ The Discover "Continue reading" row switches from the device's guest list to `/a
 - `/?page=N` (old bookmarks, the grid's own URLs) → 301 to `/latest?page=N`.
 - `/shuffle` → signed out: `index.html` with `data-page-url="/pages/shuffle/page{n}.json?v=…"` (`IndexPageData` gains `PageURL` and `Title`); signed in: the per-user list from section 2. Both the same grid. Signed-out visitors land on Discover too (with the rows listed under Goal).
 - Top bar: add **Latest** to the browse nav (`templates/topbar.html`, `Active "latest"`); brand link stays `/`.
-- Optional server flag `-home=latest` for admins who want the old landing page.
 
 ### 7. Invalidation
 
 | Event | Catalog | Static files |
 |---|---|---|
-| Upload, edit, bulk edit, merge, import, repairs | debounced rebuild from `refreshAllCaches` (section 1) | page1 as today; tag files rewritten after the rebuild, `pagesVersion` bumped; shuffle files untouched until restart |
-| Remove / restore | rebuild keeps removed books as tombstones | `removeFromPages` / `restoreToPages` also handle shuffle and tag files |
-| Group change | rebuild (`refreshAllCaches`) | rewrite tag files |
+| Upload, edit, bulk edit, merge, import, repairs, covers | `catalogChanged(uuids)`: indexed re-read of those books only (section 1) | page1 as today; the tag files holding them rewritten, `pagesVersion` bumped; shuffle files untouched until restart |
+| Remove / restore | `catalogRemoved` / `catalogChanged`: tombstone and back | `removeFromPages` / `restoreToPages` also handle shuffle and tag files |
+| Group change | re-map tags to groups in memory (no library read) | rewrite tag files |
+| External change (phase 10) | `data_version` check, `books` diff, then the same calls | affected pages rewritten |
+| Any of the above | snapshot rewritten to `-cachedir` (debounced) | — |
 | Discover tag settings | recompute the eligible set (no rebuild) | rewrite tag files |
 | Featured shelf change | — | rewrite `featured.json`, bump `featuredVersion` |
 | Status / favorite change | bump user marks version (recs and `/shuffle` caches) | — |
@@ -282,7 +347,8 @@ The Discover "Continue reading" row switches from the device's guest list to `/a
 
 ## Phases (each a PR)
 
-1. **Catalog index** (section 1): built in `writeLibraryPages`, debounced rebuild from `refreshAllCaches`, `booksByUUIDs` and `bookExists` served from it. No visible change; startup time logged.
+1. **Catalog index** (section 1): built in `writeLibraryPages`, incremental `catalogChanged`/`catalogRemoved` at the write paths, `booksByUUIDs`, `bookExists`, `resumeURL` and coverless thumbnails served from it, and the `libraryIO` counter. No visible change.
+1b. **Catalog snapshot** on `-cachedir`: restarts with an unchanged library read one `stat` and skip writing the pages again.
 2. **Shuffle pages** + `/shuffle` grid (static signed out, per-user without finished books signed in); removal/restore handling. Tests: permutation covers every book once; finished books absent from the signed-in pages; `servePages` caching.
 3. **Routes**: `/latest`, redirect `/?page=`, nav item, Discover shell with Shuffle (finished filtered) + Recently added, for everyone.
 4. **`/api/me/home`**: Reading (activity order) + Want to read rows; localStorage copy. Signed-out local reading row (`cf-local-reading`, `/api/books`).
@@ -290,7 +356,8 @@ The Discover "Continue reading" row switches from the device's guest list to `/a
 6. **Pinned and featured shelves**: migration, pin endpoints, `featured` on `PATCH /api/shelves/{id}`, featured order, user pin order and `/shelves` order, `web/reorder.ts`, `featured.json`, shelf page and dashboard controls. Tests: featured-by-default, unpin sticks, re-feature doesn't override an unpin, first reorder freezes the list, other users' personal shelves never show.
 7. **Tag rows + admin include/deny + cutoff setting**.
 8. **Recommendations + next in series** (denied tags excluded).
-9. **Invalidation polish**, docs (`ARCHITECTURE.md`, `FEATURES.md`), `-home=latest`.
+9. **Invalidation polish**, docs (`ARCHITECTURE.md`, `FEATURES.md`).
+10. **External changes**: `data_version` polling, `books` diff, `-library-poll`.
 
 ## Decisions
 
@@ -302,8 +369,9 @@ The Discover "Continue reading" row switches from the device's guest list to `/a
 - Shuffle leaves out finished books.
 - The dashboard's sections are in a fixed order for everyone (easier to explain and demonstrate); users reorder only their pinned shelf rows, within the shelves section.
 - Phase 5's first half (record ownership) fixes a leak that exists today, so it ships on its own ahead of Discover.
+- Scale and storage: 100k books as the target, and as far beyond as the design allows, with the library on slow spinning or network storage and CalibreFast on a local SSD. Page loads read nothing from the library; writes read back only what changed; unchanged restarts don't rescan.
+- One layout for everyone, no `-home` option. Discover is the landing page and introduces the app to signed-out visitors when the server is public.
 
 ## Open questions
 
-- How big is the largest library this should stay fast on (books, tags), and on what storage? The catalog's memory (~25 MB per 100k books) and the rebuild-on-write approach are sized for up to a few hundred thousand books on an HDD. Much larger would need incremental updates from the start.
-- Keep `-home=latest` (an admin can make `/latest` the landing page), or drop it to keep one layout everywhere?
+- Should a private server's sign-in page (no `-public`) show the same library stats line, so the first thing a new user sees says what's there? It's the only page they can reach before signing in.
