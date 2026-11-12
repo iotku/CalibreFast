@@ -408,6 +408,59 @@
             border-left: 2px solid var(--error);
         }
 
+        .result-item.duplicate {
+            border-left: 2px solid var(--accent);
+        }
+
+        .result-item.duplicate.same-file {
+            border-left-color: var(--error);
+        }
+
+        .result-dup {
+            font-family: var(--mono);
+            font-size: 0.72rem;
+            color: var(--accent);
+            margin-top: 0.4rem;
+        }
+
+        .result-item.same-file .result-dup {
+            color: #ba7a7a;
+        }
+
+        .result-dup-list {
+            margin: 0.3rem 0 0;
+            padding-left: 1.1rem;
+            font-size: 0.8rem;
+            color: var(--muted);
+        }
+
+        .result-dup-list a {
+            color: var(--text);
+        }
+
+        .result-dup-why {
+            font-family: var(--mono);
+            font-size: 0.62rem;
+            opacity: 0.8;
+        }
+
+        .result-override {
+            margin-top: 0.6rem;
+            font-family: var(--mono);
+            font-size: 0.72rem;
+            letter-spacing: 0.06em;
+            padding: 0.45rem 0.9rem;
+            border-radius: var(--radius);
+            cursor: pointer;
+            border: 1px solid var(--border);
+            background: var(--surface);
+            color: var(--text);
+        }
+
+        .result-override:hover:not(:disabled) {
+            border-color: var(--accent-dim);
+        }
+
         .result-status-icon {
             font-size: 0.85rem;
             margin-top: 1px;
@@ -833,7 +886,7 @@
                     const data = JSON.parse(response);
                     progressBar.style.width = "100%";
 
-                    renderResults(data);
+                    renderResults(data, stagedFiles.slice());
                     stagedFiles = [];
                     renderFileList();
                     uploadStatus.textContent = "";
@@ -868,11 +921,72 @@
                 });
             }
 
-            function renderResults(items) {
+            // sent: the files of that upload, to send a duplicate's again.
+            function renderResults(items, sent) {
                 results.classList.add("visible");
                 uploadAgain.classList.add("visible");
-
                 for (const item of items) {
+                    resultsList.appendChild(renderItem(item, sent));
+                }
+            }
+
+            // A book not added because it looks already in the library
+            // (duplicates.go): which books, and Upload anyway unless the
+            // library has one of its files byte for byte.
+            function renderDuplicate(item, sent) {
+                const div = document.createElement("div");
+                const sameFile = item.duplicate.books.some((b) => b.same_file);
+                div.className = "result-item duplicate" + (sameFile ? " same-file" : "");
+                const matches = item.duplicate.books
+                    .map((b) => {
+                        const by = (b.authors || []).join(" & ");
+                        const why = b.same_file ? "identical file" : "same title & authors";
+                        return `<li><a href="/book/get/${encodeURIComponent(b.uuid)}" target="_blank">${escHtml(b.title)}</a>${by ? " — " + escHtml(by) : ""} <span class="result-dup-why">${why}</span></li>`;
+                    })
+                    .join("");
+                div.innerHTML = `
+          <span class="result-status-icon">!</span>
+          <div class="result-body">
+            <div class="result-title">${escHtml(item.title || "Untitled")}</div>
+            <div class="result-meta">${escHtml((item.authors || []).join(", "))}</div>
+            <div class="result-dup">${sameFile
+                ? "Not added: the library already has this file."
+                : "Not added: possibly already in the library."}</div>
+            <ul class="result-dup-list">${matches}</ul>
+          </div>
+          <span></span>
+        `;
+                const files = (item.files || [])
+                    .map((name) => sent.find((f) => f.name === name))
+                    .filter(Boolean);
+                if (!sameFile && files.length) {
+                    const btn = document.createElement("button");
+                    btn.type = "button";
+                    btn.className = "result-override";
+                    btn.textContent = "Upload anyway";
+                    btn.addEventListener("click", async () => {
+                        btn.disabled = true;
+                        btn.textContent = "Uploading…";
+                        const fd = new FormData();
+                        for (const f of files) fd.append("books", f, f.name);
+                        fd.append("override", "1");
+                        try {
+                            const data = JSON.parse(await uploadXHR(fd, () => {}));
+                            const next = data.map((r) => renderItem(r, files));
+                            div.replaceWith(...next);
+                        } catch (err) {
+                            btn.disabled = false;
+                            btn.textContent = "Upload anyway";
+                            alert("Upload failed: " + err.message);
+                        }
+                    });
+                    div.querySelector(".result-body").appendChild(btn);
+                }
+                return div;
+            }
+
+            function renderItem(item, sent) {
+                    if (item.duplicate) return renderDuplicate(item, sent);
                     const div = document.createElement("div");
                     if (item.error) {
                         div.className = "result-item error";
@@ -928,8 +1042,7 @@
                             div.querySelector(".result-body").appendChild(picker);
                         }
                     }
-                    resultsList.appendChild(div);
-                }
+                    return div;
             }
 
             function fmtSize(bytes) {

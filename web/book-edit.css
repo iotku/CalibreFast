@@ -1610,6 +1610,48 @@ input[type="date"].meta-input::-webkit-calendar-picker-indicator:hover {
     margin-bottom: 1rem;
 }
 
+/* ── Possible duplicates (duplicates.go) ── */
+.duplicate-note {
+    margin-bottom: 1rem;
+    padding: 10px 14px;
+    border-radius: var(--radius);
+    background: rgba(200, 169, 110, 0.1);
+    border: 1px solid rgba(200, 169, 110, 0.4);
+    color: #e8cf9a;
+    font-size: 0.9rem;
+}
+
+.duplicate-note.same-file {
+    background: var(--error-bg);
+    border-color: rgba(186, 122, 122, 0.4);
+    color: #e59999;
+}
+
+.duplicate-note p {
+    margin: 0 0 6px;
+}
+
+.duplicate-note ul {
+    margin: 0;
+    padding-left: 1.2rem;
+}
+
+.duplicate-note a {
+    color: inherit;
+}
+
+.duplicate-why {
+    margin-left: 6px;
+    font-family: var(--mono);
+    font-size: 0.72rem;
+    opacity: 0.8;
+}
+
+.edit-status .btn-override {
+    margin-left: auto;
+    flex-shrink: 0;
+}
+
 .status-link {
     color: var(--accent);
     text-decoration: underline;

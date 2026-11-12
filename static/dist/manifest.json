@@ -1,13 +1,13 @@
 {
   "admin-users.js": "admin-users-F3VAAM53.js",
   "app-htmx.js": "app-htmx-6WFUDSJ2.js",
-  "book-edit.css": "book-edit-X2N22TE6.css",
+  "book-edit.css": "book-edit-57VBMNVP.css",
   "book-target.js": "book-target-2S57EW2J.js",
   "cover-dialog.js": "cover-dialog-G4JETKSQ.js",
   "cover-picker.js": "cover-picker-REGXACN5.js",
   "groups.js": "groups-YW3NPRKD.js",
-  "imports.js": "imports-6FYJLLTR.js",
-  "metadata.js": "metadata-SSFI5O3P.js",
+  "imports.js": "imports-OI7FQDO3.js",
+  "metadata.js": "metadata-OJNWER4N.js",
   "nav.js": "nav-4BJTUUIR.js",
   "offline.js": "offline-RQVNXO3R.js",
   "reader-pdf.js": "reader-pdf-SVXRHFRY.js",
@@ -15,7 +15,7 @@
   "reader.js": "reader-VQ63ZNDO.js",
   "recycle-bin.js": "recycle-bin-CAGBDIGS.js",
   "shelves.js": "shelves-PYXOHTI6.js",
-  "style.css": "style-LL55QDO3.css",
+  "style.css": "style-MCHPM3BU.css",
   "sw.js": "sw-I2P2A3R3.js",
   "user.js": "user-GE3YYFAK.js"
 }

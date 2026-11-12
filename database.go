@@ -34,6 +34,10 @@ func titleSort(title string) string {
 	return rest + ", " + article
 }
 
+// bookFileStem is what a book's files are called in its folder, without
+// the extension; data.name in metadata.db.
+func bookFileStem(title string) string { return sanitizePath(title) }
+
 func calibreDateTime(t time.Time) string {
 	return t.UTC().Format("2006-01-02 15:04:05.000000-07:00")
 }
@@ -126,7 +130,9 @@ func insertBookIntoCalibreDB(db *sql.DB, meta *UploadedBookMeta, formats []forma
 			bookID,
 			strings.ToUpper(f.Ext),
 			f.Size,
-			strings.TrimSuffix(f.Filename, filepath.Ext(f.Filename)),
+			// The name the file gets in the book's folder (addBookToLibrary):
+			// Calibre finds a format's file as <path>/<name>.<format>.
+			bookFileStem(meta.Title),
 		); fErr != nil {
 			retErr = fmt.Errorf("insert format %s: %w", f.Ext, fErr)
 			return

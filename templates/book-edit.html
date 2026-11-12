@@ -61,6 +61,27 @@
                 </div>
             </div>
 
+            {{ with .Duplicates }}{{ if .Books }}
+            <!-- Library books this one may duplicate (duplicates.go) -->
+            <section class="duplicate-note{{ if .SameFile }} same-file{{ end }}" aria-label="Possible duplicates">
+                <p>
+                    {{ if $.Import }}{{ if .SameFile }}
+                    <strong>Already in the library.</strong> One of this book's files is identical to one in the library, so it can't be added again: discard it from the queue.
+                    {{ else }}
+                    <strong>Possibly already in the library.</strong> A book with the same title and authors is there. You can still add this one; you'll be asked to confirm. (It's checked again with your changes when you add it.)
+                    {{ end }}{{ else }}
+                    <strong>Possible duplicate.</strong> {{ if .SameFile }}Another book in the library has an identical file.{{ else }}Another book in the library has the same title and authors.{{ end }}
+                    {{ end }}
+                </p>
+                <ul>
+                    {{ range .Books }}
+                    <li><a href="/book/get/{{ .UUID }}" target="_blank">“{{ .Title }}”</a>{{ if .Authors }} by {{ join .Authors " & " }}{{ end }}
+                        <span class="duplicate-why">{{ if .SameFile }}identical file{{ else }}same title &amp; authors{{ end }}</span></li>
+                    {{ end }}
+                </ul>
+            </section>
+            {{ end }}{{ end }}
+
             {{ if .Lookups }}
             <!-- Online lookup (web/isbn-tools.ts): Open Library by ISBN, or by title
                  and author; the matches, to tick as sources -->

@@ -214,7 +214,7 @@ func TestApproveAddsTheBookToTheLibrary(t *testing.T) {
 		Subjects:    "Programming, Go",
 		Identifiers: identifierList{{Scheme: "isbn", Value: "9780134190440"}},
 	})
-	bookUUID, err := w.inbox.approve(it.ID, meta)
+	bookUUID, err := w.inbox.approve(it.ID, meta, false)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -264,7 +264,7 @@ func TestApproveAddsTheBookToTheLibrary(t *testing.T) {
 	if w.inbox.count() != 0 || exists(itemDir) {
 		t.Error("the book is still in the queue")
 	}
-	if _, err := w.inbox.approve(it.ID, meta); err != fs.ErrNotExist {
+	if _, err := w.inbox.approve(it.ID, meta, false); err != fs.ErrNotExist {
 		t.Errorf("approving twice: %v", err)
 	}
 }
@@ -281,7 +281,7 @@ func TestApproveFailureKeepsTheBookWaiting(t *testing.T) {
 	// The author's folder can't be made: a file is in its place.
 	writeTestFile(t, filepath.Join(baseDir, "Some Author"), []byte("in the way"))
 	meta := metadataFromRequest(ApplyMetadataRequest{Title: "Book", Creators: "Some Author"})
-	if _, err := w.inbox.approve(it.ID, meta); err == nil {
+	if _, err := w.inbox.approve(it.ID, meta, false); err == nil {
 		t.Fatal("expected an error")
 	}
 	if w.inbox.get(it.ID) == nil || !exists(file) {
