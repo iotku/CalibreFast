@@ -128,8 +128,9 @@
 }
 
 .lt-table {
-    --lt-cols: 34px minmax(220px, 2.2fr) minmax(150px, 1.4fr) 140px 150px 112px 170px minmax(180px, 2fr) 110px 96px 236px;
-    min-width: 1626px;
+    /* tick box, actions (Edit and a group's Merge or Not Dupe), then the columns */
+    --lt-cols: 34px 120px minmax(220px, 2.2fr) minmax(150px, 1.4fr) 140px 150px 112px 170px minmax(180px, 2fr) 110px 96px;
+    min-width: 1510px;
 }
 
 .lt-row {
@@ -713,7 +714,7 @@
    it runs edge to edge: no side margins, borders or corners, so a phone
    shows as much of it as it can and scrolls sideways for the rest. The
    toolbar keeps a little room so its boxes don't touch the edges. */
-@media (max-width: 1679px) {
+@media (max-width: 1569px) {
     .lt-main {
         padding-left: 0;
         padding-right: 0;

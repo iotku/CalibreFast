@@ -278,8 +278,9 @@ function buildHead(): void {
         filterInputs.set(c.key, input);
         boxes.append(el("span", { className: `lt-cell lt-col-${c.key}` }, clearable(input, `Clear the ${c.label.toLowerCase()} filter`)));
     }
-    titles.append(el("span", { className: "lt-cell lt-actions", role: "columnheader" }));
-    boxes.append(el("span", { className: "lt-cell lt-actions" }));
+    // The actions come first, after the tick box: no scrolling sideways to reach them.
+    titles.firstElementChild!.after(el("span", { className: "lt-cell lt-actions", role: "columnheader" }));
+    boxes.firstElementChild!.after(el("span", { className: "lt-cell lt-actions" }));
     head.replaceChildren(titles, boxes);
 
     allBox.addEventListener("change", () => {
@@ -538,23 +539,32 @@ function rowElement(r: Row, i: number): HTMLElement {
     actions.append(
         el("a", { href: `/book/edit/${encodeURIComponent(b.uuid)}`, target: "_blank", className: "lt-action", title: "Open in the metadata editor (new tab)", ariaLabel: `Edit “${b.title}”` }, "Edit"),
     );
-    if (dupMode === MARKED && (i === 0 || shown[i - 1]!.dupKey !== r.dupKey)) {
+    // A group's buttons: Merge on its first row, Not Dupe on its second (a
+    // group has at least two books, so the column stays narrow), unless a
+    // filter leaves only one of them shown.
+    const first = dupMode !== "" && (i === 0 || shown[i - 1]!.dupKey !== r.dupKey);
+    const second = dupMode !== "" && !first && (i === 1 || shown[i - 2]!.dupKey !== r.dupKey);
+    if (dupMode === MARKED && first) {
         const un = el("button", { type: "button", className: "lt-action lt-unmark", title: "They may be duplicates after all: show them in the duplicates view again" }, "Unmark");
         un.dataset["set"] = r.dupKey.replace(/^set:/, "");
         actions.append(un);
-    } else if (dupMode && (i === 0 || shown[i - 1]!.dupKey !== r.dupKey)) {
+    } else if (dupMode && dupMode !== MARKED && (first || second)) {
         const group = groupOf(r);
         const size = group.length;
-        const notDup = el("button", { type: "button", className: "lt-action lt-notdup", title: "These books only look alike: leave them out of the duplicates view (Duplicates → Marked not duplicates undoes it)" }, "Not duplicates");
-        actions.append(notDup);
-        if (size > 1 && size <= MERGE_MAX) {
+        if (first && size > 1 && size <= MERGE_MAX) {
             // A link, so a middle click (or Ctrl/⌘-click) opens the merge in a new tab.
             actions.append(
                 el("a", { href: mergeLink(group.map((x) => x.b.uuid)), className: "lt-action lt-merge-group", title: `Merge these ${size} books into one` }, `Merge ${size}`),
             );
         }
+        if (second || size === 1) {
+            actions.append(
+                el("button", { type: "button", className: "lt-action lt-notdup", title: "Not duplicates: these books only look alike. Leaves them out of the duplicates view (Duplicates → Marked not duplicates undoes it)" }, "Not Dupe"),
+            );
+        }
     }
-    row.append(actions);
+    // After the tick box, before the title.
+    row.firstElementChild!.after(actions);
     return row;
 }
 
