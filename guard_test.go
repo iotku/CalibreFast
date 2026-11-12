@@ -35,10 +35,10 @@ func TestRequireWrites(t *testing.T) {
 	}
 
 	allowWrites = true
-	if code := run(nil); code != http.StatusUnauthorized || called {
+	if code := run(nil); code != http.StatusNotFound || called {
 		t.Fatalf("anonymous: got %d called=%v", code, called)
 	}
-	if code := run(reader); code != http.StatusForbidden || called {
+	if code := run(reader); code != http.StatusNotFound || called {
 		t.Fatalf("non-admin: got %d called=%v", code, called)
 	}
 	if run(admin); !called {
@@ -123,6 +123,7 @@ func TestBulkEditAndMergeRoutesNeedWrites(t *testing.T) {
 		registerMergeRoutes()
 		registerBulkEditRoutes()
 		registerNotDuplicateRoutes()
+		registerLibraryRepairRoutes()
 	})
 	admin, _ := createUser("admin1", "correct horse battery", true)
 
@@ -131,6 +132,9 @@ func TestBulkEditAndMergeRoutesNeedWrites(t *testing.T) {
 		{"GET", "/api/library/table"},
 		{"POST", "/api/library/bulk"},
 		{"POST", "/api/library/repair-formats"},
+		{"GET", "/admin/repairs"},
+		{"GET", "/api/admin/repairs"},
+		{"POST", "/api/admin/repairs/format-names"},
 		{"POST", "/api/library/not-duplicates"},
 		{"DELETE", "/api/library/not-duplicates/1"},
 		{"GET", "/book/merge?ids=a,b"},
@@ -157,4 +161,74 @@ func withMux(mux *http.ServeMux, register func()) {
 	http.DefaultServeMux = mux
 	defer func() { http.DefaultServeMux = orig }()
 	register()
+}
+
+// To anyone but an admin, the admin and editing routes answer exactly like a
+// path that doesn't exist: same status, same body, same headers, whatever the
+// method or Accept header, and whether or not the server allows writes.
+func TestAdminRoutesLookMissing(t *testing.T) {
+	setupTestAppDB(t)
+	orig := allowWrites
+	defer func() { allowWrites = orig }()
+	mux := http.NewServeMux()
+	withMux(mux, func() {
+		http.HandleFunc("/", indexHandler)
+		registerAuthRoutes()
+		registerLibraryRepairRoutes()
+		registerBulkEditRoutes()
+		registerImportRoutes()
+		registerRecycleRoutes()
+		registerMergeRoutes()
+	})
+	reader, _ := createUser("reader1", "correct horse battery", false)
+
+	type resp struct {
+		code   int
+		body   string
+		header http.Header
+	}
+	do := func(u *User, method, path string, html bool) resp {
+		req := httptest.NewRequest(method, path, strings.NewReader("{}"))
+		if html {
+			req.Header.Set("Accept", "text/html")
+		}
+		if u != nil {
+			req = req.WithContext(context.WithValue(req.Context(), userKey, u))
+		}
+		rec := httptest.NewRecorder()
+		mux.ServeHTTP(rec, req)
+		return resp{rec.Code, rec.Body.String(), rec.Header()}
+	}
+
+	routes := []struct{ method, path string }{
+		{"GET", "/admin/users"},
+		{"POST", "/admin/users"}, // wrong method: no 405 giving it away
+		{"POST", "/api/admin/users"},
+		{"DELETE", "/api/admin/users/1"},
+		{"GET", "/api/admin/links"},
+		{"GET", "/admin/repairs"},
+		{"GET", "/api/admin/repairs"},
+		{"GET", "/library/edit"},
+		{"GET", "/import"},
+		{"GET", "/recycle-bin"},
+		{"POST", "/merge/apply"},
+	}
+	for _, writes := range []bool{false, true} {
+		allowWrites = writes
+		for _, u := range []*User{nil, reader} {
+			for _, html := range []bool{false, true} {
+				for _, rt := range routes {
+					want := do(u, rt.method, "/no-such-page", html)
+					if want.code != http.StatusNotFound {
+						t.Fatalf("unknown path: %d", want.code)
+					}
+					got := do(u, rt.method, rt.path, html)
+					if got.code != want.code || got.body != want.body || len(got.header) != len(want.header) {
+						t.Errorf("writes=%v user=%v html=%v %s %s: %d %q %v, want %d %q %v", writes, u != nil, html,
+							rt.method, rt.path, got.code, got.body, got.header, want.code, want.body, want.header)
+					}
+				}
+			}
+		}
+	}
 }

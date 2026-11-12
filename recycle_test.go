@@ -292,10 +292,10 @@ func TestRecycleHTTP(t *testing.T) {
 	}
 
 	body := `{"uuids":["` + a.uuid + `"]}`
-	if rec := do("POST", "/api/library/delete", body, reader); rec.Code != http.StatusForbidden {
+	if rec := do("POST", "/api/library/delete", body, reader); rec.Code != http.StatusNotFound {
 		t.Fatalf("reader delete: %d", rec.Code)
 	}
-	if rec := do("POST", "/api/library/delete", body, nil); rec.Code != http.StatusUnauthorized {
+	if rec := do("POST", "/api/library/delete", body, nil); rec.Code != http.StatusNotFound {
 		t.Fatalf("anonymous delete: %d", rec.Code)
 	}
 	if rec := do("POST", "/api/library/delete", `{"uuids":["../x"]}`, admin); rec.Code != http.StatusBadRequest {
@@ -319,7 +319,7 @@ func TestRecycleHTTP(t *testing.T) {
 	if len(list.Batches) != 1 || !list.Batches[0].Books[0].InBin {
 		t.Fatalf("list: %s", rec.Body)
 	}
-	if rec := do("POST", "/api/recycle-bin/"+batch.ID+"/restore", `{}`, reader); rec.Code != http.StatusForbidden {
+	if rec := do("POST", "/api/recycle-bin/"+batch.ID+"/restore", `{}`, reader); rec.Code != http.StatusNotFound {
 		t.Fatalf("reader restore: %d", rec.Code)
 	}
 	if rec := do("POST", "/api/recycle-bin/20990101-000000-00000000/restore", `{}`, admin); rec.Code != http.StatusNotFound {

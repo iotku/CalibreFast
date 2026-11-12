@@ -2,15 +2,15 @@
 <html lang="en">
 <head>
     <meta charset="utf-8">
-    <title>Sign in — {{ .Title }}</title>
+    {{/* Nothing here names the app or the library, links into it or loads
+         its scripts: to someone without an account it's only a sign-in form. */}}
+    <title>Sign in</title>
+    <meta name="robots" content="noindex, nofollow">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <link rel="stylesheet" href="{{ asset "style.css" }}">
 </head>
 <body class="auth-body">
-{{ $tb := topbar "Title" "Sign in" }}
-{{ template "topbar-start" $tb }}
-{{ template "topbar-end" $tb }}
-<main class="auth-main">
+<main class="auth-main auth-bare">
     <section class="auth-card">
         <h1>Sign in</h1>
         {{ if .Error }}<p class="auth-error" role="alert">{{ .Error }}</p>{{ end }}

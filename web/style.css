@@ -2101,6 +2101,11 @@ label.group-row span {
     margin: calc(var(--topbar-total) + 2rem) auto 3rem;
 }
 
+/* The sign-in page has no top bar. */
+.auth-main.auth-bare {
+    margin-top: max(2rem, 12vh);
+}
+
 .auth-main.auth-wide {
     width: min(760px, calc(100vw - 32px));
 }
@@ -2287,6 +2292,17 @@ label.group-row span {
     gap: 1rem;
     padding: 0.4rem 0;
 }
+
+/* Library repairs (templates/library-repairs.html) */
+.repair-list {
+    max-height: 22rem;
+    overflow: auto;
+    margin: 0.75rem 0;
+    padding-left: 1.25rem;
+    overflow-wrap: anywhere;
+}
+.repair-list li { margin: 0.2rem 0; }
+.repair-list a { color: var(--text-primary); }
 
 .admin-users {
     width: 100%;

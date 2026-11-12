@@ -273,7 +273,7 @@ func canEditLibrary(r *http.Request) bool {
 // KOReader sync API, which checks its own credentials).
 func isPublicPath(p string) bool {
 	return p == "/login" || p == "/logout" || p == "/register" || p == "/api/me" ||
-		p == "/sw.js" || p == "/offline" || // no library data in either (sw.go)
+		p == "/sw.js" || p == "/offline" || p == "/robots.txt" || // no library data in either (sw.go)
 		strings.HasPrefix(p, "/l/") || isKosyncPath(p) ||
 		strings.HasPrefix(p, "/auth/") || strings.HasPrefix(p, "/static/")
 }
@@ -337,15 +337,17 @@ func requireReader(h http.HandlerFunc) http.HandlerFunc {
 	}
 }
 
-// requireAdminUser: signed-in admin (user management, global shelves).
+// requireAdminUser: signed-in admin (user management, sign-in links).
+// Anyone else gets the same 404 as an unknown path, so the admin routes
+// don't show up to someone probing the server.
 func requireAdminUser(h http.HandlerFunc) http.HandlerFunc {
-	return requireUser(func(w http.ResponseWriter, r *http.Request) {
+	return func(w http.ResponseWriter, r *http.Request) {
 		if !isAdmin(r) {
-			http.Error(w, "admin only", http.StatusForbidden)
+			http.NotFound(w, r)
 			return
 		}
 		h(w, r)
-	})
+	}
 }
 
 // ---------------------------------------------------------------------------

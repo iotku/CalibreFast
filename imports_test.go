@@ -363,10 +363,10 @@ func TestImportHandlers(t *testing.T) {
 	}
 
 	// Only an admin gets at a waiting book.
-	if c := call(importFileHandler, reader, "GET", it.ID, "format", "epub").Code; c != http.StatusForbidden {
+	if c := call(importFileHandler, reader, "GET", it.ID, "format", "epub").Code; c != http.StatusNotFound {
 		t.Errorf("non-admin download: %d", c)
 	}
-	if c := call(importFileHandler, nil, "GET", it.ID, "format", "epub").Code; c != http.StatusUnauthorized {
+	if c := call(importFileHandler, nil, "GET", it.ID, "format", "epub").Code; c != http.StatusNotFound {
 		t.Errorf("anonymous download: %d", c)
 	}
 	if rec := call(importFileHandler, admin, "GET", it.ID, "format", "epub"); rec.Code != http.StatusOK || rec.Body.Len() == 0 {

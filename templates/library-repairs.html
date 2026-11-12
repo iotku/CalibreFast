@@ -1,0 +1,41 @@
+<!doctype html>
+<html lang="en">
+<head>
+    <meta charset="utf-8">
+    {{ robotsMeta }}
+    <title>Library repairs — {{ .Title }}</title>
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <link rel="stylesheet" href="{{ asset "style.css" }}">
+</head>
+<body class="auth-body">
+{{ $tb := topbar "Active" "library-repairs" "Title" "Library repairs" }}
+{{ template "topbar-start" $tb }}
+{{ template "topbar-end" $tb }}
+<!-- Fixes for metadata.db, run only when an admin asks (library_repairs.go,
+     web/library-repairs.ts) -->
+<main class="auth-main auth-wide">
+    <section class="auth-card">
+        <h1>Library repairs</h1>
+        <p class="auth-muted">These shouldn't be necessary. They fix <code>metadata.db</code> for books added by older versions of CalibreFast, or changed outside Calibre, so that Calibre finds their files. Only the database is modified: no file is renamed, moved or removed.</p>
+        <p class="auth-muted">Checking looks at every book's files, which can take a while on a big library. Nothing changes until you press a Repair button.</p>
+        <button type="button" id="repair-check" class="btn-standard">Check the library</button>
+        <p id="repair-status" class="auth-notice" role="status" hidden></p>
+    </section>
+    <section class="auth-card" id="misnamed">
+        <h2>File names Calibre can't find</h2>
+        <p class="auth-muted">Calibre finds a format's file by the name <code>metadata.db</code> gives it. These files are under another name; the repair points each at the one file in its book's folder with that format's extension.</p>
+        <p id="misnamed-state" class="auth-muted"><em>Not checked yet.</em></p>
+        <ul id="misnamed-list" class="repair-list" hidden></ul>
+        <button type="button" id="misnamed-fix" class="btn-standard" hidden>Repair file names</button>
+    </section>
+    <section class="auth-card" id="unlisted">
+        <h2>Books with files <code>metadata.db</code> doesn't list</h2>
+        <p class="auth-muted">These books list no formats, so Calibre shows none, though their folders hold book files (CalibreFast opens them anyway). The repair adds a row for each format with exactly one file; a format with several is left for you to sort out. The bulk editor shows these books too.</p>
+        <p id="unlisted-state" class="auth-muted"><em>Not checked yet.</em></p>
+        <ul id="unlisted-list" class="repair-list" hidden></ul>
+        <button type="button" id="unlisted-fix" class="btn-standard" hidden>Add them to metadata.db</button>
+    </section>
+</main>
+<script type="module" src="{{ asset "library-repairs.js" }}"></script>
+</body>
+</html>

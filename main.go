@@ -73,21 +73,14 @@ func csrfProtect(h http.Handler) http.Handler {
 // regular users can never modify metadata.db or files in the library.
 func requireWrites(h http.HandlerFunc) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
+		// Anyone but an admin gets the same 404 as an unknown path, so the
+		// editing routes don't show up to someone probing the server.
+		if u := currentUser(r); u == nil || !u.IsAdmin {
+			http.NotFound(w, r)
+			return
+		}
 		if !allowWrites {
 			http.Error(w, "This library is read-only. Restart the server with -allow-writes to enable editing, uploads and grouping.", http.StatusForbidden)
-			return
-		}
-		u := currentUser(r)
-		if u == nil {
-			if wantsHTML(r) {
-				http.Redirect(w, r, "/login?next="+url.QueryEscape(r.URL.RequestURI()), http.StatusSeeOther)
-				return
-			}
-			http.Error(w, "sign in as an admin to change the library", http.StatusUnauthorized)
-			return
-		}
-		if !u.IsAdmin {
-			http.Error(w, "only admins can change the library", http.StatusForbidden)
 			return
 		}
 		h(w, r)
@@ -263,6 +256,7 @@ func main() {
 	flag.StringVar(&dataDir, "datadir", "data", "where CalibreFast keeps its own database (accounts, favorites, progress, shelves)")
 	flag.BoolVar(&publicCatalog, "public", false, "let anonymous visitors browse the library catalog (by default everything requires signing in)")
 	flag.BoolVar(&publicRead, "public-read", false, "public read-only mode: anonymous visitors can also read and download books (implies -public)")
+	flag.BoolVar(&allowRobots, "robots-allowed", false, "let search engines index the library (only with -public-read; otherwise robots.txt, X-Robots-Tag and a meta tag on every page tell them to stay out)")
 	flag.BoolVar(&allowRegistrations, "allow-registrations", false, "let anyone create an account from the web interface (only on trusted networks: bots will try)")
 	flag.BoolVar(&noLookups, "no-lookups", false, "never look books up online (hides the metadata editor's lookup bar)")
 	flag.BoolVar(&noGoogleBooks, "no-google-books", false, "never offer Google Books in the metadata editor (Open Library only)")
@@ -299,6 +293,9 @@ func main() {
 	if publicRead {
 		publicCatalog = true
 	}
+	if allowRobots && !publicRead {
+		log.Println("-robots-allowed has no effect without -public-read: search engines are still kept out")
+	}
 	pruneSessions()
 	configureOAuth()
 	configureLookups()
@@ -332,8 +329,6 @@ func main() {
 	}
 	generatePages()
 	initCalibreDB()
-	// Files older versions recorded under the wrong name (calibre_names.go).
-	repairFormatNames(calibreDB, baseDir, allowWrites)
 	if allowWrites {
 		if err := checkVirtualTables(context.Background(), calibreDB, "main"); err != nil {
 			log.Println("WARNING: removing and restoring books won't work:", err)
@@ -455,6 +450,7 @@ var templates = template.Must(
 		"asset":        assetURL,
 		"booksPerPage": func() int { return booksPerPage },
 		"join":         strings.Join,
+		"robotsMeta":   robotsMeta,
 	}).ParseGlob("templates/*.html"),
 )
 
@@ -476,19 +472,28 @@ func topbarData(kv ...any) (map[string]any, error) {
 	return m, nil
 }
 
-func serveLibraryHTTP() {
-	http.HandleFunc("/", func(w http.ResponseWriter, r *http.Request) {
-		data := IndexPageData{
-			Title:        "Library",
-			TotalBooks:   totalBooks,
-			PagesVersion: currentPagesVersion(),
-		}
+// indexHandler serves the library at "/". That pattern is Go's catch-all,
+// so every path no other route matched lands here too and gets a 404.
+func indexHandler(w http.ResponseWriter, r *http.Request) {
+	if r.URL.Path != "/" {
+		http.NotFound(w, r)
+		return
+	}
+	data := IndexPageData{
+		Title:        "Library",
+		TotalBooks:   totalBooks,
+		PagesVersion: currentPagesVersion(),
+	}
 
-		err := templates.ExecuteTemplate(w, "index.html", data)
-		if err != nil {
-			http.Error(w, err.Error(), 500)
-		}
-	})
+	err := templates.ExecuteTemplate(w, "index.html", data)
+	if err != nil {
+		http.Error(w, err.Error(), 500)
+	}
+}
+
+func serveLibraryHTTP() {
+	http.HandleFunc("/", indexHandler)
+	registerRobotsRoutes()
 
 	// serve generated json pages
 	http.Handle("/pages/", servePages("pages"))
@@ -533,6 +538,7 @@ func serveLibraryHTTP() {
 	// Merging books, and the bulk metadata editor (merge.go, bulk_edit.go)
 	registerMergeRoutes()
 	registerBulkEditRoutes()
+	registerLibraryRepairRoutes()
 	registerNotDuplicateRoutes()
 
 	// Individual Book metadata editor
@@ -641,7 +647,7 @@ func serveLibraryHTTP() {
 
 	log.Println("Listening on :" + hostPort)
 	registerAuthRoutes()
-	log.Fatal(http.ListenAndServe(":"+hostPort, csrfProtect(withAuth(http.DefaultServeMux))))
+	log.Fatal(http.ListenAndServe(":"+hostPort, robotsHeader(csrfProtect(withAuth(http.DefaultServeMux)))))
 }
 
 func logErr(err error, why string) {
