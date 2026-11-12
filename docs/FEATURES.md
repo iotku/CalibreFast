@@ -176,7 +176,7 @@ Start the server with `-watch-dir /path/to/folder` (and `-allow-writes`). Books 
 Admins on a server with `-allow-writes` can remove books from the library. Nothing is deleted: removed books go to the Recycling Bin, and only the server's owner can empty it.
 
 - **Removing one book:** **Remove from library…** under **Edit metadata**, on the book's page or popup.
-- **Removing several:** **Select** in the top bar of the library, a filtered view or search results, then tap the books (a tick shows on each, and the choice survives scrolling) and **Remove N from library…** in the bar at the bottom. **Done** or Escape leaves selection.
+- **Removing several:** **Select** in the top bar of the library, a filtered view or search results (or, on a touch screen, a long press on a book, which selects it too), then tap the books (a tick shows on each, and the choice survives scrolling) and **Remove N from library…** in the bar at the bottom. **Done** or Escape leaves selection.
 - **Hard to do by accident:** the confirmation lists every book, explains what happens, and its button only works once `delete` is typed. Enter cancels until then.
 - **Undo:** the confirmation's result offers **Undo**, which puts everything straight back.
 - **What a removal does:** it's one batch in the bin (`-recycle-bin`, by default `<datadir>/recycle-bin/<batch>/`), made before anything changes:
