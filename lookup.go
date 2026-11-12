@@ -1,17 +1,19 @@
 package main
 
 // Looking a book up online, for the metadata editor (/metadata/lookup).
-// Open Library first; Wikidata when Open Library doesn't know the ISBN; Google
-// Books only when the admin asks for it (it often has the best description).
-// Each answer becomes one more option in the editor, next to "current" and
-// the uploaded formats. Nothing is written until the admin applies changes.
+// Open Library: by ISBN when the book has one, else (or when the ISBN finds
+// nothing) by title and author, which can find several books. Google Books
+// only when the admin asks for it (it often has the best description). The
+// matches the admin picks become options in the editor, next to "current"
+// and the uploaded formats. Nothing is written until the admin applies
+// changes.
 //
 // CalibreFast is meant to be self-contained, so lookups are kept to a
 // minimum:
 //   - one source per request, only when an admin clicks, for one book: never
 //     on page load, upload, when an ISBN is found, or in the background. The
-//     editor asks the next source only if the first found nothing, or when
-//     the admin asks.
+//     editor searches by title only if the ISBN found nothing, or when the
+//     admin asks.
 //   - only the ISBN (or the title and first author) is sent, with a generic
 //     User-Agent
 //   - answers are cached; each service has its own rate and daily limits
@@ -34,7 +36,6 @@ import (
 	"regexp"
 	"runtime/debug"
 	"slices"
-	"sort"
 	"strconv"
 	"strings"
 	"sync"
@@ -51,25 +52,25 @@ var (
 // Sources, as the editor names them (?source=) and shows them (Format).
 const (
 	openLibraryName = "Open Library"
-	wikidataName    = "Wikidata"
 	googleBooksName = "Google Books"
 )
 
-var lookupSources = map[string]string{"openlibrary": openLibraryName, "wikidata": wikidataName, "google": googleBooksName}
+var lookupSources = map[string]string{"openlibrary": openLibraryName, "google": googleBooksName}
+
+// maxSearchMatches is how many books a title search offers.
+const maxSearchMatches = 5
 
 var bookLookups = &bookLookup{
 	client:      &http.Client{Timeout: 15 * time.Second},
 	openLibrary: "https://openlibrary.org",
 	olCovers:    "https://covers.openlibrary.org",
-	wikidata:    "https://query.wikidata.org/sparql",
 	googleBooks: "https://www.googleapis.com/books/v1",
 	cache:       newLookupCache(24*time.Hour, 500),
 	limits: map[string]*serviceLimit{
 		// An Open Library lookup is up to 7 requests (edition, work,
-		// authors), plus a cover.
+		// authors; or a search and its works), plus a cover.
 		openLibraryName: newServiceLimit(1, 20, 1000),
-		wikidataName:    newServiceLimit(0.5, 10, 500), // 2 queries a lookup
-		googleBooksName: newServiceLimit(0.1, 5, 100),  // 1 request a lookup
+		googleBooksName: newServiceLimit(0.1, 5, 100), // 1 request a lookup
 	},
 }
 
@@ -122,7 +123,6 @@ type bookLookup struct {
 	client      *http.Client
 	openLibrary string
 	olCovers    string
-	wikidata    string
 	googleBooks string
 	googleKey   string
 	cache       *lookupCache
@@ -141,16 +141,21 @@ func (q lookupQuery) key() string {
 	return "q:" + strings.ToLower(q.Title) + "\x00" + strings.ToLower(q.Author)
 }
 
-// lookupResult is a source's answer (TS: LookupResult in web/types.ts).
-type lookupResult struct {
-	Source string            `json:"source"`           // "Open Library", "Wikidata", "Google Books"
-	Option *UploadedBookMeta `json:"option,omitempty"` // nil: no match, or an error
-	Cover  string            `json:"cover,omitempty"`  // its cover, through /metadata/lookup/cover
-	Error  string            `json:"error,omitempty"`
+// lookupMatch is one book a source found (TS: LookupMatch in web/types.ts).
+type lookupMatch struct {
+	Option *UploadedBookMeta `json:"option"`
+	Cover  string            `json:"cover,omitempty"` // its cover, through /metadata/lookup/cover
 }
 
-// lookupHandler: GET /metadata/lookup?source=openlibrary|wikidata|google
-// &isbn=… (or &title=…&author=…; not for Wikidata).
+// lookupResult is a source's answer (TS: LookupResult in web/types.ts).
+type lookupResult struct {
+	Source  string        `json:"source"`            // "Open Library", "Google Books"
+	Matches []lookupMatch `json:"matches,omitempty"` // best first; none: no match, or an error
+	Error   string        `json:"error,omitempty"`
+}
+
+// lookupHandler: GET /metadata/lookup?source=openlibrary|google&isbn=…
+// (or &title=…&author=…).
 func lookupHandler(w http.ResponseWriter, r *http.Request) {
 	source := r.URL.Query().Get("source")
 	if source == "" {
@@ -174,9 +179,6 @@ func lookupHandler(w http.ResponseWriter, r *http.Request) {
 			http.Error(w, raw+" isn't a valid ISBN (wrong length or check digit)", http.StatusBadRequest)
 			return
 		}
-	} else if name == wikidataName {
-		http.Error(w, "Wikidata lookups need an ISBN", http.StatusBadRequest)
-		return
 	} else if q.Title == "" {
 		http.Error(w, "need an ISBN or a title", http.StatusBadRequest)
 		return
@@ -194,26 +196,22 @@ func (l *bookLookup) lookup(ctx context.Context, source string, q lookupQuery) l
 	if res, ok := l.cache.get(key); ok {
 		return res
 	}
-	fn := map[string]func(context.Context, lookupQuery) (*lookupResult, error){
+	fn := map[string]func(context.Context, lookupQuery) ([]lookupMatch, error){
 		openLibraryName: l.openLibraryLookup,
-		wikidataName:    l.wikidataLookup,
 		googleBooksName: l.googleBooksLookup,
 	}[source]
-	res, err := fn(ctx, q)
-	switch {
-	case err != nil:
+	matches, err := fn(ctx, q)
+	if err != nil {
 		log.Printf("lookup: %s: %v", source, err)
 		return lookupResult{Source: source, Error: err.Error()}
-	case res == nil:
-		res = &lookupResult{} // no match
 	}
-	res.Source = source
-	if res.Option != nil {
-		res.Option.Format = source
-		res.Option.Subjects = uniqueTags(res.Option.Subjects)
+	for _, m := range matches {
+		m.Option.Format = source
+		m.Option.Subjects = uniqueTags(m.Option.Subjects)
 	}
-	l.cache.put(key, *res)
-	return *res
+	res := lookupResult{Source: source, Matches: matches} // none: no match
+	l.cache.put(key, res)
+	return res
 }
 
 // statusError is a non-200, non-404 answer.
@@ -408,7 +406,7 @@ type olSearchDoc struct {
 // olKeyRe checks keys from Open Library before they go into a URL.
 var olKeyRe = regexp.MustCompile(`^/(books|works|authors)/OL[0-9]+[MWA]$`)
 
-func (l *bookLookup) openLibraryLookup(ctx context.Context, q lookupQuery) (*lookupResult, error) {
+func (l *bookLookup) openLibraryLookup(ctx context.Context, q lookupQuery) ([]lookupMatch, error) {
 	if q.ISBN == "" {
 		return l.openLibrarySearch(ctx, q)
 	}
@@ -457,57 +455,74 @@ func (l *bookLookup) openLibraryLookup(ctx context.Context, q lookupQuery) (*loo
 		m.Identifiers = append(m.Identifiers, opfIdentifier{Scheme: "olid", Value: strings.TrimPrefix(ed.Key, "/books/")})
 	}
 
-	res := &lookupResult{Option: m}
-	if id := firstCover(ed.Covers, work.Covers); id > 0 { // no cover id: no cover to offer
-		res.Cover = fmt.Sprintf("/metadata/lookup/cover?src=openlibrary&id=%d", id)
-	}
-	return res, nil
+	return []lookupMatch{{Option: m, Cover: olCoverURL(firstCover(ed.Covers, work.Covers))}}, nil
 }
 
-// openLibrarySearch finds the best match for a title and author, as a work
-// (all its editions together), so it has no ISBN.
-func (l *bookLookup) openLibrarySearch(ctx context.Context, q lookupQuery) (*lookupResult, error) {
+// olCoverURL is a cover id's URL through /metadata/lookup/cover; no cover id,
+// no cover to offer.
+func olCoverURL(id int64) string {
+	if id <= 0 {
+		return ""
+	}
+	return fmt.Sprintf("/metadata/lookup/cover?src=openlibrary&id=%d", id)
+}
+
+// openLibrarySearch finds the best matches for a title and author (up to
+// maxSearchMatches), as works (all their editions together), so without an
+// ISBN. Their works are fetched at once, for their descriptions.
+func (l *bookLookup) openLibrarySearch(ctx context.Context, q lookupQuery) ([]lookupMatch, error) {
 	v := url.Values{}
 	v.Set("title", q.Title)
 	if q.Author != "" {
 		v.Set("author", q.Author)
 	}
-	v.Set("limit", "1")
+	v.Set("limit", strconv.Itoa(maxSearchMatches))
 	v.Set("fields", "key,title,subtitle,author_name,first_publish_year,publisher,language,subject,cover_i")
 	var found struct {
 		Docs []olSearchDoc `json:"docs"`
 	}
-	if ok, err := l.getJSON(ctx, openLibraryName, l.openLibrary+"/search.json?"+v.Encode(), &found); err != nil || !ok || len(found.Docs) == 0 {
+	if ok, err := l.getJSON(ctx, openLibraryName, l.openLibrary+"/search.json?"+v.Encode(), &found); err != nil || !ok {
 		return nil, err
 	}
-	doc := found.Docs[0]
-	var work olWork
-	if olKeyRe.MatchString(doc.Key) {
-		if _, err := l.getJSON(ctx, openLibraryName, l.openLibrary+doc.Key+".json", &work); err != nil {
-			log.Printf("lookup: Open Library work %s: %v", doc.Key, err)
+	docs := found.Docs[:min(len(found.Docs), maxSearchMatches)]
+	works := make([]olWork, len(docs))
+	var wg sync.WaitGroup
+	for i, doc := range docs {
+		if !olKeyRe.MatchString(doc.Key) {
+			continue
 		}
+		wg.Add(1)
+		go func() {
+			defer wg.Done()
+			// Best effort: the search's values are still worth showing.
+			if _, err := l.getJSON(ctx, openLibraryName, l.openLibrary+doc.Key+".json", &works[i]); err != nil {
+				log.Printf("lookup: Open Library work %s: %v", doc.Key, err)
+			}
+		}()
 	}
-	m := &UploadedBookMeta{OPFMetadata: OPFMetadata{
-		Title:       joinSubtitle(doc.Title, doc.Subtitle),
-		Creators:    doc.AuthorName,
-		Publisher:   firstNonEmpty(doc.Publisher...),
-		Description: textToHTML(string(work.Description)),
-		Subjects:    cleanOLSubjects(doc.Subject),
-	}}
-	if doc.FirstPublishYear > 0 {
-		m.Date = fmt.Sprintf("%04d-01-01", doc.FirstPublishYear)
+	wg.Wait()
+
+	matches := make([]lookupMatch, 0, len(docs))
+	for i, doc := range docs {
+		m := &UploadedBookMeta{OPFMetadata: OPFMetadata{
+			Title:       joinSubtitle(doc.Title, doc.Subtitle),
+			Creators:    doc.AuthorName,
+			Publisher:   firstNonEmpty(doc.Publisher...),
+			Description: textToHTML(string(works[i].Description)),
+			Subjects:    cleanOLSubjects(doc.Subject),
+		}}
+		if doc.FirstPublishYear > 0 {
+			m.Date = fmt.Sprintf("%04d-01-01", doc.FirstPublishYear)
+		}
+		if len(doc.Language) == 1 { // more than one: editions in several languages
+			m.Languages = []string{canonicalLanguage(doc.Language[0])}
+		}
+		if olKeyRe.MatchString(doc.Key) {
+			m.Identifiers = []opfIdentifier{{Scheme: "olid", Value: strings.TrimPrefix(doc.Key, "/works/")}}
+		}
+		matches = append(matches, lookupMatch{Option: m, Cover: olCoverURL(firstCover([]int64{doc.CoverI}, works[i].Covers))})
 	}
-	if len(doc.Language) == 1 { // more than one: editions in several languages
-		m.Languages = []string{canonicalLanguage(doc.Language[0])}
-	}
-	if olKeyRe.MatchString(doc.Key) {
-		m.Identifiers = []opfIdentifier{{Scheme: "olid", Value: strings.TrimPrefix(doc.Key, "/works/")}}
-	}
-	res := &lookupResult{Option: m}
-	if id := firstCover([]int64{doc.CoverI}, work.Covers); id > 0 {
-		res.Cover = fmt.Sprintf("/metadata/lookup/cover?src=openlibrary&id=%d", id)
-	}
-	return res, nil
+	return matches, nil
 }
 
 // olAuthorNames fetches author records (at most 5, at once) for their names.
@@ -573,216 +588,6 @@ func firstCover(lists ...[]int64) int64 {
 }
 
 // ---------------------------------------------------------------------------
-// Wikidata
-// ---------------------------------------------------------------------------
-
-type sparqlResults struct {
-	Results struct {
-		Bindings []map[string]struct {
-			Value string `json:"value"`
-			Lang  string `json:"xml:lang"`
-		} `json:"bindings"`
-	} `json:"results"`
-}
-
-var wikidataQIDRe = regexp.MustCompile(`^Q[0-9]+$`)
-
-// isbnHyphenations lists every way an ISBN-13 (and its ISBN-10) could be
-// hyphenated. Wikidata stores ISBNs hyphenated (P212, P957), and where the
-// hyphens go depends on the ISBN agency's ranges, so the query asks for all
-// of them: an exact match is an index lookup, a normalised one a full scan.
-func isbnHyphenations(isbn13 string) []string {
-	out := []string{isbn13}
-	split := func(prefix, body, check string) {
-		for g := 1; g <= 5; g++ { // group, registrant, publication
-			for r := 1; r <= 7; r++ {
-				if p := len(body) - g - r; p >= 1 && p <= 6 {
-					out = append(out, prefix+body[:g]+"-"+body[g:g+r]+"-"+body[g+r:]+"-"+check)
-				}
-			}
-		}
-	}
-	split(isbn13[:3]+"-", isbn13[3:12], isbn13[12:])
-	if strings.HasPrefix(isbn13, "978") {
-		sum := 0
-		for i, c := range isbn13[3:12] {
-			sum += int(c-'0') * (10 - i)
-		}
-		check := strconv.Itoa((11 - sum%11) % 11)
-		if check == "10" {
-			check = "X"
-		}
-		isbn10 := isbn13[3:12] + check
-		out = append(out, isbn10)
-		split("", isbn10[:9], check)
-	}
-	return out
-}
-
-// wikidataLookup finds the edition with this ISBN and reads it and the work
-// it's an edition of (P629): two queries, each a few index lookups.
-func (l *bookLookup) wikidataLookup(ctx context.Context, q lookupQuery) (*lookupResult, error) {
-	if q.ISBN == "" {
-		return nil, errors.New("Wikidata lookups need an ISBN")
-	}
-	quoted := make([]string, 0, 64)
-	for _, v := range isbnHyphenations(q.ISBN) {
-		quoted = append(quoted, `"`+v+`"`)
-	}
-	var found sparqlResults
-	if _, err := l.sparql(ctx, `SELECT ?item ?work WHERE { VALUES ?isbn { `+strings.Join(quoted, " ")+` }
-		{ ?item wdt:P212 ?isbn } UNION { ?item wdt:P957 ?isbn } OPTIONAL { ?item wdt:P629 ?work } } LIMIT 1`, &found); err != nil {
-		return nil, err
-	}
-	if len(found.Results.Bindings) == 0 {
-		return nil, nil
-	}
-	row := found.Results.Bindings[0]
-	item := strings.TrimPrefix(row["item"].Value, "http://www.wikidata.org/entity/")
-	work := strings.TrimPrefix(row["work"].Value, "http://www.wikidata.org/entity/")
-	if !wikidataQIDRe.MatchString(item) {
-		return nil, nil
-	}
-	ids := []string{item}
-	if wikidataQIDRe.MatchString(work) && work != item {
-		ids = append(ids, work)
-	}
-
-	var vals sparqlResults
-	if _, err := l.sparql(ctx, wikidataValuesQuery(ids), &vals); err != nil {
-		return nil, err
-	}
-	var rows []wikidataValue
-	for _, b := range vals.Results.Bindings {
-		ord, _ := strconv.Atoi(b["ord"].Value)
-		rows = append(rows, wikidataValue{From: b["from"].Value, Kind: b["kind"].Value, Ref: b["ref"].Value,
-			Value: b["value"].Value, Lang: b["value"].Lang, Ord: ord})
-	}
-	return &lookupResult{Option: wikidataOption(q.ISBN, item, rows)}, nil
-}
-
-func (l *bookLookup) sparql(ctx context.Context, query string, v any) (bool, error) {
-	return l.getJSON(ctx, wikidataName, l.wikidata+"?format=json&query="+url.QueryEscape(query), v)
-}
-
-// wikidataValuesQuery reads the values of these items (the edition, then its
-// work), one per row so that rows can't multiply. The QIDs are written into
-// the query: the query service only uses its indexes for constants here.
-func wikidataValuesQuery(ids []string) string {
-	const label = `rdfs:label ?value FILTER(LANG(?value) IN ("en", "mul"))`
-	var branches []string
-	for _, id := range ids {
-		e, from := "wd:"+id, `BIND("`+id+`" AS ?from)`
-		for _, b := range []struct{ kind, pattern string }{
-			{"title", e + ` wdt:P1476 ?value`},
-			{"label", e + ` ` + label},
-			{"date", e + ` wdt:P577 ?value`},
-			{"author", e + ` p:P50 ?st . ?st ps:P50 ?ref . OPTIONAL { ?st pq:P1545 ?ord } ?ref ` + label},
-			{"publisher", e + ` wdt:P123 ?ref . ?ref ` + label},
-			{"language", e + ` wdt:P407 ?ref . ?ref wdt:P218|wdt:P219|wdt:P220 ?value`},
-			{"subject", e + ` wdt:P136|wdt:P921 ?ref . ?ref ` + label},
-		} {
-			branches = append(branches, `{ `+b.pattern+` BIND("`+b.kind+`" AS ?kind) `+from+` }`)
-		}
-	}
-	return "SELECT ?from ?kind ?ref ?value ?ord WHERE {\n" + strings.Join(branches, "\nUNION ") + "\n}"
-}
-
-// wikidataValue is one row of wikidataValuesQuery.
-type wikidataValue struct {
-	From, Kind, Ref, Value, Lang string
-	Ord                          int // author order (P1545), 0 if unset
-}
-
-// wikidataOption maps the values of an edition (item) and its work: the
-// edition's own values first, the work's where the edition has none.
-// Labels are English, else multilingual.
-func wikidataOption(isbn, item string, rows []wikidataValue) *UploadedBookMeta {
-	// Values of one kind, from the edition if it has any, else the work.
-	pick := func(kind string) []wikidataValue {
-		var mine, work []wikidataValue
-		for _, r := range rows {
-			if r.Kind != kind {
-				continue
-			}
-			if r.From == item {
-				mine = append(mine, r)
-			} else {
-				work = append(work, r)
-			}
-		}
-		if len(mine) > 0 {
-			return mine
-		}
-		return work
-	}
-	// One label per referenced item, English first, in first-seen order.
-	labels := func(rs []wikidataValue) []wikidataValue {
-		var out []wikidataValue
-		index := map[string]int{}
-		for _, r := range rs {
-			if i, ok := index[r.Ref]; ok {
-				if r.Lang == "en" && out[i].Lang != "en" {
-					out[i].Value, out[i].Lang = r.Value, r.Lang
-				}
-				continue
-			}
-			index[r.Ref] = len(out)
-			out = append(out, r)
-		}
-		return out
-	}
-	first := func(rs []wikidataValue) string {
-		for _, r := range rs {
-			if r.Lang == "en" || r.Lang == "" {
-				return r.Value
-			}
-		}
-		if len(rs) > 0 {
-			return rs[0].Value
-		}
-		return ""
-	}
-
-	m := &UploadedBookMeta{OPFMetadata: OPFMetadata{
-		Title:       firstNonEmpty(first(pick("title")), first(pick("label"))),
-		Publisher:   first(labels(pick("publisher"))),
-		Identifiers: []opfIdentifier{{Scheme: "isbn", Value: isbn}, {Scheme: "wikidata", Value: item}},
-	}}
-	if d := pick("date"); len(d) > 0 {
-		m.Date = lookupDate(d[0].Value)
-	}
-	authors := labels(pick("author"))
-	sort.SliceStable(authors, func(i, j int) bool {
-		a, b := authors[i].Ord, authors[j].Ord
-		return a != 0 && (b == 0 || a < b) // numbered first, in order
-	})
-	for _, a := range authors {
-		m.Creators = append(m.Creators, a.Value)
-	}
-	seen := map[string]bool{}
-	for _, l := range pick("language") {
-		if c := canonicalLanguage(l.Value); !seen[l.Ref] && !slices.Contains(m.Languages, c) {
-			seen[l.Ref] = true
-			m.Languages = append(m.Languages, c)
-		}
-	}
-	var subjects []wikidataValue // the edition's and the work's
-	for _, r := range rows {
-		if r.Kind == "subject" {
-			subjects = append(subjects, r)
-		}
-	}
-	for _, s := range labels(subjects) {
-		m.Subjects = append(m.Subjects, s.Value)
-	}
-	if m.Subjects = uniqueTags(m.Subjects); len(m.Subjects) > 15 {
-		m.Subjects = m.Subjects[:15]
-	}
-	return m
-}
-
-// ---------------------------------------------------------------------------
 // Google Books (only when the admin asks)
 // ---------------------------------------------------------------------------
 
@@ -806,7 +611,7 @@ type gbVolume struct {
 
 var googleIDRe = regexp.MustCompile(`^[A-Za-z0-9_-]{1,40}$`)
 
-func (l *bookLookup) googleBooksLookup(ctx context.Context, q lookupQuery) (*lookupResult, error) {
+func (l *bookLookup) googleBooksLookup(ctx context.Context, q lookupQuery) ([]lookupMatch, error) {
 	v := url.Values{}
 	if q.ISBN != "" {
 		v.Set("q", "isbn:"+q.ISBN)
@@ -860,7 +665,7 @@ func (l *bookLookup) googleBooksLookup(ctx context.Context, q lookupQuery) (*loo
 	if googleIDRe.MatchString(vol.ID) {
 		m.Identifiers = append(m.Identifiers, opfIdentifier{Scheme: "google", Value: vol.ID})
 	}
-	return &lookupResult{Option: m}, nil
+	return []lookupMatch{{Option: m}}, nil
 }
 
 // splitGoogleCategories turns "Computers / Programming / General" into

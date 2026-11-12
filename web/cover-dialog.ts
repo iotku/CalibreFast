@@ -26,7 +26,7 @@ export interface CoverDialogOptions {
     autoDefault?: boolean;
     /** The banner's cover button: it opens the dialog. */
     opener: HTMLElement;
-    /** The editor's ISBN lookup box; null with -no-lookups (no online covers). */
+    /** The form's ISBN field; null with -no-lookups (no online covers). */
     isbnInput: HTMLInputElement | null;
     /** After the cover changed (saved or reverted), with a message to show. */
     onChanged(message: string): void;
@@ -249,8 +249,9 @@ export function mountCoverDialog({ book, autoDefault = false, opener, isbnInput,
             if (n) {
                 say(`Looking up ISBN ${n} on Open Library…`);
                 const r = await api<LookupResult>("GET", `/metadata/lookup?${new URLSearchParams({ source: "openlibrary", isbn: n })}`);
-                if (r.cover) urls.unshift(r.cover);
-                else note = r.option ? `Open Library has no cover for ISBN ${n}.` : `Open Library: ${r.error || "no match"}.`;
+                const match = r.matches?.[0];
+                if (match?.cover) urls.unshift(match.cover);
+                else note = match ? `Open Library has no cover for ISBN ${n}.` : `Open Library: ${r.error || "no match"}.`;
             }
             const added: CoverChoice[] = [];
             for (const url of urls) {
@@ -279,6 +280,7 @@ export function mountCoverDialog({ book, autoDefault = false, opener, isbnInput,
     // ---- Opening ---------------------------------------------------------------------
 
     opener.addEventListener("click", () => {
+        updateOnline(); // the ISBN may have changed without an input event
         if (!dialog.open) dialog.showModal();
         say(filesLoaded ? hint() : "Loading the book's covers…");
         void fetchCoverStatus(book).then((s) => (revertBtn.hidden = !s.hasBackup));

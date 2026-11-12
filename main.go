@@ -208,7 +208,7 @@ type EditBookPageData struct { // TODO I Hate this, these page structs are all o
 	CoverModTime int64
 	Import       *importPageData // a book waiting in the import queue (imports.go); nil for one in the library
 	ReadLink     string          // the book in a reader's preview mode, to look things up ("" without an EPUB or PDF)
-	Lookups      bool            // show the ISBN lookup (Open Library, Wikidata); off with -no-lookups
+	Lookups      bool            // show the online lookup (Open Library); off with -no-lookups
 	GoogleBooks  bool            // offer Google Books as a last resort; off with -no-google-books
 }
 
@@ -259,8 +259,8 @@ func main() {
 	flag.BoolVar(&publicCatalog, "public", false, "let anonymous visitors browse the library catalog (by default everything requires signing in)")
 	flag.BoolVar(&publicRead, "public-read", false, "public read-only mode: anonymous visitors can also read and download books (implies -public)")
 	flag.BoolVar(&allowRegistrations, "allow-registrations", false, "let anyone create an account from the web interface (only on trusted networks: bots will try)")
-	flag.BoolVar(&noLookups, "no-lookups", false, "never look books up online (hides the metadata editor's ISBN lookup)")
-	flag.BoolVar(&noGoogleBooks, "no-google-books", false, "never offer Google Books in the metadata editor (Open Library and Wikidata only)")
+	flag.BoolVar(&noLookups, "no-lookups", false, "never look books up online (hides the metadata editor's lookup bar)")
+	flag.BoolVar(&noGoogleBooks, "no-google-books", false, "never offer Google Books in the metadata editor (Open Library only)")
 	flag.StringVar(&publicURL, "public-url", "", "external base URL, e.g. https://books.example.com (needed for GitHub/Google sign-in)")
 	flag.StringVar(&watchDir, "watch-dir", "", "folder to watch for new books; they wait in the import queue for an admin to review (needs -allow-writes)")
 	flag.BoolVar(&watchForcePolling, "watch-dir-force-polling", false, "check -watch-dir every 30 seconds instead of relying on the system to report changes (for network and container mounts where it doesn't)")
@@ -568,8 +568,8 @@ func serveLibraryHTTP() {
 	// ISBNs found in the book's own files (isbn.go)
 	http.HandleFunc("/metadata/{uuid}/isbns", requireWrites(isbnCandidatesHandler))
 
-	// Metadata from Open Library, Wikidata and Google Books, and Open
-	// Library covers (lookup.go)
+	// Metadata from Open Library and Google Books, and Open Library covers
+	// (lookup.go)
 	http.HandleFunc("GET /metadata/lookup", requireWrites(requireLookups(lookupHandler)))
 	http.HandleFunc("GET /metadata/lookup/cover", requireWrites(requireLookups(lookupCoverHandler)))
 

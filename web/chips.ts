@@ -5,8 +5,11 @@
  * collection, source buttons and highlighting work unchanged. Text is typed
  * in an entry row above the chips (so new chips never push it around) and is
  * only added on Enter or the Add button; commas there separate several items.
- * Removing a chip strikes it through and parks it at the end with Undo;
- * nothing is lost until the form is applied.
+ * Removing one of the book's own values (those the field was loaded with)
+ * strikes it through and parks it at the end with Undo; nothing the book
+ * had is lost until the form is applied. Values added since (typed, or from
+ * a source's pill) just go: Undo is for what the book had, and the pills
+ * bring the others back.
  *
  * Chips containing `splitOn` (";") get a Split button, and the field gets a
  * "Split all" button, for tags that were glued together with semicolons. A
@@ -74,6 +77,9 @@ export function createChipInput(
     const placeholderSet = new Set(placeholders.map((p) => p.toLowerCase()));
     let chips: Chip[] = [];
     let emitting = false;
+    /** The book's own values (lowercase), from the first value set from outside (loading). */
+    let original: Set<string> | null = null;
+    const isOriginal = (c: Chip): boolean => original?.has(lower(c.text)) ?? false;
 
     const root = document.createElement("div") as ChipInput;
     root.className = "chip-input";
@@ -162,10 +168,10 @@ export function createChipInput(
         if (chip.removed) {
             chip.removed = false;
             chips.splice(activeEnd(), 0, chip);
-        } else {
+        } else if (isOriginal(chip)) {
             chip.removed = true;
-            chips.push(chip);
-        }
+            chips.push(chip); // parked with Undo
+        } // else gone: it wasn't the book's
         render();
         emit();
     }
@@ -318,12 +324,14 @@ export function createChipInput(
     });
 
     /**
-     * External changes (initial load, source buttons): items no longer present
-     * are struck through rather than dropped. A value the field already has,
-     * in any case, keeps the field's spelling.
+     * External changes (initial load, source buttons): the book's own values
+     * no longer present are struck through rather than dropped; others just
+     * go. A value the field already has, in any case, keeps the field's
+     * spelling. The first change is the load: its values are the book's.
      */
     backing.addEventListener("input", () => {
         if (emitting) return;
+        original ??= new Set(parseList(backing.value).map(lower));
         const known = new Map(chips.map((c) => [lower(c.text), c.text]));
         const next = parseList(backing.value).map((t) => known.get(lower(t)) ?? t);
         const nextKeys = new Set(next.map(lower));
@@ -334,7 +342,7 @@ export function createChipInput(
         chips = next.map((t) => ({ text: t, removed: false }));
         if (next.join(", ") !== backing.value) emit(); // the backing value without repeats
         for (const c of [...prevActive, ...prevRemoved]) {
-            chips.push({ text: c.text, removed: true });
+            if (isOriginal(c)) chips.push({ text: c.text, removed: true });
         }
         render();
     });
