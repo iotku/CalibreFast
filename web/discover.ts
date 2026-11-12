@@ -20,7 +20,8 @@ import { byId, maybeId } from "./dom.js";
 import type { Book } from "./types.js";
 import { coverUrl, renderBookCard, setupCoverStates } from "./utils.js";
 import { setupBookClickHandlers, loadBook, HASH_PREFIX } from "./modal.js";
-import { cachedMarks, coverAction, fetchMarks, markCard, type Marks } from "./reading.js";
+import { cachedMarks, coverAction, markCard, marksFromAnswer, type Marks, type StoredMarks } from "./reading.js";
+import { forgetLocalReading, localReading, LOCAL_FINISHED } from "./local-reading.js";
 import { forgetControls } from "./user.js";
 import { maxCovers } from "./cover-limits.js";
 
@@ -80,14 +81,24 @@ function pageFile(dir: string, n: number): Promise<Book[]> {
 
 const loadedCovers = new Set<string>(); // cover URLs the browser has: shown at once
 
-function fillRow(id: string, books: Book[]): void {
+/**
+ * Fill a row. With hint, an empty row stays, showing how to fill it (the
+ * layout is the same for everyone); without, it's hidden. all shows its
+ * "See all" link.
+ */
+function fillRow(id: string, books: Book[], { hint = false, all = false } = {}): void {
     const section = byId(id);
     const list = section.querySelector<HTMLElement>(".row-books");
     if (!list) return;
     list.innerHTML = books.map((b) => renderBookCard(b, loadedCovers.has(coverUrl(b)))).join("");
     for (const card of list.querySelectorAll<HTMLElement>(".book")) markCard(card, marks);
     setupBookClickHandlers(list);
-    section.hidden = books.length === 0;
+    const hintEl = section.querySelector<HTMLElement>(".row-hint");
+    if (hintEl) hintEl.hidden = !(hint && books.length === 0);
+    list.hidden = books.length === 0;
+    const allEl = section.querySelector<HTMLElement>(".row-all");
+    if (allEl) allEl.hidden = !all;
+    section.hidden = books.length === 0 && !hint;
     pumpCovers();
 }
 
@@ -252,8 +263,18 @@ document.addEventListener("cf:modal-busy", (e) => {
 });
 
 /* ------------------------------------------------------------------ */
-/* Reading marks (reading.ts)                                          */
+/* What's the user's: /api/me/home, or this device's reading           */
 /* ------------------------------------------------------------------ */
+
+const HOME_KEY = "cf-home"; // the last /api/me/home answer, painted at once next time
+
+interface HomeAnswer {
+    marks: StoredMarks;
+    reading: Book[];
+    reading_count: number;
+    wanted: Book[];
+    wanted_count: number;
+}
 
 function repaintMarks(only?: string): void {
     for (const card of root.querySelectorAll<HTMLElement>(".book")) {
@@ -261,20 +282,114 @@ function repaintMarks(only?: string): void {
     }
 }
 
-async function refreshMarks(): Promise<void> {
-    const fresh = await fetchMarks();
-    if (!fresh) return;
-    marks = fresh;
+/** The cached answer, if it's whoever the top bar says is signed in. */
+function cachedHome(): HomeAnswer | null {
+    try {
+        const h = JSON.parse(store.get(HOME_KEY) ?? "null") as HomeAnswer | null;
+        const me = JSON.parse(store.get("cf-me") ?? "null") as { username?: string | null } | null;
+        if (h && me?.username && h.marks?.user === me.username) return h;
+    } catch {
+        /* unreadable */
+    }
+    return null;
+}
+
+function showHome(h: HomeAnswer): void {
+    byId("row-reading-device").hidden = true;
+    fillRow("row-reading", h.reading, { hint: true, all: h.reading_count > 0 });
+    fillRow("row-wanted", h.wanted, { hint: true, all: h.wanted_count > 0 });
+    // Something to go back to: the introduction steps aside.
+    byId("intro").classList.toggle("compact", h.reading.length > 0 || !!store.get(INTRO_KEY));
+}
+
+/** A signed-out visitor's marks: what was read on this device. */
+function guestMarks(): Marks {
+    const reading = new Map<string, number | null>();
+    const resume = new Map<string, string>();
+    const finished = new Set<string>();
+    for (const [uuid, e] of Object.entries(localReading())) {
+        if (e.percent >= LOCAL_FINISHED) finished.add(uuid);
+        else {
+            reading.set(uuid, e.percent);
+            resume.set(uuid, (e.format === "pdf" ? "/read-pdf?uuid=" : "/read?uuid=") + encodeURIComponent(uuid));
+        }
+    }
+    return { signedIn: false, reading, resume, wanted: new Set(), finished, favorites: new Set() };
+}
+
+/** Continue reading, for a signed-out visitor: this device's books, newest first. */
+async function showGuest(): Promise<void> {
+    byId("row-wanted").hidden = true;
+    const index = localReading();
+    const uuids = Object.entries(index)
+        .filter(([, e]) => e.percent < LOCAL_FINISHED)
+        .sort(([, a], [, b]) => b.updatedAt - a.updatedAt)
+        .slice(0, STRIP * 2)
+        .map(([u]) => u);
+    let books: Book[] = [];
+    if (uuids.length) {
+        try {
+            const res = await fetch(`/api/books?uuids=${uuids.map(encodeURIComponent).join(",")}`, { credentials: "same-origin" });
+            if (res.ok) {
+                books = ((await res.json()) as Book[] | null) ?? [];
+                // Gone from the library: drop them here too.
+                const have = new Set(books.map((b) => b.uuid));
+                forgetLocalReading(uuids.filter((u) => !have.has(u)));
+            }
+        } catch {
+            /* offline: nothing to show */
+        }
+    }
+    byId("row-reading-device").hidden = false;
+    fillRow("row-reading", books);
+    // The introduction stays open for a guest (only Hide folds it): its
+    // sign-in line is how this reading would follow them to other devices.
+}
+
+let homeFetchedAt = 0;
+
+/** Fetch what's the user's (or note they're signed out) and show it. */
+async function refreshHome(): Promise<void> {
+    homeFetchedAt = Date.now();
+    let res: Response;
+    try {
+        res = await fetch("/api/me/home", { credentials: "same-origin" });
+    } catch {
+        return; // offline: keep what's shown
+    }
+    if (res.status === 401) {
+        store.set(HOME_KEY, "null");
+        marksFromAnswer(null);
+        marks = guestMarks();
+        await showGuest();
+    } else if (res.ok) {
+        const h = (await res.json()) as HomeAnswer;
+        store.set(HOME_KEY, JSON.stringify(h));
+        marks = marksFromAnswer(h.marks);
+        showHome(h);
+    } else {
+        return;
+    }
     repaintMarks();
     showAccountLine();
 }
 
-/** Fetches the marks now; resolves once they're in. */
-function setupMarks(): Promise<void> {
-    const fresh = refreshMarks();
-    document.addEventListener("cf:status", () => void refreshMarks());
+/** Paints from what's known at once; resolves once the server has answered. */
+function setupHome(): Promise<void> {
+    const cached = cachedHome();
+    if (cached) showHome(cached);
+    else if (signedIn() === false) {
+        marks = guestMarks();
+        void showGuest();
+    }
+    const fresh = refreshHome();
+    document.addEventListener("cf:status", () => void refreshHome());
     window.addEventListener("pageshow", (e) => {
-        if (e.persisted) void refreshMarks();
+        if (e.persisted) void refreshHome();
+    });
+    document.addEventListener("visibilitychange", () => {
+        // Back from the reader in another tab: progress may have moved.
+        if (document.visibilityState === "visible" && Date.now() - homeFetchedAt > 15_000) void refreshHome();
     });
     // The buttons over a card's cover; "continue reading" is a plain link.
     document.addEventListener("click", (e) => {
@@ -284,7 +399,7 @@ function setupMarks(): Promise<void> {
         e.preventDefault();
         void coverAction(btn.dataset["action"] ?? "", uuid, marks, () => repaintMarks(uuid)).then(() => {
             forgetControls(uuid);
-            void refreshMarks();
+            void refreshHome();
         });
     });
     return fresh;
@@ -341,12 +456,12 @@ function openFromHash(): void {
 }
 
 setupCoverStates(root);
-const marksIn = setupMarks();
 setupIntro();
+const homeIn = setupHome();
 openFromHash();
 const empty = maybeId("discover-empty");
 if (empty) empty.hidden = totalBooks > 0;
 void latestRow();
-// Shuffle skips finished books: a signed-in user's are in the cached marks,
-// or (first visit on this browser) on their way.
-void (signedIn() && !marks.signedIn ? marksIn : Promise.resolve()).then(shuffleRow);
+// Shuffle skips finished books: known now (cached marks, or this device's
+// for a signed-out visitor), or on their way (first visit on this browser).
+void (signedIn() !== false && !marks.signedIn ? homeIn : Promise.resolve()).then(shuffleRow);

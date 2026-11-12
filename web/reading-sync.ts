@@ -13,6 +13,7 @@
 
 import { api } from "./dom.js";
 import { lastKnownUser, localKey, type Owner } from "./local-keys.js";
+import { noteLocalReading } from "./local-reading.js";
 import type { MeResponse } from "./types.js";
 
 export type BookFormat = "epub" | "pdf";
@@ -153,6 +154,7 @@ export async function createReadingSync(
             pending: signedIn,
         };
         LS.set(progressKey, local);
+        if (!signedIn) noteLocalReading(uuid, format, local.percent, local.updatedAt);
         if (legacyKey && !signedIn) localStorage.setItem(legacyKey, String(position));
         clearTimeout(timer);
         timer = setTimeout(() => void push(), 1500);

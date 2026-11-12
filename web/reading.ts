@@ -28,7 +28,7 @@ export interface Marks {
 const KEY = "cf-reading";
 
 /** /api/me/reading's answer, as stored. */
-interface Stored {
+export interface StoredMarks {
     user: string;
     reading: Record<string, number | null>;
     resume?: Record<string, string>;
@@ -37,7 +37,7 @@ interface Stored {
     favorites?: string[];
 }
 
-function toMarks(v: Stored | null): Marks {
+function toMarks(v: StoredMarks | null): Marks {
     return {
         signedIn: v !== null,
         reading: new Map(Object.entries(v?.reading ?? {})),
@@ -58,7 +58,7 @@ function lastUser(): string | null | undefined {
     }
 }
 
-function store(v: Stored | null): void {
+function store(v: StoredMarks | null): void {
     try {
         if (v) localStorage.setItem(KEY, JSON.stringify(v));
         else localStorage.removeItem(KEY);
@@ -70,12 +70,18 @@ function store(v: Stored | null): void {
 /** The last known marks, if they belong to whoever is signed in now. */
 export function cachedMarks(): Marks {
     try {
-        const v = JSON.parse(localStorage.getItem(KEY) ?? "null") as Stored | null;
+        const v = JSON.parse(localStorage.getItem(KEY) ?? "null") as StoredMarks | null;
         if (v && v.user === lastUser()) return toMarks(v);
     } catch {
         /* blocked or unreadable */
     }
     return toMarks(null);
+}
+
+/** Marks from an answer that carries them (/api/me/home), kept as the cache. */
+export function marksFromAnswer(v: StoredMarks | null): Marks {
+    store(v);
+    return toMarks(v);
 }
 
 /** The current marks; none when signed out, null when they couldn't be fetched. */
@@ -87,7 +93,7 @@ export async function fetchMarks(): Promise<Marks | null> {
             return toMarks(null);
         }
         if (!res.ok) return null;
-        const body = (await res.json()) as Stored;
+        const body = (await res.json()) as StoredMarks;
         store(body);
         return toMarks(body);
     } catch {
