@@ -742,6 +742,7 @@ func registerAuthRoutes() {
 	registerOAuthRoutes()
 	registerUserDataRoutes()
 	registerProgressRoutes()
+	registerGuestImportRoutes()
 	registerAnnotationRoutes()
 	registerShelfRoutes()
 	registerLinkRoutes()
