@@ -188,6 +188,7 @@ function init(bar: HTMLElement): void {
             ...(imports !== null ? [el("a", { href: "/import", textContent: imports ? `Review imports (${imports})` : "Review imports", ...current("imports") })] : []),
             ...(st.canEdit ? [el("a", { href: "/library/edit", textContent: "Bulk edit", ...current("library-edit") })] : []),
             ...(st.canEdit ? [el("a", { href: "/recycle-bin", textContent: "Recycling Bin", ...current("recycle-bin") })] : []),
+            ...(st.canEdit ? [el("a", { href: "/admin/repairs", textContent: "Library repairs", ...current("library-repairs") })] : []),
             ...(st.isAdmin ? [el("a", { href: "/admin/users", textContent: "Manage users" })] : []),
             el("a", { href: "/account", textContent: "Account" }),
             logout,

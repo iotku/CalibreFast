@@ -52,13 +52,23 @@ func TestRepairFormatNames(t *testing.T) {
 	// Calibre looks for ".epub": an ".EPUB" file can't be fixed by the name alone.
 	upper, _ := add("Upper", map[string]string{"epub": "u"}, "Upper.EPUB")
 
-	// Read-only: nothing changes.
-	if n := repairFormatNames(db, baseDir, false); n != 0 || name(misnamed, "EPUB") != "dune_scan_v2" {
-		t.Fatalf("read-only repaired %d, name %q", n, name(misnamed, "EPUB"))
+	// What the repairs page lists.
+	found, err := findMisnamedFormats(db, baseDir)
+	if err != nil || len(found) != 1 || found[0].title != "Dune" || found[0].from != "dune_scan_v2" || found[0].to != "Dune" {
+		t.Fatalf("found %+v, %v", found, err)
 	}
 
-	if n := repairFormatNames(db, baseDir, true); n != 1 {
-		t.Errorf("repaired %d formats, want 1", n)
+	// Read-only (no -allow-writes): nothing changes.
+	orig := allowWrites
+	t.Cleanup(func() { allowWrites = orig })
+	allowWrites = false
+	if n, err := repairFormatNames(db, baseDir); !errors.Is(err, errReadOnly) || n != 0 || name(misnamed, "EPUB") != "dune_scan_v2" {
+		t.Fatalf("read-only repaired %d (%v), name %q", n, err, name(misnamed, "EPUB"))
+	}
+	allowWrites = true
+
+	if n, err := repairFormatNames(db, baseDir); err != nil || n != 1 {
+		t.Errorf("repaired %d formats (%v), want 1", n, err)
 	}
 	for _, c := range []struct {
 		id     int64
@@ -76,8 +86,8 @@ func TestRepairFormatNames(t *testing.T) {
 			t.Errorf("book %d %s: data.name %q, want %q", c.id, c.format, got, c.want)
 		}
 	}
-	if n := repairFormatNames(db, baseDir, true); n != 0 {
-		t.Errorf("a second run repaired %d", n)
+	if n, err := repairFormatNames(db, baseDir); err != nil || n != 0 {
+		t.Errorf("a second run repaired %d (%v)", n, err)
 	}
 }
 
