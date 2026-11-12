@@ -137,3 +137,41 @@ export interface ImportQueue {
     problem?: string;
     items: ImportSummary[];
 }
+
+/** A book in the Recycling Bin (Go: recycleBookView in recycle.go). */
+export interface RecycledBook {
+    id: number;
+    uuid: string;
+    title: string;
+    /** "A & B" */
+    authors: string;
+    path: string;
+    formats: string[];
+    size: number;
+    no_files: boolean;
+    /** Readers' rows about it kept with the batch, by table (bookmarks, annotations, …). */
+    reader_data?: Record<string, number>;
+    restored_at?: string;
+    restored_by?: string;
+    /** Still in the bin: it can be restored. */
+    in_bin: boolean;
+}
+
+/** One removal (Go: recycleBatchView). */
+export interface RecycleBatch {
+    id: string;
+    deleted_at: string;
+    deleted_by: string;
+    books: RecycledBook[];
+}
+
+/** GET /api/recycle-bin (Go: recycleBinHandler). */
+export interface RecycleBin {
+    folder: string;
+    batches: RecycleBatch[];
+}
+
+/** POST /api/recycle-bin/{batch}/restore (Go: restoreResult). */
+export interface RestoreResponse {
+    results: { uuid: string; title: string; error?: string }[];
+}

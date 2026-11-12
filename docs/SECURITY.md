@@ -8,7 +8,7 @@ CalibreFast has accounts, but it's a personal project: the authentication code i
 |---|---|---|---|---|---|
 | **Anonymous visitor** | Only with `-public` | Only with `-public-read` | No | **Never** | No |
 | **Signed-in user** | Yes | Yes | Yes (their own; progress also from KOReader with a sync key) | **Never** | No |
-| **Admin** | Yes | Yes | Yes (their own) | Only with `-allow-writes` | Yes |
+| **Admin** | Yes | Yes | Yes (their own) | Only with `-allow-writes` (removed books go to the Recycling Bin, which only the server can empty) | Yes |
 
 - Library changes always need **both** an admin session **and** a server started with `-allow-writes`. Without the flag, nobody (not even admins) can modify `metadata.db` or the library folder. Anonymous visitors get 401 and regular users 403.
 - Personal data (favorites, reading status, progress, bookmarks, highlights and notes, personal shelves) is visible only to its owner. Global shelves are visible to everyone who can browse.
@@ -98,6 +98,10 @@ CalibreFast writes to the same `metadata.db` and book folders that the Calibre d
 - **`-datadir/imports`** holds books from the watch folder (`-watch-dir`) until an admin adds or discards them: the book files themselves, moved out of the watch folder. Only admins on a server with `-allow-writes` can list, download, add or discard them.
   - The watcher runs with the server's own file permissions and **moves** files, so point `-watch-dir` at a folder meant for it. The server refuses one that overlaps the library or `-datadir`.
   - Waiting files are untrusted like any other book: they are only parsed for metadata, and shown to the admin reviewing them.
+- **The Recycling Bin** (`-recycle-bin`, default `-datadir/recycle-bin`, created `0700`) holds removed books' folders, a copy of `metadata.db` from before each removal, and readers' bookmarks, highlights, notes and progress for those books (`reader-data.json`, private data like `calibrefast.db`). The web can add to it (removing books) and take books out of it (restoring them), but never delete it: there's no endpoint for that. Emptying it is `-empty-recycle-bin` or deleting folders on the server.
+  - So a stolen admin session can remove books but not destroy them; restore them from the page, or roll back by hand ([FEATURES.md](FEATURES.md#removing-books-and-the-recycling-bin)).
+  - Each removal copies `metadata.db`. Someone removing and restoring books over and over could fill the disk, so keep an eye on its size, and empty old batches.
+  - Put it somewhere admins of the server's host would notice, and include it in backups.
 - **`calibrefast-groups.json`** in the library folder holds groups. It's the only file CalibreFast adds to a library.
 - **Read-only caches:** `./pages` and `-cachedir` (cover thumbnails). Nothing else is written unless an admin edits with `-allow-writes`.
 

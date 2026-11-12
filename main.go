@@ -264,9 +264,22 @@ func main() {
 	flag.StringVar(&publicURL, "public-url", "", "external base URL, e.g. https://books.example.com (needed for GitHub/Google sign-in)")
 	flag.StringVar(&watchDir, "watch-dir", "", "folder to watch for new books; they wait in the import queue for an admin to review (needs -allow-writes)")
 	flag.BoolVar(&watchForcePolling, "watch-dir-force-polling", false, "check -watch-dir every 30 seconds instead of relying on the system to report changes (for network and container mounts where it doesn't)")
+	flag.StringVar(&recycleDir, "recycle-bin", "", "where books removed from the library are kept until emptied on the server (default <datadir>/recycle-bin)")
+	emptyRecycle := flag.String("empty-recycle-bin", "", "permanently delete Recycling Bin batches older than this (e.g. 30d, 12h; 0 for all) and exit")
 	createUserName := flag.String("create-user", "", "create a user (or reset their password) and exit; password from $CF_PASSWORD or stdin")
 	createAdmin := flag.Bool("admin", false, "with -create-user: make the user an admin")
 	flag.Parse()
+
+	if *emptyRecycle != "" {
+		age, err := parseAge(*emptyRecycle)
+		if err != nil {
+			log.Fatal(err)
+		}
+		if err := emptyRecycleBin(age, os.Stdout); err != nil {
+			log.Fatal(err)
+		}
+		return
+	}
 
 	var err error
 	if appDB, err = openAppDB(dataDir); err != nil {
@@ -500,6 +513,9 @@ func serveLibraryHTTP() {
 
 	// The watch folder's import queue (imports.go)
 	registerImportRoutes()
+
+	// Removing books, and the Recycling Bin (recycle.go)
+	registerRecycleRoutes()
 
 	// Individual Book metadata editor
 	http.HandleFunc("/book/edit/{uuid}", requireWrites(func(w http.ResponseWriter, r *http.Request) {
@@ -935,30 +951,30 @@ func viewHandler(w http.ResponseWriter, r *http.Request) {
 
 // generatePages reads the Calibre metadata.db and generates paginated JSON files for the library main view.
 func generatePages() {
-	db, err := sql.Open("sqlite3", filepath.Join(baseDir, "metadata.db"))
-	defer func(db *sql.DB) {
-		err := db.Close()
-		if err != nil {
-			panic(err)
-		}
-	}(db)
-
-	if err != nil {
+	if err := writeLibraryPages(); err != nil {
 		panic(err)
 	}
+}
+
+// writeLibraryPages writes pages/*.json from metadata.db, at startup.
+// Removing and restoring books only edit the pages concerned (library_pages.go).
+func writeLibraryPages() error {
+	pagesMu.Lock()
+	defer pagesMu.Unlock()
+	bookPages.Clear()
+	pageSlots.Clear()
+	db, err := sql.Open("sqlite3", filepath.Join(baseDir, "metadata.db"))
+	if err != nil {
+		return err
+	}
+	defer db.Close()
 
 	// create paginated entries as json for each book in metadata.db (booksPerPage per page)
 	rows, err := db.Query("SELECT b.title, " + bookAuthorsSQL + ", b.series_index, b.pubdate, b.path, b.uuid, b.last_modified FROM books b ORDER BY b.timestamp DESC")
 	if err != nil {
-		panic(err)
+		return err
 	}
-
-	defer func(rows *sql.Rows) {
-		err := rows.Close()
-		if err != nil {
-			panic(err)
-		}
-	}(rows)
+	defer rows.Close()
 	page := 1
 	books := make([]Book, 0, booksPerPage)
 
@@ -975,7 +991,7 @@ func generatePages() {
 			&book.LastModified,
 		)
 		if err != nil {
-			panic(err)
+			return err
 		}
 
 		timeStr := coverStamp(book.LastModified)
@@ -986,15 +1002,15 @@ func generatePages() {
 
 		// cache cover path
 		uuidPathIndex.Store(book.UUID, book.Path)
+		notePage(book.UUID, page)
 
 		// add book to the arrays
 		books = append(books, book)
 
 		if len(books) >= booksPerPage {
 			// save to file
-			err := writePage(page, books)
-			if err != nil {
-				panic(err)
+			if err := writePage(page, books); err != nil {
+				return err
 			}
 			page++
 			books = make([]Book, 0, booksPerPage)
@@ -1005,12 +1021,16 @@ func generatePages() {
 	if len(books) > 0 {
 		err = writePage(page, books)
 		if err != nil {
-			panic(err)
+			return err
 		}
 	}
 
+	if err := rows.Err(); err != nil {
+		return err
+	}
 	totalBooks = (page-1)*booksPerPage + len(books)
 	pagesVersion.Store(time.Now().UnixNano())
+	return nil
 }
 
 // resolveFormats returns a []string of filepaths to matching e-book formats

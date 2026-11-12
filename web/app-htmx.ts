@@ -31,6 +31,7 @@ import { setupBookClickHandlers, loadBook, HASH_PREFIX } from "./modal.js";
 import { cachedMarks, coverAction, fetchMarks, markCard, type Marks } from "./reading.js";
 import { forgetControls } from "./user.js";
 import { sweep } from "./book-cache.js";
+import { markSelected, setupSelection } from "./select-books.js";
 
 const RENDER_AHEAD = 1; // screens of rows in the DOM past the viewport, in the scroll direction
 const RENDER_BEHIND = 0.5; // ...and the other way
@@ -181,6 +182,7 @@ window.addEventListener("DOMContentLoaded", () => {
 
     setupScrollTracking();
     setupReading();
+    if (total > 0) setupSelection(booksEl);
 });
 
 /* ------------------------------------------------------------------ */
@@ -364,6 +366,7 @@ function makeCards(from: number, to: number): HTMLElement[] {
     els.forEach((el, k) => {
         cards.set(from + k, el);
         markReading(el);
+        markSelected(el);
     });
     return els;
 }

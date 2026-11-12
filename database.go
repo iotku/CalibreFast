@@ -195,52 +195,7 @@ func insertBookIntoCalibreDB(db *sql.DB, meta *UploadedBookMeta, formats []forma
 	return bookID, bookUUID, bookPath, nil
 }
 
-// deleteBookFromCalibreDB removes book entries from the provided CalibreDB and associated tables
-func deleteBookFromCalibreDB(db *sql.DB, bookID int64) error { // TODO: NEEDS TESTING
-	tx, err := db.Begin()
-	if err != nil {
-		return fmt.Errorf("begin tx: %w", err)
-	}
-	defer func() { // TODO: is this actually good?
-		if err != nil {
-			tx.Rollback()
-		}
-	}()
-	tables := []string{ // TODO: Verify these are all the tabes
-		"books_authors_link",
-		"books_tags_link",
-		"books_series_link",
-		"books_publishers_link",
-		"books_languages_link",
-		"comments",
-		"data",
-		"identifiers",
-	}
-
-	for _, table := range tables {
-		if _, err = tx.Exec(`DELETE FROM `+table+` WHERE book = ?`, bookID); err != nil {
-			return fmt.Errorf("delete from %s: %w", table, err)
-		}
-	}
-
-	// TODO: Should we remove the author if this book was the only match
-
-	// Finally delete the book itself
-	res, err := tx.Exec(`DELETE FROM books WHERE id = ?`, bookID)
-	if err != nil {
-		err = fmt.Errorf("delete book: %w", err)
-		return err
-	}
-
-	n, _ := res.RowsAffected()
-	if n != 1 {
-		err = fmt.Errorf("expected to delete 1 book, deleted %d", n)
-		return err
-	}
-
-	err = tx.Commit()
-	return err
-}
+// deleteBookFromCalibreDB is in recycle.go.
 
 // updateBookInCalibreDB updates a book's metadata in the Calibre database and its on-disk metadata.opf.
 // It ensures strict Calibre database compatibility, including cleaning up orphaned authors, tags,
