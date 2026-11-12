@@ -1,7 +1,7 @@
 // The metadata editor's ISBN tools and online lookup: find ISBNs in the
 // book's own files, and look the book up on Open Library. Both only offer
 // choices: a found ISBN goes into the form when the admin clicks Use, and
-// the matches the admin ticks (up to MAX_PICKS) become sources like
+// the matches the admin ticks become sources like
 // "current", picked field by field or all at once. Nothing is saved until
 // Apply.
 //
@@ -46,9 +46,6 @@ const FOUND_IN: Record<IsbnCandidate["source"], string> = {
 /** Lookup sources (Go: lookupSources in lookup.go). */
 type Source = "openlibrary" | "google";
 const SOURCE_NAMES: Record<Source, string> = { openlibrary: "Open Library", google: "Google Books" };
-
-/** How many matches can be sources in the form at once. */
-const MAX_PICKS = 3;
 
 /** Pages of a PDF read for ISBNs: copyright pages are near either end. */
 const PDF_FIRST_PAGES = 5;
@@ -306,14 +303,12 @@ function mountLookup(host: IsbnToolsHost): { lookUpIsbn(isbn: string): void } | 
     }
 
     /** Ticks a match: its values become pills under each field. */
-    function pick(m: Match): boolean {
-        if (m.label) return true;
-        if (picked().length >= MAX_PICKS) return false;
+    function pick(m: Match): void {
+        if (m.label) return;
         m.label = freeLabel(m.source);
         host.addSource(asSource(m));
         announceCovers();
         renderList();
-        return true;
     }
 
     function unpick(m: Match): void {
@@ -371,15 +366,13 @@ function mountLookup(host: IsbnToolsHost): { lookUpIsbn(isbn: string): void } | 
     }
 
     function renderList(): void {
-        const full = picked().length >= MAX_PICKS;
         list.hidden = matches.length === 0;
         list.replaceChildren(
             ...matches.map((m) => {
                 const meta = m.meta;
-                const box = el("input", { type: "checkbox", checked: !!m.label, disabled: !m.label && full });
-                box.title = !m.label && full ? `Up to ${MAX_PICKS}: untick one first` : "Offer its values under each field";
+                const box = el("input", { type: "checkbox", checked: !!m.label, title: "Offer its values under each field" });
                 box.addEventListener("change", () => {
-                    if (box.checked) box.checked = pick(m);
+                    if (box.checked) pick(m);
                     else unpick(m);
                 });
                 const ids = (meta.Identifiers ?? []).map((i) => `${i.Scheme}: ${i.Value}`);
@@ -456,7 +449,7 @@ function mountLookup(host: IsbnToolsHost): { lookUpIsbn(isbn: string): void } | 
     }
 
     const tickHint = (n: number): string =>
-        n > 1 ? ` Tick up to ${MAX_PICKS} to offer their values under each field, or Compare one.` : " Tick it to offer its values under each field, or Compare it.";
+        n > 1 ? " Tick the right ones to offer their values under each field (the same value is one pill), or Compare one." : " Tick it to offer its values under each field, or Compare it.";
 
     /** Open Library by q; by title and author when an ISBN finds nothing. */
     function search(q: Query): void {
@@ -510,13 +503,7 @@ function mountLookup(host: IsbnToolsHost): { lookUpIsbn(isbn: string): void } | 
 
     function openDialog(m: Match): void {
         shown = m;
-        const full = !m.label && picked().length >= MAX_PICKS;
         if (keepBtn) keepBtn.hidden = !!m.label;
-        for (const b of [keepBtn, acceptBtn]) {
-            if (!b) continue;
-            b.disabled = full;
-            b.title = full ? `Up to ${MAX_PICKS} matches in the form: untick one first` : "";
-        }
         const title = maybeId("lookup-title");
         if (title) title.textContent = `${m.label ?? SOURCE_NAMES[m.source]} vs current metadata`;
         maybeId("lookup-body")?.replaceChildren(...host.preview(asSource(m)));
@@ -528,7 +515,8 @@ function mountLookup(host: IsbnToolsHost): { lookUpIsbn(isbn: string): void } | 
         dialog.close();
     });
     acceptBtn?.addEventListener("click", () => {
-        if (!shown || !pick(shown)) return;
+        if (!shown) return;
+        pick(shown);
         dialog.close();
         host.acceptAll(asSource(shown));
     });
