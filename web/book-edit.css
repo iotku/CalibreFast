@@ -1,0 +1,1618 @@
+/* The metadata editor (templates/book-edit.html), for library books and
+   ones waiting in the import queue. */
+
+:root {
+    --bg: #0f0f0e;
+    --surface: #181816;
+    --surface-hover: #222220;
+    --border: #2a2a27;
+    --accent: #c8a96e;
+    --accent-dim: #7a6340;
+    --accent-hover: #dfc07d;
+    --text: #e8e4dc;
+    --muted: #8a857c;
+    --success: #5a8a5e;
+    --success-bg: rgba(90, 138, 94, 0.18);
+    --error: #ba7a7a;
+    --error-bg: rgba(186, 122, 122, 0.18);
+    --radius: 8px;
+    --mono: "IBM Plex Mono", monospace;
+    --sans: "IBM Plex Sans", -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+    --serif: "Playfair Display", Georgia, serif;
+}
+
+body {
+    background: var(--bg);
+    color: var(--text);
+    font-family: var(--sans);
+    font-weight: 300;
+    min-height: 100vh;
+    margin: 0;
+    padding: 0 0 5rem;
+}
+
+/* ── Main Container ── */
+.edit-container {
+    max-width: 880px;
+    margin: calc(var(--topbar-total) + 2rem) auto 0;
+    padding: 0 1.5rem;
+}
+
+/* ── Book Preview Banner ── */
+.book-banner {
+    display: flex;
+    gap: 1.5rem;
+    align-items: center;
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: var(--radius);
+    padding: 1.25rem 1.5rem;
+    margin-bottom: 2rem;
+}
+
+.book-banner-cover-btn {
+    position: relative;
+    flex-shrink: 0;
+    padding: 0;
+    border: none;
+    background: none;
+    cursor: pointer;
+}
+
+.book-banner-cover-hint {
+    position: absolute;
+    left: 0;
+    right: 0;
+    bottom: 0;
+    padding: 2px 0;
+    font-family: var(--mono);
+    font-size: 0.65rem;
+    color: var(--text);
+    background: rgba(0, 0, 0, 0.65);
+    border-radius: 0 0 4px 4px;
+    opacity: 0;
+    transition: opacity 0.15s ease;
+}
+
+.book-banner-cover-btn:hover .book-banner-cover-hint,
+.book-banner-cover-btn:focus-visible .book-banner-cover-hint {
+    opacity: 1;
+}
+
+/* ── Cover dialog (web/cover-dialog.ts) ── */
+/* Wider than the other dialogs (.compare-dialog, below) */
+.compare-dialog.cover-dialog {
+    width: min(1100px, calc(100vw - 32px));
+    max-height: 92vh;
+}
+
+.cover-dialog.busy {
+    cursor: progress;
+}
+
+.cover-dialog.busy button {
+    pointer-events: none;
+    opacity: 0.6;
+}
+
+.cover-dialog-body {
+    padding: 14px 18px 18px;
+}
+
+.cover-tools {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 8px;
+}
+
+.cover-tool {
+    font-family: var(--mono);
+    font-size: 0.72rem;
+    letter-spacing: 0.04em;
+    padding: 7px 12px;
+    color: var(--text);
+    background: rgba(255, 255, 255, 0.04);
+    border: 1px solid var(--border);
+    border-radius: 6px;
+    cursor: pointer;
+}
+
+.cover-tool:hover:not(:disabled) {
+    border-color: var(--accent);
+}
+
+.cover-tool[hidden] {
+    display: none;
+}
+
+.cover-tool-revert {
+    margin-left: auto;
+    color: #e59999;
+    border-color: rgba(186, 122, 122, 0.45);
+}
+
+.cover-status {
+    margin: 12px 0;
+    font-size: 0.8rem;
+    color: var(--muted);
+}
+
+.cover-status.error {
+    color: #e59999;
+}
+
+/* The choices beside the large view. --cover-h is the room a
+   large cover has without the dialog scrolling. */
+.cover-layout {
+    --cover-h: max(240px, calc(92vh - 350px));
+    display: grid;
+    grid-template-columns: 290px minmax(0, 1fr);
+    gap: 14px;
+    align-items: start;
+}
+
+/* One or two choices, large */
+.cover-view {
+    padding: 12px;
+    background: rgba(0, 0, 0, 0.25);
+    border: 1px solid var(--border);
+    border-radius: 8px;
+}
+
+.cover-view[hidden] {
+    display: none;
+}
+
+.cover-view-head {
+    display: flex;
+    justify-content: flex-end;
+    margin-bottom: 10px;
+}
+
+.cover-view-head .cover-tool[aria-pressed="true"] {
+    border-color: var(--accent);
+    color: var(--accent);
+}
+
+.cover-view-items {
+    display: grid;
+    grid-auto-flow: column;
+    grid-auto-columns: minmax(0, 1fr);
+    gap: 16px;
+}
+
+.cover-view-item {
+    margin: 0;
+    min-width: 0;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 8px;
+}
+
+.cover-view-frame {
+    max-width: 100%;
+    max-height: var(--cover-h);
+    overflow: auto;
+    scrollbar-width: thin;
+    scrollbar-color: var(--border) transparent;
+    background: #111;
+    border-radius: 6px;
+}
+
+.cover-view-frame img {
+    display: block;
+    max-width: 100%;
+    max-height: var(--cover-h);
+}
+
+/* Pixel for pixel: the frame scrolls */
+.cover-view.actual .cover-view-frame {
+    align-self: stretch;
+}
+
+.cover-view.actual .cover-view-frame img {
+    max-width: none;
+    max-height: none;
+}
+
+.cover-view-item figcaption {
+    font-size: 0.8rem;
+    color: var(--muted);
+    text-align: center;
+}
+
+.cover-view-item figcaption strong {
+    color: var(--text);
+    font-weight: 500;
+}
+
+.cover-view-note {
+    font-size: 0.75rem;
+    color: #7aba7e;
+}
+
+/* Every choice */
+.cover-choices {
+    list-style: none;
+    margin: 0;
+    padding: 2px;
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 8px;
+    max-height: calc(var(--cover-h) + 150px);
+    overflow-y: auto;
+    scrollbar-width: thin;
+    scrollbar-color: var(--border) transparent;
+}
+
+.cover-card {
+    width: 100%;
+    display: flex;
+    flex-direction: column;
+    gap: 2px;
+    padding: 6px;
+    font: inherit;
+    text-align: left;
+    color: var(--text);
+    background: rgba(255, 255, 255, 0.03);
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    cursor: pointer;
+}
+
+.cover-card:hover {
+    border-color: var(--accent-dim, #7a6340);
+}
+
+.cover-card[aria-pressed="true"] {
+    border-color: var(--accent);
+    box-shadow: 0 0 0 1px var(--accent);
+}
+
+.cover-card img {
+    width: 100%;
+    height: 150px;
+    object-fit: contain;
+    background: #111;
+    border-radius: 4px;
+    margin-bottom: 4px;
+}
+
+.cover-card-label {
+    font-size: 0.8rem;
+}
+
+.cover-card-size {
+    font-family: var(--mono);
+    font-size: 0.68rem;
+    color: var(--muted);
+}
+
+/* Narrow: the choices are a strip above the large view */
+@media (max-width: 800px) {
+    .cover-layout {
+        --cover-h: 56vh;
+        grid-template-columns: minmax(0, 1fr);
+    }
+
+    .cover-choices {
+        display: flex;
+        max-height: none;
+        overflow-x: auto;
+        padding-bottom: 8px;
+    }
+
+    .cover-choices li {
+        flex: 0 0 120px;
+    }
+
+    .cover-card img {
+        height: 120px;
+    }
+}
+
+/* No library search here: the tools sit at the right. */
+.site-bar .tb-tools {
+    margin-left: auto;
+}
+
+/* ── Online lookup: the bar and its matches ── */
+.lookup-bar {
+    margin-bottom: 1.5rem;
+    padding: 10px 14px;
+    font-size: 0.85rem;
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: var(--radius);
+}
+
+.lookup-head {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 8px 12px;
+}
+
+.lookup-status {
+    margin: 0;
+    flex: 1 1 240px;
+    color: var(--muted);
+}
+
+.lookup-status.error {
+    color: #e59999;
+}
+
+.lookup-actions {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 6px;
+}
+
+/* The ISBN box and both search buttons: one height. */
+.lookup-search,
+.lookup-bar .lookup-isbn {
+    height: 32px;
+    box-sizing: border-box;
+}
+
+.lookup-search {
+    border-style: solid;
+}
+
+.lookup-isbn-form {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+}
+
+.lookup-bar .lookup-isbn {
+    width: 150px;
+    padding: 5px 8px;
+    font-family: var(--mono);
+    font-size: 0.8rem;
+}
+
+.lookup-results {
+    list-style: none;
+    margin: 10px 0 0;
+    padding: 0;
+    border-top: 1px solid var(--border);
+}
+
+.lookup-results[hidden] {
+    display: none;
+}
+
+.lookup-result {
+    display: flex;
+    align-items: center;
+    gap: 6px 12px;
+    padding: 8px 0;
+    border-bottom: 1px solid rgba(255, 255, 255, 0.05);
+}
+
+.lookup-result:last-child {
+    border-bottom: none;
+}
+
+.lookup-pick {
+    display: flex;
+    align-items: flex-start;
+    gap: 10px;
+    flex: 1;
+    min-width: 0;
+    cursor: pointer;
+}
+
+.lookup-pick input {
+    margin-top: 3px;
+    accent-color: var(--accent);
+    flex-shrink: 0;
+}
+
+.lookup-pick input:disabled {
+    cursor: not-allowed;
+}
+
+.lookup-result-text {
+    min-width: 0;
+    overflow-wrap: anywhere;
+}
+
+.lookup-result-by {
+    color: var(--muted);
+}
+
+.lookup-result-meta {
+    display: block;
+    margin-top: 2px;
+    font-family: var(--mono);
+    font-size: 0.72rem;
+    color: var(--muted);
+}
+
+.lookup-result-label {
+    font-family: var(--mono);
+    font-size: 0.72rem;
+    color: var(--muted);
+    white-space: nowrap;
+}
+
+.lookup-result.picked .lookup-result-label {
+    color: var(--accent);
+}
+
+@media (max-width: 480px) {
+    .lookup-result {
+        flex-wrap: wrap;
+    }
+
+    .lookup-pick {
+        flex-basis: 100%;
+    }
+
+    .lookup-result-label {
+        margin-left: 26px;
+    }
+}
+
+.book-banner-cover {
+    width: 72px;
+    height: 104px;
+    border-radius: 4px;
+    object-fit: cover;
+    background: #222;
+    border: 1px solid rgba(255, 255, 255, 0.08);
+    flex-shrink: 0;
+    box-shadow: 0 4px 12px rgba(0, 0, 0, 0.4);
+}
+
+.book-banner-info {
+    flex: 1;
+    min-width: 0;
+}
+
+.book-banner-title {
+    font-family: var(--serif);
+    font-size: 1.4rem;
+    color: var(--text);
+    margin: 0 0 0.4rem 0;
+    line-height: 1.25;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+}
+
+.book-banner-meta {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    font-family: var(--mono);
+    font-size: 0.72rem;
+    color: var(--muted);
+}
+
+/* A waiting book's files (import queue) */
+.book-banner-meta.import-files {
+    flex-wrap: wrap;
+    gap: 6px;
+}
+
+.btn-discard {
+    margin-left: auto;
+    color: #e59999;
+    border-color: rgba(186, 122, 122, 0.45);
+}
+
+.btn-discard:hover {
+    color: #f0b3b3;
+    border-color: #ba7a7a;
+    background: var(--error-bg);
+}
+
+.uuid-badge {
+    padding: 2px 6px;
+    background: rgba(255, 255, 255, 0.04);
+    border: 1px solid var(--border);
+    border-radius: 4px;
+    font-size: 0.68rem;
+    letter-spacing: 0.04em;
+}
+
+.banner-hint {
+    font-size: 0.75rem;
+    color: var(--muted);
+    margin-top: 0.5rem;
+    line-height: 1.4;
+}
+
+/* ── Form Grid ── */
+.form-grid {
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 1.25rem;
+}
+
+.col-span-2 {
+    grid-column: span 2;
+}
+
+@media (max-width: 700px) {
+    .form-grid {
+        grid-template-columns: minmax(0, 1fr);
+    }
+    .col-span-2 {
+        grid-column: span 1;
+    }
+    .book-banner {
+        flex-direction: column;
+        text-align: center;
+        gap: 1rem;
+    }
+    .book-banner-meta {
+        justify-content: center;
+    }
+}
+
+/* ── Field Cards ── */
+.meta-field {
+    /* fieldsets default to min-content width; let long values wrap */
+    min-width: 0;
+    min-inline-size: 0;
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: var(--radius);
+    padding: 1rem 1.2rem;
+    margin: 0;
+    display: flex;
+    flex-direction: column;
+    transition: border-color 0.15s ease;
+}
+
+/* Title, swap button, Author(s). 8px of visible space on each side
+   of the button: the Author card's top border runs through the
+   middle of its 15px legend (7px below the card's edge), so the
+   space below is 1px + 7px. */
+.title-author {
+    display: flex;
+    flex-direction: column;
+}
+
+.swap-row {
+    display: flex;
+    justify-content: center;
+    margin: 8px 0 1px;
+}
+
+.swap-btn {
+    height: 30px;
+    padding: 0 12px 0 9px;
+    display: inline-flex;
+    align-items: center;
+    gap: 5px;
+    background: var(--surface);
+    color: var(--muted);
+    border: 1px solid var(--border);
+    border-radius: var(--radius);
+    font-family: var(--mono);
+    font-size: 0.72rem;
+    cursor: pointer;
+}
+
+.swap-btn:hover,
+.swap-btn:focus-visible {
+    color: var(--text);
+    border-color: var(--accent);
+}
+
+            .meta-field:focus-within {
+    border-color: rgba(200, 169, 110, 0.4);
+}
+
+.meta-field legend {
+    font-family: var(--mono);
+    font-size: 0.72rem;
+    font-weight: 500;
+    letter-spacing: 0.1em;
+    text-transform: uppercase;
+    color: var(--accent);
+    line-height: 15px; /* fixed: the swap row's spacing depends on it */
+    padding: 0 4px;
+    margin-bottom: 6px;
+}
+
+.meta-input {
+    background: #111;
+    border: 1px solid #333;
+    border-radius: 6px;
+    color: var(--text);
+    font-family: var(--sans);
+    font-size: 0.95rem;
+    padding: 10px 12px;
+    box-sizing: border-box;
+    width: 100%;
+    transition: border-color 0.15s ease, box-shadow 0.15s ease, background 0.15s ease;
+}
+
+.meta-input:focus {
+    outline: none;
+    border-color: var(--accent);
+    box-shadow: 0 0 0 2px rgba(200, 169, 110, 0.15);
+    background: #141414;
+}
+
+textarea.meta-input {
+    font-family: var(--sans);
+    line-height: 1.5;
+    min-height: 130px;
+    resize: vertical;
+    transition: border-color 0.15s ease, box-shadow 0.15s ease, background 0.15s ease;
+}
+
+input[type="date"].meta-input {
+    color-scheme: dark;
+    cursor: pointer;
+}
+
+input[type="date"].meta-input::-webkit-calendar-picker-indicator {
+    filter: invert(0.8) sepia(50%) saturate(400%) hue-rotate(5deg);
+    cursor: pointer;
+    opacity: 0.85;
+    transition: opacity 0.15s ease;
+}
+
+input[type="date"].meta-input::-webkit-calendar-picker-indicator:hover {
+    opacity: 1;
+}
+
+/* ── Source Buttons ── */
+.meta-source-buttons {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 6px;
+    margin-top: 8px;
+    min-height: 24px;
+}
+
+/* Above the chips (tags, languages): the space goes below them. */
+.meta-source-buttons.pills-above {
+    margin: 0 0 8px;
+}
+
+.meta-source-buttons.pills-above:empty {
+    display: none;
+}
+
+.meta-source-btn {
+    background: rgba(255, 255, 255, 0.04);
+    border: 1px solid rgba(255, 255, 255, 0.12);
+    border-radius: 4px;
+    color: var(--muted);
+    font-family: var(--mono);
+    font-size: 0.7rem;
+    padding: 3px 8px;
+    cursor: pointer;
+    transition: all 0.15s ease;
+    display: inline-flex;
+    align-items: center;
+    gap: 4px;
+}
+
+.meta-source-btn:hover {
+    border-color: var(--accent);
+    color: var(--text);
+    transform: translateY(-1px);
+}
+
+.meta-source-btn.meta-source-match {
+    background: var(--success-bg);
+    border-color: rgba(90, 138, 94, 0.5);
+    color: #7aba7e;
+}
+
+.meta-source-btn.meta-source-match::before {
+    content: "✓";
+    font-size: 0.65rem;
+    font-weight: bold;
+}
+
+.meta-source-btn.meta-source-diff {
+    background: rgba(200, 169, 110, 0.12);
+    border-color: rgba(200, 169, 110, 0.4);
+    color: var(--accent-hover);
+}
+
+.meta-source-btn.meta-source-diff::before {
+    content: "✎";
+    font-size: 0.65rem;
+}
+
+/* "edited": the user's own changes as a source */
+.meta-source-btn.meta-source-edited {
+    border-style: dashed;
+}
+
+/* ── Chip inputs (tags, languages) ── */
+.chip-input {
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: 6px;
+    padding: 6px;
+}
+
+.chip-list {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 6px;
+    align-items: center;
+}
+
+.chip {
+    display: inline-flex;
+    align-items: center;
+    gap: 2px;
+    max-width: 100%;
+    box-sizing: border-box;
+    padding: 3px 3px 3px 10px;
+    font-size: 0.85rem;
+    background: rgba(255, 255, 255, 0.05);
+    border: 1px solid var(--border);
+    border-radius: 14px; /* stays tidy when long text wraps */
+}
+
+.chip-label {
+    min-width: 0;
+    overflow-wrap: anywhere;
+}
+
+.chip:not(.removed) {
+    cursor: text;
+}
+
+.chip:not(.removed):not(.editing):hover,
+.chip:not(.removed):focus-visible {
+    background: rgba(255, 255, 255, 0.09);
+    outline: none;
+}
+
+/* While editing, the chip takes the full row and the text wraps */
+.chip.editing {
+    flex: 1 1 100%;
+    border-color: var(--accent);
+    border-radius: 10px;
+}
+
+.chip-edit {
+    flex: 1;
+    min-width: 0;
+    padding: 2px;
+    font: inherit;
+    line-height: 1.35;
+    color: var(--text);
+    background: transparent;
+    border: none;
+    outline: none;
+    resize: none;
+    overflow: hidden;
+    overflow-wrap: anywhere;
+}
+
+.chip.removed .chip-label {
+    text-decoration: line-through;
+    opacity: 0.45;
+}
+
+.chip-btn {
+    min-width: 30px;
+    height: 28px;
+    padding: 0 6px;
+    font-size: 0.72rem;
+    font-family: var(--mono);
+    color: var(--muted);
+    background: transparent;
+    border: none;
+    border-radius: 999px;
+    cursor: pointer;
+    flex-shrink: 0;
+}
+
+.chip-btn:hover {
+    color: var(--text);
+    background: rgba(255, 255, 255, 0.08);
+}
+
+.chip-btn.chip-split {
+    color: var(--accent);
+}
+
+/* Entry row sits above the chips so new chips never move it */
+.chip-entry {
+    display: flex;
+    align-items: stretch; /* Add button matches the text box height */
+    gap: 6px;
+}
+
+/* beats the global input[type="text"] height from style.css */
+.chip-entry input.chip-text {
+    height: 36px;
+}
+
+.chip-text {
+    flex: 1;
+    min-width: 0;
+    height: 34px;
+    padding: 0 10px;
+    font: inherit;
+    color: var(--text);
+    background: rgba(255, 255, 255, 0.03);
+    border: 1px solid var(--border);
+    border-radius: 6px;
+    outline: none;
+}
+
+.chip-text:focus {
+    border-color: var(--accent);
+}
+
+.chip-add-btn {
+    flex-shrink: 0;
+    height: auto;
+    padding: 0 14px;
+    font-family: var(--mono);
+    font-size: 0.75rem;
+    color: var(--accent);
+    background: rgba(200, 169, 110, 0.1);
+    border: 1px solid var(--accent-dim);
+    border-radius: 6px;
+    cursor: pointer;
+}
+
+.chip-add-btn:hover {
+    background: rgba(200, 169, 110, 0.18);
+}
+
+.chip-list {
+    margin-top: 8px;
+}
+
+.chip-list[hidden] {
+    display: none;
+}
+
+.chip-tools {
+    display: flex;
+    justify-content: flex-end;
+}
+
+.chip-tool-btn {
+    margin-top: 6px;
+    padding: 4px 10px;
+    font-family: var(--mono);
+    font-size: 0.72rem;
+    color: var(--accent);
+    background: rgba(200, 169, 110, 0.1);
+    border: 1px dashed var(--accent-dim);
+    border-radius: 6px;
+    cursor: pointer;
+}
+
+.chip-tool-btn[hidden] {
+    display: none;
+}
+
+/* Per-field changes, opened from that field's "edited" button */
+.field-diff {
+    margin-top: 10px;
+    padding: 8px 10px;
+    background: rgba(255, 255, 255, 0.03);
+    border: 1px dashed var(--border);
+    border-radius: 6px;
+}
+
+.compare-row.compact {
+    padding: 0;
+    border-bottom: none;
+}
+
+.field-diff .compare-empty {
+    margin: 0;
+}
+
+/* Library autocomplete (authors, publisher, tags, languages) */
+.suggest-wrap {
+    position: relative;
+    min-width: 0;
+}
+
+.chip-entry .suggest-wrap {
+    flex: 1;
+}
+
+.chip-entry .suggest-wrap .chip-text {
+    width: 100%;
+    box-sizing: border-box;
+}
+
+.suggest-list {
+    position: absolute;
+    top: calc(100% + 2px);
+    left: 0;
+    right: 0;
+    z-index: 20;
+    max-height: 260px;
+    overflow-y: auto;
+    margin: 0;
+    padding: 4px;
+    box-sizing: border-box;
+    list-style: none;
+    background: var(--surface-hover);
+    border: 1px solid var(--border);
+    border-radius: 6px;
+    box-shadow: 0 10px 24px rgba(0, 0, 0, 0.5);
+}
+
+.suggest-list[hidden] {
+    display: none;
+}
+
+.suggest-list li {
+    padding: 6px 10px;
+    font-size: 0.9rem;
+    border-radius: 4px;
+    cursor: pointer;
+    overflow-wrap: anywhere;
+}
+
+.suggest-list li[aria-selected="true"],
+.suggest-list li:hover {
+    background: rgba(200, 169, 110, 0.14);
+}
+
+.suggest-sub {
+    margin-left: 6px;
+    font-family: var(--mono);
+    font-size: 0.75rem;
+    color: var(--muted);
+}
+
+/* ── Description: formatted preview / raw HTML ── */
+.desc-editor {
+    border: 1px solid #333;
+    border-radius: 6px;
+    background: #111;
+    overflow: hidden;
+}
+
+.desc-editor:focus-within {
+    border-color: var(--accent);
+}
+
+.desc-toolbar {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    justify-content: space-between;
+    gap: 6px;
+    padding: 6px;
+    border-bottom: 1px solid #2a2a2a;
+    background: rgba(255, 255, 255, 0.02);
+}
+
+.desc-tabs,
+.desc-tools {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 4px;
+}
+
+.desc-tab,
+.desc-tool {
+    height: 28px;
+    padding: 0 10px;
+    font-family: var(--mono);
+    font-size: 0.72rem;
+    color: var(--muted);
+    background: transparent;
+    border: 1px solid transparent;
+    border-radius: 4px;
+    cursor: pointer;
+}
+
+.desc-tool:hover:not(:disabled),
+.desc-tab:hover {
+    color: var(--text);
+    background: rgba(255, 255, 255, 0.06);
+}
+
+.desc-tool:disabled {
+    opacity: 0.35;
+    cursor: default;
+}
+
+.desc-tab[aria-selected="true"] {
+    color: var(--accent);
+    border-color: var(--accent-dim);
+    background: rgba(200, 169, 110, 0.1);
+}
+
+.desc-tool[data-cmd="bold"] { font-weight: 700; }
+.desc-tool[data-cmd="italic"] { font-style: italic; }
+.desc-tool[data-cmd="underline"] { text-decoration: underline; }
+
+.desc-preview {
+    min-height: 160px;
+    max-height: 480px;
+    overflow-y: auto;
+    resize: vertical;
+    padding: 12px 14px;
+    font-family: var(--sans);
+    font-size: 0.95rem;
+    line-height: 1.6;
+    color: var(--text);
+    outline: none;
+    overflow-wrap: anywhere;
+}
+
+.desc-preview.description {
+    margin-top: 0;
+    max-width: none;
+}
+
+.desc-preview:empty::before {
+    content: attr(data-placeholder);
+    color: var(--muted);
+}
+
+.desc-preview > :first-child { margin-top: 0; }
+.desc-preview > :last-child { margin-bottom: 0; }
+.desc-preview a { color: var(--accent); }
+.desc-preview img { max-width: 100%; height: auto; }
+.desc-preview table { border-collapse: collapse; }
+.desc-preview td,
+.desc-preview th { border: 1px solid #333; padding: 4px 8px; }
+
+.desc-editor .desc-source {
+    display: block;
+    min-height: 160px;
+    border: none;
+    border-radius: 0;
+    box-shadow: none;
+    font-family: var(--mono);
+    font-size: 0.82rem;
+    line-height: 1.5;
+    resize: vertical;
+}
+
+.desc-editor[data-mode="preview"] .desc-source,
+.desc-editor[data-mode="html"] .desc-preview {
+    display: none;
+}
+
+/* ── Compare dialog ── */
+.compare-dialog {
+    width: min(760px, calc(100vw - 32px));
+    max-height: 85vh;
+    padding: 0;
+    color: var(--text);
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: 10px;
+    box-shadow: 0 20px 50px rgba(0, 0, 0, 0.6);
+}
+
+.compare-dialog::backdrop {
+    background: rgba(0, 0, 0, 0.6);
+}
+
+.compare-header {
+    position: sticky;
+    top: 0;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 12px;
+    padding: 14px 18px;
+    background: var(--surface);
+    border-bottom: 1px solid var(--border);
+}
+
+.compare-footer {
+    position: sticky;
+    bottom: 0;
+    display: flex;
+    align-items: center;
+    justify-content: flex-end;
+    flex-wrap: wrap;
+    gap: 10px;
+    padding: 12px 18px;
+    background: var(--surface);
+    border-top: 1px solid var(--border);
+}
+
+.compare-footer[hidden] {
+    display: none;
+}
+
+.compare-footer span {
+    margin-right: auto;
+    font-size: 0.85rem;
+    color: var(--muted);
+}
+
+/* Matches the book modal's close button */
+.compare-close {
+    width: 36px;
+    height: 36px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 1.2rem;
+    color: var(--text);
+    background: rgba(30, 30, 30, 0.65);
+    border: 1px solid rgba(255, 255, 255, 0.1);
+    border-radius: 50%;
+    cursor: pointer;
+    transition: background 0.15s ease, color 0.15s ease;
+}
+
+.compare-close:hover {
+    background: rgba(60, 60, 60, 0.9);
+    color: #fff;
+}
+
+.compare-header h2 {
+    margin: 0;
+    font-size: 1rem;
+}
+
+#compare-body,
+#lookup-body {
+    padding: 6px 18px 18px;
+}
+
+.compare-row {
+    padding: 12px 0;
+    border-bottom: 1px solid var(--border);
+}
+
+.compare-field {
+    margin: 0 0 8px;
+    font-family: var(--mono);
+    font-size: 0.75rem;
+    letter-spacing: 0.08em;
+    text-transform: uppercase;
+    color: var(--accent);
+}
+
+.compare-grid {
+    display: grid;
+    grid-template-columns: auto minmax(0, 1fr);
+    gap: 6px 12px;
+}
+
+.compare-label {
+    font-size: 0.75rem;
+    color: var(--muted);
+}
+
+.compare-before,
+.compare-after {
+    max-height: 180px;
+    overflow: auto;
+    white-space: pre-wrap;
+    overflow-wrap: anywhere;
+    font-size: 0.9rem;
+}
+
+.compare-before {
+    color: #d79a9a;
+    text-decoration: line-through;
+    text-decoration-color: rgba(215, 154, 154, 0.5);
+}
+
+.compare-after {
+    color: #8fc493;
+}
+
+.compare-items {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 6px;
+}
+
+.compare-chip {
+    padding: 2px 10px;
+    font-size: 0.85rem;
+    border-radius: 999px;
+    border: 1px solid;
+}
+
+.compare-chip.added {
+    color: #8fc493;
+    border-color: rgba(90, 138, 94, 0.6);
+}
+
+.compare-chip.added::before {
+    content: "+ ";
+}
+
+.compare-chip.removed {
+    color: #d79a9a;
+    border-color: rgba(186, 122, 122, 0.5);
+    text-decoration: line-through;
+}
+
+.compare-note,
+.compare-empty {
+    font-size: 0.85rem;
+    color: var(--muted);
+}
+
+/* ── Identifiers ── */
+.identifiers-container {
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+    margin-top: 4px;
+}
+
+.identifier-row {
+    display: flex;
+    gap: 8px;
+    align-items: center;
+}
+
+.isbn-row .identifier-type-label {
+    width: 140px;
+    flex-shrink: 0;
+    box-sizing: border-box;
+    font-family: var(--mono);
+    font-size: 0.78rem;
+    font-weight: 500;
+    letter-spacing: 0.08em;
+    color: var(--accent);
+    background: rgba(255, 255, 255, 0.04);
+    border: 1px solid var(--border);
+    border-radius: 6px;
+    padding: 10px 12px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+}
+
+.custom-identifier-row .identifier-type-input {
+    width: 140px;
+    flex-shrink: 0;
+    font-family: var(--mono);
+    font-size: 0.85rem;
+}
+
+.identifier-val-input {
+    flex: 1;
+}
+
+.btn-remove-id {
+    background: transparent;
+    border: 1px solid transparent;
+    color: var(--muted);
+    font-size: 1.25rem;
+    line-height: 1;
+    cursor: pointer;
+    padding: 6px 10px;
+    border-radius: 4px;
+    transition: all 0.15s ease;
+    flex-shrink: 0;
+}
+
+.btn-remove-id:hover {
+    color: var(--error);
+    background: var(--error-bg);
+    border-color: rgba(186, 122, 122, 0.3);
+}
+
+/* Soft-removed: parked at the bottom until changes are applied */
+.custom-identifier-row.removed .meta-input {
+    text-decoration: line-through;
+    opacity: 0.45;
+}
+
+.custom-identifier-row.removed:first-of-type,
+.custom-identifier-row:not(.removed) + .custom-identifier-row.removed {
+    margin-top: 8px;
+    padding-top: 12px;
+    border-top: 1px dashed var(--border);
+}
+
+.btn-remove-id.btn-undo-id {
+    font-family: var(--mono);
+    font-size: 0.75rem;
+    letter-spacing: 0.04em;
+    color: var(--accent);
+    border-color: var(--border);
+}
+
+.btn-remove-id.btn-undo-id:hover {
+    color: var(--accent);
+    background: rgba(200, 169, 110, 0.12);
+    border-color: var(--accent);
+}
+
+.field-note {
+    margin: 6px 0 0;
+    font-size: 0.8rem;
+    color: var(--muted);
+}
+
+.split-note:not([hidden]) {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 4px 8px;
+}
+
+.date-raw-note {
+    margin: 6px 0 0;
+    font-size: 0.8rem;
+    color: var(--muted);
+}
+
+.identifiers-bottom-row {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 12px;
+    margin-top: 10px;
+    flex-wrap: wrap;
+}
+
+.btn-add-id {
+    font-family: var(--mono);
+    font-size: 0.75rem;
+    letter-spacing: 0.04em;
+    padding: 6px 12px;
+    background: rgba(255, 255, 255, 0.04);
+    border: 1px dashed var(--border);
+    color: var(--accent);
+    border-radius: 6px;
+    cursor: pointer;
+    transition: all 0.15s ease;
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+}
+
+.btn-add-id:hover:not(:disabled) {
+    background: rgba(200, 169, 110, 0.12);
+    border-color: var(--accent);
+    color: var(--accent-hover);
+}
+
+.btn-add-id[hidden] {
+    display: none;
+}
+
+.btn-add-id:disabled {
+    opacity: 0.5;
+    cursor: progress;
+}
+
+.btn-lookup-isbn {
+    flex-shrink: 0;
+    align-self: stretch;
+    border-style: solid;
+}
+
+/* Phones: room for the ISBN itself. */
+@media (max-width: 480px) {
+    .isbn-row .identifier-type-label {
+        width: auto;
+    }
+
+    .btn-lookup-isbn-text {
+        display: none;
+    }
+}
+
+.identifier-actions {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 8px;
+}
+
+/* ── ISBN finder and lookup ── */
+.isbn-panel {
+    margin-top: 12px;
+    padding-top: 10px;
+    border-top: 1px solid var(--border);
+}
+
+.isbn-status {
+    margin: 10px 0 0;
+    font-size: 0.8rem;
+    color: var(--muted);
+}
+
+.isbn-panel-head {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+}
+
+.isbn-panel .isbn-status {
+    flex: 1;
+    min-width: 0;
+    margin-top: 0;
+}
+
+.isbn-status.error {
+    color: #e59999;
+}
+
+.isbn-candidates {
+    list-style: none;
+    margin: 8px 0 0;
+    padding: 0;
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
+}
+
+.isbn-candidate {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 6px 10px;
+    font-size: 0.8rem;
+}
+
+.isbn-candidate + .isbn-candidate {
+    padding-top: 6px;
+    border-top: 1px solid var(--border);
+}
+
+.isbn-value {
+    font-family: var(--mono);
+    font-size: 0.85rem;
+    color: var(--text);
+}
+
+.isbn-label {
+    font-family: var(--mono);
+    font-size: 0.7rem;
+    padding: 1px 6px;
+    border: 1px solid var(--border);
+    border-radius: 4px;
+    color: var(--accent);
+}
+
+.isbn-where {
+    color: var(--muted);
+    min-width: 0;
+    overflow-wrap: anywhere;
+}
+
+.isbn-actions {
+    display: inline-flex;
+    gap: 6px;
+    margin-left: auto;
+}
+
+.isbn-in-use {
+    color: #7aba7e;
+    font-size: 0.75rem;
+}
+
+/* ── Action Bar ── */
+.edit-actions {
+    margin-top: 2rem;
+    padding: 1.5rem 0 0;
+    border-top: 1px solid var(--border);
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    flex-wrap: wrap;
+    gap: 1rem;
+}
+
+.action-buttons {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+}
+
+.btn-primary {
+    font-family: var(--mono);
+    font-size: 0.8rem;
+    font-weight: 500;
+    letter-spacing: 0.08em;
+    text-transform: uppercase;
+    background: var(--accent);
+    color: var(--bg);
+    border: none;
+    border-radius: var(--radius);
+    padding: 12px 28px;
+    cursor: pointer;
+    transition: all 0.15s ease;
+    display: inline-flex;
+    align-items: center;
+    gap: 8px;
+}
+
+.btn-primary:hover:not(:disabled) {
+    background: var(--accent-hover);
+    box-shadow: 0 4px 12px rgba(200, 169, 110, 0.25);
+}
+
+.btn-primary:disabled {
+    opacity: 0.45;
+    cursor: not-allowed;
+}
+
+.btn-secondary {
+    font-family: var(--mono);
+    font-size: 0.8rem;
+    letter-spacing: 0.05em;
+    background: transparent;
+    color: var(--muted);
+    border: 1px solid var(--border);
+    border-radius: var(--radius);
+    padding: 11px 20px;
+    cursor: pointer;
+    text-decoration: none;
+    transition: all 0.15s ease;
+}
+
+.btn-secondary:hover {
+    border-color: #666;
+    color: var(--text);
+    background: var(--surface);
+}
+
+/* ── Status Banner ── */
+.edit-status {
+    font-family: var(--mono);
+    font-size: 0.78rem;
+    display: none;
+    align-items: center;
+    gap: 8px;
+    padding: 10px 14px;
+    border-radius: var(--radius);
+    width: 100%;
+    box-sizing: border-box;
+}
+
+.edit-status.pending {
+    display: flex;
+    background: rgba(200, 169, 110, 0.1);
+    border: 1px solid rgba(200, 169, 110, 0.3);
+    color: var(--accent);
+}
+
+.edit-status.success {
+    display: flex;
+    background: var(--success-bg);
+    border: 1px solid rgba(90, 138, 94, 0.4);
+    color: #8ada8e;
+}
+
+.edit-status.error {
+    display: flex;
+    background: var(--error-bg);
+    border: 1px solid rgba(186, 122, 122, 0.4);
+    color: #e59999;
+}
+
+.added-note {
+    margin-bottom: 1rem;
+}
+
+.status-link {
+    color: var(--accent);
+    text-decoration: underline;
+    margin-left: auto;
+    font-weight: 500;
+}
