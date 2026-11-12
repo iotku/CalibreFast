@@ -30,6 +30,12 @@
         <button type="button" id="lt-clear" class="btn-action">Clear filters</button>
         <span id="lt-count" class="lt-count" role="status">Loading the library…</span>
         <span id="lt-status" class="lt-status" role="status" hidden></span>
+        <!-- Books whose files metadata.db doesn't list (dashed formats) -->
+        <span id="lt-unlisted" class="lt-unlisted" hidden>
+            <span id="lt-unlisted-text"></span>
+            <button type="button" id="lt-unlisted-show" class="lt-action">Show</button>
+            <button type="button" id="lt-unlisted-fix" class="lt-action lt-merge-group" title="Add a metadata.db row for each of their files, so Calibre lists them; nothing on disk changes">Add to metadata.db</button>
+        </span>
         <details class="lt-help">
             <summary>Filter tips</summary>
             <div class="lt-help-body">

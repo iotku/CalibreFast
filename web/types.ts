@@ -252,3 +252,10 @@ export interface NotDuplicateSet {
     id: number;
     uuids: string[];
 }
+
+/** POST /api/library/repair-formats (Go: unlistedRepair in calibre_names.go). */
+export interface FormatRepair {
+    books: number;
+    formats: number;
+    skipped: { uuid: string; error: string }[];
+}

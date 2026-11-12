@@ -33,6 +33,44 @@ func registerBulkEditRoutes() {
 	http.HandleFunc("GET /library/edit", requireWrites(bulkEditPage))
 	http.HandleFunc("GET /api/library/table", requireWrites(libraryTableHandler))
 	http.HandleFunc("POST /api/library/bulk", requireWrites(bulkEditHandler))
+	http.HandleFunc("POST /api/library/repair-formats", requireWrites(repairFormatsHandler))
+}
+
+// repairFormatsHandler adds metadata.db rows for files in book folders it
+// doesn't list (addUnlistedFormats): for the books named, or, with no
+// uuids, every such book.
+func repairFormatsHandler(w http.ResponseWriter, r *http.Request) {
+	var req struct {
+		UUIDs []string `json:"uuids"`
+	}
+	if err := json.NewDecoder(http.MaxBytesReader(w, r.Body, 8<<20)).Decode(&req); err != nil {
+		http.Error(w, "bad request: "+err.Error(), http.StatusBadRequest)
+		return
+	}
+	for _, u := range req.UUIDs {
+		if !isSafeUUIDComponent(u) {
+			http.Error(w, "bad book id", http.StatusBadRequest)
+			return
+		}
+	}
+	var uuids []string // nil: every book
+	if len(req.UUIDs) > 0 {
+		uuids = uniqueStrings(req.UUIDs)
+	}
+	bulkMu.Lock()
+	res, err := addUnlistedFormats(calibreDB, baseDir, uuids)
+	bulkMu.Unlock()
+	if err != nil {
+		log.Println("repair formats:", err)
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+		return
+	}
+	if res.Formats > 0 {
+		log.Printf("repair formats: %s added %d format row(s) to %d book(s)", currentUser(r).Username, res.Formats, res.Books)
+		refreshAllCaches()
+	}
+	w.Header().Set("Content-Type", "application/json")
+	logErr(json.NewEncoder(w).Encode(res), "encode format repair")
 }
 
 func bulkEditPage(w http.ResponseWriter, r *http.Request) {

@@ -13,7 +13,7 @@ import { api, byId, closeOnBackdropClick, el, errorMessage, modalOpen } from "./
 import { attachSuggest } from "./suggest.js";
 import { deleteBooks } from "./delete-books.js";
 import { languageChipLabel, languageKey, loadLanguageCodes } from "./languages.js";
-import type { BulkEdit, BulkResult, NotDuplicateSet, TableBook } from "./types.js";
+import type { BulkEdit, BulkResult, FormatRepair, NotDuplicateSet, TableBook } from "./types.js";
 
 const ROW_H = 34; // px; .lt-row's height in library-edit.css
 const OVERSCAN = 8; // rows drawn beyond the screen, each way
@@ -922,6 +922,7 @@ async function start(): Promise<void> {
 
 /** After the rows (re)load: selected books no longer in the library don't count. */
 function loaded(): void {
+    showUnlisted();
     const known = new Set(rows.map((r) => r.b.uuid));
     for (const u of selected) if (!known.has(u)) selected.delete(u);
     fillDatalists();
@@ -954,6 +955,41 @@ async function reloadRows(): Promise<void> {
     }
 }
 document.addEventListener("visibilitychange", () => void reloadRows());
+
+// Books whose files metadata.db doesn't list (dashed formats): a note in
+// the toolbar, to show them and to add their rows (Go: addUnlistedFormats).
+const unlistedNote = byId("lt-unlisted");
+const unlistedText = byId("lt-unlisted-text");
+function showUnlisted(): void {
+    const k = rows.reduce((t, r) => t + (r.b.formats_from_folder ? 1 : 0), 0);
+    unlistedNote.hidden = k === 0;
+    unlistedText.textContent = `${plural(k, "book")} with files metadata.db doesn't list`;
+}
+byId("lt-unlisted-show").addEventListener("click", () => {
+    const input = filterInputs.get("formats")!;
+    input.value = filters.formats = FOLDER_ONLY;
+    refresh();
+});
+byId("lt-unlisted-fix").addEventListener("click", async (e) => {
+    const btn = e.currentTarget as HTMLButtonElement;
+    const uuids = rows.filter((r) => r.b.formats_from_folder).map((r) => r.b.uuid);
+    if (!uuids.length) return;
+    if (!confirm(`Add the files of ${plural(uuids.length, "book")} to metadata.db, so Calibre lists them too?\n\nEach format gets a row naming the file that's in the book's folder. Nothing on disk changes.`)) return;
+    btn.disabled = true;
+    try {
+        const res = await api<FormatRepair>("POST", "/api/library/repair-formats", { uuids });
+        const data = await api<TableData>("GET", "/api/library/table");
+        rows = data.books.map(makeRow);
+        notDupSets = data.not_duplicates;
+        loaded();
+        const skipped = res.skipped.length ? ` ${plural(res.skipped.length, "format")} left alone: ${res.skipped.slice(0, 2).map((s) => s.error).join("; ")}` : "";
+        say(`Added ${plural(res.formats, "format")} to metadata.db for ${plural(res.books, "book")}.${skipped}`, res.skipped.length ? "error" : "ok");
+    } catch (err) {
+        say(`Couldn't add them: ${errorMessage(err)}`, "error");
+    } finally {
+        btn.disabled = false;
+    }
+});
 window.addEventListener("focus", () => void reloadRows());
 
 void start();

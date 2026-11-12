@@ -523,3 +523,16 @@
     border-color: var(--status-reading);
     color: var(--status-reading);
 }
+
+.lt-unlisted {
+    display: inline-flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 6px;
+    font-size: 0.85rem;
+    color: var(--status-reading);
+}
+
+.lt-unlisted[hidden] {
+    display: none;
+}
