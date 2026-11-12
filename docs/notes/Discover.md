@@ -1,6 +1,6 @@
 # Plan: Discover home page
 
-Status: proposal. Done so far: guest and per-user reading data kept apart (first half of phase 5, PR #98); phase 1, the catalog (#99); metadata.db read-only without `-allow-writes` (#100); phase 1b, the catalog snapshot.
+Status: proposal. Done so far: guest and per-user reading data kept apart (first half of phase 5, PR #98); phase 1, the catalog (#99); metadata.db read-only without `-allow-writes` (#100); phase 1b, the catalog snapshot (#101); phase 2, Shuffle.
 
 Phase 1b as built: the key adds `metadata.db`'s header change counter (a 28-byte read) to the size and modification time, since some network and FAT filesystems keep whole seconds and an in-place edit can keep the size. Outside writers are detected with `PRAGMA data_version` on `calibreDB`, which ends snapshot saving for that run. Still read from the library at every start: the aggregate overviews (`preloadCaches`: authors, publishers, tags, languages with counts) and `calibrefast-groups.json`. Authors and tags could come from the catalog; publishers and languages would need adding to it.
 
