@@ -385,11 +385,13 @@ function rowElement(r: Row, i: number): HTMLElement {
         el("a", { href: `/book/edit/${encodeURIComponent(b.uuid)}`, target: "_blank", className: "lt-action", title: "Open in the metadata editor (new tab)", ariaLabel: `Edit “${b.title}”` }, "Edit"),
     );
     if (dupMode && (i === 0 || shown[i - 1]!.dupKey !== r.dupKey)) {
-        const size = groupOf(r).length;
+        const group = groupOf(r);
+        const size = group.length;
         if (size > 1 && size <= MERGE_MAX) {
-            const m = el("button", { type: "button", className: "lt-action lt-merge-group", title: `Merge these ${size} books into one` }, `Merge ${size}`);
-            m.dataset["merge"] = r.dupKey;
-            actions.append(m);
+            // A link, so a middle click (or Ctrl/⌘-click) opens the merge in a new tab.
+            actions.append(
+                el("a", { href: mergeLink(group.map((x) => x.b.uuid)), className: "lt-action lt-merge-group", title: `Merge these ${size} books into one` }, `Merge ${size}`),
+            );
         }
     }
     row.append(actions);
@@ -473,11 +475,6 @@ body.addEventListener("click", (e) => {
             refresh();
         }
         return;
-    }
-    const merge = target.closest<HTMLElement>(".lt-merge-group");
-    if (merge) {
-        const r = shown.find((x) => x.b.uuid === uuid);
-        if (r) location.assign(mergeLink(groupOf(r).map((x) => x.b.uuid)));
     }
 });
 
@@ -814,11 +811,42 @@ async function start(): Promise<void> {
         say(`Couldn't load the library: ${errorMessage(err)}`, "error");
         return;
     }
-    // Selected books that aren't in the library (any more) don't count.
+    loaded();
+}
+
+/** After the rows (re)load: selected books no longer in the library don't count. */
+function loaded(): void {
     const known = new Set(rows.map((r) => r.b.uuid));
     for (const u of selected) if (!known.has(u)) selected.delete(u);
     fillDatalists();
     refresh();
 }
+
+// Merges and edits done in other tabs (a Merge link opened in a new tab,
+// say): the rows again when this tab is looked at again, unless something
+// is being edited here.
+let reloading = false;
+let reloadedAt = 0;
+async function reloadRows(): Promise<void> {
+    // Switching tabs fires both events: one fetch.
+    if (document.visibilityState !== "visible" || reloading || editing || modalOpen() || rows.length === 0) return;
+    if (Date.now() - reloadedAt < 2000) return;
+    reloading = true;
+    reloadedAt = Date.now();
+    try {
+        const data = await api<{ books: TableBook[] }>("GET", "/api/library/table");
+        if (editing || modalOpen()) return;
+        const before = rows.length;
+        rows = data.books.map(makeRow);
+        loaded();
+        if (rows.length < before) say(`${plural(before - rows.length, "book")} fewer since this page loaded (merged or removed elsewhere).`, "ok");
+    } catch {
+        /* keep what's shown */
+    } finally {
+        reloading = false;
+    }
+}
+document.addEventListener("visibilitychange", () => void reloadRows());
+window.addEventListener("focus", () => void reloadRows());
 
 void start();

@@ -183,7 +183,7 @@ The same book added twice (its EPUB once, its PDF another time, or two copies wi
   - the search box matches every column (each word somewhere);
   - each column's box filters that column: `word` contains it (any case or accent; in tags, languages and formats, any one of them does), `=Fiction` is exactly that, a lone `=` is empty, `!word` doesn't contain it (`!=`: not empty), `sci|fant` either, `<2000` and `>=2010-06` compare dates. Tags, languages, formats, publisher and series boxes suggest the library's values with how many books have each;
   - clicking a tag, language or format in a row filters by it;
-  - **Duplicates** shows only books that look like another, grouped: **Similar title** (case, accents, punctuation, a leading "The/A/An" and anything in brackets aside), **Similar title & authors**, or **Same ISBN**. Each group has a **Merge N** button;
+  - **Duplicates** shows only books that look like another, grouped: **Similar title** (case, accents, punctuation, a leading "The/A/An" and anything in brackets aside), **Similar title & authors**, or **Same ISBN**. Each group has a **Merge N** link (middle-click or Ctrl/⌘-click opens it in a new tab; the table reloads its rows when you come back to it);
   - **Only selected** shows the ticked books. The filters, sort and duplicates mode are kept in the address, so Back returns to the same view.
 - **Selecting:** tick rows (Shift-click ticks a range), or the heading's box for every book shown. **Edit in table** in the library's selection bar opens the table with those books ticked.
 - **Editing one book in place:** double-click its title, authors, publisher, date, tags or languages. Enter or leaving the box saves; Escape cancels.
