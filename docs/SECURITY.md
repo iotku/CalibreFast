@@ -10,7 +10,7 @@ CalibreFast has accounts, but it's a personal project: the authentication code i
 | **Signed-in user** | Yes | Yes | Yes (their own; progress also from KOReader with a sync key) | **Never** | No |
 | **Admin** | Yes | Yes | Yes (their own) | Only with `-allow-writes` (removed books go to the Recycling Bin, which only the server can empty) | Yes |
 
-- Library changes always need **both** an admin session **and** a server started with `-allow-writes`. Without the flag, nobody (not even admins) can modify `metadata.db` or the library folder. Anyone but an admin gets the same 404 as a path that doesn't exist, on the editing routes and the admin pages and APIs alike, so they don't show up to someone probing the server. Unknown paths are 404s too rather than the library page.
+- Library changes always need **both** an admin session **and** a server started with `-allow-writes`. Without the flag, nobody (not even admins) can modify `metadata.db` or the library folder: the server opens `metadata.db` read-only (SQLite's `mode=ro`), so even a bug that tried to write would be refused, and it works on a library that's read-only on disk. Trying CalibreFast on your library without `-allow-writes` can't change it. Anyone but an admin gets the same 404 as a path that doesn't exist, on the editing routes and the admin pages and APIs alike, so they don't show up to someone probing the server. Unknown paths are 404s too rather than the library page.
 - Personal data (favorites, reading status, progress, bookmarks, highlights and notes, personal shelves) is visible only to its owner. Global shelves are visible to everyone who can browse.
 
 ### Modes

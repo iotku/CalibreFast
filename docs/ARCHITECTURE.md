@@ -110,7 +110,7 @@ Each book's `authors` is its authors' names in Calibre's order, `A & B` (`bookAu
 - **Guards.**
   - Every endpoint that changes the library is wrapped in `requireWrites` (`main.go`), which requires `-allow-writes` and a signed-in admin.
   - The whole server is wrapped in `csrfProtect`, Go's `http.CrossOriginProtection`.
-- **Read-only mode** writes only CalibreFast's own caches (`./pages` and `-cachedir`). `-watch-dir` is ignored without `-allow-writes`: taking files out of a folder is a change too.
+- **Read-only mode** writes only CalibreFast's own caches (`./pages` and `-cachedir`). `metadata.db` is opened read-only then (`calibreDSN`: an SQLite URI with `mode=ro`), and the startup pass that writes the pages always opens it read-only. With `-allow-writes` it's `mode=rw`, which never creates a missing database. The URI form also passes paths with `?` in them through intact. `-watch-dir` is ignored without `-allow-writes`: taking files out of a folder is a change too.
 
 ## Watch folder and import queue
 
