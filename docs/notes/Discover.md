@@ -354,6 +354,25 @@ The Discover "Continue reading" row switches from the device's guest list to `/a
 - **Empty states**: hide Reading/Want rows when empty for a signed-in user, but show a one-line hint ("Mark books as Want to read to see them here") the first time.
 - Service worker: Discover HTML is not kept offline (same as the grid); `/offline` unchanged.
 
+## Cover thumbnails: fewer round trips (later)
+
+Goal from the maintainer: a thumbnail the browser already has should cost **no request at all**. Today it often still costs one. Not urgent, but nothing in Discover may make it harder.
+
+**What's in place:** `/cover-thumb/<uuid>?t=<last_modified>` is answered with `public, max-age=31536000, immutable`, and the stamp changes when the cover does (`coverChanged` sets `last_modified`), so a cached copy is always right.
+
+**Likely sources of the requests that remain** (to measure first, in a browser's network panel and the server's log):
+- `web/sw.ts` passes every request it doesn't handle, thumbnails included, through `respondWith(fetch(req))`. The HTTP cache should still answer, but every image wakes the service worker. Not intercepting `/cover-thumb/` would leave thumbnails to the browser alone.
+- **Coverless books:** the 404 has no cache headers, so the browser asks again on every view (the server answers from memory, but it's still a round trip). A 404 for a given `?t=` could be cached the same way, since a new cover changes the stamp.
+- **Cancelled downloads:** `pumpCovers` removes `src` from covers scrolled away mid-download; a partial response isn't cached, so the cover is requested again when it comes back.
+- **HTTPS with a certificate the browser doesn't trust:** Chrome doesn't keep a disk cache for those pages at all.
+- Beyond the HTTP cache: a client-side store of thumbnails (Cache Storage, keyed by the same URL), or one request per row or page of covers instead of one per cover.
+
+**Constraints on everything Discover adds:**
+- Every cover anywhere (grid, Discover rows, shelves, recommendations, the book popup) uses **the same URL for the same cover**: built by one helper (`web/utils.ts`) from the book's `last_modified` as the catalog and page files carry it. No per-view query parameters, no other thumbnail endpoint, so one cached copy serves every place a book shows up.
+- Every Book JSON Discover sends (`/api/me/home`, shuffle and tag files, `featured.json`, `/api/books`) carries the same `last_modified` stamp as `pages/*.json`.
+- The Discover cover pump (`web/covers.ts`, shared with the grid) keeps cancellation, but nothing new may add cache-busting (`?t=Date.now()`) outside the editor's just-uploaded preview.
+- The service worker gains no new handling of `/cover-thumb/`.
+
 ## Phases (each a PR)
 
 1. **Catalog index** (section 1): built in `writeLibraryPages`, incremental `catalogChanged`/`catalogRemoved` at the write paths, `booksByUUIDs`, `bookExists`, `resumeURL` and coverless thumbnails served from it, and the `libraryIO` counter. No visible change.
