@@ -439,6 +439,9 @@ rendition.on("rendered", (section, view) => {
     doc.addEventListener("mousemove", (e) => {
         chrome.pointerAt((doc.defaultView?.frameElement?.getBoundingClientRect().top ?? 0) + e.clientY);
     });
+    doc.addEventListener("mouseout", (e) => {
+        if (!e.relatedTarget) chrome.pointerAt(null);
+    });
     // A press that closed a panel does nothing else.
     let swallow = false;
     doc.addEventListener("pointerdown", () => {
