@@ -123,6 +123,7 @@ Both only offer choices. Nothing is saved until **Apply Changes**.
 - **The lookup bar** at the top of the editor searches Open Library two ways:
   - **Search ISBN** searches by the ISBN in the bar's box: that one edition, the likeliest match. The box shows the form's ISBN and follows it; when the book has none, type it there. A valid ISBN (checked before anything is sent) also goes into the ISBN field, crossing out a different one with **Undo**.
   - **Search title & author** searches by the form's title and first author: up to 5 books, best first.
+  - **The likely match is ticked for you:** the only one a search finds, or, in a title search, the books with an edition of the form's ISBN (the server compares the ISBN with Open Library's edition lists; it isn't sent). Untick it if it's the wrong book.
   - The ISBN field's search button, and each ISBN found in the files, search by that ISBN.
   - **Matches** are listed with their authors, year, publisher, language and identifiers. **Tick** the right ones: each becomes a source under every field (**Open Library**, **Open Library 2**, …), so their values can be compared and picked one by one. Matches with the same value for a field share one pill there (**Open Library +2**; hover for which). Unticking one takes it away again. Ticked matches stay at the top of the list through a new search.
   - **Compare** shows one match against the current metadata. **Pick fields in the form** ticks it; **Accept all and apply** takes every value it has (never the cover), saves, and opens the book page.

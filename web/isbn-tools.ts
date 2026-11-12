@@ -440,25 +440,34 @@ function mountLookup(host: IsbnToolsHost): { lookUpIsbn(isbn: string): void } | 
 
     // ---- Asking ------------------------------------------------------------
 
-    async function ask(source: Source, q: Query): Promise<LookupResult> {
+    /** extra: more parameters, compared on the server (match_isbn), not sent on. */
+    async function ask(source: Source, q: Query, extra: Record<string, string> = {}): Promise<LookupResult> {
         asked.add(source);
-        return api<LookupResult>("GET", `/metadata/lookup?${new URLSearchParams({ source, ...q })}`);
+        return api<LookupResult>("GET", `/metadata/lookup?${new URLSearchParams({ source, ...q, ...extra })}`);
     }
 
-    /** Puts a source's matches in the list, after the ticked ones; returns how many are new. */
-    function show(source: Source, r: LookupResult, { replace }: { replace: boolean }): number {
+    /**
+     * Puts a source's matches in the list, after the ticked ones. Returns
+     * the answer's matches as listed (a ticked one stays as it was).
+     */
+    function show(source: Source, r: LookupResult, { replace }: { replace: boolean }): Match[] {
         const keep = replace ? picked() : matches;
-        const have = new Set(keep.map((m) => m.key));
+        const byKey = new Map(keep.map((m) => [m.key, m]));
         const fresh: Match[] = [];
+        const answer: Match[] = [];
         for (const { option, cover } of r.matches ?? []) {
             const key = matchKey(source, option);
-            if (have.has(key)) continue;
-            have.add(key);
-            fresh.push({ key, source, meta: option, cover: cover ?? "", label: null });
+            let m = byKey.get(key);
+            if (!m) {
+                m = { key, source, meta: option, cover: cover ?? "", label: null };
+                byKey.set(key, m);
+                fresh.push(m);
+            }
+            if (!answer.includes(m)) answer.push(m);
         }
         matches = [...keep, ...fresh];
         renderList();
-        return (r.matches ?? []).length;
+        return answer;
     }
 
     /** One lookup at a time; errors go to the bar. */
@@ -480,16 +489,29 @@ function mountLookup(host: IsbnToolsHost): { lookUpIsbn(isbn: string): void } | 
     const tickHint = (n: number): string =>
         n > 1 ? " Tick the right ones to offer their values under each field (the same value is one pill), or Compare one." : " Tick it to offer its values under each field, or Compare it.";
 
-    /** Asks Open Library. */
+    /**
+     * Asks Open Library. The likely right match is ticked: the only one, or
+     * those of a title search with an edition of the form's ISBN.
+     */
     function search(q: Query): void {
         void run(async () => {
             lastQuery = q;
             asked = new Set();
             say(`Searching Open Library for ${describe(q)}…`);
-            const r = await ask("openlibrary", q);
-            const n = show("openlibrary", r, { replace: true });
+            const formIsbn = host.currentIsbn();
+            const extra: Record<string, string> = !("isbn" in q) && validIsbn(formIsbn) ? { match_isbn: formIsbn } : {};
+            const r = await ask("openlibrary", q, extra);
+            const answer = show("openlibrary", r, { replace: true });
+            const n = answer.length;
+            const isbnKeys = new Set((r.matches ?? []).filter((x) => x.hasIsbn).map((x) => matchKey("openlibrary", x.option)));
+            const withIsbn = answer.filter((m) => isbnKeys.has(m.key));
+            const sure = n === 1 ? answer : withIsbn;
+            sure.forEach(pick); // a ticked one stays as it is
             if (n) {
-                found = `Open Library found ${n === 1 ? "a book" : `${n} books`} for ${describe(q)}.${tickHint(n)}`;
+                let hint = tickHint(n);
+                if (n === 1) hint = " It's ticked: its values are under each field (untick it if it's the wrong book).";
+                else if (sure.length) hint = ` Ticked the one with ISBN ${formIsbn}; tick others to compare them too.`;
+                found = `Open Library found ${n === 1 ? "a book" : `${n} books`} for ${describe(q)}.${hint}`;
             } else if (r.error) {
                 found = `Open Library: ${r.error}.`;
             } else {

@@ -145,6 +145,11 @@ func (q lookupQuery) key() string {
 type lookupMatch struct {
 	Option *UploadedBookMeta `json:"option"`
 	Cover  string            `json:"cover,omitempty"` // its cover, through /metadata/lookup/cover
+	// HasISBN: one of its editions has the ISBN asked about (?match_isbn=).
+	HasISBN bool `json:"hasIsbn,omitempty"`
+	// isbns are a search match's editions' ISBN-13s, for ?match_isbn=; kept
+	// on the server only (there can be hundreds).
+	isbns map[string]bool
 }
 
 // lookupResult is a source's answer (TS: LookupResult in web/types.ts).
@@ -155,7 +160,8 @@ type lookupResult struct {
 }
 
 // lookupHandler: GET /metadata/lookup?source=openlibrary|google&isbn=…
-// (or &title=…&author=…).
+// (or &title=…&author=…). With a title, &match_isbn=… marks the matches with
+// an edition of that ISBN (HasISBN); it's compared here, not sent anywhere.
 func lookupHandler(w http.ResponseWriter, r *http.Request) {
 	source := r.URL.Query().Get("source")
 	if source == "" {
@@ -186,7 +192,21 @@ func lookupHandler(w http.ResponseWriter, r *http.Request) {
 	ctx, cancel := context.WithTimeout(r.Context(), 20*time.Second)
 	defer cancel()
 	w.Header().Set("Content-Type", "application/json")
-	logErr(json.NewEncoder(w).Encode(bookLookups.lookup(ctx, name, q)), "could not encode lookup result")
+	res := bookLookups.lookup(ctx, name, q)
+	if want := normalizeISBN(r.URL.Query().Get("match_isbn")); want != "" && q.ISBN == "" {
+		res = res.markISBN(want)
+	}
+	logErr(json.NewEncoder(w).Encode(res), "could not encode lookup result")
+}
+
+// markISBN sets HasISBN on the matches with an edition of isbn13, on a copy
+// (res may be the cache's).
+func (res lookupResult) markISBN(isbn13 string) lookupResult {
+	res.Matches = slices.Clone(res.Matches)
+	for i := range res.Matches {
+		res.Matches[i].HasISBN = res.Matches[i].isbns[isbn13]
+	}
+	return res
 }
 
 // lookup asks one source. Answers, including "no match", are cached; errors
@@ -401,6 +421,7 @@ type olSearchDoc struct {
 	Language         []string `json:"language"`
 	Subject          []string `json:"subject"`
 	CoverI           int64    `json:"cover_i"`
+	ISBN             []string `json:"isbn"` // every edition's
 }
 
 // olKeyRe checks keys from Open Library before they go into a URL.
@@ -477,7 +498,7 @@ func (l *bookLookup) openLibrarySearch(ctx context.Context, q lookupQuery) ([]lo
 		v.Set("author", q.Author)
 	}
 	v.Set("limit", strconv.Itoa(maxSearchMatches))
-	v.Set("fields", "key,title,subtitle,author_name,first_publish_year,publisher,language,subject,cover_i")
+	v.Set("fields", "key,title,subtitle,author_name,first_publish_year,publisher,language,subject,cover_i,isbn")
 	var found struct {
 		Docs []olSearchDoc `json:"docs"`
 	}
@@ -520,7 +541,13 @@ func (l *bookLookup) openLibrarySearch(ctx context.Context, q lookupQuery) ([]lo
 		if olKeyRe.MatchString(doc.Key) {
 			m.Identifiers = []opfIdentifier{{Scheme: "olid", Value: strings.TrimPrefix(doc.Key, "/works/")}}
 		}
-		matches = append(matches, lookupMatch{Option: m, Cover: olCoverURL(firstCover([]int64{doc.CoverI}, works[i].Covers))})
+		isbns := map[string]bool{}
+		for _, raw := range doc.ISBN {
+			if n := normalizeISBN(raw); n != "" {
+				isbns[n] = true
+			}
+		}
+		matches = append(matches, lookupMatch{Option: m, Cover: olCoverURL(firstCover([]int64{doc.CoverI}, works[i].Covers)), isbns: isbns})
 	}
 	return matches, nil
 }
