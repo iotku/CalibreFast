@@ -231,8 +231,12 @@ func scanLinks(db queryer, q string, args []any, add func(book int64, id int32, 
 	return rows.Err()
 }
 
+// catalogBuilds counts full reads of the library (for tests).
+var catalogBuilds atomic.Int64
+
 // buildCatalog reads every book.
 func buildCatalog(db queryer) (*catalog, error) {
+	catalogBuilds.Add(1)
 	start := time.Now()
 	c := newCatalog()
 	books, err := loadCatalogBooks(db, nil, c)
@@ -337,6 +341,7 @@ func catalogFlush() error {
 		return err
 	}
 	libraryCatalog.Store(next)
+	scheduleCatalogSnapshot()
 	return nil
 }
 
