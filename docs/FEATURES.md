@@ -119,9 +119,10 @@ Both only offer choices. Nothing is saved until **Apply Changes**.
   - **Checked:** ISBN-10 and ISBN-13 check digits, so phone numbers and typos are skipped. A 10-digit number needs "ISBN" shortly before it. Every ISBN is shown as ISBN-13, once.
   - **Ranked:** copyright pages list the print editions too, so ISBNs labelled ebook/e-book/EPUB/PDF/digital come first. Next are those from the files' metadata, then other ISBNs in the text, then those labelled hardcover, paperback, print or audio.
   - **Use** puts one in the ISBN field. If the book had a different ISBN, it's crossed out with **Undo**. ISBNs tried in between aren't kept, and a value is only ever crossed out once.
-- **The lookup bar** at the top of the editor offers **Search Open Library**, and says what it would send:
-  - **By ISBN** when the form's ISBN field has one: an ISBN finds that one edition, the likeliest match. If Open Library doesn't know it, the search goes on by title and author by itself. **Search by title and author** looks for other editions and books too.
-  - **By title and first author** when there's no ISBN: up to 5 books, best first.
+  - **An unlabeled identifier that's an ISBN** (one with no scheme, a common mix-up) moves into the ISBN field when that's empty and the value is one of the ISBNs found in the files. The search says so, and it's saved like any change.
+- **The lookup bar** at the top of the editor searches Open Library two ways:
+  - **Search ISBN** searches by the ISBN in the bar's box: that one edition, the likeliest match. The box shows the form's ISBN and follows it; when the book has none, type it there. A valid ISBN (checked before anything is sent) also goes into the ISBN field, crossing out a different one with **Undo**.
+  - **Search title & author** searches by the form's title and first author: up to 5 books, best first.
   - The ISBN field's search button, and each ISBN found in the files, search by that ISBN.
   - **Matches** are listed with their authors, year, publisher, language and identifiers. **Tick** the right ones: each becomes a source under every field (**Open Library**, **Open Library 2**, …), so their values can be compared and picked one by one. Matches with the same value for a field share one pill there (**Open Library +2**; hover for which). Unticking one takes it away again. Ticked matches stay at the top of the list through a new search.
   - **Compare** shows one match against the current metadata. **Pick fields in the form** ticks it; **Accept all and apply** takes every value it has (never the cover), saves, and opens the book page.
