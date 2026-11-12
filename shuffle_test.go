@@ -140,8 +140,8 @@ func TestShuffleListSkipsFinished(t *testing.T) {
 		t.Errorf("signed-out page: %s", body)
 	}
 	rec = httptest.NewRecorder()
-	indexHandler(rec, httptest.NewRequest(http.MethodGet, "/", nil))
+	latestHandler(rec, httptest.NewRequest(http.MethodGet, "/latest", nil))
 	if body := rec.Body.String(); !strings.Contains(body, `data-page-url="/pages/page{n}.json?v=`) {
-		t.Errorf("library page: %s", body)
+		t.Errorf("latest page: %s", body)
 	}
 }

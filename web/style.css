@@ -226,6 +226,172 @@ input[type="number"],
     visibility: hidden;
 }
 /* ============================================
+   Discover page (templates/discover.html, web/discover.ts)
+   An introduction, then rows of books that scroll sideways. Cards are the
+   grid's, at the grid's widths, so the page reads as the same library.
+   ============================================ */
+.discover {
+    --row-gap: 10px;
+    --row-cols: 6;
+    max-width: 2800px;
+    margin: var(--topbar-total) auto 0;
+    display: flex;
+    flex-direction: column;
+    gap: var(--gap-xlarge);
+}
+
+.intro {
+    position: relative;
+    background: var(--bg-secondary);
+    border: 1px solid var(--border-subtle);
+    border-radius: var(--radius-large);
+    padding: var(--gap-xlarge);
+    display: flex;
+    flex-direction: column;
+    gap: var(--gap-large);
+}
+.intro-stats {
+    margin: 0;
+    display: flex;
+    flex-wrap: wrap;
+    gap: var(--gap-small) var(--gap-xlarge);
+    font-size: var(--font-size-large);
+    color: var(--text-secondary);
+}
+.intro-stats > :first-child {
+    color: var(--text-primary);
+    font-weight: 600;
+}
+.intro-stats a,
+.intro-browse a {
+    color: var(--text-link);
+}
+.intro-more {
+    display: flex;
+    flex-direction: column;
+    gap: var(--gap-large);
+}
+.intro-search {
+    display: flex;
+    gap: var(--gap-medium);
+    max-width: 640px;
+}
+.intro-search input {
+    flex: 1;
+    min-width: 0;
+    height: var(--touch-target);
+    padding: var(--input-padding);
+    background: var(--bg-surface);
+    color: var(--text-primary);
+    border: 1px solid var(--border-medium);
+    border-radius: var(--radius-medium);
+    font-size: var(--font-size-ui);
+}
+.intro-browse {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: baseline;
+    gap: var(--gap-small) var(--gap-large);
+    color: var(--text-muted);
+}
+.intro-account {
+    margin: 0;
+    color: var(--text-secondary);
+    max-width: 70ch;
+    line-height: 1.5;
+}
+.intro-account .btn-standard {
+    margin-left: var(--gap-medium);
+}
+.intro-account a:not(.btn-standard) {
+    margin-left: var(--gap-medium);
+    color: var(--text-link);
+}
+.intro-dismiss {
+    position: absolute;
+    top: var(--gap-medium);
+    right: var(--gap-medium);
+    background: none;
+    border: none;
+    color: var(--text-muted);
+    cursor: pointer;
+    font-size: var(--font-size-small);
+    padding: var(--gap-small) var(--gap-medium);
+}
+/* Hidden by the visitor: just the stats line. */
+.intro.compact {
+    padding: var(--gap-medium) var(--gap-large);
+    background: none;
+    border-color: transparent;
+}
+.intro.compact .intro-more {
+    display: none;
+}
+
+.row-head {
+    display: flex;
+    align-items: baseline;
+    justify-content: space-between;
+    gap: var(--gap-large);
+    margin-bottom: var(--gap-medium);
+}
+.row-head h2 {
+    margin: 0;
+    font-size: var(--font-size-large);
+}
+.row-head a {
+    color: var(--text-link);
+    white-space: nowrap;
+}
+.row-books {
+    display: grid;
+    grid-auto-flow: column;
+    /* The grid's card width at this window size. */
+    grid-auto-columns: calc((100% - (var(--row-cols) - 1) * var(--row-gap)) / var(--row-cols));
+    gap: var(--row-gap);
+    overflow-x: auto;
+    overscroll-behavior-x: contain;
+    scroll-snap-type: x mandatory;
+    scrollbar-width: thin;
+    scrollbar-color: var(--border-medium) transparent;
+    padding-bottom: var(--gap-small);
+}
+.row-books > .book {
+    scroll-snap-align: start;
+    content-visibility: visible; /* few cards; and the sideways scroll needs their sizes */
+}
+.discover-empty {
+    color: var(--text-muted);
+    text-align: center;
+}
+
+@media (min-width: 1800px) {
+    .discover {
+        --row-cols: 8;
+    }
+}
+@media (min-width: 2000px) {
+    .discover {
+        --row-cols: 10;
+    }
+}
+@media (max-width: 900px) {
+    .discover {
+        --row-cols: 4;
+        --row-gap: 6px;
+    }
+}
+@media (max-width: 600px) {
+    .discover {
+        /* A little of the next card shows: there's more to the side. */
+        --row-cols: 2.4;
+    }
+    .intro {
+        padding: var(--gap-large);
+    }
+}
+
+/* ============================================
    Component - Book Card
    ============================================ */
 

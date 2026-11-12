@@ -144,6 +144,7 @@ func TestLibraryPrivateByDefault(t *testing.T) {
 		"/cover-thumb/some-uuid": http.StatusUnauthorized, "/book/get/some-uuid": http.StatusUnauthorized,
 		"/api/tags": http.StatusUnauthorized, "/shelves": http.StatusUnauthorized,
 		"/shuffle": http.StatusUnauthorized, "/pages/shuffle/page1.json": http.StatusUnauthorized,
+		"/latest": http.StatusUnauthorized, "/?page=2": http.StatusUnauthorized,
 		"/login": 200, "/register": 200, "/static/dist/style-X.css": 200, "/auth/github/start": 200, "/api/me": 200,
 	})
 	// Browsers are sent to the sign-in page instead.

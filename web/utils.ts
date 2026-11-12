@@ -142,3 +142,26 @@ export function renderBookCard(book: Book, coverReady = false): string {
     </div>
 </div>`;
 }
+
+/** Covers fade in once loaded; one that fails leaves the card's title and author showing. */
+export function setupCoverStates(container: HTMLElement): void {
+    container.addEventListener(
+        "load",
+        (e) => {
+            if (e.target instanceof HTMLImageElement && e.target.matches(".book-cover"))
+                e.target.classList.add("loaded");
+        },
+        true,
+    );
+
+    container.addEventListener(
+        "error",
+        (e) => {
+            const img = e.target;
+            if (!(img instanceof HTMLImageElement) || !img.matches(".book-cover")) return;
+            img.parentElement?.classList.add("no-cover"); // title/author info stays visible
+            img.remove();
+        },
+        true,
+    );
+}

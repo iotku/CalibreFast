@@ -8,7 +8,7 @@ pager, the Group button, …) go between the two halves:
     {{ template "topbar-end" $tb }}
 
 Keys (all optional):
-  Active    nav item to highlight: authors, publishers, tags, languages,
+  Active    nav item to highlight: latest, authors, publishers, tags, languages,
             shelves, want to read, favorites, reading, upload
   Title     page title, shown after the nav (truncated when space runs out)
   NavTitle  true when Title only repeats the highlighted nav item: then it's
@@ -28,6 +28,7 @@ pages stay the same for everyone and cacheable.
     <a class="tb-brand" href="/">{{ .Site }}</a>
     <nav id="tb-nav" class="tb-nav" aria-label="Browse">
         <a class="tb-home" href="/">{{ .Site }}</a>
+        <a href="/latest"{{ if eq .Active "latest" }} aria-current="page"{{ end }}>Latest</a>
         <a href="/authors"{{ if eq .Active "authors" }} aria-current="page"{{ end }}>Authors</a>
         <a href="/publishers"{{ if eq .Active "publishers" }} aria-current="page"{{ end }}>Publishers</a>
         <a href="/tags"{{ if eq .Active "tags" }} aria-current="page"{{ end }}>Tags</a>
