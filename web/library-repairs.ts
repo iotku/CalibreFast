@@ -5,10 +5,10 @@ import type { FormatRepair, RepairCheck } from "./types.js";
 
 const say = statusLine("repair-status");
 const check = byId("repair-check", HTMLButtonElement);
-const misnamed = byId("misnamed", HTMLElement);
+const misnamedState = byId("misnamed-state", HTMLElement);
 const misnamedList = byId("misnamed-list", HTMLUListElement);
 const misnamedFix = byId("misnamed-fix", HTMLButtonElement);
-const unlisted = byId("unlisted", HTMLElement);
+const unlistedState = byId("unlisted-state", HTMLElement);
 const unlistedList = byId("unlisted-list", HTMLUListElement);
 const unlistedFix = byId("unlisted-fix", HTMLButtonElement);
 
@@ -17,6 +17,15 @@ const SHOWN = 200;
 
 function bookLink(uuid: string, title: string): HTMLAnchorElement {
     return el("a", { href: `/book/get/${encodeURIComponent(uuid)}`, textContent: title || uuid, target: "_blank" });
+}
+
+/** Show a section's result: its list and button, or a line when there's nothing. */
+function show(state: HTMLElement, list: HTMLUListElement, fix: HTMLButtonElement, count: number, canFix: boolean): void {
+    state.hidden = count > 0;
+    state.replaceChildren(el("em", { textContent: "Nothing to repair." }));
+    list.hidden = count === 0;
+    fix.hidden = count === 0;
+    fix.disabled = !canFix;
 }
 
 function fill<T>(list: HTMLUListElement, items: T[], row: (item: T) => (Node | string)[]): void {
@@ -36,8 +45,7 @@ async function run(): Promise<void> {
             " → ",
             el("code", { textContent: m.to }),
         ]);
-        misnamed.hidden = res.misnamed.length === 0;
-        misnamedFix.disabled = false;
+        show(misnamedState, misnamedList, misnamedFix, res.misnamed.length, true);
 
         const fixable = res.unlisted.filter((b) => b.formats.length > 0).length;
         fill(unlistedList, res.unlisted, (b) => [
@@ -45,8 +53,7 @@ async function run(): Promise<void> {
             b.formats.length ? ` adds ${b.formats.join(", ")}` : "",
             b.ambiguous.length ? el("span", { className: "auth-muted", textContent: ` (several ${b.ambiguous.join(", ")} files: left alone)` }) : "",
         ]);
-        unlisted.hidden = res.unlisted.length === 0;
-        unlistedFix.disabled = fixable === 0;
+        show(unlistedState, unlistedList, unlistedFix, res.unlisted.length, fixable > 0);
 
         const found: string[] = [];
         if (res.misnamed.length) found.push(`${res.misnamed.length} file name${res.misnamed.length === 1 ? "" : "s"} to repair`);
@@ -65,7 +72,8 @@ misnamedFix.addEventListener("click", async () => {
     misnamedFix.disabled = true;
     try {
         const res = await api<{ repaired: number }>("POST", "/api/admin/repairs/format-names");
-        misnamed.hidden = true;
+        misnamedList.replaceChildren();
+        show(misnamedState, misnamedList, misnamedFix, 0, false);
         say(`Repaired ${res.repaired} file name${res.repaired === 1 ? "" : "s"}.`);
     } catch (err) {
         misnamedFix.disabled = false;
@@ -87,7 +95,8 @@ unlistedFix.addEventListener("click", async () => {
             const uuid = a ? decodeURIComponent(a.pathname.split("/").pop() ?? "") : "";
             if (!left.has(uuid)) li.remove();
         }
-        unlisted.hidden = unlistedList.children.length === 0;
+        // Any left are ones with several files of a format: nothing more to do here.
+        show(unlistedState, unlistedList, unlistedFix, unlistedList.children.length, false);
     } catch (err) {
         unlistedFix.disabled = false;
         say(errorMessage(err), true);
