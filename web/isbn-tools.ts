@@ -1,12 +1,14 @@
-// The metadata editor's ISBN tools: find ISBNs in the book's own files, and
-// look the book up online. Both only offer choices: a found ISBN goes into
-// the form when the admin clicks Use, and a lookup's answer, unless rejected,
-// becomes a source like "current", picked field by field or all at once.
-// Nothing is saved until Apply.
+// The metadata editor's ISBN tools and online lookup: find ISBNs in the
+// book's own files, and look the book up on Open Library. Both only offer
+// choices: a found ISBN goes into the form when the admin clicks Use, and
+// the matches the admin ticks (up to MAX_PICKS) become sources like
+// "current", picked field by field or all at once. Nothing is saved until
+// Apply.
 //
 // Lookups are kept to a minimum: one source per request, only on a click.
-// Open Library first; Wikidata only if Open Library doesn't know the ISBN;
-// other sources only when the admin clicks "Try …".
+// Open Library by the ISBN in the form when there is one (the best match),
+// else by title and author; by title and author too when the ISBN finds
+// nothing, or when the admin asks. Google Books only on "Try Google Books".
 
 import type { BookTarget } from "./book-target.js";
 import { api, closeOnBackdropClick, el, errorMessage, maybeId } from "./dom.js";
@@ -23,8 +25,10 @@ export interface IsbnToolsHost {
     titleAndAuthor(): { title: string; author: string };
     /** Put an ISBN in the ISBN field. */
     useIsbn(isbn: string): void;
-    /** Offer a lookup's answer as a source under every field. */
+    /** Offer a lookup's match as a source under every field (by its Format). */
     addSource(meta: MetaSource): void;
+    /** Take that source's pills away again. */
+    removeSource(format: string): void;
     /** What taking all of meta would change, for the lookup dialog. */
     preview(meta: MetaSource): HTMLElement[];
     /** Take every value meta has, then apply. */
@@ -40,8 +44,11 @@ const FOUND_IN: Record<IsbnCandidate["source"], string> = {
 };
 
 /** Lookup sources (Go: lookupSources in lookup.go). */
-type Source = "openlibrary" | "wikidata" | "google";
-const SOURCE_NAMES: Record<Source, string> = { openlibrary: "Open Library", wikidata: "Wikidata", google: "Google Books" };
+type Source = "openlibrary" | "google";
+const SOURCE_NAMES: Record<Source, string> = { openlibrary: "Open Library", google: "Google Books" };
+
+/** How many matches can be sources in the form at once. */
+const MAX_PICKS = 3;
 
 /** Pages of a PDF read for ISBNs: copyright pages are near either end. */
 const PDF_FIRST_PAGES = 5;
@@ -163,7 +170,6 @@ export function mountIsbnTools(host: IsbnToolsHost): void {
             ? "No ISBNs found in the book's files."
             : `Found ${n} ISBN${n === 1 ? "" : "s"} in the book's files${n > 1 ? ", ebook editions first" : ""}.`;
         say(note ? `${found} ${note}` : found);
-        if (candidates[0]) lookups?.suggest(candidates[0].isbn13);
     };
 
     let finding = false;
@@ -222,230 +228,317 @@ export function mountIsbnTools(host: IsbnToolsHost): void {
 }
 
 /**
- * The top bar's ISBN lookup, the status bar under the banner and the lookup
- * dialog. Returns null when lookups are off (-no-lookups).
+ * The lookup bar at the top of the editor, its list of matches and the
+ * lookup dialog. Returns null when lookups are off (-no-lookups).
  */
-function mountLookup(host: IsbnToolsHost): { lookUpIsbn(isbn: string): void; suggest(isbn: string): void } | null {
-    const formEl = maybeId("isbn-lookup", HTMLFormElement);
-    const inputEl = maybeId("isbn-lookup-input", HTMLInputElement);
+function mountLookup(host: IsbnToolsHost): { lookUpIsbn(isbn: string): void } | null {
     const barEl = maybeId("lookup-bar");
-    const barStatusEl = maybeId("lookup-status");
-    const barActionsEl = maybeId("lookup-actions");
+    const statusEl = maybeId("lookup-status");
+    const searchEl = maybeId("lookup-search", HTMLButtonElement);
+    const moreEl = maybeId("lookup-more");
+    const listEl = maybeId("lookup-results");
     const dialogEl = maybeId("lookup-dialog", HTMLDialogElement);
-    if (!formEl || !inputEl || !barEl || !barStatusEl || !barActionsEl || !dialogEl) return null;
-    const lookupForm: HTMLFormElement = formEl;
-    const input: HTMLInputElement = inputEl;
+    if (!barEl || !statusEl || !searchEl || !moreEl || !listEl || !dialogEl) return null;
     const bar: HTMLElement = barEl;
-    const barStatus: HTMLElement = barStatusEl;
-    const barActions: HTMLElement = barActionsEl;
+    const status: HTMLElement = statusEl;
+    const searchBtn: HTMLButtonElement = searchEl;
+    const more: HTMLElement = moreEl;
+    const list: HTMLElement = listEl;
     const dialog: HTMLDialogElement = dialogEl;
-    const submitBtn = lookupForm.querySelector<HTMLButtonElement>("button[type=submit]");
-    const googleAllowed = lookupForm.dataset["google"] === "1";
+    const googleAllowed = bar.dataset["google"] === "1";
 
-    /** Fills the box. The cover dialog follows it, by its input event. */
-    const setIsbn = (isbn: string): void => {
-        input.value = isbn;
-        input.dispatchEvent(new Event("input"));
-    };
-    setIsbn(host.currentIsbn());
-    // Added or discarded: the box is that book's no longer, while the next
-    // book's page loads. (Capture: the editor's events don't bubble.)
-    for (const done of ["metadata-applied", "metadata-discarded"]) {
-        document.addEventListener(done, () => setIsbn(""), { capture: true });
-    }
-    // Back to this page from the browser's cache: the box shows this book's
-    // ISBN again, not whatever the browser kept in it.
-    window.addEventListener("pageshow", (e) => {
-        if (e.persisted) setIsbn(host.currentIsbn());
-    });
-
-    // ---- The current lookup ----------------------------------------------
+    // ---- Queries -----------------------------------------------------------
 
     type Query = { isbn: string } | { title: string; author: string };
-    let query: Query | null = null;
-    // This lookup's: sources asked, sources kept, and what the others said.
-    let tried = new Set<Source>();
-    let keptNow = new Set<Source>();
-    let notes: string[] = [];
-    let busy = false;
 
-    // ---- Answers: kept in the form, or waiting in the dialog --------------
-    //
-    // A new answer waits in the dialog. Keeping it (Pick fields, Accept all)
-    // puts its pills under the fields, replacing that source's earlier
-    // answer; rejecting it (Reject, ✕, Esc, a click outside) leaves the form
-    // as it was, earlier answers included.
+    /** The ISBN in the form, if it's a whole one. */
+    const formIsbn = (): string => {
+        const isbn = host.currentIsbn();
+        return isbnDigits(isbn).length === 13 ? isbn : "";
+    };
+    const byTitle = (): Query | null => {
+        const { title, author } = host.titleAndAuthor();
+        return title ? { title, author } : null;
+    };
+    /** The best query: the ISBN (one edition, the likeliest match), else title and author. */
+    const bestQuery = (): Query | null => {
+        const isbn = formIsbn();
+        return isbn ? { isbn } : byTitle();
+    };
+    const describe = (q: Query): string =>
+        "isbn" in q ? `ISBN ${q.isbn}` : `“${q.title}”${q.author ? ` by ${q.author}` : ""}`;
 
-    interface Answer {
+    // ---- Matches -------------------------------------------------------------
+
+    interface Match {
+        key: string;
         source: Source;
         meta: MetaSource;
         cover: string;
-    }
-    /** Answers in the form, by source; they outlive a new lookup, as their pills do. */
-    const kept = new Map<Source, Answer>();
-    /** The answer in the dialog that hasn't been kept or rejected. */
-    let pending: Answer | null = null;
-    /** The answer the dialog shows (pending, or a kept one to compare again). */
-    let shown: Answer | null = null;
-
-    const rejectBtn = maybeId("lookup-reject", HTMLButtonElement);
-
-    function openDialog(answer: Answer, isNew: boolean): void {
-        shown = answer;
-        pending = isNew ? answer : null;
-        if (rejectBtn) rejectBtn.hidden = !isNew;
-        const title = maybeId("lookup-title");
-        if (title) title.textContent = `${answer.meta.Format} vs current metadata`;
-        maybeId("lookup-body")?.replaceChildren(...host.preview(answer.meta));
-        if (!dialog.open) dialog.showModal();
+        /** Its pills' name while it's a source in the form ("Open Library 2"); null when not. */
+        label: string | null;
     }
 
-    function keep(answer: Answer): void {
-        pending = null;
-        if (kept.get(answer.source) === answer) return;
-        host.addSource(answer.meta);
-        kept.set(answer.source, answer);
-        keptNow.add(answer.source);
-        if (answer.cover) {
-            document.dispatchEvent(new CustomEvent<CoverCandidate[]>("cf:cover-candidates", { detail: [{ source: answer.source, url: answer.cover }] }));
+    /** What the list shows: the ticked matches first (they outlive a new search), then the last search's. */
+    let matches: Match[] = [];
+    const picked = (): Match[] => matches.filter((m) => m.label);
+
+    const matchKey = (source: Source, meta: MetaSource): string => {
+        const id = meta.Identifiers?.find((i) => ["olid", "google", "isbn"].includes(i.Scheme.toLowerCase()));
+        return `${source}:${id ? `${id.Scheme}:${id.Value}` : `${meta.Title}\0${meta.Creators?.join(",") ?? ""}`}`.toLowerCase();
+    };
+
+    /** The lowest free name for a source: "Open Library", then "Open Library 2", … */
+    function freeLabel(source: Source): string {
+        const taken = new Set(picked().map((m) => m.label));
+        for (let n = 1; ; n++) {
+            const label = n === 1 ? SOURCE_NAMES[source] : `${SOURCE_NAMES[source]} ${n}`;
+            if (!taken.has(label)) return label;
         }
-        renderBar();
     }
 
-    maybeId("lookup-keep", HTMLButtonElement)?.addEventListener("click", () => {
-        if (shown) keep(shown);
-        dialog.close();
-    });
-    maybeId("lookup-accept", HTMLButtonElement)?.addEventListener("click", () => {
-        if (!shown) return;
-        keep(shown);
-        dialog.close();
-        host.acceptAll(shown.meta);
-    });
-    rejectBtn?.addEventListener("click", () => dialog.close());
-    closeOnBackdropClick(dialog);
-    // However it closed, an answer that wasn't kept is rejected.
-    dialog.addEventListener("close", () => {
-        if (!pending) return;
-        notes.push(`${SOURCE_NAMES[pending.source]}: rejected`);
-        pending = null;
-        renderBar();
-    });
+    const asSource = (m: Match): MetaSource => ({ ...m.meta, Format: m.label ?? SOURCE_NAMES[m.source], External: true });
 
-    // ---- Asking the sources ------------------------------------------------
-
-    /** Asks one source for its answer. */
-    async function ask(source: Source): Promise<Answer | null> {
-        if (!query) return null;
-        tried.add(source);
-        const r = await api<LookupResult>("GET", `/metadata/lookup?${new URLSearchParams({ source, ...query })}`);
-        if (!r.option) {
-            notes.push(`${SOURCE_NAMES[source]}: ${r.error || "no match"}`);
-            return null;
-        }
-        return { source, meta: { ...r.option, External: true }, cover: r.cover ?? "" };
+    /** Tells the cover dialog about the ticked matches' covers. */
+    function announceCovers(): void {
+        const covers = picked().flatMap((m) => (m.cover ? [{ source: m.label ?? "", url: m.cover }] : []));
+        document.dispatchEvent(new CustomEvent<CoverCandidate[]>("cf:cover-candidates", { detail: covers }));
     }
 
-    /** Shows a new answer in the dialog. */
-    function offer(answer: Answer): void {
-        renderBar(`Found on ${SOURCE_NAMES[answer.source]}.`);
-        openDialog(answer, true);
+    /** Ticks a match: its values become pills under each field. */
+    function pick(m: Match): boolean {
+        if (m.label) return true;
+        if (picked().length >= MAX_PICKS) return false;
+        m.label = freeLabel(m.source);
+        host.addSource(asSource(m));
+        announceCovers();
+        renderList();
+        return true;
     }
 
-    const names = (sources: Source[]): string => sources.map((s) => SOURCE_NAMES[s]).join(" and ");
-
-    /** How this lookup went and what's in the form, in words. */
-    function summary(): string {
-        const parts = notes.length ? [`${notes.join("; ")}.`] : [];
-        const now = [...kept.keys()].filter((s) => keptNow.has(s));
-        const earlier = [...kept.keys()].filter((s) => !keptNow.has(s));
-        if (now.length) parts.push(`Values from ${names(now)} are under each field.`);
-        if (earlier.length) parts.push(`Values from an earlier ${names(earlier)} lookup are still under each field.`);
-        if (kept.get("openlibrary")?.cover) parts.push("Open Library has a cover: click the book's cover, then Look up cover online.");
-        return parts.join(" ") || "No match.";
+    function unpick(m: Match): void {
+        if (!m.label) return;
+        host.removeSource(m.label);
+        m.label = null;
+        announceCovers();
+        renderList();
     }
 
-    /** Shows text (by default, the summary), with the sources still to try. */
-    function renderBar(text = summary(), isError = false): void {
-        bar.hidden = false;
-        barStatus.textContent = text;
-        barStatus.classList.toggle("error", isError);
+    // ---- The bar -----------------------------------------------------------
+
+    let busy = false;
+    let lastQuery: Query | null = null;
+    /** Sources asked for the last query, so "Try …" isn't offered twice. */
+    let asked = new Set<Source>();
+    /** What the last search found, in words; empty before the first. */
+    let found = "";
+
+    const say = (text: string, isError = false): void => {
+        status.textContent = text;
+        status.classList.toggle("error", isError);
+    };
+
+    /** Before a search: what Search would send. After: what was found. */
+    function renderStatus(): void {
+        if (busy) return;
+        if (found) return say(found);
+        const q = bestQuery();
+        say(q
+            ? `Fill in this book's details from Open Library: search by ${describe(q)}.`
+            : "Fill in this book's details from Open Library: add an ISBN or a title, then search.");
+    }
+
+    function renderActions(): void {
+        searchBtn.disabled = busy;
+        const q = bestQuery();
+        searchBtn.title = q ? `Sends ${describe(q)} to Open Library` : "Needs an ISBN or a title";
         const buttons: HTMLButtonElement[] = [];
-        for (const answer of kept.values()) {
-            const b = el("button", { type: "button", className: "meta-source-btn" }, `Compare ${SOURCE_NAMES[answer.source]}`);
-            b.addEventListener("click", () => openDialog(answer, false));
+        const add = (label: string, title: string, run: () => void): void => {
+            const b = el("button", { type: "button", className: "meta-source-btn", title, disabled: busy }, label);
+            b.addEventListener("click", run);
             buttons.push(b);
+        };
+        // Found by ISBN: other editions and books may be found by title.
+        const t = byTitle();
+        if (lastQuery && "isbn" in lastQuery && t) {
+            add("Search by title and author", `Sends ${describe(t)} to Open Library, for other editions`, () => search(t));
         }
-        const others: Source[] = [];
-        if (query && "isbn" in query) others.push("wikidata");
-        if (googleAllowed) others.push("google");
-        for (const source of others) {
-            if (tried.has(source)) continue;
-            const b = el("button", { type: "button", className: "meta-source-btn" }, `Try ${SOURCE_NAMES[source]}`);
-            b.title = source === "google"
-                ? "Sends the ISBN (or title and author) to Google. Google Books often has a description."
-                : "Sends the ISBN to Wikidata";
-            b.addEventListener("click", () => void run(async () => {
-                renderBar(`Asking ${SOURCE_NAMES[source]}…`);
-                const answer = await ask(source);
-                if (answer) offer(answer);
-                else renderBar();
-            }));
-            buttons.push(b);
+        if (googleAllowed && lastQuery && !asked.has("google")) {
+            const g = lastQuery;
+            add("Try Google Books", `Sends ${describe(g)} to Google. Google Books often has a description.`, () => void askGoogle(g));
         }
-        barActions.replaceChildren(...buttons);
+        more.replaceChildren(...buttons);
+    }
+
+    function renderList(): void {
+        const full = picked().length >= MAX_PICKS;
+        list.hidden = matches.length === 0;
+        list.replaceChildren(
+            ...matches.map((m) => {
+                const meta = m.meta;
+                const box = el("input", { type: "checkbox", checked: !!m.label, disabled: !m.label && full });
+                box.title = !m.label && full ? `Up to ${MAX_PICKS}: untick one first` : "Offer its values under each field";
+                box.addEventListener("change", () => {
+                    if (box.checked) box.checked = pick(m);
+                    else unpick(m);
+                });
+                const ids = (meta.Identifiers ?? []).map((i) => `${i.Scheme}: ${i.Value}`);
+                const details = [meta.Date.slice(0, 4), meta.Publisher, (meta.Languages ?? []).join(", "), ...ids].filter(Boolean).join(" · ");
+                const compare = el("button", { type: "button", className: "meta-source-btn", title: "Compare with the current metadata" }, "Compare");
+                compare.addEventListener("click", () => openDialog(m));
+                return el(
+                    "li",
+                    { className: `lookup-result${m.label ? " picked" : ""}` },
+                    el(
+                        "label",
+                        { className: "lookup-pick" },
+                        box,
+                        el(
+                            "span",
+                            { className: "lookup-result-text" },
+                            el("strong", {}, meta.Title || "(no title)"),
+                            meta.Creators?.length ? el("span", { className: "lookup-result-by" }, ` by ${meta.Creators.join(", ")}`) : "",
+                            details ? el("span", { className: "lookup-result-meta" }, details) : "",
+                        ),
+                    ),
+                    el("span", { className: "lookup-result-label" }, m.label ? `→ ${m.label}` : SOURCE_NAMES[m.source]),
+                    compare,
+                );
+            }),
+        );
+    }
+
+    const render = (): void => {
+        renderStatus();
+        renderActions();
+    };
+    // Before a search, the bar says what Search would send, as the form changes.
+    host.form.addEventListener("input", render);
+    host.form.addEventListener("click", () => requestAnimationFrame(render));
+
+    // ---- Asking ------------------------------------------------------------
+
+    async function ask(source: Source, q: Query): Promise<LookupResult> {
+        asked.add(source);
+        return api<LookupResult>("GET", `/metadata/lookup?${new URLSearchParams({ source, ...q })}`);
+    }
+
+    /** Puts a source's matches in the list, after the ticked ones; returns how many are new. */
+    function show(source: Source, r: LookupResult, { replace }: { replace: boolean }): number {
+        const keep = replace ? picked() : matches;
+        const have = new Set(keep.map((m) => m.key));
+        const fresh: Match[] = [];
+        for (const { option, cover } of r.matches ?? []) {
+            const key = matchKey(source, option);
+            if (have.has(key)) continue;
+            have.add(key);
+            fresh.push({ key, source, meta: option, cover: cover ?? "", label: null });
+        }
+        matches = [...keep, ...fresh];
+        renderList();
+        return (r.matches ?? []).length;
     }
 
     /** One lookup at a time; errors go to the bar. */
     async function run(work: () => Promise<void>): Promise<void> {
         if (busy) return;
         busy = true;
-        if (submitBtn) submitBtn.disabled = true;
+        renderActions();
         try {
             await work();
         } catch (err) {
-            renderBar(`Lookup failed: ${errorMessage(err)}`, true);
+            found = `Lookup failed: ${errorMessage(err)}`;
+            say(found, true);
         } finally {
             busy = false;
-            if (submitBtn) submitBtn.disabled = false;
+            renderActions();
         }
     }
 
-    /** Open Library, then Wikidata if Open Library doesn't know the ISBN. */
-    function lookUp(q: Query): void {
+    const tickHint = (n: number): string =>
+        n > 1 ? ` Tick up to ${MAX_PICKS} to offer their values under each field, or Compare one.` : " Tick it to offer its values under each field, or Compare it.";
+
+    /** Open Library by q; by title and author when an ISBN finds nothing. */
+    function search(q: Query): void {
         void run(async () => {
-            query = q;
-            tried = new Set();
-            keptNow = new Set();
-            notes = [];
-            renderBar("isbn" in q ? `Looking up ${q.isbn} on Open Library…` : `Searching Open Library for “${q.title}”…`);
-            let answer = await ask("openlibrary");
-            if (!answer && "isbn" in q) {
-                renderBar("Not on Open Library; asking Wikidata…");
-                answer = await ask("wikidata");
+            lastQuery = q;
+            asked = new Set();
+            say(`Searching Open Library for ${describe(q)}…`);
+            let r = await ask("openlibrary", q);
+            let notes = "";
+            if (!r.matches?.length && "isbn" in q) {
+                const t = byTitle();
+                notes = `Open Library doesn't know ISBN ${q.isbn}${r.error ? ` (${r.error})` : ""}.`;
+                if (t) {
+                    say(`${notes} Searching by ${describe(t)}…`);
+                    lastQuery = q = t;
+                    r = await ask("openlibrary", t);
+                    notes += " ";
+                }
             }
-            if (answer) offer(answer);
-            else renderBar();
+            const n = show("openlibrary", r, { replace: true });
+            if (n) {
+                found = `${notes}Open Library found ${n === 1 ? "a book" : `${n} books`} for ${describe(q)}.${tickHint(n)}`;
+            } else {
+                found = notes && !("isbn" in q) ? `${notes}No match for ${describe(q)} either.` : notes || `Open Library: ${r.error || `no match for ${describe(q)}`}.`;
+            }
+            say(found, !!r.error && !n);
         });
     }
 
-    lookupForm.addEventListener("submit", (e) => {
-        e.preventDefault();
-        const isbn = input.value.trim();
-        if (isbn) return lookUp({ isbn });
-        const { title, author } = host.titleAndAuthor();
-        if (title) return lookUp({ title, author });
-        renderBar("Enter an ISBN to look up.", true);
+    async function askGoogle(q: Query): Promise<void> {
+        await run(async () => {
+            say(`Asking Google Books for ${describe(q)}…`);
+            const r = await ask("google", q);
+            const n = show("google", r, { replace: false });
+            found = n ? `Google Books found ${describe(q)}; it's at the end of the list.` : `Google Books: ${r.error || "no match"}.`;
+            say(found, !!r.error && !n);
+        });
+    }
+
+    searchBtn.addEventListener("click", () => {
+        const q = bestQuery();
+        if (q) search(q);
+        else say("Add an ISBN or a title to search Open Library.", true);
     });
 
+    // ---- The dialog: one match vs the current metadata ----------------------
+
+    const keepBtn = maybeId("lookup-keep", HTMLButtonElement);
+    const acceptBtn = maybeId("lookup-accept", HTMLButtonElement);
+    let shown: Match | null = null;
+
+    function openDialog(m: Match): void {
+        shown = m;
+        const full = !m.label && picked().length >= MAX_PICKS;
+        if (keepBtn) keepBtn.hidden = !!m.label;
+        for (const b of [keepBtn, acceptBtn]) {
+            if (!b) continue;
+            b.disabled = full;
+            b.title = full ? `Up to ${MAX_PICKS} matches in the form: untick one first` : "";
+        }
+        const title = maybeId("lookup-title");
+        if (title) title.textContent = `${m.label ?? SOURCE_NAMES[m.source]} vs current metadata`;
+        maybeId("lookup-body")?.replaceChildren(...host.preview(asSource(m)));
+        if (!dialog.open) dialog.showModal();
+    }
+
+    keepBtn?.addEventListener("click", () => {
+        if (shown) pick(shown);
+        dialog.close();
+    });
+    acceptBtn?.addEventListener("click", () => {
+        if (!shown || !pick(shown)) return;
+        dialog.close();
+        host.acceptAll(asSource(shown));
+    });
+    closeOnBackdropClick(dialog);
+
+    render();
     return {
         lookUpIsbn(isbn) {
-            setIsbn(isbn);
-            lookUp({ isbn });
-        },
-        /** A found ISBN fills the box if it's empty. */
-        suggest(isbn) {
-            if (!input.value.trim()) setIsbn(isbn);
+            bar.scrollIntoView({ behavior: "smooth", block: "nearest" });
+            search({ isbn });
         },
     };
 }

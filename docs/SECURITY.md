@@ -78,7 +78,7 @@ EPUBs can contain scripts and arbitrary HTML. The server only ever sends the `.e
 
 ## Online lookups
 
-The metadata editor's **Look up** sends a book's ISBN (or its title and first author) to Open Library, then, if Open Library doesn't know it, to Wikidata. Google Books is asked only when an admin clicks **Try Google Books**. The cover dialog's **Look up cover online** sends the ISBN to Open Library too. That tells those sites a book is in your library.
+The metadata editor's **Search Open Library** sends a book's ISBN, or its title and first author, to Open Library (the title and author too when Open Library doesn't know the ISBN). Google Books is asked only when an admin clicks **Try Google Books**. The cover dialog's **Look up cover online** sends the ISBN to Open Library too. That tells those sites a book is in your library.
 
 - **Only on a click** by an admin, on a server with `-allow-writes`, one site at a time. Opening the editor, uploading, or finding ISBNs in a book's files sends nothing.
 - **Only the query** is sent, with a generic User-Agent. No account, library name or cookies.

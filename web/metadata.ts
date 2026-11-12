@@ -88,6 +88,14 @@ function sourceButton(meta: MetaSource, title: string): HTMLButtonElement {
   return btn;
 }
 
+/** A lookup source without values: adding it only removes that source's pills. */
+function emptyLookup(format: string): MetaSource {
+  return {
+    Format: format, FileName: "", Title: "", Creators: null, Description: "", Publisher: "", Date: "",
+    Languages: null, Subjects: null, Identifiers: null, External: true,
+  };
+}
+
 /** A newer answer from a lookup replaces that source's earlier pill. */
 function dropOldLookup(buttons: HTMLButtonElement[], meta: MetaSource): void {
   if (!meta.External) return;
@@ -560,6 +568,8 @@ function populateIdentifiers(form: HTMLFormElement, current: MetaSource | null, 
 /** The editor after loading: more sources can be added (from a lookup). */
 export interface MetadataForm {
   addSource: AddSource;
+  /** Take a lookup's pills (by its Format) away again. */
+  removeSource(format: string): void;
   useIsbn(isbn: string): void;
   /** What taking every value a lookup has would change, vs current. */
   preview(meta: MetaSource): HTMLElement[];
@@ -586,6 +596,8 @@ export function populateMetadataForm(form: HTMLFormElement, metas: MetaSource[],
   }
   return {
     addSource: (meta) => adders.forEach((add) => add(meta)),
+    // A lookup source with no values: each field drops that source's pill.
+    removeSource: (format) => adders.forEach((add) => add(emptyLookup(format))),
     useIsbn: (isbn) => identifiers?.useIsbn(isbn),
     preview: (meta) => renderChanges(computeChanges(current, withSource(collectValues(form), meta))),
     acceptAll: (meta) => {
@@ -839,6 +851,7 @@ export async function mountMetadataEditor(book: BookTarget, form: HTMLFormElemen
       }),
       useIsbn: editor.useIsbn,
       addSource: editor.addSource,
+      removeSource: editor.removeSource,
       preview: editor.preview,
       acceptAll: editor.acceptAll,
     });

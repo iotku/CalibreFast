@@ -6,7 +6,6 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"reflect"
-	"slices"
 	"strings"
 	"sync/atomic"
 	"testing"
@@ -24,7 +23,7 @@ type fakeLookupServers struct {
 
 func newFakeLookupServers(t *testing.T) *fakeLookupServers {
 	f := &fakeLookupServers{hits: map[string]*atomic.Int32{}}
-	for _, k := range []string{"edition", "work", "author", "search", "wikidata", "google"} {
+	for _, k := range []string{"edition", "work", "author", "search", "google"} {
 		f.hits[k] = &atomic.Int32{}
 	}
 	check := func(r *http.Request) {
@@ -76,9 +75,15 @@ func newFakeLookupServers(t *testing.T) *fakeLookupServers {
 			reply(w, `{"docs": []}`)
 			return
 		}
+		if r.URL.Query().Get("limit") != "5" {
+			t.Errorf("search limit %q, want 5", r.URL.Query().Get("limit"))
+		}
 		reply(w, `{"docs": [{"key": "/works/OL17348524W", "title": "The Go Programming Language",
 			"author_name": ["Alan A. A. Donovan", "Brian W. Kernighan"], "first_publish_year": 2015,
-			"publisher": ["Addison-Wesley", "Pearson"], "language": ["chi", "eng"], "subject": ["Programming"], "cover_i": 7427319}]}`)
+			"publisher": ["Addison-Wesley", "Pearson"], "language": ["chi", "eng"], "subject": ["Programming"], "cover_i": 7427319},
+			{"key": "/works/OL99W", "title": "Go Programming Language Workbook", "author_name": ["Someone Else"],
+			"language": ["eng"]},
+			{"key": "../../etc/passwd", "title": "Odd key"}]}`)
 	})
 	ol.HandleFunc("/b/id/7427319-L.jpg", func(w http.ResponseWriter, r *http.Request) {
 		check(r)
@@ -94,23 +99,6 @@ func newFakeLookupServers(t *testing.T) *fakeLookupServers {
 	})
 	olServer := httptest.NewServer(ol)
 	t.Cleanup(olServer.Close)
-
-	wd := http.NewServeMux()
-	wd.HandleFunc("/sparql", func(w http.ResponseWriter, r *http.Request) {
-		check(r)
-		f.hits["wikidata"].Add(1)
-		q := r.URL.Query().Get("query")
-		switch {
-		case strings.Contains(q, `"978-0-13-419044-0"`) && strings.Contains(q, "wdt:P212"): // found by its hyphenated ISBN
-			reply(w, `{"results": {"bindings": [{"item": {"value": "http://www.wikidata.org/entity/Q1"}, "work": {"value": "http://www.wikidata.org/entity/Q2"}}]}}`)
-		case strings.Contains(q, "wd:Q1 wdt:P1476") && strings.Contains(q, "wd:Q2 wdt:P1476"):
-			reply(w, wikidataValuesFixture)
-		default:
-			reply(w, `{"results": {"bindings": []}}`)
-		}
-	})
-	wdServer := httptest.NewServer(wd)
-	t.Cleanup(wdServer.Close)
 
 	gb := http.NewServeMux()
 	gb.HandleFunc("/volumes", func(w http.ResponseWriter, r *http.Request) {
@@ -134,16 +122,27 @@ func newFakeLookupServers(t *testing.T) *fakeLookupServers {
 		client:      &http.Client{Timeout: 5 * time.Second},
 		openLibrary: olServer.URL,
 		olCovers:    olServer.URL,
-		wikidata:    wdServer.URL + "/sparql",
 		googleBooks: gbServer.URL,
 		cache:       newLookupCache(time.Hour, 100),
 		limits: map[string]*serviceLimit{
 			openLibraryName: newServiceLimit(100, 100, 1000),
-			wikidataName:    newServiceLimit(100, 100, 1000),
 			googleBooksName: newServiceLimit(100, 100, 1000),
 		},
 	}
 	return f
+}
+
+// only is a result's one match, or nil.
+func only(t *testing.T, res lookupResult) *lookupMatch {
+	t.Helper()
+	switch len(res.Matches) {
+	case 0:
+		return nil
+	case 1:
+		return &res.Matches[0]
+	}
+	t.Fatalf("%d matches, want one: %+v", len(res.Matches), res)
+	return nil
 }
 
 func TestLookupByISBN(t *testing.T) {
@@ -159,14 +158,15 @@ func TestLookupByISBN(t *testing.T) {
 		Subjects:    []string{"Go (Computer program language)", "Programming"},
 		Identifiers: []opfIdentifier{{Scheme: "isbn", Value: "9780134190440"}, {Scheme: "olid", Value: "OL25925901M"}},
 	}
-	if ol.Source != "Open Library" || ol.Error != "" || ol.Option == nil || ol.Option.Format != "Open Library" {
+	m := only(t, ol)
+	if ol.Source != "Open Library" || ol.Error != "" || m == nil || m.Option.Format != "Open Library" {
 		t.Fatalf("Open Library: %+v", ol)
 	}
-	if !reflect.DeepEqual(ol.Option.OPFMetadata, want) {
-		t.Errorf("Open Library option:\n got  %+v\n want %+v", ol.Option.OPFMetadata, want)
+	if !reflect.DeepEqual(m.Option.OPFMetadata, want) {
+		t.Errorf("Open Library option:\n got  %+v\n want %+v", m.Option.OPFMetadata, want)
 	}
-	if ol.Cover != "/metadata/lookup/cover?src=openlibrary&id=7427319" {
-		t.Errorf("Open Library cover: %q", ol.Cover)
+	if m.Cover != "/metadata/lookup/cover?src=openlibrary&id=7427319" {
+		t.Errorf("Open Library cover: %q", m.Cover)
 	}
 	if n := f.badRequests.Load(); n != 0 {
 		t.Errorf("%d requests without the generic User-Agent or with cookies", n)
@@ -185,7 +185,7 @@ func TestLookupByISBN(t *testing.T) {
 	}
 
 	// No match is an answer too.
-	if res := f.lookup.lookup(context.Background(), openLibraryName, lookupQuery{ISBN: "9780306406157"}); res.Option != nil || res.Error != "" {
+	if res := f.lookup.lookup(context.Background(), openLibraryName, lookupQuery{ISBN: "9780306406157"}); len(res.Matches) != 0 || res.Error != "" {
 		t.Errorf("404 should be no match: %+v", res)
 	}
 }
@@ -196,7 +196,7 @@ func TestLookupRateLimits(t *testing.T) {
 
 	// A 429 pauses lookups for its Retry-After, and isn't cached.
 	f.status.Store(http.StatusTooManyRequests)
-	if res := f.lookup.lookup(context.Background(), openLibraryName, q); res.Option != nil || !strings.Contains(res.Error, "30s") {
+	if res := f.lookup.lookup(context.Background(), openLibraryName, q); len(res.Matches) != 0 || !strings.Contains(res.Error, "30s") {
 		t.Fatalf("429: %+v", res)
 	}
 	f.status.Store(0)
@@ -204,7 +204,7 @@ func TestLookupRateLimits(t *testing.T) {
 		t.Errorf("while paused, Open Library was asked anyway: %+v", res)
 	}
 	f.lookup.limits[openLibraryName].pausedTil = time.Time{}
-	if res := f.lookup.lookup(context.Background(), openLibraryName, q); res.Option == nil {
+	if res := f.lookup.lookup(context.Background(), openLibraryName, q); len(res.Matches) != 1 {
 		t.Errorf("after the pause: %+v", res)
 	}
 
@@ -240,10 +240,10 @@ func TestLookupRateLimits(t *testing.T) {
 func TestLookupByTitle(t *testing.T) {
 	f := newFakeLookupServers(t)
 	res := f.lookup.lookup(context.Background(), openLibraryName, lookupQuery{Title: "the go programming language", Author: "Donovan"})
-	ol := res.Option
-	if ol == nil {
-		t.Fatalf("Open Library search: %+v", res)
+	if len(res.Matches) != 3 {
+		t.Fatalf("Open Library search: %d matches, want 3: %+v", len(res.Matches), res)
 	}
+	ol := res.Matches[0].Option
 	want := OPFMetadata{
 		Title:       "The Go Programming Language",
 		Creators:    []string{"Alan A. A. Donovan", "Brian W. Kernighan"},
@@ -254,8 +254,28 @@ func TestLookupByTitle(t *testing.T) {
 		Subjects:    []string{"Programming"},
 		Identifiers: []opfIdentifier{{Scheme: "olid", Value: "OL17348524W"}},
 	}
-	if !reflect.DeepEqual(ol.OPFMetadata, want) {
+	if !reflect.DeepEqual(ol.OPFMetadata, want) || ol.Format != "Open Library" {
 		t.Errorf("search option:\n got  %+v\n want %+v", ol.OPFMetadata, want)
+	}
+	if c := res.Matches[0].Cover; c != "/metadata/lookup/cover?src=openlibrary&id=7427319" {
+		t.Errorf("first match's cover: %q", c)
+	}
+	// The others in Open Library's order; a work that couldn't be fetched
+	// (or has a bad key) still offers the search's values.
+	second, third := res.Matches[1], res.Matches[2]
+	if second.Option.Title != "Go Programming Language Workbook" || second.Cover != "" ||
+		!reflect.DeepEqual(second.Option.Languages, []string{"eng"}) || second.Option.Description != "" ||
+		!reflect.DeepEqual(second.Option.Identifiers, []opfIdentifier{{Scheme: "olid", Value: "OL99W"}}) {
+		t.Errorf("second match: %+v", second.Option)
+	}
+	if third.Option.Title != "Odd key" || third.Option.Identifiers != nil {
+		t.Errorf("third match: %+v", third.Option)
+	}
+	if n := f.hits["work"].Load(); n != 1 { // OL99W is a 404
+		t.Errorf("fetched %d works, want 1 (bad keys are skipped)", n)
+	}
+	if n := f.badRequests.Load(); n != 0 {
+		t.Errorf("%d requests without the generic User-Agent", n)
 	}
 }
 
@@ -297,20 +317,17 @@ func TestLookupHandler(t *testing.T) {
 	}
 	rec := get("isbn=0-13-419044-0") // ISBN-10, looked up as its ISBN-13
 	var res lookupResult
-	if rec.Code != 200 || json.Unmarshal(rec.Body.Bytes(), &res) != nil || res.Source != "Open Library" || res.Option == nil {
+	if rec.Code != 200 || json.Unmarshal(rec.Body.Bytes(), &res) != nil || res.Source != "Open Library" || len(res.Matches) != 1 {
 		t.Fatalf("lookup: %d %s", rec.Code, rec.Body)
 	}
 	// Only Open Library was asked: the others only when the editor asks.
-	if w, g := f.hits["wikidata"].Load(), f.hits["google"].Load(); w != 0 || g != 0 {
-		t.Errorf("other sources asked: wikidata %d, google %d", w, g)
-	}
-	if rec := get("source=wikidata&isbn=9780134190440"); rec.Code != 200 || !strings.Contains(rec.Body.String(), `"Wikidata"`) {
-		t.Errorf("wikidata: %d %s", rec.Code, rec.Body)
+	if g := f.hits["google"].Load(); g != 0 {
+		t.Errorf("Google Books asked: %d", g)
 	}
 	if rec := get("source=google&isbn=9780134190440"); rec.Code != 200 || !strings.Contains(rec.Body.String(), "authoritative") {
 		t.Errorf("google: %d %s", rec.Code, rec.Body)
 	}
-	for _, q := range []string{"isbn=9780134190441", "", "author=Donovan", "source=wikidata&title=Go", "source=elsewhere&isbn=9780134190440"} {
+	for _, q := range []string{"isbn=9780134190441", "", "author=Donovan", "source=wikidata&isbn=9780134190440", "source=elsewhere&isbn=9780134190440"} {
 		if rec := get(q); rec.Code != http.StatusBadRequest {
 			t.Errorf("%q: got %d, want 400", q, rec.Code)
 		}
@@ -361,75 +378,13 @@ func TestLookupHelpers(t *testing.T) {
 	}
 }
 
-// wikidataValuesFixture answers wikidataValuesQuery for an edition (Q1) of a
-// work (Q2): authors are on the work, in P1545 order; labels come in English
-// and multilingual.
-const wikidataValuesFixture = `{"results": {"bindings": [
-	{"from": {"value": "Q1"}, "kind": {"value": "label"}, "value": {"value": "The Go Programming Language", "xml:lang": "mul"}},
-	{"from": {"value": "Q1"}, "kind": {"value": "title"}, "value": {"value": "The Go Programming Language", "xml:lang": "en"}},
-	{"from": {"value": "Q1"}, "kind": {"value": "date"}, "value": {"value": "2015-10-26T00:00:00Z"}},
-	{"from": {"value": "Q2"}, "kind": {"value": "date"}, "value": {"value": "2015-01-01T00:00:00Z"}},
-	{"from": {"value": "Q1"}, "kind": {"value": "publisher"}, "ref": {"value": "http://www.wikidata.org/entity/Q3"}, "value": {"value": "Addison-Wesley", "xml:lang": "en"}},
-	{"from": {"value": "Q1"}, "kind": {"value": "language"}, "ref": {"value": "http://www.wikidata.org/entity/Q4"}, "value": {"value": "en"}},
-	{"from": {"value": "Q1"}, "kind": {"value": "language"}, "ref": {"value": "http://www.wikidata.org/entity/Q4"}, "value": {"value": "eng"}},
-	{"from": {"value": "Q2"}, "kind": {"value": "author"}, "ref": {"value": "http://www.wikidata.org/entity/Q6"}, "value": {"value": "Brian Kernighan", "xml:lang": "en"}, "ord": {"value": "2"}},
-	{"from": {"value": "Q2"}, "kind": {"value": "author"}, "ref": {"value": "http://www.wikidata.org/entity/Q5"}, "value": {"value": "Alan Donovan", "xml:lang": "mul"}, "ord": {"value": "1"}},
-	{"from": {"value": "Q2"}, "kind": {"value": "author"}, "ref": {"value": "http://www.wikidata.org/entity/Q5"}, "value": {"value": "Alan A. A. Donovan", "xml:lang": "en"}, "ord": {"value": "1"}},
-	{"from": {"value": "Q2"}, "kind": {"value": "subject"}, "ref": {"value": "http://www.wikidata.org/entity/Q7"}, "value": {"value": "Go", "xml:lang": "en"}},
-	{"from": {"value": "Q1"}, "kind": {"value": "subject"}, "ref": {"value": "http://www.wikidata.org/entity/Q8"}, "value": {"value": "textbook", "xml:lang": "en"}},
-	{"from": {"value": "Q1"}, "kind": {"value": "subject"}, "ref": {"value": "http://www.wikidata.org/entity/Q9"}, "value": {"value": " GO ", "xml:lang": "en"}}
-]}}`
-
-func TestWikidataLookup(t *testing.T) {
-	f := newFakeLookupServers(t)
-	res := f.lookup.lookup(context.Background(), wikidataName, lookupQuery{ISBN: "9780134190440"})
-	want := OPFMetadata{
-		Title:       "The Go Programming Language",
-		Creators:    []string{"Alan A. A. Donovan", "Brian Kernighan"},
-		Publisher:   "Addison-Wesley",
-		Date:        "2015-10-26", // the edition's, not the work's
-		Languages:   []string{"eng"},
-		Subjects:    []string{"Go", "textbook"},
-		Identifiers: []opfIdentifier{{Scheme: "isbn", Value: "9780134190440"}, {Scheme: "wikidata", Value: "Q1"}},
-	}
-	if res.Option == nil || res.Option.Format != "Wikidata" {
-		t.Fatalf("Wikidata: %+v", res)
-	}
-	if !reflect.DeepEqual(res.Option.OPFMetadata, want) {
-		t.Errorf("Wikidata option:\n got  %+v\n want %+v", res.Option.OPFMetadata, want)
-	}
-	if res := f.lookup.lookup(context.Background(), wikidataName, lookupQuery{ISBN: "9780306406157"}); res.Option != nil || res.Error != "" {
-		t.Errorf("unknown ISBN should be no match: %+v", res)
-	}
-	if n := f.badRequests.Load(); n != 0 {
-		t.Errorf("%d requests without the generic User-Agent", n)
-	}
-}
-
-func TestISBNHyphenations(t *testing.T) {
-	got := isbnHyphenations("9780134190440")
-	for _, want := range []string{"9780134190440", "978-0-13-419044-0", "0134190440", "0-13-419044-0", "978-0134-19-044-0"} {
-		if !slices.Contains(got, want) {
-			t.Errorf("missing %q", want)
-		}
-	}
-	if len(got) > 60 {
-		t.Errorf("%d variants: too many for one query", len(got))
-	}
-	if x := isbnHyphenations("9780804429573"); !slices.Contains(x, "0-8044-2957-X") {
-		t.Errorf("ISBN-10 with X missing: %q", x)
-	}
-	if n := isbnHyphenations("9791090636071"); slices.ContainsFunc(n, func(s string) bool { return len(strings.ReplaceAll(s, "-", "")) == 10 }) {
-		t.Error("979 ISBNs have no ISBN-10")
-	}
-}
-
 func TestGoogleBooksLookup(t *testing.T) {
 	f := newFakeLookupServers(t)
 	res := f.lookup.lookup(context.Background(), googleBooksName, lookupQuery{ISBN: "9780134190440"})
-	if res.Option == nil || res.Option.Description != "<p>The <b>authoritative</b> resource.</p>" || res.Cover != "" ||
-		!reflect.DeepEqual(res.Option.Subjects, []string{"Computers", "Programming Languages"}) ||
-		!reflect.DeepEqual(res.Option.Identifiers, []opfIdentifier{{Scheme: "isbn", Value: "9780134190440"}, {Scheme: "google", Value: "SJHvCgAAQBAJ"}}) {
-		t.Errorf("Google Books: %+v", res.Option)
+	m := only(t, res)
+	if m == nil || m.Option.Format != "Google Books" || m.Option.Description != "<p>The <b>authoritative</b> resource.</p>" || m.Cover != "" ||
+		!reflect.DeepEqual(m.Option.Subjects, []string{"Computers", "Programming Languages"}) ||
+		!reflect.DeepEqual(m.Option.Identifiers, []opfIdentifier{{Scheme: "isbn", Value: "9780134190440"}, {Scheme: "google", Value: "SJHvCgAAQBAJ"}}) {
+		t.Fatalf("Google Books: %+v", res)
 	}
 }

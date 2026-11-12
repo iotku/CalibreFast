@@ -84,11 +84,18 @@ export interface IsbnResponse {
 }
 
 /** Open Library's answer from /metadata/lookup (Go: lookupResult in lookup.go). */
-export interface LookupResult {
-    source: string;
-    option?: MetaSource;
+/** One book a lookup found (Go: lookupMatch in lookup.go). */
+export interface LookupMatch {
+    option: MetaSource;
     /** Same-origin URL of its cover. */
     cover?: string;
+}
+
+/** A source's answer (Go: lookupResult in lookup.go). */
+export interface LookupResult {
+    source: string;
+    /** Best first; none: no match, or an error. */
+    matches?: LookupMatch[];
     error?: string;
 }
 
