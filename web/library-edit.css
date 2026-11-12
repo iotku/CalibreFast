@@ -3,6 +3,7 @@
 
 .lt-body {
     overflow: hidden;
+    padding: 0; /* .lt-main has the page's own spacing */
 }
 
 .lt-main {
@@ -114,6 +115,9 @@
     flex: 1;
     min-height: 0;
     overflow: auto;
+    /* Sideways swipes scroll the table, not the page or browser history */
+    touch-action: pan-x pan-y;
+    overscroll-behavior-x: contain;
     border: 1px solid var(--border-light);
     border-radius: var(--radius-small);
     background: var(--bg-secondary);
@@ -703,4 +707,25 @@
 
 .lt-expanded .lt-cell-edit {
     margin: 0;
+}
+
+/* Below the width the whole table fits in (its min-width plus margins),
+   it runs edge to edge: no side margins, borders or corners, so a phone
+   shows as much of it as it can and scrolls sideways for the rest. The
+   toolbar keeps a little room so its boxes don't touch the edges. */
+@media (max-width: 1679px) {
+    .lt-main {
+        padding-left: 0;
+        padding-right: 0;
+    }
+
+    .lt-toolbar {
+        padding: 0 8px;
+    }
+
+    .lt-scroll {
+        border-left: 0;
+        border-right: 0;
+        border-radius: 0;
+    }
 }
