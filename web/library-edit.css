@@ -495,3 +495,24 @@
     z-index: 3;
     background: var(--bg-elevated);
 }
+
+/* A column's filter box and its empty/default tick box */
+.lt-filter-cell {
+    display: flex;
+    align-items: center;
+    gap: 4px;
+}
+
+.lt-table .lt-filter-cell .lt-filter {
+    flex: 1;
+    min-width: 0;
+}
+
+.lt-blank {
+    flex: none;
+    margin: 0;
+    width: 14px;
+    height: 14px;
+    cursor: pointer;
+    accent-color: var(--status-reading);
+}

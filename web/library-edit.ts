@@ -35,18 +35,26 @@ interface Column {
     /** Its text, for searching and sorting. */
     text(b: TableBook): string;
     items?(b: TableBook): string[];
+    /** Empty, or the value a book gets when nothing was known ("Unknown", "und"): its checkbox filter. */
+    blank(b: TableBook): boolean;
 }
 
+const unknown = (s: string): boolean => !s.trim() || s.trim().toLowerCase() === "unknown";
+
 const COLUMNS: Column[] = [
-    { key: "title", label: "Title", edit: "title", text: (b) => b.title },
-    { key: "authors", label: "Authors", edit: "authors", text: (b) => b.authors },
-    { key: "series", label: "Series", text: (b) => (b.series ? `${b.series} [${b.series_index}]` : "") },
-    { key: "publisher", label: "Publisher", edit: "publisher", text: (b) => b.publisher },
-    { key: "pubdate", label: "Published", edit: "date", text: (b) => b.pubdate },
-    { key: "languages", label: "Languages", list: true, edit: "languages", text: (b) => b.languages.join(", "), items: (b) => b.languages },
-    { key: "tags", label: "Tags", list: true, edit: "tags", text: (b) => b.tags.join(", "), items: (b) => b.tags },
-    { key: "formats", label: "Formats", list: true, text: (b) => b.formats.join(", "), items: (b) => b.formats },
-    { key: "added", label: "Added", text: (b) => b.added },
+    { key: "title", label: "Title", edit: "title", text: (b) => b.title, blank: (b) => unknown(b.title) },
+    { key: "authors", label: "Authors", edit: "authors", text: (b) => b.authors, blank: (b) => b.authors.split("&").every(unknown) },
+    { key: "series", label: "Series", text: (b) => (b.series ? `${b.series} [${b.series_index}]` : ""), blank: (b) => !b.series.trim() },
+    { key: "publisher", label: "Publisher", edit: "publisher", text: (b) => b.publisher, blank: (b) => unknown(b.publisher) },
+    // "" is Calibre's "no date" (year 101) too: tableDate in bulk_edit.go.
+    { key: "pubdate", label: "Published", edit: "date", text: (b) => b.pubdate, blank: (b) => !b.pubdate },
+    {
+        key: "languages", label: "Languages", list: true, edit: "languages", text: (b) => b.languages.join(", "), items: (b) => b.languages,
+        blank: (b) => b.languages.every((l) => l.trim().toLowerCase() === "und"),
+    },
+    { key: "tags", label: "Tags", list: true, edit: "tags", text: (b) => b.tags.join(", "), items: (b) => b.tags, blank: (b) => b.tags.length === 0 },
+    { key: "formats", label: "Formats", list: true, text: (b) => b.formats.join(", "), items: (b) => b.formats, blank: (b) => b.formats.length === 0 },
+    { key: "added", label: "Added", text: (b) => b.added, blank: (b) => !b.added },
 ];
 
 /** Lower case, without accents: what searches compare. */
@@ -146,6 +154,9 @@ let shown: Row[] = [];
 const selected = new Set<string>();
 let lastClicked: string | null = null; // for shift-click ranges
 const filters: Partial<Record<ColKey, string>> = {};
+/** Columns whose checkbox is ticked: only books with nothing (or the default) there. */
+const blankOnly = new Set<ColKey>();
+const blankBoxes = new Map<ColKey, HTMLInputElement>();
 let search = "";
 let dupMode = ""; // "", a dupKeyOf mode, or MARKED
 /** dupMode for the groups marked as not duplicates (Go: not_duplicates.go). */
@@ -226,7 +237,20 @@ function buildHead(): void {
             scheduleRefresh();
         });
         filterInputs.set(c.key, input);
-        boxes.append(el("span", { className: `lt-cell lt-col-${c.key}` }, input));
+        const blank = el("input", {
+            type: "checkbox",
+            className: "lt-blank",
+            checked: blankOnly.has(c.key),
+            title: `Only books with no ${c.label.toLowerCase()}, or the default one (Unknown, und)`,
+            ariaLabel: `Only books with an empty or default ${c.label.toLowerCase()}`,
+        });
+        blank.addEventListener("change", () => {
+            if (blank.checked) blankOnly.add(c.key);
+            else blankOnly.delete(c.key);
+            refresh();
+        });
+        blankBoxes.set(c.key, blank);
+        boxes.append(el("span", { className: `lt-cell lt-col-${c.key} lt-filter-cell` }, input, blank));
     }
     titles.append(el("span", { className: "lt-cell lt-actions", role: "columnheader" }));
     boxes.append(el("span", { className: "lt-cell lt-actions" }));
@@ -278,6 +302,7 @@ function compare(a: Row, b: Row): number {
 function applyFilters(): void {
     const tests = COLUMNS.map((c) => [c, compileFilter(filters[c.key] ?? "")] as const).filter(([, t]) => t !== null) as [Column, Test][];
     const words = fold(search).split(/\s+/).filter(Boolean);
+    const blankCols = COLUMNS.filter((c) => blankOnly.has(c.key));
 
     let groups: Set<string> | null = null;
     if (dupMode === MARKED) {
@@ -309,6 +334,7 @@ function applyFilters(): void {
         if (groups && !groups.has(r.dupKey)) return false;
         for (const w of words) if (!r.all.includes(w)) return false;
         for (const [c, t] of tests) if (!t(r.hay[c.key], r.items[c.key])) return false;
+        for (const c of blankCols) if (!c.blank(r.b)) return false;
         return true;
     });
     shown.sort(compare);
@@ -815,7 +841,9 @@ byId("lt-clear").addEventListener("click", () => {
     for (const c of COLUMNS) {
         delete filters[c.key];
         filterInputs.get(c.key)!.value = "";
+        blankBoxes.get(c.key)!.checked = false;
     }
+    blankOnly.clear();
     search = searchInput.value = "";
     dupMode = dupSelect.value = "";
     onlySelected = onlySelectedBox.checked = false;
@@ -834,6 +862,7 @@ function saveView(): void {
     if (dupMode) q.set("dupes", dupMode);
     if (sortKey !== "title" || sortDesc) q.set("sort", `${sortDesc ? "-" : ""}${sortKey}`);
     for (const c of COLUMNS) if (filters[c.key]?.trim()) q.set(`f.${c.key}`, filters[c.key]!);
+    for (const c of COLUMNS) if (blankOnly.has(c.key)) q.set(`blank.${c.key}`, "1");
     const s = q.toString();
     history.replaceState(history.state, "", s ? `?${s}` : location.pathname);
 }
@@ -849,6 +878,7 @@ function loadView(): void {
     for (const c of COLUMNS) {
         const f = q.get(`f.${c.key}`);
         if (f) filters[c.key] = f;
+        if (q.get(`blank.${c.key}`)) blankOnly.add(c.key);
     }
     if (q.get("selected")) {
         // From the grid's "Edit in table".
