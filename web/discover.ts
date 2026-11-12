@@ -174,6 +174,19 @@ async function showStrip(start: number, push: boolean): Promise<void> {
     }
 }
 
+const PRELOAD_STRIPS = 2;
+
+/** The covers of the next PRELOAD_STRIPS strips, into the browser's cache. */
+async function preloadAhead(): Promise<void> {
+    if (!shuffleTotal || shuffling) return;
+    let at = shuffle.next;
+    for (let k = 0; k < PRELOAD_STRIPS; k++) {
+        const { books, end } = await stripFrom(at);
+        for (const b of books) preloadCover(coverUrl(b));
+        at = end;
+    }
+}
+
 function updateShuffleButtons(): void {
     const back = maybeId("shuffle-back", HTMLButtonElement);
     if (back) back.disabled = shuffling || shuffle.starts.length < 2;
@@ -185,9 +198,17 @@ function updateShuffleButtons(): void {
 async function shuffleRow(): Promise<void> {
     if (!shuffleTotal) return;
     shuffle = loadShuffle();
-    maybeId("shuffle-next")?.addEventListener("click", () => {
-        if (!shuffling) void showStrip(shuffle.next, true);
+    const nextBtn = maybeId("shuffle-next");
+    nextBtn?.addEventListener("click", () => {
+        if (!shuffling) void showStrip(shuffle.next, true).then(() => {
+            // Still on the button: get the strips after this one ready too.
+            if (nextBtn.matches(":hover, :focus-visible")) void preloadAhead();
+        });
     });
+    // About to shuffle: fetch the covers of the next two strips now, so they
+    // show at once when they come.
+    nextBtn?.addEventListener("pointerenter", () => void preloadAhead());
+    nextBtn?.addEventListener("focus", () => void preloadAhead());
     maybeId("shuffle-back")?.addEventListener("click", () => {
         if (shuffling || shuffle.starts.length < 2) return;
         shuffle.starts = shuffle.starts.slice(0, -1);
@@ -239,6 +260,41 @@ function onCoverSettled(e: Event): void {
     if (!(img instanceof HTMLImageElement) || !img.classList.contains("book-cover")) return;
     if (e.type === "load") loadedCovers.add(img.getAttribute("src") ?? "");
     if (coversInflight.delete(img)) pumpCovers();
+    drainPreloads();
+}
+
+/*
+ * Preloading: covers fetched before their cards exist (the next Shuffle
+ * strips), with the same URLs, so the cards find them in the browser's
+ * cache. They only use the download slots the page's own covers leave
+ * free, at low priority.
+ */
+const preloadQueue: string[] = [];
+const preloadSeen = new Set<string>();
+let preloading = 0;
+
+function preloadCover(url: string): void {
+    if (preloadSeen.has(url) || loadedCovers.has(url)) return;
+    preloadSeen.add(url);
+    preloadQueue.push(url);
+    drainPreloads();
+}
+
+function drainPreloads(): void {
+    while (preloadQueue.length && !coversPaused && preloading + coversInflight.size < maxCovers()) {
+        const url = preloadQueue.shift()!;
+        preloading++;
+        const img = new Image();
+        img.setAttribute("fetchpriority", "low");
+        const done = (ok: boolean): void => {
+            preloading--;
+            if (ok) loadedCovers.add(url);
+            drainPreloads();
+        };
+        img.onload = () => done(true);
+        img.onerror = () => done(false); // no cover: the card shows its title, as it would anyway
+        img.src = url;
+    }
 }
 document.addEventListener("load", onCoverSettled, true);
 document.addEventListener("error", onCoverSettled, true);
