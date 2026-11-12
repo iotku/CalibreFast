@@ -104,6 +104,21 @@ export function setupChrome(opts: ChromeOptions): Chrome {
         render();
     };
     const showBars = (): void => setBars(false);
+    // Bars the mouse brought out (the bars themselves hidden): put away, as by
+    // their handles. A click on the page or Escape does this rather than
+    // pinning them. True if there were any.
+    const stowPeeking = (): boolean => {
+        if (!barsHidden()) return false;
+        const out = bars.filter((b) => (peek.get(b) ?? 0) > 0);
+        for (const b of out) {
+            stopGoing(b);
+            // At the bar's edge: kept away until the pointer leaves it, as by the handle.
+            if (nearness(b, last.y, last.out) > 0) stowed.add(b);
+            peek.set(b, 0);
+        }
+        render();
+        return out.length > 0;
+    };
     // After a panel closes: hidden now, keyboard focus or not, and without the
     // usual linger (a bar the mouse is at stays out, as it would anyway).
     const barsAway = (): void => {
@@ -124,7 +139,8 @@ export function setupChrome(opts: ChromeOptions): Chrome {
     // With a mouse, a hidden bar slides and fades in as the pointer nears its
     // edge of the window, in step with how near it is. Each bar goes by its own
     // edge. One partway out goes back in step too; once all the way out, moving
-    // away doesn't pull it back: it lingers a moment, then goes by itself. With the pointer off the window altogether, both are out. A bar
+    // away doesn't pull it back: it lingers a moment (the barLinger setting),
+    // then goes by itself, or stays until put away. With the pointer off the window altogether, both are out. A bar
     // holds while it is in use (a typed-in field, the scrubber being dragged),
     // and a panel opened from a peeking bar keeps both out until it closes. The
     // handle on a bar's inner edge puts it away until the pointer has left that
@@ -136,7 +152,6 @@ export function setupChrome(opts: ChromeOptions): Chrome {
     const FULL = 4;
     const RAMP = 92;
     const HANDLE = 16; // px the handle hangs beyond a bar (web/reader.css), with a little slack
-    const LINGER = 250; // ms a bar stays after the pointer moves away
     const peek = new Map<HTMLElement, number>(bars.map((b) => [b, 0]));
     const going = new Map<HTMLElement, ReturnType<typeof setTimeout>>(); // lingering, then away
     const stowed = new Set<HTMLElement>(); // put away by the handle
@@ -188,7 +203,8 @@ export function setupChrome(opts: ChromeOptions): Chrome {
             if (n >= (peek.get(b) ?? 0) || peek.get(b) !== 1 || stowed.has(b)) {
                 stopGoing(b);
                 peek.set(b, n);
-            } else if (!going.has(b)) {
+            } else if (!going.has(b) && getSettings().barLinger > 0) {
+                // (0: it stays until hidden by hand.)
                 going.set(
                     b,
                     setTimeout(() => {
@@ -196,7 +212,7 @@ export function setupChrome(opts: ChromeOptions): Chrome {
                         // All the way unless the pointer is back at the bar.
                         peek.set(b, target(b) === 1 ? 1 : 0);
                         render();
-                    }, LINGER),
+                    }, getSettings().barLinger),
                 );
             }
         }
@@ -342,7 +358,7 @@ export function setupChrome(opts: ChromeOptions): Chrome {
     document.addEventListener("keydown", (e) => {
         if (modalOpen()) return; // Escape there closes the dialog, nothing else
         if (e.key === "Escape") {
-            if (!closePanels()) setBars(!barsHidden());
+            if (!closePanels() && !stowPeeking()) setBars(!barsHidden());
         } else if (e.key === "Tab" && barsHidden()) {
             showBars(); // the controls are in the bars
         }
@@ -404,7 +420,11 @@ export function setupChrome(opts: ChromeOptions): Chrome {
         barsHidden,
         showBars,
         hideBars,
-        toggleBars: () => (barsHidden() ? showBars() : hideBars()),
+        toggleBars: () => {
+            if (stowPeeking()) return;
+            if (barsHidden()) showBars();
+            else hideBars();
+        },
         pointerAt,
         closePanels,
         setChapter(text) {

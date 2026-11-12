@@ -1220,6 +1220,16 @@ body[data-margin="wide"] #reader-container {
     margin-top: 8px;
 }
 
+.r-mouse-only {
+    display: none;
+}
+
+@media (hover: hover) and (pointer: fine) {
+    .r-mouse-only {
+        display: block;
+    }
+}
+
 .r-indent {
     padding-left: 28px;
 }
