@@ -21,7 +21,7 @@ Every row has a **See all →** link to an existing full grid (`/me/reading`, `/
 Every visitor sees the same sections in the same order; there's no per-server or per-user choice of landing page. For anyone who isn't signed in, or has nothing tracked yet, the page doubles as an introduction to the app.
 
 **Introduction band** (top of the page, in place of Continue reading when there's nothing to continue):
-- The library at a glance: *48,211 books · 9,402 authors · 3,104 tags · 17 languages*. Counts come from the aggregate caches already in memory and are written into the HTML.
+- The library at a glance: *48,211 books · 9,402 authors · 3,104 tags · 17 languages*. Counts come from the aggregate caches already in memory and are written into the HTML. These are counts of what the visitor can already browse; the page never shows anything about accounts (how many users, who is reading what).
 - Search box, prominent (the same `/search`).
 - Short "browse by" links: Authors, Tags, Languages, Shelves, Latest, Shuffle.
 - Signed out: one line on what an account adds (*Track what you're reading on every device, keep a want-to-read list, get suggestions*), with **Sign in**, and **Create account** when registration is open. With `-public` but not `-public-read`, it also says reading needs an account.
@@ -371,7 +371,14 @@ The Discover "Continue reading" row switches from the device's guest list to `/a
 - Phase 5's first half (record ownership) fixes a leak that exists today, so it ships on its own ahead of Discover.
 - Scale and storage: 100k books as the target, and as far beyond as the design allows, with the library on slow spinning or network storage and CalibreFast on a local SSD. Page loads read nothing from the library; writes read back only what changed; unchanged restarts don't rescan.
 - One layout for everyone, no `-home` option. Discover is the landing page and introduces the app to signed-out visitors when the server is public.
+- **A private server volunteers nothing.** Without `-public`, signed-out visitors only ever see the sign-in page, which says nothing about the library or its users: no book or user counts, no covers, no featured shelves. The introduction band is for signed-in users there.
 
-## Open questions
+## Privacy checks
 
-- Should a private server's sign-in page (no `-public`) show the same library stats line, so the first thing a new user sees says what's there? It's the only page they can reach before signing in.
+Everything this plan adds stays behind the existing deny-by-default guard (`withAuth` in `auth.go`: without `-public`, only `isPublicPath` is reachable signed out). In particular:
+
+- **No new public paths.** `isPublicPath` is unchanged. `/pages/shuffle/*`, `/pages/discover/*` (tag rows, `featured.json`), `/shuffle`, `/latest`, `/api/books` and the Discover page itself all require sign-in on a private server, like `/pages/page1.json` today.
+- **Sign-in and registration pages** gain nothing from Discover: no stats, covers or shelf names.
+- **`/api/me`** (public path) keeps answering only about the caller. The guest-import endpoints are `requireUser`.
+- **No user counts anywhere**, public or not. `featured.json` and tag rows describe books, never who reads them; recommendations are computed per user and returned only to that user.
+- **Tests:** extend the existing guard tests (`guard_test.go`) with every new route. Signed out on a private server, each must answer 401 or redirect to `/login`, and the login page's HTML must contain no count or book title.
