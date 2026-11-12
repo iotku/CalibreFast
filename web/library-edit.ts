@@ -679,6 +679,7 @@ async function markNotDuplicates(uuids: string[]): Promise<void> {
     try {
         const set = await api<NotDuplicateSet>("POST", "/api/library/not-duplicates", { uuids });
         notDupSets.push(set);
+        changedHere++;
         say(`Marked ${plural(uuids.length, "book")} as not duplicates. Duplicates → Marked not duplicates lists them, to unmark.`, "ok");
         refresh();
     } catch (err) {
@@ -690,6 +691,7 @@ async function unmarkNotDuplicates(id: number): Promise<void> {
     try {
         await api("DELETE", `/api/library/not-duplicates/${id}`);
         notDupSets = notDupSets.filter((s) => s.id !== id);
+        changedHere++;
         say("Unmarked: they show in the duplicates view again.", "ok");
         refresh();
     } catch (err) {
@@ -717,6 +719,7 @@ byId("lt-remove").addEventListener("click", async () => {
     if (!(await deleteBooks(books))) return;
     const gone = new Set(books.map((b) => b.uuid));
     rows = rows.filter((r) => !gone.has(r.b.uuid));
+    changedHere++;
     selected.clear();
     say(`Removed ${plural(gone.size, "book")}. They're in the Recycling Bin.`, "ok");
     refresh();
@@ -734,6 +737,7 @@ async function sendEdit(uuids: string[], edit: BulkEdit): Promise<BulkResult> {
         const b = fresh.get(r.b.uuid);
         return b ? makeRow(b) : r;
     });
+    changedHere++;
     return res;
 }
 
@@ -1068,15 +1072,27 @@ function loaded(): void {
 // is being edited here.
 let reloading = false;
 let reloadedAt = 0;
+/**
+ * Counts the changes made on this page (marks, edits, removals). A reload
+ * that was under way when one landed may have been read before it was saved:
+ * applying it would undo the change on screen, so it's dropped and fetched again.
+ */
+let changedHere = 0;
 async function reloadRows(): Promise<void> {
     // Switching tabs fires both events: one fetch.
     if (document.visibilityState !== "visible" || reloading || editing || modalOpen() || rows.length === 0) return;
     if (Date.now() - reloadedAt < 2000) return;
     reloading = true;
     reloadedAt = Date.now();
+    const gen = changedHere;
+    let stale = false;
     try {
         const data = await api<TableData>("GET", "/api/library/table");
         if (editing || modalOpen()) return;
+        if (gen !== changedHere) {
+            stale = true;
+            return;
+        }
         const before = rows.length;
         rows = data.books.map(makeRow);
         notDupSets = data.not_duplicates;
@@ -1086,6 +1102,10 @@ async function reloadRows(): Promise<void> {
         /* keep what's shown */
     } finally {
         reloading = false;
+        if (stale) {
+            reloadedAt = 0;
+            void reloadRows();
+        }
     }
 }
 document.addEventListener("visibilitychange", () => void reloadRows());
@@ -1115,6 +1135,7 @@ byId("lt-unlisted-fix").addEventListener("click", async (e) => {
         const data = await api<TableData>("GET", "/api/library/table");
         rows = data.books.map(makeRow);
         notDupSets = data.not_duplicates;
+        changedHere++;
         loaded();
         const skipped = res.skipped.length ? ` ${plural(res.skipped.length, "format")} left alone: ${res.skipped.slice(0, 2).map((s) => s.error).join("; ")}` : "";
         say(`Added ${plural(res.formats, "format")} to metadata.db for ${plural(res.books, "book")}.${skipped}`, res.skipped.length ? "error" : "ok");
