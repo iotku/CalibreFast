@@ -63,7 +63,7 @@ That creates an empty library (`metadata.db` and all) in that folder. Point `-ba
 ```bash
 git clone https://github.com/iotku/CalibreFast.git
 cd CalibreFast
-go build .
+go build -tags sqlite_fts5 .
 
 # Create the first admin (prompts for a password, min. 10 characters)
 ./CalibreFast -create-user yourname -admin
@@ -71,6 +71,8 @@ go build .
 # Run
 ./CalibreFast -basedir /path/to/calibre/library -cachedir /path/to/cache
 ```
+
+`-tags sqlite_fts5` adds SQLite's full-text search module, which Calibre's `metadata.db` uses for annotations: without it, removing books from the library fails (the server warns at startup).
 
 Then open [http://localhost:8080](http://localhost:8080) and sign in. Add more users from **Account → Manage users**, or with `-create-user`. Running `-create-user` again for an existing name resets that user's password.
 
@@ -123,7 +125,7 @@ go tool -modfile=tools/go.mod tsgo -p tsconfig.json
 cd tools && go get -tool github.com/microsoft/typescript-go/cmd/tsgo@latest
 ```
 
-Then run `go generate` and `go test ./...` from the repository root. esbuild updates the same way: `cd tools && go get github.com/evanw/esbuild@latest`.
+Then run `go generate` and `go test -tags sqlite_fts5 ./...` from the repository root. esbuild updates the same way: `cd tools && go get github.com/evanw/esbuild@latest`.
 
 Editors: VS Code's TypeScript support reads `tsconfig.json` as-is. See [ARCHITECTURE.md](docs/ARCHITECTURE.md#frontend) for how the code is organised.
 

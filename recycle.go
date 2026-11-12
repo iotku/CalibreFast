@@ -189,6 +189,11 @@ func recycleBooks(uuids []string, by string) (*recycleBatch, error) {
 		return nil, errors.New("no books to remove")
 	}
 
+	// Calibre's triggers update its full-text tables on every removal.
+	if err := checkVirtualTables(context.Background(), calibreDB, "main"); err != nil {
+		return nil, err
+	}
+
 	now := time.Now()
 	batch.ID = newRecycleBatchID(now)
 	batch.DeletedAt = now.UTC().Format(time.RFC3339)
@@ -410,6 +415,39 @@ type bookTable struct {
 	cols []string
 }
 
+// buildWithFTS5 explains a build without SQLite's FTS5 module.
+const buildWithFTS5 = "CalibreFast was built without SQLite's FTS5 module, which Calibre's full-text tables (annotations_fts) need. Rebuild with: go build -tags sqlite_fts5 ."
+
+// checkVirtualTables opens each of a database's virtual tables (Calibre's
+// full-text search over annotations), as removing or restoring a book
+// writes to them through Calibre's triggers. It says what's missing rather
+// than failing halfway.
+func checkVirtualTables(ctx context.Context, q sqlQueryer, schema string) error {
+	rows, err := q.QueryContext(ctx, `SELECT name FROM `+quoteIdent(schema)+`.sqlite_master WHERE type = 'table' AND sql LIKE 'CREATE VIRTUAL%'`)
+	if err != nil {
+		return err
+	}
+	var names []string
+	for rows.Next() {
+		var n string
+		if rows.Scan(&n) == nil {
+			names = append(names, n)
+		}
+	}
+	rows.Close()
+	for _, n := range names {
+		r, err := q.QueryContext(ctx, `SELECT 1 FROM `+quoteIdent(schema)+`.`+quoteIdent(n)+` LIMIT 0`)
+		if err != nil {
+			if strings.Contains(err.Error(), "no such module: fts5") {
+				return errors.New(buildWithFTS5)
+			}
+			return fmt.Errorf("can't open Calibre's table %s: %w", n, err)
+		}
+		r.Close()
+	}
+	return nil
+}
+
 // tablesReferringToBooks lists the tables with a "book" column: Calibre's
 // links (authors, tags, …), comments, formats, identifiers, custom columns,
 // and whatever newer versions add. Virtual tables (full-text search) have
@@ -579,7 +617,12 @@ func restoreBookRows(ctx context.Context, bakPath, uuid string) (newID int64, er
 	if _, err := conn.ExecContext(ctx, `ATTACH DATABASE ? AS bak`, bakPath); err != nil {
 		return 0, fmt.Errorf("open the batch's metadata.db: %w", err)
 	}
-	defer func() { logErr(func() error { _, err := conn.ExecContext(ctx, `DETACH DATABASE bak`); return err }(), "detach batch database") }()
+	defer func() {
+		logErr(func() error { _, err := conn.ExecContext(ctx, `DETACH DATABASE bak`); return err }(), "detach batch database")
+	}()
+	if err := checkVirtualTables(ctx, conn, "main"); err != nil {
+		return 0, err
+	}
 
 	tx, err := conn.BeginTx(ctx, nil)
 	if err != nil {

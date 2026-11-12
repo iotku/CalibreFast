@@ -87,7 +87,6 @@ func count(t *testing.T, db *sql.DB, q string, args ...any) int {
 	return n
 }
 
-
 func TestRecycleAndRestore(t *testing.T) {
 	db := setupRecycleLibrary(t)
 	a := addRecycleTestBook(t, db, "Alpha", []string{"Only Alpha Author", "Shared Author"}, []string{"alpha-tag", "common"})
