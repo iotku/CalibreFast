@@ -363,6 +363,8 @@ interface IdentifierField {
   addSource: AddSource;
   /** Put an ISBN in the ISBN field; a different one there is crossed out (Undo). */
   useIsbn(isbn: string): void;
+  /** See IsbnToolsHost.adoptUnlabeledIsbn. */
+  adoptUnlabeledIsbn(isbn13s: string[]): string | null;
 }
 
 /** Compares identifiers for merging: an ISBN by its 13 digits. */
@@ -560,7 +562,32 @@ function populateIdentifiers(form: HTMLFormElement, current: MetaSource | null, 
       if (back.dataset["id"]) isbnInput.dataset["id"] = back.dataset["id"];
       back.remove();
     }
-    userChanged();
+    // As if typed: the lookup bar, the ISBN's search button and Apply follow.
+    isbnInput.dispatchEvent(new Event("input", { bubbles: true }));
+  }
+
+  /**
+   * The book's ISBN saved as an identifier without a scheme (a common
+   * mix-up): when it's one of isbn13s (found in the book's files) and the
+   * ISBN field is empty, it moves there, keeping its OPF id. Nothing is
+   * crossed out: the value stays, now labelled.
+   */
+  function adoptUnlabeledIsbn(isbn13s: string[]): string | null {
+    if (isbnInput.value.trim()) return null;
+    const wanted = new Set(isbn13s);
+    const row = [...customList.querySelectorAll<HTMLElement>(".custom-identifier-row:not(.removed)")].find((r) => {
+      const v = rowValues(r);
+      return !v.scheme && wanted.has(isbnDigits(v.value));
+    });
+    if (!row) return null;
+    const { value, id } = rowValues(row);
+    row.remove();
+    // "urn:isbn:978…" and the like: just the ISBN.
+    isbnInput.value = /^[0-9Xx\s-]+$/.test(value) ? value : isbnDigits(value);
+    if (id) isbnInput.dataset["id"] = id;
+    else delete isbnInput.dataset["id"];
+    isbnInput.dispatchEvent(new Event("input", { bubbles: true }));
+    return value;
   }
 
   if (current) setIdentifiers(fromMeta(current));
@@ -605,7 +632,7 @@ function populateIdentifiers(form: HTMLFormElement, current: MetaSource | null, 
   buttonRow.replaceChildren();
   metas.forEach(addSource);
   updateHighlights();
-  return { addSource, useIsbn };
+  return { addSource, useIsbn, adoptUnlabeledIsbn };
 }
 
 /** The editor after loading: more sources can be added (from a lookup). */
@@ -614,6 +641,7 @@ export interface MetadataForm {
   /** Take a lookup's pills (by its Format) away again. */
   removeSource(format: string): void;
   useIsbn(isbn: string): void;
+  adoptUnlabeledIsbn(isbn13s: string[]): string | null;
   /** What taking every value a lookup has would change, vs current. */
   preview(meta: MetaSource): HTMLElement[];
   /**
@@ -642,6 +670,7 @@ export function populateMetadataForm(form: HTMLFormElement, metas: MetaSource[],
     // A lookup source with no values: each field drops that source's pill.
     removeSource: (format) => adders.forEach((add) => add(emptyLookup(format))),
     useIsbn: (isbn) => identifiers?.useIsbn(isbn),
+    adoptUnlabeledIsbn: (isbns) => identifiers?.adoptUnlabeledIsbn(isbns) ?? null,
     preview: (meta) => renderChanges(computeChanges(current, withSource(collectValues(form), meta))),
     acceptAll: (meta) => {
       for (const btn of form.querySelectorAll<HTMLButtonElement>(".meta-source-btn[data-external]")) {
@@ -893,6 +922,7 @@ export async function mountMetadataEditor(book: BookTarget, form: HTMLFormElemen
         author: tidyAuthors(creatorsInput?.value)[0] ?? "", // a search hint, not saved
       }),
       useIsbn: editor.useIsbn,
+      adoptUnlabeledIsbn: editor.adoptUnlabeledIsbn,
       addSource: editor.addSource,
       removeSource: editor.removeSource,
       preview: editor.preview,

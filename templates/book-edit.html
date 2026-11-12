@@ -361,6 +361,18 @@
                 border-style: solid;
             }
 
+            .lookup-isbn-form {
+                display: flex;
+                gap: 6px;
+            }
+
+            .lookup-bar .lookup-isbn {
+                width: 150px;
+                padding: 5px 8px;
+                font-family: var(--mono);
+                font-size: 0.8rem;
+            }
+
             .lookup-results {
                 list-style: none;
                 margin: 10px 0 0;
@@ -1653,15 +1665,23 @@
             </div>
 
             {{ if .Lookups }}
-            <!-- Online lookup (web/isbn-tools.ts): Open Library by the form's ISBN,
-                 else by title and author; the matches, to tick up to 3 as sources -->
+            <!-- Online lookup (web/isbn-tools.ts): Open Library by ISBN, or by title
+                 and author; the matches, to tick as sources -->
             <section id="lookup-bar" class="lookup-bar" aria-label="Look up online" data-google="{{ if .GoogleBooks }}1{{ end }}">
                 <div class="lookup-head">
                     <p id="lookup-status" class="lookup-status" role="status">Fill in this book's details from Open Library.</p>
                     <div class="lookup-actions">
-                        <button type="button" id="lookup-search" class="btn-add-id lookup-search">
+                        <!-- By ISBN: follows the form's ISBN field, and fills it -->
+                        <form id="lookup-isbn-form" class="lookup-isbn-form" role="search">
+                            <input id="lookup-isbn" type="text" inputmode="numeric" autocomplete="off" class="meta-input lookup-isbn" placeholder="ISBN" aria-label="ISBN to search Open Library for" />
+                            <button type="submit" class="btn-add-id lookup-search" title="Sends the ISBN to Open Library, and puts it in the ISBN field">
+                                <svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="11" cy="11" r="7"/><path d="m20 20-4-4"/></svg>
+                                Search ISBN
+                            </button>
+                        </form>
+                        <button type="button" id="lookup-search-title" class="btn-add-id lookup-search">
                             <svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="11" cy="11" r="7"/><path d="m20 20-4-4"/></svg>
-                            Search Open Library
+                            Search title &amp; author
                         </button>
                         <span id="lookup-more" class="lookup-actions"></span>
                     </div>

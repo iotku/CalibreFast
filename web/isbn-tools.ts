@@ -6,9 +6,9 @@
 // Apply.
 //
 // Lookups are kept to a minimum: one source per request, only on a click.
-// Open Library by the ISBN in the form when there is one (the best match),
-// else by title and author; by title and author too when the ISBN finds
-// nothing, or when the admin asks. Google Books only on "Try Google Books".
+// Open Library by ISBN (the bar's box, which follows the form's ISBN field
+// and fills it), or by title and author: a button each. Google Books only on
+// "Try Google Books".
 
 import type { BookTarget } from "./book-target.js";
 import { api, closeOnBackdropClick, el, errorMessage, maybeId } from "./dom.js";
@@ -25,6 +25,11 @@ export interface IsbnToolsHost {
     titleAndAuthor(): { title: string; author: string };
     /** Put an ISBN in the ISBN field. */
     useIsbn(isbn: string): void;
+    /**
+     * With the ISBN field empty, move an identifier without a scheme whose
+     * value is one of these ISBN-13s into it. Returns its value, or null.
+     */
+    adoptUnlabeledIsbn(isbn13s: string[]): string | null;
     /** Offer a lookup's match as a source under every field (by its Format). */
     addSource(meta: MetaSource): void;
     /** Take that source's pills away again. */
@@ -50,6 +55,22 @@ const SOURCE_NAMES: Record<Source, string> = { openlibrary: "Open Library", goog
 /** Pages of a PDF read for ISBNs: copyright pages are near either end. */
 const PDF_FIRST_PAGES = 5;
 const PDF_LAST_PAGES = 3;
+
+/** Whether value is an ISBN-10 or ISBN-13 with a right check digit (hyphens and spaces allowed). */
+export function validIsbn(value: string): boolean {
+    const d = value.replace(/[\s-]/g, "").toUpperCase();
+    if (/^[0-9]{9}[0-9X]$/.test(d)) {
+        let sum = 0;
+        for (let i = 0; i < 10; i++) sum += (d[i] === "X" ? 10 : Number(d[i])) * (10 - i);
+        return sum % 11 === 0;
+    }
+    if (/^97[89][0-9]{10}$/.test(d)) {
+        let sum = 0;
+        for (let i = 0; i < 13; i++) sum += Number(d[i]) * (i % 2 ? 3 : 1);
+        return sum % 10 === 0;
+    }
+    return false;
+}
 
 /** An ISBN as 13 digits, so "0-13-419044-0" and "9780134190440" compare equal. */
 export function isbnDigits(value: string): string {
@@ -159,14 +180,20 @@ export function mountIsbnTools(host: IsbnToolsHost): void {
     host.form.addEventListener("input", scheduleRender);
     host.form.addEventListener("click", scheduleRender);
 
+    /** Set when an unlabeled identifier was moved into the ISBN field. */
+    let moved = "";
     const show = (res: IsbnResponse, note = ""): void => {
         candidates = res.candidates;
+        // A common mix-up: the book's ISBN saved as an identifier without a
+        // scheme. If it's one found in the files, it is the ISBN.
+        const adopted = host.adoptUnlabeledIsbn(candidates.map((c) => c.isbn13));
+        if (adopted) moved = `Moved the unlabeled identifier ${adopted} into the ISBN field: it's an ISBN in the book's files.`;
         render();
         const n = candidates.length;
         const found = n === 0
             ? "No ISBNs found in the book's files."
             : `Found ${n} ISBN${n === 1 ? "" : "s"} in the book's files${n > 1 ? ", ebook editions first" : ""}.`;
-        say(note ? `${found} ${note}` : found);
+        say([found, moved, note].filter(Boolean).join(" "));
     };
 
     let finding = false;
@@ -231,14 +258,19 @@ export function mountIsbnTools(host: IsbnToolsHost): void {
 function mountLookup(host: IsbnToolsHost): { lookUpIsbn(isbn: string): void } | null {
     const barEl = maybeId("lookup-bar");
     const statusEl = maybeId("lookup-status");
-    const searchEl = maybeId("lookup-search", HTMLButtonElement);
+    const isbnFormEl = maybeId("lookup-isbn-form", HTMLFormElement);
+    const isbnBoxEl = maybeId("lookup-isbn", HTMLInputElement);
+    const titleEl = maybeId("lookup-search-title", HTMLButtonElement);
     const moreEl = maybeId("lookup-more");
     const listEl = maybeId("lookup-results");
     const dialogEl = maybeId("lookup-dialog", HTMLDialogElement);
-    if (!barEl || !statusEl || !searchEl || !moreEl || !listEl || !dialogEl) return null;
+    if (!barEl || !statusEl || !isbnFormEl || !isbnBoxEl || !titleEl || !moreEl || !listEl || !dialogEl) return null;
     const bar: HTMLElement = barEl;
     const status: HTMLElement = statusEl;
-    const searchBtn: HTMLButtonElement = searchEl;
+    const isbnForm: HTMLFormElement = isbnFormEl;
+    const isbnBox: HTMLInputElement = isbnBoxEl;
+    const isbnBtn = isbnForm.querySelector<HTMLButtonElement>("button[type=submit]");
+    const titleBtn: HTMLButtonElement = titleEl;
     const more: HTMLElement = moreEl;
     const list: HTMLElement = listEl;
     const dialog: HTMLDialogElement = dialogEl;
@@ -248,19 +280,19 @@ function mountLookup(host: IsbnToolsHost): { lookUpIsbn(isbn: string): void } | 
 
     type Query = { isbn: string } | { title: string; author: string };
 
-    /** The ISBN in the form, if it's a whole one. */
-    const formIsbn = (): string => {
-        const isbn = host.currentIsbn();
-        return isbnDigits(isbn).length === 13 ? isbn : "";
-    };
     const byTitle = (): Query | null => {
         const { title, author } = host.titleAndAuthor();
         return title ? { title, author } : null;
     };
-    /** The best query: the ISBN (one edition, the likeliest match), else title and author. */
-    const bestQuery = (): Query | null => {
-        const isbn = formIsbn();
-        return isbn ? { isbn } : byTitle();
+
+    // The box shows the form's ISBN, following it when it changes; what's
+    // typed in it stays until then.
+    let formIsbn = host.currentIsbn();
+    isbnBox.value = formIsbn;
+    const followForm = (): void => {
+        const now = host.currentIsbn();
+        if (now === formIsbn) return;
+        formIsbn = isbnBox.value = now;
     };
     const describe = (q: Query): string =>
         "isbn" in q ? `ISBN ${q.isbn}` : `“${q.title}”${q.author ? ` by ${q.author}` : ""}`;
@@ -333,31 +365,26 @@ function mountLookup(host: IsbnToolsHost): { lookUpIsbn(isbn: string): void } | 
         status.classList.toggle("error", isError);
     };
 
-    /** Before a search: what Search would send. After: what was found. */
+    /** Before a search: what to do. After: what was found. */
     function renderStatus(): void {
         if (busy) return;
         if (found) return say(found);
-        const q = bestQuery();
-        say(q
-            ? `Fill in this book's details from Open Library: search by ${describe(q)}.`
-            : "Fill in this book's details from Open Library: add an ISBN or a title, then search.");
+        say(isbnBox.value.trim()
+            ? "Fill in this book's details from Open Library: search by its ISBN (the likeliest match), or by title and author."
+            : "Fill in this book's details from Open Library: enter its ISBN, or search by title and author.");
     }
 
     function renderActions(): void {
-        searchBtn.disabled = busy;
-        const q = bestQuery();
-        searchBtn.title = q ? `Sends ${describe(q)} to Open Library` : "Needs an ISBN or a title";
+        if (isbnBtn) isbnBtn.disabled = busy;
+        titleBtn.disabled = busy;
+        const t = byTitle();
+        titleBtn.title = t ? `Sends ${describe(t)} to Open Library` : "Needs a title";
         const buttons: HTMLButtonElement[] = [];
         const add = (label: string, title: string, run: () => void): void => {
             const b = el("button", { type: "button", className: "meta-source-btn", title, disabled: busy }, label);
             b.addEventListener("click", run);
             buttons.push(b);
         };
-        // Found by ISBN: other editions and books may be found by title.
-        const t = byTitle();
-        if (lastQuery && "isbn" in lastQuery && t) {
-            add("Search by title and author", `Sends ${describe(t)} to Open Library, for other editions`, () => search(t));
-        }
         if (googleAllowed && lastQuery && !asked.has("google")) {
             const g = lastQuery;
             add("Try Google Books", `Sends ${describe(g)} to Google. Google Books often has a description.`, () => void askGoogle(g));
@@ -402,12 +429,14 @@ function mountLookup(host: IsbnToolsHost): { lookUpIsbn(isbn: string): void } | 
     }
 
     const render = (): void => {
+        followForm();
         renderStatus();
         renderActions();
     };
-    // Before a search, the bar says what Search would send, as the form changes.
+    // The box and the buttons' titles follow the form.
     host.form.addEventListener("input", render);
     host.form.addEventListener("click", () => requestAnimationFrame(render));
+    isbnBox.addEventListener("input", renderStatus);
 
     // ---- Asking ------------------------------------------------------------
 
@@ -451,29 +480,22 @@ function mountLookup(host: IsbnToolsHost): { lookUpIsbn(isbn: string): void } | 
     const tickHint = (n: number): string =>
         n > 1 ? " Tick the right ones to offer their values under each field (the same value is one pill), or Compare one." : " Tick it to offer its values under each field, or Compare it.";
 
-    /** Open Library by q; by title and author when an ISBN finds nothing. */
+    /** Asks Open Library. */
     function search(q: Query): void {
         void run(async () => {
             lastQuery = q;
             asked = new Set();
             say(`Searching Open Library for ${describe(q)}…`);
-            let r = await ask("openlibrary", q);
-            let notes = "";
-            if (!r.matches?.length && "isbn" in q) {
-                const t = byTitle();
-                notes = `Open Library doesn't know ISBN ${q.isbn}${r.error ? ` (${r.error})` : ""}.`;
-                if (t) {
-                    say(`${notes} Searching by ${describe(t)}…`);
-                    lastQuery = q = t;
-                    r = await ask("openlibrary", t);
-                    notes += " ";
-                }
-            }
+            const r = await ask("openlibrary", q);
             const n = show("openlibrary", r, { replace: true });
             if (n) {
-                found = `${notes}Open Library found ${n === 1 ? "a book" : `${n} books`} for ${describe(q)}.${tickHint(n)}`;
+                found = `Open Library found ${n === 1 ? "a book" : `${n} books`} for ${describe(q)}.${tickHint(n)}`;
+            } else if (r.error) {
+                found = `Open Library: ${r.error}.`;
             } else {
-                found = notes && !("isbn" in q) ? `${notes}No match for ${describe(q)} either.` : notes || `Open Library: ${r.error || `no match for ${describe(q)}`}.`;
+                found = "isbn" in q
+                    ? `Open Library doesn't know ISBN ${q.isbn}. Try Search by title & author.`
+                    : `Open Library: no match for ${describe(q)}.`;
             }
             say(found, !!r.error && !n);
         });
@@ -489,10 +511,30 @@ function mountLookup(host: IsbnToolsHost): { lookUpIsbn(isbn: string): void } | 
         });
     }
 
-    searchBtn.addEventListener("click", () => {
-        const q = bestQuery();
+    // By ISBN: a valid one also goes into the form's ISBN field.
+    isbnForm.addEventListener("submit", (e) => {
+        e.preventDefault();
+        const isbn = isbnBox.value.trim();
+        if (!isbn) {
+            say("Enter the book's ISBN to search by it.", true);
+            isbnBox.focus();
+            return;
+        }
+        if (!validIsbn(isbn)) {
+            say(`${isbn} isn't a valid ISBN (wrong length or check digit).`, true);
+            isbnBox.focus();
+            return;
+        }
+        if (isbnDigits(isbn) !== isbnDigits(host.currentIsbn())) {
+            host.useIsbn(isbn);
+            formIsbn = host.currentIsbn();
+        }
+        search({ isbn });
+    });
+    titleBtn.addEventListener("click", () => {
+        const q = byTitle();
         if (q) search(q);
-        else say("Add an ISBN or a title to search Open Library.", true);
+        else say("Add a title to search Open Library by title and author.", true);
     });
 
     // ---- The dialog: one match vs the current metadata ----------------------
@@ -526,6 +568,7 @@ function mountLookup(host: IsbnToolsHost): { lookUpIsbn(isbn: string): void } | 
     return {
         lookUpIsbn(isbn) {
             bar.scrollIntoView({ behavior: "smooth", block: "nearest" });
+            isbnBox.value = isbn;
             search({ isbn });
         },
     };
