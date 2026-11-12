@@ -323,45 +323,13 @@
                 }
             }
 
-            /* ── ISBN lookup in the top bar ── */
+            /* No library search here: the tools sit at the right. */
             .site-bar .tb-tools {
                 margin-left: auto;
             }
 
-            .tb-isbn {
-                display: flex;
-                gap: 6px;
-            }
-
-            .site-bar .tb-isbn input {
-                width: 150px;
-                height: 34px;
-                font-family: var(--mono);
-            }
-
-            @media (max-width: 640px) {
-                .site-bar .tb-isbn input {
-                    width: 116px;
-                }
-
-                .site-bar .tb-title {
-                    display: none;
-                }
-            }
-
-            /* Phones: the ISBN lookup needs the room (the book is a Cancel away). */
-            @media (max-width: 480px) {
-                .site-bar .tb-isbn ~ .tb-view-book {
-                    display: none;
-                }
-            }
-
-            /* ── Lookup status ── */
+            /* ── Online lookup: the bar and its matches ── */
             .lookup-bar {
-                display: flex;
-                flex-wrap: wrap;
-                align-items: center;
-                gap: 8px 12px;
                 margin-bottom: 1.5rem;
                 padding: 10px 14px;
                 font-size: 0.85rem;
@@ -370,8 +338,11 @@
                 border-radius: var(--radius);
             }
 
-            .lookup-bar[hidden] {
-                display: none;
+            .lookup-head {
+                display: flex;
+                flex-wrap: wrap;
+                align-items: center;
+                gap: 8px 12px;
             }
 
             .lookup-status {
@@ -387,7 +358,116 @@
             .lookup-actions {
                 display: flex;
                 flex-wrap: wrap;
+                align-items: center;
                 gap: 6px;
+            }
+
+            /* The ISBN box and both search buttons: one height. */
+            .lookup-search,
+            .lookup-bar .lookup-isbn {
+                height: 32px;
+                box-sizing: border-box;
+            }
+
+            .lookup-search {
+                border-style: solid;
+            }
+
+            .lookup-isbn-form {
+                display: flex;
+                align-items: center;
+                gap: 6px;
+            }
+
+            .lookup-bar .lookup-isbn {
+                width: 150px;
+                padding: 5px 8px;
+                font-family: var(--mono);
+                font-size: 0.8rem;
+            }
+
+            .lookup-results {
+                list-style: none;
+                margin: 10px 0 0;
+                padding: 0;
+                border-top: 1px solid var(--border);
+            }
+
+            .lookup-results[hidden] {
+                display: none;
+            }
+
+            .lookup-result {
+                display: flex;
+                align-items: center;
+                gap: 6px 12px;
+                padding: 8px 0;
+                border-bottom: 1px solid rgba(255, 255, 255, 0.05);
+            }
+
+            .lookup-result:last-child {
+                border-bottom: none;
+            }
+
+            .lookup-pick {
+                display: flex;
+                align-items: flex-start;
+                gap: 10px;
+                flex: 1;
+                min-width: 0;
+                cursor: pointer;
+            }
+
+            .lookup-pick input {
+                margin-top: 3px;
+                accent-color: var(--accent);
+                flex-shrink: 0;
+            }
+
+            .lookup-pick input:disabled {
+                cursor: not-allowed;
+            }
+
+            .lookup-result-text {
+                min-width: 0;
+                overflow-wrap: anywhere;
+            }
+
+            .lookup-result-by {
+                color: var(--muted);
+            }
+
+            .lookup-result-meta {
+                display: block;
+                margin-top: 2px;
+                font-family: var(--mono);
+                font-size: 0.72rem;
+                color: var(--muted);
+            }
+
+            .lookup-result-label {
+                font-family: var(--mono);
+                font-size: 0.72rem;
+                color: var(--muted);
+                white-space: nowrap;
+            }
+
+            .lookup-result.picked .lookup-result-label {
+                color: var(--accent);
+            }
+
+            @media (max-width: 480px) {
+                .lookup-result {
+                    flex-wrap: wrap;
+                }
+
+                .lookup-pick {
+                    flex-basis: 100%;
+                }
+
+                .lookup-result-label {
+                    margin-left: 26px;
+                }
             }
 
             .book-banner-cover {
@@ -606,6 +686,15 @@
                 gap: 6px;
                 margin-top: 8px;
                 min-height: 24px;
+            }
+
+            /* Above the chips (tags, languages): the space goes below them. */
+            .meta-source-buttons.pills-above {
+                margin: 0 0 8px;
+            }
+
+            .meta-source-buttons.pills-above:empty {
+                display: none;
             }
 
             .meta-source-btn {
@@ -1321,6 +1410,23 @@
                 cursor: progress;
             }
 
+            .btn-lookup-isbn {
+                flex-shrink: 0;
+                align-self: stretch;
+                border-style: solid;
+            }
+
+            /* Phones: room for the ISBN itself. */
+            @media (max-width: 480px) {
+                .isbn-row .identifier-type-label {
+                    width: auto;
+                }
+
+                .btn-lookup-isbn-text {
+                    display: none;
+                }
+            }
+
             .identifier-actions {
                 display: flex;
                 flex-wrap: wrap;
@@ -1523,18 +1629,11 @@
         </style>
     </head>
     <body>
-{{ $tb := topbar "Title" (or (and .Import "Review import") "Edit metadata") "NoSearch" .Lookups }}
+{{ $tb := topbar "Title" (or (and .Import "Review import") "Edit metadata") "NoSearch" true }}
 {{ template "topbar-start" $tb }}
-        {{ if .Lookups }}
-        <!-- Look the book up online by ISBN (web/isbn-tools.ts) -->
-        <form id="isbn-lookup" class="tb-isbn" role="search" data-google="{{ if .GoogleBooks }}1{{ end }}">
-            <input id="isbn-lookup-input" type="text" inputmode="numeric" autocomplete="off" placeholder="ISBN" aria-label="ISBN to look up" />
-            <button type="submit" class="tb-btn" title="Sends this ISBN to Open Library, and to Wikidata if Open Library doesn't know it">Look up</button>
-        </form>
-        {{ end }}
         {{ if .ReadLink }}
         <!-- Preview mode: nothing about reading it is saved (web/reader-preview.ts) -->
-        <a href="{{ .ReadLink }}" target="_blank" id="read-preview" class="tb-btn tb-view-book" title="Open the book in the reader to look things up, in a new tab. Your place and reading status aren't changed.">Read</a>
+        <a href="{{ .ReadLink }}" target="_blank" id="read-preview" class="tb-btn tb-view-book" title="Open the book in the reader to look things up, in a new tab. Your place and reading status aren't changed.">Preview Book</a>
         {{ end }}
         {{ if .Import }}
         <a href="/import" class="tb-btn tb-view-book">Queue{{ if gt .Import.Waiting 1 }} ({{ .Import.Waiting }}){{ end }}</a>
@@ -1578,11 +1677,31 @@
                 </div>
             </div>
 
-            <!-- Online lookup: what was found, and the other sources to try -->
-            <div id="lookup-bar" class="lookup-bar" hidden>
-                <p id="lookup-status" class="lookup-status"></p>
-                <div id="lookup-actions" class="lookup-actions"></div>
-            </div>
+            {{ if .Lookups }}
+            <!-- Online lookup (web/isbn-tools.ts): Open Library by ISBN, or by title
+                 and author; the matches, to tick as sources -->
+            <section id="lookup-bar" class="lookup-bar" aria-label="Look up online" data-google="{{ if .GoogleBooks }}1{{ end }}">
+                <div class="lookup-head">
+                    <p id="lookup-status" class="lookup-status" role="status">Fill in this book's details from Open Library.</p>
+                    <div class="lookup-actions">
+                        <!-- By ISBN: follows the form's ISBN field, and fills it -->
+                        <form id="lookup-isbn-form" class="lookup-isbn-form" role="search">
+                            <input id="lookup-isbn" type="text" inputmode="numeric" autocomplete="off" class="meta-input lookup-isbn" placeholder="ISBN" aria-label="ISBN to search Open Library for" />
+                            <button type="submit" class="btn-add-id lookup-search" title="Sends the ISBN to Open Library, and puts it in the ISBN field">
+                                <svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="11" cy="11" r="7"/><path d="m20 20-4-4"/></svg>
+                                Search ISBN
+                            </button>
+                        </form>
+                        <button type="button" id="lookup-search-title" class="btn-add-id lookup-search">
+                            <svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="11" cy="11" r="7"/><path d="m20 20-4-4"/></svg>
+                            Search title &amp; author
+                        </button>
+                        <span id="lookup-more" class="lookup-actions"></span>
+                    </div>
+                </div>
+                <ul id="lookup-results" class="lookup-results" hidden></ul>
+            </section>
+            {{ end }}
 
             <!-- Status Banner -->
             {{ if and .Import .Import.AddedUUID }}
@@ -1642,14 +1761,15 @@
 
                     <fieldset class="meta-field">
                         <legend>Languages</legend>
+                        <!-- Pills first: many chips would push them down -->
+                        <div class="meta-source-buttons pills-above" data-field="languages"></div>
                         <input type="text" name="languages" class="meta-input" placeholder="e.g. eng, fra (first is primary)" />
-                        <div class="meta-source-buttons" data-field="languages"></div>
                     </fieldset>
 
                     <fieldset class="meta-field">
                         <legend>Tags</legend>
+                        <div class="meta-source-buttons pills-above" data-field="subjects"></div>
                         <input type="text" name="subjects" class="meta-input" placeholder="e.g. Computer Science, Programming, Go" />
-                        <div class="meta-source-buttons" data-field="subjects"></div>
                     </fieldset>
 
                     <fieldset class="meta-field col-span-2">
@@ -1665,6 +1785,13 @@
                                     class="meta-input identifier-val-input"
                                     placeholder="e.g. 9780134190440"
                                 />
+                                {{ if .Lookups }}
+                                <!-- Look up the ISBN in the field (web/isbn-tools.ts); hidden while it's empty -->
+                                <button type="button" id="btn-lookup-isbn" class="btn-add-id btn-lookup-isbn" aria-label="Look up this ISBN" title="Look this ISBN up on Open Library" hidden>
+                                    <svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="11" cy="11" r="7"/><path d="m20 20-4-4"/></svg>
+                                    <span class="btn-lookup-isbn-text">Look up</span>
+                                </button>
+                                {{ end }}
                             </div>
                             <!-- Dynamic Other Identifier Rows -->
                             <div id="custom-identifiers-list" class="identifiers-container identifiers-list"></div>
@@ -1736,8 +1863,7 @@
                 </footer>
             </dialog>
 
-            <!-- A lookup's metadata vs the current metadata. Closing it (✕, Esc,
-                 a click outside) rejects a new answer (web/isbn-tools.ts). -->
+            <!-- One lookup match vs the current metadata (web/isbn-tools.ts) -->
             <dialog id="lookup-dialog" class="compare-dialog" aria-labelledby="lookup-title">
                 <header class="compare-header">
                     <h2 id="lookup-title">Found online</h2>
@@ -1746,8 +1872,7 @@
                 <div id="lookup-body"></div>
                 <footer class="compare-footer">
                     <span>The cover isn't changed.</span>
-                    <button type="button" id="lookup-reject" class="btn-secondary" title="Wrong book: don't offer these values in the form">Reject</button>
-                    <button type="button" id="lookup-keep" class="btn-secondary">Pick fields in the form</button>
+                    <button type="button" id="lookup-keep" class="btn-secondary" title="Tick it: its values become pills under each field">Pick fields in the form</button>
                     <button type="button" id="lookup-accept" class="btn-primary">{{ if .Import }}Accept all{{ else }}Accept all and apply{{ end }}</button>
                 </footer>
             </dialog>
@@ -1800,7 +1925,7 @@ import { mountMetadataEditor } from {{ asset "metadata.js" }};
                     book,
                     autoDefault: book.pending,
                     opener: coverBtn,
-                    isbnInput: document.getElementById("isbn-lookup-input"),
+                    isbnInput: {{ if .Lookups }}form.querySelector('[name="identifier_isbn"]'){{ else }}null{{ end }},
                     onChanged(message) {
                         document.getElementById("edit-cover-img").src = book.pending
                             ? `${book.cover}?t=${Date.now()}`

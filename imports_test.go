@@ -398,7 +398,7 @@ func TestImportHandlers(t *testing.T) {
 	if c := call(importCoverHandler, admin, "GET", it.ID).Code; c != http.StatusNotFound {
 		t.Errorf("cover before one is chosen: %d", c)
 	}
-	if _, err := saveCoverJPEG(w.inbox.itemDir(it.ID), image.NewRGBA(image.Rect(0, 0, 2, 3))); err != nil {
+	if _, err := saveCoverJPEG(w.inbox.itemDir(it.ID), testJPEG(t, 2, 3, 90)); err != nil {
 		t.Fatal(err)
 	}
 	if c := call(importCoverHandler, admin, "GET", it.ID).Code; c != http.StatusOK {

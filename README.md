@@ -29,7 +29,7 @@ CalibreFast reads directly from your Calibre `metadata.db` and serves your libra
 - **Search** by title or author.
 - **Browse by author, publisher, tag or language,** with language codes shown as names (`eng` → English).
 - **Groups** merge values that mean the same thing, like `en`/`eng`/`en-US` → English, without editing any books.
-- **Metadata editor:** tag and language chips, autocomplete from your library, a formatted description editor, side-by-side comparison of your changes, and safeguards so curated metadata isn't lost. It can find ISBNs in the book's own files and look books up by ISBN on Open Library and Wikidata (Google Books on request), offering their metadata to pick from or accept in one go.
+- **Metadata editor:** tag and language chips, autocomplete from your library, a formatted description editor, side-by-side comparison of your changes, and safeguards so curated metadata isn't lost. It can find ISBNs in the book's own files and look books up on Open Library by ISBN or by title and author (Google Books on request, with an API key), offering the matches you tick to pick values from (identical values share one pill), or accepting one in one go.
 - **Uploads:** EPUB/PDF metadata is read automatically, and multiple formats of one book are combined.
 - **Watch folder:** books dropped into a folder wait in a review queue. An admin checks the metadata (with ISBN lookups), chooses the cover, then adds each one to the library.
 - **Accounts:** username/password, or GitHub/Google sign-in. Admins manage users, and can send someone a one-time sign-in or invite link (e.g. over Discord).
@@ -88,14 +88,14 @@ Then open [http://localhost:8080](http://localhost:8080) and sign in. Add more u
 | `-allow-registrations` | Let anyone create an account from the sign-in page. **Bots will try to sign up:** only use on a trusted network, such as a Tailscale network shared with people you trust. |
 | `-public-url` | Your external URL, e.g. `https://books.example.com` (needed for GitHub/Google sign-in) |
 | `-no-lookups` | Never look books up online: hides the metadata editor's ISBN lookup. Lookups are on by default but only happen when an admin clicks **Look up**. |
-| `-no-google-books` | Never offer Google Books in the metadata editor. Open Library and Wikidata still work. |
+| `-no-google-books` | Never offer Google Books in the metadata editor, even with `CF_GOOGLE_BOOKS_KEY`. Open Library still works. |
 | `-recycle-bin DIR` | Where books removed from the library are kept until you empty it (default `<datadir>/recycle-bin`). On the library's filesystem, removing and restoring are instant; elsewhere the files are copied. |
 | `-empty-recycle-bin AGE` | Permanently delete what was removed from the library more than `AGE` ago (`30d`, `12h`; `0` for everything) and exit. The only way to empty the Recycling Bin: it can't be done from the web. |
 | `-create-user NAME` | Create a user (or reset their password) and exit; add `-admin` to make them an admin |
 
 GitHub and Google sign-in are optional: see [OAUTH.md](docs/OAUTH.md) for step-by-step setup.
 
-Google Books is only asked when an admin clicks **Try Google Books**. Without an API key, it shares a small quota that's often used up; to use your own, set `CF_GOOGLE_BOOKS_KEY` (an API key with the Books API enabled) as an environment variable.
+Google Books is offered only when `CF_GOOGLE_BOOKS_KEY` is set (an API key with the Books API enabled, as an environment variable), and only asked when an admin clicks **Try Google Books**. Without a key it isn't offered: Google's shared quota is usually used up, and Open Library is the main source.
 
 ### Working on the browser code
 

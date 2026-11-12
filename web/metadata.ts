@@ -88,12 +88,57 @@ function sourceButton(meta: MetaSource, title: string): HTMLButtonElement {
   return btn;
 }
 
-/** A newer answer from a lookup replaces that source's earlier pill. */
+/** A lookup source without values: adding it only removes that source's pills. */
+function emptyLookup(format: string): MetaSource {
+  return {
+    Format: format, FileName: "", Title: "", Creators: null, Description: "", Publisher: "", Date: "",
+    Languages: null, Subjects: null, Identifiers: null, External: true,
+  };
+}
+
+/** The lookup sources a pill stands for ("Open Library", "Open Library 2", …). */
+function lookupFormats(btn: HTMLElement): string[] {
+  return (btn.dataset["formats"] ?? btn.dataset["format"] ?? "").split("\n").filter(Boolean);
+}
+
+/**
+ * Lookup sources with the same value share one pill, named after the first
+ * ("Open Library +2"); its tooltip names them all.
+ */
+function setLookupFormats(btn: HTMLButtonElement, formats: string[]): void {
+  const [first = "", ...rest] = formats;
+  btn.dataset["formats"] = formats.join("\n");
+  btn.dataset["format"] = first;
+  btn.textContent = rest.length ? `${first} +${rest.length}` : first;
+  btn.title = `Click to ${btn.dataset["verb"] ?? "use"} from ${formats.join(", ")}: "${btn.dataset["shown"] ?? ""}"`;
+}
+
+/**
+ * Adds a lookup source to the pill that already offers the same value
+ * (by `same`); false when there's none.
+ */
+function joinLookupPill(buttons: HTMLButtonElement[], meta: MetaSource, same: (b: HTMLButtonElement) => boolean): boolean {
+  const b = buttons.find((b) => b.dataset["external"] && same(b));
+  if (!b) return false;
+  setLookupFormats(b, [...lookupFormats(b), meta.Format]);
+  return true;
+}
+
+/**
+ * A newer answer from a lookup replaces that source's earlier pill: the
+ * source leaves its pill, which goes when no other source shares it.
+ */
 function dropOldLookup(buttons: HTMLButtonElement[], meta: MetaSource): void {
   if (!meta.External) return;
   for (let i = buttons.length - 1; i >= 0; i--) {
     const b = buttons[i];
-    if (b?.dataset["external"] && b.dataset["format"] === meta.Format) {
+    if (!b?.dataset["external"]) continue;
+    const formats = lookupFormats(b);
+    if (!formats.includes(meta.Format)) continue;
+    const rest = formats.filter((f) => f !== meta.Format);
+    if (rest.length) {
+      setLookupFormats(b, rest);
+    } else {
       b.remove();
       buttons.splice(i, 1);
     }
@@ -204,9 +249,11 @@ function populateField(
     dropOldLookup(buttons, meta);
     const value = fieldValue(meta, key, kind);
     if (!value) return; // nothing to offer from this source
+    if (meta.External && joinLookupPill(buttons, meta, (b) => b.dataset["value"] === value)) return updateHighlights();
 
     const btn = sourceButton(meta, `Click to use from ${meta.Format}: "${value}"`);
     btn.dataset["value"] = value;
+    btn.dataset["shown"] = value;
     btn.addEventListener("click", () => {
       setValue(value);
       if (input.type !== "hidden") input.focus();
@@ -316,6 +363,8 @@ interface IdentifierField {
   addSource: AddSource;
   /** Put an ISBN in the ISBN field; a different one there is crossed out (Undo). */
   useIsbn(isbn: string): void;
+  /** See IsbnToolsHost.adoptUnlabeledIsbn. */
+  adoptUnlabeledIsbn(isbn13s: string[]): string | null;
 }
 
 /** Compares identifiers for merging: an ISBN by its 13 digits. */
@@ -513,7 +562,32 @@ function populateIdentifiers(form: HTMLFormElement, current: MetaSource | null, 
       if (back.dataset["id"]) isbnInput.dataset["id"] = back.dataset["id"];
       back.remove();
     }
-    userChanged();
+    // As if typed: the lookup bar, the ISBN's search button and Apply follow.
+    isbnInput.dispatchEvent(new Event("input", { bubbles: true }));
+  }
+
+  /**
+   * The book's ISBN saved as an identifier without a scheme (a common
+   * mix-up): when it's one of isbn13s (found in the book's files) and the
+   * ISBN field is empty, it moves there, keeping its OPF id. Nothing is
+   * crossed out: the value stays, now labelled.
+   */
+  function adoptUnlabeledIsbn(isbn13s: string[]): string | null {
+    if (isbnInput.value.trim()) return null;
+    const wanted = new Set(isbn13s);
+    const row = [...customList.querySelectorAll<HTMLElement>(".custom-identifier-row:not(.removed)")].find((r) => {
+      const v = rowValues(r);
+      return !v.scheme && wanted.has(isbnDigits(v.value));
+    });
+    if (!row) return null;
+    const { value, id } = rowValues(row);
+    row.remove();
+    // "urn:isbn:978…" and the like: just the ISBN.
+    isbnInput.value = /^[0-9Xx\s-]+$/.test(value) ? value : isbnDigits(value);
+    if (id) isbnInput.dataset["id"] = id;
+    else delete isbnInput.dataset["id"];
+    isbnInput.dispatchEvent(new Event("input", { bubbles: true }));
+    return value;
   }
 
   if (current) setIdentifiers(fromMeta(current));
@@ -536,8 +610,12 @@ function populateIdentifiers(form: HTMLFormElement, current: MetaSource | null, 
 
     const displayVal = ids.map((id) => `${id.scheme}: ${id.value}`).join(", ");
     if (meta.External) {
+      const keys = ids.map((i) => mergeKey(i.scheme, i.value)).join("\n");
+      if (joinLookupPill(buttons, meta, (b) => b.dataset["keys"] === keys)) return updateHighlights();
       const btn = sourceButton(meta, `Click to add from ${meta.Format}: "${displayVal}"`);
-      btn.dataset["keys"] = ids.map((i) => mergeKey(i.scheme, i.value)).join("\n");
+      btn.dataset["keys"] = keys;
+      btn.dataset["shown"] = displayVal;
+      btn.dataset["verb"] = "add";
       btn.addEventListener("click", () => mergeIdentifiers(ids));
       buttonRow.appendChild(btn);
       buttons.push(btn);
@@ -554,13 +632,16 @@ function populateIdentifiers(form: HTMLFormElement, current: MetaSource | null, 
   buttonRow.replaceChildren();
   metas.forEach(addSource);
   updateHighlights();
-  return { addSource, useIsbn };
+  return { addSource, useIsbn, adoptUnlabeledIsbn };
 }
 
 /** The editor after loading: more sources can be added (from a lookup). */
 export interface MetadataForm {
   addSource: AddSource;
+  /** Take a lookup's pills (by its Format) away again. */
+  removeSource(format: string): void;
   useIsbn(isbn: string): void;
+  adoptUnlabeledIsbn(isbn13s: string[]): string | null;
   /** What taking every value a lookup has would change, vs current. */
   preview(meta: MetaSource): HTMLElement[];
   /**
@@ -586,11 +667,14 @@ export function populateMetadataForm(form: HTMLFormElement, metas: MetaSource[],
   }
   return {
     addSource: (meta) => adders.forEach((add) => add(meta)),
+    // A lookup source with no values: each field drops that source's pill.
+    removeSource: (format) => adders.forEach((add) => add(emptyLookup(format))),
     useIsbn: (isbn) => identifiers?.useIsbn(isbn),
+    adoptUnlabeledIsbn: (isbns) => identifiers?.adoptUnlabeledIsbn(isbns) ?? null,
     preview: (meta) => renderChanges(computeChanges(current, withSource(collectValues(form), meta))),
     acceptAll: (meta) => {
       for (const btn of form.querySelectorAll<HTMLButtonElement>(".meta-source-btn[data-external]")) {
-        if (btn.dataset["format"] === meta.Format) btn.click();
+        if (lookupFormats(btn).includes(meta.Format)) btn.click();
       }
       if (applyOnAccept) form.requestSubmit();
     },
@@ -838,7 +922,9 @@ export async function mountMetadataEditor(book: BookTarget, form: HTMLFormElemen
         author: tidyAuthors(creatorsInput?.value)[0] ?? "", // a search hint, not saved
       }),
       useIsbn: editor.useIsbn,
+      adoptUnlabeledIsbn: editor.adoptUnlabeledIsbn,
       addSource: editor.addSource,
+      removeSource: editor.removeSource,
       preview: editor.preview,
       acceptAll: editor.acceptAll,
     });

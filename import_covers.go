@@ -16,7 +16,6 @@ import (
 	"fmt"
 	"image"
 	_ "image/gif"
-	"image/jpeg"
 	_ "image/png"
 	"io"
 	"log"
@@ -33,9 +32,6 @@ import (
 )
 
 const (
-	// importCoverMaxWidth: covers are saved at most this wide, as the
-	// browser saves them (SAVE_MAX_WIDTH in web/cover-sources.ts).
-	importCoverMaxWidth = 1200
 	// importCoverMaxBytes bounds the image file read from a book.
 	importCoverMaxBytes = 32 << 20
 	// importCoverTimeout bounds reading one PDF for its first page.
@@ -61,18 +57,21 @@ func extractImportCover(dir string, files []importFile) bool {
 				continue
 			}
 			p := filepath.Join(dir, f.Name)
-			var img image.Image
+			var data []byte
 			var err error
 			if format == "epub" {
-				img, err = epubCoverImage(p)
+				data, err = epubCoverData(p)
 			} else {
-				img, err = pdfFirstPageImage(p)
+				data, err = pdfFirstPageData(p)
+			}
+			if err == nil {
+				data, err = coverJPEG(data)
 			}
 			if err != nil {
 				log.Printf("imports: no cover from %s: %v", f.Name, err)
 				continue
 			}
-			if err := writeNewCover(dir, img); err != nil {
+			if err := writeNewCover(dir, data); err != nil {
 				if errors.Is(err, os.ErrExist) {
 					return true // chosen meanwhile, on the review page
 				}
@@ -93,23 +92,16 @@ func backfillImportCovers(b *importInbox) {
 	}
 }
 
-// writeNewCover saves img as dir/cover.jpg, scaled down to
-// importCoverMaxWidth, only if there is no cover.jpg yet: one the admin
-// chose meanwhile is never replaced (os.ErrExist).
-func writeNewCover(dir string, img image.Image) error {
-	if img.Bounds().Dx() > importCoverMaxWidth {
-		img = resizeToWidth(img, importCoverMaxWidth)
-	}
-	var buf bytes.Buffer
-	if err := jpeg.Encode(&buf, img, &jpeg.Options{Quality: 90}); err != nil {
-		return err
-	}
+// writeNewCover saves data (from coverJPEG) as dir/cover.jpg, only if there
+// is no cover.jpg yet: one the admin chose meanwhile is never replaced
+// (os.ErrExist).
+func writeNewCover(dir string, data []byte) error {
 	p := filepath.Join(dir, "cover.jpg")
 	f, err := os.OpenFile(p, os.O_WRONLY|os.O_CREATE|os.O_EXCL, 0o600)
 	if err != nil {
 		return err
 	}
-	if _, err := f.Write(buf.Bytes()); err != nil {
+	if _, err := f.Write(data); err != nil {
 		f.Close()
 		os.Remove(p)
 		return err
@@ -184,8 +176,8 @@ func epubCoverHref(opfPath string, opfData []byte) (string, error) {
 	return path.Clean(path.Join(path.Dir(opfPath), href)), nil
 }
 
-// epubCoverImage is the cover image an EPUB file declares.
-func epubCoverImage(p string) (image.Image, error) {
+// epubCoverData is the image file an EPUB declares as its cover, as it is.
+func epubCoverData(p string) ([]byte, error) {
 	zr, err := zip.OpenReader(p)
 	if err != nil {
 		return nil, err
@@ -207,19 +199,16 @@ func epubCoverImage(p string) (image.Image, error) {
 	if err != nil {
 		return nil, err
 	}
-	img, _, err := image.Decode(bytes.NewReader(data))
-	if err != nil {
-		return nil, fmt.Errorf("decoding %s: %w", href, err)
-	}
-	return img, nil
+	return data, nil
 }
 
 // ---- PDF ---------------------------------------------------------------------
 
-// pdfFirstPageImage is the picture that is a PDF's first page: the largest
-// image on it, when it's big and has the page's shape. Pages drawn as text
-// and vectors can't be rendered here; the review page does those.
-func pdfFirstPageImage(p string) (image.Image, error) {
+// pdfFirstPageData is the picture that is a PDF's first page, as stored in
+// the PDF (often a JPEG): the largest image on it, when it's big and has the
+// page's shape. Pages drawn as text and vectors can't be rendered here; the
+// review page does those.
+func pdfFirstPageData(p string) ([]byte, error) {
 	ctx, cancel := context.WithTimeout(context.Background(), importCoverTimeout)
 	defer cancel()
 	f, err := os.Open(p)
@@ -270,11 +259,7 @@ func pdfFirstPageImage(p string) (image.Image, error) {
 	if !pdfImageIsPage(bestW, bestH, dims[0].Width, dims[0].Height) {
 		return nil, fmt.Errorf("the first page's largest picture (%dx%d) isn't the whole page", bestW, bestH)
 	}
-	img, _, err := image.Decode(bytes.NewReader(best))
-	if err != nil {
-		return nil, fmt.Errorf("decoding the first page's picture: %w", err)
-	}
-	return img, nil
+	return best, nil
 }
 
 // pdfImageIsPage reports whether a picture of w×h pixels is plausibly the

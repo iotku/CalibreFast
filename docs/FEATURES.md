@@ -66,7 +66,7 @@ Authors are shown by name everywhere ("Alan A. A. Donovan & Brian W. Kernighan")
 
 `/book/edit/<uuid>` (needs an admin and `-allow-writes`) writes both `metadata.db` and the book's `metadata.opf`.
 
-**Read** in the top bar (and on a book waiting in the import queue) opens the book's EPUB, or else its PDF, in a new tab to look things up (the copyright page, an ISBN, the series). It's a **preview**: your place, bookmarks, highlights and reading status aren't saved or changed, no copy is kept for offline reading, and Back closes the tab (or split view, or window) rather than going back to the editor. In-book jumps in a preview add no history, since browsers only let a page close a tab with a single history entry.
+**Preview Book** in the editor's top bar (and on a book waiting in the import queue) opens the book's EPUB, or else its PDF, in a new tab to look things up (the copyright page, an ISBN, the series). It's a **preview**: your place, bookmarks, highlights and reading status aren't saved or changed, no copy is kept for offline reading, and Back closes the tab (or split view, or window) rather than going back to the editor. In-book jumps in a preview add no history, since browsers only let a page close a tab with a single history entry.
 
 ### Nothing is lost by accident
 
@@ -77,7 +77,7 @@ Authors are shown by name everywhere ("Alan A. A. Donovan & Brian W. Kernighan")
   - `calibre` and `uuid` identifiers (Calibre's book id and uuid, also in its exports) and an EPUB's `urn:uuid:` package id aren't shown in the editor. Saving keeps the book's own in `metadata.opf` and `metadata.db` as they are.
   - Values containing commas or colons survive, because identifiers are sent as structured data rather than a string.
 - **Removing things**
-  - A removed identifier, tag or language is crossed out with **Undo** and moved to the end of its list until you apply.
+  - A removed identifier, tag or language is crossed out with **Undo** and moved to the end of its list until you apply. For tags and languages that's only the book's own: one added since (typed, or from a pill) just goes, so trying several sources' pills doesn't pile up crossed-out tags.
   - Switching a field to another source crosses out values the new source doesn't have, rather than dropping them.
 - **Languages.** A book can have several, kept in order (the first is primary). They're stored as multiple `<dc:language>` entries and ordered links in `metadata.db`.
 - **Dates.** A stored date the date picker can't show is kept unless you pick a new one; the page shows a note about it.
@@ -97,11 +97,12 @@ Authors are shown by name everywhere ("Alan A. A. Donovan & Brian W. Kernighan")
   - Type in the box above the chips, then press Enter or **Add**. Commas separate several values; typing a comma doesn't add anything on its own.
   - A field never holds the same value twice (ignoring case): adding one that's already there, or a source or lookup offering it again, keeps the field's spelling. The server drops repeats too when saving.
   - Click anywhere on a chip, except its ×, to edit it in place.
+  - The source pills are above the box, so they stay put however many chips there are.
   - **Split ;** breaks tags that were glued together with semicolons. **Split all** does every such tag at once.
 - **Autocomplete** for authors, publisher, tags and languages offers only values in your library; languages match by name too.
   - Nothing is preselected, so Enter adds exactly what you typed.
   - ↑/↓ highlight a suggestion; Enter, Tab or a click takes it.
-- **Cover dialog:** clicking the cover (it's usually right already) opens every cover the book could have, large enough to compare quality, each with its size in pixels and bytes.
+- **Cover dialog:** clicking the cover (it's usually right already) opens every cover the book could have, large enough to compare quality, each with its size in pixels and bytes. A picture is saved as it is when it's a JPEG up to 2560px wide and 5 MB (no re-compression); anything else is converted to JPEG once, scaled down to 2560px wide if wider.
   - **Choices:** the current cover and the first 5 pages of the book's PDF and EPUB, loaded when the dialog opens. Also **Upload image…**, and **Look up cover online**: with an ISBN in the lookup box (the book's own, or one found in its files), it asks Open Library for that ISBN's cover, and it also shows the cover from a kept lookup.
   - **Comparing:** the current cover starts shown large. Click another to see the two side by side (a third replaces the older one; clicking one again hides it). An upload or an online cover is shown next to the current one. **Actual pixels** shows them pixel for pixel.
   - **Use this cover** saves it right away, without **Apply Changes**. **Revert** brings back the previous one.
@@ -118,10 +119,16 @@ Both only offer choices. Nothing is saved until **Apply Changes**.
   - **Checked:** ISBN-10 and ISBN-13 check digits, so phone numbers and typos are skipped. A 10-digit number needs "ISBN" shortly before it. Every ISBN is shown as ISBN-13, once.
   - **Ranked:** copyright pages list the print editions too, so ISBNs labelled ebook/e-book/EPUB/PDF/digital come first. Next are those from the files' metadata, then other ISBNs in the text, then those labelled hardcover, paperback, print or audio.
   - **Use** puts one in the ISBN field. If the book had a different ISBN, it's crossed out with **Undo**. ISBNs tried in between aren't kept, and a value is only ever crossed out once.
-- **Look up** in the top bar (in place of the library search) looks the book up by ISBN. The box starts with the book's ISBN, or the best one found in its files. Without an ISBN, it uses the title and first author. Each found ISBN also has its own **Look up**.
-  - **Open Library first.** Only if it doesn't know the ISBN is **Wikidata** asked. **Try Wikidata** and **Try Google Books** ask the others on request. Google Books often has the best description; `-no-google-books` hides it.
-  - **A source that knows the book** opens a comparison with the current metadata. **Accept all and apply** takes every value it has (never the cover), saves, and opens the book page. **Pick fields in the form** keeps it as a pill under every field (**Open Library**, **Wikidata**, **Google Books**), so values can be picked one by one; **Compare …** reopens it. **Reject** (or ✕, Esc, a click outside) drops a wrong match: the form keeps the pills it had, including an earlier lookup's.
-  - Its identifier pill adds identifiers (ISBN, `olid`, `wikidata`, `google`) without crossing anything out.
+  - **An unlabeled identifier that's an ISBN** (one with no scheme, a common mix-up) moves into the ISBN field when that's empty and the value is one of the ISBNs found in the files. The search says so, and it's saved like any change.
+- **The lookup bar** at the top of the editor searches Open Library two ways:
+  - **Search ISBN** searches by the ISBN in the bar's box: that one edition, the likeliest match. The box shows the form's ISBN and follows it; when the book has none, type it there. A valid ISBN (checked before anything is sent) also goes into the ISBN field, crossing out a different one with **Undo**.
+  - **Search title & author** searches by the form's title and first author: up to 5 books, best first.
+  - **The likely match is ticked for you:** the only one a search finds, or, in a title search, the books with an edition of the form's ISBN (the server compares the ISBN with Open Library's edition lists; it isn't sent). Untick it if it's the wrong book.
+  - The ISBN field's search button, and each ISBN found in the files, search by that ISBN.
+  - **Matches** are listed with their authors, year, publisher, language and identifiers. **Tick** the right ones: each becomes a source under every field (**Open Library**, **Open Library 2**, …), so their values can be compared and picked one by one. Matches with the same value for a field share one pill there (**Open Library +2**; hover for which). Unticking one takes it away again. Ticked matches stay at the top of the list through a new search.
+  - **Compare** shows one match against the current metadata. **Pick fields in the form** ticks it; **Accept all and apply** takes every value it has (never the cover), saves, and opens the book page.
+  - **Try Google Books** asks Google for the same book, as one more match to tick. It's offered only when the server has a Google Books API key (`CF_GOOGLE_BOOKS_KEY`), and not with `-no-google-books`.
+  - A match's identifier pill adds identifiers (ISBN, `olid`, `google`) without crossing anything out.
   - Open Library's cover, when it has one, is fetched only when you click **Look up cover online** in the cover dialog.
   - **Only on a click:** nothing is sent when the editor opens, on upload, or when an ISBN is found, and each click asks one site at a time. Answers are cached, each site has rate and daily limits, and `-no-lookups` turns lookups off.
 
@@ -157,7 +164,7 @@ Start the server with `-watch-dir /path/to/folder` (and `-allow-writes`). Books 
 - **Covers are taken from the files** when a book arrives: the cover its EPUB declares, else its PDF's first page when that page is a single picture (a scan, or a cover image). Books already waiting get one when the server starts.
 - **Reviewing a book** uses the metadata editor, on the waiting book:
   - **current** is what the files say (the best of each format, as on upload); each file's own values are pills under the fields. A file that says nothing gets its file name as the title.
-  - **ISBNs** are looked for in the files right away, and **Look up** fetches metadata from Open Library, Wikidata or Google Books to compare and pick from, as in the editor. **Accept all** fills the form; it doesn't add the book.
+  - **ISBNs** are looked for in the files right away, and the lookup bar fetches metadata from Open Library (or Google Books, with an API key) to compare and pick from, as in the editor. **Accept all** fills the form; it doesn't add the book.
   - **The cover:** click it for the cover dialog (pages of the PDF and EPUB, an upload, Open Library's cover). A book that already has a cover isn't opened in the browser until you click it. One with no cover yet (an EPUB without a declared cover, a PDF whose first page is text) gets its EPUB's first pictures or its PDF's first page, drawn in the browser, until you choose another.
   - **Add to library** adds the book with the form's values, the chosen cover and all its files, then opens the next book in the queue (or the added book, after the last one).
   - **Discard** deletes the book's files from the queue, after a confirmation. They are not put back in the watch folder.
