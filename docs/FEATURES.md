@@ -172,7 +172,7 @@ The same book added twice (its EPUB once, its PDF another time, or two copies wi
   - the other books go to the Recycling Bin whole, as one batch marked **Merged** that names the kept book. Restoring one brings it back as a separate book; the merged book keeps the files it took;
   - readers' favorites, reading status, places, bookmarks, highlights and shelves for the other books are copied to the kept book (the newest status and place win). The originals stay with the old books for a restore;
   - the metadata is saved as the editor saves it.
-- From the bulk editor, the merge returns to the table as you left it; otherwise it opens the merged book.
+- Afterwards the merged book opens.
 
 ## Bulk metadata editor
 
@@ -184,7 +184,7 @@ The same book added twice (its EPUB once, its PDF another time, or two copies wi
   - each column's box filters that column: `word` contains it (any case or accent; in tags, languages and formats, any one of them does), `=Fiction` is exactly that, a lone `=` is empty, `!word` doesn't contain it (`!=`: not empty), `sci|fant` either, `<2000` and `>=2010-06` compare dates. Tags, languages, formats, publisher and series boxes suggest the library's values with how many books have each;
   - clicking a tag, language or format in a row filters by it;
   - **Duplicates** shows only books that look like another, grouped: **Similar title** (case, accents, punctuation, a leading "The/A/An" and anything in brackets aside), **Similar title & authors**, or **Same ISBN**. Each group has a **Merge N** button;
-  - **Only selected** shows the ticked books. The filters, sort and duplicates mode are kept in the address, so Back (or a merge) returns to the same view.
+  - **Only selected** shows the ticked books. The filters, sort and duplicates mode are kept in the address, so Back returns to the same view.
 - **Selecting:** tick rows (Shift-click ticks a range), or the heading's box for every book shown. **Edit in table** in the library's selection bar opens the table with those books ticked.
 - **Editing one book in place:** double-click its title, authors, publisher, date, tags or languages. Enter or leaving the box saves; Escape cancels.
 - **Editing the selected books** (**Edit…**):

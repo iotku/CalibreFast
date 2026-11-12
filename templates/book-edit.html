@@ -413,8 +413,6 @@ import { mountMetadataEditor } from {{ asset "metadata.js" }};
                     // Another record to keep: the page again, with its metadata as current.
                     if (e.target.name === "merge-keep") {
                         const q = new URLSearchParams({ ids: mergePanel.dataset.ids, keep: e.target.value });
-                        const back = new URLSearchParams(location.search).get("back");
-                        if (back) q.set("back", back);
                         location.assign(`/book/merge?${q}`);
                     }
                 });

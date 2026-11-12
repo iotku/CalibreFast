@@ -7,7 +7,7 @@
 // i sits at i × ROW_H in a body as tall as all of them.
 //
 // The filters, sort and duplicate mode are kept in the URL (replaceState),
-// so coming back (from a merge, say) finds the same view.
+// so coming back (with Back) finds the same view.
 
 import { api, byId, closeOnBackdropClick, el, errorMessage, modalOpen } from "./dom.js";
 import { attachSuggest } from "./suggest.js";
@@ -452,8 +452,7 @@ function selectedBooks(): TableBook[] {
 }
 
 function mergeLink(uuids: string[]): string {
-    const back = location.pathname + location.search;
-    return `/book/merge?${new URLSearchParams({ ids: uuids.join(","), back })}`;
+    return `/book/merge?${new URLSearchParams({ ids: uuids.join(",") })}`;
 }
 
 body.addEventListener("click", (e) => {

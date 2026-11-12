@@ -737,12 +737,6 @@ export class DuplicateError extends Error {
   }
 }
 
-/** Where a merge started (?back=, the bulk editor), if it's a page of this site. */
-function mergeBack(): string | null {
-  const back = new URLSearchParams(location.search).get("back");
-  return back && back.startsWith("/") && !back.startsWith("//") && !back.startsWith("/\\") ? back : null;
-}
-
 export async function applyValues(book: BookTarget, values: FormValues, { override = false } = {}): Promise<ApplyResult> {
   const res = await fetch(book.apply, {
     method: "POST",
@@ -1127,9 +1121,6 @@ export async function mountMetadataEditor(book: BookTarget, form: HTMLFormElemen
           link.href = `/book/get/${encodeURIComponent(result.uuid)}`;
           link.textContent = "Open the merged book";
           statusEl.append(link);
-        } else if (book.merge && mergeBack()) {
-          // Merged from the bulk editor: back to its table, as it was.
-          location.assign(mergeBack()!);
         } else if (book.pending && result.next) {
           // On through the queue; the next page says what was just added.
           location.assign(`/import/${encodeURIComponent(result.next)}?added=${encodeURIComponent(result.uuid)}`);
