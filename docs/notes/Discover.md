@@ -1,6 +1,8 @@
 # Plan: Discover home page
 
-Status: proposal. Done so far: guest and per-user reading data kept apart (first half of phase 5, PR #98); phase 1, the catalog (#99); metadata.db read-only without `-allow-writes` (#100); phase 1b, the catalog snapshot (#101); phase 2, Shuffle.
+Status: proposal. Done so far: guest and per-user reading data kept apart (first half of phase 5, PR #98); phase 1, the catalog (#99); metadata.db read-only without `-allow-writes` (#100); phase 1b, the catalog snapshot (#101); phase 2, Shuffle (#102); phase 3, the Discover page with the introduction, Shuffle and Recently added, and `/latest`.
+
+Phase 3 as built: the Shuffle row's finished books come from the signed-in user's marks only; signed-out visitors' finished-on-this-device books are skipped once phase 4 indexes them (`cf-local-reading`). Only Latest was added to the top bar; Shuffle is reached from its row and the introduction. The grid's cover pump wasn't moved into a shared module: Discover has a small one of its own for its ≤24-card rows, sharing only `maxCovers` (`web/cover-limits.ts`) and `setupCoverStates` (now in `web/utils.ts`).
 
 Phase 1b as built: the key adds `metadata.db`'s header change counter (a 28-byte read) to the size and modification time, since some network and FAT filesystems keep whole seconds and an in-place edit can keep the size. Outside writers are detected with `PRAGMA data_version` on `calibreDB`, which ends snapshot saving for that run. Still read from the library at every start: the aggregate overviews (`preloadCaches`: authors, publishers, tags, languages with counts) and `calibrefast-groups.json`. Authors and tags could come from the catalog; publishers and languages would need adding to it.
 
@@ -172,7 +174,13 @@ func currentCatalog() *catalog  // never nil after startup
 
 - `shuffle` = Fisher–Yates over `0..n-1` with `math/rand/v2` seeded per run: O(n), microseconds even for 100k books.
 - Written as `pages/shuffle/pageN.json` (same `Book` shape, `booksPerPage` each) in the same `writeLibraryPages` pass and under the same `pagesVersion`, so `servePages` caches them for good.
-- **"Different on every load"**: the browser picks a random page K and a random 12-book window inside it. With 60 books/page and N pages that's ~N×48 distinct strips without the server doing anything per request.
+- **Different on every load, never the same books twice in a row** (decided): the browser walks the shuffle order a strip at a time instead of jumping to random places.
+  - It keeps a cursor in localStorage (`cf-shuffle`: `{version, at}`, `at` the index of the next book in the order). Each load shows the ~12 books from `at`, skipping finished ones, and moves `at` past them. At the end it wraps to the start. The pages it needs are the static, immutable-cached `pages/shuffle/pageN.json`, so the server still does nothing per load.
+  - First visit, or a new `pagesVersion` (a restart made a new order): start at a random place in the order, so different visitors and devices don't all begin with the same strip.
+  - Repeats then only come back after the whole library has gone by: N books ÷ 12 loads.
+  - Small libraries (under ~24 books after finished ones are skipped): the strip can't avoid every book from the last load, so it starts right after where the last one ended and wraps. The overlap is as small as the library allows.
+  - Storage blocked (private windows, some previews): fall back to a random place each load, which can repeat. Nothing breaks.
+  - Signed in or not, the same files and cursor; the finished books to skip come from the `cf-reading` copy of `/api/me/reading` (signed in) or this device's finished books (signed out).
 - **Finished books are left out.** In the Discover row the browser filters the window against the finished set it already has (signed in: the `cf-reading` copy of `/api/me/reading`; signed out: books read to the end on this device). If fewer than 12 remain it slides the window on, and fetches page K+1 if the page runs out.
 - **The full `/shuffle` grid** walks the permutation in order. The grid places books by index, so it can't drop cards in the browser without breaking its layout. Instead:
   - Signed in: `/shuffle` is a `uuidList` (`serveUUIDList`, like `/me/*`) whose pages are the catalog's `shuffle` minus the user's finished set, built in memory from one `reading_status` query, cached per user marks version. No metadata.db queries.

@@ -4,8 +4,14 @@ Reference for how CalibreFast behaves, for people and AI tools working on the co
 
 ## Browsing
 
+- **The front page (`/`) is Discover**, the same layout for everyone:
+  - **An introduction:** the library at a glance (books, authors, tags, languages), a search box and where to browse. For signed-out visitors (on a `-public` server) it adds a line on what an account is for, with Sign in, and Create an account when registration is open. **Hide** shrinks it to the counts line on that browser.
+  - **Shuffle:** about 12 books from the server's random order. Each load shows the next 12, so the same books don't come back until the whole library has gone by; the order is new after each server restart. Books you've finished are skipped. **See all** opens `/shuffle`, the whole order on the grid.
+  - **Recently added:** the 12 newest. **See all** opens `/latest`.
+  - Rows scroll sideways; a book opens in the same popup as the grid.
+- **Latest** (`/latest`, in the top bar) is every book, newest added first, on the grid. Old links to `/?page=N` go there.
 - **The whole library is one continuous grid.** The scrollbar reflects the full library from the start, and you can drag straight to any point. Only the rows near the screen are in the page; the rest are drawn as empty cards, so even a scroll faster than the page can keep up shows the grid's shape, never a blank.
-- **60 books per page**, everywhere: the main library, filtered views and search. A page is how the books are fetched and what the page box counts, not a block in the grid: books flow on from one page to the next with no gaps, at any number of columns.
+- **60 books per page**, everywhere: Latest, Shuffle, filtered views and search. A page is how the books are fetched and what the page box counts, not a block in the grid: books flow on from one page to the next with no gaps, at any number of columns.
 - **Navigation:**
   - a page number box with prev/next in the top bar; going to page N puts the row with its first book at the top
   - Home/End move one page at a time

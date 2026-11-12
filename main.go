@@ -170,7 +170,8 @@ type LibraryInfo struct {
 // IndexPageData is passed to index.html.
 type IndexPageData struct {
 	Title      string
-	Heading    string // shown in the top bar ("" for the library itself)
+	Heading    string // shown in the top bar
+	Active     string // top-bar nav item
 	TotalBooks int
 	PagesDir   string // where the page files are: "/pages/", "/pages/shuffle/"
 	Version    string // pagesVersion, so the files can be cached for good
@@ -490,8 +491,25 @@ var templates = template.Must(
 		"booksPerPage": func() int { return booksPerPage },
 		"join":         strings.Join,
 		"robotsMeta":   robotsMeta,
+		"count":        countLabel,
 	}).ParseGlob("templates/*.html"),
 )
+
+// countLabel is "1 book", "48,211 books".
+func countLabel(n int, one, many string) string {
+	digits := strconv.Itoa(n)
+	var b strings.Builder
+	for i, d := range digits {
+		if i > 0 && (len(digits)-i)%3 == 0 {
+			b.WriteByte(',')
+		}
+		b.WriteRune(d)
+	}
+	if n == 1 {
+		return b.String() + " " + one
+	}
+	return b.String() + " " + many
+}
 
 // topbarData builds the data for templates/topbar.html from key/value pairs,
 // e.g. {{ topbar "Active" "authors" "Title" .Display }}. See that file for
@@ -511,28 +529,40 @@ func topbarData(kv ...any) (map[string]any, error) {
 	return m, nil
 }
 
-// indexHandler serves the library at "/". That pattern is Go's catch-all,
-// so every path no other route matched lands here too and gets a 404.
+// indexHandler serves "/": the Discover page (discover.go). That pattern is
+// Go's catch-all, so every path no other route matched lands here too and
+// gets a 404.
 func indexHandler(w http.ResponseWriter, r *http.Request) {
 	if r.URL.Path != "/" {
 		http.NotFound(w, r)
 		return
 	}
+	// The grid used to be here: its ?page= URLs (bookmarks, history) go on
+	// to where it is now.
+	if r.URL.Query().Has("page") {
+		http.Redirect(w, r, "/latest?"+r.URL.RawQuery, http.StatusMovedPermanently)
+		return
+	}
+	discoverHandler(w, r)
+}
+
+// latestHandler serves /latest: every book, newest added first, from the
+// page files.
+func latestHandler(w http.ResponseWriter, r *http.Request) {
 	data := IndexPageData{
-		Title:      "Library",
+		Title:      "Latest — " + SiteTitle,
+		Heading:    "Latest",
+		Active:     "latest",
 		TotalBooks: int(totalBooks.Load()),
 		PagesDir:   "/pages/",
 		Version:    currentPagesVersion(),
 	}
-
-	err := templates.ExecuteTemplate(w, "index.html", data)
-	if err != nil {
-		http.Error(w, err.Error(), 500)
-	}
+	logErr(templates.ExecuteTemplate(w, "index.html", data), "render latest page")
 }
 
 func serveLibraryHTTP() {
 	http.HandleFunc("/", indexHandler)
+	http.HandleFunc("GET /latest", latestHandler)
 	http.HandleFunc("GET /shuffle", shuffleHandler)
 	registerRobotsRoutes()
 

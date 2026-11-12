@@ -1,0 +1,80 @@
+<!doctype html>
+<html lang="en">
+    <head>
+        <meta charset="utf-8" />
+        {{ robotsMeta }}
+        <title>{{ .Title }}</title>
+        <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+        <link rel="stylesheet" href="{{ asset "style.css" }}" />
+        <!-- No htmx history: the URL and back/forward belong to discover.ts and modal.ts. -->
+        <meta name="htmx-config" content="history:false" />
+        <script src="/static/vendor/htmx.org@4.0.1/dist/htmx.min.js"></script>
+        <script src="/static/vendor/htmx.org@4.0.1/dist/ext/hx-preload.min.js"></script>
+    </head>
+    <body>
+{{ $tb := topbar }}
+{{ template "topbar-start" $tb }}
+{{ template "topbar-end" $tb }}
+        <main class="discover" id="discover" data-version="{{ .Version }}" data-page-size="{{ booksPerPage }}"
+              data-total-books="{{ .Books }}" data-shuffle-total="{{ .ShuffleTotal }}">
+            {{/* The sections are in the same order for everyone (docs/notes/Discover.md). */}}
+            <section class="intro" id="intro" aria-label="About this library">
+                <p class="intro-stats">
+                    <span>{{ count .Books "book" "books" }}</span>
+                    <a href="/authors">{{ count .Authors "author" "authors" }}</a>
+                    <a href="/tags">{{ count .Tags "tag" "tags" }}</a>
+                    <a href="/languages">{{ count .Languages "language" "languages" }}</a>
+                </p>
+                <div class="intro-more">
+                    <form class="intro-search" action="/search" method="get" role="search">
+                        <input name="q" type="search" placeholder="Search by title or author…" aria-label="Search books" />
+                        <button type="submit" class="btn-standard">Search</button>
+                    </form>
+                    <nav class="intro-browse" aria-label="Browse the library">
+                        <span>Browse by</span>
+                        <a href="/authors">Author</a>
+                        <a href="/tags">Tag</a>
+                        <a href="/languages">Language</a>
+                        <a href="/shelves">Shelf</a>
+                        <span>or see</span>
+                        <a href="/latest">Latest</a>
+                        <a href="/shuffle">Shuffle</a>
+                    </nav>
+                    <p class="intro-account" id="intro-account" hidden>
+                        An account keeps track of what you're reading on every device, a list of books you want to read, and suggestions from what you like.
+                        {{ if .ReadNeedsAccount }}Reading books here needs one too.{{ end }}
+                        <a class="btn-standard" href="/login">Sign in</a>
+                        {{ if .Registration }}<a href="/login">Create an account</a>{{ end }}
+                    </p>
+                    <button type="button" class="intro-dismiss" id="intro-dismiss" aria-label="Hide this introduction">Hide</button>
+                </div>
+            </section>
+
+            <section class="row" id="row-shuffle" aria-labelledby="row-shuffle-title" hidden>
+                <header class="row-head">
+                    <h2 id="row-shuffle-title">Shuffle</h2>
+                    <a href="/shuffle">See all</a>
+                </header>
+                <div class="row-books"></div>
+            </section>
+
+            <section class="row" id="row-latest" aria-labelledby="row-latest-title" hidden>
+                <header class="row-head">
+                    <h2 id="row-latest-title">Recently added</h2>
+                    <a href="/latest">See all</a>
+                </header>
+                <div class="row-books"></div>
+            </section>
+
+            <p class="discover-empty" id="discover-empty" hidden>No books in this library yet.</p>
+        </main>
+        <div id="book-modal" class="modal-overlay">
+            <div class="modal-content">
+                <button id="modal-close" aria-label="Close modal">✕</button>
+                <div id="modal-body"></div>
+            </div>
+        </div>
+
+        <script type="module" src="{{ asset "discover.js" }}"></script>
+    </body>
+</html>

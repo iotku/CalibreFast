@@ -21,6 +21,7 @@ func shuffleHandler(w http.ResponseWriter, r *http.Request) {
 	data := IndexPageData{
 		Title:      "Shuffle — " + SiteTitle,
 		Heading:    "Shuffle",
+		Active:     "shuffle",
 		TotalBooks: int(shuffleTotal.Load()),
 		PagesDir:   "/pages/shuffle/",
 		Version:    currentPagesVersion(),
