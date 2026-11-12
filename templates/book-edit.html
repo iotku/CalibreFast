@@ -129,10 +129,14 @@
                         {{ range .Formats }}
                         <li class="merge-format">
                             <span class="merge-format-name">{{ .Ext }}</span>
-                            {{ $ext := .Ext }}
+                            {{ $ext := .Ext }}{{ $different := .Different }}
                             {{ range .Choices }}
-                            <label class="merge-format-choice"><input type="radio" name="format-{{ $ext }}" data-format="{{ $ext }}" value="{{ .UUID }}"{{ if .Chosen }} checked{{ end }} /> {{ .Letter }}{{ if .Size }} <span class="auth-muted">({{ .Size }})</span>{{ end }}</label>
+                            <span class="merge-format-choice">
+                                <label><input type="radio" name="format-{{ $ext }}" data-format="{{ $ext }}" value="{{ .UUID }}"{{ if .Chosen }} checked{{ end }} /> {{ .Letter }}{{ if .Size }} <span class="auth-muted">({{ .Size }})</span>{{ end }}</label>
+                                {{ if $different }}{{ if .SameAs }}<span class="merge-same" title="Byte for byte the same file as {{ .SameAs }}'s">= {{ .SameAs }}</span>{{ else }}<a class="merge-download" href="/download/{{ .UUID }}/{{ $ext }}" download title="Download {{ .Letter }}'s {{ $ext }} to compare">Download</a>{{ end }}{{ end }}
+                            </span>
                             {{ end }}
+                            {{ if .Identical }}<span class="merge-same" title="SHA-256 of every file is the same">identical files</span>{{ else if .Different }}<span class="merge-differ">files differ</span>{{ end }}
                         </li>
                         {{ end }}
                     </ul>

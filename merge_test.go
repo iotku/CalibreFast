@@ -189,3 +189,37 @@ func TestMergeSources(t *testing.T) {
 		t.Errorf("formats %+v", d.Formats)
 	}
 }
+
+// Files of one format: identical ones are said to be, different ones can be
+// downloaded to compare.
+func TestMergeFormatsCompared(t *testing.T) {
+	db := setupRecycleLibrary(t)
+	a := addOPFTestBook(t, db, "Alpha", []string{"Ann"}, nil, nil)
+	b := addOPFTestBook(t, db, "Beta", []string{"Bob"}, nil, nil)
+	c := addOPFTestBook(t, db, "Gamma", []string{"Cat"}, nil, nil)
+	addFormat(t, a, "Alpha", "pdf", "same pdf")
+	addFormat(t, b, "Beta", "pdf", "same pdf")
+	if err := os.WriteFile(filepath.Join(baseDir, c.path, "Gamma.epub"), []byte("another EPUB"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	books, err := loadMergeBooks([]string{a.uuid, b.uuid, c.uuid})
+	if err != nil {
+		t.Fatal(err)
+	}
+	d := newMergePageData(books, a.uuid, "")
+	byExt := map[string]mergeFormatView{}
+	for _, v := range d.Formats {
+		byExt[v.Ext] = v
+	}
+	// EPUB: A's and B's are "EPUB!", C's differs.
+	epub := byExt["epub"]
+	if epub.Identical || !epub.Different() || len(epub.Choices) != 3 {
+		t.Fatalf("epub %+v", epub)
+	}
+	if epub.Choices[0].SameAs != "" || epub.Choices[1].SameAs != "A" || epub.Choices[2].SameAs != "" {
+		t.Errorf("epub same-as %+v", epub.Choices)
+	}
+	if pdf := byExt["pdf"]; !pdf.Identical || pdf.Different() {
+		t.Errorf("pdf %+v", pdf)
+	}
+}

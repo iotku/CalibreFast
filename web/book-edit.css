@@ -1834,3 +1834,36 @@ input[type="date"].meta-input::-webkit-calendar-picker-indicator:hover {
 .merge-panel .banner-hint a {
     color: var(--accent);
 }
+
+.merge-format-choice {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+}
+
+.merge-format-choice label {
+    cursor: pointer;
+}
+
+.merge-same,
+.merge-differ {
+    font: 0.72rem var(--mono);
+    color: var(--success);
+}
+
+.merge-differ {
+    color: var(--accent);
+}
+
+.merge-download {
+    padding: 1px 7px;
+    border: 1px solid var(--border);
+    border-radius: 4px;
+    color: var(--accent);
+    font-size: 0.75rem;
+    text-decoration: none;
+}
+
+.merge-download:hover {
+    border-color: var(--accent-dim);
+}

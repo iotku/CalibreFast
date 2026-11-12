@@ -70,13 +70,23 @@ type mergeBook struct {
 type mergeFormatView struct {
 	Ext     string
 	Choices []mergeFileView
+	// Identical: several books have this format, all byte for byte the same
+	// file (SHA-256), so which one is kept makes no difference.
+	Identical bool
 }
 
 type mergeFileView struct {
 	Letter, UUID string
 	Size         string
 	Chosen       bool
+	// SameAs: the letter of an earlier book whose file this one is
+	// identical to, when not all of them are.
+	SameAs string
 }
+
+// Different: several books have this format and the files aren't all the
+// same, so the admin may want to download them to compare.
+func (v mergeFormatView) Different() bool { return len(v.Choices) > 1 && !v.Identical }
 
 // mergePageData is EditBookPageData.Merge.
 type mergePageData struct {
@@ -207,16 +217,37 @@ func newMergePageData(books []*mergeBook, keep, ids string) *mergePageData {
 	slices.Sort(exts)
 	for _, f := range exts {
 		v := mergeFormatView{Ext: f}
+		var hashes []string
 		for _, b := range books {
 			p, ok := b.Files[f]
 			if !ok {
 				continue
 			}
-			size := ""
+			size, hash := "", ""
 			if st, err := os.Stat(p); err == nil {
 				size = humanSize(st.Size())
+				if h, err := fileSHA256(p, st); err == nil {
+					hash = h
+				} else {
+					log.Printf("merge: hashing %s: %v", p, err)
+				}
 			}
-			v.Choices = append(v.Choices, mergeFileView{b.Letter, b.UUID, size, picked[f] == b})
+			v.Choices = append(v.Choices, mergeFileView{Letter: b.Letter, UUID: b.UUID, Size: size, Chosen: picked[f] == b})
+			hashes = append(hashes, hash)
+		}
+		if len(v.Choices) > 1 {
+			v.Identical = hashes[0] != ""
+			for i, h := range hashes {
+				if h != hashes[0] {
+					v.Identical = false
+				}
+				for j := range i {
+					if h != "" && hashes[j] == h {
+						v.Choices[i].SameAs = v.Choices[j].Letter
+						break
+					}
+				}
+			}
 		}
 		d.Formats = append(d.Formats, v)
 	}

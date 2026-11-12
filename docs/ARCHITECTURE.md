@@ -129,7 +129,7 @@ Each book's `authors` is its authors' names in Calibre's order, `A & B` (`bookAu
 
 ## Merging books and the bulk editor
 
-- **Merging** (`merge.go`). `/book/merge?ids=a,b&keep=a` renders `book-edit.html` with `EditBookPageData.Merge`; the browser takes `mergeBooks()` (`web/book-target.ts`), whose `metadata` is `/merge/metadata` (`mergeSources`: the kept book's OPF as `current`, the others' by letter, then `readBookMeta` of every file) and whose `extra()` adds the merge's choices (keep, uuids, cover, format → uuid) to what `applyValues` posts to `/merge/apply`. `mergeBooks`, under `bulkMu`:
+- **Merging** (`merge.go`). `/book/merge?ids=a,b&keep=a` renders `book-edit.html` with `EditBookPageData.Merge` (its `Formats` compare same-format files with `fileSHA256` from `duplicates.go`, cached by path, size and mtime); the browser takes `mergeBooks()` (`web/book-target.ts`), whose `metadata` is `/merge/metadata` (`mergeSources`: the kept book's OPF as `current`, the others' by letter, then `readBookMeta` of every file) and whose `extra()` adds the merge's choices (keep, uuids, cover, format → uuid) to what `applyValues` posts to `/merge/apply`. `mergeBooks`, under `bulkMu`:
   1. copies the chosen files and cover into the kept book's folder under `.cf-merge-*` names;
   2. `recycleBooks` the others (all or nothing; on failure the copies are removed);
   3. renames the copies into place: a format the kept book has keeps its file name (`data.name`), the old file moving to the batch's `replaced/`; a new format gets a `data` row named as the book's others;

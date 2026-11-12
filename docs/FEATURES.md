@@ -166,7 +166,7 @@ The same book added twice (its EPUB once, its PDF another time, or two copies wi
   - **The record to keep:** its uuid and link stay, so readers' places and shelves do too. The first book chosen, unless you pick another (the page reloads with its metadata as **current**).
   - **Metadata:** pills under each field are **current** (the kept book's metadata), **B**, **C**… (the others'), and **A epub**, **B pdf**… (what each book's files say). Pick each field as in the editor; the ISBN tools and online lookup work too.
   - **Cover:** any of the books' covers.
-  - **Files to keep:** every format any of them has. Where two books have the same format, pick whose file (the kept book's by default; sizes shown).
+  - **Files to keep:** every format any of them has. Where two books have the same format, pick whose file (the kept book's by default; sizes shown). The files are compared (SHA-256): **identical files** when it makes no difference which is kept; otherwise **files differ**, with **Download** on each distinct file to compare them yourself (a file identical to an earlier book's says `= A` instead).
 - **Merge N books** does it:
   - the chosen files and cover are copied into the kept book's folder; a file of its own that one replaces goes to the Recycling Bin batch (`replaced/`), and its old cover becomes the cover to revert to;
   - the other books go to the Recycling Bin whole, as one batch marked **Merged** that names the kept book. Restoring one brings it back as a separate book; the merged book keeps the files it took;
