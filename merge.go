@@ -116,9 +116,10 @@ func loadMergeBooks(uuids []string) ([]*mergeBook, error) {
 		if !isSafeUUIDComponent(u) {
 			return nil, errors.New("bad book id")
 		}
-		b := &mergeBook{Letter: letterOf(i), UUID: u, Files: map[string]string{}}
-		if err := calibreDB.QueryRow(`SELECT b.id, b.title, `+bookAuthorsSQL+`, b.path FROM books b WHERE b.uuid = ?`, u).
-			Scan(&b.ID, &b.Title, &b.Authors, &b.Path); err != nil {
+		// The uuid as metadata.db has it, not the request's: paths are built from it.
+		b := &mergeBook{Letter: letterOf(i), Files: map[string]string{}}
+		if err := calibreDB.QueryRow(`SELECT b.id, b.uuid, b.title, `+bookAuthorsSQL+`, b.path FROM books b WHERE b.uuid = ?`, u).
+			Scan(&b.ID, &b.UUID, &b.Title, &b.Authors, &b.Path); err != nil {
 			return nil, fmt.Errorf("%w: %s", errNoSuchBook, u)
 		}
 		dir, err := libraryBookDir(b.Path)
