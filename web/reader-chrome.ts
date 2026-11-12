@@ -113,8 +113,8 @@ export function setupChrome(opts: ChromeOptions): Chrome {
 
     // With a mouse, a hidden bar slides and fades in as the pointer nears its
     // edge of the window, in step with how near it is. Each bar goes by its own
-    // edge. Moving away doesn't pull it back: it lingers a moment, then goes by
-    // itself. With the pointer off the window altogether, both are out. A bar
+    // edge. One partway out goes back in step too; once all the way out, moving
+    // away doesn't pull it back: it lingers a moment, then goes by itself. With the pointer off the window altogether, both are out. A bar
     // holds while it is in use (a typed-in field, the scrubber being dragged),
     // and a panel opened from a peeking bar keeps both out until it closes. The
     // handle on a bar's inner edge puts it away until the pointer has left that
@@ -174,7 +174,8 @@ export function setupChrome(opts: ChromeOptions): Chrome {
         }
         for (const b of bars) {
             const n = target(b);
-            if (n >= (peek.get(b) ?? 0) || stowed.has(b)) {
+            // Only a bar that came all the way out lingers; one partway follows the pointer back.
+            if (n >= (peek.get(b) ?? 0) || peek.get(b) !== 1 || stowed.has(b)) {
                 stopGoing(b);
                 peek.set(b, n);
             } else if (!going.has(b)) {
