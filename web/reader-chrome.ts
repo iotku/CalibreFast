@@ -136,7 +136,7 @@ export function setupChrome(opts: ChromeOptions): Chrome {
     const FULL = 4;
     const RAMP = 92;
     const HANDLE = 16; // px the handle hangs beyond a bar (web/reader.css), with a little slack
-    const LINGER = 400; // ms a bar stays after the pointer moves away
+    const LINGER = 250; // ms a bar stays after the pointer moves away
     const peek = new Map<HTMLElement, number>(bars.map((b) => [b, 0]));
     const going = new Map<HTMLElement, ReturnType<typeof setTimeout>>(); // lingering, then away
     const stowed = new Set<HTMLElement>(); // put away by the handle
