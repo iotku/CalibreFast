@@ -278,9 +278,9 @@ function buildHead(): void {
         filterInputs.set(c.key, input);
         boxes.append(el("span", { className: `lt-cell lt-col-${c.key}` }, clearable(input, `Clear the ${c.label.toLowerCase()} filter`)));
     }
-    // The actions come first, after the tick box: no scrolling sideways to reach them.
-    titles.firstElementChild!.after(el("span", { className: "lt-cell lt-actions", role: "columnheader" }));
-    boxes.firstElementChild!.after(el("span", { className: "lt-cell lt-actions" }));
+    // The actions come first, then the tick box: no scrolling sideways to reach them.
+    titles.prepend(el("span", { className: "lt-cell lt-actions", role: "columnheader" }));
+    boxes.prepend(el("span", { className: "lt-cell lt-actions" }));
     head.replaceChildren(titles, boxes);
 
     allBox.addEventListener("change", () => {
@@ -563,8 +563,8 @@ function rowElement(r: Row, i: number): HTMLElement {
             );
         }
     }
-    // After the tick box, before the title.
-    row.firstElementChild!.after(actions);
+    // First, then the tick box and the title.
+    row.prepend(actions);
     return row;
 }
 
