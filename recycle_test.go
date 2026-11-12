@@ -517,3 +517,36 @@ func TestRecycleKeepsReaderData(t *testing.T) {
 		t.Errorf("a deleted user's rows came back: %d", n)
 	}
 }
+
+// Newer Calibre gives every new book a row of its own in some tables (the
+// page count in books_pages_link) from its insert trigger. Restoring puts
+// the book's own row back in its place.
+func TestRestoreReplacesRowsFromInsertTriggers(t *testing.T) {
+	db := setupRecycleLibrary(t)
+	if _, err := db.Exec(`
+	CREATE TABLE books_pages_link (id INTEGER PRIMARY KEY, book INTEGER NOT NULL UNIQUE, pages INTEGER NOT NULL DEFAULT 0,
+		algorithm INTEGER NOT NULL DEFAULT 0, format TEXT NOT NULL DEFAULT '', format_size INTEGER NOT NULL DEFAULT 0,
+		timestamp REAL NOT NULL DEFAULT 0, needs_scan INTEGER NOT NULL DEFAULT 0);
+	DROP TRIGGER books_insert_trg;
+	CREATE TRIGGER books_insert_trg AFTER INSERT ON books BEGIN
+		UPDATE books SET sort = title_sort(NEW.title), uuid = uuid4() WHERE id = NEW.id;
+		INSERT INTO books_pages_link (book, needs_scan) VALUES (NEW.id, 1);
+	END;`); err != nil {
+		t.Fatal(err)
+	}
+	a := addRecycleTestBook(t, db, "Alpha", []string{"A"}, nil)
+	if _, err := db.Exec(`UPDATE books_pages_link SET pages = 321, format = 'EPUB', needs_scan = 0 WHERE book = ?`, a.id); err != nil {
+		t.Fatal(err)
+	}
+	batch, err := recycleBooks([]string{a.uuid}, "admin")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if res, err := restoreRecycled(batch.ID, nil, "admin"); err != nil || len(res) != 1 || res[0].Error != "" {
+		t.Fatalf("restore: %+v %v", res, err)
+	}
+	var pages, scan int
+	if err := db.QueryRow(`SELECT pages, needs_scan FROM books_pages_link WHERE book = ?`, a.id).Scan(&pages, &scan); err != nil || pages != 321 || scan != 0 {
+		t.Fatalf("page count: %d, needs_scan %d, %v", pages, scan, err)
+	}
+}
