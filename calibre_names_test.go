@@ -3,6 +3,7 @@
 package main
 
 import (
+	"errors"
 	"os"
 	"path/filepath"
 	"testing"
@@ -99,6 +100,18 @@ func TestAddUnlistedFormats(t *testing.T) {
 	}
 	write(a, "alpha file.pdf", "PDF")
 	write(b, "Beta copy.epub", "EPUB 2")
+
+	// A read-only server (no -allow-writes) writes nothing.
+	orig := allowWrites
+	t.Cleanup(func() { allowWrites = orig })
+	allowWrites = false
+	if _, err := addUnlistedFormats(db, baseDir, nil); !errors.Is(err, errReadOnly) {
+		t.Fatalf("read-only: %v, want errReadOnly", err)
+	}
+	if n := count(t, db, `SELECT COUNT(*) FROM data WHERE book IN (?, ?, ?)`, a.id, b.id, c.id); n != 0 {
+		t.Fatalf("read-only server wrote %d rows", n)
+	}
+	allowWrites = true
 
 	// Only the books named.
 	res, err := addUnlistedFormats(db, baseDir, []string{a.uuid, b.uuid, listed.uuid})

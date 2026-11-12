@@ -14,6 +14,7 @@ package main
 import (
 	"database/sql"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"log"
 	"net/http"
@@ -60,6 +61,10 @@ func repairFormatsHandler(w http.ResponseWriter, r *http.Request) {
 	bulkMu.Lock()
 	res, err := addUnlistedFormats(calibreDB, baseDir, uuids)
 	bulkMu.Unlock()
+	if errors.Is(err, errReadOnly) {
+		http.Error(w, err.Error(), http.StatusForbidden)
+		return
+	}
 	if err != nil {
 		log.Println("repair formats:", err)
 		http.Error(w, err.Error(), http.StatusInternalServerError)

@@ -12,6 +12,7 @@ package main
 
 import (
 	"database/sql"
+	"errors"
 	"log"
 	"os"
 	"path/filepath"
@@ -128,7 +129,10 @@ func repairFormatNames(db *sql.DB, libDir string, write bool) int {
 // in its folder (resolveFormats), but Calibre lists no formats for it. The
 // bulk editor shows such books (FormatsFromFolder) and offers to add the
 // rows: one per format that exactly one book file in the folder has, named
-// as that file is, so Calibre finds it. Nothing on disk changes.
+// as that file is, so Calibre finds it. Only the database is modified.
+
+// errReadOnly: the server wasn't started with -allow-writes.
+var errReadOnly = errors.New("this library is read-only: restart the server with -allow-writes to change it")
 
 // unlistedFormat is a data row to add.
 type unlistedFormat struct {
@@ -227,6 +231,11 @@ type unlistedRepair struct {
 // their folder holds one file of.
 func addUnlistedFormats(db *sql.DB, libDir string, uuids []string) (unlistedRepair, error) {
 	res := unlistedRepair{Skipped: []bulkFailure{}}
+	// Its route is behind requireWrites; this keeps any other caller to the
+	// same rule: metadata.db is only written with -allow-writes.
+	if !allowWrites {
+		return res, errReadOnly
+	}
 	books, err := findUnlistedFormats(db, libDir, uuids)
 	if err != nil {
 		return res, err

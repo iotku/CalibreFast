@@ -974,7 +974,7 @@ byId("lt-unlisted-fix").addEventListener("click", async (e) => {
     const btn = e.currentTarget as HTMLButtonElement;
     const uuids = rows.filter((r) => r.b.formats_from_folder).map((r) => r.b.uuid);
     if (!uuids.length) return;
-    if (!confirm(`Add the files of ${plural(uuids.length, "book")} to metadata.db, so Calibre lists them too?\n\nEach format gets a row naming the file that's in the book's folder. Nothing on disk changes.`)) return;
+    if (!confirm(`Add the files of ${plural(uuids.length, "book")} to metadata.db, so Calibre lists them too?\n\nEach format gets a row naming the file that's in the book's folder. Only the database is modified.`)) return;
     btn.disabled = true;
     try {
         const res = await api<FormatRepair>("POST", "/api/library/repair-formats", { uuids });
