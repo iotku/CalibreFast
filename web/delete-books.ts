@@ -16,6 +16,21 @@ export interface BookToDelete {
 }
 
 const CONFIRM_WORD = "delete";
+
+// Leaving the page (the result's Recycling Bin link, say) can keep it in
+// the browser's back/forward cache as it was, dialog open. The dialog only
+// ever comes from a click, so it goes when the page is left; and a page
+// whose books were removed meanwhile is loaded again on the way back, not
+// shown as it was (with the removed book's popup).
+let removedHere = false;
+window.addEventListener("pagehide", () => {
+    for (const d of document.querySelectorAll("dialog.delete-dialog")) d.remove();
+});
+window.addEventListener("pageshow", (e) => {
+    if (!e.persisted || !removedHere) return;
+    if (location.hash.startsWith("#book/")) location.replace(location.pathname + location.search);
+    else location.reload();
+});
 const LISTED = 50; // titles shown; the rest are counted
 
 function plural(n: number, one: string, many = `${one}s`): string {
@@ -75,7 +90,7 @@ export function deleteBooks(books: BookToDelete[]): Promise<boolean> {
 
         // After removing: say so, and offer to put them straight back.
         const done = (batch: RecycleBatch): void => {
-            changed = true;
+            changed = removedHere = true;
             title.textContent = `Moved ${n === 1 ? what : plural(n, "book")} to the Recycling Bin`;
             const binLink = el("a", { href: "/recycle-bin" }, "Recycling Bin");
             warning.replaceChildren(el("p", {}, "Removed by mistake? Undo puts everything back now, or restore from the ", binLink, " later."));
