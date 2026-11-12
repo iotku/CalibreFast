@@ -104,6 +104,16 @@ export function setupChrome(opts: ChromeOptions): Chrome {
         render();
     };
     const showBars = (): void => setBars(false);
+    // After a panel closes: hidden now, keyboard focus or not, and without the
+    // usual linger (a bar the mouse is at stays out, as it would anyway).
+    const barsAway = (): void => {
+        revealed = false;
+        for (const b of bars) {
+            stopGoing(b);
+            peek.set(b, target(b));
+        }
+        setBars(true);
+    };
     const hideBars = (): void => {
         if (anyOpen()) return; // a panel hangs off the bars
         // Don't pull the bar from under a keyboard user.
@@ -249,12 +259,12 @@ export function setupChrome(opts: ChromeOptions): Chrome {
 
     // ---- panels -----------------------------------------------------------
 
-    const panels: { el: HTMLElement; panel: Panel }[] = [];
+    const panels: { el: HTMLElement; panel: Panel; shut(putAway: boolean): void }[] = [];
     function makePanel(el: HTMLElement, btn: HTMLElement | null, onOpen?: () => void): Panel {
         const panel: Panel = {
             isOpen: () => el.classList.contains("open"),
             open() {
-                for (const p of panels) if (p.panel !== panel) p.panel.close();
+                for (const p of panels) if (p.panel !== panel) p.shut(false); // switching: the bars stay
                 // Opened from a bar the mouse brought out: back to following the mouse once it's closed.
                 const peeking = barsHidden() && finePointer.matches;
                 showBars();
@@ -264,19 +274,22 @@ export function setupChrome(opts: ChromeOptions): Chrome {
                 btn?.setAttribute("aria-expanded", "true");
                 onOpen?.();
             },
-            close() {
-                if (!panel.isOpen()) return;
-                // Focus goes back to the button rather than being lost in a hidden panel.
-                if (el.contains(document.activeElement)) btn?.focus();
-                el.classList.remove("open");
-                el.inert = true;
-                btn?.setAttribute("aria-expanded", "false");
-            },
+            close: () => shut(true),
         };
+        // Closed for good (not for another panel): the bars go too, at once.
+        function shut(putAway: boolean): void {
+            if (!panel.isOpen()) return;
+            // Focus goes back to the button rather than being lost in a hidden panel.
+            if (el.contains(document.activeElement)) btn?.focus();
+            el.classList.remove("open");
+            el.inert = true;
+            btn?.setAttribute("aria-expanded", "false");
+            if (putAway && !anyOpen()) barsAway();
+        }
         el.inert = true;
         btn?.addEventListener("click", () => (panel.isOpen() ? panel.close() : panel.open()));
         for (const c of el.querySelectorAll<HTMLElement>("[data-close]")) c.addEventListener("click", () => panel.close());
-        panels.push({ el, panel });
+        panels.push({ el, panel, shut });
         return panel;
     }
     const anyOpen = (): boolean => panels.some((p) => p.panel.isOpen());
