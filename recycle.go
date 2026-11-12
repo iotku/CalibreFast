@@ -256,10 +256,13 @@ func recycleBooks(uuids []string, by string) (*recycleBatch, error) {
 			_ = os.Remove(parent)
 		}
 	}
-	for _, b := range batch.Books {
+	removed := make([]string, len(batch.Books))
+	for i, b := range batch.Books {
 		forgetBook(b.UUID)
+		removed[i] = b.UUID
 	}
-	libraryChanged()
+	logErr(removeFromPages(removed), "recycling bin: couldn't take the books out of the library pages")
+	refreshAllCaches()
 
 	titles := make([]string, len(batch.Books))
 	for i, b := range batch.Books {
@@ -294,15 +297,6 @@ func forgetBook(uuid string) {
 	uuidPathIndex.Delete(uuid)
 	formatCache.Delete(uuid)
 	modTimeCache.Delete(uuid)
-}
-
-// libraryChanged rewrites the library's pages and the overview caches after
-// books were removed or restored: either can move every book's page.
-func libraryChanged() {
-	if err := writeLibraryPages(); err != nil {
-		log.Println("couldn't rewrite the library pages:", err)
-	}
-	refreshAllCaches()
 }
 
 func dirSize(dir string) int64 {
@@ -831,6 +825,7 @@ func restoreRecycled(batchID string, uuids []string, by string) ([]restoreResult
 			b.RestoredAt = time.Now().UTC().Format(time.RFC3339)
 			b.RestoredBy = by
 			changed = true
+			logErr(restoreToPages(b.UUID), "recycling bin: couldn't put "+b.UUID+" back in the library pages")
 			log.Printf("recycling bin: %s restored %q (%s) from batch %s", by, b.Title, b.UUID, batch.ID)
 		}
 		results = append(results, r)
@@ -842,7 +837,7 @@ func restoreRecycled(batchID string, uuids []string, by string) ([]restoreResult
 	}
 	if changed {
 		logErr(batch.save(), "recycling bin: couldn't update "+batch.ID+"/"+recycleBatchFile)
-		libraryChanged()
+		refreshAllCaches()
 	}
 	return results, nil
 }

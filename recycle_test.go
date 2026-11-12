@@ -8,6 +8,7 @@ import (
 	"net/http/httptest"
 	"os"
 	"path/filepath"
+	"slices"
 	"strings"
 	"testing"
 	"time"
@@ -396,5 +397,58 @@ func TestMoveDirAcrossCopy(t *testing.T) {
 	}
 	if err := moveDir(src, dst); err == nil {
 		t.Fatal("moved onto an existing folder")
+	}
+}
+
+// Removing and restoring edit only the pages holding the books.
+func TestRecyclePagesEditedInPlace(t *testing.T) {
+	db := setupRecycleLibrary(t)
+	for i := 0; i < booksPerPage+5; i++ {
+		if _, _, _, err := insertBookIntoCalibreDB(db, &UploadedBookMeta{OPFMetadata: OPFMetadata{Title: "Book " + itoa(int64(i)), Creators: []string{"A"}}}, nil); err != nil {
+			t.Fatal(err)
+		}
+	}
+	generatePages()
+	total := totalBooks
+	page1, _ := readPage(1)
+	page2Before, _ := os.ReadFile(pageFile(2))
+	victim := page1[7]
+
+	batch, err := recycleBooks([]string{victim.UUID}, "admin")
+	if err != nil {
+		t.Fatal(err)
+	}
+	after, _ := readPage(1)
+	if len(after) != booksPerPage-1 || slices.ContainsFunc(after, func(b Book) bool { return b.UUID == victim.UUID }) {
+		t.Fatalf("page 1 after removal: %d books", len(after))
+	}
+	if page2, _ := os.ReadFile(pageFile(2)); !bytes.Equal(page2, page2Before) {
+		t.Fatal("page 2 was rewritten")
+	}
+	if totalBooks != total {
+		t.Fatalf("totalBooks %d, want %d (the gap keeps the other pages in place)", totalBooks, total)
+	}
+
+	// Restored in the same run: back in its place.
+	if _, err := restoreRecycled(batch.ID, nil, "admin"); err != nil {
+		t.Fatal(err)
+	}
+	if back, _ := readPage(1); len(back) != booksPerPage || back[7].UUID != victim.UUID {
+		t.Fatalf("page 1 after restoring: %d books, [7] = %s", len(back), back[7].UUID)
+	}
+
+	// Removed, then the server restarted (pages written again), then
+	// restored: at the end of the last page.
+	if batch, err = recycleBooks([]string{victim.UUID}, "admin"); err != nil {
+		t.Fatal(err)
+	}
+	generatePages()
+	total = totalBooks
+	if _, err := restoreRecycled(batch.ID, nil, "admin"); err != nil {
+		t.Fatal(err)
+	}
+	last, _ := readPage(2)
+	if last[len(last)-1].UUID != victim.UUID || totalBooks != total+1 {
+		t.Fatalf("after a restart: last page ends with %s, totalBooks %d (was %d)", last[len(last)-1].UUID, totalBooks, total)
 	}
 }

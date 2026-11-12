@@ -956,9 +956,13 @@ func generatePages() {
 	}
 }
 
-// writeLibraryPages writes pages/*.json from metadata.db: at startup, and
-// after books are removed or restored (recycle.go).
+// writeLibraryPages writes pages/*.json from metadata.db, at startup.
+// Removing and restoring books only edit the pages concerned (library_pages.go).
 func writeLibraryPages() error {
+	pagesMu.Lock()
+	defer pagesMu.Unlock()
+	bookPages.Clear()
+	pageSlots.Clear()
 	db, err := sql.Open("sqlite3", filepath.Join(baseDir, "metadata.db"))
 	if err != nil {
 		return err
@@ -998,6 +1002,7 @@ func writeLibraryPages() error {
 
 		// cache cover path
 		uuidPathIndex.Store(book.UUID, book.Path)
+		notePage(book.UUID, page)
 
 		// add book to the arrays
 		books = append(books, book)
