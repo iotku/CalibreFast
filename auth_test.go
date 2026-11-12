@@ -238,3 +238,24 @@ func TestCoverStamp(t *testing.T) {
 		}
 	}
 }
+
+// The sign-in page is only a sign-in form: no site name, no links into the
+// library, no nav or search, no app scripts.
+func TestLoginPageRevealsNothing(t *testing.T) {
+	setupTestAppDB(t)
+	origTitle := SiteTitle
+	SiteTitle = "Secret Stacks"
+	defer func() { SiteTitle = origTitle }()
+
+	rec := httptest.NewRecorder()
+	loginHandler(rec, httptest.NewRequest("GET", "/login", nil))
+	body := rec.Body.String()
+	if rec.Code != http.StatusOK || !strings.Contains(body, `action="/login"`) {
+		t.Fatalf("no sign-in form: %d\n%s", rec.Code, body)
+	}
+	for _, leak := range []string{"Secret Stacks", "CalibreFast", `href="/"`, "/authors", "/search", "<script", "tb-nav", "user-nav"} {
+		if strings.Contains(body, leak) {
+			t.Errorf("sign-in page contains %q", leak)
+		}
+	}
+}
