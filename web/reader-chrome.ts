@@ -32,11 +32,11 @@ export interface Chrome {
     hideBars(): void;
     toggleBars(): void;
     /**
-     * The mouse is at viewport height y, or null when it has left the window
-     * (for pointers that don't come to the document itself, as in the EPUB
-     * reader's chapter iframes).
+     * The mouse is at viewport height y, or (out) left the window there (for
+     * pointers that don't come to the document itself, as in the EPUB reader's
+     * chapter iframes).
      */
-    pointerAt(y: number | null): void;
+    pointerAt(y: number, out?: boolean): void;
     /** Closes any open panel. True if one was open (the press that did it shouldn't also turn the page). */
     closePanels(): boolean;
     /** The line under the book's title. */
@@ -128,14 +128,15 @@ export function setupChrome(opts: ChromeOptions): Chrome {
     const stowed = new Set<HTMLElement>(); // put away by the handle
     let held: HTMLElement | null = null; // a press began on this bar
     let revealed = false; // shown by a panel opened while peeking
-    let lastY: number | null = null;
+    let last = { y: window.innerHeight / 2, out: true }; // where the pointer was last seen (to start: nowhere near a bar)
     const inUse = (b: HTMLElement): boolean =>
         b === held || !!b.querySelector("input:focus:not([type=range]), select:focus");
-    // 0..1: how far out the bar is for a pointer at y (null: not over the window).
+    // 0..1: how far out the bar is for a pointer at y, or that left the window
+    // at y (out): past a bar's own edge, it stays open; elsewhere, all go.
     const HANDLE = 16; // px the handle hangs beyond a bar (web/reader.css), with a little slack
-    const nearness = (b: HTMLElement, y: number | null): number => {
-        if (y === null) return 0;
+    const nearness = (b: HTMLElement, y: number, out: boolean): number => {
         const d = b.classList.contains("r-top") ? y - b.offsetHeight : window.innerHeight - b.offsetHeight - y;
+        if (out) return d <= HANDLE ? 1 : 0;
         // A bar that's out stays out while the pointer is on its way to the handle.
         if (peek.get(b) === 1 && d <= HANDLE) return 1;
         return Math.min(1, Math.max(0, 1 - (d - FULL) / RAMP));
@@ -151,16 +152,16 @@ export function setupChrome(opts: ChromeOptions): Chrome {
             b.inert = show === 0;
         }
     }
-    const pointerAt = (y: number | null): void => {
+    const pointerAt = (y: number, out = false): void => {
         if (!finePointer.matches) return;
-        lastY = y;
+        last = { y, out };
         // Back to following the pointer once the panel that held the bars is closed.
         if (revealed && !anyOpen()) {
             revealed = false;
             hideBars();
         }
         for (const b of bars) {
-            let n = nearness(b, y);
+            let n = nearness(b, y, out);
             if (n === 0) stowed.delete(b);
             if (stowed.has(b)) n = 0;
             else if (inUse(b) && (peek.get(b) ?? 0) > 0) n = 1;
@@ -171,7 +172,7 @@ export function setupChrome(opts: ChromeOptions): Chrome {
     document.addEventListener("mousemove", (e) => pointerAt(e.clientY));
     // Out of the window altogether.
     document.addEventListener("mouseout", (e) => {
-        if (!e.relatedTarget) pointerAt(null);
+        if (!e.relatedTarget) pointerAt(e.clientY, true);
     });
     for (const b of bars) {
         b.addEventListener("pointerdown", () => (held = b));
@@ -188,14 +189,14 @@ export function setupChrome(opts: ChromeOptions): Chrome {
                 if (!barsHidden()) return; // a keyboard user is in the bar
             }
             stowed.add(b);
-            pointerAt(lastY);
+            pointerAt(last.y, last.out);
         });
         b.append(handle);
     }
     document.addEventListener("pointerup", () => {
         if (!held) return;
         held = null;
-        pointerAt(lastY);
+        pointerAt(last.y, last.out);
     });
 
     // The sidebar starts below the top bar and the sheet above the bottom one.

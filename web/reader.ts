@@ -436,11 +436,11 @@ window.addEventListener("keydown", onKey);
  */
 rendition.on("rendered", (section, view) => {
     const doc = view.document;
-    doc.addEventListener("mousemove", (e) => {
-        chrome.pointerAt((doc.defaultView?.frameElement?.getBoundingClientRect().top ?? 0) + e.clientY);
-    });
+    const frameTop = (): number => doc.defaultView?.frameElement?.getBoundingClientRect().top ?? 0;
+    doc.addEventListener("mousemove", (e) => chrome.pointerAt(frameTop() + e.clientY));
+    // Out of the chapter: to the page around it (whose own mousemove follows) or the window.
     doc.addEventListener("mouseout", (e) => {
-        if (!e.relatedTarget) chrome.pointerAt(null);
+        if (!e.relatedTarget) chrome.pointerAt(frameTop() + e.clientY, true);
     });
     // A press that closed a panel does nothing else.
     let swallow = false;
