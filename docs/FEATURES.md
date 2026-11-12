@@ -77,7 +77,7 @@ Authors are shown by name everywhere ("Alan A. A. Donovan & Brian W. Kernighan")
   - `calibre` and `uuid` identifiers (Calibre's book id and uuid, also in its exports) and an EPUB's `urn:uuid:` package id aren't shown in the editor. Saving keeps the book's own in `metadata.opf` and `metadata.db` as they are.
   - Values containing commas or colons survive, because identifiers are sent as structured data rather than a string.
 - **Removing things**
-  - A removed identifier, tag or language is crossed out with **Undo** and moved to the end of its list until you apply.
+  - A removed identifier, tag or language is crossed out with **Undo** and moved to the end of its list until you apply. For tags and languages that's only the book's own: one added since (typed, or from a pill) just goes, so trying several sources' pills doesn't pile up crossed-out tags.
   - Switching a field to another source crosses out values the new source doesn't have, rather than dropping them.
 - **Languages.** A book can have several, kept in order (the first is primary). They're stored as multiple `<dc:language>` entries and ordered links in `metadata.db`.
 - **Dates.** A stored date the date picker can't show is kept unless you pick a new one; the page shows a note about it.
@@ -97,6 +97,7 @@ Authors are shown by name everywhere ("Alan A. A. Donovan & Brian W. Kernighan")
   - Type in the box above the chips, then press Enter or **Add**. Commas separate several values; typing a comma doesn't add anything on its own.
   - A field never holds the same value twice (ignoring case): adding one that's already there, or a source or lookup offering it again, keeps the field's spelling. The server drops repeats too when saving.
   - Click anywhere on a chip, except its ×, to edit it in place.
+  - The source pills are above the box, so they stay put however many chips there are.
   - **Split ;** breaks tags that were glued together with semicolons. **Split all** does every such tag at once.
 - **Autocomplete** for authors, publisher, tags and languages offers only values in your library; languages match by name too.
   - Nothing is preselected, so Enter adds exactly what you typed.

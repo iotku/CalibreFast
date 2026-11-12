@@ -663,6 +663,15 @@
                 min-height: 24px;
             }
 
+            /* Above the chips (tags, languages): the space goes below them. */
+            .meta-source-buttons.pills-above {
+                margin: 0 0 8px;
+            }
+
+            .meta-source-buttons.pills-above:empty {
+                display: none;
+            }
+
             .meta-source-btn {
                 background: rgba(255, 255, 255, 0.04);
                 border: 1px solid rgba(255, 255, 255, 0.12);
@@ -1719,14 +1728,15 @@
 
                     <fieldset class="meta-field">
                         <legend>Languages</legend>
+                        <!-- Pills first: many chips would push them down -->
+                        <div class="meta-source-buttons pills-above" data-field="languages"></div>
                         <input type="text" name="languages" class="meta-input" placeholder="e.g. eng, fra (first is primary)" />
-                        <div class="meta-source-buttons" data-field="languages"></div>
                     </fieldset>
 
                     <fieldset class="meta-field">
                         <legend>Tags</legend>
+                        <div class="meta-source-buttons pills-above" data-field="subjects"></div>
                         <input type="text" name="subjects" class="meta-input" placeholder="e.g. Computer Science, Programming, Go" />
-                        <div class="meta-source-buttons" data-field="subjects"></div>
                     </fieldset>
 
                     <fieldset class="meta-field col-span-2">
