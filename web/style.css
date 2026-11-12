@@ -2101,6 +2101,11 @@ label.group-row span {
     margin: calc(var(--topbar-total) + 2rem) auto 3rem;
 }
 
+/* The sign-in page has no top bar. */
+.auth-main.auth-bare {
+    margin-top: max(2rem, 12vh);
+}
+
 .auth-main.auth-wide {
     width: min(760px, calc(100vw - 32px));
 }

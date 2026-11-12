@@ -10,7 +10,7 @@ CalibreFast has accounts, but it's a personal project: the authentication code i
 | **Signed-in user** | Yes | Yes | Yes (their own; progress also from KOReader with a sync key) | **Never** | No |
 | **Admin** | Yes | Yes | Yes (their own) | Only with `-allow-writes` (removed books go to the Recycling Bin, which only the server can empty) | Yes |
 
-- Library changes always need **both** an admin session **and** a server started with `-allow-writes`. Without the flag, nobody (not even admins) can modify `metadata.db` or the library folder. Anonymous visitors get 401 and regular users 403.
+- Library changes always need **both** an admin session **and** a server started with `-allow-writes`. Without the flag, nobody (not even admins) can modify `metadata.db` or the library folder. Anyone but an admin gets the same 404 as a path that doesn't exist, on the editing routes and the admin pages and APIs alike, so they don't show up to someone probing the server. Unknown paths are 404s too rather than the library page.
 - Personal data (favorites, reading status, progress, bookmarks, highlights and notes, personal shelves) is visible only to its owner. Global shelves are visible to everyone who can browse.
 
 ### Modes
@@ -18,6 +18,7 @@ CalibreFast has accounts, but it's a personal project: the authentication code i
 - **Default (private):** nothing is visible without signing in, apart from the sign-in page. Anonymous visitors can't see the catalog, covers or book IDs.
 - **`-public`:** anyone who can reach the server can browse the catalog (and global shelves). Reading and downloading still need an account.
 - **`-public-read`:** public read-only mode. Anyone can also read and download every book. Implies `-public`.
+- **Search engines** are kept out by default: `/robots.txt` disallows everything without naming any paths, every response carries `X-Robots-Tag: noindex`, and every page has a matching meta tag. Only `-public-read` together with `-robots-allowed` lets them index the library. The sign-in page and sign-in links are never indexed.
 
 ## Accounts
 
