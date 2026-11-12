@@ -27,8 +27,12 @@ export interface CoverChoice {
     save?: () => Promise<CoverStatus>;
 }
 
-/** Pictures are saved at most this wide (the server re-encodes them). */
-const SAVE_MAX_WIDTH = 1200;
+/**
+ * Pages are drawn this wide. Pictures are sent as they are: the server keeps
+ * a JPEG as it is, and encodes anything else, or one too wide or too big,
+ * once (coverJPEG in cover_upload.go).
+ */
+const PAGE_MAX_WIDTH = 1200;
 /** Pages of a book offered as covers. */
 const PAGES = 5;
 /** A text-only EPUB page is drawn at this size. */
@@ -119,13 +123,11 @@ export async function imageChoice(book: BookTarget, url: string, label: string):
             width: img.naturalWidth,
             height: img.naturalHeight,
             bytes: blob.size,
+            // The file itself, not a redrawn copy: no second compression.
             save: () => {
-                const s = Math.min(1, SAVE_MAX_WIDTH / img.naturalWidth);
-                const canvas = document.createElement("canvas");
-                canvas.width = Math.round(img.naturalWidth * s);
-                canvas.height = Math.round(img.naturalHeight * s);
-                ctx2d(canvas).drawImage(img, 0, 0, canvas.width, canvas.height);
-                return postCover(book, canvas.toDataURL("image/jpeg", 0.92));
+                const fd = new FormData();
+                fd.append("cover", blob, "cover");
+                return postCover(book, fd);
             },
         };
     } catch {
@@ -162,7 +164,7 @@ export async function* pdfPages(book: BookTarget): AsyncGenerator<CoverChoice> {
     try {
         for (let n = 1; n <= Math.min(pdf.numPages, PAGES); n++) {
             const page = await pdf.getPage(n);
-            const scale = Math.min(SAVE_MAX_WIDTH / page.getViewport({ scale: 1 }).width, 3);
+            const scale = Math.min(PAGE_MAX_WIDTH / page.getViewport({ scale: 1 }).width, 3);
             const viewport = page.getViewport({ scale });
             const canvas = document.createElement("canvas");
             canvas.width = Math.round(viewport.width);

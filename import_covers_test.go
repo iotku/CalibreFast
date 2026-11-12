@@ -119,8 +119,9 @@ func TestExtractImportCoverEPUB(t *testing.T) {
 	}
 	cfg, format, err := image.DecodeConfig(f)
 	f.Close()
-	if err != nil || format != "jpeg" || cfg.Width != importCoverMaxWidth || cfg.Height != 1800 {
-		t.Fatalf("cover.jpg: %s %dx%d, %v; want a jpeg %dx1800", format, cfg.Width, cfg.Height, err, importCoverMaxWidth)
+	// A PNG is encoded as JPEG once, at its own size.
+	if err != nil || format != "jpeg" || cfg.Width != 1600 || cfg.Height != 2400 {
+		t.Fatalf("cover.jpg: %s %dx%d, %v; want a jpeg 1600x2400", format, cfg.Width, cfg.Height, err)
 	}
 
 	// A cover already there (chosen by the admin) is kept.
@@ -170,5 +171,19 @@ func TestExtractImportCoverPDF(t *testing.T) {
 	writeTestFile(t, filepath.Join(dir, "logo.pdf"), imagePDF(t, testPNG(t, 300, 300), false))
 	if extractImportCover(dir, []importFile{{Name: "logo.pdf", Format: "pdf"}}) {
 		t.Fatal("a small square picture taken as the page")
+	}
+}
+
+func TestExtractImportCoverKeepsJPEG(t *testing.T) {
+	// The EPUB's own JPEG becomes cover.jpg byte for byte.
+	dir := t.TempDir()
+	orig := testJPEG(t, 1600, 2400, 85)
+	writeTestFile(t, filepath.Join(dir, "b.epub"), coverEPUB(t, ``,
+		`<item id="x" href="images/c.png" media-type="image/jpeg" properties="cover-image"/>`, orig)) // a JPEG under the helper's name
+	if !extractImportCover(dir, []importFile{{Name: "b.epub", Format: "epub"}}) {
+		t.Fatal("no cover taken from the EPUB")
+	}
+	if got, _ := os.ReadFile(filepath.Join(dir, "cover.jpg")); !bytes.Equal(got, orig) {
+		t.Errorf("cover.jpg was re-encoded: %d bytes, the EPUB's %d", len(got), len(orig))
 	}
 }
