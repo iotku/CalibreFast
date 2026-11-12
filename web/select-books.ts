@@ -1,11 +1,15 @@
 // Choosing books in a grid to remove them (admins, with -allow-writes).
-// "Select" in the top bar turns clicks on cards into ticks; a bar at the
-// bottom counts them and opens the confirmation (delete-books.ts). The
+// "Select" in the top bar, or a long press on a card on a touch screen,
+// turns taps on cards into ticks; a bar at the bottom counts them and opens
+// the confirmation (delete-books.ts). The
 // choice survives scrolling: cards are marked again as they're re-rendered
 // (markSelected, from app-htmx.ts).
 
 import { el, modalOpen } from "./dom.js";
 import { deleteBooks, type BookToDelete } from "./delete-books.js";
+
+const LONG_PRESS_MS = 450; // before Android opens its link menu (~500 ms)
+const LONG_PRESS_SLOP_PX = 10; // a finger moving further is scrolling
 
 const chosen = new Map<string, BookToDelete>(); // uuid -> book, in the order picked
 let selecting = false;
@@ -81,25 +85,73 @@ export function setupSelection(grid: HTMLElement): void {
             if (await deleteBooks([...chosen.values()])) location.reload();
         });
 
+        const cardAt = (target: EventTarget | null): HTMLElement | null =>
+            target instanceof Element ? target.closest<HTMLElement>(".book[data-uuid]") : null;
+        const toggle = (card: HTMLElement): void => {
+            const uuid = card.dataset["uuid"]!;
+            if (chosen.has(uuid)) chosen.delete(uuid);
+            else
+                chosen.set(uuid, {
+                    uuid,
+                    title: card.querySelector(".book-info h2")?.textContent ?? "",
+                    authors: card.querySelector(".book-author")?.textContent ?? "",
+                });
+            paint(card, chosen.has(uuid));
+            update();
+        };
+
+        // Long press (touch and pen): start selecting, with this book. The
+        // click the lifted finger sends next is swallowed, so the popup
+        // doesn't open (or the tick doesn't come straight off again).
+        grid.classList.add("can-select"); // no iOS link preview or text selection on a long press
+        let press: { timer: ReturnType<typeof setTimeout>; x: number; y: number } | null = null;
+        let swallowClickUntil = 0;
+        const cancelPress = (): void => {
+            if (press) clearTimeout(press.timer);
+            press = null;
+        };
+        grid.addEventListener("pointerdown", (e) => {
+            cancelPress();
+            if (e.pointerType === "mouse" || !e.isPrimary) return;
+            const card = cardAt(e.target);
+            if (!card) return;
+            press = {
+                x: e.clientX,
+                y: e.clientY,
+                timer: setTimeout(() => {
+                    press = null;
+                    swallowClickUntil = Date.now() + 1500;
+                    if (!selecting) setSelecting(grid, true);
+                    toggle(card);
+                    navigator.vibrate?.(15);
+                }, LONG_PRESS_MS),
+            };
+        });
+        grid.addEventListener("pointermove", (e) => {
+            if (press && Math.hypot(e.clientX - press.x, e.clientY - press.y) > LONG_PRESS_SLOP_PX) cancelPress();
+        });
+        for (const type of ["pointerup", "pointercancel", "pointerleave"]) grid.addEventListener(type, cancelPress);
+        window.addEventListener("scroll", cancelPress, { passive: true });
+        // Android's long-press menu for the link.
+        grid.addEventListener("contextmenu", (e) => {
+            if (Date.now() < swallowClickUntil || (press && cardAt(e.target))) e.preventDefault();
+        });
+
         // Capture, so the card's own link (the book popup) never sees it.
         grid.addEventListener(
             "click",
             (e) => {
-                if (!selecting || !(e.target instanceof Element)) return;
-                const card = e.target.closest<HTMLElement>(".book[data-uuid]");
-                if (!card) return;
+                const card = cardAt(e.target);
+                if (card && Date.now() < swallowClickUntil) {
+                    swallowClickUntil = 0;
+                    e.preventDefault();
+                    e.stopPropagation();
+                    return;
+                }
+                if (!selecting || !card) return;
                 e.preventDefault();
                 e.stopPropagation();
-                const uuid = card.dataset["uuid"]!;
-                if (chosen.has(uuid)) chosen.delete(uuid);
-                else
-                    chosen.set(uuid, {
-                        uuid,
-                        title: card.querySelector(".book-info h2")?.textContent ?? "",
-                        authors: card.querySelector(".book-author")?.textContent ?? "",
-                    });
-                paint(card, chosen.has(uuid));
-                update();
+                toggle(card);
             },
             true,
         );

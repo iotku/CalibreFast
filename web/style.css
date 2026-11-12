@@ -2770,6 +2770,18 @@ label.group-row span {
 }
 
 /* Choosing books in the grid */
+/* A long press selects (select-books.ts): no link preview or text selection. */
+.can-select .book {
+    -webkit-touch-callout: none;
+    -webkit-user-select: none;
+    user-select: none;
+}
+
+.can-select .book a,
+.can-select .book img {
+    -webkit-user-drag: none; /* a drag would cancel the press */
+}
+
 .site-bar .tb-select-btn[aria-pressed="true"] {
     background: #8f2a2a;
     border-color: #c44;
@@ -2800,6 +2812,7 @@ body.selecting .book .cover-wrapper::after {
     border-radius: 50%;
     background: rgba(0, 0, 0, 0.45);
     box-shadow: 0 1px 4px rgba(0, 0, 0, 0.6);
+    z-index: 5; /* over the cover image (1) and the info overlay (2) */
 }
 
 body.selecting .book.selected .cover-wrapper::after {
