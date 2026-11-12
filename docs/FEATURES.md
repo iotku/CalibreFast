@@ -179,6 +179,7 @@ The same book added twice (its EPUB once, its PDF another time, or two copies wi
 `/library/edit` (**Bulk edit** in the user menu; admins, `-allow-writes`): every book as a row of a table, to find duplicates and fix metadata across many books.
 
 - **Columns:** title, authors, series, publisher, published, languages, tags, formats, added. Click a heading to sort; click again to reverse.
+- **Formats** are the files `metadata.db` lists. A book it lists none for shows the book files in its folder instead (as its page and downloads find them), dashed: Calibre itself doesn't show those. `folder` in the Formats box finds such books. Merging takes their files too, and gives them `metadata.db` rows.
 - **Filtering** happens in the browser, as you type:
   - the search box matches every column (each word somewhere);
   - each column's box filters that column: `word` contains it (any case or accent; in tags, languages and formats, any one of them does), `=Fiction` is exactly that, a lone `=` is empty, `!word` doesn't contain it (`!=`: not empty), `sci|fant` either, `<2000` and `>=2010-06` compare dates. The tick box beside each box shows only books with nothing in that column, or the default a book gets when nothing was known (title or author `Unknown`, language `und`). Tags, languages, formats, publisher and series boxes suggest the library's values with how many books have each;

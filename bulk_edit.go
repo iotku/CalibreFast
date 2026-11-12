@@ -54,8 +54,13 @@ type tableBook struct {
 	Tags        []string `json:"tags"`
 	Languages   []string `json:"languages"`
 	Formats     []string `json:"formats"` // lower case
-	ISBN        string   `json:"isbn"`
-	HasCover    bool     `json:"has_cover"`
+	// FormatsFromFolder: metadata.db lists no files for the book, so Formats
+	// are the book files in its folder, as the book page and downloads find
+	// them (resolveFormats). Calibre doesn't list these.
+	FormatsFromFolder bool   `json:"formats_from_folder,omitempty"`
+	ISBN              string `json:"isbn"`
+	HasCover          bool   `json:"has_cover"`
+	path              string
 }
 
 // tableSep separates the values group_concat joins: no tag, language or
@@ -70,7 +75,7 @@ const tableBooksSQL = `SELECT b.id, b.uuid, b.title, ` + bookAuthorsSQL + `, b.s
 	COALESCE((SELECT group_concat(l.lang_code, char(31) ORDER BY x.item_order) FROM books_languages_link x JOIN languages l ON l.id = x.lang_code WHERE x.book = b.id), ''),
 	COALESCE((SELECT group_concat(lower(d.format), char(31) ORDER BY d.format) FROM data d WHERE d.book = b.id), ''),
 	COALESCE((SELECT i.val FROM identifiers i WHERE i.book = b.id AND lower(i.type) = 'isbn' LIMIT 1), ''),
-	b.has_cover
+	b.has_cover, b.path
 	FROM books b`
 
 func splitConcat(s string) []string {
@@ -109,14 +114,38 @@ func tableBooks(db *sql.DB, uuids []string) ([]tableBook, error) {
 		var b tableBook
 		var pub, added, tags, langs, formats string
 		if err := rows.Scan(&b.ID, &b.UUID, &b.Title, &b.Authors, &b.SeriesIndex, &b.Series, &b.Publisher,
-			&pub, &added, &tags, &langs, &formats, &b.ISBN, &b.HasCover); err != nil {
+			&pub, &added, &tags, &langs, &formats, &b.ISBN, &b.HasCover, &b.path); err != nil {
 			return nil, err
 		}
 		b.PubDate, b.Added = tableDate(pub), tableDate(added)
 		b.Tags, b.Languages, b.Formats = splitConcat(tags), splitConcat(langs), splitConcat(formats)
 		out = append(out, b)
 	}
-	return out, rows.Err()
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	for i := range out {
+		if b := &out[i]; len(b.Formats) == 0 {
+			b.Formats = folderFormats(b.UUID, b.path)
+			b.FormatsFromFolder = len(b.Formats) > 0
+		}
+	}
+	return out, nil
+}
+
+// folderFormats are the formats of the book files in a book's folder.
+func folderFormats(uuid, path string) []string {
+	if _, err := libraryBookDir(path); err != nil {
+		return []string{}
+	}
+	out := []string{}
+	for _, f := range extractFormats(resolveFormats(uuid, baseDir, path)) {
+		if f = strings.ToLower(f); !slices.Contains(out, f) {
+			out = append(out, f)
+		}
+	}
+	slices.Sort(out)
+	return out
 }
 
 func libraryTableHandler(w http.ResponseWriter, r *http.Request) {

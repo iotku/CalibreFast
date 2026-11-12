@@ -516,3 +516,10 @@
     cursor: pointer;
     accent-color: var(--status-reading);
 }
+
+/* A format whose file is in the book's folder but not in metadata.db */
+.lt-col-formats .lt-chip-unlisted {
+    border-style: dashed;
+    border-color: var(--status-reading);
+    color: var(--status-reading);
+}

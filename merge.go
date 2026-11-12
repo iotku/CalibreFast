@@ -146,6 +146,16 @@ func loadMergeBooks(uuids []string) ([]*mergeBook, error) {
 				b.Files[f.Format] = f.Path
 			}
 		}
+		if len(b.Files) == 0 {
+			// metadata.db lists no files: the book files in its folder, as
+			// the rest of CalibreFast finds them (resolveFormats).
+			for _, name := range resolveFormats(b.UUID, baseDir, b.Path) {
+				f := strings.ToLower(strings.TrimPrefix(filepath.Ext(name), "."))
+				if _, ok := b.Files[f]; !ok {
+					b.Files[f] = filepath.Join(dir, name)
+				}
+			}
+		}
 		if st, err := os.Stat(filepath.Join(dir, "cover.jpg")); err == nil {
 			b.HasCover = true
 			b.CoverModTime = st.ModTime().UnixNano()
@@ -503,8 +513,15 @@ func mergeBooks(req *mergeRequest, by string) (*mergeResult, error) {
 				os.Remove(c.temp)
 				continue
 			}
-			if _, err := calibreDB.Exec(`UPDATE data SET uncompressed_size = ? WHERE book = ? AND format = ?`, st.Size(), keep.ID, upper); err != nil {
+			res, err := calibreDB.Exec(`UPDATE data SET uncompressed_size = ? WHERE book = ? AND format = ?`, st.Size(), keep.ID, upper)
+			if err != nil {
 				errs = append(errs, err)
+			} else if n, _ := res.RowsAffected(); n == 0 {
+				// A file metadata.db didn't list: it gets its row now.
+				name := strings.TrimSuffix(filepath.Base(old), filepath.Ext(old))
+				if _, err := calibreDB.Exec(`INSERT INTO data (book, format, uncompressed_size, name) VALUES (?, ?, ?, ?)`, keep.ID, upper, st.Size(), name); err != nil {
+					errs = append(errs, fmt.Errorf("couldn't record %s in metadata.db: %w", upper, err))
+				}
 			}
 			continue
 		}

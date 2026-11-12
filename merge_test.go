@@ -223,3 +223,48 @@ func TestMergeFormatsCompared(t *testing.T) {
 		t.Errorf("pdf %+v", pdf)
 	}
 }
+
+// Books whose files metadata.db doesn't list are merged with those files,
+// which get their data rows.
+func TestMergeFolderOnlyFiles(t *testing.T) {
+	db := setupRecycleLibrary(t)
+	a := addOPFTestBook(t, db, "Alpha", []string{"Ann"}, nil, nil)
+	b := addOPFTestBook(t, db, "Beta", []string{"Bob"}, nil, nil)
+	addFormat(t, b, "Beta", "pdf", "B PDF")
+	if err := os.WriteFile(filepath.Join(baseDir, b.path, "Beta.epub"), []byte("B EPUB"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	for _, x := range []testBook{a, b} {
+		if _, err := db.Exec(`DELETE FROM data WHERE book = ?`, x.id); err != nil {
+			t.Fatal(err)
+		}
+		formatCache.Delete(x.uuid)
+	}
+	req := &mergeRequest{
+		ApplyMetadataRequest: ApplyMetadataRequest{Title: "Alpha", Creators: "Ann"},
+		Keep:                 a.uuid,
+		UUIDs:                []string{a.uuid, b.uuid},
+		Formats:              map[string]string{"epub": b.uuid},
+	}
+	if _, err := mergeBooks(req, "admin"); err != nil {
+		t.Fatal(err)
+	}
+	dir := filepath.Join(baseDir, a.path)
+	if got := readFile(t, filepath.Join(dir, "Alpha.epub")); got != "B EPUB" {
+		t.Errorf("epub %q", got)
+	}
+	formats, _ := bookFormats(a.id)
+	if !slices.Equal(formats, []string{"epub", "pdf"}) {
+		t.Errorf("data rows %v, want epub and pdf", formats)
+	}
+	entries, _ := os.ReadDir(dir)
+	var pdfs []string
+	for _, e := range entries {
+		if filepath.Ext(e.Name()) == ".pdf" {
+			pdfs = append(pdfs, e.Name())
+		}
+	}
+	if len(pdfs) != 1 {
+		t.Errorf("pdfs in the kept folder: %v", pdfs)
+	}
+}

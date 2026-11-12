@@ -57,6 +57,9 @@ const COLUMNS: Column[] = [
     { key: "added", label: "Added", text: (b) => b.added, blank: (b) => !b.added },
 ];
 
+/** What the Formats filter matches for files only in a book's folder, not in metadata.db. */
+const FOLDER_ONLY = "folder only";
+
 /** Lower case, without accents: what searches compare. */
 function fold(s: string): string {
     return s.normalize("NFD").replace(/\p{M}/gu, "").toLowerCase();
@@ -79,6 +82,11 @@ function makeRow(b: TableBook): Row {
     for (const c of COLUMNS) {
         hay[c.key] = fold(c.text(b));
         if (c.items) items[c.key] = c.items(b).map(fold);
+    }
+    // "folder" in the Formats filter finds books whose files metadata.db doesn't list.
+    if (b.formats_from_folder) {
+        items.formats = [...(items.formats ?? []), FOLDER_ONLY];
+        hay.formats += ` ${FOLDER_ONLY}`;
     }
     return { b, hay, items, all: Object.values(hay).join("\n") + "\n" + b.isbn, dupKey: "", group: 0 };
 }
@@ -416,12 +424,16 @@ function rowElement(r: Row, i: number): HTMLElement {
         cell.dataset["col"] = c.key;
         if (c.items) {
             const values = c.items(b);
+            const unlisted = c.key === "formats" && b.formats_from_folder;
             for (const v of values) {
                 const ch = chip(c.key, v);
                 ch.dataset["value"] = v;
+                if (unlisted) ch.classList.add("lt-chip-unlisted");
                 cell.append(ch);
             }
-            cell.title = values.join(", ");
+            cell.title = unlisted
+                ? `${values.join(", ")}: in the book's folder, but metadata.db lists no files for this book, so Calibre doesn't show them (CalibreFast reads the folder). Filter Formats by “folder” to find these books.`
+                : values.join(", ");
         } else {
             const text = c.text(b);
             cell.textContent = text;

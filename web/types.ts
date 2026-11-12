@@ -218,6 +218,8 @@ export interface TableBook {
     tags: string[];
     languages: string[];
     formats: string[];
+    /** metadata.db lists no files: formats are what's in the book's folder (Go: FormatsFromFolder). */
+    formats_from_folder?: boolean;
     isbn: string;
     has_cover: boolean;
 }

@@ -187,3 +187,21 @@ func TestBulkEditPublisherWithCalibreUniqueLink(t *testing.T) {
 		t.Error("the old publisher, now unused, was kept")
 	}
 }
+
+// A book whose files metadata.db doesn't list: the table shows what's in
+// its folder, as the book page and downloads do, and says so.
+func TestTableFormatsFromFolder(t *testing.T) {
+	db := setupRecycleLibrary(t)
+	a := addOPFTestBook(t, db, "Alpha", []string{"Ann"}, nil, nil)
+	b := addOPFTestBook(t, db, "Beta", []string{"Bob"}, nil, nil)
+	if _, err := db.Exec(`DELETE FROM data WHERE book = ?`, b.id); err != nil {
+		t.Fatal(err)
+	}
+	formatCache.Delete(b.uuid)
+	if r := tableRow(t, db, a.uuid); r.FormatsFromFolder || !slices.Equal(r.Formats, []string{"epub"}) {
+		t.Errorf("listed book %+v", r)
+	}
+	if r := tableRow(t, db, b.uuid); !r.FormatsFromFolder || !slices.Equal(r.Formats, []string{"epub"}) {
+		t.Errorf("unlisted book: formats %v, from folder %v", r.Formats, r.FormatsFromFolder)
+	}
+}
