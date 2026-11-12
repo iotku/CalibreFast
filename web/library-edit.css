@@ -124,8 +124,8 @@
 }
 
 .lt-table {
-    --lt-cols: 34px minmax(220px, 2.2fr) minmax(150px, 1.4fr) 140px 150px 96px 140px minmax(180px, 2fr) 110px 96px 236px;
-    min-width: 1580px;
+    --lt-cols: 34px minmax(220px, 2.2fr) minmax(150px, 1.4fr) 140px 150px 96px 170px minmax(180px, 2fr) 110px 96px 236px;
+    min-width: 1610px;
 }
 
 .lt-row {
@@ -612,4 +612,95 @@
 .lt-cell-edit:focus-visible {
     color: var(--status-reading);
     border-color: var(--border-medium);
+}
+
+/* Tags, languages, formats: chips in a row that never wrap. One that
+   doesn't fit is cut short with "…" rather than replaced by it, and "+N"
+   (addMore) says how many more there are. */
+.lt-rows .lt-list-cell {
+    position: relative;
+    display: flex;
+    align-items: center;
+    gap: 4px;
+    text-overflow: clip;
+}
+
+.lt-rows .lt-list-cell.lt-has-more {
+    padding-right: 36px;
+}
+
+/* Only the first chip gives way; the others keep their size (or go) */
+.lt-rows .lt-list-cell .lt-chip {
+    flex: none;
+    margin-right: 0;
+    white-space: nowrap;
+}
+
+.lt-rows .lt-list-cell > .lt-chip:first-child,
+.lt-rows .lt-list-cell > .lt-cell-edit + .lt-chip {
+    flex: 0 1 auto;
+    min-width: 3em;
+}
+
+.lt-rows .lt-list-cell .lt-chip[hidden] {
+    display: none;
+}
+
+.lt-rows .lt-list-cell .lt-cell-edit {
+    flex: none;
+    margin-right: 0;
+}
+
+.lt-more {
+    position: absolute;
+    right: 4px;
+    top: 50%;
+    transform: translateY(-50%);
+    min-width: 24px;
+    height: 20px;
+    padding: 0 5px;
+    border: 1px solid var(--border-medium);
+    border-radius: var(--radius-round);
+    background: var(--bg-elevated);
+    color: var(--text-secondary);
+    font: inherit;
+    font-size: 0.7rem;
+    cursor: pointer;
+}
+
+.lt-more:hover,
+.lt-more:focus-visible {
+    color: var(--text-primary);
+    border-color: var(--status-reading);
+}
+
+/* All of a cell's chips, over the rows below it */
+.lt-rows .lt-row.lt-row-open {
+    z-index: 4;
+}
+
+.lt-expanded {
+    position: absolute;
+    top: 3px;
+    z-index: 5;
+    box-sizing: border-box;
+    max-width: 420px;
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 5px;
+    padding: 6px 8px;
+    background: var(--bg-elevated);
+    border: 1px solid var(--status-reading);
+    border-radius: var(--radius-medium);
+    box-shadow: var(--shadow-medium);
+}
+
+.lt-expanded .lt-chip {
+    margin: 0;
+    max-width: 100%;
+}
+
+.lt-expanded .lt-cell-edit {
+    margin: 0;
 }

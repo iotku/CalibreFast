@@ -413,8 +413,75 @@ function draw(force = false): void {
     drawn = { from, to };
     const out: HTMLElement[] = [];
     for (let i = from; i < to; i++) out.push(rowElement(shown[i]!, i));
+    closeExpanded();
     body.replaceChildren(...out);
+    for (const cell of body.querySelectorAll<HTMLElement>(".lt-list-cell")) addMore(cell);
 }
+
+// ---------------------------------------------------------------------------
+// Tags and languages that don't fit: "+N" opens them all over the rows below
+// (rows keep one height, which the drawing relies on)
+// ---------------------------------------------------------------------------
+
+/**
+ * If a list cell's chips don't all fit: the first is cut short ("Engl…"),
+ * those that don't fit after it are hidden, and a button at the end shows
+ * how many ("+3", or "⋯" when only the first is cut) and opens them all.
+ */
+function addMore(cell: HTMLElement): void {
+    const chips = [...cell.querySelectorAll<HTMLElement>(".lt-chip")];
+    const cut = (c: HTMLElement): boolean => c.scrollWidth > c.clientWidth + 1;
+    if (chips.length === 0 || (cell.scrollWidth <= cell.clientWidth + 1 && !chips.some(cut))) return;
+    cell.classList.add("lt-has-more"); // room for the button
+    const limit = cell.getBoundingClientRect().right - parseFloat(getComputedStyle(cell).paddingRight);
+    let hidden = 0;
+    for (const c of chips.slice(1)) {
+        if (hidden || c.getBoundingClientRect().right > limit) {
+            c.hidden = true;
+            hidden++;
+        }
+    }
+    // The first chip whole before any after it: hide those from the end.
+    for (let i = chips.length - hidden - 1; i > 0 && cut(chips[0]!); i--) {
+        chips[i]!.hidden = true;
+        hidden++;
+    }
+    const more = el("button", { type: "button", className: "lt-more" }, hidden ? `+${hidden}` : "⋯");
+    more.title = `Show all ${chips.length}`;
+    more.ariaLabel = `Show all ${chips.length} ${cell.dataset["col"] ?? ""}`;
+    cell.append(more);
+}
+
+let expanded: HTMLElement | null = null;
+
+function closeExpanded(): void {
+    expanded?.closest(".lt-row")?.classList.remove("lt-row-open");
+    expanded?.remove();
+    expanded = null;
+}
+
+/** Every chip of a list cell, wrapped, in a panel over the rows below it. */
+function expand(cell: HTMLElement): void {
+    closeExpanded();
+    const row = cell.closest<HTMLElement>(".lt-row");
+    if (!row) return;
+    const panel = el("div", { className: "lt-expanded" });
+    panel.dataset["col"] = cell.dataset["col"] ?? "";
+    for (const node of cell.querySelectorAll<HTMLElement>(".lt-cell-edit, .lt-chip")) {
+        const copy = node.cloneNode(true) as HTMLElement;
+        copy.hidden = false;
+        panel.append(copy);
+    }
+    panel.style.left = `${cell.offsetLeft}px`;
+    panel.style.minWidth = `${cell.offsetWidth}px`;
+    row.classList.add("lt-row-open");
+    row.append(panel);
+    expanded = panel;
+}
+
+document.addEventListener("click", (e) => {
+    if (expanded && !expanded.contains(e.target as Node) && !(e.target as HTMLElement).closest(".lt-more")) closeExpanded();
+});
 
 function chip(col: ColKey, value: string): HTMLElement {
     return el(
@@ -441,6 +508,7 @@ function rowElement(r: Row, i: number): HTMLElement {
         const cell = el("span", { className: `lt-cell lt-col-${c.key}`, role: "gridcell" });
         cell.dataset["col"] = c.key;
         if (c.items) {
+            cell.classList.add("lt-list-cell");
             const values = c.items(b);
             const unlisted = c.key === "formats" && b.formats_from_folder;
             if (c.edit) {
@@ -560,7 +628,10 @@ body.addEventListener("click", (e) => {
     }
     const pen = target.closest<HTMLElement>(".lt-cell-edit");
     if (pen) {
-        const cell = pen.closest<HTMLElement>(".lt-editable");
+        // In the row, or in its expanded panel: the row's cell for that column.
+        const col = pen.closest<HTMLElement>("[data-col]")?.dataset["col"];
+        const cell = row.querySelector<HTMLElement>(`.lt-editable[data-col="${col}"]`);
+        closeExpanded();
         if (cell) startEdit(cell);
         return;
     }
@@ -577,13 +648,20 @@ body.addEventListener("click", (e) => {
     }
     const ch = target.closest<HTMLElement>(".lt-chip");
     if (ch) {
-        const col = ch.closest<HTMLElement>(".lt-cell")?.dataset["col"] as ColKey | undefined;
+        const col = ch.closest<HTMLElement>("[data-col]")?.dataset["col"] as ColKey | undefined;
         const input = col && filterInputs.get(col);
         if (col && input) {
             input.value = filters[col] = `=${ch.dataset["value"] ?? ""}`;
             refresh();
         }
         return;
+    }
+    const more = target.closest<HTMLElement>(".lt-more");
+    if (more) {
+        const cell = more.closest<HTMLElement>(".lt-cell");
+        const open = expanded !== null && expanded.dataset["col"] === cell?.dataset["col"] && expanded.closest(".lt-row") === row;
+        if (open) closeExpanded();
+        else if (cell) expand(cell);
     }
 });
 
@@ -904,6 +982,10 @@ byId("lt-clear").addEventListener("click", () => {
     refresh();
 });
 document.addEventListener("keydown", (e) => {
+    if (e.key === "Escape" && expanded) {
+        closeExpanded();
+        return;
+    }
     if (e.key === "Escape" && !modalOpen() && !editing && selected.size && !(e.target instanceof HTMLInputElement && e.target.value)) {
         selected.clear();
         selectionChanged();
