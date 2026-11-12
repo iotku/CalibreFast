@@ -124,8 +124,8 @@
 }
 
 .lt-table {
-    --lt-cols: 34px minmax(220px, 2.2fr) minmax(150px, 1.4fr) 140px 150px 96px 170px minmax(180px, 2fr) 110px 96px 236px;
-    min-width: 1610px;
+    --lt-cols: 34px minmax(220px, 2.2fr) minmax(150px, 1.4fr) 140px 150px 112px 170px minmax(180px, 2fr) 110px 96px 236px;
+    min-width: 1626px;
 }
 
 .lt-row {
