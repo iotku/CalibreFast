@@ -2679,3 +2679,207 @@ label.group-row span {
         justify-content: flex-end;
     }
 }
+
+/* ── Removing books (web/delete-books.ts, web/select-books.ts) and the
+      Recycling Bin (templates/recycle-bin.html, web/recycle-bin.ts) ── */
+.btn-action.btn-danger,
+.btn-action-remove:hover {
+    background: #8f2a2a;
+    border-color: #c44;
+    color: #fff;
+}
+
+.btn-action.btn-danger:hover:not(:disabled) {
+    background: #a83232;
+}
+
+.btn-action:disabled {
+    opacity: 0.45;
+    cursor: not-allowed;
+}
+
+.meta-edit-row {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 8px;
+}
+
+.delete-dialog {
+    width: min(520px, calc(100vw - 32px));
+    max-height: calc(100vh - 32px);
+    padding: 1.25rem 1.5rem;
+    background: var(--bg-surface);
+    color: var(--text-primary);
+    border: 1px solid #c44;
+    border-radius: var(--radius-medium, 8px);
+    box-shadow: var(--shadow-medium);
+}
+
+.delete-dialog::backdrop {
+    background: var(--bg-modal-overlay);
+}
+
+.delete-dialog h2 {
+    margin: 0 0 0.75rem;
+    font-size: 1.15rem;
+    overflow-wrap: anywhere;
+}
+
+.delete-list {
+    max-height: 30vh;
+    overflow: auto;
+    margin: 0 0 0.75rem;
+    padding: 0.5rem 0.75rem 0.5rem 1.75rem;
+    background: var(--bg-primary);
+    border: 1px solid var(--border-light);
+    border-radius: var(--radius-small, 4px);
+    font-size: 0.9rem;
+    overflow-wrap: anywhere;
+}
+
+.delete-warning a {
+    color: var(--text-primary);
+}
+
+.delete-warning p {
+    margin: 0 0 0.6rem;
+    font-size: 0.9rem;
+    line-height: 1.45;
+    color: var(--text-secondary);
+}
+
+.delete-confirm {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 0.4rem;
+    margin: 0.75rem 0;
+    font-size: 0.9rem;
+}
+
+.delete-confirm input {
+    flex: 1 1 100%;
+}
+
+.delete-actions {
+    display: flex;
+    flex-wrap: wrap;
+    justify-content: flex-end;
+    gap: 8px;
+    margin-top: 0.75rem;
+}
+
+/* Choosing books in the grid */
+.site-bar .tb-select-btn[aria-pressed="true"] {
+    background: #8f2a2a;
+    border-color: #c44;
+    color: #fff;
+}
+
+body.selecting .book {
+    cursor: pointer;
+}
+
+/* The cover's own buttons (favorite, want to read) would sit on the tick. */
+body.selecting .book .cover-actions {
+    display: none;
+}
+
+body.selecting .book .cover-wrapper {
+    position: relative;
+}
+
+body.selecting .book .cover-wrapper::after {
+    content: "";
+    position: absolute;
+    top: 8px;
+    left: 8px;
+    width: 22px;
+    height: 22px;
+    border: 2px solid #fff;
+    border-radius: 50%;
+    background: rgba(0, 0, 0, 0.45);
+    box-shadow: 0 1px 4px rgba(0, 0, 0, 0.6);
+}
+
+body.selecting .book.selected .cover-wrapper::after {
+    content: "✓";
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    background: #c44;
+    border-color: #c44;
+    color: #fff;
+    font-weight: 700;
+    font-size: 14px;
+}
+
+body.selecting .book.selected .cover-wrapper {
+    outline: 3px solid #c44;
+    outline-offset: 2px;
+}
+
+.select-bar {
+    position: fixed;
+    left: 50%;
+    bottom: max(16px, env(safe-area-inset-bottom));
+    transform: translateX(-50%);
+    z-index: 900;
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    justify-content: center;
+    gap: 10px 16px;
+    width: max-content;
+    max-width: calc(100vw - 32px);
+    padding: 10px 14px;
+    background: var(--bg-elevated);
+    border: 1px solid var(--border-medium);
+    border-radius: var(--radius-medium, 8px);
+    box-shadow: var(--shadow-medium);
+}
+
+.select-bar[hidden] {
+    display: none;
+}
+
+.select-bar-actions {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 8px;
+}
+
+.select-count {
+    font-size: 0.9rem;
+    color: var(--text-secondary);
+}
+
+/* The Recycling Bin page */
+.bin-batch {
+    margin-top: 1.5rem;
+}
+
+.bin-batch-head {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: baseline;
+    gap: 6px 12px;
+}
+
+.bin-batch-head h2 {
+    margin: 0;
+    font-size: 1.05rem;
+}
+
+.bin-batch-head .btn-standard {
+    margin-left: auto;
+}
+
+.bin-row-gone .import-title {
+    color: var(--text-secondary);
+}
+
+.auth-error-text {
+    color: #e57373;
+    font-size: 0.85rem;
+}

@@ -164,6 +164,24 @@ Start the server with `-watch-dir /path/to/folder` (and `-allow-writes`). Books 
 - **Nothing reaches `metadata.db` or the library folder before Add to library.** Leaving the page keeps the book waiting; the form's edits aren't saved until then (the cover is).
 - Waiting books survive a restart, and can still be reviewed when the server runs without `-watch-dir`.
 
+## Removing books and the Recycling Bin
+
+Admins on a server with `-allow-writes` can remove books from the library. Nothing is deleted: removed books go to the Recycling Bin, and only the server's owner can empty it.
+
+- **Removing one book:** **Remove from library…** under **Edit metadata**, on the book's page or popup.
+- **Removing several:** **Select** in the top bar of the library, a filtered view or search results, then tap the books (a tick shows on each, and the choice survives scrolling) and **Remove N from library…** in the bar at the bottom. **Done** or Escape leaves selection.
+- **Hard to do by accident:** the confirmation lists every book, explains what happens, and its button only works once `delete` is typed. Enter cancels until then.
+- **Undo:** the confirmation's result offers **Undo**, which puts everything straight back.
+- **What a removal does:** it's one batch in the bin (`-recycle-bin`, by default `<datadir>/recycle-bin/<batch>/`), made before anything changes:
+  - `metadata.db`: a copy of the library's database just before the removal;
+  - `books/<id>/`: each book's folder, moved there whole (files, `metadata.opf`, cover);
+  - `batch.json`: when, by whom, and each book's title, authors and place in the library.
+
+  Then the books' rows go from `metadata.db` (with the authors, publishers, series and tags no other book has, as Calibre does), and their folders (and author folders left empty) from the library. If any step fails, nothing is removed. Favorites, reading progress, notes and shelves stay in CalibreFast's database, so they're there again if the book comes back.
+- **Restoring** (`/recycle-bin`, **Recycling Bin** in the user menu): every batch, newest first, with **Restore** per book and **Restore all**. A book comes back with its id, uuid and folder, its rows copied from the batch's `metadata.db`. Authors, tags and so on are matched by name, and added back if the library no longer has them. Whatever else changed in the library since is kept. A book whose folder is back in the library already, or whose files were emptied from the bin, isn't restored.
+- **Emptying** is only possible on the server, so a stolen admin session can't remove the backups too: `CalibreFast -datadir … -empty-recycle-bin 30d` deletes batches removed more than 30 days ago (`0`: all), or delete batch folders by hand.
+- **Rolling the whole library back** by hand (e.g. after many removals): stop the server, copy a batch's `metadata.db` over the library's, and move each `books/<id>/` folder back to its `path` from `batch.json`. Changes made after that batch are lost, so restoring from the page is usually better.
+
 ## Accounts, favorites, progress and shelves
 
 - **Accounts:** password, or GitHub/Google sign-in. Admins manage users at `/admin/users`. See [SECURITY.md](SECURITY.md) for who can do what.

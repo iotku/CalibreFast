@@ -6,7 +6,7 @@ See also: [FEATURES.md](FEATURES.md) for behaviour, [SECURITY.md](SECURITY.md) f
 
 - **`metadata.db`** (Calibre's SQLite database) is the index for listing, searching and filtering.
 - **`metadata.opf`** in each book folder is what the book page and the metadata editor read. Edits write both. The editor never sees library identifiers (`calibre`, `uuid`, a scheme-less `urn:uuid:`: `isLibraryIdentifier`), and a save keeps the book's own as they are (`updateBookInCalibreDB`).
-- **`calibrefast-groups.json`** in the library root holds user-defined groups. It's the only file CalibreFast adds to a library.
+- **`calibrefast-groups.json`** in the library root holds user-defined groups. It's the only file CalibreFast adds to a library. (The Recycling Bin is outside the library, in `-datadir` by default.)
 
 ## Main library pages
 
@@ -123,6 +123,18 @@ Each book's `authors` is its authors' names in Calibre's order, `A & B` (`bookAu
   - `mountCoverDialog`'s `autoDefault` gives a waiting book the server found no cover for the EPUB's cover or the PDF's first page, rendered in the browser. A book with a cover isn't loaded until the cover dialog opens.
 - **Adding** (`POST /import/{id}/apply` → `importInbox.approve`): `addBookToLibrary` (`upload.go`, shared with uploads: the row in `metadata.db`, `metadata.opf`, the files moved in; undone if a step fails, with the files moved back), then the cover, then `updateBookInCalibreDB`, the same write as the editor's Apply. The book is taken out of the queue first, so two requests can't both add it, and put back if adding fails.
 - `/api/me` reports `pending_imports` to admins, for the top bar (`web/nav.ts`). `/import` is `templates/imports.html` and `web/imports.ts`, which polls `/api/imports`.
+
+## Removing books and the Recycling Bin
+
+`recycle.go`; behaviour in [FEATURES.md](FEATURES.md#removing-books-and-the-recycling-bin).
+
+- **Removing** (`POST /api/library/delete` → `recycleBooks`): under `recycleMu`, a new batch folder; `VACUUM INTO` copies `metadata.db` there first (no copy, no removal). Then each book's folder is moved in (`moveDir`: a rename, or copy and remove across filesystems), then one transaction deletes the rows (`deleteBooksFromCalibreDB`). A failed move or delete moves the folders back and drops the batch.
+  - **Rows:** every table with a `book` column (`tablesReferringToBooks`, from `sqlite_master`, skipping virtual tables), so custom columns and tables newer Calibre versions add go too; then authors, publishers, series and tags nothing links to.
+  - `books.path` is checked to be strictly inside the library (`libraryBookDir`): an empty path would be the whole library.
+- **Restoring** (`POST /api/recycle-bin/{batch}/restore` → `restoreRecycled`): the folder moves back, then `restoreBookRows` attaches the batch's `metadata.db` as `bak` on a connection of its own and copies the book's rows in one transaction: the `books` row (its old id unless taken; then the uuid set back, since Calibre's insert trigger replaces it), plain tables with `book` changed, and link tables through `linkedEntityOf`, which maps each linked item to the library's by name (`restoreEntity`), copying it from `bak` when missing. Restored books are marked in `batch.json`.
+- **Afterwards** both rewrite every `pages/*.json` (`writeLibraryPages`; a removal can move every book's page), clear the per-book caches (`forgetBook`) and refresh the overviews.
+- **No web endpoint deletes from the bin.** `-empty-recycle-bin` (`emptyRecycleBin`) runs from the command line and exits.
+- **Browser:** `web/delete-books.ts` is the confirmation (type `delete`) and Undo; `web/select-books.ts` adds **Select** to the grid's top bar once `nav.ts` says the viewer can edit (`data-can-edit` on `<html>`, `cf:me` event), and marks cards as `app-htmx.ts` renders them; `web/user.ts` wires the book page's button; `web/recycle-bin.ts` is `/recycle-bin`.
 
 ## ISBNs and online lookups
 

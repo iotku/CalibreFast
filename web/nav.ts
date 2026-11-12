@@ -136,6 +136,10 @@ function init(bar: HTMLElement): void {
 
     let userToggle: Toggle | null = null;
     function render(st: MeState): void {
+        // Other scripts on the page (the grid's Select) follow this.
+        if (st.canEdit) document.documentElement.dataset["canEdit"] = "1";
+        else delete document.documentElement.dataset["canEdit"];
+        document.dispatchEvent(new CustomEvent("cf:me"));
         if (userToggle) toggles = toggles.filter((t) => t !== userToggle);
         userToggle = null;
         if (!st.username) {
@@ -182,6 +186,7 @@ function init(bar: HTMLElement): void {
             el("hr"),
             ...(st.canEdit ? [el("a", { href: "/upload", textContent: "Upload books", ...current("upload") })] : []),
             ...(imports !== null ? [el("a", { href: "/import", textContent: imports ? `Review imports (${imports})` : "Review imports", ...current("imports") })] : []),
+            ...(st.canEdit ? [el("a", { href: "/recycle-bin", textContent: "Recycling Bin", ...current("recycle-bin") })] : []),
             ...(st.isAdmin ? [el("a", { href: "/admin/users", textContent: "Manage users" })] : []),
             el("a", { href: "/account", textContent: "Account" }),
             logout,

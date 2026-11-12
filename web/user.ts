@@ -11,6 +11,7 @@
  */
 
 import { api, errorMessage } from "./dom.js";
+import { deleteBooks } from "./delete-books.js";
 
 interface StatusResponse {
     status: string;
@@ -147,3 +148,17 @@ new MutationObserver((records) => {
 }).observe(document.documentElement, { childList: true, subtree: true });
 
 scan(document.documentElement);
+
+// The book page's "Remove from library…" (admins): book.html, in the popup
+// and on its own.
+document.addEventListener("click", async (e) => {
+    const btn = e.target instanceof Element ? e.target.closest<HTMLButtonElement>("[data-delete-book]") : null;
+    if (!btn) return;
+    const removed = await deleteBooks([
+        { uuid: btn.dataset["deleteBook"] ?? "", title: btn.dataset["title"] ?? "", authors: btn.dataset["authors"] ?? "" },
+    ]);
+    if (!removed) return;
+    // The popup's grid (without the #book/ entry), or the library.
+    if (location.hash.startsWith("#book/")) location.replace(location.pathname + location.search);
+    else location.href = "/";
+});
