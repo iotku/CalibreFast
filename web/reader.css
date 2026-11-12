@@ -173,7 +173,8 @@ input {
 .r-bottom {
     bottom: 0;
     padding-top: 4px;
-    padding-bottom: calc(4px + var(--safe-bottom));
+    /* Room for the position text, which hangs below the slider. */
+    padding-bottom: calc(10px + var(--safe-bottom));
     border-top: 1px solid var(--chrome-border);
 }
 
@@ -298,7 +299,7 @@ body[data-preview] #tab-notes {
     left: 6px;
     right: 6px;
     font-size: 12px;
-    line-height: 14px;
+    line-height: 16px;
     color: var(--chrome-muted);
     text-align: center;
     font-variant-numeric: tabular-nums;
