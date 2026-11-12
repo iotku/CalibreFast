@@ -4,7 +4,7 @@ import { byId, maybeId, modalOpen } from "./dom.js";
 import { setupPdfGestures } from "./pdf-gestures.js";
 import { setupLoupe } from "./pdf-loupe.js";
 import { ACTUAL_SIZE, createPdfView, type PdfView, type ViewLayout } from "./pdf-view.js";
-import { setupChrome } from "./reader-chrome.js";
+import { offerSignIn, setupChrome } from "./reader-chrome.js";
 import { keepsHistory, leaveReader, previewSync, readerBook, type ReaderBook } from "./reader-preview.js";
 import { getSettings, onSettingsChange, setSettings, type ReaderSettings } from "./reader-settings.js";
 import { createReadingSync, renderBookmarks, type Bookmark, type BookmarkHandlers } from "./reading-sync.js";
@@ -38,7 +38,10 @@ const sync = preview
     ? previewSync(chrome.setStatus)
     : await createReadingSync(uuid, "pdf", { legacyKey: `pdf-page-${uuid}`, onStatus: chrome.setStatus });
 const saved = await sync.loadProgress();
-if (!sync.signedIn && !preview) chrome.setStatus("Position saved on this device");
+if (!sync.signedIn && !preview) {
+    chrome.setStatus("Position saved on this device");
+    offerSignIn(uuid);
+}
 
 // ---- layout from the settings -------------------------------------------------
 

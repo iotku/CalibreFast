@@ -461,3 +461,18 @@ export function setupChrome(opts: ChromeOptions): Chrome {
         },
     };
 }
+
+/**
+ * For a signed-out reader: the top bar's Sign in. It goes through signing in
+ * (or creating an account) to /account/import for just this book, which adds
+ * the place, bookmarks and highlights made here to the account (asking only
+ * if the account's place differs), then back to this page.
+ */
+export function offerSignIn(uuid: string): void {
+    const link = document.getElementById("reader-signin");
+    if (!(link instanceof HTMLAnchorElement)) return;
+    const back = location.pathname + location.search;
+    const sync = `/account/import?book=${encodeURIComponent(uuid)}&next=${encodeURIComponent(back)}`;
+    link.href = `/login?next=${encodeURIComponent(sync)}`;
+    link.hidden = false;
+}

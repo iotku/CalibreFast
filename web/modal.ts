@@ -1,4 +1,4 @@
-import { prefetchControls } from "./user.js"; // favorite / status / shelves controls in the book popup
+import { forgetControls, prefetchControls } from "./user.js"; // favorite / status / shelves controls in the book popup
 /* ------------------------------------------------------------------ */
 /* Modal (hash-driven)                                                 */
 /* ------------------------------------------------------------------ */
@@ -214,7 +214,13 @@ export function setupModal(): void {
     // meta): it would re-fetch the page and replace the body.
     window.addEventListener("hashchange", syncFromHash);
     window.addEventListener("popstate", () => {
-        if (hashUuid()) openedViaNav = true; // reached by back/forward: there's an entry behind it
+        const uuid = hashUuid();
+        if (uuid) {
+            openedViaNav = true; // reached by back/forward: there's an entry behind it
+            // Back to a book: its status and progress may have moved since
+            // the controls were prefetched (read in between, another tab).
+            if (uuid !== shownUuid || !isModalOpen()) forgetControls(uuid);
+        }
         syncFromHash();
     });
 

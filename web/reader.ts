@@ -4,7 +4,7 @@ import { currentUser, getBook, putBook, registerWorker, sweep, updateBook, type 
 import { byId, errorMessage, maybeId, modalOpen } from "./dom.js";
 import { openEpub } from "./epub-open.js";
 import { canInflate, openBuffer, openRemote, type EpubSource } from "./epub-source.js";
-import { pageColors, setupChrome } from "./reader-chrome.js";
+import { offerSignIn, pageColors, setupChrome } from "./reader-chrome.js";
 import { keepsHistory, leaveReader, previewSync, readerBook, type ReaderBook } from "./reader-preview.js";
 import { getSettings, onSettingsChange, type ReaderSettings } from "./reader-settings.js";
 import { createReadingSync, renderBookmarks, type Bookmark, type BookmarkHandlers } from "./reading-sync.js";
@@ -267,7 +267,10 @@ const sync = preview
     ? previewSync(chrome.setStatus)
     : await createReadingSync(uuid, "epub", { legacyKey: `reader-cfi-${uuid}`, onStatus: chrome.setStatus });
 const saved = await sync.loadProgress();
-if (!sync.signedIn && !preview) chrome.setStatus("Position saved on this device");
+if (!sync.signedIn && !preview) {
+    chrome.setStatus("Position saved on this device");
+    offerSignIn(uuid);
+}
 
 let locationsReady = false;
 let currentCfi: string | null = null;

@@ -34,6 +34,7 @@
     <section class="auth-card">
         <h2>Create an account</h2>
         <form method="post" action="/register" class="auth-form">
+            <input type="hidden" name="next" value="{{ .Next }}">
             <label>Username <input name="username" type="text" autocomplete="username" pattern="[A-Za-z0-9._\-]{3,32}" required></label>
             <label>Password <input name="password" type="password" autocomplete="new-password" minlength="10" required></label>
             <label>Repeat password <input name="password2" type="password" autocomplete="new-password" minlength="10" required></label>

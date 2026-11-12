@@ -12,6 +12,11 @@
  *      with the newer chosen; the user can pick the other.
  *   4. "Add to my account" sends the ticked ones; what was added is cleared
  *      from this device. "Discard" clears them without adding.
+ *
+ * ?book=<uuid>&next=<path>: just that book, on the way back to where the
+ * user signed in from (the reader's Sign in, reader-chrome.ts). Added at
+ * once when there's nothing to choose; otherwise the choice is asked here.
+ * Then on to next.
  */
 
 import { byId } from "./dom.js";
@@ -46,6 +51,35 @@ const discardBtn = byId("import-discard", HTMLButtonElement);
 
 let guest = new Map<string, GuestBook>();
 let previews: Preview[] = [];
+
+const params = new URLSearchParams(location.search);
+const onlyBook = params.get("book");
+/** Where to go afterwards: a path on this site, or nowhere. */
+const next = ((): string | null => {
+    const n = params.get("next") ?? "";
+    return n.startsWith("/") && !n.startsWith("//") && !n.includes("\\") ? n : null;
+})();
+
+/** On to next (single-book mode), or say so on the page. */
+function finish(text: string): void {
+    if (next) {
+        statusEl.textContent = `${text} Taking you back…`;
+        actionsEl.hidden = true;
+        location.replace(next);
+        return;
+    }
+    done(text);
+}
+
+/** Add these books. What was added is cleared from this device. */
+async function add(books: (GuestBook & { use_position: boolean })[]): Promise<{ ok: string[]; failed: number }> {
+    const { results } = await post<{ results: { uuid: string; error?: string }[] }>("/api/me/import", { books });
+    const ok = results.filter((r) => !r.error).map((r) => r.uuid);
+    forgetGuestBooks(ok);
+    for (const uuid of ok) listEl.querySelector(`.import-book[data-uuid="${CSS.escape(uuid)}"]`)?.remove();
+    previews = previews.filter((p) => !ok.includes(p.uuid));
+    return { ok, failed: results.length - ok.length };
+}
 
 async function post<T>(url: string, body: unknown): Promise<T> {
     const res = await fetch(url, {
@@ -131,9 +165,9 @@ function render(): void {
 }
 
 async function start(): Promise<void> {
-    const books = collectGuestData();
+    const books = collectGuestData().filter((b) => !onlyBook || b.uuid === onlyBook);
     guest = new Map(books.map((b) => [b.uuid, b]));
-    if (!books.length) return done("There's no reading from this device to add.");
+    if (!books.length) return finish("There's no reading from this device to add.");
     let all: Preview[];
     try {
         all = (await post<{ books: Preview[] }>("/api/me/import/preview", { books })).books;
@@ -144,7 +178,18 @@ async function start(): Promise<void> {
     // Nothing to decide: already in the account, or gone from the library.
     forgetGuestBooks(all.filter((p) => p.state === "same" || p.state === "missing").map((p) => p.uuid));
     previews = all.filter((p) => (p.state === "new" || p.state === "conflict") && p.book);
-    if (!previews.length) return done("Your account already has everything read on this device.");
+    if (!previews.length) return finish("Your account already has everything read on this device.");
+
+    // Just this book, and nothing to choose: add it and go back.
+    if (onlyBook && previews.every((p) => p.state === "new")) {
+        statusEl.textContent = "Adding your reading to your account…";
+        try {
+            const { failed } = await add(previews.map((p) => ({ ...guest.get(p.uuid)!, use_position: true })));
+            if (!failed) return finish("Added to your account.");
+        } catch {
+            /* listed below, to try again */
+        }
+    }
 
     const conflicts = previews.filter((p) => p.state === "conflict").length;
     statusEl.textContent =
@@ -171,18 +216,13 @@ applyBtn.addEventListener("click", async () => {
     applyBtn.disabled = discardBtn.disabled = true;
     statusEl.textContent = "Adding…";
     try {
-        const { results } = await post<{ results: { uuid: string; error?: string }[] }>("/api/me/import", { books });
-        const ok = results.filter((r) => !r.error).map((r) => r.uuid);
-        const failed = results.filter((r) => r.error);
-        forgetGuestBooks(ok);
-        for (const uuid of ok) listEl.querySelector(`.import-book[data-uuid="${CSS.escape(uuid)}"]`)?.remove();
-        previews = previews.filter((p) => !ok.includes(p.uuid));
-        if (failed.length) {
-            statusEl.textContent = `Added ${plural(ok.length, "book", "books")}; ${plural(failed.length, "book", "books")} couldn't be added. Try again.`;
+        const { ok, failed } = await add(books);
+        if (failed) {
+            statusEl.textContent = `Added ${plural(ok.length, "book", "books")}; ${plural(failed, "book", "books")} couldn't be added. Try again.`;
         } else if (previews.length) {
             statusEl.textContent = `Added ${plural(ok.length, "book", "books")}. The unticked ones are still on this device.`;
         } else {
-            done(`Added ${plural(ok.length, "book", "books")} to your account.`);
+            finish(`Added ${plural(ok.length, "book", "books")} to your account.`);
         }
     } catch {
         statusEl.textContent = "Couldn't add them. Nothing was lost; try again in a moment.";
@@ -197,7 +237,7 @@ discardBtn.addEventListener("click", () => {
     forgetGuestBooks(previews.map((p) => p.uuid));
     previews = [];
     listEl.replaceChildren();
-    done("This device's reading was removed.");
+    finish("This device's reading was removed.");
 });
 
 void start();

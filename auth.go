@@ -488,7 +488,8 @@ func registerHandler(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
 		return
 	}
-	data := AuthPageData{Username: r.FormValue("username"), Next: "/"}
+	next := safeNext(r.FormValue("next"))
+	data := AuthPageData{Username: r.FormValue("username"), Next: next}
 	if !loginLimiter.allow("ip:" + clientIP(r)) {
 		data.Error = "Too many attempts. Try again in a few minutes."
 		renderAuthPage(w, "login.html", data, http.StatusTooManyRequests)
@@ -509,7 +510,7 @@ func registerHandler(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "could not sign in", http.StatusInternalServerError)
 		return
 	}
-	http.Redirect(w, r, "/", http.StatusSeeOther)
+	http.Redirect(w, r, next, http.StatusSeeOther)
 }
 
 func logoutHandler(w http.ResponseWriter, r *http.Request) {
