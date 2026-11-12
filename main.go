@@ -73,21 +73,14 @@ func csrfProtect(h http.Handler) http.Handler {
 // regular users can never modify metadata.db or files in the library.
 func requireWrites(h http.HandlerFunc) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
+		// Anyone but an admin gets the same 404 as an unknown path, so the
+		// editing routes don't show up to someone probing the server.
+		if u := currentUser(r); u == nil || !u.IsAdmin {
+			http.NotFound(w, r)
+			return
+		}
 		if !allowWrites {
 			http.Error(w, "This library is read-only. Restart the server with -allow-writes to enable editing, uploads and grouping.", http.StatusForbidden)
-			return
-		}
-		u := currentUser(r)
-		if u == nil {
-			if wantsHTML(r) {
-				http.Redirect(w, r, "/login?next="+url.QueryEscape(r.URL.RequestURI()), http.StatusSeeOther)
-				return
-			}
-			http.Error(w, "sign in as an admin to change the library", http.StatusUnauthorized)
-			return
-		}
-		if !u.IsAdmin {
-			http.Error(w, "only admins can change the library", http.StatusForbidden)
 			return
 		}
 		h(w, r)
@@ -474,19 +467,27 @@ func topbarData(kv ...any) (map[string]any, error) {
 	return m, nil
 }
 
-func serveLibraryHTTP() {
-	http.HandleFunc("/", func(w http.ResponseWriter, r *http.Request) {
-		data := IndexPageData{
-			Title:        "Library",
-			TotalBooks:   totalBooks,
-			PagesVersion: currentPagesVersion(),
-		}
+// indexHandler serves the library at "/". That pattern is Go's catch-all,
+// so every path no other route matched lands here too and gets a 404.
+func indexHandler(w http.ResponseWriter, r *http.Request) {
+	if r.URL.Path != "/" {
+		http.NotFound(w, r)
+		return
+	}
+	data := IndexPageData{
+		Title:        "Library",
+		TotalBooks:   totalBooks,
+		PagesVersion: currentPagesVersion(),
+	}
 
-		err := templates.ExecuteTemplate(w, "index.html", data)
-		if err != nil {
-			http.Error(w, err.Error(), 500)
-		}
-	})
+	err := templates.ExecuteTemplate(w, "index.html", data)
+	if err != nil {
+		http.Error(w, err.Error(), 500)
+	}
+}
+
+func serveLibraryHTTP() {
+	http.HandleFunc("/", indexHandler)
 
 	// serve generated json pages
 	http.Handle("/pages/", servePages("pages"))

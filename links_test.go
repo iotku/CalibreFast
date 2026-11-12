@@ -58,7 +58,7 @@ func TestSignInLink(t *testing.T) {
 	sam, _ := createUser("sam", "longenough-pw", false)
 	srv, mux := linksApp(t)
 
-	if rec := call(t, mux, sam, "POST", "/api/admin/links", `{"kind":"login","user_id":1}`); rec.Code != http.StatusForbidden {
+	if rec := call(t, mux, sam, "POST", "/api/admin/links", `{"kind":"login","user_id":1}`); rec.Code != http.StatusNotFound {
 		t.Fatalf("non-admin created a link: %d", rec.Code)
 	}
 	path := newLink(t, mux, admin, `{"kind":"login","user_id":`+itoa(sam.ID)+`,"expires":"1h"}`)
