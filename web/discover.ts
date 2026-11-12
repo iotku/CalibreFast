@@ -4,9 +4,10 @@
  * The page is the same for everyone; this fills in its rows from the static
  * page files (cached for good under ?v=) and what's personal:
  *   - Shuffle: the next strip of the server's random order
- *     (pages/shuffle/), walked a strip per load so the same books don't
- *     come back until the whole library has gone by; books the user
- *     finished are skipped.
+ *     (pages/shuffle/), walked a strip per load (or per click of Shuffle)
+ *     so the same books don't come back until the whole library has gone
+ *     by; Previous goes back through the strips shown. Books the user
+ *     finished are skipped. There's deliberately no link to /shuffle.
  *   - Recently added: the start of pages/page1.json.
  *   - The introduction's sign-in line, for signed-out visitors, and Hide.
  *
@@ -24,7 +25,7 @@ import { forgetControls } from "./user.js";
 import { maxCovers } from "./cover-limits.js";
 
 const STRIP = 12; // books in a row
-const CURSOR_KEY = "cf-shuffle"; // {version, at}: where the next Shuffle strip starts
+const CURSOR_KEY = "cf-shuffle"; // ShuffleState
 const INTRO_KEY = "cf-intro-hidden";
 
 const root = byId("discover");
@@ -95,41 +96,93 @@ async function latestRow(): Promise<void> {
     fillRow("row-latest", (await pageFile("/pages/", 1)).slice(0, STRIP));
 }
 
-/** Where the next Shuffle strip starts: saved, or a random place in a new order. */
-function shuffleCursor(): number {
+/*
+ * Shuffle state, kept in localStorage (cf-shuffle) so it carries across
+ * loads: where each strip shown started (the last is the one on screen),
+ * and where the next one starts. Strips are consecutive stretches of the
+ * server's random order, so going forward never repeats until the whole
+ * order has gone by; Previous steps back through the strips shown.
+ */
+interface ShuffleState {
+    version: string;
+    starts: number[]; // strips shown, oldest first; the last is on screen
+    next: number; // where the next strip starts
+}
+const SHUFFLE_HISTORY = 20; // strips Previous can go back through
+
+function loadShuffle(): ShuffleState {
     try {
-        const c = JSON.parse(store.get(CURSOR_KEY) ?? "null") as { version?: string; at?: number } | null;
-        if (c?.version === version && Number.isInteger(c.at) && c.at! >= 0 && c.at! < shuffleTotal) return c.at!;
+        const v = JSON.parse(store.get(CURSOR_KEY) ?? "null") as Partial<ShuffleState> | null;
+        const ok = (n: unknown): n is number => Number.isInteger(n) && (n as number) >= 0 && (n as number) < shuffleTotal;
+        if (v?.version === version && ok(v.next) && Array.isArray(v.starts) && v.starts.every(ok)) {
+            return { version, starts: v.starts.slice(-SHUFFLE_HISTORY), next: v.next };
+        }
     } catch {
         /* unreadable: start somewhere new */
     }
     // A restart made a new order (or first visit): a random place, so
     // visitors don't all start on the same strip.
-    return Math.floor(Math.random() * shuffleTotal);
+    return { version, starts: [], next: Math.floor(Math.random() * shuffleTotal) };
 }
 
+let shuffle: ShuffleState = { version, starts: [], next: 0 };
+
 /**
- * The next STRIP books of the random order from the cursor, skipping
- * finished ones, wrapping at the end; the cursor moves past them. Books only
- * repeat once the whole order has gone by (a library smaller than two
- * strips can't avoid some).
+ * STRIP books of the random order from start, skipping finished ones and
+ * wrapping at the end; and where the strip after it starts.
  */
-async function shuffleRow(): Promise<void> {
-    if (!shuffleTotal) return;
-    const start = shuffleCursor();
-    const out: Book[] = [];
+async function stripFrom(start: number): Promise<{ books: Book[]; end: number }> {
+    const books: Book[] = [];
     let i = start;
-    for (let scanned = 0; out.length < STRIP && scanned < shuffleTotal; scanned++) {
+    for (let scanned = 0; books.length < STRIP && scanned < shuffleTotal; scanned++) {
         const page = Math.floor(i / pageSize) + 1;
         const book = (await pageFile("/pages/shuffle/", page))[i - (page - 1) * pageSize];
-        if (book && !marks.finished.has(book.uuid)) out.push(book);
+        if (book && !marks.finished.has(book.uuid)) books.push(book);
         i = (i + 1) % shuffleTotal;
     }
-    // Went all the way round (a small library): start the next one further
-    // on anyway, so it isn't the same strip in the same order.
-    if (i === start) i = (start + Math.max(1, Math.floor(out.length / 2))) % shuffleTotal;
-    store.set(CURSOR_KEY, JSON.stringify({ version, at: i }));
-    fillRow("row-shuffle", out);
+    // Went all the way round (a library smaller than a strip): start the
+    // next one further on anyway, so it isn't the same books in the same order.
+    if (i === start) i = (start + Math.max(1, Math.floor(books.length / 2))) % shuffleTotal;
+    return { books, end: i };
+}
+
+let shuffling = false; // a strip is being fetched: ignore more clicks
+
+/** Show the strip at start: a new one (push) or one already in the history. */
+async function showStrip(start: number, push: boolean): Promise<void> {
+    shuffling = true;
+    try {
+        const { books, end } = await stripFrom(start);
+        if (push) shuffle.starts = [...shuffle.starts, start].slice(-SHUFFLE_HISTORY);
+        shuffle.next = end;
+        store.set(CURSOR_KEY, JSON.stringify(shuffle));
+        fillRow("row-shuffle", books);
+    } finally {
+        shuffling = false;
+        updateShuffleButtons();
+    }
+}
+
+function updateShuffleButtons(): void {
+    const back = maybeId("shuffle-back", HTMLButtonElement);
+    if (back) back.disabled = shuffling || shuffle.starts.length < 2;
+    const next = maybeId("shuffle-next", HTMLButtonElement);
+    if (next) next.disabled = shuffling;
+}
+
+/** On load: the strip after the last one shown (or a new place). */
+async function shuffleRow(): Promise<void> {
+    if (!shuffleTotal) return;
+    shuffle = loadShuffle();
+    maybeId("shuffle-next")?.addEventListener("click", () => {
+        if (!shuffling) void showStrip(shuffle.next, true);
+    });
+    maybeId("shuffle-back")?.addEventListener("click", () => {
+        if (shuffling || shuffle.starts.length < 2) return;
+        shuffle.starts = shuffle.starts.slice(0, -1);
+        void showStrip(shuffle.starts[shuffle.starts.length - 1]!, false);
+    });
+    await showStrip(shuffle.next, true);
 }
 
 /* ------------------------------------------------------------------ */
