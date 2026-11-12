@@ -54,10 +54,25 @@ let previews: Preview[] = [];
 
 const params = new URLSearchParams(location.search);
 const onlyBook = params.get("book");
-/** Where to go afterwards: a path on this site, or nowhere. */
+/** Where to go afterwards: an allowed path on this site, or nowhere. */
 const next = ((): string | null => {
-    const n = params.get("next") ?? "";
-    return n.startsWith("/") && !n.startsWith("//") && !n.includes("\\") ? n : null;
+    const raw = params.get("next");
+    if (!raw) return null;
+
+    let url: URL;
+    try {
+        url = new URL(raw, location.origin);
+    } catch {
+        return null;
+    }
+
+    if (url.origin !== location.origin) return null;
+
+    const candidate = `${url.pathname}${url.search}${url.hash}`;
+
+    // Keep this list tight: only routes that are valid "return to" targets for this flow.
+    const allowedPrefixes = ["/reader", "/library", "/account"];
+    return allowedPrefixes.some((p) => candidate === p || candidate.startsWith(`${p}/`)) ? candidate : null;
 })();
 
 /** On to next (single-book mode), or say so on the page. */
