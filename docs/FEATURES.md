@@ -149,6 +149,14 @@ Both only offer choices. Nothing is saved until **Apply Changes**.
 - Files with the same name and different formats (`Book.epub` + `Book.pdf`) become one book with both formats.
 - Metadata is read from EPUB and PDF files. Afterwards the editor lets you pick each field's value from each format. `metadata.opf` gets the book's uuid as `<dc:identifier opf:scheme="uuid" id="uuid_id">`; the file's own identifiers (an EPUB's `urn:uuid:`, its ISBN) are kept with their ids.
 
+## Duplicates
+
+Uploads and the import queue check the library before adding a book:
+- **Same title and authors** (case and spacing aside): a likely duplicate. It isn't added; **Upload anyway** (upload page) or **Add anyway** (import review) adds it.
+- **Same title only:** a duplicate only if the library book holds a file identical to one being added (SHA-256). Otherwise it's a different book, added as usual.
+- **An identical file** is never added again, override or not.
+- The import queue marks books that look already in the library, so you can discard them without opening them. The review page and the library's metadata editor say so at the top, linking the matching books. On review, the check is run again with your edited title and authors when you add the book.
+
 ## Watch folder and import queue
 
 Start the server with `-watch-dir /path/to/folder` (and `-allow-writes`). Books put in that folder are **not** added to the library: they wait for an admin's review.

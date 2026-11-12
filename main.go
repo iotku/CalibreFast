@@ -211,6 +211,8 @@ type EditBookPageData struct { // TODO I Hate this, these page structs are all o
 	ReadLink     string          // the book in a reader's preview mode, to look things up ("" without an EPUB or PDF)
 	Lookups      bool            // show the online lookup (Open Library); off with -no-lookups
 	GoogleBooks  bool            // offer Google Books: only with CF_GOOGLE_BOOKS_KEY, and not -no-google-books
+	// Duplicates: books in the library this one may duplicate (duplicates.go).
+	Duplicates *duplicateCheck
 }
 
 func writePage(page int, books []Book) error {
@@ -328,6 +330,8 @@ func main() {
 	}
 	generatePages()
 	initCalibreDB()
+	// Files older versions recorded under the wrong name (calibre_names.go).
+	repairFormatNames(calibreDB, baseDir, allowWrites)
 	if allowWrites {
 		if err := checkVirtualTables(context.Background(), calibreDB, "main"); err != nil {
 			log.Println("WARNING: removing and restoring books won't work:", err)
@@ -448,6 +452,7 @@ var templates = template.Must(
 		"topbar":       topbarData,
 		"asset":        assetURL,
 		"booksPerPage": func() int { return booksPerPage },
+		"join":         strings.Join,
 	}).ParseGlob("templates/*.html"),
 )
 
@@ -573,6 +578,11 @@ func serveLibraryHTTP() {
 			ReadLink:     previewReadLink("uuid", uuid, extractFormats(resolveFormats(uuid, baseDir, bookPath.(string)))),
 			Lookups:      !noLookups,
 			GoogleBooks:  googleBooksEnabled(),
+		}
+		if dup, err := libraryBookDuplicates(calibreDB, baseDir, uuid); err != nil {
+			log.Printf("edit %s: duplicate check: %v", uuid, err)
+		} else {
+			EditBookPageData.Duplicates = dup
 		}
 
 		err = templates.ExecuteTemplate(w, "book-edit.html", EditBookPageData)
@@ -708,6 +718,9 @@ type ApplyMetadataRequest struct {
 	Language    string         `json:"language"`  // legacy single-language field
 	Subjects    string         `json:"subjects"`
 	Identifiers identifierList `json:"identifiers"`
+	// Override: add a book from the import queue though it looks like one
+	// already in the library (duplicates.go).
+	Override bool `json:"override"`
 }
 
 // requestLanguages prefers the multi-language "languages" field and falls

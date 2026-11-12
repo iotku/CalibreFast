@@ -402,6 +402,12 @@ type UploadResult struct {
 	Formats []string `json:"formats"`
 	UUID    string   `json:"uuid"`
 	Error   string   `json:"error,omitempty"`
+	// Files are the uploaded files' names, to send them again with override.
+	Files []string `json:"files"`
+	// Duplicate: not added, as it looks like a book already in the library
+	// (duplicates.go). Sending it again with override=1 adds it, unless
+	// Duplicate says the library holds one of its files byte for byte.
+	Duplicate *duplicateCheck `json:"duplicate,omitempty"`
 }
 
 func uploadHandler(w http.ResponseWriter, r *http.Request) {
@@ -430,10 +436,11 @@ func uploadHandler(w http.ResponseWriter, r *http.Request) {
 	}
 
 	groups := groupFilesByStem(files)
+	override := r.FormValue("override") == "1"
 
 	var results []UploadResult
 	for _, group := range groups {
-		results = append(results, processUploadGroup(group))
+		results = append(results, processUploadGroup(group, override))
 	}
 
 	generatePage1()
@@ -489,9 +496,13 @@ func readBookMeta(p, name string) *UploadedBookMeta {
 	return meta
 }
 
-func processUploadGroup(files []*multipart.FileHeader) UploadResult { // TODO: How does this determine pairs, does this actually work at all?
+func processUploadGroup(files []*multipart.FileHeader, override bool) UploadResult { // TODO: How does this determine pairs, does this actually work at all?
 	var metas []*UploadedBookMeta
 	var entries []formatEntry
+	names := make([]string, 0, len(files))
+	for _, fh := range files {
+		names = append(names, fh.Filename)
+	}
 
 	for _, fh := range files {
 		ext := strings.ToLower(strings.TrimPrefix(filepath.Ext(fh.Filename), "."))
@@ -510,27 +521,39 @@ func processUploadGroup(files []*multipart.FileHeader) UploadResult { // TODO: H
 	}
 
 	merged := mergeMeta(metas)
+	formats := make([]string, 0, len(entries))
+	dupFiles := make([]dupFile, 0, len(entries))
+	for _, e := range entries {
+		formats = append(formats, e.Ext)
+		dupFiles = append(dupFiles, dupFile{e.TempPath, e.Ext})
+	}
+	result := UploadResult{Title: merged.Title, Authors: merged.Creators, Formats: formats, Files: names}
+
+	// Already in the library? Then not added, unless the admin says so.
+	check, err := findDuplicates(calibreDB, baseDir, merged.Title, merged.Creators, dupFiles, "")
+	if err != nil {
+		cleanupTemps(entries)
+		result.Error = "couldn't check for duplicates: " + err.Error()
+		return result
+	}
+	if check.blocks(override) {
+		cleanupTemps(entries)
+		result.Duplicate = check
+		return result
+	}
 
 	bookUUID, _, err := addBookToLibrary(merged, entries)
 	if err != nil {
 		cleanupTemps(entries)
-		return UploadResult{Error: err.Error()}
+		result.Error = err.Error()
+		return result
 	}
 
 	// Store all the metadatas for each format so we can retrieve them later to present to the user to select
 	bookMetadataCache.Store(bookUUID, metas)
 
-	formats := make([]string, 0, len(entries))
-	for _, e := range entries {
-		formats = append(formats, e.Ext)
-	}
-
-	return UploadResult{
-		Title:   merged.Title,
-		Authors: merged.Creators,
-		Formats: formats,
-		UUID:    bookUUID,
-	}
+	result.UUID = bookUUID
+	return result
 }
 
 // saveUploadTemp writes an uploaded file to a temporary file.
@@ -604,12 +627,19 @@ func addBookToLibrary(meta *UploadedBookMeta, entries []formatEntry) (bookUUID, 
 		return "", "", fmt.Errorf("failed to write metadata.opf: %w", err)
 	}
 
-	baseName := sanitizePath(meta.Title)
+	// Each file is named as its data.name row says (insertBookIntoCalibreDB),
+	// or Calibre can't find it.
+	baseName := bookFileStem(meta.Title)
 	for i := range entries {
 		dest := filepath.Join(destDir, baseName+"."+entries[i].Ext)
 		if _, err := os.Stat(dest); err == nil {
-			// Avoid overwriting an existing file
-			dest = filepath.Join(destDir, baseName+"_"+strconv.FormatInt(time.Now().UnixNano(), 36)+"."+entries[i].Ext)
+			// Avoid overwriting an existing file; data.name follows the new name.
+			stem := baseName + "_" + strconv.FormatInt(time.Now().UnixNano(), 36)
+			if _, err := calibreDB.Exec(`UPDATE data SET name = ? WHERE book = ? AND format = ?`, stem, bookID, strings.ToUpper(entries[i].Ext)); err != nil {
+				undo()
+				return "", "", fmt.Errorf("failed to rename %s in the database: %w", entries[i].Filename, err)
+			}
+			dest = filepath.Join(destDir, stem+"."+entries[i].Ext)
 		}
 		if err := moveFile(entries[i].TempPath, dest); err != nil {
 			undo()

@@ -6,7 +6,7 @@
 
 import { api, byId, el, errorMessage, statusLine } from "./dom.js";
 import { formatBytes } from "./cover-sources.js";
-import type { ImportQueue, ImportSummary } from "./types.js";
+import type { DuplicateCheck, ImportQueue, ImportSummary } from "./types.js";
 
 const POLL_MS = 5000;
 
@@ -15,6 +15,22 @@ const list = byId("imports-list");
 const empty = byId("imports-empty");
 const folder = byId("imports-folder");
 const count = byId("imports-count");
+
+/** The row's warning that the book may already be in the library. */
+function duplicateNote(dup: DuplicateCheck): HTMLElement {
+    const sameFile = dup.books.some((b) => b.same_file);
+    const note = el(
+        "div",
+        { className: `import-duplicate${sameFile ? " import-duplicate-same" : ""}` },
+        sameFile ? "Already in the library (identical file): " : "Possibly already in the library: ",
+    );
+    dup.books.forEach((b, i) => {
+        if (i) note.append(", ");
+        const by = (b.authors ?? []).join(" & ");
+        note.append(el("a", { href: `/book/get/${encodeURIComponent(b.uuid)}`, target: "_blank" }, `“${b.title}”${by ? ` by ${by}` : ""}`));
+    });
+    return note;
+}
 
 function row(item: ImportSummary): HTMLLIElement {
     const review = `/import/${encodeURIComponent(item.id)}`;
@@ -48,6 +64,7 @@ function row(item: ImportSummary): HTMLLIElement {
             el("div", { className: "import-authors" }, (item.authors ?? []).join(" & ")),
             el("div", { className: "auth-muted import-files", title: files }, files),
             el("div", { className: "auth-muted" }, `${item.from ? `From ${item.from} · ` : ""}Added ${isNaN(added.getTime()) ? "" : added.toLocaleString()}`),
+            ...(item.duplicate?.books.length ? [duplicateNote(item.duplicate)] : []),
         ),
         el("div", { className: "import-actions" }, el("a", { href: review, className: "btn-standard" }, "Review"), discard),
     );

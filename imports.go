@@ -88,6 +88,9 @@ type importInbox struct {
 	dir   string
 	mu    sync.Mutex
 	items map[string]*pendingImport
+
+	dupMu sync.Mutex
+	dups  map[string]cachedDuplicates // duplicates, by id
 }
 
 // openInbox opens (creating if needed) the queue in dir and loads the books
@@ -178,9 +181,12 @@ func (b *importInbox) get(id string) *pendingImport {
 // requests can't both act on it; put returns it if that fails.
 func (b *importInbox) take(id string) *pendingImport {
 	b.mu.Lock()
-	defer b.mu.Unlock()
 	it := b.items[id]
 	delete(b.items, id)
+	b.mu.Unlock()
+	b.dupMu.Lock()
+	delete(b.dups, id)
+	b.dupMu.Unlock()
 	return it
 }
 
@@ -266,12 +272,26 @@ func (b *importInbox) discard(id string) error {
 // approve adds a waiting book to the library with the metadata the admin
 // settled on, its chosen cover and all its files, and removes it from the
 // queue. If the book can't be added, it stays in the queue as it was.
-func (b *importInbox) approve(id string, meta OPFMetadata) (bookUUID string, err error) {
+//
+// A book that looks already in the library (duplicates.go) isn't added: the
+// error is a *duplicateError. override adds it anyway, unless the library
+// holds one of its files byte for byte.
+func (b *importInbox) approve(id string, meta OPFMetadata, override bool) (bookUUID string, err error) {
 	it := b.take(id)
 	if it == nil {
 		return "", fs.ErrNotExist
 	}
 	dir := b.itemDir(id)
+
+	check, err := findDuplicates(calibreDB, baseDir, meta.Title, meta.Creators, b.dupFiles(it), "")
+	if err != nil {
+		b.put(it)
+		return "", fmt.Errorf("checking for duplicates: %w", err)
+	}
+	if check.blocks(override) {
+		b.put(it)
+		return "", &duplicateError{check}
+	}
 
 	entries := make([]formatEntry, 0, len(it.Files))
 	for _, f := range it.Files {
@@ -702,6 +722,8 @@ type importSummary struct {
 	From     string       `json:"from"`
 	Added    time.Time    `json:"added"`
 	HasCover bool         `json:"has_cover"`
+	// Books in the library it may duplicate (duplicates.go); nil for none.
+	Duplicate *duplicateCheck `json:"duplicate,omitempty"`
 }
 
 // importQueue is GET /api/imports (TS: ImportQueue).
@@ -756,10 +778,14 @@ func importQueueHandler(w http.ResponseWriter, r *http.Request) {
 	}
 	for _, it := range imports.list() {
 		hasCover, _ := coverFilesIn(imports.itemDir(it.ID))
-		q.Items = append(q.Items, importSummary{
+		s := importSummary{
 			ID: it.ID, Title: it.Merged.Title, Authors: it.Merged.Creators,
 			Files: it.Files, From: it.From, Added: it.Added, HasCover: hasCover,
-		})
+		}
+		if dup := imports.duplicates(it); dup.found() {
+			s.Duplicate = dup
+		}
+		q.Items = append(q.Items, s)
 	}
 	writeJSON(w, http.StatusOK, q)
 }
@@ -783,6 +809,7 @@ func importReviewPage(w http.ResponseWriter, r *http.Request) {
 	}
 	logErr(templates.ExecuteTemplate(w, "book-edit.html", EditBookPageData{
 		Import:      page,
+		Duplicates:  imports.duplicates(it),
 		ReadLink:    previewReadLink("import", it.ID, formats),
 		Lookups:     !noLookups,
 		GoogleBooks: googleBooksEnabled(),
@@ -840,9 +867,13 @@ func importApplyHandler(w http.ResponseWriter, r *http.Request) {
 	meta := metadataFromRequest(req)
 	next := nextImport(imports.list(), it.ID)
 
-	bookUUID, err := imports.approve(it.ID, meta)
+	bookUUID, err := imports.approve(it.ID, meta, req.Override)
 	if errors.Is(err, fs.ErrNotExist) {
 		http.Error(w, "this book was just added or discarded by someone else", http.StatusConflict)
+		return
+	}
+	if dup, ok := errors.AsType[*duplicateError](err); ok {
+		writeJSON(w, http.StatusConflict, map[string]any{"error": dup.Error(), "duplicate": dup.check})
 		return
 	}
 	if err != nil {

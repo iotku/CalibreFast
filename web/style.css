@@ -2663,6 +2663,26 @@ label.group-row span {
     text-overflow: ellipsis;
 }
 
+.import-duplicate {
+    margin-top: 6px;
+    padding: 4px 8px;
+    font-size: 0.85rem;
+    color: #e8cf9a;
+    background: rgba(200, 169, 110, 0.12);
+    border: 1px solid rgba(200, 169, 110, 0.4);
+    border-radius: var(--radius-small);
+}
+
+.import-duplicate.import-duplicate-same {
+    color: #f0b3b3;
+    background: rgba(186, 90, 90, 0.15);
+    border-color: rgba(186, 90, 90, 0.4);
+}
+
+.import-duplicate a {
+    color: inherit;
+}
+
 .import-actions {
     display: flex;
     flex-shrink: 0;
