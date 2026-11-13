@@ -132,8 +132,13 @@
             {{ if .Description }}
             <div class="description">{{ .Description }}</div>
             {{ end }}
-            {{ if .Writable }}
-            <div class="meta-row meta-edit-row">
+        </div>
+        {{ if .Writable }}
+        <!-- Admin controls: left column under the shelves on wide screens,
+             last on narrow ones. Closed until asked for. -->
+        <details class="book-admin">
+            <summary>Admin</summary>
+            <div class="book-admin-actions">
                 <a class="btn-action btn-action-edit" href="/book/edit/{{ .UUID }}" title="Edit metadata">
                     <svg class="action-icon" viewBox="0 0 24 24" width="16" height="16" fill="none"
                         stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
@@ -155,7 +160,7 @@
                 </button>
             </div>
             <!-- The book's files: remove one, or add new ones (web/book-files.ts) -->
-            <div class="meta-row book-files-admin" data-book-files="{{ .UUID }}" data-title="{{ .Title }}"
+            <div class="book-files-admin" data-book-files="{{ .UUID }}" data-title="{{ .Title }}"
                 data-authors="{{ range $i, $a := .Authors }}{{ if $i }} & {{ end }}{{ $a }}{{ end }}">
                 <span class="book-files-label">Files</span>
                 {{ range .Formats }}
@@ -174,8 +179,8 @@
                 </label>
                 <span class="book-files-status auth-muted" role="status"></span>
             </div>
-            {{ end }}
-        </div>
+        </details>
+        {{ end }}
     </div>
 {{/* In the modal, app-htmx.js already has user.ts bundled in. */}}
 {{ if .Standalone }}<script type="module" src="{{ asset "user.js" }}"></script>{{ end }}

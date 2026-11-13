@@ -1613,10 +1613,11 @@ body.book-standalone {
     grid-template-columns: 280px minmax(0, 1fr);
     /* Header row hugs its content; when the cover is taller than the text,
        the slack goes below the info instead of between buttons and info. */
-    grid-template-rows: auto 1fr;
+    grid-template-rows: auto auto 1fr;
     grid-template-areas:
         "cover header"
-        "cover info";
+        "cover info"
+        "admin info";
     column-gap: 2.5rem;
     row-gap: 1.25rem;
     max-width: 1080px;
@@ -2119,6 +2120,13 @@ body.book-standalone {
         order: 3;
     }
 
+    /* 4. Admin controls last */
+    .book-page > .book-admin {
+        width: 100%;
+        order: 4;
+        margin-top: 0;
+    }
+
     .meta-row {
         margin-bottom: 0.75rem;
         font-size: var(--font-size-small);
@@ -2158,10 +2166,11 @@ body.book-standalone {
     .book-page {
         display: grid;
         grid-template-columns: 160px minmax(0, 1fr);
-        grid-template-rows: auto 1fr;
+        grid-template-rows: auto auto 1fr;
         grid-template-areas:
             "cover header"
-            "cover info";
+            "cover info"
+            "admin info";
         column-gap: 1.25rem;
         row-gap: 1rem;
     }
@@ -2188,6 +2197,11 @@ body.book-standalone {
 
     .book-page-info {
         grid-area: info;
+        order: unset;
+    }
+
+    .book-admin {
+        width: 160px;
         order: unset;
     }
 
@@ -3430,10 +3444,35 @@ label.group-row span {
     cursor: not-allowed;
 }
 
-.meta-edit-row {
-    display: flex;
-    flex-wrap: wrap;
-    gap: 8px;
+/* Admin controls (edit, remove, files): under the shelves on wide screens,
+   at the bottom on narrow ones; closed until opened. */
+.book-admin {
+    grid-area: admin;
+    width: 280px;
+    min-width: 0;
+    font-size: 0.9rem;
+}
+
+/* sit just under the shelves, not a whole grid gap below */
+.book-page > .book-admin {
+    margin-top: -0.75rem;
+}
+
+.book-admin .btn-action-add-file {
+    flex-basis: 100%;
+}
+
+.book-admin summary {
+    cursor: pointer;
+    color: var(--text-muted);
+    padding: 0.35rem 0;
+}
+
+.book-admin-actions {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr);
+    gap: 0.5rem;
+    margin: 0.25rem 0 0.75rem;
 }
 
 .delete-dialog {

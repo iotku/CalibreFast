@@ -46,7 +46,7 @@ Reference for how CalibreFast behaves, for people and AI tools working on the co
 - **Links.** Authors, publisher, tags and languages link to their filtered views. A book in a series says so (*Book 2 in Dune*), linking to the series.
 - **Language names.** Codes are shown by name, covering about 120 languages and all their common 2/3-letter codes. Examples: `eng`/`en` → English, `pt-BR` → Portuguese (BR). A group name, if you've set one, takes precedence. Books with several languages show all of them.
 - **Descriptions** are rendered as HTML and cleaned with the same rules as the editor (see [Description editor](#description-editor)).
-- **Files** (admins, `-allow-writes`): under **Edit metadata**, the book's formats, each with **×** to remove it, and **Add a file…** ([A book's files](#a-books-files)).
+- **Admin** (admins, `-allow-writes`): a panel, closed until clicked, under the shelves on wide screens and at the bottom on narrow ones. It holds **Edit metadata**, **Remove from library…**, and **Files**: the book's formats, each with **×** to remove it, and **Add a file…** ([A book's files](#a-books-files)).
 
 ## Authors, publishers, tags and languages
 
@@ -267,7 +267,7 @@ A book has one file per format (EPUB, PDF, MOBI, AZW3, DJVU), as in Calibre. On 
 
 Admins on a server with `-allow-writes` can remove books from the library. Nothing is deleted: removed books go to the Recycling Bin, and only the server's owner can empty it.
 
-- **Removing one book:** **Remove from library…** under **Edit metadata**, on the book's page or popup.
+- **Removing one book:** **Remove from library…** in the **Admin** panel, on the book's page or popup.
 - **Removing several:** **Select** in the top bar of the library, a filtered view or search results (or, on a touch screen, a long press on a book, which selects it too), then tap the books (a tick shows on each, and the choice survives scrolling) and **Remove N from library…** in the bar at the bottom. **Done** or Escape leaves selection. The same bar offers **Merge N…** ([Merging books](#merging-books)) and **Edit in table** ([Bulk metadata editor](#bulk-metadata-editor)); the bulk editor can remove books too.
 - **Hard to do by accident:** the confirmation lists every book, explains what happens, and its button only works once `delete` is typed. Enter cancels until then.
 - **Undo:** the confirmation's result offers **Undo**, which puts everything straight back.
