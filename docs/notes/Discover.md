@@ -367,7 +367,7 @@ The Discover "Continue reading" row switches from the device's guest list to `/a
 ## Browser
 
 - **`web/discover.ts`** (new entry, `{{ asset "discover.js" }}`): fetches the pieces above, renders rows from `<template>` markup, reuses `modal.ts` (book popup via `#book/<uuid>`), `reading.ts` (card marks, resume buttons) and the card markup from `app-htmx.ts`.
-- **Rows**: CSS `overflow-x: auto` with `scroll-snap`, fixed card size (same aspect ratio as the grid), ≤24 cards each, so no virtualization needed. Arrow buttons on wide screens; swipe on touch.
+- **Rows**: CSS `overflow-x: auto` (no `scroll-snap`: a row stays where it is left, decided after #122), fixed card size (same aspect ratio as the grid), ≤24 cards each, so no virtualization needed. Arrow buttons on wide screens; swipe on touch.
 - **Covers**: factor `pumpCovers` out of `app-htmx.ts` into `web/covers.ts` (bundled into both entries per the one-file-per-entry rule). On Discover it prioritizes cards visible in the viewport and in each row's visible scroll window, then the next screenful; same `maxCovers` limits and cancellation.
 - **Skeletons**: rows render as skeleton cards at their final size immediately (from the embedded index and localStorage copy of `/api/me/home`), so nothing shifts when data lands.
 - **Empty states**: hide Reading/Want rows when empty for a signed-in user, but show a one-line hint ("Mark books as Want to read to see them here") the first time.

@@ -2,8 +2,8 @@
  * Drag to scroll, for the mouse: pressing on a sideways row of books and
  * dragging moves the row, as a finger does on a touch screen, instead of
  * dragging the cover image or link out of the page. Letting go while
- * moving carries on in that direction and comes to rest on a card, as the
- * row's scroll snapping would.
+ * moving carries on in that direction and slows to a stop wherever it
+ * gets to (no snapping to a card).
  *
  * Touch and pens are left to the browser, which already does this. A press
  * that moves less than DRAG_SLOP is a click as before; one that dragged
@@ -83,14 +83,10 @@ export function setupDragScroll(root: HTMLElement, selector: string): void {
     });
 }
 
-/** Scroll row to the card nearest target, smoothly, then snap as usual. */
+/** Glide row on to target, smoothly. */
 function fling(row: HTMLElement, target: number): void {
-    const card = row.firstElementChild as HTMLElement | null;
-    const second = card?.nextElementSibling as HTMLElement | null;
-    const step = card && second ? second.offsetLeft - card.offsetLeft : 0;
     const max = row.scrollWidth - row.clientWidth;
-    let left = step > 0 ? Math.round(target / step) * step : target;
-    left = Math.max(0, Math.min(max, left));
+    const left = Math.max(0, Math.min(max, target));
     const drag = drags.get(row);
     const done = (): void => {
         if (drags.get(row) === drag) row.classList.remove("drag-scrolling");
@@ -100,8 +96,8 @@ function fling(row: HTMLElement, target: number): void {
         return;
     }
     row.scrollTo({ left, behavior: "smooth" });
-    // Snapping comes back once it's there (scrollend; a timer where that
-    // isn't supported), so it doesn't cut the glide short.
+    // The drag ends once it's there (scrollend; a timer where that isn't
+    // supported).
     let timer = 0;
     const settle = (): void => {
         clearTimeout(timer);
