@@ -79,16 +79,38 @@ func TestRecommendedState(t *testing.T) {
 	if strings.Contains(ids(after), gone) {
 		t.Fatal("a book the user isn't interested in was recommended")
 	}
+	// Only that one changed: the next book of the list took its place.
+	for i := range first {
+		if (i == 3) == (after[i].Book.UUID == first[i].Book.UUID) {
+			t.Fatalf("slot %d: %s, was %s", i, after[i].Book.UUID, first[i].Book.UUID)
+		}
+	}
+	if strings.Contains(ids(first), after[3].Book.UUID) {
+		t.Fatal("the replacement was already in the row")
+	}
 
-	// 28 books left (30, less the wanted one and the hidden one): the second
-	// page has the other 4, then back to the first.
+	// Want to read one: the same, though it's now a seed the list ranks by.
+	wanted := after[7].Book.UUID
+	if _, err := appDB.Exec(`INSERT INTO reading_status (user_id, book_uuid, status, source, updated_at) VALUES (?, ?, 'wanted', 'manual', 2)`, u.ID, wanted); err != nil {
+		t.Fatal(err)
+	}
+	marked := home()
+	for i := range after {
+		if (i == 7) == (marked[i].Book.UUID == after[i].Book.UUID) {
+			t.Fatalf("after want, slot %d: %s, was %s", i, marked[i].Book.UUID, after[i].Book.UUID)
+		}
+	}
+	after = marked
+
+	// 27 books left (30, less two wanted and the hidden one): Refresh shows
+	// the 3 not on screen first, then (a short list) those that were.
 	second := next()
-	if len(second) != 28-recRowMax {
+	if len(second) != recRowMax {
 		t.Fatalf("second page: %d books", len(second))
 	}
-	for _, r := range second {
-		if strings.Contains(ids(after), r.Book.UUID) || r.Book.UUID == gone {
-			t.Fatalf("second page repeats the first or the hidden book: %s", r.Book.UUID)
+	for i, r := range second {
+		if (i < 27-recRowMax) == strings.Contains(ids(after), r.Book.UUID) || r.Book.UUID == gone || r.Book.UUID == wanted {
+			t.Fatalf("second page, %d: %s", i, r.Book.UUID)
 		}
 	}
 	if ids(home()) != ids(second) {
