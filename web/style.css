@@ -421,8 +421,8 @@ input[type="number"],
     display: none;
 }
 /* Dragged with the mouse (web/drag-scroll.ts): no smooth scrolling while
-   it follows the pointer, and no text selection. No snapping either, here
-   or anywhere: a row stays where it's left, half a cover showing or not. */
+   it follows the pointer, and no text selection. No snapping, here or
+   anywhere, and no glide after a drag: a row stays where it's left. */
 .row-books.drag-scrolling {
     scroll-behavior: auto;
     cursor: grabbing;
