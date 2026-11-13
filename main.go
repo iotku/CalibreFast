@@ -216,8 +216,11 @@ func readerPage(name string, search bool) http.HandlerFunc {
 					data.BookTitle = it.Merged.Title
 				}
 			}
-		} else {
-			_ = calibreDB.QueryRow(`SELECT title FROM books WHERE uuid = ?`, q.Get("uuid")).Scan(&data.BookTitle)
+		} else if err := calibreDB.QueryRow(`SELECT title FROM books WHERE uuid = ?`, q.Get("uuid")).Scan(&data.BookTitle); err != nil {
+			// A book merged into another: read that one.
+			if redirectMerged(w, r, q.Get("uuid")) {
+				return
+			}
 		}
 		if data.Preview {
 			w.Header().Set("Cache-Control", "no-store")
@@ -1232,7 +1235,9 @@ func downloadHandler(w http.ResponseWriter, r *http.Request) {
 	value, ok := uuidPathIndex.Load(uuid)
 	path, _ := value.(string) // TODO: Maybe we should check ok value here too
 	if !ok {
-		http.NotFound(w, r)
+		if !redirectMerged(w, r, uuid) {
+			http.NotFound(w, r)
+		}
 		return
 	}
 

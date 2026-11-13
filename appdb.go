@@ -276,6 +276,16 @@ var migrations = []string{
 	ALTER TABLE reading_status ADD COLUMN position INTEGER;
 	ALTER TABLE shelf_books ADD COLUMN position INTEGER;
 	`,
+	// 16: books merged into another (book_redirects.go): their old links
+	// lead to the kept book.
+	`
+	CREATE TABLE book_redirects (
+		old_uuid   TEXT    PRIMARY KEY,
+		new_uuid   TEXT    NOT NULL,
+		created_at INTEGER NOT NULL
+	);
+	CREATE INDEX book_redirects_new ON book_redirects(new_uuid);
+	`,
 }
 
 // openAppDB opens (creating if needed) and migrates the app database.
