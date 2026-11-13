@@ -9,7 +9,17 @@ import { joinAuthors, splitAuthors, tidyAuthors } from "./authors.js";
 import type { DuplicateCheck, MetaSource } from "./types.js";
 
 type FieldKind = "string" | "date" | "list" | "identifiers";
-type FieldKey = "title" | "creators" | "description" | "publisher" | "date" | "languages" | "subjects" | "identifiers";
+type FieldKey =
+  | "title"
+  | "creators"
+  | "description"
+  | "publisher"
+  | "series"
+  | "series_index"
+  | "date"
+  | "languages"
+  | "subjects"
+  | "identifiers";
 type TextKey = Exclude<FieldKey, "identifiers">;
 
 /** An identifier as the editor sends it (Go: identifierList). */
@@ -33,6 +43,9 @@ const FIELDS: { key: FieldKey; kind: FieldKind }[] = [
   { key: "creators", kind: "list" },
   { key: "description", kind: "string" },
   { key: "publisher", kind: "string" },
+  // Sent always, so saving sets the book's series (empty: none).
+  { key: "series", kind: "string" },
+  { key: "series_index", kind: "string" },
   { key: "date", kind: "date" },
   { key: "languages", kind: "list" }, // several per book; order kept
   { key: "subjects", kind: "list" },
@@ -47,7 +60,8 @@ function capitalize(s: string): string {
 // flattened — Title/Creators/etc. live directly on the meta object
 // alongside Format/FileName.
 function metaProp(meta: MetaSource, key: FieldKey): unknown {
-  return (meta as unknown as Record<string, unknown>)[capitalize(key)];
+  const prop = key === "series_index" ? "SeriesIndex" : capitalize(key);
+  return (meta as unknown as Record<string, unknown>)[prop];
 }
 function metaList(meta: MetaSource | null, key: FieldKey): string[] {
   const v = meta ? metaProp(meta, key) : null;
@@ -762,6 +776,8 @@ const FIELD_LABELS: Record<FieldKey, string> = {
   title: "Title",
   creators: "Authors",
   publisher: "Publisher",
+  series: "Series",
+  series_index: "Number in series",
   date: "Publication date",
   languages: "Languages",
   subjects: "Tags",
@@ -919,6 +935,8 @@ export async function mountMetadataEditor(book: BookTarget, form: HTMLFormElemen
     }
     const publisherInput = form.querySelector<HTMLInputElement>('[name="publisher"]');
     if (publisherInput) attachSuggest(publisherInput, { category: "publisher" });
+    const seriesInput = form.querySelector<HTMLInputElement>('[name="series"]');
+    if (seriesInput) attachSuggest(seriesInput, { category: "series" });
 
     // Swap title and author (often mixed up in imported metadata). Firing
     // "input" on both updates the edited markers, diffs and unsaved guard.

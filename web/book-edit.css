@@ -1863,3 +1863,33 @@ input[type="date"].meta-input::-webkit-calendar-picker-indicator:hover {
 .merge-download:hover {
     border-color: var(--accent-dim);
 }
+
+/* Series: the name, and the book's number in it. */
+.series-inputs {
+    display: flex;
+    gap: 0.5rem;
+    align-items: center;
+}
+.series-inputs > input {
+    flex: 1;
+    min-width: 0;
+}
+.series-number {
+    display: flex;
+    align-items: center;
+    gap: 0.35rem;
+    flex: none;
+}
+.series-number span {
+    font-size: 0.85rem;
+    color: var(--text-muted);
+}
+.series-number input {
+    width: 4.5rem;
+}
+.series-pills {
+    display: flex;
+    flex-wrap: wrap;
+    justify-content: space-between;
+    gap: 0 0.5rem;
+}

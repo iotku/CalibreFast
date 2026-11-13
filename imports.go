@@ -303,7 +303,10 @@ func (b *importInbox) approve(id string, meta OPFMetadata, override bool) (bookU
 	_, edited := splitLibraryIdentifiers(meta.Identifiers)
 	book := &UploadedBookMeta{OPFMetadata: meta}
 	book.Identifiers = append(slices.Clone(libraryIDs), edited...)
-	book.Meta = it.Merged.Meta // series
+	book.Meta = it.Merged.Meta // series, as the files had it…
+	if meta.SeriesSet {
+		book.syncSeriesMeta() // …or as the editor sent it
+	}
 
 	bookUUID, bookPath, err := addBookToLibrary(book, entries)
 	if err != nil {
@@ -828,6 +831,7 @@ func importSources(it *pendingImport) []UploadedBookMeta {
 	}
 	noDate := normalizeDateOnly(normalizeDate(""))
 	for i := range out {
+		out[i].fillSeries() // queued before the editor showed series
 		_, out[i].Identifiers = splitLibraryIdentifiers(out[i].Identifiers)
 		if out[i].Date = normalizeDateOnly(out[i].Date); out[i].Date == noDate {
 			out[i].Date = ""
@@ -865,6 +869,10 @@ func importApplyHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	meta := metadataFromRequest(req)
+	if _, _, err := cleanSeries(meta.Series, meta.SeriesIndex); err != nil {
+		http.Error(w, err.Error(), http.StatusBadRequest)
+		return
+	}
 	next := nextImport(imports.list(), it.ID)
 
 	bookUUID, err := imports.approve(it.ID, meta, req.Override)

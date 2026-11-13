@@ -36,6 +36,15 @@ var categories = []*category{
 	{"publisher", "publishers", "publisher", "Publishers", "publisher", "publishers", "name", "books_publishers_link", "publisher"},
 	{"tag", "tags", "tag", "Tags", "tag", "tags", "name", "books_tags_link", "tag"},
 	{"language", "languages", "lang", "Languages", "language", "languages", "lang_code", "books_languages_link", "lang_code"},
+	{"series", "series", "series", "Series", "series", "series", "name", "books_series_link", "series"},
+}
+
+// bookOrder: how a filtered page lists its books. A series reads in order.
+func (c *category) bookOrder() string {
+	if c.Key == "series" {
+		return "b.series_index, b.sort"
+	}
+	return "b.sort"
 }
 
 func categoryByKey(key string) *category {
@@ -370,9 +379,9 @@ func filteredBooksHandler(w http.ResponseWriter, r *http.Request, c *category) {
 		JOIN %s t ON t.id = x.%s
 		WHERE t.%s IN (%s)
 		GROUP BY b.id
-		ORDER BY b.sort
+		ORDER BY %s
 		LIMIT ? OFFSET ?`,
-		c.LinkTable, c.Table, c.LinkCol, c.NameCol, placeholders(len(members)))
+		c.LinkTable, c.Table, c.LinkCol, c.NameCol, placeholders(len(members)), c.bookOrder())
 
 	args := append(toArgs(members), booksPerPage, offset)
 	rows, err := calibreDB.Query(query, args...)

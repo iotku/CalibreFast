@@ -101,6 +101,11 @@
             </div>
         </div>
         <div class="book-page-info">
+            {{ if .Series }}
+            <div class="meta-row">
+                Book {{ .SeriesIndex }} in <a href="/series/{{ .Series }}" class="meta-link">{{ .Series }}</a>
+            </div>
+            {{ end }}
             {{ if and .Publisher .Date }}
             <div class="meta-row">
                 Published by <a href="/publisher/{{ .Publisher }}" class="meta-link">{{ .Publisher }}</a> on {{ .Date }}

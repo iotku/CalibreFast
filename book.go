@@ -39,6 +39,9 @@ type BookPageData struct {
 	Date        string
 	Languages   []BookLanguage
 	Tags        []string
+	// The series as metadata.db has it ("" without one), and the book's
+	// number in it ("2", "2.5").
+	Series, SeriesIndex string
 
 	Writable bool // server started with -allow-writes (shows the Edit button)
 
@@ -158,6 +161,7 @@ func bookHandler(w http.ResponseWriter, r *http.Request) {
 		HasCover: hasCover,
 		CoverHue: coverHue(uuid),
 	}
+	data.Series, data.SeriesIndex = librarySeriesFields(uuid)
 	// render into buffer first
 	var buf bytes.Buffer
 

@@ -342,6 +342,8 @@ func mergeSources(books []*mergeBook, keep string) []UploadedBookMeta {
 		if b.UUID == keep {
 			label = "current"
 		}
+		// The series as metadata.db has it.
+		opf.Metadata.Series, opf.Metadata.SeriesIndex = librarySeriesFields(b.UUID)
 		add(UploadedBookMeta{OPFMetadata: opf.Metadata, Format: label})
 	}
 	for _, b := range books {
