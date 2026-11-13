@@ -237,6 +237,9 @@ export interface BulkEdit {
     authors?: string;
     publisher?: string;
     date?: string;
+    /** The series ("" for none); without series_index each book keeps its number (1 if it had no series). */
+    series?: string;
+    series_index?: string;
     tags?: string;
     add_tags?: string[];
     remove_tags?: string[];

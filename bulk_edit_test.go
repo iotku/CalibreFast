@@ -203,3 +203,92 @@ func TestTableFormatsFromFolder(t *testing.T) {
 		t.Errorf("unlisted book: formats %v, from folder %v", r.Formats, r.FormatsFromFolder)
 	}
 }
+
+func TestBulkEditSeries(t *testing.T) {
+	db := setupRecycleLibrary(t)
+	a := addOPFTestBook(t, db, "Alpha", []string{"Ann"}, nil, nil)
+	b := addOPFTestBook(t, db, "Beta", []string{"Ann"}, nil, nil)
+	str := func(s string) *string { return &s }
+	opfSeries := func(u string) (string, string) {
+		t.Helper()
+		m, err := bookEditMetadata(u)
+		if err != nil {
+			t.Fatal(err)
+		}
+		opf, err := loadOPF(filepath.Join(baseDir, tableRow(t, db, u).path, "metadata.opf"))
+		if err != nil {
+			t.Fatal(err)
+		}
+		if opf.Metadata.Series != m.Series {
+			t.Errorf("metadata.opf series %q, metadata.db %q", opf.Metadata.Series, m.Series)
+		}
+		return m.Series, m.SeriesIndex
+	}
+
+	// One book, with a number.
+	if res := bulkEditBooks([]string{a.uuid}, &bulkEdit{Series: str("  The   Saga "), SeriesIndex: str("2.50")}); res.Changed != 1 {
+		t.Fatalf("result %+v", res)
+	}
+	if r := tableRow(t, db, a.uuid); r.Series != "The Saga" || r.SeriesIndex != 2.5 {
+		t.Errorf("row %q [%v]", r.Series, r.SeriesIndex)
+	}
+	if s, i := opfSeries(a.uuid); s != "The Saga" || i != "2.5" {
+		t.Errorf("series %q [%s]", s, i)
+	}
+
+	// Both, no number: Alpha keeps 2.5, Beta (no series before) gets 1.
+	res := bulkEditBooks([]string{a.uuid, b.uuid}, &bulkEdit{Series: str("Saga")})
+	if res.Changed != 2 {
+		t.Fatalf("result %+v", res)
+	}
+	if r := tableRow(t, db, a.uuid); r.Series != "Saga" || r.SeriesIndex != 2.5 {
+		t.Errorf("Alpha %q [%v]", r.Series, r.SeriesIndex)
+	}
+	if r := tableRow(t, db, b.uuid); r.Series != "Saga" || r.SeriesIndex != 1 {
+		t.Errorf("Beta %q [%v]", r.Series, r.SeriesIndex)
+	}
+
+	// The same again changes nothing.
+	if res := bulkEditBooks([]string{a.uuid, b.uuid}, &bulkEdit{Series: str("Saga")}); res.Changed != 0 || res.Unchanged != 2 {
+		t.Errorf("same series again: %+v", res)
+	}
+
+	// A number alone.
+	if res := bulkEditBooks([]string{b.uuid}, &bulkEdit{SeriesIndex: str("3")}); res.Changed != 1 {
+		t.Fatalf("result %+v", res)
+	}
+	if r := tableRow(t, db, b.uuid); r.Series != "Saga" || r.SeriesIndex != 3 {
+		t.Errorf("Beta %q [%v]", r.Series, r.SeriesIndex)
+	}
+
+	// None.
+	if res := bulkEditBooks([]string{a.uuid}, &bulkEdit{Series: str("")}); res.Changed != 1 {
+		t.Fatalf("result %+v", res)
+	}
+	if r := tableRow(t, db, a.uuid); r.Series != "" || r.SeriesIndex != 1 {
+		t.Errorf("Alpha %q [%v]", r.Series, r.SeriesIndex)
+	}
+	if s, _ := opfSeries(a.uuid); s != "" {
+		t.Errorf("Alpha's OPF series %q", s)
+	}
+	// A number for a book with no series does nothing.
+	if res := bulkEditBooks([]string{a.uuid}, &bulkEdit{SeriesIndex: str("4")}); res.Changed != 0 {
+		t.Errorf("number without a series: %+v", res)
+	}
+}
+
+func TestBulkEditSeriesBadNumber(t *testing.T) {
+	db := setupRecycleLibrary(t)
+	a := addOPFTestBook(t, db, "Alpha", []string{"Ann"}, nil, nil)
+	for _, edit := range []string{`{"series":"Saga","series_index":"two"}`, `{"series_index":"-1"}`} {
+		w := httptest.NewRecorder()
+		body := `{"uuids":["` + a.uuid + `"],"edit":` + edit + `}`
+		bulkEditHandler(w, httptest.NewRequest(http.MethodPost, "/api/library/bulk", bytes.NewReader([]byte(body))))
+		if w.Code != http.StatusBadRequest {
+			t.Errorf("%s: status %d: %s", edit, w.Code, w.Body)
+		}
+	}
+	if r := tableRow(t, db, a.uuid); r.Series != "" {
+		t.Errorf("series %q written", r.Series)
+	}
+}

@@ -412,6 +412,12 @@
     color: var(--text-secondary);
 }
 
+/* Under the field it belongs to (the series' number) */
+.lt-field-sub {
+    grid-template-columns: 128px 1fr;
+    padding-left: 22px;
+}
+
 .lt-dialog .lt-field input:not([type="checkbox"]) {
     width: 100%;
     box-sizing: border-box;
