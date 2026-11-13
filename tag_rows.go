@@ -390,6 +390,7 @@ func discoverTagPutHandler(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "could not save", http.StatusInternalServerError)
 		return
 	}
+	tagSettingsVersion.Add(1) // recommendations leave excluded tags out
 	refreshTagRows()
 	w.WriteHeader(http.StatusNoContent)
 }
@@ -401,6 +402,7 @@ func discoverTagDeleteHandler(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "could not save", http.StatusInternalServerError)
 		return
 	}
+	tagSettingsVersion.Add(1) // recommendations leave excluded tags out
 	refreshTagRows()
 	w.WriteHeader(http.StatusNoContent)
 }
@@ -421,6 +423,7 @@ func discoverSettingsPutHandler(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "could not save", http.StatusInternalServerError)
 		return
 	}
+	tagSettingsVersion.Add(1) // recommendations leave excluded tags out
 	refreshTagRows()
 	w.WriteHeader(http.StatusNoContent)
 }
