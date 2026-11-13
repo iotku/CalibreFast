@@ -64,7 +64,7 @@ function rowScroller(row: HTMLElement): Scroller {
         axis: "x",
         pos: () => row.scrollLeft,
         setPos: (v) => (row.scrollLeft = v),
-        max: () => row.scrollWidth - row.clientWidth,
+        max: () => Math.max(0, row.scrollWidth - row.clientWidth),
         size: () => row.clientWidth,
         moved: () => row.firstElementChild,
     };
@@ -76,7 +76,7 @@ function pageScroller(el: HTMLElement): Scroller {
         axis: "y",
         pos: () => window.scrollY,
         setPos: (v) => window.scrollTo({ top: v, behavior: "instant" }),
-        max: () => document.documentElement.scrollHeight - window.innerHeight,
+        max: () => Math.max(0, document.documentElement.scrollHeight - window.innerHeight),
         size: () => window.innerHeight,
         moved: () => el,
     };
@@ -189,26 +189,45 @@ function draggable(e: PointerEvent): boolean {
     return !(e.target instanceof Element && e.target.closest("button, input, select, textarea, summary"));
 }
 
-/** Follow a press on s: a drag, then maybe a flick. */
-function press(e: PointerEvent, s: Scroller): void {
+/**
+ * Follow a press: a drag, then maybe a flick. With two to choose from (a
+ * row, and the page it's on), the way the pointer first moves decides:
+ * mostly sideways drags the row, mostly up or down the page.
+ */
+function press(e: PointerEvent, ...choices: Scroller[]): void {
     // A flick or recoil under way stops where it is, under the pointer;
     // the press only stops it (as a tap on a phone), opening nothing.
-    const stopping = flicks.has(s.el) || s.el.classList.contains("drag-recoil");
-    stopFlick(s);
-    const start = virtualPos(s);
-    s.el.classList.remove("drag-recoil");
-    const runway = runwayOf(s);
-    place(s, start, runway);
+    const stopping = choices.some((c) => flicks.has(c.el) || c.el.classList.contains("drag-recoil"));
+    const starts = new Map<Scroller, number>();
+    for (const c of choices) {
+        stopFlick(c);
+        starts.set(c, virtualPos(c));
+        c.el.classList.remove("drag-recoil");
+        place(c, starts.get(c)!, runwayOf(c));
+    }
+    let s = choices[0]!; // the one dragged, once the pointer has moved
+    let start = 0;
+    let runway = 0;
     const coord = (ev: PointerEvent): number => (s.axis === "x" ? ev.clientX : ev.clientY);
-    const from = coord(e);
+    let from = 0;
     let dragging = false;
-    const samples: { t: number; at: number }[] = [{ t: e.timeStamp, at: from }];
+    const samples: { t: number; at: number }[] = [];
 
     const move = (ev: PointerEvent): void => {
         if (ev.pointerId !== e.pointerId) return;
-        const d = coord(ev) - from;
         if (!dragging) {
-            if (Math.abs(d) < DRAG_SLOP) return;
+            const dx = ev.clientX - e.clientX;
+            const dy = ev.clientY - e.clientY;
+            const pick =
+                choices.length === 1 ? choices[0] : choices.find((c) => c.axis === (Math.abs(dx) >= Math.abs(dy) ? "x" : "y"));
+            const d = pick?.axis === "x" ? dx : dy;
+            if (!pick || Math.abs(d) < DRAG_SLOP) return;
+            s = pick;
+            start = starts.get(s)!;
+            runway = runwayOf(s);
+            from = coord(e);
+            samples.push({ t: e.timeStamp, at: from });
+            for (const c of choices) if (c !== s) recoil(c); // pressed mid-recoil
             dragging = true;
             s.el.classList.add("drag-scrolling");
             s.el.setPointerCapture(e.pointerId);
@@ -217,6 +236,7 @@ function press(e: PointerEvent, s: Scroller): void {
             const active = document.activeElement;
             if (active instanceof HTMLElement && s.el.contains(active)) active.blur();
         }
+        const d = coord(ev) - from;
         samples.push({ t: ev.timeStamp, at: coord(ev) });
         while (samples.length > 2 && ev.timeStamp - samples[0]!.t > FLICK_WINDOW) samples.shift();
         place(s, start - d, runway);
@@ -229,10 +249,10 @@ function press(e: PointerEvent, s: Scroller): void {
         window.removeEventListener("pointercancel", end);
         if (!dragging) {
             if (stopping) swallowClick();
-            recoil(s); // pressed mid-flick past an end, and let go
+            for (const c of choices) recoil(c); // pressed mid-flick past an end, and let go
             return;
         }
-        // The click this release makes isn't a click on the card.
+    // The click this release makes isn't a click on the card.
         swallowClick();
         s.el.classList.remove("drag-scrolling");
         // Until the pointer next moves, the browser may count the wrong card
@@ -302,6 +322,9 @@ function noNativeDrag(root: HTMLElement, selector: string): void {
     );
 }
 
+/** Presses a row took (with the page it's on, if that drags too). */
+const taken = new WeakSet<Event>();
+
 /** Make every row matching selector under root drag-scrollable, sideways. */
 export function setupDragScroll(root: HTMLElement, selector: string): void {
     noNativeDrag(root, selector);
@@ -317,19 +340,30 @@ export function setupDragScroll(root: HTMLElement, selector: string): void {
     );
     root.addEventListener("pointerdown", (e) => {
         const row = rowOf(e.target);
-        if (!row || !draggable(e) || row.scrollWidth <= row.clientWidth) return;
-        press(e, rowScroller(row));
+        // A row too short to scroll still drags into the runway and recoils.
+        if (!row || !draggable(e)) return;
+        taken.add(e);
+        // On a page that drags too (setupPageDragScroll): either, by direction.
+        const page = row.closest<HTMLElement>(".drag-page");
+        if (page) press(e, rowScroller(row), pageScroller(page));
+        else press(e, rowScroller(row));
     });
 }
 
-/** Make el drag-scrollable up and down: dragging it scrolls the page. */
+/**
+ * Make el drag-scrollable up and down: dragging it scrolls the page. Rows
+ * in it (setupDragScroll, set up first) drag sideways or the page, by
+ * direction.
+ */
 export function setupPageDragScroll(el: HTMLElement): void {
+    el.classList.add("drag-page");
     noNativeDrag(el, "*");
     const s = pageScroller(el);
     window.addEventListener("wheel", () => interrupt(s), { passive: true });
     window.addEventListener("keydown", () => interrupt(s));
     el.addEventListener("pointerdown", (e) => {
-        if (!draggable(e) || s.max() <= 0) return;
+        // A page too short to scroll still drags into the runway and recoils.
+        if (taken.has(e) || !draggable(e)) return;
         press(e, s);
     });
 }
