@@ -17,6 +17,9 @@
  *     buttons and details stay hidden, and the card pressed doesn't keep
  *     focus (which would show them too).
  *
+ * Shift-click never drags: it opens the book however much the pointer
+ * moves, for unsteady hands (docs/FEATURES.md).
+ *
  * A press stops a flick or recoil where it is (opening nothing, as a tap
  * on a phone); so does the wheel, or a key. Touch and pens are left to the
  * browser, which already does all this. A press that moves less than
@@ -173,9 +176,9 @@ function swallowClick(): void {
     setTimeout(() => window.removeEventListener("click", swallow, { capture: true }), 0);
 }
 
-/** A press that may drag: a mouse's main button, not on a control. */
+/** A press that may drag: a mouse's main button, not on a control, no Shift. */
 function draggable(e: PointerEvent): boolean {
-    if (e.pointerType !== "mouse" || e.button !== 0) return false;
+    if (e.pointerType !== "mouse" || e.button !== 0 || e.shiftKey) return false;
     // A button on a card (favorite, want to read) stays a button.
     return !(e.target instanceof Element && e.target.closest("button, input, select, textarea, summary"));
 }
@@ -252,11 +255,32 @@ function press(e: PointerEvent, s: Scroller): void {
     window.addEventListener("pointercancel", end);
 }
 
-/** The browser's own drag of a cover or link would take the pointer away. */
+/**
+ * The browser's own drag of a cover or link would take the pointer away.
+ * And Shift-click opens a book however much the pointer moved: the way to
+ * click for an unsteady hand. (The browser would open the link in a new
+ * window instead; in select mode, Shift-click selects as a click does.)
+ */
 function noNativeDrag(root: HTMLElement, selector: string): void {
     root.addEventListener("dragstart", (e) => {
         if (e.target instanceof Element && e.target.closest(selector)) e.preventDefault();
     });
+    // Shift-press: not a text selection from the last click to here.
+    root.addEventListener("mousedown", (e) => {
+        if (e.shiftKey && e.button === 0 && e.target instanceof Element && e.target.closest(`${selector} a.book-link`)) e.preventDefault();
+    });
+    root.addEventListener(
+        "click",
+        (e) => {
+            if (!e.shiftKey || e.button !== 0 || document.body.classList.contains("selecting")) return;
+            const link = e.target instanceof Element ? e.target.closest<HTMLAnchorElement>("a.book-link") : null;
+            const href = link?.getAttribute("href");
+            if (!link || !href?.startsWith("#") || !(e.target instanceof Element && e.target.closest(selector))) return;
+            e.preventDefault();
+            window.location.hash = href;
+        },
+        true,
+    );
 }
 
 /** Make every row matching selector under root drag-scrollable, sideways. */
