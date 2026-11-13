@@ -1804,15 +1804,34 @@ body.book-standalone {
 /* ============================================
    Component - Book Actions (Read, Download, Edit)
    ============================================ */
+/* A row per format: Read, with a small Download button beside it (a
+   touch target like the reading status menu's); a format without a
+   reader gets Download across the row. */
 .book-actions {
     display: grid;
-    grid-template-columns: minmax(0, 1fr);
+    grid-template-columns: minmax(0, 1fr) 48px;
     gap: 0.5rem;
     margin-top: 1rem;
 }
 
-#read-buttons {
-    display: contents;
+.book-actions .btn-action {
+    grid-column: 1 / -1;
+    min-width: 0;
+    white-space: nowrap;
+}
+
+.book-actions .btn-action-read {
+    grid-column: 1;
+}
+
+.book-actions .is-side {
+    grid-column: 2;
+    padding: 0;
+}
+
+.book-actions .is-side .action-icon {
+    width: 18px;
+    height: 18px;
 }
 
 .btn-action {
@@ -2081,10 +2100,6 @@ body.book-standalone {
         margin: -9px 0;
     }
 
-    .book-actions {
-        grid-template-columns: repeat(2, minmax(0, 1fr));
-        margin-top: 1rem;
-    }
 
     .btn-action {
         justify-content: center;
@@ -2140,9 +2155,6 @@ body.book-standalone {
         font-size: 1.2rem;
     }
 
-    .book-actions {
-        grid-template-columns: minmax(0, 1fr);
-    }
 }
 
 @media (max-height: 520px) and (orientation: landscape) {
@@ -2180,8 +2192,17 @@ body.book-standalone {
     }
 
     .book-actions {
-        grid-template-columns: minmax(0, 1fr);
+        grid-template-columns: minmax(0, 1fr) 44px;
         margin-top: 0.75rem;
+    }
+
+    /* the 160px column: Read's label alone fits beside Download */
+    .book-actions .btn-action-read {
+        padding: 0 0.5rem;
+    }
+
+    .book-actions .btn-action-read .action-icon {
+        display: none;
     }
 
     .book-header {
