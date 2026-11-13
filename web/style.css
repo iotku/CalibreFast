@@ -1804,13 +1804,13 @@ body.book-standalone {
 /* ============================================
    Component - Book Actions (Read, Download, Edit)
    ============================================ */
-/* A row per format: Read, with a small Download button beside it (a
-   touch target like the reading status menu's); a format without a
-   reader gets Download across the row. */
+/* A row per format: Read, with a small Download button joined to it as
+   one split button (a touch target like the reading status menu's); a
+   format without a reader gets Download across the row. */
 .book-actions {
     display: grid;
     grid-template-columns: minmax(0, 1fr) 48px;
-    gap: 0.5rem;
+    gap: 0.5rem 0;
     margin-top: 1rem;
 }
 
@@ -1822,11 +1822,28 @@ body.book-standalone {
 
 .book-actions .btn-action-read {
     grid-column: 1;
+    border-top-right-radius: 0;
+    border-bottom-right-radius: 0;
 }
 
-.book-actions .is-side {
+/* Read's other half: the same gold, a darker line between them. */
+.book-actions .is-side,
+.book-actions .is-side:hover {
     grid-column: 2;
     padding: 0;
+    border-color: #c8a96e;
+    border-left-color: rgba(0, 0, 0, 0.35);
+    border-top-left-radius: 0;
+    border-bottom-left-radius: 0;
+    background: #c8a96e;
+    color: #121212;
+}
+
+.book-actions .is-side:hover {
+    background: #d8be8a;
+    border-color: #d8be8a;
+    border-left-color: rgba(0, 0, 0, 0.35);
+    color: #000;
 }
 
 .book-actions .is-side .action-icon {
@@ -2193,6 +2210,7 @@ body.book-standalone {
 
     .book-actions {
         grid-template-columns: minmax(0, 1fr) 44px;
+        gap: 0.5rem 0;
         margin-top: 0.75rem;
     }
 
