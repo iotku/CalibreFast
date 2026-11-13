@@ -2094,29 +2094,21 @@ body.book-standalone {
         font-size: var(--font-size-small);
     }
 
-    /* 2. Cover, with the read/download actions under it */
+    /* 2. Cover, with the read/download actions under it. The column is
+       as wide as the cover, which fills it (up to a limit), so Favorite /
+       reading status and the buttons line up with the cover's edges. */
     .book-page-side {
         width: 100%;
+        max-width: 320px;
         order: 2;
     }
 
-    .book-page-cover {
-        width: 100%;
-        max-width: 240px;
-        margin: 0 auto;
-    }
-
+    .book-page-cover,
     .book-page-cover img,
-    .cover-link img {
-        width: auto;
-        max-width: 220px;
-        max-height: 320px;
-        margin: 0 auto;
-    }
-
+    .cover-link img,
     .book-page-cover .cover-placeholder {
-        max-width: 220px;
-        margin: 0 auto;
+        width: 100%;
+        max-width: none;
     }
 
     /* 3. Details (metadata + description) below the cover */
@@ -2144,20 +2136,6 @@ body.book-standalone {
 }
 
 @media (max-width: 380px) {
-    .book-page-cover {
-        max-width: 200px;
-    }
-
-    .book-page-cover img,
-    .cover-link img {
-        max-width: 180px;
-        max-height: 260px;
-    }
-
-    .book-page-cover .cover-placeholder {
-        max-width: 180px;
-    }
-
     .title-row h1 {
         font-size: 1.2rem;
     }
