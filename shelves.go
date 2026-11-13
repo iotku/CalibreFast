@@ -30,7 +30,12 @@ type Shelf struct {
 	Global      bool   `json:"global"`
 	Count       int    `json:"count"`
 	CanEdit     bool   `json:"can_edit"`
-	ownerID     sql.NullInt64
+	// Featured: a global shelf an admin put on everyone's Discover page.
+	Featured bool `json:"featured"`
+	// Pinned: on the current user's Discover page (featured ones are,
+	// until the user unpins them). shelf_pins.go.
+	Pinned  bool `json:"pinned"`
+	ownerID sql.NullInt64
 }
 
 // shelfMark: a shelf and whether a given book is on it (for the book popup).
@@ -46,9 +51,9 @@ var errShelfNotFound = errors.New("no such shelf")
 
 func getShelf(id int64) (*Shelf, error) {
 	var s Shelf
-	err := appDB.QueryRow(`SELECT s.id, s.name, s.description, s.owner_id,
+	err := appDB.QueryRow(`SELECT s.id, s.name, s.description, s.owner_id, s.featured_pos IS NOT NULL,
 			(SELECT COUNT(*) FROM shelf_books b WHERE b.shelf_id = s.id)
-		FROM shelves s WHERE s.id = ?`, id).Scan(&s.ID, &s.Name, &s.Description, &s.ownerID, &s.Count)
+		FROM shelves s WHERE s.id = ?`, id).Scan(&s.ID, &s.Name, &s.Description, &s.ownerID, &s.Featured, &s.Count)
 	if errors.Is(err, sql.ErrNoRows) {
 		return nil, errShelfNotFound
 	}
@@ -76,17 +81,20 @@ func (s *Shelf) canEdit(u *User) bool {
 	return s.ownerID.Int64 == u.ID
 }
 
-// listShelves returns the user's own shelves and all global shelves.
+// listShelves returns the user's own shelves, in their order (then by
+// name), and all global shelves: featured ones in the featured order, then
+// the rest by name.
 func listShelves(u *User) (mine, global []Shelf, err error) {
-	q := `SELECT s.id, s.name, s.description, s.owner_id,
-			(SELECT COUNT(*) FROM shelf_books b WHERE b.shelf_id = s.id)
-		FROM shelves s WHERE s.owner_id IS NULL`
-	args := []any{}
+	var uid int64 // 0 matches no pins and no owner
 	if u != nil {
-		q += ` OR s.owner_id = ?`
-		args = append(args, u.ID)
+		uid = u.ID
 	}
-	rows, err := appDB.Query(q+` ORDER BY s.name COLLATE NOCASE`, args...)
+	rows, err := appDB.Query(`SELECT s.id, s.name, s.description, s.owner_id, s.featured_pos IS NOT NULL,
+			COALESCE(p.pinned, s.featured_pos IS NOT NULL),
+			(SELECT COUNT(*) FROM shelf_books b WHERE b.shelf_id = s.id)
+		FROM shelves s LEFT JOIN shelf_pins p ON p.shelf_id = s.id AND p.user_id = ?1
+		WHERE s.owner_id IS NULL OR s.owner_id = ?1
+		ORDER BY s.position IS NULL, s.position, s.featured_pos IS NULL, s.featured_pos, s.name COLLATE NOCASE`, uid)
 	if err != nil {
 		return nil, nil, err
 	}
@@ -94,9 +102,10 @@ func listShelves(u *User) (mine, global []Shelf, err error) {
 	mine, global = []Shelf{}, []Shelf{}
 	for rows.Next() {
 		var s Shelf
-		if err := rows.Scan(&s.ID, &s.Name, &s.Description, &s.ownerID, &s.Count); err != nil {
+		if err := rows.Scan(&s.ID, &s.Name, &s.Description, &s.ownerID, &s.Featured, &s.Pinned, &s.Count); err != nil {
 			return nil, nil, err
 		}
+		s.Pinned = s.Pinned && u != nil
 		s.Global = !s.ownerID.Valid
 		s.CanEdit = s.canEdit(u)
 		if s.Global {
@@ -233,9 +242,16 @@ func shelfUpdateHandler(w http.ResponseWriter, r *http.Request) {
 	var req struct {
 		Name        *string `json:"name"`
 		Description *string `json:"description"`
+		Featured    *bool   `json:"featured"`
 	}
 	if err := json.NewDecoder(http.MaxBytesReader(w, r.Body, 16<<10)).Decode(&req); err != nil {
 		http.Error(w, "invalid JSON", http.StatusBadRequest)
+		return
+	}
+	// Featuring is for global shelves (whose editors are admins): a
+	// personal shelf is its owner's alone.
+	if req.Featured != nil && !s.Global {
+		http.Error(w, "only global shelves can be featured", http.StatusBadRequest)
 		return
 	}
 	name, desc := s.Name, s.Description
@@ -254,6 +270,13 @@ func shelfUpdateHandler(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "could not save", http.StatusInternalServerError)
 		return
 	}
+	if req.Featured != nil {
+		if err := setFeatured(s.ID, *req.Featured); err != nil {
+			http.Error(w, "could not save", http.StatusInternalServerError)
+			return
+		}
+	}
+	shelfChanged(s)
 	s, _ = getShelf(s.ID)
 	s.CanEdit = true
 	writeJSON(w, http.StatusOK, s)
@@ -268,6 +291,7 @@ func shelfDeleteHandler(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "could not delete", http.StatusInternalServerError)
 		return
 	}
+	shelfChanged(s)
 	w.WriteHeader(http.StatusNoContent)
 }
 
@@ -289,6 +313,7 @@ func shelfAddBookHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	_, _ = appDB.Exec(`UPDATE shelves SET updated_at = ? WHERE id = ?`, nowUnix(), s.ID)
+	shelfChanged(s)
 	w.WriteHeader(http.StatusNoContent)
 }
 
@@ -301,6 +326,7 @@ func shelfRemoveBookHandler(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "could not remove", http.StatusInternalServerError)
 		return
 	}
+	shelfChanged(s)
 	w.WriteHeader(http.StatusNoContent)
 }
 
@@ -315,9 +341,15 @@ func shelvesPageHandler(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "query failed", http.StatusInternalServerError)
 		return
 	}
+	featured := []Shelf{}
+	for _, s := range global {
+		if s.Featured {
+			featured = append(featured, s)
+		}
+	}
 	w.Header().Set("Cache-Control", "private, no-store")
 	logErr(templates.ExecuteTemplate(w, "shelves.html", map[string]any{
-		"Title": SiteTitle, "User": u, "Mine": mine, "Global": global,
+		"Title": SiteTitle, "User": u, "Mine": mine, "Global": global, "Featured": featured,
 	}), "render shelves")
 }
 
@@ -337,9 +369,15 @@ func shelfPageHandler(w http.ResponseWriter, r *http.Request) {
 	if s.Global {
 		sub = "global shelf"
 	}
+	var extra map[string]any
+	if u != nil {
+		s.Pinned = shelfPinnedFor(u, s)
+		extra = map[string]any{"Shelf": s, "CanFeature": s.Global && u.IsAdmin}
+	}
 	serveUUIDList(w, r, uuidList{
 		Title: s.Name, Sub: sub, BaseURL: "/shelf/" + itoa(s.ID),
 		EmptyText: "This shelf is empty. Add books from a book's Shelves menu.",
+		Extra:     extra,
 		Count:     countQuery(`SELECT COUNT(*) FROM shelf_books WHERE shelf_id = ?`, s.ID),
 		Page: func(limit, offset int) ([]string, error) {
 			return scanStrings(appDB.Query(`SELECT book_uuid FROM shelf_books WHERE shelf_id = ? ORDER BY added_at, book_uuid LIMIT ? OFFSET ?`, s.ID, limit, offset))
@@ -356,4 +394,5 @@ func registerShelfRoutes() {
 	http.HandleFunc("DELETE /api/shelves/{id}", requireUser(shelfDeleteHandler))
 	http.HandleFunc("PUT /api/shelves/{id}/books/{uuid}", requireUser(shelfAddBookHandler))
 	http.HandleFunc("DELETE /api/shelves/{id}/books/{uuid}", requireUser(shelfRemoveBookHandler))
+	registerShelfPinRoutes()
 }

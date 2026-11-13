@@ -16,7 +16,8 @@
 {{ template "topbar-start" $tb }}
 {{ template "topbar-end" $tb }}
         <main class="discover" id="discover" data-version="{{ .Version }}" data-page-size="{{ booksPerPage }}"
-              data-total-books="{{ .Books }}" data-shuffle-total="{{ .ShuffleTotal }}">
+              data-total-books="{{ .Books }}" data-shuffle-total="{{ .ShuffleTotal }}"
+              data-featured-version="{{ .FeaturedVersion }}">
             {{/* The sections are in the same order for everyone (docs/notes/Discover.md). */}}
             <section class="intro" id="intro" aria-label="About this library">
                 <p class="intro-stats">
@@ -68,6 +69,18 @@
                 <p class="row-hint" hidden>Hover over a cover and click the bookmark to add a book here.</p>
                 <div class="row-books"></div>
             </section>
+
+            {{/* Shelf rows: the signed-in user's pinned and featured shelves
+                 (/api/me/home), or the featured ones (featured.json). */}}
+            <div class="pin-rows" id="pin-rows" hidden>
+                <div class="pin-list" id="pin-list"></div>
+                <div class="pin-foot" id="pin-foot" hidden>
+                    <button type="button" class="row-btn" id="pins-edit" aria-pressed="false">
+                        <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M7 4v16M7 4L3 8M7 4l4 4M17 20V4M17 20l-4-4M17 20l4-4"/></svg>
+                        <span>Reorder shelves</span>
+                    </button>
+                </div>
+            </div>
 
             <section class="row" id="row-shuffle" aria-labelledby="row-shuffle-title" hidden>
                 <header class="row-head">

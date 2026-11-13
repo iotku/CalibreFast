@@ -14,6 +14,20 @@
 <body>
 {{ $tb := topbar "Active" .Active "Title" .Display "Sub" .Sub }}
 {{ template "topbar-start" $tb }}
+{{ with .Extra }}{{ with .Shelf }}
+        <button type="button" class="btn-group-toggle shelf-page-btn" data-shelf-action="pin" data-id="{{ .ID }}" aria-pressed="{{ .Pinned }}"
+                title="Show this shelf on your home page">
+            <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 17v5M9 3h6l-1 7 4 3H6l4-3z"/></svg>
+            <span class="tb-label">{{ if .Pinned }}On home{{ else }}Pin to home{{ end }}</span>
+        </button>
+        {{ if $.Extra.CanFeature }}
+        <button type="button" class="btn-group-toggle shelf-page-btn" data-shelf-action="feature" data-id="{{ .ID }}" aria-pressed="{{ .Featured }}"
+                title="Show this shelf on everyone's home page">
+            <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2" stroke-linejoin="round" aria-hidden="true"><path d="M12 3l2.8 5.7 6.2.9-4.5 4.4 1.1 6.2L12 17.3 6.4 20.2l1.1-6.2L3 9.6l6.2-.9z"/></svg>
+            <span class="tb-label">{{ if .Featured }}Featured{{ else }}Feature{{ end }}</span>
+        </button>
+        {{ end }}
+{{ end }}{{ end }}
 {{ if .Writable }}
         <button type="button" id="group-toggle" class="btn-group-toggle" aria-expanded="false" aria-controls="group-panel"
                 title="Choose which {{ .Label }} values this page includes" aria-label="Group {{ .Label }} values">
@@ -66,5 +80,6 @@
 <div id="scroll-badge"></div>
 <script type="module" src="{{ asset "app-htmx.js" }}"></script>
 {{ if .Writable }}<script type="module" src="{{ asset "groups.js" }}"></script>{{ end }}
+{{ with .Extra }}{{ if .Shelf }}<script type="module" src="{{ asset "shelf-page.js" }}"></script>{{ end }}{{ end }}
 </body>
 </html>

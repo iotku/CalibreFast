@@ -196,6 +196,22 @@ var migrations = []string{
 	);
 	CREATE INDEX not_duplicate_books_book ON not_duplicate_books(book_uuid);
 	`,
+	// 9: shelves on the Discover page (shelf_pins.go): admins feature global
+	// shelves (featured_pos, their order), users pin shelves and order
+	// their own (position). A pin row with pinned = 0 is a featured shelf
+	// the user took off their page.
+	`
+	ALTER TABLE shelves ADD COLUMN featured_pos INTEGER;
+	ALTER TABLE shelves ADD COLUMN position INTEGER;
+	CREATE TABLE shelf_pins (
+		user_id  INTEGER NOT NULL REFERENCES users(id)   ON DELETE CASCADE,
+		shelf_id INTEGER NOT NULL REFERENCES shelves(id) ON DELETE CASCADE,
+		pinned   INTEGER NOT NULL,
+		position INTEGER NOT NULL,
+		PRIMARY KEY (user_id, shelf_id)
+	);
+	CREATE INDEX shelf_pins_shelf ON shelf_pins(shelf_id);
+	`,
 }
 
 // openAppDB opens (creating if needed) and migrates the app database.

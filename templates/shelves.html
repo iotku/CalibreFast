@@ -14,28 +14,49 @@
 <main class="auth-main auth-wide">
     <p id="shelf-status" class="auth-notice" role="status" hidden></p>
 
+    {{/* A shelf in a list. .S the shelf, .U the user (nil signed out). */}}
     {{ define "shelf-row" }}
-    <li class="shelf-row" data-id="{{ .ID }}" data-name="{{ .Name }}" data-description="{{ .Description }}">
-        <a class="shelf-link" href="/shelf/{{ .ID }}">
-            <span class="shelf-name">{{ .Name }}</span>
-            <span class="shelf-count">{{ .Count }} {{ if eq .Count 1 }}book{{ else }}books{{ end }}</span>
-            {{ if .Description }}<span class="shelf-desc">{{ .Description }}</span>{{ end }}
+    {{ $s := .S }}
+    <li class="shelf-row" data-id="{{ $s.ID }}" data-name="{{ $s.Name }}" data-description="{{ $s.Description }}">
+        <a class="shelf-link" href="/shelf/{{ $s.ID }}">
+            <span class="shelf-name">{{ $s.Name }}</span>
+            <span class="shelf-count">{{ $s.Count }} {{ if eq $s.Count 1 }}book{{ else }}books{{ end }}</span>
+            {{ if $s.Featured }}<span class="shelf-badge">Featured</span>{{ end }}
+            {{ if $s.Description }}<span class="shelf-desc">{{ $s.Description }}</span>{{ end }}
         </a>
-        {{ if .CanEdit }}
+        {{ if .U }}
         <span class="shelf-actions">
+            <button type="button" class="btn-standard shelf-toggle" data-action="pin" aria-pressed="{{ $s.Pinned }}"
+                    title="Show this shelf on your home page">{{ if $s.Pinned }}On home{{ else }}Pin to home{{ end }}</button>
+            {{ if and $s.Global .U.IsAdmin }}
+            <button type="button" class="btn-standard shelf-toggle" data-action="feature" aria-pressed="{{ $s.Featured }}"
+                    title="Show this shelf on everyone's home page">{{ if $s.Featured }}Featured{{ else }}Feature{{ end }}</button>
+            {{ end }}
+            {{ if $s.CanEdit }}
             <button type="button" class="btn-standard" data-action="rename">Rename</button>
             <button type="button" class="btn-standard" data-action="describe">Description</button>
             <button type="button" class="btn-standard" data-action="delete">Delete</button>
+            {{ end }}
         </span>
         {{ end }}
     </li>
     {{ end }}
 
+    {{ if and .User .User.IsAdmin .Featured }}
+    <section class="auth-card">
+        <h2>Featured</h2>
+        <p class="auth-muted">On everyone's home page, in this order (signed-in users can remove them from theirs, or move them).</p>
+        <ul class="shelf-list shelf-order" id="featured-list" data-order="/api/admin/featured-shelves">
+            {{ range .Featured }}<li class="shelf-row" data-id="{{ .ID }}" data-name="{{ .Name }}"><a class="shelf-link" href="/shelf/{{ .ID }}"><span class="shelf-name">{{ .Name }}</span></a></li>{{ end }}
+        </ul>
+    </section>
+    {{ end }}
+
     {{ if .User }}
     <section class="auth-card">
         <h2>Your shelves</h2>
-        <ul class="shelf-list">
-            {{ range .Mine }}{{ template "shelf-row" . }}{{ else }}<li class="auth-muted">No shelves yet. Create one below, or from a book's Shelves menu.</li>{{ end }}
+        <ul class="shelf-list shelf-order" id="mine-list" data-order="/api/me/shelves/order">
+            {{ range .Mine }}{{ template "shelf-row" (dict "S" . "U" $.User) }}{{ else }}<li class="auth-muted">No shelves yet. Create one below, or from a book's Shelves menu.</li>{{ end }}
         </ul>
         <form class="shelf-create" data-global="false">
             <input name="name" type="text" maxlength="100" placeholder="New shelf name" required autocomplete="off">
@@ -48,7 +69,7 @@
         <h2>Global shelves</h2>
         <p class="auth-muted">Shared with everyone{{ if and .User .User.IsAdmin }}; as an admin you can create and edit these{{ end }}.</p>
         <ul class="shelf-list">
-            {{ range .Global }}{{ template "shelf-row" . }}{{ else }}<li class="auth-muted">No global shelves yet.</li>{{ end }}
+            {{ range .Global }}{{ template "shelf-row" (dict "S" . "U" $.User) }}{{ else }}<li class="auth-muted">No global shelves yet.</li>{{ end }}
         </ul>
         {{ if and .User .User.IsAdmin }}
         <form class="shelf-create" data-global="true">

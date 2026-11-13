@@ -358,6 +358,7 @@ func catalogFlush() error {
 	}
 	libraryCatalog.Store(next)
 	scheduleCatalogSnapshot()
+	refreshFeatured() // a title or cover on a featured shelf
 	return nil
 }
 
