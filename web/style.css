@@ -2305,9 +2305,9 @@ body.book-standalone {
     margin: 0;
 }
 
-/* The popup's title, wide as on phones (the page's own keeps h1 size). */
+/* The book's title (popup and page), wide as on phones. */
 @media (min-width: 769px) {
-    .modal-content .title-row h1 {
+    .title-row h1 {
         font-size: 1.35rem;
         line-height: 1.3;
     }
