@@ -34,9 +34,9 @@ func TestDiscoverPage(t *testing.T) {
 	allowRegistrations, publicCatalog, publicRead = false, true, false
 	body := get("/").Body.String()
 	for _, want := range []string{
-		"3 books", "3 authors", "1 tag",
+		`id="greeting"`, `id="home-edit"`, `id="home-rows"`,
 		`data-total-books="3"`, `data-shuffle-total="3"`, `data-version="` + currentPagesVersion() + `"`,
-		`id="row-shuffle"`, `id="row-latest"`, `href="/latest"`, `id="shuffle-next"`, `id="shuffle-back"`,
+		`id="row-shuffle"`, `id="row-latest"`, `href="/latest"`, `href="/shuffle"`, `href="/me/reading"`, `href="/me/wanted"`, `id="shuffle-next"`, `id="shuffle-back"`,
 		"Reading books here needs one too.", // -public without -public-read
 	} {
 		if !strings.Contains(body, want) {
@@ -45,11 +45,6 @@ func TestDiscoverPage(t *testing.T) {
 	}
 	if strings.Contains(body, "Create an account") {
 		t.Error("offers registration when it's off")
-	}
-	// /shuffle works if typed in, but the page doesn't point at it: the row
-	// is a handful at a time.
-	if strings.Contains(body, `href="/shuffle"`) {
-		t.Error("the Discover page links to /shuffle")
 	}
 	allowRegistrations, publicRead = true, true
 	body = get("/").Body.String()

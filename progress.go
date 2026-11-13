@@ -202,6 +202,7 @@ func bookmarkDeleteHandler(w http.ResponseWriter, r *http.Request) {
 func registerProgressRoutes() {
 	http.HandleFunc("GET /api/me/reading", requireUser(readingHandler))
 	http.HandleFunc("GET /api/me/home", requireUser(homeHandler))
+	registerHomeLayoutRoutes()
 	http.HandleFunc("GET /api/books", booksHandler)
 	http.HandleFunc("GET /api/tag-strip", tagStripHandler)
 	http.HandleFunc("GET /api/me/progress/{uuid}", requireUser(progressGetHandler))

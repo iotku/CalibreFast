@@ -6,6 +6,7 @@ package main
 //   - reading: the books being read, most recently active first (the newer
 //     of the status change and the last position, from any device);
 //   - wanted: want to read, most recently added first;
+//   - the page's layout and hidden tags (home_layout.go);
 // each capped, with the full counts for "See all". Book details come from
 // the catalog: nothing is read from the library.
 //
@@ -35,6 +36,10 @@ type homeAnswer struct {
 	// Recommended for you, and the user's strongest tags (recommend.go).
 	Recommended []recBook `json:"recommended"`
 	Tags        []string  `json:"tags"`
+	// How the user arranged the page, and the tags they want no "More in"
+	// rows for (home_layout.go).
+	Layout     homeLayout `json:"layout"`
+	HiddenTags []string   `json:"hidden_tags"`
 }
 
 func homeHandler(w http.ResponseWriter, r *http.Request) {
@@ -76,6 +81,14 @@ func homeHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	if ans.Shelves, err = pinnedShelves(currentUser(r), shelfRowsMax); err != nil {
+		http.Error(w, "query failed", http.StatusInternalServerError)
+		return
+	}
+	if ans.Layout, err = userHomeLayout(currentUser(r)); err != nil {
+		http.Error(w, "query failed", http.StatusInternalServerError)
+		return
+	}
+	if ans.HiddenTags, err = userHiddenTags(currentUser(r)); err != nil {
 		http.Error(w, "query failed", http.StatusInternalServerError)
 		return
 	}

@@ -185,8 +185,9 @@ function swallowClick(): void {
 /** A press that may drag: a mouse's main button, not on a control, no Shift. */
 function draggable(e: PointerEvent): boolean {
     if (e.pointerType !== "mouse" || e.button !== 0 || e.shiftKey) return false;
-    // A button on a card (favorite, want to read) stays a button.
-    return !(e.target instanceof Element && e.target.closest("button, input, select, textarea, summary"));
+    // A button on a card (favorite, want to read) stays a button; a
+    // reorder handle (web/reorder.ts) moves its row instead.
+    return !(e.target instanceof Element && e.target.closest("button, input, select, textarea, summary, label, .reorder-grip"));
 }
 
 /**

@@ -24,7 +24,15 @@
  *     /api/tag-strip as it nears the screen and walked a strip at a time
  *     with its own Shuffle and Previous, like the Shuffle row.
  *   - Recently added: the start of pages/page1.json.
- *   - The introduction's sign-in line, for signed-out visitors, and Hide.
+ *   - The greeting: the user's name and a quote of the day; for signed-out
+ *     visitors, the sign-in line.
+ *
+ * The rows are one list, in the order the user arranged it with Edit (in
+ * the top bar): drag or Move up / Move down, and every section but
+ * Continue reading can be turned off. Kept with the user's account
+ * (/api/me/home-layout), or in this browser for a signed-out visitor. Each
+ * row's icon goes to its page (or pins a "More in" tag); its ✕ takes a
+ * pinned row off the page, or a tag out of the "More in" rows for good.
  *
  * Covers use the same URLs (coverUrl) and cards (renderBookCard) as the
  * grid, so a cover cached there is cached here. They load on-screen first,
@@ -56,7 +64,7 @@ import { setupDragScroll, setupPageDragScroll } from "./drag-scroll.js";
 const STRIP = 12; // books in a row
 const PIN_STRIP = 24; // books in a pinned tag's row (Go: shelfRowBooks)
 const CURSOR_KEY = "cf-shuffle"; // ShuffleState
-const INTRO_KEY = "cf-intro-hidden";
+const LAYOUT_KEY = "cf-home-layout"; // a signed-out visitor's layout and hidden tags
 
 const root = byId("discover");
 const cfg = root.dataset;
@@ -94,6 +102,14 @@ function seeAll(href: string): string {
 }
 
 const SHUFFLE_ICON = `<svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M16 3h5v5M4 20L21 3M21 16v5h-5M15 15l6 6M4 4l5 5"/></svg>`;
+const svg = (paths: string, fill = "none"): string =>
+    `<svg viewBox="0 0 24 24" width="20" height="20" fill="${fill}" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">${paths}</svg>`;
+const PIN_PATH = '<path d="M12 17v5"/><path d="M9 10.8V4h6v6.8a2 2 0 0 0 1.1 1.8l1.8.9a2 2 0 0 1 1.1 1.8V17H5v-1.7a2 2 0 0 1 1.1-1.8l1.8-.9A2 2 0 0 0 9 10.8z"/><path d="M8 3h8"/>';
+const PIN_ICON = svg(PIN_PATH);
+const PINNED_ICON = svg(PIN_PATH, "currentColor");
+const TAG_ICON = svg('<path d="M20.6 13.4l-7.2 7.2a2 2 0 0 1-2.8 0L2 12V2h10l8.6 8.6a2 2 0 0 1 0 2.8z"/><circle cx="7" cy="7" r="1.5"/>');
+const SHELVES_ICON = svg('<path d="M5 4v16M10 4v16M14.5 5l4 15M3 20h18"/>');
+const X_ICON = `<svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" aria-hidden="true"><path d="M6 6l12 12M18 6L6 18"/></svg>`;
 const BACK_ICON = `<svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M9 14L4 9l5-5"/><path d="M4 9h11a5 5 0 0 1 0 10h-3"/></svg>`;
 
 /** A tag row's Previous and Shuffle (hidden when the tag fits in one strip). */
@@ -391,6 +407,8 @@ interface HomeAnswer {
     shelves?: HomeShelf[];
     recommended?: RecBook[];
     tags?: string[];
+    layout?: Layout;
+    hidden_tags?: string[];
 }
 
 /** A recommendation (Go: recBook). */
@@ -445,11 +463,16 @@ function showHome(h: HomeAnswer): void {
     byId("row-reading-device").hidden = true;
     fillRow("row-reading", h.reading, { hint: true, all: h.reading_count > 0 });
     fillRow("row-wanted", h.wanted, { hint: true, all: h.wanted_count > 0 });
+    for (const id of ["row-wanted", "row-recommended"]) byId(id).classList.remove("row-na");
+    if (!editing) {
+        layout = cleanLayout(h.layout);
+        hiddenTags = cleanTags(h.hidden_tags);
+    }
     showShelves(h.shelves ?? [], true);
     showRecommended(h.recommended ?? []);
     affinityTags = (h.tags ?? []).map((t) => t.toLowerCase());
-    // Something to go back to: the introduction steps aside.
-    byId("intro").classList.toggle("compact", h.reading.length > 0 || !!store.get(INTRO_KEY));
+    showHiddenTags();
+    recheckTagRows();
 }
 
 /** A signed-out visitor's marks: what was read on this device. */
@@ -492,14 +515,18 @@ async function showGuest(): Promise<void> {
     // Started from a stale "signed out" (the top bar's cache), and the server
     // has since said otherwise: its rows stand.
     if (serverSignedIn) return;
-    byId("row-wanted").hidden = true;
-    byId("row-recommended").hidden = true;
+    // Rows only an account has: not shown, nor offered when editing.
+    for (const id of ["row-wanted", "row-recommended"]) {
+        byId(id).hidden = true;
+        byId(id).classList.add("row-na");
+    }
+    if (!editing) ({ layout, hiddenTags } = guestLayout());
     byId("row-reading-device").hidden = false;
     fillRow("row-reading", books);
     const shelves = await featured();
     if (!serverSignedIn) showShelves(shelves, false);
-    // The introduction stays open for a guest (only Hide folds it): its
-    // sign-in line is how this reading would follow them to other devices.
+    showHiddenTags();
+    recheckTagRows();
 }
 
 let homeFetchedAt = 0;
@@ -597,8 +624,6 @@ function featured(): Promise<HomeShelf[]> {
     return featuredFile;
 }
 
-let reordering: Reorderable | null = null;
-
 /**
  * A pinned tag's row as this page has it: its walker and the books it
  * shows. The server starts a tag's row at a random place on each answer,
@@ -608,15 +633,21 @@ let reordering: Reorderable | null = null;
  */
 const pinnedTagWalkers = new Map<string, TagWalker>();
 
+/** The pinned rows' ids ("s:7", "t:Space Opera"), in the server's order. */
+let pinOrder: string[] = [];
+
 /**
- * The shelf rows. own: the signed-in user's, with Remove and Reorder.
+ * The shelf rows, among the others where the layout puts them. own: the
+ * signed-in user's, with ✕ (and a pinned tag's pin) to take them off.
  * Empty shelves are left out.
  */
 function showShelves(shelves: HomeShelf[], own: boolean): void {
-    if (reordering) return; // being moved: the list stays as the user has it
-    const list = byId("pin-list");
-    list.replaceChildren();
+    if (editing) return; // being arranged: the list stays as the user has it
+    const list = byId("home-rows");
+    for (const old of list.querySelectorAll(":scope > .pin-row")) old.remove();
     pinnedTags = new Set(shelves.filter((s) => s.kind === "tag").map((s) => s.name.toLowerCase()));
+    pinOrder = [];
+    const slot = byId("row-recommended"); // for now: applyLayout puts them in place
     shelves.forEach((s, i) => {
         const tag = s.kind === "tag";
         let walker: TagWalker | undefined;
@@ -638,43 +669,251 @@ function showShelves(shelves: HomeShelf[], own: boolean): void {
         }
         if (!s.books.length) return;
         const section = document.createElement("section");
-        section.className = "row pin-row";
+        section.className = "row home-row pin-row";
         // "s:7" a shelf, "t:Space Opera" a tag (the order sent back says which).
-        section.dataset["id"] = tag ? `t:${s.name}` : `s:${s.id}`;
+        const id = tag ? `t:${s.name}` : `s:${s.id}`;
+        section.dataset["id"] = id;
         section.dataset["name"] = s.name;
         section.setAttribute("aria-labelledby", `pin-${i}-title`);
+        pinOrder.push(id);
         const name = escapeHtml(s.name);
+        const icon = !tag
+            ? `<a class="row-icon" href="/shelves" title="Shelves" aria-label="All shelves">${SHELVES_ICON}</a>`
+            : own
+              ? `<button type="button" class="row-icon" data-act="unpin" aria-pressed="true" title="Pinned: unpin" aria-label="Unpin ${name} from home">${PINNED_ICON}</button>`
+              : `<a class="row-icon" href="/tags" title="Tags" aria-label="All tags">${TAG_ICON}</a>`;
         section.innerHTML = `
             <header class="row-head">
-                <h2 id="pin-${i}-title"><a class="row-title-link" href="${escapeHtml(s.href)}">${name}</a>${tag ? '<span class="row-sub"> tag</span>' : ""}</h2>
+                <h2 id="pin-${i}-title">${icon}<a class="row-title-link" href="${escapeHtml(s.href)}">${name}</a>${tag ? '<span class="row-sub"> tag</span>' : ""}</h2>
                 <div class="row-tools">
                     ${tag ? tagStepButtons(name, s.count <= PIN_STRIP) : ""}
                     ${seeAll(s.href)}
-                    ${
-                        own
-                            ? `<details class="row-menu">
-                        <summary class="row-btn" aria-label="Options for ${name}">
-                            <svg viewBox="0 0 24 24" width="16" height="16" fill="currentColor" aria-hidden="true"><circle cx="5" cy="12" r="2"/><circle cx="12" cy="12" r="2"/><circle cx="19" cy="12" r="2"/></svg>
-                        </summary>
-                        <div class="row-menu-list">
-                            <button type="button" data-act="unpin">Remove from home</button>
-                            <button type="button" data-act="reorder">Reorder rows</button>
-                        </div>
-                    </details>`
-                            : ""
-                    }
+                    ${own ? `<button type="button" class="row-btn row-x" data-act="unpin" title="Remove from home" aria-label="Remove ${name} from home">${X_ICON}</button>` : ""}
                 </div>
             </header>
             <div class="row-books"></div>`;
-        list.append(section);
+        slot.before(section);
         fillRow(section, s.books, { all: true });
         if (walker) {
             tagWalkers.set(section, walker);
             updateTagButtons(section, walker);
         }
     });
-    pinControls(own);
+    applyLayout();
     updateTagRows(own);
+}
+
+/* ------------------------------------------------------------------ */
+/* Layout: the rows' order, sections turned off, hidden tags           */
+/* ------------------------------------------------------------------ */
+
+/** Go: homeLayout. order: the rows' ids; hidden: sections turned off. */
+interface Layout {
+    order: string[];
+    hidden: string[];
+}
+
+/** The rows' order by default; "pins" stands for the pinned rows. */
+const DEFAULT_ORDER = ["k:reading", "k:wanted", "pins", "k:recommended", "k:shuffle", "k:latest", "k:tags"];
+/** Sections that can be turned off (Go: homeSections). */
+const TOGGLEABLE = ["greeting", "wanted", "recommended", "shuffle", "latest", "tags"];
+
+let layout: Layout = { order: [], hidden: [] };
+/** Tags the user wants no "More in" rows for. */
+let hiddenTags: string[] = [];
+
+const strings = (v: unknown): string[] => (Array.isArray(v) ? v.filter((x): x is string => typeof x === "string") : []);
+
+function cleanLayout(v: unknown): Layout {
+    const l = (v ?? {}) as Partial<Layout>;
+    return { order: strings(l.order), hidden: strings(l.hidden).filter((k) => TOGGLEABLE.includes(k)) };
+}
+
+function cleanTags(v: unknown): string[] {
+    return strings(v);
+}
+
+/** A signed-out visitor's, from this browser. */
+function guestLayout(): { layout: Layout; hiddenTags: string[] } {
+    try {
+        const v = JSON.parse(store.get(LAYOUT_KEY) ?? "null") as (Layout & { hiddenTags?: unknown }) | null;
+        return { layout: cleanLayout(v), hiddenTags: cleanTags(v?.hiddenTags) };
+    } catch {
+        return { layout: cleanLayout(null), hiddenTags: [] };
+    }
+}
+
+/** Whether the page is a signed-in user's (theirs to keep on the server). */
+function isOwn(): boolean {
+    return serverSignedIn ?? signedIn() === true;
+}
+
+/** Keep the layout and hidden tags: on the server, or in this browser. */
+function saveLayout(what: "layout" | "tags" = "layout"): void {
+    if (!isOwn()) {
+        store.set(LAYOUT_KEY, JSON.stringify({ ...layout, hiddenTags }));
+        return;
+    }
+    if (what === "layout") void api("PUT", "/api/me/home-layout", layout).catch(() => {});
+    const h = cachedHome();
+    if (!h) return;
+    h.layout = layout;
+    h.hidden_tags = hiddenTags;
+    store.set(HOME_KEY, JSON.stringify(h));
+}
+
+/**
+ * The saved order merged with the rows there are now: ids no longer there
+ * dropped; a section missing goes after the one before it by default, a
+ * pinned row missing (pinned since) beside its neighbours among the pins.
+ */
+function mergeOrder(saved: string[], fixed: string[], pins: string[]): string[] {
+    const lc = (id: string): string => id.toLowerCase();
+    const have = new Map([...fixed, ...pins].map((id) => [lc(id), id]));
+    const out: string[] = [];
+    for (const id of saved) {
+        const real = have.get(lc(id));
+        if (real && !out.includes(real)) out.push(real);
+    }
+    const at = (id: string): number => out.indexOf(id);
+    const lastPin = (): number => out.reduce((last, id, i) => (pins.includes(id) ? i : last), -1);
+    /** Just after whatever comes before key by default and is placed. */
+    const slot = (key: string): number => {
+        for (let j = DEFAULT_ORDER.indexOf(key) - 1; j >= 0; j--) {
+            const d = DEFAULT_ORDER[j]!;
+            const k = d === "pins" ? lastPin() : at(d);
+            if (k >= 0) return k + 1;
+        }
+        return 0;
+    };
+    for (const id of fixed) if (at(id) < 0) out.splice(slot(id), 0, id);
+    pins.forEach((id, i) => {
+        if (at(id) >= 0) return;
+        let k = -1;
+        for (let j = i - 1; j >= 0 && k < 0; j--) if (at(pins[j]!) >= 0) k = at(pins[j]!) + 1;
+        for (let j = i + 1; j < pins.length && k < 0; j++) k = at(pins[j]!);
+        out.splice(k >= 0 ? k : slot("pins"), 0, id);
+    });
+    return out;
+}
+
+/** The rows in the layout's order, and the sections turned off. */
+function applyLayout(): void {
+    if (editing) return;
+    const list = byId("home-rows");
+    const rows = new Map([...list.querySelectorAll<HTMLElement>(":scope > .home-row")].map((el) => [el.dataset["id"] ?? "", el]));
+    const order = mergeOrder(
+        layout.order,
+        DEFAULT_ORDER.filter((id) => rows.has(id)),
+        pinOrder.filter((id) => rows.has(id)),
+    );
+    // Only what moves is moved: a row put back in the page loses where it
+    // was scrolled to.
+    let prev: HTMLElement | null = null;
+    for (const id of order) {
+        const el = rows.get(id)!;
+        if (prev ? prev.nextElementSibling !== el : list.firstElementChild !== el) {
+            if (prev) prev.after(el);
+            else list.prepend(el);
+        }
+        prev = el;
+    }
+    for (const el of [byId("greeting"), ...rows.values()]) {
+        const key = el.dataset["key"];
+        el.classList.toggle("row-off", !!key && layout.hidden.includes(key));
+    }
+    pumpSoon();
+}
+
+/** The hidden tags, under the "More in" rows while editing, each to bring back. */
+function showHiddenTags(): void {
+    const box = byId("hidden-tags");
+    box.hidden = hiddenTags.length === 0;
+    box.innerHTML =
+        "<span>Not shown:</span> " +
+        hiddenTags
+            .map(
+                (t) =>
+                    `<button type="button" class="row-btn" data-act="unhide-tag" data-name="${escapeHtml(t)}" aria-label="Show ${escapeHtml(t)} again">` +
+                    `${escapeHtml(t)}${X_ICON}</button>`, // no <span>: narrow screens hide a button's
+            )
+            .join(" ");
+}
+
+function setTagHidden(name: string, hide: boolean): void {
+    const lc = name.toLowerCase();
+    hiddenTags = hiddenTags.filter((t) => t.toLowerCase() !== lc);
+    if (hide) hiddenTags.push(name);
+    if (isOwn()) {
+        void api(hide ? "PUT" : "DELETE", `/api/me/hidden-tags/${encodeURIComponent(name)}`).catch(() => {});
+    }
+    saveLayout("tags");
+    showHiddenTags();
+}
+
+let editing: Reorderable | null = null;
+
+/** A section's Show switch, while editing. */
+function addToggle(el: HTMLElement): void {
+    const key = el.dataset["key"];
+    const head = el.querySelector<HTMLElement>(":scope > .row-head");
+    if (!key || !head || !TOGGLEABLE.includes(key) || el.classList.contains("row-na")) return;
+    const label = document.createElement("label");
+    label.className = "row-toggle";
+    label.innerHTML = `<input type="checkbox" role="switch" /><span>Show</span>`;
+    const box = label.querySelector("input")!;
+    box.checked = !layout.hidden.includes(key);
+    box.setAttribute("aria-label", `Show ${el.dataset["name"] ?? key}`);
+    box.addEventListener("change", () => {
+        layout.hidden = layout.hidden.filter((k) => k !== key);
+        if (!box.checked) layout.hidden.push(key);
+        el.classList.toggle("row-off", !box.checked);
+        saveLayout();
+    });
+    head.append(label);
+}
+
+/**
+ * Edit (the top bar's button): every row shrinks to its title, with
+ * handles to move it and a switch to turn it off; Done puts the page back.
+ */
+function setEditing(on: boolean): void {
+    if (on === !!editing) return;
+    const btn = byId("home-edit");
+    const list = byId("home-rows");
+    if (on) {
+        // Rows a signed-out visitor can't have: last, out of the way.
+        for (const na of list.querySelectorAll(":scope > .row-na")) list.append(na);
+        editing = makeReorderable({
+            list,
+            items: ".home-row:not(.row-na)",
+            label: (el) => el.dataset["name"] ?? "",
+            slot: (el) => el.querySelector<HTMLElement>(":scope > .row-head")!,
+            onChange: () => {
+                layout.order = [...list.querySelectorAll<HTMLElement>(":scope > .home-row")].map((el) => el.dataset["id"] ?? "");
+                saveLayout();
+                if (!isOwn()) return;
+                // The pins' own order too, as before (featured shelves keep their place).
+                pinOrder = layout.order.filter((id) => /^[st]:/.test(id));
+                void api("PUT", "/api/me/pins", {
+                    rows: pinOrder.map((id) => (id.startsWith("t:") ? { tag: id.slice(2) } : { shelf: Number(id.slice(2)) })),
+                }).catch(() => {});
+            },
+        });
+        for (const el of [byId("greeting"), ...list.querySelectorAll<HTMLElement>(":scope > .home-row")]) addToggle(el);
+    } else {
+        editing?.stop();
+        editing = null;
+        for (const t of document.querySelectorAll(".row-toggle")) t.remove();
+        applyLayout();
+        void refreshHome();
+    }
+    document.body.classList.toggle("home-editing", on);
+    btn.setAttribute("aria-pressed", String(on));
+    const label = on ? "Done editing" : "Edit home page";
+    btn.setAttribute("aria-label", label);
+    btn.title = label;
+    pumpSoon();
 }
 
 /** The user's strongest tags (lower case): their rows come first. */
@@ -762,71 +1001,33 @@ function setupRecommended(): void {
 /** Pinned tags (lower case): their "More in" rows step aside. */
 let pinnedTags = new Set<string>();
 
-/**
- * Reordering needs two rows or more: with fewer, neither the button under
- * the rows nor the menus' Reorder shelves is offered.
- */
-function pinControls(own: boolean): void {
-    const list = byId("pin-list");
-    const n = list.children.length;
-    byId("pin-rows").hidden = n === 0;
-    byId("pin-foot").hidden = !own || n < 2;
-    for (const item of list.querySelectorAll<HTMLElement>('.row-menu [data-act="reorder"]')) item.hidden = n < 2;
-}
-
-function setReordering(on: boolean): void {
-    const btn = byId("pins-edit");
-    const list = byId("pin-list");
-    if (on === !!reordering) return;
-    if (on) {
-        for (const m of list.querySelectorAll<HTMLDetailsElement>(".row-menu")) m.open = false;
-        reordering = makeReorderable({
-            list,
-            items: ".pin-row",
-            label: (el) => el.dataset["name"] ?? "",
-            slot: (el) => el.querySelector<HTMLElement>(".row-head")!,
-            onChange: (ids) =>
-                void api("PUT", "/api/me/pins", {
-                    rows: ids.map((id) => (id.startsWith("t:") ? { tag: id.slice(2) } : { shelf: Number(id.slice(2)) })),
-                }).catch(() => {}),
-        });
-    } else {
-        reordering?.stop();
-        reordering = null;
-        void refreshHome();
-    }
-    btn.setAttribute("aria-pressed", String(on));
-    btn.querySelector("span")!.textContent = on ? "Done" : "Reorder rows";
-    pumpSoon();
-}
-
 function setupShelves(): void {
-    byId("pins-edit").addEventListener("click", () => setReordering(!reordering));
-    const list = byId("pin-list");
+    byId("home-edit").addEventListener("click", () => setEditing(!editing));
+    document.addEventListener("keydown", (e) => {
+        if (e.key === "Escape" && editing && !document.querySelector(".modal-overlay.active")) setEditing(false);
+    });
+    const list = byId("home-rows");
     list.addEventListener("click", (e) => {
-        const btn = e.target instanceof Element ? e.target.closest<HTMLButtonElement>(".row-menu [data-act]") : null;
+        const btn = e.target instanceof Element ? e.target.closest<HTMLButtonElement>('[data-act="unpin"]') : null;
         const row = btn?.closest<HTMLElement>(".pin-row");
         if (!btn || !row) return;
-        btn.closest("details")!.open = false;
-        if (btn.dataset["act"] === "reorder") {
-            setReordering(true);
-            byId("pins-edit").scrollIntoView({ block: "nearest" });
-            return;
-        }
-        // Remove from home: at once here; the server's answer follows.
+        // Off the page: at once here; the server's answer follows.
         row.remove();
-        pinControls(true);
         const id = row.dataset["id"] ?? "";
+        pinOrder = pinOrder.filter((p) => p !== id);
+        if (id.startsWith("t:")) {
+            pinnedTags.delete(id.slice(2).toLowerCase());
+            updateTagRows(true);
+        }
         const path = id.startsWith("t:") ? `/api/me/tag-pins/${encodeURIComponent(id.slice(2))}` : `/api/me/pins/${id.slice(2)}`;
         void api("DELETE", path)
             .catch(() => {})
             .then(() => refreshHome());
     });
-    // A menu closes when the click is elsewhere.
-    document.addEventListener("click", (e) => {
-        for (const m of list.querySelectorAll<HTMLDetailsElement>(".row-menu[open]")) {
-            if (!(e.target instanceof Node && m.contains(e.target))) m.open = false;
-        }
+    byId("hidden-tags").addEventListener("click", (e) => {
+        const btn = e.target instanceof Element ? e.target.closest<HTMLButtonElement>('[data-act="unhide-tag"]') : null;
+        const name = btn?.dataset["name"];
+        if (name) setTagHidden(name, false);
     });
 }
 
@@ -974,15 +1175,22 @@ async function showTagStrip(section: HTMLElement, w: TagWalker, start: number | 
     }
 }
 
+/** Rows showing a tag hidden or pinned since they were filled take another. */
+let recheckTagRows: () => void = () => {};
+
 function setupTagRows(): void {
     const box = byId("tag-rows");
+    const rows = byId("tag-list");
     let index: TagRow[] = [];
     try {
         index = JSON.parse(box.dataset["tags"] ?? "[]") as TagRow[];
     } catch {
         /* none */
     }
-    if (!index.length) return;
+    if (!index.length) {
+        box.classList.add("row-na"); // nothing to turn on
+        return;
+    }
     const cursors = loadTagCursors();
     // Every tag in a random order (bigger ones sooner). Each row takes the
     // next one as it nears the screen, by when the user's pinned tags are
@@ -991,7 +1199,7 @@ function setupTagRows(): void {
     const fill = async (section: HTMLElement, i: number): Promise<void> => {
         // The next tag that isn't pinned and has books the user hasn't finished.
         for (;;) {
-            const free = (t: TagRow): boolean => !pinnedTags.has(t.name.toLowerCase());
+            const free = (t: TagRow): boolean => !pinnedTags.has(t.name.toLowerCase()) && !isHiddenTag(t.name);
             // The user's own tags first (when they have a row), then the rest.
             let k = -1;
             for (const a of affinityTags) {
@@ -1009,25 +1217,20 @@ function setupTagRows(): void {
             const name = escapeHtml(row.name);
             const href = escapeHtml(row.href);
             section.dataset["name"] = row.name;
+            section.hidden = false;
+            // The pin for a signed-in user (updateTagRows), else the tag's icon.
             section.querySelector("header")!.innerHTML = `
-            <h2 id="tag-row-${i}-title">More in <a class="row-title-link" href="${href}">${name}</a></h2>
+            <h2 id="tag-row-${i}-title"><button type="button" class="row-icon tag-pin" data-act="pin-tag" title="Pin to home" aria-label="Pin ${name} to home" hidden>${PIN_ICON}</button><a class="row-icon tag-link" href="/tags" title="Tags" aria-label="All tags">${TAG_ICON}</a>More in <a class="row-title-link" href="${href}">${name}</a></h2>
             <div class="row-tools">
                 ${tagStepButtons(name, row.count <= STRIP)}
                 ${seeAll(row.href)}
-                <details class="row-menu tag-menu" hidden>
-                    <summary class="row-btn" aria-label="Options for ${name}">
-                        <svg viewBox="0 0 24 24" width="16" height="16" fill="currentColor" aria-hidden="true"><circle cx="5" cy="12" r="2"/><circle cx="12" cy="12" r="2"/><circle cx="19" cy="12" r="2"/></svg>
-                    </summary>
-                    <div class="row-menu-list">
-                        <button type="button" data-act="pin-tag">Pin to home</button>
-                    </div>
-                </details>
+                <button type="button" class="row-btn row-x" data-act="hide-tag" title="Don't show this tag here" aria-label="Don't show ${name} on the home page">${X_ICON}</button>
             </div>`;
             tagWalkers.set(section, w);
             if (await showTagStrip(section, w, w.cur.next, true)) break;
         }
-        updateTagRows(serverSignedIn ?? signedIn() === true);
-        box.hidden = !box.querySelector(".row:not([hidden])");
+        updateTagRows(isOwn());
+        box.hidden = !rows.querySelector(".row:not([hidden])");
     };
     const near = new IntersectionObserver(
         (entries) => {
@@ -1047,16 +1250,27 @@ function setupTagRows(): void {
         section.dataset["i"] = String(i);
         section.setAttribute("aria-labelledby", `tag-row-${i}-title`);
         section.innerHTML = `<header class="row-head"></header><div class="row-books"></div>`;
-        box.append(section);
+        rows.append(section);
         near.observe(section);
     }
     updateTagRows(signedIn() === true);
-    box.addEventListener("click", (e) => {
-        const btn = e.target instanceof Element ? e.target.closest<HTMLButtonElement>('[data-act="pin-tag"]') : null;
+    recheckTagRows = () => {
+        for (const section of rows.querySelectorAll<HTMLElement>(".tag-row")) {
+            const name = section.dataset["name"];
+            if (name && isHiddenTag(name)) void fill(section, Number(section.dataset["i"]));
+        }
+    };
+    rows.addEventListener("click", (e) => {
+        const btn = e.target instanceof Element ? e.target.closest<HTMLButtonElement>('[data-act="pin-tag"], [data-act="hide-tag"]') : null;
         const section = btn?.closest<HTMLElement>(".tag-row");
         const name = section?.dataset["name"];
         if (!btn || !section || !name) return;
-        btn.closest("details")!.open = false;
+        if (btn.dataset["act"] === "hide-tag") {
+            // Not on this page again: the row takes the next tag.
+            setTagHidden(name, true);
+            void fill(section, Number(section.dataset["i"]));
+            return;
+        }
         // Pinned: it moves up among the pinned rows (from the server's answer).
         pinnedTags.add(name.toLowerCase());
         updateTagRows(true);
@@ -1064,12 +1278,11 @@ function setupTagRows(): void {
             .catch(() => {})
             .then(() => refreshHome());
     });
-    // A menu closes when the click is elsewhere.
-    document.addEventListener("click", (e) => {
-        for (const m of box.querySelectorAll<HTMLDetailsElement>(".row-menu[open]")) {
-            if (!(e.target instanceof Node && m.contains(e.target))) m.open = false;
-        }
-    });
+}
+
+function isHiddenTag(name: string): boolean {
+    const lc = name.toLowerCase();
+    return hiddenTags.some((t) => t.toLowerCase() === lc);
 }
 
 /** Shuffle and Previous of the tag rows ("More in" and pinned ones). */
@@ -1109,22 +1322,25 @@ function preloadTagStrip(w: TagWalker): void {
 }
 
 /**
- * "More in" rows: Pin to home for a signed-in user; a tag already pinned
- * has its own row up with the pinned ones, so its "More in" row steps aside.
+ * "More in" rows: the pin for a signed-in user (the tag's icon for anyone
+ * else); a tag already pinned has its own row among the others, so its
+ * "More in" row steps aside.
  */
 function updateTagRows(own: boolean): void {
-    const box = maybeId("tag-rows");
+    const box = maybeId("tag-list");
     if (!box) return;
     for (const section of box.querySelectorAll<HTMLElement>(".tag-row")) {
-        const menu = section.querySelector<HTMLElement>(".tag-menu");
-        if (menu) menu.hidden = !own;
+        const pin = section.querySelector<HTMLElement>(".tag-pin");
+        if (pin) pin.hidden = !own;
+        const link = section.querySelector<HTMLElement>(".tag-link");
+        if (link) link.hidden = own;
         const pinned = pinnedTags.has((section.dataset["name"] ?? "").toLowerCase());
         section.classList.toggle("pinned-away", pinned);
     }
 }
 
 /* ------------------------------------------------------------------ */
-/* Introduction                                                        */
+/* Greeting                                                            */
 /* ------------------------------------------------------------------ */
 
 /**
@@ -1133,11 +1349,17 @@ function updateTagRows(own: boolean): void {
  */
 function signedIn(): boolean | null {
     if (marks.signedIn) return true;
+    const me = topBarMe();
+    return me === undefined ? null : !!me.username;
+}
+
+/** nav.ts's cf-me (undefined when it hasn't said). */
+function topBarMe(): { username?: string | null } | undefined {
     try {
         const me = store.get("cf-me");
-        return me === null ? null : !!(JSON.parse(me) as { username?: string | null }).username;
+        return me === null ? undefined : (JSON.parse(me) as { username?: string | null });
     } catch {
-        return null;
+        return undefined;
     }
 }
 
@@ -1147,15 +1369,52 @@ function showAccountLine(): void {
     if (line) line.hidden = signedIn() !== false;
 }
 
-function setupIntro(): void {
-    const intro = byId("intro");
-    if (store.get(INTRO_KEY)) intro.classList.add("compact");
-    maybeId("intro-dismiss")?.addEventListener("click", () => {
-        intro.classList.add("compact");
-        store.set(INTRO_KEY, "1");
-    });
+/** Quotes about reading, one a day (all long out of copyright). */
+const QUOTES: [string, string][] = [
+    ["I declare after all there is no enjoyment like reading!", "Jane Austen"],
+    ["There is no frigate like a book to take us lands away.", "Emily Dickinson"],
+    ["Some books are to be tasted, others to be swallowed, and some few to be chewed and digested.", "Francis Bacon"],
+    ["Reading is to the mind what exercise is to the body.", "Richard Steele"],
+    ["If you have a garden and a library, you have everything you need.", "Cicero"],
+    ["Books are the quietest and most constant of friends.", "Charles W. Eliot"],
+    ["The reading of all good books is like a conversation with the finest minds of past centuries.", "René Descartes"],
+    ["A good book is the precious life-blood of a master spirit.", "John Milton"],
+    ["Many a man has dated a new era in his life from the reading of a book.", "Henry David Thoreau"],
+    ["Books are the treasured wealth of the world and the fit inheritance of generations and nations.", "Henry David Thoreau"],
+    ["I cannot live without books.", "Thomas Jefferson"],
+    ["When I get a little money I buy books; and if any is left I buy food and clothes.", "Erasmus"],
+    ["No entertainment is so cheap as reading, nor any pleasure so lasting.", "Mary Wortley Montagu"],
+    ["A house without books is like a room without windows.", "Horace Mann"],
+    ["In books lies the soul of the whole past time.", "Thomas Carlyle"],
+    ["Reading maketh a full man; conference a ready man; and writing an exact man.", "Francis Bacon"],
+    ["'Tis the good reader that makes the good book.", "Ralph Waldo Emerson"],
+    ["One must be an inventor to read well.", "Ralph Waldo Emerson"],
+    ["Literature is my Utopia.", "Helen Keller"],
+    ["Wear the old coat and buy the new book.", "Austin Phelps"],
+    ["The best of a book is not the thought which it contains, but the thought which it suggests.", "Oliver Wendell Holmes Sr."],
+    ["Except a living man, there is nothing more wonderful than a book.", "Charles Kingsley"],
+    ["Books are the bees which carry the quickening pollen from one to another mind.", "James Russell Lowell"],
+    ["It is a great thing to start life with a small number of really good books which are your very own.", "Arthur Conan Doyle"],
+    ["A book must be the axe for the frozen sea within us.", "Franz Kafka"],
+    ["Books, the children of the brain.", "Jonathan Swift"],
+];
+
+function showGreeting(): void {
+    const name = topBarMe()?.username ?? marks.user;
+    byId("greeting-hello").textContent = name ? `Welcome, ${name}!` : "Welcome!";
     showAccountLine();
-    document.addEventListener("cf:me", showAccountLine);
+}
+
+function setupGreeting(): void {
+    // The same quote all day (the visitor's day), the next one tomorrow.
+    const day = Math.floor((Date.now() - new Date().getTimezoneOffset() * 60_000) / 86_400_000);
+    const [text, who] = QUOTES[day % QUOTES.length]!;
+    const fig = byId("greeting-quote");
+    fig.querySelector("p")!.textContent = `“${text}”`;
+    fig.querySelector("figcaption")!.textContent = `— ${who}`;
+    fig.hidden = false;
+    showGreeting();
+    document.addEventListener("cf:me", showGreeting);
 }
 
 /* ------------------------------------------------------------------ */
@@ -1176,10 +1435,12 @@ function openFromHash(): void {
 setupCoverStates(root);
 setupDragScroll(root, ".row-books");
 setupPageDragScroll(root); // after the rows: on a row, the direction decides which
-setupIntro();
+setupGreeting();
 setupShelves();
 setupTagSteps();
 setupRecommended();
+if (!cachedHome() && signedIn() !== true) ({ layout, hiddenTags } = guestLayout());
+applyLayout(); // the sections in place before they fill
 const homeIn = setupHome();
 setupTagRows(); // after the cached home answer: pinned tags aren't picked
 openFromHash();

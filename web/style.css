@@ -227,7 +227,7 @@ input[type="number"],
 }
 /* ============================================
    Discover page (templates/discover.html, web/discover.ts)
-   An introduction, then rows of books that scroll sideways. Cards are the
+   A greeting, then rows of books that scroll sideways. Cards are the
    grid's, at the grid's widths, so the page reads as the same library.
    ============================================ */
 .discover {
@@ -240,59 +240,38 @@ input[type="number"],
     gap: var(--gap-xlarge);
 }
 
-.intro {
-    position: relative;
-    background: var(--bg-secondary);
-    border: 1px solid var(--border-subtle);
-    border-radius: var(--radius-large);
-    padding: var(--gap-xlarge);
+/* The greeting: the user's name and the quote of the day. */
+.greeting {
     display: flex;
     flex-direction: column;
-    gap: var(--gap-large);
+    gap: var(--gap-medium);
+    padding: var(--gap-medium) 0 0;
 }
-.intro-stats {
+.greeting-head {
     margin: 0;
-    display: flex;
-    flex-wrap: wrap;
-    gap: var(--gap-small) var(--gap-xlarge);
-    font-size: var(--font-size-large);
-    color: var(--text-secondary);
 }
-.intro-stats > :first-child {
-    color: var(--text-primary);
+.greeting-hello {
+    margin: 0;
+    font-size: 1.6rem;
     font-weight: 600;
 }
-.intro-stats a,
-.intro-browse a {
-    color: var(--text-link);
+.greeting-quote {
+    margin: 0;
+    color: var(--text-secondary);
+    max-width: 70ch;
 }
-.intro-more {
-    display: flex;
-    flex-direction: column;
-    gap: var(--gap-large);
+.greeting-quote blockquote {
+    margin: 0;
 }
-.intro-search {
-    display: flex;
-    gap: var(--gap-medium);
-    max-width: 640px;
+.greeting-quote p {
+    margin: 0;
+    font-style: italic;
+    line-height: 1.5;
 }
-.intro-search input {
-    flex: 1;
-    min-width: 0;
-    height: var(--touch-target);
-    padding: var(--input-padding);
-    background: var(--bg-surface);
-    color: var(--text-primary);
-    border: 1px solid var(--border-medium);
-    border-radius: var(--radius-medium);
-    font-size: var(--font-size-ui);
-}
-.intro-browse {
-    display: flex;
-    flex-wrap: wrap;
-    align-items: baseline;
-    gap: var(--gap-small) var(--gap-large);
+.greeting-quote figcaption {
+    margin-top: var(--gap-small);
     color: var(--text-muted);
+    font-size: var(--font-size-small);
 }
 .intro-account {
     margin: 0;
@@ -306,26 +285,6 @@ input[type="number"],
 .intro-account a:not(.btn-standard) {
     margin-left: var(--gap-medium);
     color: var(--text-link);
-}
-.intro-dismiss {
-    position: absolute;
-    top: var(--gap-medium);
-    right: var(--gap-medium);
-    background: none;
-    border: none;
-    color: var(--text-muted);
-    cursor: pointer;
-    font-size: var(--font-size-small);
-    padding: var(--gap-small) var(--gap-medium);
-}
-/* Hidden by the visitor: just the stats line. */
-.intro.compact {
-    padding: var(--gap-medium) var(--gap-large);
-    background: none;
-    border-color: transparent;
-}
-.intro.compact .intro-more {
-    display: none;
 }
 
 .row-head {
@@ -494,29 +453,63 @@ input[type="number"],
     text-align: center;
 }
 
-/* Shelf rows (pinned and featured shelves). */
-.pin-rows {
+/* The rows, in the user's order (pinned shelves and tags among them). */
+.home-rows,
+.tag-list {
     display: flex;
     flex-direction: column;
     gap: var(--gap-xlarge);
 }
-.pin-list {
-    display: flex;
-    flex-direction: column;
-    gap: var(--gap-xlarge);
-}
-.pin-foot {
-    display: flex;
-    justify-content: flex-end;
-    margin-top: calc(-1 * var(--gap-large));
-}
-.pin-rows[hidden],
-.pin-foot[hidden] {
+.tag-rows[hidden] {
     display: none;
+}
+/* A row's icon, before its title: its page (or a tag's pin). */
+.row-head h2 {
+    display: flex;
+    align-items: center;
+    gap: var(--gap-small);
+    min-width: 0;
+}
+.row-icon {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    flex: none;
+    width: 32px;
+    height: 32px;
+    margin-left: -6px;
+    padding: 0;
+    background: none;
+    border: 1px solid transparent;
+    border-radius: var(--radius-medium);
+    color: var(--text-secondary) !important;
+    cursor: pointer;
+}
+.row-icon[hidden] {
+    display: none;
+}
+span.row-icon {
+    cursor: default;
+}
+a.row-icon:hover,
+button.row-icon:hover {
+    color: var(--text-primary) !important;
+    background: var(--bg-surface);
+    border-color: var(--border-light);
+}
+.row-icon[aria-pressed="true"] {
+    color: var(--accent, var(--text-primary)) !important;
+}
+.row-x {
+    min-width: 32px;
+    justify-content: center;
+    padding: 0;
 }
 .row-title-link {
     color: inherit !important;
     text-decoration: none;
+    overflow: hidden;
+    text-overflow: ellipsis;
 }
 .row-title-link:hover {
     text-decoration: underline;
@@ -524,63 +517,111 @@ input[type="number"],
 .row-tools {
     align-items: center;
 }
-.row-menu {
-    position: relative;
+/* Turned off in the layout: gone, except while editing. */
+.row-off {
+    display: none !important;
 }
-.row-menu > summary {
-    list-style: none;
-    min-width: 32px;
-    justify-content: center;
-    padding: 0;
+.edit-only,
+.edit-only[hidden] {
+    display: none !important;
 }
-.row-menu > summary::-webkit-details-marker {
+.hidden-tags {
+    margin: 0;
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: var(--gap-small);
+    color: var(--text-muted);
+}
+
+/* The top bar's Edit: a pen, a check while editing. */
+.home-edit .home-edit-done,
+.home-edit[aria-pressed="true"] .home-edit-pen {
     display: none;
 }
-.row-menu-list {
-    position: absolute;
-    right: 0;
-    top: calc(100% + 4px);
-    z-index: 20;
-    display: flex;
-    flex-direction: column;
-    min-width: 12rem;
-    padding: var(--gap-small) 0;
+.home-edit[aria-pressed="true"] .home-edit-done {
+    display: block;
+}
+.home-edit[aria-pressed="true"] {
     background: var(--bg-elevated);
-    border: 1px solid var(--border-medium);
-    border-radius: var(--radius-large);
-    box-shadow: 0 8px 24px rgb(0 0 0 / 0.25);
+    border-color: var(--border-medium);
 }
-.row-menu-list button {
-    padding: var(--gap-medium) var(--gap-large);
-    background: none;
-    border: none;
-    color: var(--text-primary);
-    font: inherit;
-    text-align: left;
-    cursor: pointer;
+
+/* Editing: each row shrinks to its title, with the handles and its switch. */
+.home-editing .row-off {
+    display: block !important;
+    opacity: 0.5;
 }
-.row-menu-list button:hover,
-.row-menu-list button:focus-visible {
-    background: var(--bg-surface);
+.home-editing .row-off.greeting {
+    display: flex !important;
 }
-/* Reordering: each shelf shrinks to its title, with the handles. */
-.pin-list.reordering {
+.home-editing .edit-only {
+    display: flex !important;
+}
+.home-editing .hidden-tags[hidden] {
+    display: none !important;
+}
+.home-rows.reordering {
     gap: var(--gap-medium);
 }
-.pin-list.reordering .row-books,
-.pin-list.reordering .row-tools {
+.home-rows.reordering > .home-row[hidden]:not(.row-na) {
+    display: block;
+}
+.home-rows.reordering .row-books,
+.home-rows.reordering .row-hint,
+.home-rows.reordering .tag-list,
+.home-rows.reordering .row-tools > :not(.row-x),
+.home-rows.reordering .row-all {
     display: none;
 }
-.pin-list.reordering .pin-row {
+.home-rows.reordering > .home-row {
     padding: var(--gap-small) var(--gap-medium);
     border: 1px solid var(--border-light);
     border-radius: var(--radius-large);
     background: var(--bg-surface);
 }
-.pin-list.reordering .row-head {
+.home-rows.reordering .row-head {
     justify-content: flex-start;
     align-items: center;
+    flex-wrap: wrap;
     margin: 0;
+}
+.home-rows.reordering .row-head h2 {
+    flex: 1;
+}
+.home-rows.reordering .hidden-tags {
+    padding: var(--gap-small) 0 var(--gap-small) var(--gap-medium);
+}
+.row-toggle {
+    display: inline-flex;
+    align-items: center;
+    gap: var(--gap-small);
+    font-size: var(--font-size-small);
+    color: var(--text-secondary);
+    cursor: pointer;
+}
+.row-toggle input {
+    width: 18px;
+    height: 18px;
+    margin: 0;
+    cursor: pointer;
+}
+@media (max-width: 600px) {
+    /* The switch alone (it's labelled): the row's title needs the room. */
+    .row-toggle span {
+        display: none;
+    }
+    .hidden-tags .row-btn {
+        padding: 0 var(--gap-medium);
+    }
+}
+.greeting .row-toggle {
+    align-self: flex-start;
+}
+.home-editing .greeting .greeting-head {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
 }
 
 /* Drag to reorder (web/reorder.ts). */
@@ -655,9 +696,6 @@ input[type="number"],
     .discover {
         /* A little of the next card shows: there's more to the side. */
         --row-cols: 2.4;
-    }
-    .intro {
-        padding: var(--gap-large);
     }
 }
 

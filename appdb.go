@@ -254,6 +254,20 @@ var migrations = []string{
 	`
 	ALTER TABLE rec_state ADD COLUMN shown TEXT;
 	`,
+	// 14: the user's Discover page layout (home_layout.go): the order of
+	// its rows and the sections turned off (JSON), and the tags they don't
+	// want "More in" rows for.
+	`
+	CREATE TABLE home_layout (
+		user_id INTEGER PRIMARY KEY REFERENCES users(id) ON DELETE CASCADE,
+		layout  TEXT    NOT NULL
+	);
+	CREATE TABLE hidden_tags (
+		user_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+		name    TEXT    NOT NULL COLLATE NOCASE,
+		PRIMARY KEY (user_id, name)
+	);
+	`,
 }
 
 // openAppDB opens (creating if needed) and migrates the app database.

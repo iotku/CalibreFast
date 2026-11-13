@@ -14,79 +14,61 @@
     <body>
 {{ $tb := topbar }}
 {{ template "topbar-start" $tb }}
+        {{/* Arrange the page: reorder its rows, turn sections off (discover.ts). */}}
+        <button type="button" class="tb-icon home-edit" id="home-edit" aria-pressed="false" aria-label="Edit home page" title="Edit home page">
+            <svg class="home-edit-pen" viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 20h9"/><path d="M16.5 3.5a2.12 2.12 0 0 1 3 3L7 19l-4 1 1-4z"/></svg>
+            <svg class="home-edit-done" viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M5 12l5 5 9-10"/></svg>
+        </button>
 {{ template "topbar-end" $tb }}
         <main class="discover" id="discover" data-version="{{ .Version }}" data-page-size="{{ booksPerPage }}"
               data-total-books="{{ .Books }}" data-shuffle-total="{{ .ShuffleTotal }}"
               data-featured-version="{{ .FeaturedVersion }}">
-            {{/* The sections are in the same order for everyone (docs/notes/Discover.md). */}}
-            <section class="intro" id="intro" aria-label="About this library">
-                <p class="intro-stats">
-                    <span>{{ count .Books "book" "books" }}</span>
-                    <a href="/authors">{{ count .Authors "author" "authors" }}</a>
-                    <a href="/tags">{{ count .Tags "tag" "tags" }}</a>
-                    <a href="/languages">{{ count .Languages "language" "languages" }}</a>
+            {{/* A greeting and the quote of the day (discover.ts fills both). */}}
+            <section class="greeting" id="greeting" data-key="greeting" data-name="Greeting" aria-labelledby="greeting-hello">
+                <header class="row-head greeting-head">
+                    <h1 class="greeting-hello" id="greeting-hello">Welcome!</h1>
+                </header>
+                <figure class="greeting-quote" id="greeting-quote" hidden>
+                    <blockquote><p></p></blockquote>
+                    <figcaption></figcaption>
+                </figure>
+                <p class="intro-account" id="intro-account" hidden>
+                    An account keeps track of what you're reading on every device, a list of books you want to read, and suggestions from what you like.
+                    {{ if .ReadNeedsAccount }}Reading books here needs one too.{{ end }}
+                    <a class="btn-standard" href="/login">Sign in</a>
+                    {{ if .Registration }}<a href="/login">Create an account</a>{{ end }}
                 </p>
-                <div class="intro-more">
-                    <form class="intro-search" action="/search" method="get" role="search">
-                        <input name="q" type="search" placeholder="Search by title or author…" aria-label="Search books" />
-                        <button type="submit" class="btn-standard">Search</button>
-                    </form>
-                    <nav class="intro-browse" aria-label="Browse the library">
-                        <span>Browse by</span>
-                        <a href="/authors">Author</a>
-                        <a href="/tags">Tag</a>
-                        <a href="/series">Series</a>
-                        <a href="/languages">Language</a>
-                        <a href="/shelves">Shelf</a>
-                        <span>or see</span>
-                        <a href="/latest">Latest</a>
-                    </nav>
-                    <p class="intro-account" id="intro-account" hidden>
-                        An account keeps track of what you're reading on every device, a list of books you want to read, and suggestions from what you like.
-                        {{ if .ReadNeedsAccount }}Reading books here needs one too.{{ end }}
-                        <a class="btn-standard" href="/login">Sign in</a>
-                        {{ if .Registration }}<a href="/login">Create an account</a>{{ end }}
-                    </p>
-                    <button type="button" class="intro-dismiss" id="intro-dismiss" aria-label="Hide this introduction">Hide</button>
-                </div>
             </section>
 
+            {{/* The rows, in the user's order (docs/notes/Discover.md): these
+                 sections, and the pinned shelves and tags discover.ts puts
+                 among them. Each row's icon goes to its own page. */}}
+            <div class="home-rows" id="home-rows">
             {{/* Filled for the signed-in user from /api/me/home; for a signed-out
                  visitor, Continue reading is what was read on this device. */}}
-            <section class="row" id="row-reading" aria-labelledby="row-reading-title" hidden>
+            <section class="row home-row" id="row-reading" data-id="k:reading" data-name="Continue reading" aria-labelledby="row-reading-title" hidden>
                 <header class="row-head">
-                    <h2 id="row-reading-title">Continue reading<span class="row-sub" id="row-reading-device" hidden> on this device</span></h2>
+                    <h2 id="row-reading-title"><a class="row-icon" href="/me/reading" title="Reading" aria-label="All the books you're reading"><svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M2 4h6a4 4 0 0 1 4 4v13a3 3 0 0 0-3-3H2z"/><path d="M22 4h-6a4 4 0 0 0-4 4v13a3 3 0 0 1 3-3h7z"/></svg></a>Continue reading<span class="row-sub" id="row-reading-device" hidden> on this device</span></h2>
                     <a href="/me/reading" class="row-btn row-all" hidden><span>See all</span><svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M9 6l6 6-6 6"/></svg></a>
                 </header>
                 <p class="row-hint" hidden>Books you open in the reader, or mark as reading, appear here.</p>
                 <div class="row-books"></div>
             </section>
 
-            <section class="row" id="row-wanted" aria-labelledby="row-wanted-title" hidden>
+            <section class="row home-row" id="row-wanted" data-id="k:wanted" data-key="wanted" data-name="Want to read" aria-labelledby="row-wanted-title" hidden>
                 <header class="row-head">
-                    <h2 id="row-wanted-title">Want to read</h2>
+                    <h2 id="row-wanted-title"><a class="row-icon" href="/me/wanted" title="Want to read" aria-label="All the books you want to read"><svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M19 21l-7-5-7 5V5a2 2 0 0 1 2-2h10a2 2 0 0 1 2 2z"/></svg></a>Want to read</h2>
                     <a href="/me/wanted" class="row-btn row-all" hidden><span>See all</span><svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M9 6l6 6-6 6"/></svg></a>
                 </header>
                 <p class="row-hint" hidden>Hover over a cover and click the bookmark to add a book here.</p>
                 <div class="row-books"></div>
             </section>
 
-            {{/* Shelf rows: the signed-in user's pinned and featured shelves
-                 (/api/me/home), or the featured ones (featured.json). */}}
-            <div class="pin-rows" id="pin-rows" hidden>
-                <div class="pin-list" id="pin-list"></div>
-                <div class="pin-foot" id="pin-foot" hidden>
-                    <button type="button" class="row-btn" id="pins-edit" aria-pressed="false">
-                        <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M7 4v16M7 4L3 8M7 4l4 4M17 20V4M17 20l-4-4M17 20l4-4"/></svg>
-                        <span>Reorder rows</span>
-                    </button>
-                </div>
-            </div>
-
             {{/* Signed in only: from the user's reading, wants and stars (recommend.go). */}}
-            <section class="row" id="row-recommended" aria-labelledby="row-recommended-title" hidden>
+            <section class="row home-row" id="row-recommended" data-id="k:recommended" data-key="recommended" data-name="Recommended for you" aria-labelledby="row-recommended-title" hidden>
                 <header class="row-head">
-                    <h2 id="row-recommended-title">Recommended for you</h2>
+                    {{/* No page of its own: the icon only says what the row is. */}}
+                    <h2 id="row-recommended-title"><span class="row-icon" aria-hidden="true"><svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="2" stroke-linejoin="round"><path d="M12 3l1.9 5.1L19 10l-5.1 1.9L12 17l-1.9-5.1L5 10l5.1-1.9z"/><path d="M19 15l.8 2.2L22 18l-2.2.8L19 21l-.8-2.2L16 18l2.2-.8z"/></svg></span>Recommended for you</h2>
                     {{/* The row stays as it is until asked for more: the next page of the user's list. */}}
                     <div class="row-tools">
                         <button type="button" class="row-btn" id="rec-next" hidden>
@@ -99,14 +81,9 @@
                 <div class="row-books"></div>
             </section>
 
-            {{/* "More in <tag>": a few of these, picked by discover.ts, each
-                 filled a strip at a time from /api/tag-strip as it nears the screen. */}}
-            <div class="tag-rows" id="tag-rows" data-tags="{{ .TagRows }}" hidden></div>
-
-            <section class="row" id="row-shuffle" aria-labelledby="row-shuffle-title" hidden>
+            <section class="row home-row" id="row-shuffle" data-id="k:shuffle" data-key="shuffle" data-name="Shuffle" aria-labelledby="row-shuffle-title" hidden>
                 <header class="row-head">
-                    <h2 id="row-shuffle-title">Shuffle</h2>
-                    {{/* No link to /shuffle: the row is a handful at a time, not a list to page through. */}}
+                    <h2 id="row-shuffle-title"><a class="row-icon" href="/shuffle" title="Shuffle" aria-label="The whole library, shuffled"><svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M16 3h5v5M4 20L21 3M21 16v5h-5M15 15l6 6M4 4l5 5"/></svg></a>Shuffle</h2>
                     <div class="row-tools">
                         <button type="button" class="row-btn" id="shuffle-back" disabled>
                             <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M9 14L4 9l5-5"/><path d="M4 9h11a5 5 0 0 1 0 10h-3"/></svg>
@@ -121,13 +98,25 @@
                 <div class="row-books"></div>
             </section>
 
-            <section class="row" id="row-latest" aria-labelledby="row-latest-title" hidden>
+            <section class="row home-row" id="row-latest" data-id="k:latest" data-key="latest" data-name="Recently added" aria-labelledby="row-latest-title" hidden>
                 <header class="row-head">
-                    <h2 id="row-latest-title">Recently added</h2>
+                    <h2 id="row-latest-title"><a class="row-icon" href="/latest" title="Latest" aria-label="All books, newest first"><svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="9"/><path d="M12 7v5l3 2"/></svg></a>Recently added</h2>
                     <a href="/latest" class="row-btn row-all"><span>See all</span><svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M9 6l6 6-6 6"/></svg></a>
                 </header>
                 <div class="row-books"></div>
             </section>
+
+            {{/* "More in <tag>": a few of these, picked by discover.ts, each
+                 filled a strip at a time from /api/tag-strip as it nears the
+                 screen. One item of the order, its header shown while editing. */}}
+            <div class="home-row tag-rows" id="tag-rows" data-id="k:tags" data-key="tags" data-name="More in a tag" data-tags="{{ .TagRows }}" hidden>
+                <header class="row-head edit-only">
+                    <h2><a class="row-icon" href="/tags" title="Tags" aria-label="All tags"><svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M20.6 13.4l-7.2 7.2a2 2 0 0 1-2.8 0L2 12V2h10l8.6 8.6a2 2 0 0 1 0 2.8z"/><circle cx="7" cy="7" r="1.5"/></svg></a>More in a tag</h2>
+                </header>
+                <p class="hidden-tags edit-only" id="hidden-tags" hidden></p>
+                <div class="tag-list" id="tag-list"></div>
+            </div>
+            </div>
 
             <p class="discover-empty" id="discover-empty" hidden>No books in this library yet.</p>
         </main>
