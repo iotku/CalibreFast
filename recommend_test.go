@@ -37,7 +37,7 @@ func TestRecommend(t *testing.T) {
 	rng := rand.New(rand.NewPCG(1, 2))
 
 	// Nothing marked: nothing to go on.
-	if recs, tags := recommend(readingMarks{Reading: map[string]*float64{}}, rng); len(recs) != 0 || len(tags) != 0 {
+	if recs, _, tags := recommend(readingMarks{Reading: map[string]*float64{}}, nil, rng, 0); len(recs) != 0 || len(tags) != 0 {
 		t.Fatalf("no seeds: %v %v", recs, tags)
 	}
 
@@ -45,7 +45,7 @@ func TestRecommend(t *testing.T) {
 		Reading:  map[string]*float64{dune2: nil},
 		Finished: []string{dune1},
 	}
-	recs, tags := recommend(m, rng)
+	recs, _, tags := recommend(m, nil, rng, 0)
 	if len(recs) != 14 { // everything not marked, apart from the Owned book (no shared tag)
 		t.Fatalf("recs: %+v", recs)
 	}
@@ -78,7 +78,7 @@ func TestRecommend(t *testing.T) {
 
 	// Marked books are never recommended; a wanted next-in-series still is.
 	m.Wanted = []string{dune3, arrakis}
-	recs, _ = recommend(m, rng)
+	recs, _, _ = recommend(m, nil, rng, 0)
 	if recs[0].Book.UUID != dune3 {
 		t.Fatalf("wanted next in series: %+v", recs[0])
 	}
@@ -97,7 +97,7 @@ func TestRecommend(t *testing.T) {
 	}
 	mustExecApp(`INSERT INTO discover_tags (name, mode) VALUES ('Desert Planets', 'deny')`)
 	tagSettingsVersion.Add(1)
-	_, tags = recommend(m, rng)
+	_, _, tags = recommend(m, nil, rng, 0)
 	if slices.Contains(tags, "Desert Planets") {
 		t.Fatalf("excluded tag scored: %q", tags)
 	}

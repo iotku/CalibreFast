@@ -371,4 +371,6 @@ func registerUserDataRoutes() {
 	http.HandleFunc("GET /api/me/books/{uuid}", requireUser(bookStateHandler))
 	http.HandleFunc("PUT /api/me/books/{uuid}/favorite", requireUser(setFavoriteHandler))
 	http.HandleFunc("PUT /api/me/books/{uuid}/status", requireUser(setStatusHandler))
+	http.HandleFunc("PUT /api/me/books/{uuid}/not-interested", requireUser(setNotInterestedHandler))
+	http.HandleFunc("POST /api/me/recommended/next", requireUser(recNextHandler))
 }

@@ -54,6 +54,10 @@ type homeShelf struct {
 	Featured bool   `json:"featured,omitempty"`
 	Count    int    `json:"count"`
 	Books    []Book `json:"books"`
+	// A tag's row: where its strip starts in the tag's books, and where
+	// the next one does (tag_strip.go), for its Shuffle and Previous.
+	Start int `json:"start,omitempty"`
+	Next  int `json:"next,omitempty"`
 }
 
 // pinnedShelves: the pinned rows on u's page, in order, at most limit:
@@ -160,7 +164,8 @@ func pinnedShelves(u *User, limit int) ([]homeShelf, error) {
 	for _, at := range tagRows {
 		name := out[at].Name
 		out[at].Count = ix.count(name)
-		out[at].Books, _ = ix.strip(name, rand.IntN(max(1, out[at].Count)), shelfRowBooks, nil)
+		out[at].Start = rand.IntN(max(1, out[at].Count))
+		out[at].Books, out[at].Next = ix.strip(name, out[at].Start, shelfRowBooks, nil)
 	}
 	return out, nil
 }
