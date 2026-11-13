@@ -64,7 +64,7 @@ function rowScroller(row: HTMLElement): Scroller {
         axis: "x",
         pos: () => row.scrollLeft,
         setPos: (v) => (row.scrollLeft = v),
-        max: () => row.scrollWidth - row.clientWidth,
+        max: () => Math.max(0, row.scrollWidth - row.clientWidth),
         size: () => row.clientWidth,
         moved: () => row.firstElementChild,
     };
@@ -76,7 +76,7 @@ function pageScroller(el: HTMLElement): Scroller {
         axis: "y",
         pos: () => window.scrollY,
         setPos: (v) => window.scrollTo({ top: v, behavior: "instant" }),
-        max: () => document.documentElement.scrollHeight - window.innerHeight,
+        max: () => Math.max(0, document.documentElement.scrollHeight - window.innerHeight),
         size: () => window.innerHeight,
         moved: () => el,
     };
@@ -317,7 +317,8 @@ export function setupDragScroll(root: HTMLElement, selector: string): void {
     );
     root.addEventListener("pointerdown", (e) => {
         const row = rowOf(e.target);
-        if (!row || !draggable(e) || row.scrollWidth <= row.clientWidth) return;
+        // A row too short to scroll still drags into the runway and recoils.
+        if (!row || !draggable(e)) return;
         press(e, rowScroller(row));
     });
 }
@@ -329,7 +330,8 @@ export function setupPageDragScroll(el: HTMLElement): void {
     window.addEventListener("wheel", () => interrupt(s), { passive: true });
     window.addEventListener("keydown", () => interrupt(s));
     el.addEventListener("pointerdown", (e) => {
-        if (!draggable(e) || s.max() <= 0) return;
+        // A page too short to scroll still drags into the runway and recoils.
+        if (!draggable(e)) return;
         press(e, s);
     });
 }
