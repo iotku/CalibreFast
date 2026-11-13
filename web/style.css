@@ -1820,29 +1820,32 @@ body.book-standalone {
     white-space: nowrap;
 }
 
+/* Read's label is centered on the whole row (the left padding matches
+   Download's width), so it lines up with a full-row Download below. */
 .book-actions .btn-action-read {
     grid-column: 1;
+    padding: 0 0.6rem 0 calc(0.6rem + 48px);
     border-top-right-radius: 0;
     border-bottom-right-radius: 0;
 }
 
-/* Read's other half: the same gold, a darker line between them. */
-.book-actions .is-side,
-.book-actions .is-side:hover {
+/* Read's other half: a deeper gold, so it reads as its own action, with a
+   darker line between them. */
+.book-actions .is-side {
     grid-column: 2;
     padding: 0;
-    border-color: #c8a96e;
-    border-left-color: rgba(0, 0, 0, 0.35);
+    background: #8f7647;
+    border-color: #8f7647;
+    border-left-color: rgba(0, 0, 0, 0.45);
     border-top-left-radius: 0;
     border-bottom-left-radius: 0;
-    background: #c8a96e;
     color: #121212;
 }
 
 .book-actions .is-side:hover {
-    background: #d8be8a;
-    border-color: #d8be8a;
-    border-left-color: rgba(0, 0, 0, 0.35);
+    background: #a48a58;
+    border-color: #a48a58;
+    border-left-color: rgba(0, 0, 0, 0.45);
     color: #000;
 }
 
