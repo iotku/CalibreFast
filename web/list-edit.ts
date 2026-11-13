@@ -1,5 +1,5 @@
 /**
- * Edit (the top bar's button) on Favorites, Want to read, Finished and the
+ * Edit (the top bar's button) on Favorites, Saved, Finished and the
  * shelves a user can edit: the grid becomes a list of the books, to drag
  * into place or move with the buttons (reorder.ts), as on the home page.
  * Each move is saved (list_order.go); Done shows the grid in the new order.

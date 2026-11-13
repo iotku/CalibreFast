@@ -15,7 +15,7 @@
 import { api, errorMessage } from "./dom.js";
 import { deleteBooks } from "./delete-books.js";
 import "./book-files.js"; // the book page's Files row (admins)
-import type { BookChange, BookState } from "./reading.js";
+import { ICONS, type BookChange, type BookState } from "./reading.js";
 
 interface StatusResponse {
     status: string;
@@ -74,6 +74,19 @@ function reportChange(change: BookChange): void {
     document.dispatchEvent(new CustomEvent<BookChange>("cf:status", { detail: change }));
 }
 
+/** Paint the Save button for a status ("wanted" is shown as Saved). */
+function paintWant(btn: HTMLButtonElement, status: string): void {
+    const toggle = status === "" || status === "wanted";
+    const on = status === "wanted";
+    const icon = status === "reading" ? ICONS.read : status === "finished" ? ICONS.done : on ? ICONS.wanted : ICONS.want;
+    const label = status === "reading" ? "Reading" : status === "finished" ? "Finished" : on ? "Saved" : "Save";
+    btn.innerHTML = `${icon}<span>${label}</span>`;
+    btn.classList.toggle("is-on", status !== "");
+    if (toggle) btn.setAttribute("aria-pressed", String(on));
+    else btn.removeAttribute("aria-pressed");
+    btn.title = on ? "Remove from Saved" : toggle ? "Save for later" : "Change reading status";
+}
+
 function bind(controls: HTMLElement): void {
     if (controls.dataset["bound"]) return;
     controls.dataset["bound"] = "1";
@@ -99,16 +112,38 @@ function bind(controls: HTMLElement): void {
     });
 
     const status = controls.querySelector<HTMLSelectElement>(".book-status");
+    const want = controls.querySelector<HTMLButtonElement>(".btn-want");
     const note = controls.querySelector<HTMLElement>(".book-status-note");
     let current = status?.value ?? "";
-    status?.addEventListener("change", async () => {
+    if (want) paintWant(want, current);
+    const save = async (value: string): Promise<void> => {
+        if (!status) return;
+        status.value = value; // optimistic
+        if (want) paintWant(want, value);
         try {
-            const res = await api<StatusResponse>("PUT", `/api/me/books/${uuid}/status`, { status: status.value });
+            const res = await api<StatusResponse>("PUT", `/api/me/books/${uuid}/status`, { status: value });
             current = res.status;
             if (note) note.textContent = note.dataset["progress"] || (res.status && res.status_source === "auto" ? "set by the reader" : "");
             reportChange({ uuid, status: res.status });
         } catch {
-            status.value = current;
+            /* put back below */
+        }
+        status.value = current;
+        if (want) paintWant(want, current);
+    };
+    status?.addEventListener("change", () => void save(status.value));
+    // Like the cover's button: toggles Saved for a book not started.
+    // Once reading or finished it shows that, and opens the menu.
+    want?.addEventListener("click", () => {
+        if (!status) return;
+        if (current === "" || current === "wanted") {
+            void save(current === "wanted" ? "" : "wanted");
+            return;
+        }
+        try {
+            status.showPicker();
+        } catch {
+            status.focus(); // no showPicker for selects (older Safari)
         }
     });
 

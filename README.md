@@ -33,7 +33,7 @@ CalibreFast reads directly from your Calibre `metadata.db` and serves your libra
 - **Uploads:** EPUB/PDF metadata is read automatically, and multiple formats of one book are combined.
 - **Watch folder:** books dropped into a folder wait in a review queue. An admin checks the metadata (with ISBN lookups), chooses the cover, then adds each one to the library.
 - **Accounts:** username/password, or GitHub/Google sign-in. Admins manage users, and can send someone a one-time sign-in or invite link (e.g. over Discord).
-- **Favorites and reading status:** star books, and track what you want to read, are reading and have finished, straight from the covers in the grid. The readers update this as you go, and a cover's ▶ picks up where you left off.
+- **Favorites and reading status:** star books, and save books for later, and track what you're reading and have finished, straight from the covers in the grid. The readers update this as you go, and a cover's ▶ picks up where you left off.
 - **Resume anywhere:** your reading position and bookmarks sync between devices, and are kept locally too in case the server is down.
 - **KOReader sync:** use CalibreFast as KOReader's progress sync server, so positions follow you between your Kobo, Kindle or phone and the web readers.
 - **Bookshelves:** your own private shelves, plus global shelves that admins curate for everyone.

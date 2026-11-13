@@ -29,7 +29,7 @@
 
     /* Colors - Reading status on the cards (reading.ts). Hues far apart
        (blue / gold / green), and each also differs in shape, so they don't
-       rely on color alone: want to read is a dashed ring, reading a solid
+       rely on color alone: saved is a dashed ring, reading a solid
        ring with a partial bar, finished a solid ring with a full bar. */
     --status-wanted: #6aa7e8;
     --status-reading: #c8a96e;
@@ -1542,7 +1542,7 @@ button.row-icon:hover {
     }
 }
 
-/* ≤ 640px: search becomes an icon; want to read/favorites/reading live in the user menu */
+/* ≤ 640px: search becomes an icon; saved/favorites/reading live in the user menu */
 @media (max-width: 640px) {
     .site-bar {
         gap: 6px;
@@ -1637,6 +1637,10 @@ body.book-standalone {
     grid-area: cover;
     width: 280px;
     min-width: 0;
+    /* a column, so the per-user controls can sit on both sides of the
+       cover and buttons (order, below) */
+    display: flex;
+    flex-direction: column;
 }
 
 .book-page-cover {
@@ -1783,10 +1787,11 @@ body.book-standalone {
     transform: translateX(-50%) translateY(0);
 }
 
+/* No hover on touch screens: no hint over the cover either (it couldn't be
+   moved off the cover to see it whole); the Read buttons are below. */
 @media (hover: none) {
     .cover-link .cover-read-hint {
-        opacity: 0.9;
-        transform: translateX(-50%) translateY(0);
+        display: none;
     }
 }
 
@@ -1799,15 +1804,57 @@ body.book-standalone {
 /* ============================================
    Component - Book Actions (Read, Download, Edit)
    ============================================ */
+/* A row per format: Read, with a small Download button joined to it as
+   one split button (a touch target like the reading status menu's); a
+   format without a reader gets Download across the row. */
 .book-actions {
     display: grid;
-    grid-template-columns: minmax(0, 1fr);
-    gap: 0.5rem;
+    --side: 48px; /* Download beside Read */
+    --pad: 0.9rem;
+    grid-template-columns: minmax(0, 1fr) var(--side);
+    gap: 0.5rem 0;
     margin-top: 1rem;
 }
 
-#read-buttons {
-    display: contents;
+/* Icons and labels at the left, so they line up down the rows. */
+.book-actions .btn-action {
+    grid-column: 1 / -1;
+    justify-content: flex-start;
+    min-width: 0;
+    padding: 0 var(--pad);
+    white-space: nowrap;
+}
+
+.book-actions .btn-action-read {
+    grid-column: 1;
+    border-top-right-radius: 0;
+    border-bottom-right-radius: 0;
+}
+
+
+/* Read's other half: dark, with a gold icon and outline, so it reads as
+   its own action. */
+.book-actions .is-side {
+    grid-column: 2;
+    justify-content: center;
+    padding: 0;
+    background: var(--bg-surface, #222);
+    border-color: #c8a96e;
+    border-left-width: 0;
+    border-top-left-radius: 0;
+    border-bottom-left-radius: 0;
+    color: #c8a96e;
+}
+
+.book-actions .is-side:hover {
+    background: var(--bg-elevated, #2c2c2c);
+    border-color: #d8be8a;
+    color: #d8be8a;
+}
+
+.book-actions .is-side .action-icon {
+    width: 18px;
+    height: 18px;
 }
 
 .btn-action {
@@ -2076,10 +2123,6 @@ body.book-standalone {
         margin: -9px 0;
     }
 
-    .book-actions {
-        grid-template-columns: repeat(2, minmax(0, 1fr));
-        margin-top: 1rem;
-    }
 
     .btn-action {
         justify-content: center;
@@ -2089,30 +2132,21 @@ body.book-standalone {
         font-size: var(--font-size-small);
     }
 
-    /* 2. Cover, with the read/download actions under it */
+    /* 2. Cover, with the read/download actions under it. The column is
+       as wide as the cover, which fills it (up to a limit), so Favorite /
+       reading status and the buttons line up with the cover's edges. */
     .book-page-side {
         width: 100%;
+        max-width: 320px;
         order: 2;
     }
 
-    .book-page-cover {
-        width: 100%;
-        max-width: 240px;
-        margin: 0 auto;
-        order: 2;
-    }
-
+    .book-page-cover,
     .book-page-cover img,
-    .cover-link img {
-        width: auto;
-        max-width: 220px;
-        max-height: 320px;
-        margin: 0 auto;
-    }
-
+    .cover-link img,
     .book-page-cover .cover-placeholder {
-        max-width: 220px;
-        margin: 0 auto;
+        width: 100%;
+        max-width: none;
     }
 
     /* 3. Details (metadata + description) below the cover */
@@ -2140,27 +2174,10 @@ body.book-standalone {
 }
 
 @media (max-width: 380px) {
-    .book-page-cover {
-        max-width: 200px;
-    }
-
-    .book-page-cover img,
-    .cover-link img {
-        max-width: 180px;
-        max-height: 260px;
-    }
-
-    .book-page-cover .cover-placeholder {
-        max-width: 180px;
-    }
-
     .title-row h1 {
         font-size: 1.2rem;
     }
 
-    .book-actions {
-        grid-template-columns: minmax(0, 1fr);
-    }
 }
 
 @media (max-height: 520px) and (orientation: landscape) {
@@ -2186,9 +2203,28 @@ body.book-standalone {
         max-width: 160px;
     }
 
+    /* the 160px column: Favorite and Save each fill a line */
+    .book-user-row .btn-action {
+        padding: 0 0.5rem;
+    }
+
+    .btn-favorite,
+    .book-status-split,
+    .btn-want {
+        flex: 1;
+    }
+
     .book-actions {
-        grid-template-columns: minmax(0, 1fr);
+        --side: 44px;
+        --pad: 0.5rem;
         margin-top: 0.75rem;
+    }
+
+    /* the 160px column: Read's label alone fits beside Download */
+
+
+    .book-actions .btn-action-read .action-icon {
+        display: none;
     }
 
     .book-header {
@@ -3011,14 +3047,27 @@ label.group-row span {
 /* ============================================
    Book popup: per-user controls
    ============================================ */
-.book-user-actions {
-    margin-top: 1rem;
+/* The controls' pieces are laid out by the cover column itself: Favorite
+   and reading status (or the sign-in hint) above the cover, shelves under
+   the buttons. */
+.book-user-actions,
+.book-user-controls {
+    display: contents;
 }
 
+.book-user-row,
+.book-user-actions > .throbber,
+.user-signin-hint {
+    order: -1;
+    margin-bottom: 0.75rem;
+}
+
+/* Favorite at the left, reading status at the right. */
 .book-user-row {
     display: flex;
     flex-wrap: wrap;
     align-items: center;
+    justify-content: space-between;
     gap: 0.5rem;
 }
 
@@ -3027,15 +3076,60 @@ label.group-row span {
     border-color: rgba(243, 201, 105, 0.6);
 }
 
+/* Save (a toggle) with the full status menu as its caret. */
+.book-status-split {
+    display: inline-flex;
+}
+
+/* Narrower than other actions, so Favorite and Save share a line
+   in the popup's cover column. */
+.book-user-row .btn-action {
+    padding: 0 0.8rem;
+}
+
+.btn-want {
+    white-space: nowrap;
+    border-top-right-radius: 0;
+    border-bottom-right-radius: 0;
+}
+
+.btn-want svg {
+    width: 16px;
+    height: 16px;
+    flex-shrink: 0;
+}
+
+.btn-want.is-on {
+    color: var(--accent, #c8a96e);
+    border-color: var(--accent-dim, #7a6340);
+}
+
+/* Only the caret shows; the menu lists every status. */
 .book-status {
+    width: 32px;
     height: 44px;
-    padding: 0 0.75rem;
-    color: var(--text-primary);
-    background: var(--bg-surface);
+    padding: 0;
+    margin-left: -1px;
+    color: transparent;
+    background: var(--bg-surface)
+        url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 12 12'%3E%3Cpath d='M3 4.5l3 3 3-3' fill='none' stroke='%23aaa' stroke-width='1.5' stroke-linecap='round' stroke-linejoin='round'/%3E%3C/svg%3E")
+        center / 12px no-repeat;
     border: 1px solid var(--border-medium);
-    border-radius: var(--radius-medium);
+    border-radius: 0 var(--radius-medium) var(--radius-medium) 0;
     font: inherit;
     font-size: 0.88rem;
+    appearance: none;
+    cursor: pointer;
+    box-shadow: 0 2px 4px rgba(0, 0, 0, 0.2);
+}
+
+.book-status:hover {
+    background-color: var(--bg-elevated, #2c2c2c);
+}
+
+.book-status option {
+    color: var(--text-primary);
+    background: var(--bg-surface);
 }
 
 .book-status-note {
@@ -3049,7 +3143,7 @@ label.group-row span {
 }
 
 .book-shelves {
-    margin-top: 0.5rem;
+    margin-top: 1rem;
     font-size: 0.9rem;
 }
 
@@ -3254,11 +3348,8 @@ label.group-row span {
     font-size: 0.85rem;
 }
 
-/* Loading placeholder for the per-user controls: reserves roughly their final
-   height (button row + shelves line) so content below doesn't jump. */
-.book-user-actions:has(> .throbber) {
-    min-height: 88px;
-}
+/* Loading placeholder for the per-user controls: it holds the button row's
+   place above the cover, so the cover doesn't jump when they arrive. */
 
 .throbber {
     display: inline-flex;
@@ -3564,7 +3655,7 @@ body.selecting .book {
     cursor: pointer;
 }
 
-/* The cover's own buttons (favorite, want to read) would sit on the tick. */
+/* The cover's own buttons (favorite, save) would sit on the tick. */
 body.selecting .book .cover-actions {
     display: none;
 }

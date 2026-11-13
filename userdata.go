@@ -179,7 +179,8 @@ func favoritesList(u *User) uuidList {
 	}
 }
 
-func statusList(u *User, status, title, empty string) uuidList {
+// statusList: u's books with a status, listed at /me/<page>.
+func statusList(u *User, status, page, title, empty string) uuidList {
 	order := statusOrder
 	if status == "reading" { // most recently read first, always
 		order = `ORDER BY updated_at DESC, book_uuid`
@@ -189,7 +190,7 @@ func statusList(u *User, status, title, empty string) uuidList {
 		extra = map[string]any{"Arrange": "/api/me/lists/" + status + "/order"}
 	}
 	return uuidList{
-		Title: title, EmptyText: empty, BaseURL: "/me/" + status, Extra: extra,
+		Title: title, EmptyText: empty, BaseURL: "/me/" + page, Extra: extra,
 		Count: countQuery(`SELECT COUNT(*) FROM reading_status WHERE user_id = ? AND status = ?`, u.ID, status),
 		Page: func(limit, offset int) ([]string, error) {
 			return scanStrings(appDB.Query(`SELECT book_uuid FROM reading_status WHERE user_id = ? AND status = ? `+order+` LIMIT ? OFFSET ?`, u.ID, status, limit, offset))
@@ -202,12 +203,18 @@ func meListHandler(w http.ResponseWriter, r *http.Request) {
 	switch r.PathValue("list") {
 	case "favorites":
 		serveUUIDList(w, r, favoritesList(u))
-	case "wanted":
-		serveUUIDList(w, r, statusList(u, "wanted", "Want to read", "Nothing here yet. Hover over a cover and click the bookmark to add it."))
+	case "saved": // the "wanted" status
+		serveUUIDList(w, r, statusList(u, "wanted", "saved", "Saved", "Nothing here yet. Save a book (the bookmark on its cover, or Save in its page) to add it."))
 	case "reading":
-		serveUUIDList(w, r, statusList(u, "reading", "Reading", "Nothing in progress. Books you open in the reader, or mark as reading, appear here."))
+		serveUUIDList(w, r, statusList(u, "reading", "reading", "Reading", "Nothing in progress. Books you open in the reader, or mark as reading, appear here."))
 	case "finished":
-		serveUUIDList(w, r, statusList(u, "finished", "Finished", "No finished books yet."))
+		serveUUIDList(w, r, statusList(u, "finished", "finished", "Finished", "No finished books yet."))
+	case "wanted": // its old address
+		target := "/me/saved"
+		if r.URL.RawQuery != "" {
+			target += "?" + r.URL.RawQuery
+		}
+		http.Redirect(w, r, target, http.StatusMovedPermanently)
 	default:
 		http.NotFound(w, r)
 	}
@@ -280,7 +287,7 @@ var errBadStatus = errors.New(`status must be "", "wanted", "reading" or "finish
 // setStatus records a status. Manual changes always apply. Automatic ones
 // (from reader progress) only move forward: none or wanted → reading →
 // finished, and never override a status the user chose themselves for that
-// stage. Starting a wanted book takes it off "want to read".
+// stage. Starting a wanted book takes it off Saved.
 func setStatus(userID int64, uuid, status, source string) error {
 	if status != "" && status != "wanted" && status != "reading" && status != "finished" {
 		return errBadStatus
