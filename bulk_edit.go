@@ -365,7 +365,7 @@ func bulkEditBooks(uuids []string, edit *bulkEdit) bulkResult {
 	res.Changed = len(changed)
 	if len(changed) > 0 {
 		catalogChanged(changed...)
-		refreshLibraryPages()
+		refreshPagesFor(changed...) // edits don't change the order
 		refreshAllCaches()
 		for chunk := range slices.Chunk(changed, 500) {
 			rows, err := tableBooks(calibreDB, chunk)

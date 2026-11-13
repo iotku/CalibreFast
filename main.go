@@ -1046,9 +1046,9 @@ func applyMetadataHandler(w http.ResponseWriter, r *http.Request) {
 		bookMetadataCache.Store(uuid, updated)
 	}
 
-	// Refresh page1.json cache
+	// The pages holding this book (the order doesn't change).
 	catalogChanged(uuid)
-	refreshLibraryPages()
+	refreshPagesFor(uuid)
 	refreshAllCaches()
 
 	w.Header().Set("Content-Type", "application/json")

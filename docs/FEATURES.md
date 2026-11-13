@@ -8,6 +8,9 @@ Reference for how CalibreFast behaves, for people and AI tools working on the co
   - **An introduction:** the library at a glance (books, authors, tags, languages), a search box and where to browse. For signed-out visitors (on a `-public` server) it adds a line on what an account is for, with Sign in, and Create an account when registration is open. **Hide** shrinks it to the counts line on that browser.
   - **Continue reading:** signed in, the books you're reading, most recently read (on any device) or marked first, with how far along and a button to carry on. Signed out, the books read **on this device**, newest first. **See all** opens `/me/reading`. Once there's something here, the introduction folds away for a signed-in user.
   - **Want to read:** signed in, newest first; **See all** opens `/me/wanted`. Not shown signed out.
+  - **Pinned rows:** shelves and tags you pinned, plus the shelves an admin **featured**, in one list. The row's ⋯ menu has **Remove from home** (a featured shelf stays off your page even if it's featured again later) and **Reorder rows**: drag, or Move up/down from the keyboard. Your order is kept; a shelf featured later comes after it. Pin a shelf from `/shelves` or its page, a tag from its page or a "More in" row's ⋯ menu. Signed out (on a `-public` server), the featured shelves.
+  - **Recommended for you** (signed in): the next book in a series you're reading or finished first, then books sharing the tags of what you read, finished, starred and want to read (rare shared tags count most), with a boost for authors you read. Each says why on hover: *Next after Dune Messiah*, *Like Dune*. Different on each visit. Books you've marked are never suggested.
+  - **More in _tag_** ×3: your strongest tags first (signed in), then tags picked at random, bigger ones more likely. Tags on more than a quarter of the library (Fiction, Ebook) and tags with fewer than 3 books don't get rows; admins can include or exclude tags and change the cutoff at `/admin/discover` (**Home page tags** in the admin menu). Books you've finished are left out, and a tag you pinned isn't repeated here.
   - Signed in with nothing in a row, the row stays and says how to fill it, so the page looks the same for everyone.
   - **Shuffle:** about 12 books from the server's random order. Each load, and each click of **Shuffle**, shows the next 12, so the same books don't come back until the whole library has gone by; the order is new after each server restart. **Previous** goes back through the last 20 sets shown, also after a reload. Pointing at (or tabbing to) **Shuffle** fetches the covers of the next two sets ahead of time, so they appear at once. Books you've finished are skipped (signed out: books read to the end on this device). The page doesn't link to `/shuffle` (the whole order on the grid): the row is meant as a handful at a time, though the address works if typed in.
   - **Recently added:** the 12 newest. **See all** opens `/latest`.
@@ -36,14 +39,14 @@ Reference for how CalibreFast behaves, for people and AI tools working on the co
 
 - **Popup.** Clicking a book opens a details popup (full-screen on phones) with a shareable `#book/<uuid>` URL. There's also a permalink page at `/book/get/<uuid>`. Details are preloaded on hover.
 - **Actions.** Read and download buttons sit under the cover, for every format on disk (EPUB, PDF, MOBI, AZW3, DJVU).
-- **Links.** Authors, publisher, tags and languages link to their filtered views.
+- **Links.** Authors, publisher, tags and languages link to their filtered views. A book in a series says so (*Book 2 in Dune*), linking to the series.
 - **Language names.** Codes are shown by name, covering about 120 languages and all their common 2/3-letter codes. Examples: `eng`/`en` → English, `pt-BR` → Portuguese (BR). A group name, if you've set one, takes precedence. Books with several languages show all of them.
 - **Descriptions** are rendered as HTML and cleaned with the same rules as the editor (see [Description editor](#description-editor)).
 
 ## Authors, publishers, tags and languages
 
-- **Overview pages** (`/authors`, `/publishers`, `/tags`, `/languages`) show a tag cloud sized by book count.
-- **Filtered views** (`/author/…`, `/publisher/…`, `/tag/…`, `/lang/…`) use the same grid as the main library.
+- **Overview pages** (`/authors`, `/publishers`, `/tags`, `/languages`, `/series`) show a tag cloud sized by book count.
+- **Filtered views** (`/author/…`, `/publisher/…`, `/tag/…`, `/lang/…`, `/series/…`) use the same grid as the main library. A series lists its books in series order.
 
 ### Groups
 
@@ -79,6 +82,8 @@ Authors are shown by name everywhere ("Alan A. A. Donovan & Brian W. Kernighan")
 ## Metadata editor
 
 `/book/edit/<uuid>` (needs an admin and `-allow-writes`) writes both `metadata.db` and the book's `metadata.opf`.
+
+**Series:** the series name and the book's number in it (2, 2.5), in this editor, the import queue and merging. Each source offers its value (the library's, the files' Calibre or EPUB 3 series), and names already in the library are suggested. Saving gives the book exactly that series, or none when the name is empty (its number then goes back to 1, as in Calibre). "Next in series" on the home page goes by these.
 
 **Preview Book** in the editor's top bar (and on a book waiting in the import queue) opens the book's EPUB, or else its PDF, in a new tab to look things up (the copyright page, an ISBN, the series). It's a **preview**: your place, bookmarks, highlights and reading status aren't saved or changed, no copy is kept for offline reading, and Back closes the tab (or split view, or window) rather than going back to the editor. In-book jumps in a preview add no history, since browsers only let a page close a tab with a single history entry.
 
@@ -312,3 +317,4 @@ Admins on a server with `-allow-writes` can remove books from the library. Nothi
   - Personal shelves are private to their owner.
   - Global shelves are visible to everyone and edited by admins.
   - Books are added from the book popup's Shelves section.
+  - **Pin to home** (on `/shelves` and a shelf's page) puts a shelf on your home page. Admins **Feature** global shelves for everyone's home page and set their order in the Featured list at the top of `/shelves`. You order your own shelves on `/shelves` by dragging or Move up/down.

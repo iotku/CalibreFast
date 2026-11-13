@@ -246,6 +246,116 @@ func refreshShufflePages() {
 	}
 }
 
+// refreshPagesFor brings the page files up to date after the books named
+// were edited in place (metadata, a cover): editing doesn't change the
+// Latest or Shuffle order, so only the pages holding those books are read,
+// patched and written, instead of every page (a quarter of a second at
+// 100k books). Uploads and imports change the order: refreshLibraryPages.
+func refreshPagesFor(uuids ...string) {
+	if libraryCatalog.Load() == nil {
+		writePage1FromDB() // no catalog (tests that don't build one)
+		return
+	}
+	logErr(catalogFlush(), "library pages: couldn't apply the catalog's changes")
+	pagesMu.Lock()
+	defer pagesMu.Unlock()
+	c := currentCatalog()
+	want := map[string]Book{}
+	for _, u := range uuids {
+		if b, ok := c.lookup(u); ok {
+			want[u] = b.Book
+		}
+	}
+	if len(want) == 0 {
+		return
+	}
+	// Latest: the pages each book was written to.
+	pages := map[int]bool{}
+	for u, b := range want {
+		v, ok := bookPages.Load(u)
+		if !ok {
+			// Not on any page we know of: write them all (only what differs).
+			_, err := writePagesFromCatalog(c)
+			logErr(err, "library pages: couldn't write")
+			return
+		}
+		for _, p := range v.([]int) {
+			pages[p] = true
+		}
+		modTimeCache.Store(u, b.LastModified)
+		uuidPathIndex.Store(u, b.Path)
+	}
+	changed := false
+	for p := range pages {
+		ch, err := patchPageFile(pageFile(p), want)
+		logErr(err, "library pages: couldn't patch")
+		changed = changed || ch
+	}
+	// Shuffle: a book's place among those not removed.
+	shuffled := map[int]bool{}
+	n := 0
+	for _, i := range c.shuffle {
+		b := &c.books[i]
+		if b.Removed {
+			continue
+		}
+		if _, ok := want[b.UUID]; ok {
+			shuffled[n/booksPerPage+1] = true
+		}
+		n++
+	}
+	for p := range shuffled {
+		ch, err := patchPageFile(shufflePageFile(p), want)
+		logErr(err, "shuffle pages: couldn't patch")
+		changed = changed || ch
+	}
+	if changed {
+		pagesVersion.Store(time.Now().UnixNano())
+	}
+}
+
+// patchPageFile replaces the books in a page file that are in want, keeping
+// everything else byte for byte (gaps included).
+func patchPageFile(path string, want map[string]Book) (bool, error) {
+	data, err := os.ReadFile(path)
+	if err != nil {
+		return false, err
+	}
+	var items []json.RawMessage
+	if err := json.Unmarshal(data, &items); err != nil {
+		return false, err
+	}
+	patched := false
+	for i, raw := range items {
+		var id struct {
+			UUID string `json:"uuid"`
+		}
+		if json.Unmarshal(raw, &id) != nil || id.UUID == "" {
+			continue
+		}
+		b, ok := want[id.UUID]
+		if !ok {
+			continue
+		}
+		enc, err := json.Marshal(b)
+		if err != nil {
+			return false, err
+		}
+		if !bytes.Equal(enc, raw) {
+			items[i] = enc
+			patched = true
+		}
+	}
+	if !patched {
+		return false, nil
+	}
+	out, err := json.Marshal(items)
+	if err != nil {
+		return false, err
+	}
+	return true, writeJSONFile(path, out)
+}
+
 // writePagesFromCatalog writes pages/*.json from the catalog: every book
 // not removed, newest added first, booksPerPage per page. Only files whose
 // contents change are written, so after an edit only the pages holding the

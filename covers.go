@@ -325,4 +325,7 @@ func coverChanged(uuid string) {
 		log.Printf("cover: failed to update %s in metadata.db: %v", uuid, err)
 	}
 	catalogChanged(uuid)
+	// The page files carry the cover's stamp: the grid, Discover and
+	// Shuffle ask for the new cover, not the one browsers cached.
+	refreshPagesFor(uuid)
 }
