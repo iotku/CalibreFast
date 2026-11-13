@@ -472,11 +472,12 @@ func groupValuesHandler(w http.ResponseWriter, r *http.Request) {
 	type value struct {
 		Value string `json:"value"`
 		Label string `json:"label,omitempty"` // e.g. "English" for "eng"
+		Count int    `json:"count"`           // books with it (the editor's common languages)
 	}
 	raw := queryRawItems(c)
 	names := make([]value, len(raw))
 	for i, it := range raw {
-		names[i] = value{Value: it.Name, Label: it.Display}
+		names[i] = value{Value: it.Name, Label: it.Display, Count: it.Count}
 	}
 	sort.Slice(names, func(i, j int) bool { return strings.ToLower(names[i].Value) < strings.ToLower(names[j].Value) })
 	w.Header().Set("Content-Type", "application/json")

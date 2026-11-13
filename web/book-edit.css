@@ -2080,3 +2080,21 @@ input[type="date"].meta-input::-webkit-calendar-picker-indicator:hover {
     box-shadow: none;
     color: var(--muted);
 }
+
+/* The library's commonest languages, one click each (web/metadata.ts) */
+.common-languages {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 6px;
+    margin-top: 8px;
+}
+
+.common-languages[hidden] {
+    display: none;
+}
+
+.common-languages-label {
+    font-size: 0.75rem;
+    color: var(--muted);
+}

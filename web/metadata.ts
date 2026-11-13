@@ -1,12 +1,12 @@
 import { createChipInput, parseList, uniqueItems, type ChipInput } from "./chips.js";
 import { attachSuggest } from "./suggest.js";
-import { languageChipLabel, languageKey, loadLanguageCodes, preferredLanguageCode } from "./languages.js";
+import { languageChipLabel, languageKey, languageName, loadLanguageCodes, preferredLanguageCode } from "./languages.js";
 import type { BookTarget } from "./book-target.js";
 import { createDescriptionEditor } from "./description.js";
-import { closeOnBackdropClick, errorMessage, maybeId } from "./dom.js";
+import { closeOnBackdropClick, el as tag, errorMessage, maybeId } from "./dom.js";
 import { isbnDigits, mountIsbnTools } from "./isbn-tools.js";
 import { joinAuthors, splitAuthors, tidyAuthors } from "./authors.js";
-import type { DuplicateCheck, MetaSource } from "./types.js";
+import type { DuplicateCheck, MetaSource, ValueSuggestion } from "./types.js";
 
 type FieldKind = "string" | "date" | "list" | "identifiers";
 type FieldKey =
@@ -858,6 +858,59 @@ function renderChanges(changes: Change[], { compact = false }: { compact?: boole
   });
 }
 
+/**
+ * The library's three commonest languages as one-click pills under the
+ * Languages field ("English" rather than typing "eng"). A language the book
+ * already has, under any code, isn't offered.
+ */
+function mountCommonLanguages(form: HTMLFormElement, chips: ChipInput): void {
+  const row = tag("div", { className: "common-languages", hidden: true });
+  chips.after(row);
+  let common: { code: string; count: number }[] = [];
+
+  const render = (): void => {
+    const have = new Set(chips.activeValues().map(languageKey));
+    const offer = common.filter((c) => !have.has(languageKey(c.code)));
+    row.hidden = offer.length === 0;
+    row.replaceChildren(
+      tag("span", { className: "common-languages-label" }, "Common:"),
+      ...offer.map((c) => {
+        const name = languageName(c.code);
+        const b = tag(
+          "button",
+          { type: "button", className: "meta-source-btn", title: `Add ${name} (${c.code}): ${c.count} book${c.count === 1 ? "" : "s"} in the library` },
+          `+ ${name}`,
+        );
+        b.addEventListener("click", () => chips.addValue(c.code));
+        return b;
+      }),
+    );
+  };
+
+  void Promise.all([
+    fetch("/api/groups/language/values").then((r): Promise<ValueSuggestion[]> | ValueSuggestion[] => (r.ok ? r.json() : [])),
+    loadLanguageCodes(),
+  ])
+    .then(([values]) => {
+      // "en" and "eng" are one language: their books count together.
+      const byKey = new Map<string, { code: string; count: number }>();
+      for (const v of values) {
+        if (!v.count || languageKey(v.value) === "und") continue;
+        const k = languageKey(v.value);
+        const c = byKey.get(k) ?? { code: preferredLanguageCode(v.value), count: 0 };
+        c.count += v.count;
+        byKey.set(k, c);
+      }
+      common = [...byKey.values()].sort((a, b) => b.count - a.count).slice(0, 3);
+      render();
+    })
+    .catch(() => {}); // no pills; typing still works
+
+  // The chips change by typing, the pills under the field, and Undo.
+  form.addEventListener("input", render);
+  form.addEventListener("click", () => requestAnimationFrame(render));
+}
+
 // form must already exist in the DOM with inputs named per FIELDS
 // and a `.meta-source-buttons[data-field="key"]` container next to each one.
 // For a book waiting in the import queue (book.pending), applying adds it to
@@ -902,7 +955,10 @@ export async function mountMetadataEditor(book: BookTarget, form: HTMLFormElemen
           ...(lang && { canonical: lang.canonical, key: lang.key }),
           onPick: () => chips.commitPending(), // picking a suggestion adds it
         });
-        if (lang) void loadLanguageCodes().then(() => chips.rerender());
+        if (lang) {
+            void loadLanguageCodes().then(() => chips.rerender());
+            mountCommonLanguages(form, chips);
+        }
         return chips;
       })
       .filter((c): c is ChipInput => c !== null);
