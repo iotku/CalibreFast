@@ -432,6 +432,11 @@ func filteredPageHandler(c *category) http.HandlerFunc {
 		if groups.readOnly != nil {
 			data.GroupsError = groups.readOnly.Error()
 		}
+		// A tag can be pinned to the user's home page (shelf_pins.go).
+		if u := currentUser(r); u != nil && c.Key == "tag" && data.TotalBooks > 0 {
+			w.Header().Set("Cache-Control", "private, no-store")
+			data.Extra = map[string]any{"TagPin": name, "Pinned": tagPinnedFor(u, name)}
+		}
 		logErr(templates.ExecuteTemplate(w, "filtered.html", data), "failed to execute filtered template")
 	}
 }

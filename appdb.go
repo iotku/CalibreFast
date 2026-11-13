@@ -224,6 +224,16 @@ var migrations = []string{
 		value TEXT NOT NULL
 	);
 	`,
+	// 11: tags pinned to a user's home page (shelf_pins.go), ordered
+	// together with their pinned shelves (one position space).
+	`
+	CREATE TABLE tag_pins (
+		user_id  INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+		name     TEXT    NOT NULL COLLATE NOCASE,
+		position INTEGER NOT NULL,
+		PRIMARY KEY (user_id, name)
+	);
+	`,
 }
 
 // openAppDB opens (creating if needed) and migrates the app database.

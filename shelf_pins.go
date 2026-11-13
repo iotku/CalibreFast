@@ -20,6 +20,7 @@ package main
 
 import (
 	"bytes"
+	"cmp"
 	"database/sql"
 	"encoding/json"
 	"errors"
@@ -28,7 +29,9 @@ import (
 	"net/http"
 	"os"
 	"path/filepath"
+	"slices"
 	"strconv"
+	"strings"
 	"sync"
 	"sync/atomic"
 )
@@ -39,30 +42,180 @@ const (
 	maxOrderIDs   = 1000
 )
 
-// homeShelf is a shelf row on the Discover page.
+// homeShelf is a pinned row on the Discover page: a shelf, or a tag the
+// user pinned (Kind "tag": no ID, Name is the tag as browsed, after groups).
 type homeShelf struct {
-	ID       int64  `json:"id"`
+	Kind     string `json:"kind"` // "shelf" or "tag"
+	ID       int64  `json:"id,omitempty"`
 	Name     string `json:"name"`
 	Href     string `json:"href"`
-	Global   bool   `json:"global"`
-	Featured bool   `json:"featured"`
+	Global   bool   `json:"global,omitempty"`
+	Featured bool   `json:"featured,omitempty"`
 	Count    int    `json:"count"`
 	Books    []Book `json:"books"`
 }
 
-// pinnedShelves: the shelf rows on u's page, in order, at most limit.
+// pinnedShelves: the pinned rows on u's page, in order, at most limit:
+// the shelves and tags the user placed, by position (one order for both),
+// then featured shelves they have no row for, by featured order.
 func pinnedShelves(u *User, limit int) ([]homeShelf, error) {
+	type placed struct {
+		row homeShelf
+		pos sql.NullInt64
+		fea sql.NullInt64
+	}
+	var all []placed
 	rows, err := appDB.Query(`SELECT s.id, s.name, s.owner_id IS NULL, s.featured_pos IS NOT NULL,
-			(SELECT COUNT(*) FROM shelf_books b WHERE b.shelf_id = s.id)
+			(SELECT COUNT(*) FROM shelf_books b WHERE b.shelf_id = s.id), p.position, s.featured_pos
 		FROM shelves s LEFT JOIN shelf_pins p ON p.shelf_id = s.id AND p.user_id = ?1
 		WHERE (s.owner_id IS NULL OR s.owner_id = ?1)
-		  AND (p.pinned = 1 OR (p.shelf_id IS NULL AND s.featured_pos IS NOT NULL))
-		ORDER BY p.position IS NULL, p.position, s.featured_pos, s.id
-		LIMIT ?2`, u.ID, limit)
+		  AND (p.pinned = 1 OR (p.shelf_id IS NULL AND s.featured_pos IS NOT NULL))`, u.ID)
 	if err != nil {
 		return nil, err
 	}
-	return scanHomeShelves(rows)
+	for rows.Next() {
+		var p placed
+		p.row.Kind = "shelf"
+		if err := rows.Scan(&p.row.ID, &p.row.Name, &p.row.Global, &p.row.Featured, &p.row.Count, &p.pos, &p.fea); err != nil {
+			rows.Close()
+			return nil, err
+		}
+		p.row.Href = "/shelf/" + itoa(p.row.ID)
+		all = append(all, p)
+	}
+	rows.Close()
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	tags, err := appDB.Query(`SELECT name, position FROM tag_pins WHERE user_id = ?`, u.ID)
+	if err != nil {
+		return nil, err
+	}
+	seenTag := map[string]bool{}
+	for tags.Next() {
+		var name string
+		var pos int64
+		if err := tags.Scan(&name, &pos); err != nil {
+			tags.Close()
+			return nil, err
+		}
+		// As browsed now: a tag grouped since it was pinned is its group.
+		name = tagEntity(name)
+		if seenTag[strings.ToLower(name)] {
+			continue
+		}
+		seenTag[strings.ToLower(name)] = true
+		all = append(all, placed{
+			row: homeShelf{Kind: "tag", Name: name, Href: categoryByKey("tag").href(name)},
+			pos: sql.NullInt64{Int64: pos, Valid: true},
+		})
+	}
+	tags.Close()
+	if err := tags.Err(); err != nil {
+		return nil, err
+	}
+	slices.SortStableFunc(all, func(a, b placed) int {
+		if a.pos.Valid != b.pos.Valid {
+			if a.pos.Valid {
+				return -1
+			}
+			return 1
+		}
+		if a.pos.Valid {
+			return cmp.Compare(a.pos.Int64, b.pos.Int64)
+		}
+		if c := cmp.Compare(a.fea.Int64, b.fea.Int64); c != 0 {
+			return c
+		}
+		return cmp.Compare(a.row.ID, b.row.ID)
+	})
+	out := []homeShelf{}
+	var shelves, tagRows []int
+	for _, p := range all {
+		if len(out) == limit {
+			break
+		}
+		if p.row.Kind == "shelf" {
+			shelves = append(shelves, len(out))
+		} else {
+			tagRows = append(tagRows, len(out))
+		}
+		out = append(out, p.row)
+	}
+	// Books: one query for the shelves, one pass of the catalog for the tags.
+	sub := make([]homeShelf, len(shelves))
+	for i, at := range shelves {
+		sub[i] = out[at]
+	}
+	if err := fillShelfBooks(sub); err != nil {
+		return nil, err
+	}
+	for i, at := range shelves {
+		out[at] = sub[i]
+	}
+	names := make([]string, len(tagRows))
+	for i, at := range tagRows {
+		names[i] = out[at].Name
+	}
+	found := catalogTagBooks(currentCatalog(), names, shelfRowBooks)
+	for _, at := range tagRows {
+		t := found[strings.ToLower(out[at].Name)]
+		out[at].Books, out[at].Count = t.books, t.count
+	}
+	return out, nil
+}
+
+// catalogTagBooks: for each tag named (as browsed, after groups), up to n of
+// its books in the shuffle order, and how many it has. One pass.
+func catalogTagBooks(c *catalog, names []string, n int) map[string]struct {
+	books []Book
+	count int
+} {
+	type acc struct {
+		books []Book
+		count int
+		seen  map[int32]bool
+	}
+	want := map[string]*acc{}
+	for _, name := range names {
+		want[strings.ToLower(name)] = &acc{books: []Book{}, seen: map[int32]bool{}}
+	}
+	byID := map[int32]*acc{}
+	for id, name := range c.tagNames {
+		if a := want[strings.ToLower(tagEntity(name))]; a != nil {
+			byID[id] = a
+		}
+	}
+	if len(byID) > 0 {
+		for _, slot := range c.shuffle {
+			b := &c.books[slot]
+			if b.Removed {
+				continue
+			}
+			for _, t := range b.TagIDs {
+				a := byID[t]
+				if a == nil || a.seen[slot] {
+					continue
+				}
+				a.seen[slot] = true
+				a.count++
+				if len(a.books) < n {
+					a.books = append(a.books, b.Book)
+				}
+			}
+		}
+	}
+	out := map[string]struct {
+		books []Book
+		count int
+	}{}
+	for k, a := range want {
+		out[k] = struct {
+			books []Book
+			count int
+		}{a.books, a.count}
+	}
+	return out
 }
 
 // featuredShelves: every featured shelf, in the featured order.
@@ -81,7 +234,7 @@ func scanHomeShelves(rows *sql.Rows) ([]homeShelf, error) {
 	defer rows.Close()
 	out := []homeShelf{}
 	for rows.Next() {
-		var s homeShelf
+		s := homeShelf{Kind: "shelf"}
 		if err := rows.Scan(&s.ID, &s.Name, &s.Global, &s.Featured, &s.Count); err != nil {
 			return nil, err
 		}
@@ -243,7 +396,7 @@ func pinHandler(w http.ResponseWriter, r *http.Request) {
 	u := currentUser(r)
 	if !shelfPinnedFor(u, s) {
 		_, err := appDB.Exec(`INSERT INTO shelf_pins (user_id, shelf_id, pinned, position)
-			VALUES (?1, ?2, 1, (SELECT COALESCE(MAX(position), -1) + 1 FROM shelf_pins WHERE user_id = ?1))
+			VALUES (?1, ?2, 1, `+nextPinPosition+`)
 			ON CONFLICT (user_id, shelf_id) DO UPDATE SET pinned = 1, position = excluded.position`, u.ID, s.ID)
 		if err != nil {
 			http.Error(w, "could not save", http.StatusInternalServerError)
@@ -343,45 +496,195 @@ func renumber(table, key, col, where string, args []any, ids []int64) error {
 	return tx.Commit()
 }
 
-// PUT /api/me/pins {"ids": [...]}: the order of the shelf rows on the
-// user's page, as shown there. Every row listed is stored as pinned, so
-// the featured ones the user sees keep their place from now on.
+// nextPinPosition: after every row the user placed (?1: the user), shelves
+// and tags alike.
+const nextPinPosition = `(SELECT COALESCE(MAX(p), -1) + 1 FROM (
+		SELECT position AS p FROM shelf_pins WHERE user_id = ?1 AND pinned = 1
+		UNION ALL SELECT position FROM tag_pins WHERE user_id = ?1))`
+
+// pinRef names a pinned row: a shelf or a tag.
+type pinRef struct {
+	Shelf int64  `json:"shelf,omitempty"`
+	Tag   string `json:"tag,omitempty"`
+}
+
+// PUT /api/me/pins {"rows": [{"shelf": 7}, {"tag": "Space Opera"}, …]}
+// (or {"ids": [7, …]}, shelves only): the order of the pinned rows on the
+// user's page, as shown there. Every shelf listed is stored as pinned, so
+// the featured ones the user sees keep their place from now on. Rows not
+// listed (pinned in another tab meanwhile) go after, in their old order.
 func pinOrderHandler(w http.ResponseWriter, r *http.Request) {
-	ids, ok := readOrder(w, r)
-	if !ok {
+	var req struct {
+		IDs  []int64  `json:"ids"`
+		Rows []pinRef `json:"rows"`
+	}
+	if err := json.NewDecoder(http.MaxBytesReader(w, r.Body, 128<<10)).Decode(&req); err != nil || len(req.IDs)+len(req.Rows) > maxOrderIDs {
+		http.Error(w, "invalid order", http.StatusBadRequest)
 		return
 	}
-	u := currentUser(r)
-	tx, err := appDB.Begin()
-	if err != nil {
+	refs := req.Rows
+	for _, id := range req.IDs {
+		refs = append(refs, pinRef{Shelf: id})
+	}
+	seen := map[string]bool{}
+	for _, ref := range refs {
+		key := "s" + itoa(ref.Shelf)
+		if ref.Tag != "" {
+			key = "t" + strings.ToLower(tagEntity(ref.Tag))
+		}
+		if seen[key] || (ref.Tag == "") == (ref.Shelf == 0) {
+			http.Error(w, "invalid order", http.StatusBadRequest)
+			return
+		}
+		seen[key] = true
+	}
+	if err := savePinOrder(currentUser(r), refs); err != nil {
 		http.Error(w, "could not save", http.StatusInternalServerError)
 		return
 	}
+	w.WriteHeader(http.StatusNoContent)
+}
+
+func savePinOrder(u *User, refs []pinRef) error {
+	tx, err := appDB.Begin()
+	if err != nil {
+		return err
+	}
 	defer tx.Rollback()
-	// Only shelves the user can see, and only those shown on their page:
-	// a shelf they unpinned (in another tab) stays unpinned.
-	for i, id := range ids {
+	// The tags pinned, by the name they're browsed as now.
+	stored := map[string]string{}
+	rows, err := tx.Query(`SELECT name FROM tag_pins WHERE user_id = ?`, u.ID)
+	if err != nil {
+		return err
+	}
+	for rows.Next() {
+		var name string
+		if err := rows.Scan(&name); err != nil {
+			rows.Close()
+			return err
+		}
+		stored[strings.ToLower(tagEntity(name))] = name
+	}
+	rows.Close()
+	// Out of the way of the new positions, keeping their order.
+	const shift = 1 << 30
+	if _, err := tx.Exec(`UPDATE shelf_pins SET position = position + ? WHERE user_id = ? AND pinned = 1`, shift, u.ID); err != nil {
+		return err
+	}
+	if _, err := tx.Exec(`UPDATE tag_pins SET position = position + ? WHERE user_id = ?`, shift, u.ID); err != nil {
+		return err
+	}
+	for i, ref := range refs {
+		if ref.Tag != "" {
+			name, ok := stored[strings.ToLower(tagEntity(ref.Tag))]
+			if !ok {
+				continue // unpinned meanwhile: stays so
+			}
+			if _, err := tx.Exec(`UPDATE tag_pins SET position = ? WHERE user_id = ? AND name = ?`, i, u.ID, name); err != nil {
+				return err
+			}
+			continue
+		}
+		// Only shelves the user can see, and only those shown on their page:
+		// a shelf they unpinned (in another tab) stays unpinned.
 		_, err := tx.Exec(`INSERT INTO shelf_pins (user_id, shelf_id, pinned, position)
 			SELECT ?1, s.id, 1, ?3 FROM shelves s
 			WHERE s.id = ?2 AND (s.owner_id IS NULL OR s.owner_id = ?1)
 			  AND NOT EXISTS (SELECT 1 FROM shelf_pins p WHERE p.user_id = ?1 AND p.shelf_id = s.id AND p.pinned = 0)
 			  AND (s.featured_pos IS NOT NULL OR EXISTS (SELECT 1 FROM shelf_pins p WHERE p.user_id = ?1 AND p.shelf_id = s.id))
-			ON CONFLICT (user_id, shelf_id) DO UPDATE SET position = excluded.position`, u.ID, id, i)
+			ON CONFLICT (user_id, shelf_id) DO UPDATE SET position = excluded.position`, u.ID, ref.Shelf, i)
 		if err != nil {
-			http.Error(w, "could not save", http.StatusInternalServerError)
-			return
+			return err
 		}
 	}
-	if err := tx.Commit(); err != nil {
-		http.Error(w, "could not save", http.StatusInternalServerError)
+	// 0, 1, … again, shelves and tags together.
+	type row struct {
+		shelf int64
+		tag   string
+	}
+	var order []row
+	q, err := tx.Query(`SELECT shelf_id, '', position FROM shelf_pins WHERE user_id = ?1 AND pinned = 1
+		UNION ALL SELECT 0, name, position FROM tag_pins WHERE user_id = ?1 ORDER BY 3`, u.ID)
+	if err != nil {
+		return err
+	}
+	for q.Next() {
+		var rw row
+		var pos int64
+		if err := q.Scan(&rw.shelf, &rw.tag, &pos); err != nil {
+			q.Close()
+			return err
+		}
+		order = append(order, rw)
+	}
+	q.Close()
+	for i, rw := range order {
+		var err error
+		if rw.tag != "" {
+			_, err = tx.Exec(`UPDATE tag_pins SET position = ? WHERE user_id = ? AND name = ?`, i, u.ID, rw.tag)
+		} else {
+			_, err = tx.Exec(`UPDATE shelf_pins SET position = ? WHERE user_id = ? AND shelf_id = ?`, i, u.ID, rw.shelf)
+		}
+		if err != nil {
+			return err
+		}
+	}
+	return tx.Commit()
+}
+
+// PUT /api/me/tag-pins/{name}: a tag on the user's page (at the end).
+func tagPinHandler(w http.ResponseWriter, r *http.Request) {
+	name := tagEntity(strings.TrimSpace(r.PathValue("name")))
+	if name == "" || len(name) > maxDiscoverTagNameLen || catalogTagBooks(currentCatalog(), []string{name}, 0)[strings.ToLower(name)].count == 0 {
+		http.Error(w, "no such tag", http.StatusNotFound)
 		return
 	}
-	// Pinned rows not in the list (pinned in another tab meanwhile) go after.
-	if err := renumber("shelf_pins", "shelf_id", "position", "user_id = ? AND pinned = 1", []any{u.ID}, ids); err != nil {
+	u := currentUser(r)
+	if tagPinnedFor(u, name) {
+		w.WriteHeader(http.StatusNoContent)
+		return
+	}
+	if _, err := appDB.Exec(`INSERT INTO tag_pins (user_id, name, position) VALUES (?1, ?2, `+nextPinPosition+`)
+		ON CONFLICT (user_id, name) DO NOTHING`, u.ID, name); err != nil {
 		http.Error(w, "could not save", http.StatusInternalServerError)
 		return
 	}
 	w.WriteHeader(http.StatusNoContent)
+}
+
+// DELETE /api/me/tag-pins/{name}: off the user's page (under any name
+// that's browsed as this one).
+func tagUnpinHandler(w http.ResponseWriter, r *http.Request) {
+	u := currentUser(r)
+	want := strings.ToLower(tagEntity(strings.TrimSpace(r.PathValue("name"))))
+	names, err := scanStrings(appDB.Query(`SELECT name FROM tag_pins WHERE user_id = ?`, u.ID))
+	if err != nil {
+		http.Error(w, "could not save", http.StatusInternalServerError)
+		return
+	}
+	for _, n := range names {
+		if strings.ToLower(tagEntity(n)) == want {
+			if _, err := appDB.Exec(`DELETE FROM tag_pins WHERE user_id = ? AND name = ?`, u.ID, n); err != nil {
+				http.Error(w, "could not save", http.StatusInternalServerError)
+				return
+			}
+		}
+	}
+	w.WriteHeader(http.StatusNoContent)
+}
+
+// tagPinnedFor: whether the tag (as browsed) is on u's page.
+func tagPinnedFor(u *User, name string) bool {
+	names, err := scanStrings(appDB.Query(`SELECT name FROM tag_pins WHERE user_id = ?`, u.ID))
+	if err != nil {
+		return false
+	}
+	for _, n := range names {
+		if strings.EqualFold(tagEntity(n), name) {
+			return true
+		}
+	}
+	return false
 }
 
 // PUT /api/me/shelves/order {"ids": [...]}: the order of the user's own
@@ -417,6 +720,8 @@ func registerShelfPinRoutes() {
 	http.HandleFunc("PUT /api/me/pins/{id}", requireUser(pinHandler))
 	http.HandleFunc("DELETE /api/me/pins/{id}", requireUser(unpinHandler))
 	http.HandleFunc("PUT /api/me/pins", requireUser(pinOrderHandler))
+	http.HandleFunc("PUT /api/me/tag-pins/{name}", requireUser(tagPinHandler))
+	http.HandleFunc("DELETE /api/me/tag-pins/{name}", requireUser(tagUnpinHandler))
 	http.HandleFunc("PUT /api/me/shelves/order", requireUser(shelfOrderHandler))
 	http.HandleFunc("PUT /api/admin/featured-shelves", requireAdminUser(featuredOrderHandler))
 }

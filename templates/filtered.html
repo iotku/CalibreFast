@@ -28,6 +28,13 @@
         </button>
         {{ end }}
 {{ end }}{{ end }}
+{{ with .Extra }}{{ with .TagPin }}
+        <button type="button" class="btn-group-toggle shelf-page-btn" data-shelf-action="pin-tag" data-tag="{{ . }}" aria-pressed="{{ $.Extra.Pinned }}"
+                title="Show this tag on your home page">
+            <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 17v5M9 3h6l-1 7 4 3H6l4-3z"/></svg>
+            <span class="tb-label">{{ if $.Extra.Pinned }}On home{{ else }}Pin to home{{ end }}</span>
+        </button>
+{{ end }}{{ end }}
 {{ if .Writable }}
         <button type="button" id="group-toggle" class="btn-group-toggle" aria-expanded="false" aria-controls="group-panel"
                 title="Choose which {{ .Label }} values this page includes" aria-label="Group {{ .Label }} values">
@@ -80,6 +87,6 @@
 <div id="scroll-badge"></div>
 <script type="module" src="{{ asset "app-htmx.js" }}"></script>
 {{ if .Writable }}<script type="module" src="{{ asset "groups.js" }}"></script>{{ end }}
-{{ with .Extra }}{{ if .Shelf }}<script type="module" src="{{ asset "shelf-page.js" }}"></script>{{ end }}{{ end }}
+{{ with .Extra }}{{ if or .Shelf .TagPin }}<script type="module" src="{{ asset "shelf-page.js" }}"></script>{{ end }}{{ end }}
 </body>
 </html>

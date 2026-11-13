@@ -5,6 +5,7 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"os"
+	"path/filepath"
 	"slices"
 	"strconv"
 	"testing"
@@ -232,5 +233,113 @@ func TestShelfOrder(t *testing.T) {
 	}
 	if got := names(); !slices.Equal(got, []string{"C", "B", "A"}) {
 		t.Fatalf("after reorder: %q", got)
+	}
+}
+
+func TestTagPins(t *testing.T) {
+	db := catalogFixture(t)
+	setupTestAppDB(t)
+	t.Chdir(t.TempDir())
+	origGroups := groups
+	groups = loadGroups(filepath.Join(t.TempDir(), groupsFileName))
+	t.Cleanup(func() { groups = origGroups })
+	if _, err := groups.set("tag", "Sci-Fi", Group{Name: "SF", Members: []string{"Sci-Fi", "Science Fiction"}}); err != nil {
+		t.Fatal(err)
+	}
+	opera := map[string]bool{}
+	for i := range 6 {
+		tags := []string{"Sci-Fi"}
+		if i < 3 {
+			tags = []string{"Space Opera", "Science Fiction"}
+		}
+		uuid := addTestBook(t, db, "Book "+strconv.Itoa(i), []string{"A"}, tags, "", "epub")
+		if i < 3 {
+			opera[uuid] = true
+		}
+	}
+	if err := writeLibraryPages(); err != nil {
+		t.Fatal(err)
+	}
+	alice, _ := createUser("alice", "a long enough password", false)
+	bob, _ := createUser("bob", "a long enough password", false)
+	admin, _ := createUser("boss", "a long enough password", true)
+	mux := pinMux()
+	mux.HandleFunc("PUT /api/me/tag-pins/{name}", requireUser(tagPinHandler))
+	mux.HandleFunc("DELETE /api/me/tag-pins/{name}", requireUser(tagUnpinHandler))
+	do := func(who *User, method, path, body string, want int) []byte {
+		t.Helper()
+		rec := call(t, mux, who, method, path, body)
+		if rec.Code != want {
+			t.Fatalf("%s %s %s: %d %s (want %d)", method, path, body, rec.Code, rec.Body, want)
+		}
+		return rec.Body.Bytes()
+	}
+	rows := func(u *User) []string {
+		t.Helper()
+		got, err := pinnedShelves(u, shelfRowsMax)
+		if err != nil {
+			t.Fatal(err)
+		}
+		var out []string
+		for _, r := range got {
+			out = append(out, r.Kind+":"+r.Name)
+		}
+		return out
+	}
+	var picks Shelf
+	_ = json.Unmarshal(do(admin, "POST", "/api/shelves", `{"name":"Picks","global":true}`, http.StatusCreated), &picks)
+	do(admin, "PATCH", "/api/shelves/"+itoa(picks.ID), `{"featured":true}`, http.StatusOK)
+
+	// Pinned tags come after what's there; a member's name pins its group.
+	do(alice, "PUT", "/api/me/tag-pins/Space%20Opera", "", http.StatusNoContent)
+	do(alice, "PUT", "/api/me/tag-pins/Science%20Fiction", "", http.StatusNoContent)
+	do(alice, "PUT", "/api/me/tag-pins/SF", "", http.StatusNoContent) // already pinned: no change
+	do(alice, "PUT", "/api/me/tag-pins/Nothing%20Here", "", http.StatusNotFound)
+	do(nil, "PUT", "/api/me/tag-pins/SF", "", http.StatusUnauthorized)
+	// Pinned rows first (the tags), then the featured shelf not yet placed.
+	if got := rows(alice); !slices.Equal(got, []string{"tag:Space Opera", "tag:SF", "shelf:Picks"}) {
+		t.Fatalf("alice's rows: %q", got)
+	}
+	if got := rows(bob); !slices.Equal(got, []string{"shelf:Picks"}) {
+		t.Fatalf("bob's rows: %q", got)
+	}
+	all, _ := pinnedShelves(alice, shelfRowsMax)
+	if all[0].Count != 3 || len(all[0].Books) != 3 || all[0].Href != "/tag/Space%20Opera" || all[1].Count != 6 {
+		t.Fatalf("tag rows: %+v", all[:2])
+	}
+	for _, b := range all[0].Books {
+		if !opera[b.UUID] {
+			t.Fatalf("Space Opera row holds %s", b.Title)
+		}
+	}
+
+	// One order for shelves and tags.
+	do(alice, "PUT", "/api/me/pins", `{"rows":[{"shelf":`+itoa(picks.ID)+`},{"tag":"sf"},{"tag":"Space Opera"}]}`, http.StatusNoContent)
+	if got := rows(alice); !slices.Equal(got, []string{"shelf:Picks", "tag:SF", "tag:Space Opera"}) {
+		t.Fatalf("after reorder: %q", got)
+	}
+	do(alice, "PUT", "/api/me/pins", `{"rows":[{"tag":"SF"},{"tag":"Sci-Fi"}]}`, http.StatusBadRequest) // the same tag twice
+	do(alice, "PUT", "/api/me/pins", `{"rows":[{"tag":"SF","shelf":1}]}`, http.StatusBadRequest)
+	// A row not in the list (pinned in another tab, say) goes after.
+	do(alice, "PUT", "/api/me/pins", `{"rows":[{"tag":"Space Opera"},{"shelf":`+itoa(picks.ID)+`}]}`, http.StatusNoContent)
+	if got := rows(alice); !slices.Equal(got, []string{"tag:Space Opera", "shelf:Picks", "tag:SF"}) {
+		t.Fatalf("after partial reorder: %q", got)
+	}
+	// A new pin goes at the end of everything.
+	var mine Shelf
+	_ = json.Unmarshal(do(alice, "POST", "/api/shelves", `{"name":"Mine"}`, http.StatusCreated), &mine)
+	do(alice, "PUT", "/api/shelves/"+itoa(mine.ID)+"/books/"+all[0].Books[0].UUID, "", http.StatusNoContent)
+	do(alice, "PUT", "/api/me/pins/"+itoa(mine.ID), "", http.StatusNoContent)
+	if got := rows(alice); !slices.Equal(got, []string{"tag:Space Opera", "shelf:Picks", "tag:SF", "shelf:Mine"}) {
+		t.Fatalf("after pinning a shelf: %q", got)
+	}
+
+	// Unpinning by a member's name takes the group's row off.
+	do(alice, "DELETE", "/api/me/tag-pins/Sci-Fi", "", http.StatusNoContent)
+	if got := rows(alice); !slices.Equal(got, []string{"tag:Space Opera", "shelf:Picks", "shelf:Mine"}) {
+		t.Fatalf("after unpinning SF: %q", got)
+	}
+	if tagPinnedFor(alice, "SF") || !tagPinnedFor(alice, "space opera") {
+		t.Fatal("tagPinnedFor")
 	}
 }
