@@ -1935,7 +1935,8 @@ body.book-standalone {
     z-index: 1000;
     align-items: center;
     justify-content: center;
-    padding: 2rem 1.5rem;
+    /* Clear the top bar; otherwise the popup may run to near the bottom. */
+    padding: calc(var(--topbar-total) + 1rem) 1.5rem 1rem;
     box-sizing: border-box;
 }
 
@@ -1953,7 +1954,7 @@ body.book-standalone {
     max-width: 1080px;
     width: min(1080px, 90vw);
     position: relative;
-    max-height: 88vh;
+    max-height: 100%;
     overflow-y: auto;
     overscroll-behavior: contain;
     -webkit-overflow-scrolling: touch;
