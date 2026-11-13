@@ -46,6 +46,7 @@ Reference for how CalibreFast behaves, for people and AI tools working on the co
 - **Links.** Authors, publisher, tags and languages link to their filtered views. A book in a series says so (*Book 2 in Dune*), linking to the series.
 - **Language names.** Codes are shown by name, covering about 120 languages and all their common 2/3-letter codes. Examples: `eng`/`en` → English, `pt-BR` → Portuguese (BR). A group name, if you've set one, takes precedence. Books with several languages show all of them.
 - **Descriptions** are rendered as HTML and cleaned with the same rules as the editor (see [Description editor](#description-editor)).
+- **Files** (admins, `-allow-writes`): under **Edit metadata**, the book's formats, each with **×** to remove it, and **Add a file…** ([A book's files](#a-books-files)).
 
 ## Authors, publishers, tags and languages
 
@@ -191,9 +192,10 @@ The same book added twice (its EPUB once, its PDF another time, or two copies wi
   - **Cover:** any of the books' covers.
   - **Files to keep:** every format any of them has. Where two books have the same format, pick whose file (the kept book's by default; sizes shown). The files are compared (SHA-256): **identical files** when it makes no difference which is kept; otherwise **files differ**, with **Download** on each distinct file to compare them yourself (a file identical to an earlier book's says `= A` instead).
 - **Merge N books** does it:
-  - the chosen files and cover are copied into the kept book's folder; a file of its own that one replaces goes to the Recycling Bin batch (`replaced/`), and its old cover becomes the cover to revert to;
+  - the chosen files and cover are copied into the kept book's folder; a file of its own that one replaces goes to the Recycling Bin batch as a file of its own (restorable, see [A book's files](#a-books-files)), and its old cover becomes the cover to revert to;
   - the other books go to the Recycling Bin whole, as one batch marked **Merged** that names the kept book. Restoring one brings it back as a separate book; the merged book keeps the files it took;
-  - readers' favorites, reading status, places, bookmarks, highlights and shelves for the other books are copied to the kept book (the newest status and place win). The originals stay with the old books for a restore;
+  - readers' favorites, reading status, places and shelves for the other books are copied to the kept book (the newest status and place win, per format);
+  - readers' bookmarks and highlights are tied to the exact file they were made in, so per format they follow only from books whose file is byte for byte the one kept. A book whose file in that format differs (another edition, another scan) keeps its readers' places but not their bookmarks and highlights, which would land in the wrong places. The page says, under each format, whose won't carry over for the file chosen. The kept book's own bookmarks and highlights in a file that's replaced go to the bin with that file. The originals stay with the old books for a restore;
   - the metadata is saved as the editor saves it.
 - Afterwards the merged book opens.
 
@@ -248,6 +250,17 @@ Start the server with `-watch-dir /path/to/folder` (and `-allow-writes`). Books 
 
 - **File names Calibre can't find**: a format whose `data.name` isn't its file's name. The repair points it at the one file in the book's folder with that format's extension; a format with no such file, or several, is left alone.
 - **Books with files metadata.db doesn't list**: a book with no formats in `metadata.db` whose folder holds book files. The repair adds a row for each format with exactly one file. The bulk editor shows and repairs these too.
+
+## A book's files
+
+A book has one file per format (EPUB, PDF, MOBI, AZW3, DJVU), as in Calibre. On its page or popup, admins on a server with `-allow-writes` see its **Files**:
+
+- **Add a file…** takes one or more files, one per format. A file byte for byte the same as the book's own in its format is left out (there's nothing to add). The rest open the merge page, with the book and the new files side by side:
+  - **Add files, keep metadata** at the top adds them as they are, with the book's metadata: usually all that's needed. Below it, the usual merge editor: pills under each field are **current** (the book's) and **New epub**, **New pdf**… (what the new files say); the new files' cover can be picked; and where the book already has a file in a format, **Files to keep** chooses between **current** and **New** (the new one by default). Replacing a file sends the old one to the Recycling Bin; readers keep their places in it, but their bookmarks and highlights in it go to the bin with it.
+  - **Books they may belong to:** the new files are checked against the rest of the library as an upload is: same title (and authors), same ISBN, then file hashes. A book holding an identical file is shown with **Merge it into this book** (the merge page, keeping this book), and the files can't be added here as well. Other look-alikes are listed to check.
+  - **Discard new files** deletes them instead. Until added or discarded they wait in the import queue (`/import`, marked **New file for “…”**), so an upload left half-done isn't lost.
+- **×** on a format moves that file to the Recycling Bin, with readers' places, bookmarks and highlights in it; the book keeps its other files. The result offers **Undo**. On the book's only file, **×** warns that removing it removes the whole book, and asks as **Remove from library…** does.
+- **In the Recycling Bin** a removed or replaced file is listed under its book with **Restore EPUB** (etc.), which puts the file and its readers' data back, as long as the book is in the library and has no file in that format now (remove that one first).
 
 ## Removing books and the Recycling Bin
 

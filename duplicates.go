@@ -18,6 +18,7 @@ import (
 	"io"
 	"os"
 	"path/filepath"
+	"strconv"
 	"strings"
 	"sync"
 	"time"
@@ -36,9 +37,11 @@ type duplicateBook struct {
 	Title   string   `json:"title"`
 	Authors []string `json:"authors"`
 	// SameAuthors: same title and authors. SameFile: it holds a file
-	// identical to one of the checked book's.
+	// identical to one of the checked book's. SameISBN: it has one of the
+	// ISBNs asked about (findDuplicatesISBN).
 	SameAuthors bool `json:"same_authors"`
 	SameFile    bool `json:"same_file"`
+	SameISBN    bool `json:"same_isbn,omitempty"`
 }
 
 // duplicateCheck is what findDuplicates found (TS: DuplicateCheck).
@@ -111,32 +114,63 @@ func sameNames(a, b []string) bool {
 // these authors and these files. The book with uuid exclude (itself, when it
 // is in the library) is left out.
 func findDuplicates(db *sql.DB, libDir, title string, authors []string, files []dupFile, exclude string) (*duplicateCheck, error) {
+	return findDuplicatesISBN(db, libDir, title, authors, files, exclude, nil)
+}
+
+// findDuplicatesISBN is findDuplicates that also looks at the books with
+// one of these ISBNs (any form: normalizeISBN), whatever their titles.
+func findDuplicatesISBN(db *sql.DB, libDir, title string, authors []string, files []dupFile, exclude string, isbns []string) (*duplicateCheck, error) {
 	check := &duplicateCheck{Books: []duplicateBook{}}
 	title = strings.Join(strings.Fields(title), " ")
-	if db == nil || title == "" {
+	if db == nil {
 		return check, nil
 	}
 	type candidate struct {
 		id                int64
 		uuid, title, path string
+		sameTitle         bool
+		sameISBN          bool
 	}
-	// NOCASE: case aside (ASCII letters only, as Calibre's own title column).
-	rows, err := db.Query(`SELECT id, COALESCE(uuid, ''), title, path FROM books WHERE trim(title) = ? COLLATE NOCASE AND COALESCE(uuid, '') != ?`, title, exclude)
-	if err != nil {
-		return nil, err
+	var cands []*candidate
+	byID := map[int64]*candidate{}
+	query := func(sameTitle bool, q string, args ...any) error {
+		rows, err := db.Query(q, args...)
+		if err != nil {
+			return err
+		}
+		defer rows.Close()
+		for rows.Next() {
+			var c candidate
+			if err := rows.Scan(&c.id, &c.uuid, &c.title, &c.path); err != nil {
+				return err
+			}
+			p := byID[c.id]
+			if p == nil {
+				p = &c
+				byID[c.id] = p
+				cands = append(cands, p)
+			}
+			if sameTitle {
+				p.sameTitle = true
+			} else {
+				p.sameISBN = true
+			}
+		}
+		return rows.Err()
 	}
-	var cands []candidate
-	for rows.Next() {
-		var c candidate
-		if err := rows.Scan(&c.id, &c.uuid, &c.title, &c.path); err != nil {
-			rows.Close()
+	if title != "" {
+		// NOCASE: case aside (ASCII letters only, as Calibre's own title column).
+		if err := query(true, `SELECT id, COALESCE(uuid, ''), title, path FROM books WHERE trim(title) = ? COLLATE NOCASE AND COALESCE(uuid, '') != ?`, title, exclude); err != nil {
 			return nil, err
 		}
-		cands = append(cands, c)
 	}
-	rows.Close()
-	if err := rows.Err(); err != nil {
-		return nil, err
+	if forms := isbnForms(isbns); len(forms) > 0 {
+		if err := query(false, `SELECT b.id, COALESCE(b.uuid, ''), b.title, b.path FROM books b
+			WHERE COALESCE(b.uuid, '') != ? AND b.id IN (SELECT book FROM identifiers WHERE lower(type) = 'isbn'
+				AND upper(replace(replace(val, '-', ''), ' ', '')) IN (`+placeholders(len(forms))+`))`,
+			append([]any{exclude}, toArgs(forms)...)...); err != nil {
+			return nil, err
+		}
 	}
 
 	for _, c := range cands {
@@ -144,15 +178,42 @@ func findDuplicates(db *sql.DB, libDir, title string, authors []string, files []
 		if err != nil {
 			return nil, err
 		}
-		d := duplicateBook{UUID: c.uuid, Title: c.title, Authors: names, SameAuthors: sameNames(names, authors)}
+		d := duplicateBook{UUID: c.uuid, Title: c.title, Authors: names, SameAuthors: c.sameTitle && sameNames(names, authors), SameISBN: c.sameISBN}
 		if d.SameFile, err = holdsSameFile(db, libDir, c.id, c.path, files); err != nil {
 			return nil, err
 		}
-		if d.SameAuthors || d.SameFile {
+		if d.SameAuthors || d.SameFile || d.SameISBN {
 			check.Books = append(check.Books, d)
 		}
 	}
 	return check, nil
+}
+
+// isbnForms are the ways the ISBNs may be written in metadata.db's
+// identifiers, without separators: ISBN-13, and ISBN-10 where there is one.
+func isbnForms(isbns []string) []string {
+	var out []string
+	for _, s := range isbns {
+		n := normalizeISBN(s)
+		if n == "" {
+			continue
+		}
+		out = append(out, n)
+		if strings.HasPrefix(n, "978") {
+			core := n[3:12]
+			sum := 0
+			for i := 0; i < 9; i++ {
+				sum += int(core[i]-'0') * (10 - i)
+			}
+			check := (11 - sum%11) % 11
+			if check == 10 {
+				out = append(out, core+"X")
+			} else {
+				out = append(out, core+strconv.Itoa(check))
+			}
+		}
+	}
+	return uniqueStrings(out)
 }
 
 func bookAuthorNames(db *sql.DB, bookID int64) ([]string, error) {

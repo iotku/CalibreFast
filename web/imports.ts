@@ -64,6 +64,9 @@ function row(item: ImportSummary): HTMLLIElement {
             el("div", { className: "import-authors" }, (item.authors ?? []).join(" & ")),
             el("div", { className: "auth-muted import-files", title: files }, files),
             el("div", { className: "auth-muted" }, `${item.from ? `From ${item.from} · ` : ""}Added ${isNaN(added.getTime()) ? "" : added.toLocaleString()}`),
+            ...(item.into
+                ? [el("div", { className: "duplicate-note" }, "New file for ", el("a", { href: `/book/get/${encodeURIComponent(item.into)}` }, `“${item.into_title || "a library book"}”`), ": review it to add it to that book.")]
+                : []),
             ...(item.duplicate?.books.length ? [duplicateNote(item.duplicate)] : []),
         ),
         el("div", { className: "import-actions" }, el("a", { href: review, className: "btn-standard" }, "Review"), discard),

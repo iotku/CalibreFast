@@ -51,6 +51,12 @@ func TestMergeBooks(t *testing.T) {
 		`INSERT INTO reading_status (user_id, book_uuid, status, source, updated_at) VALUES (7, '` + b.uuid + `', 'finished', 'manual', 5)`,
 		`INSERT INTO reading_progress (user_id, book_uuid, format, position, percent, updated_at) VALUES (7, '` + b.uuid + `', 'pdf', '12', 0.5, 9)`,
 		`INSERT INTO bookmarks (user_id, book_uuid, client_id, format, position, created_at) VALUES (7, '` + b.uuid + `', 'bm1', 'pdf', '3', 1)`,
+		// A's EPUB is replaced by B's, a different file: A's highlight in it
+		// goes to the bin with it, A's place stays; B's highlight follows
+		// its EPUB.
+		`INSERT INTO annotations (user_id, book_uuid, client_id, format, anchor, created_at, updated_at) VALUES (7, '` + a.uuid + `', 'a-hl', 'epub', 'cfi-a', 1, 1)`,
+		`INSERT INTO reading_progress (user_id, book_uuid, format, position, percent, updated_at) VALUES (7, '` + a.uuid + `', 'epub', 'cfi-a', 0.2, 3)`,
+		`INSERT INTO annotations (user_id, book_uuid, client_id, format, anchor, created_at, updated_at) VALUES (7, '` + b.uuid + `', 'b-hl', 'epub', 'cfi-b', 1, 1)`,
 	} {
 		if _, err := appDB.Exec(q); err != nil {
 			t.Fatal(err)
@@ -117,11 +123,29 @@ func TestMergeBooks(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if batch.MergedInto == nil || batch.MergedInto.UUID != a.uuid || !slices.Equal(batch.MergedInto.Replaced, []string{"Alpha.epub"}) {
+	if batch.MergedInto == nil || batch.MergedInto.UUID != a.uuid {
 		t.Errorf("batch note %+v", batch.MergedInto)
 	}
-	if got := readFile(t, filepath.Join(batch.dir(), recycleReplacedDir, "Alpha.epub")); got != "EPUB!" {
+	if len(batch.Formats) != 1 || batch.Formats[0].Format != "EPUB" || !batch.Formats[0].Replaced || batch.Formats[0].UUID != a.uuid {
+		t.Fatalf("replaced files %+v", batch.Formats)
+	}
+	if got := readFile(t, batch.formatPath(&batch.Formats[0])); got != "EPUB!" {
 		t.Errorf("replaced file = %q", got)
+	}
+	if batch.Formats[0].ReaderData["annotations"] != 1 {
+		t.Errorf("A's highlight in the replaced EPUB: %v", batch.Formats[0].ReaderData)
+	}
+	if n := count(t, appDB, `SELECT COUNT(*) FROM annotations WHERE book_uuid = ? AND client_id = 'a-hl'`, a.uuid); n != 0 {
+		t.Error("A's highlight in its old EPUB should have gone with it")
+	}
+	if n := count(t, appDB, `SELECT COUNT(*) FROM annotations WHERE book_uuid = ? AND client_id LIKE 'b-hl-m%'`, a.uuid); n != 1 {
+		t.Error("B's highlight in the EPUB kept should follow it")
+	}
+	if n := count(t, appDB, `SELECT COUNT(*) FROM reading_progress WHERE book_uuid = ? AND format = 'epub'`, a.uuid); n != 1 {
+		t.Error("A's place in the EPUB should stay")
+	}
+	if res.Dropped != 0 {
+		t.Errorf("dropped %d", res.Dropped)
 	}
 	if got := readFile(t, filepath.Join(batch.bookDir(b.id), "Alpha (pdf).pdf")); got != "PDF!" {
 		t.Errorf("recycled book's pdf = %q", got)
@@ -184,7 +208,7 @@ func TestMergeSources(t *testing.T) {
 	if len(srcs) < 2 || srcs[0].Format != "current" || srcs[0].Title != "Beta" || srcs[1].Format != "A" || srcs[1].Title != "Alpha" {
 		t.Errorf("sources %+v", srcs)
 	}
-	d := newMergePageData(books, a.uuid, "")
+	d := newMergePageData(books, a.uuid, "", nil)
 	if len(d.Formats) != 1 || d.Formats[0].Ext != "epub" || len(d.Formats[0].Choices) != 2 || !d.Formats[0].Choices[0].Chosen {
 		t.Errorf("formats %+v", d.Formats)
 	}
@@ -206,7 +230,7 @@ func TestMergeFormatsCompared(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	d := newMergePageData(books, a.uuid, "")
+	d := newMergePageData(books, a.uuid, "", nil)
 	byExt := map[string]mergeFormatView{}
 	for _, v := range d.Formats {
 		byExt[v.Ext] = v

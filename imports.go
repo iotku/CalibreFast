@@ -77,6 +77,9 @@ type pendingImport struct {
 	Added time.Time    `json:"added"`
 	From  string       `json:"from"` // folder inside the watch folder it came from; "" for its top
 	Files []importFile `json:"files"`
+	// Into: new files for this library book (add_format.go), reviewed at
+	// /book/<into>/add-format/<id>; "" for a book of its own.
+	Into string `json:"into,omitempty"`
 	// Merged is the starting metadata (mergeMeta of Sources), shown as the
 	// editor's "current"; Sources is what each file says, by format.
 	Merged  UploadedBookMeta    `json:"merged"`
@@ -199,11 +202,11 @@ func (b *importInbox) put(it *pendingImport) {
 // stage moves the files at paths (the formats of one book) into the queue
 // and reads their metadata. from is the folder they came from, for display.
 // If it fails, the files are back where they were.
-func (b *importInbox) stage(paths []string, from string) (*pendingImport, error) {
+func (b *importInbox) stage(paths []string, from, into string) (*pendingImport, error) {
 	if len(paths) == 0 {
 		return nil, errors.New("no files")
 	}
-	it := &pendingImport{ID: uuid.New().String(), Added: time.Now().UTC(), From: from}
+	it := &pendingImport{ID: uuid.New().String(), Added: time.Now().UTC(), From: from, Into: into}
 	dir := b.itemDir(it.ID)
 	if err := os.Mkdir(dir, 0o700); err != nil {
 		return nil, err
@@ -463,7 +466,7 @@ func (w *folderWatcher) scan() int {
 		if from == "." {
 			from = ""
 		}
-		it, err := w.inbox.stage(take, from)
+		it, err := w.inbox.stage(take, from, "")
 		if err != nil {
 			scanErr = fmt.Sprintf("couldn't take %s: %v", take[0], err)
 			for _, p := range take {
@@ -727,6 +730,10 @@ type importSummary struct {
 	HasCover bool         `json:"has_cover"`
 	// Books in the library it may duplicate (duplicates.go); nil for none.
 	Duplicate *duplicateCheck `json:"duplicate,omitempty"`
+	// Into: new files for this library book (add_format.go), reviewed at Link.
+	Into      string `json:"into,omitempty"`
+	IntoTitle string `json:"into_title,omitempty"`
+	Link      string `json:"link,omitempty"`
 }
 
 // importQueue is GET /api/imports (TS: ImportQueue).
@@ -785,7 +792,12 @@ func importQueueHandler(w http.ResponseWriter, r *http.Request) {
 			ID: it.ID, Title: it.Merged.Title, Authors: it.Merged.Creators,
 			Files: it.Files, From: it.From, Added: it.Added, HasCover: hasCover,
 		}
-		if dup := imports.duplicates(it); dup.found() {
+		if it.Into != "" {
+			s.Into, s.Link = it.Into, addFormatPath(it)
+			if b, ok := currentCatalog().lookup(it.Into); ok {
+				s.IntoTitle = b.Title
+			}
+		} else if dup := imports.duplicates(it); dup.found() {
 			s.Duplicate = dup
 		}
 		q.Items = append(q.Items, s)
@@ -796,6 +808,11 @@ func importQueueHandler(w http.ResponseWriter, r *http.Request) {
 func importReviewPage(w http.ResponseWriter, r *http.Request) {
 	it := importFromRequest(w, r)
 	if it == nil {
+		return
+	}
+	if it.Into != "" {
+		// New files for a library book: reviewed against it.
+		http.Redirect(w, r, addFormatPath(it), http.StatusSeeOther)
 		return
 	}
 	hasCover, _ := coverFilesIn(imports.itemDir(it.ID))
@@ -851,7 +868,7 @@ func importMetadataHandler(w http.ResponseWriter, r *http.Request) {
 func nextImport(list []*pendingImport, id string) string {
 	i := slices.IndexFunc(list, func(it *pendingImport) bool { return it.ID == id })
 	for n := 1; n < len(list); n++ {
-		if next := list[(max(i, 0)+n)%len(list)]; next.ID != id {
+		if next := list[(max(i, 0)+n)%len(list)]; next.ID != id && next.Into == "" {
 			return next.ID
 		}
 	}

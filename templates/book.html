@@ -154,6 +154,26 @@
                     <span>Remove from library…</span>
                 </button>
             </div>
+            <!-- The book's files: remove one, or add new ones (web/book-files.ts) -->
+            <div class="meta-row book-files-admin" data-book-files="{{ .UUID }}" data-title="{{ .Title }}"
+                data-authors="{{ range $i, $a := .Authors }}{{ if $i }} & {{ end }}{{ $a }}{{ end }}">
+                <span class="book-files-label">Files</span>
+                {{ range .Formats }}
+                <span class="book-file-chip"><span>{{ . }}</span><button type="button" class="book-file-remove"
+                        data-remove-format="{{ . }}" title="Move the {{ . }} to the Recycling Bin"
+                        aria-label="Remove the {{ . }}">×</button></span>
+                {{ end }}
+                <label class="btn-action btn-action-add-file" title="Add another format of this book: EPUB, PDF, MOBI, AZW3 or DJVU. You review it before it's added.">
+                    <svg class="action-icon" viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor"
+                        stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                        <path d="M12 5v14" />
+                        <path d="M5 12h14" />
+                    </svg>
+                    <span>Add a file…</span>
+                    <input type="file" data-add-files multiple accept=".epub,.pdf,.mobi,.azw3,.djvu" hidden />
+                </label>
+                <span class="book-files-status auth-muted" role="status"></span>
+            </div>
             {{ end }}
         </div>
     </div>

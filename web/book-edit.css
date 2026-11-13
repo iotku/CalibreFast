@@ -1893,3 +1893,27 @@ input[type="date"].meta-input::-webkit-calendar-picker-indicator:hover {
     justify-content: space-between;
     gap: 0 0.5rem;
 }
+
+/* ── Adding files to a book (add_format.go): add now, keeping the metadata ── */
+.quick-accept {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 10px;
+    margin-top: 10px;
+}
+
+.duplicate-merge {
+    margin-left: 8px;
+    font-size: 0.78rem;
+    text-decoration: none;
+}
+
+.merge-readers-note {
+    flex-basis: 100%;
+    font-size: 0.78rem;
+}
+
+.merge-readers-note:empty {
+    display: none;
+}

@@ -30,27 +30,24 @@ type readerDataTable struct {
 	Rows    [][]any  `json:"rows"`
 }
 
-// saveReaderData writes the batch's reader-data.json and notes how many
-// rows of each kind each book has (recycledBook.ReaderData).
-func saveReaderData(batch *recycleBatch) error {
-	if appDB == nil {
-		return nil
-	}
-	uuids := make([]any, len(batch.Books))
-	for i, b := range batch.Books {
-		uuids[i] = b.UUID
-	}
+// formatReaderTables are the reader tables whose rows are about one format
+// of a book (a place, bookmark or highlight in its EPUB, say).
+var formatReaderTables = []string{"bookmarks", "annotations", "reading_progress"}
+
+// collectReaderRows reads the rows of tables that match where (on a
+// table's own columns), and counts them by book uuid and table.
+func collectReaderRows(tables []string, where string, args ...any) (map[string]*readerDataTable, map[string]map[string]int, error) {
 	data := map[string]*readerDataTable{}
 	counts := map[string]map[string]int{} // uuid -> table -> rows
-	for _, table := range readerDataTables {
-		rows, err := appDB.Query(`SELECT * FROM `+quoteIdent(table)+` WHERE book_uuid IN (`+placeholders(len(uuids))+`)`, uuids...)
+	for _, table := range tables {
+		rows, err := appDB.Query(`SELECT * FROM `+quoteIdent(table)+` WHERE `+where, args...)
 		if err != nil {
-			return fmt.Errorf("read %s: %w", table, err)
+			return nil, nil, fmt.Errorf("read %s: %w", table, err)
 		}
 		cols, err := rows.Columns()
 		if err != nil {
 			rows.Close()
-			return err
+			return nil, nil, err
 		}
 		t := &readerDataTable{Columns: cols, Rows: [][]any{}}
 		bi := slices.Index(cols, "book_uuid")
@@ -62,7 +59,7 @@ func saveReaderData(batch *recycleBatch) error {
 			}
 			if err := rows.Scan(ptrs...); err != nil {
 				rows.Close()
-				return err
+				return nil, nil, err
 			}
 			for i, v := range vals {
 				if b, ok := v.([]byte); ok {
@@ -78,15 +75,36 @@ func saveReaderData(batch *recycleBatch) error {
 		}
 		rows.Close()
 		if err := rows.Err(); err != nil {
-			return err
+			return nil, nil, err
 		}
 		data[table] = t
 	}
+	return data, counts, nil
+}
+
+func writeReaderRows(path string, data map[string]*readerDataTable) error {
 	out, err := json.MarshalIndent(data, "", " ")
 	if err != nil {
 		return err
 	}
-	if err := os.WriteFile(filepath.Join(batch.dir(), recycleReaderDataFile), out, 0o600); err != nil {
+	return os.WriteFile(path, out, 0o600)
+}
+
+// saveReaderData writes the batch's reader-data.json and notes how many
+// rows of each kind each book has (recycledBook.ReaderData).
+func saveReaderData(batch *recycleBatch) error {
+	if appDB == nil {
+		return nil
+	}
+	uuids := make([]any, len(batch.Books))
+	for i, b := range batch.Books {
+		uuids[i] = b.UUID
+	}
+	data, counts, err := collectReaderRows(readerDataTables, `book_uuid IN (`+placeholders(len(uuids))+`)`, uuids...)
+	if err != nil {
+		return err
+	}
+	if err := writeReaderRows(filepath.Join(batch.dir(), recycleReaderDataFile), data); err != nil {
 		return err
 	}
 	for i := range batch.Books {
@@ -99,7 +117,14 @@ func saveReaderData(batch *recycleBatch) error {
 // that calibrefast.db no longer has. Rows of users or shelves deleted since
 // are left out.
 func restoreReaderData(batch *recycleBatch, uuid string) (int, error) {
-	raw, err := os.ReadFile(filepath.Join(batch.dir(), recycleReaderDataFile))
+	return restoreReaderRows(filepath.Join(batch.dir(), recycleReaderDataFile), uuid, "")
+}
+
+// restoreReaderRows adds back the rows in the file (writeReaderRows) about
+// the book uuid, only those in format when it isn't "", that calibrefast.db
+// no longer has.
+func restoreReaderRows(path, uuid, format string) (int, error) {
+	raw, err := os.ReadFile(path)
 	if os.IsNotExist(err) || appDB == nil {
 		return 0, nil
 	}
@@ -110,7 +135,7 @@ func restoreReaderData(batch *recycleBatch, uuid string) (int, error) {
 	dec.UseNumber()
 	var data map[string]*readerDataTable
 	if err := dec.Decode(&data); err != nil {
-		return 0, fmt.Errorf("%s: %w", recycleReaderDataFile, err)
+		return 0, fmt.Errorf("%s: %w", filepath.Base(path), err)
 	}
 	tx, err := appDB.Begin()
 	if err != nil {
@@ -127,6 +152,10 @@ func restoreReaderData(batch *recycleBatch, uuid string) (int, error) {
 		if bi < 0 {
 			continue
 		}
+		fi := slices.Index(t.Columns, "format")
+		if format != "" && fi < 0 {
+			continue
+		}
 		// What the row points to must still be there.
 		owner, ownerTable := "user_id", "users"
 		if table == "shelf_books" {
@@ -141,6 +170,11 @@ func restoreReaderData(batch *recycleBatch, uuid string) (int, error) {
 		for _, row := range t.Rows {
 			if len(row) != len(t.Columns) || row[bi] != uuid {
 				continue
+			}
+			if format != "" {
+				if f, _ := row[fi].(string); !strings.EqualFold(f, format) {
+					continue
+				}
 			}
 			args := make([]any, 0, len(row)+1)
 			for _, v := range row {

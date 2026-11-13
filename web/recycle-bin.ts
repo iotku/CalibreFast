@@ -4,7 +4,7 @@
 
 import { api, byId, el, errorMessage, statusLine } from "./dom.js";
 import { formatBytes } from "./cover-sources.js";
-import type { RecycleBatch, RecycleBin, RecycledBook, RestoreResponse } from "./types.js";
+import type { RecycleBatch, RecycleBin, RecycledBook, RecycledFormat, RestoreResponse } from "./types.js";
 
 const say = statusLine("bin-status");
 const list = byId("bin-list");
@@ -15,16 +15,18 @@ function when(iso: string | undefined): string {
     return isNaN(d.getTime()) ? "" : d.toLocaleString();
 }
 
-async function restore(batch: RecycleBatch, books: RecycledBook[], buttons: HTMLButtonElement[]): Promise<void> {
+async function restore(batch: RecycleBatch, books: RecycledBook[], buttons: HTMLButtonElement[], files: RecycledFormat[] = []): Promise<void> {
     for (const b of buttons) b.disabled = true;
     try {
         const res = await api<RestoreResponse>("POST", `/api/recycle-bin/${encodeURIComponent(batch.id)}/restore`, {
             uuids: books.map((b) => b.uuid),
+            formats: files.map((f) => f.key),
         });
+        const name = (r: RestoreResponse["results"][number]): string => `“${r.title || r.uuid}”${r.format ? `'s ${r.format}` : ""}`;
         const failed = res.results.filter((r) => r.error);
         const ok = res.results.length - failed.length;
-        if (failed.length) say(`${ok ? `Restored ${ok}. ` : ""}Couldn't restore ${failed.map((r) => `“${r.title || r.uuid}”: ${r.error}`).join("; ")}`, true);
-        else say(ok === 1 ? `Restored “${res.results[0]!.title}”.` : `Restored ${ok} books.`);
+        if (failed.length) say(`${ok ? `Restored ${ok}. ` : ""}Couldn't restore ${failed.map((r) => `${name(r)}: ${r.error}`).join("; ")}`, true);
+        else say(ok === 1 ? `Restored ${name(res.results[0]!)}.` : `Restored ${ok} items.`);
     } catch (err) {
         say(errorMessage(err), true);
     }
@@ -75,16 +77,68 @@ function bookRow(batch: RecycleBatch, b: RecycledBook): HTMLLIElement {
     );
 }
 
+/** A single file taken from a book that stayed in the library. */
+function formatRow(batch: RecycleBatch, f: RecycledFormat): HTMLLIElement {
+    const kept = readerData(f.reader_data);
+    const details = [
+        f.replaced ? `${f.format} replaced by a new file` : `${f.format} removed`,
+        f.file,
+        formatBytes(f.size),
+        kept && `readers' ${kept} kept with it`,
+    ]
+        .filter(Boolean)
+        .join(" · ");
+    let action: HTMLElement;
+    if (f.restored_at) {
+        action = el("span", { className: "auth-muted" }, `Restored ${when(f.restored_at)}${f.restored_by ? ` by ${f.restored_by}` : ""}`);
+    } else if (!f.in_bin) {
+        action = el("span", { className: "auth-error-text" }, "File emptied from the bin");
+    } else {
+        const btn = el("button", { type: "button", className: "btn-standard", title: `Put the ${f.format} back in the book (it mustn't have a ${f.format} now)` }, `Restore ${f.format}`);
+        btn.addEventListener("click", () => void restore(batch, [], [btn], [f]));
+        action = btn;
+    }
+    return el(
+        "li",
+        { className: "import-row bin-row" + (f.in_bin ? "" : " bin-row-gone") },
+        el(
+            "div",
+            { className: "import-info" },
+            el("a", { className: "import-title", href: `/book/get/${encodeURIComponent(f.uuid)}` }, f.title || "Untitled"),
+            el("div", { className: "import-authors" }, f.authors),
+            el("div", { className: "auth-muted import-files" }, details),
+        ),
+        el("div", { className: "import-actions" }, action),
+    );
+}
+
 function batchSection(batch: RecycleBatch): HTMLElement {
+    const files = batch.formats ?? [];
     const waiting = batch.books.filter((b) => b.in_bin);
+    const waitingFiles = files.filter((f) => f.in_bin && !f.restored_at);
+    const merged = batch.merged_into;
+    const what = [
+        batch.books.length ? `${batch.books.length} book${batch.books.length === 1 ? "" : "s"}` : "",
+        files.length ? `${files.length} file${files.length === 1 ? "" : "s"}` : "",
+    ]
+        .filter(Boolean)
+        .join(", ");
+    const verb = merged?.added_files?.length ? "Files added" : merged ? "Merged" : batch.books.length ? "Removed" : "File removed";
     const head = el(
         "div",
         { className: "bin-batch-head" },
-        el("h2", {}, `${batch.merged_into ? "Merged" : "Removed"} ${when(batch.deleted_at)}`),
-        el("span", { className: "auth-muted" }, `by ${batch.deleted_by || "?"} · ${batch.books.length} book${batch.books.length === 1 ? "" : "s"}`),
+        el("h2", {}, `${verb} ${when(batch.deleted_at)}`),
+        el("span", { className: "auth-muted" }, `by ${batch.deleted_by || "?"} · ${what}`),
     );
-    const merged = batch.merged_into;
-    const note = merged
+    const note = merged?.added_files?.length
+        ? el(
+              "p",
+              { className: "auth-muted bin-merge-note" },
+              `New ${merged.added_files.join(", ")} added to `,
+              el("a", { href: `/book/get/${encodeURIComponent(merged.uuid)}` }, `“${merged.title}”`),
+              ". The book's own files they replaced are here.",
+          )
+        : merged
         ? el(
               "p",
               { className: "auth-muted bin-merge-note" },
@@ -96,12 +150,12 @@ function batchSection(batch: RecycleBatch): HTMLElement {
                   : []),
           )
         : null;
-    const rows = batch.books.map((b) => bookRow(batch, b));
-    if (waiting.length > 1) {
-        const all = el("button", { type: "button", className: "btn-standard" }, `Restore all ${waiting.length}`);
+    const rows = [...batch.books.map((b) => bookRow(batch, b)), ...files.map((f) => formatRow(batch, f))];
+    if (waiting.length + waitingFiles.length > 1) {
+        const all = el("button", { type: "button", className: "btn-standard" }, `Restore all ${waiting.length + waitingFiles.length}`);
         all.addEventListener("click", () => {
             const buttons = [all, ...rows.flatMap((r) => [...r.querySelectorAll("button")])];
-            void restore(batch, waiting, buttons);
+            void restore(batch, waiting, buttons, waitingFiles);
         });
         head.append(all);
     }

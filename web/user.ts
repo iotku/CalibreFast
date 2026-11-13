@@ -14,6 +14,7 @@
 
 import { api, errorMessage } from "./dom.js";
 import { deleteBooks } from "./delete-books.js";
+import "./book-files.js"; // the book page's Files row (admins)
 import type { BookChange, BookState } from "./reading.js";
 
 interface StatusResponse {

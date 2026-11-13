@@ -1070,6 +1070,18 @@ export async function mountMetadataEditor(book: BookTarget, form: HTMLFormElemen
       const names = err.check.books
         .map((b) => `“${b.title}”${b.authors?.length ? ` by ${b.authors.join(" & ")}` : ""}`)
         .join(", ");
+      if (book.adding) {
+        // New files for a book: one of them is already another book's.
+        statusEl.textContent = `✕ Not added: the library already has this file, in ${names}. Merge that book into this one instead: `;
+        for (const b of err.check.books.filter((d) => d.same_file)) {
+          const link = document.createElement("a");
+          link.className = "status-link";
+          link.href = `/book/merge?ids=${encodeURIComponent(book.id)},${encodeURIComponent(b.uuid)}&keep=${encodeURIComponent(book.id)}`;
+          link.textContent = `Merge “${b.title}” into this book`;
+          statusEl.append(link, " ");
+        }
+        return;
+      }
       statusEl.textContent = err.sameFile
         ? `✕ Not added: the library already has this file (${names}). Discard it from the queue instead.`
         : `⚠ Not added: possibly already in the library as ${names}.`;
@@ -1102,11 +1114,13 @@ export async function mountMetadataEditor(book: BookTarget, form: HTMLFormElemen
 
       if (saveBtn) {
         saveBtn.disabled = true;
-        saveBtn.textContent = book.merge ? "Merging…" : book.pending ? "Adding…" : "Applying Changes…";
+        saveBtn.textContent = book.adding ? "Adding…" : book.merge ? "Merging…" : book.pending ? "Adding…" : "Applying Changes…";
       }
       if (statusEl) {
         statusEl.className = "edit-status pending";
-        statusEl.textContent = book.merge
+        statusEl.textContent = book.adding
+          ? "Adding the files to the book…"
+          : book.merge
           ? "Merging the books…"
           : book.pending ? "Adding the book to the Calibre library…" : "Saving metadata to Calibre library…";
       }
@@ -1121,7 +1135,9 @@ export async function mountMetadataEditor(book: BookTarget, form: HTMLFormElemen
         added = true;
         if (statusEl) {
           statusEl.className = "edit-status success";
-          statusEl.textContent = book.merge
+          statusEl.textContent = book.adding
+            ? "✓ Added. Opening the book…"
+            : book.merge
             ? "✓ Merged. Opening the book…"
             : !book.pending
             ? "✓ Metadata applied. Opening the book…"
@@ -1137,7 +1153,7 @@ export async function mountMetadataEditor(book: BookTarget, form: HTMLFormElemen
           const link = document.createElement("a");
           link.className = "status-link";
           link.href = `/book/get/${encodeURIComponent(result.uuid)}`;
-          link.textContent = "Open the merged book";
+          link.textContent = book.adding ? "Open the book" : "Open the merged book";
           statusEl.append(link);
         } else if (book.pending && result.next) {
           // On through the queue; the next page says what was just added.
@@ -1154,7 +1170,9 @@ export async function mountMetadataEditor(book: BookTarget, form: HTMLFormElemen
         console.error("Apply metadata failed:", err);
         if (statusEl) {
           statusEl.className = "edit-status error";
-          statusEl.textContent = book.merge
+          statusEl.textContent = book.adding
+            ? `✕ Couldn't add the files: ${errorMessage(err)}`
+            : book.merge
             ? `✕ Couldn't merge the books: ${errorMessage(err)}`
             : `✕ Failed to apply metadata: ${errorMessage(err)}`;
         }

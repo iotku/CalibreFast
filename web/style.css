@@ -3727,3 +3727,63 @@ body.selecting .book.selected .cover-wrapper {
     text-overflow: ellipsis;
     white-space: nowrap;
 }
+
+/* ── A book's files (admins): remove one, add new ones (web/book-files.ts) ── */
+.book-files-admin {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 8px;
+}
+
+.book-files-label {
+    font-size: 0.8rem;
+    text-transform: uppercase;
+    letter-spacing: 0.06em;
+    color: var(--text-secondary, #999);
+}
+
+.book-file-chip {
+    display: inline-flex;
+    align-items: center;
+    gap: 4px;
+    padding: 2px 4px 2px 10px;
+    border: 1px solid var(--border, #444);
+    border-radius: 999px;
+    font-size: 0.82rem;
+    text-transform: uppercase;
+}
+
+.book-file-remove {
+    width: 22px;
+    height: 22px;
+    padding: 0;
+    border: 0;
+    border-radius: 50%;
+    background: transparent;
+    color: inherit;
+    font-size: 1rem;
+    line-height: 1;
+    cursor: pointer;
+    opacity: 0.6;
+}
+
+.book-file-remove:hover,
+.book-file-remove:focus-visible {
+    background: #8f2a2a;
+    color: #fff;
+    opacity: 1;
+}
+
+.btn-action-add-file {
+    cursor: pointer;
+}
+
+.btn-action-add-file:has(input:disabled) {
+    opacity: 0.45;
+    cursor: progress;
+}
+
+.book-files-status:empty {
+    display: none;
+}
