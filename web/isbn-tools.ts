@@ -371,9 +371,8 @@ function mountLookup(host: IsbnToolsHost): { lookUpIsbn(isbn: string): void; sug
     function renderStatus(): void {
         if (busy) return;
         if (found) return say(found);
-        say(isbnBox.value.trim()
-            ? "Fill in this book's details from Open Library: search by its ISBN (the likeliest match), or by title and author."
-            : "Fill in this book's details from Open Library: enter its ISBN, or search by title and author.");
+        // How it works is behind the bar's info button.
+        say("Look up on Open Library");
     }
 
     function renderActions(): void {

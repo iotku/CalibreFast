@@ -56,9 +56,6 @@
                         <span>Adding to this book:</span>
                         {{ range .Merge.IncomingFiles }}<span class="uuid-badge">{{ . }}</span>{{ end }}
                     </div>
-                    <p class="banner-hint">
-                        <strong>current</strong> is the book's own metadata, <strong>New epub</strong>, <strong>New pdf</strong>… what the new files say. If the book's metadata is already right, add the files as they are; otherwise pick values below, and choose which files and cover to keep.
-                    </p>
                     <div class="quick-accept">
                         <button type="button" id="btn-quick-accept" class="btn-primary" title="Adds the new files with the metadata in the form (the book's own, unless you changed it)">Add files, keep metadata</button>
                         <span class="auth-muted">or review below</span>
@@ -68,28 +65,33 @@
                         <span>Merging {{ len .Merge.Books }} books into one. The kept record:</span>
                         <span class="uuid-badge">{{.UUID}}</span>
                     </div>
-                    <p class="banner-hint">
-                        Choose each field's value from the pills: <strong>current</strong> is the kept book's metadata, <strong>B</strong>, <strong>C</strong>… the other books', and <strong>A epub</strong>, <strong>B pdf</strong>… what each book's files say. Then pick the cover and the files below, and <strong>Merge</strong>.
-                    </p>
                     {{ else if .Import }}
                     <div class="book-banner-meta import-files">
                         <span>Not in the library yet{{ if .Import.From }} · from {{ .Import.From }}{{ end }}:</span>
                         {{ range .Import.Files }}<span class="uuid-badge">{{ .Name }}</span>{{ end }}
                     </div>
-                    <p class="banner-hint">
-                        This book came from the watch folder. Check its metadata, choose its cover (click it), then <strong>Add to library</strong>. <strong>current</strong> is what its files say.
-                    </p>
                     {{ else }}
                     <div class="book-banner-meta">
                         <span>UUID:</span>
                         <span class="uuid-badge">{{.UUID}}</span>
                     </div>
                     {{ end }}
-                    {{ if not .Merge }}
-                    <p class="banner-hint">
-                        Tip: Click the pills under each field (e.g. <strong>current</strong>, <strong>epub</strong>, <strong>pdf</strong>, or <strong>Open Library</strong> after a lookup) to use that source's value; green means it matches. Click the cover to change it. After you change a field, its <strong>edited</strong> pill restores your changes and shows what changed vs <strong>current</strong>. <strong>Compare changes</strong> at the bottom lists every changed field.
-                    </p>
-                    {{ end }}
+                    <!-- How the page works: shown on a click (.info-tip, script below) -->
+                    <details class="info-tip">
+                        <summary class="info-tip-btn" title="How editing works"><span class="info-tip-i" aria-hidden="true">i</span><span class="sr-only">How editing works</span></summary>
+                        <div class="info-tip-body">
+                            {{ if and .Merge .Merge.Incoming }}
+                            <p><strong>current</strong> is the book's own metadata, <strong>New epub</strong>, <strong>New pdf</strong>… what the new files say. If the book's metadata is already right, add the files as they are; otherwise pick values below, and choose which files and cover to keep.</p>
+                            {{ else if .Merge }}
+                            <p>Choose each field's value from the pills: <strong>current</strong> is the kept book's metadata, <strong>B</strong>, <strong>C</strong>… the other books', and <strong>A epub</strong>, <strong>B pdf</strong>… what each book's files say. Then pick the cover and the files below, and <strong>Merge</strong>.</p>
+                            {{ else if .Import }}
+                            <p>This book came from the watch folder. Check its metadata, choose its cover (click it), then <strong>Add to library</strong>. <strong>current</strong> is what its files say.</p>
+                            {{ end }}
+                            {{ if not .Merge }}
+                            <p>Click the pills under each field (e.g. <strong>current</strong>, <strong>epub</strong>, <strong>pdf</strong>, or <strong>Open Library</strong> after a lookup) to use that source's value; green means it matches. Click the cover to change it. After you change a field, its <strong>edited</strong> pill restores your changes and shows what changed vs <strong>current</strong>. <strong>Compare changes</strong> at the bottom lists every changed field.</p>
+                            {{ end }}
+                        </div>
+                    </details>
                 </div>
             </div>
 
@@ -178,16 +180,21 @@
                     </ul>
                 </div>
                 {{ end }}
+                <details class="info-tip merge-info">
+                    <summary class="info-tip-btn info-tip-labelled"><span class="info-tip-i" aria-hidden="true">i</span>What happens to replaced files and readers' data</summary>
+                    <div class="info-tip-body">
                 {{ if .Incoming }}
-                <p class="banner-hint">
+                <p>
                     A book has one file per format. A file of the book's that a new one replaces goes to the <a href="/recycle-bin" target="_blank">Recycling Bin</a>, where it can be restored from. Readers keep their places in it, but their bookmarks and highlights in it go to the bin with it: they'd land in the wrong places in a different file.
                 </p>
                 {{ else }}
-                <p class="banner-hint">
+                <p>
                     The other books go to the <a href="/recycle-bin" target="_blank">Recycling Bin</a>, whole, so each can be restored as it was. A file of the kept book's that another replaces is kept in the bin too.
                     Readers' favorites, shelves and places from every book are copied to the kept book. Bookmarks and highlights are tied to the file they were made in: they follow only where a book's file in that format is byte for byte the one kept.
                 </p>
                 {{ end }}
+                    </div>
+                </details>
             </section>
             {{ end }}
 
@@ -196,7 +203,16 @@
                  and author; the matches, to tick as sources -->
             <section id="lookup-bar" class="lookup-bar" aria-label="Look up online" data-google="{{ if .GoogleBooks }}1{{ end }}">
                 <div class="lookup-head">
-                    <p id="lookup-status" class="lookup-status" role="status">Fill in this book's details from Open Library.</p>
+                    <div class="lookup-status-row">
+                        <p id="lookup-status" class="lookup-status" role="status">Look up on Open Library</p>
+                        <details class="info-tip">
+                            <summary class="info-tip-btn" title="How looking up works"><span class="info-tip-i" aria-hidden="true">i</span><span class="sr-only">How looking up works</span></summary>
+                            <div class="info-tip-body">
+                                <p>Search Open Library by the book's ISBN (the likeliest match) or by its title and author. Nothing is sent until you click a search.</p>
+                                <p>Matches are listed here: tick one to offer its values as pills under each field, or open it to compare it with the current metadata and accept all of it.</p>
+                            </div>
+                        </details>
+                    </div>
                     <div class="lookup-actions">
                         <!-- By ISBN: follows the form's ISBN field, and fills it -->
                         <form id="lookup-isbn-form" class="lookup-isbn-form" role="search">
@@ -437,6 +453,18 @@
 
         <!-- Sanitizes the description editor's HTML (web/description.ts). -->
         <script src="/static/vendor/dompurify@3.2.6/dist/purify.min.js"></script>
+        <script>
+            // Info buttons (.info-tip) close on a click elsewhere, Escape, or opening another.
+            document.addEventListener("click", (e) => {
+                for (const d of document.querySelectorAll(".info-tip[open]")) {
+                    if (!d.contains(e.target) && !d.classList.contains("merge-info")) d.open = false;
+                }
+            });
+            document.addEventListener("keydown", (e) => {
+                if (e.key !== "Escape") return;
+                for (const d of document.querySelectorAll(".info-tip[open]:not(.merge-info)")) d.open = false;
+            });
+        </script>
         <script type="module">
 import { mountMetadataEditor } from {{ asset "metadata.js" }};
             import { mountCoverDialog } from {{ asset "cover-dialog.js" }};
