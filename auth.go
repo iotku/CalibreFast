@@ -556,6 +556,8 @@ func accountHandler(w http.ResponseWriter, r *http.Request) {
 }
 
 // meHandler: GET /api/me — who am I (used by the nav and the readers).
+// ?reading=1 adds the user's reading marks (as GET /api/me/reading), which
+// the library grids want first thing: one round trip instead of two.
 func meHandler(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Content-Type", "application/json")
 	w.Header().Set("Cache-Control", "no-store")
@@ -569,6 +571,14 @@ func meHandler(w http.ResponseWriter, r *http.Request) {
 	// Books from the watch folder waiting for review (imports.go).
 	if n := imports.count(); canEditLibrary(r) && (n > 0 || watching()) {
 		me["pending_imports"] = n
+	}
+	if r.URL.Query().Get("reading") != "" {
+		m, _, err := userReading(u)
+		if err != nil {
+			http.Error(w, "query failed", http.StatusInternalServerError)
+			return
+		}
+		me["reading"] = m
 	}
 	_ = json.NewEncoder(w).Encode(me)
 }

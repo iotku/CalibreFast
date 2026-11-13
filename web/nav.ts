@@ -16,7 +16,7 @@ import { declineOffer, guestBookCount, offerDeclined, offerDeclinedForGood } fro
 for (const code of document.querySelectorAll<HTMLElement>(".same-origin-url")) {
     code.textContent = withPageScheme(code.textContent ?? "");
 }
-import type { MeResponse } from "./types.js";
+import { meRequest } from "./me.js";
 
 
 function icon(path: string): SVGSVGElement {
@@ -73,8 +73,12 @@ function showGuestOffer(user: string, books: number): void {
 function init(bar: HTMLElement): void {
     const user = bar.querySelector<HTMLElement>(".tb-user");
     const active = user?.dataset["active"] ?? "";
-    const current = (name: string): Partial<HTMLAnchorElement> =>
-        active === name ? ({ ariaCurrent: "page" } as Partial<HTMLAnchorElement>) : {};
+    /** A link to a page of the user part: data-nav names it, for the snapshot (NAV_KEY). */
+    const mark = (a: HTMLAnchorElement, name: string): HTMLAnchorElement => {
+        a.dataset["nav"] = name;
+        if (active === name) a.setAttribute("aria-current", "page");
+        return a;
+    };
 
     // ---- open/close ---------------------------------------------------------
 
@@ -130,14 +134,19 @@ function init(bar: HTMLElement): void {
 
     // ---- user part ----------------------------------------------------------
     //
-    // The last answer from /api/me is kept in localStorage and shown straight
-    // away, so on repeat visits the user part doesn't pop in; the request then
-    // corrects it if anything changed. First visit: the template's throbber
-    // shows until the request finishes.
+    // The last answer from /api/me is kept in localStorage, and the user part
+    // it made as markup (NAV_KEY): the template's inline script puts that in
+    // as soon as the bar is parsed, before this module runs (modules wait for
+    // the whole page). This then draws it again, live, from the answer, and
+    // the request redraws it only if the server's answer changed (promoted,
+    // demoted, imports waiting, signed out elsewhere). First visit: the
+    // template's throbber shows until the request finishes.
 
     if (!user) return;
     const userEl: HTMLElement = user;
     const CACHE_KEY = "cf-me";
+    /** The user part's markup, as topbar.html's inline script reads it (keep the name in step). */
+    const NAV_KEY = "cf-nav";
     interface MeState {
         username: string | null;
         isAdmin: boolean;
@@ -155,8 +164,10 @@ function init(bar: HTMLElement): void {
         },
         set(v: string | null): void {
             try {
-                if (v === null) localStorage.removeItem(CACHE_KEY);
-                else localStorage.setItem(CACHE_KEY, v);
+                if (v === null) {
+                    localStorage.removeItem(CACHE_KEY);
+                    localStorage.removeItem(NAV_KEY);
+                } else localStorage.setItem(CACHE_KEY, v);
             } catch {
                 /* storage blocked: no instant render, the throbber still works */
             }
@@ -175,7 +186,10 @@ function init(bar: HTMLElement): void {
         userToggle = null;
         if (!st.username) {
             const next = encodeURIComponent(location.pathname + location.search);
-            userEl.replaceChildren(el("a", { className: "tb-btn", href: `/login?next=${next}`, textContent: "Sign in" }));
+            const signIn = el("a", { className: "tb-btn", href: `/login?next=${next}`, textContent: "Sign in" });
+            signIn.dataset["next"] = ""; // the inline script points it back at its own page
+            userEl.replaceChildren(signIn);
+            snapshot();
             return;
         }
         const name = st.username;
@@ -184,7 +198,7 @@ function init(bar: HTMLElement): void {
         const guestBooks = offerDeclinedForGood(name) ? 0 : guestBookCount();
         showGuestOffer(name, guestBooks);
         const shortcut = (href: string, label: string, path: string, key: string): HTMLAnchorElement => {
-            const a = el("a", { className: "tb-icon tb-shortcut", href, title: label, ariaLabel: label, ...current(key) });
+            const a = mark(el("a", { className: "tb-icon tb-shortcut", href, title: label, ariaLabel: label }), key);
             a.append(icon(path));
             return a;
         };
@@ -215,18 +229,18 @@ function init(bar: HTMLElement): void {
         const list = el(
             "div",
             { className: "tb-menu-list", hidden: true },
-            el("a", { href: "/me/favorites", textContent: "★ Favorites", ...current("favorites") }),
-            el("a", { href: "/me/wanted", textContent: "Want to read", ...current("wanted") }),
-            el("a", { href: "/me/reading", textContent: "Reading", ...current("reading") }),
-            el("a", { href: "/me/finished", textContent: "Finished", ...current("finished") }),
+            mark(el("a", { href: "/me/favorites", textContent: "★ Favorites" }), "favorites"),
+            mark(el("a", { href: "/me/wanted", textContent: "Want to read" }), "wanted"),
+            mark(el("a", { href: "/me/reading", textContent: "Reading" }), "reading"),
+            mark(el("a", { href: "/me/finished", textContent: "Finished" }), "finished"),
             el("hr"),
-            ...(st.canEdit ? [el("a", { href: "/upload", textContent: "Upload books", ...current("upload") })] : []),
-            ...(imports !== null ? [el("a", { href: "/import", textContent: imports ? `Review imports (${imports})` : "Review imports", ...current("imports") })] : []),
-            ...(st.canEdit ? [el("a", { href: "/library/edit", textContent: "Bulk edit", ...current("library-edit") })] : []),
-            ...(st.canEdit ? [el("a", { href: "/recycle-bin", textContent: "Recycling Bin", ...current("recycle-bin") })] : []),
-            ...(st.canEdit ? [el("a", { href: "/admin/repairs", textContent: "Library repairs", ...current("library-repairs") })] : []),
+            ...(st.canEdit ? [mark(el("a", { href: "/upload", textContent: "Upload books" }), "upload")] : []),
+            ...(imports !== null ? [mark(el("a", { href: "/import", textContent: imports ? `Review imports (${imports})` : "Review imports" }), "imports")] : []),
+            ...(st.canEdit ? [mark(el("a", { href: "/library/edit", textContent: "Bulk edit" }), "library-edit")] : []),
+            ...(st.canEdit ? [mark(el("a", { href: "/recycle-bin", textContent: "Recycling Bin" }), "recycle-bin")] : []),
+            ...(st.canEdit ? [mark(el("a", { href: "/admin/repairs", textContent: "Library repairs" }), "library-repairs")] : []),
             ...(st.isAdmin ? [el("a", { href: "/admin/users", textContent: "Manage users" })] : []),
-            ...(st.isAdmin ? [el("a", { href: "/admin/discover", textContent: "Home page tags", ...current("admin-discover") })] : []),
+            ...(st.isAdmin ? [mark(el("a", { href: "/admin/discover", textContent: "Home page tags" }), "admin-discover")] : []),
             ...(guestBooks ? [el("a", { href: "/account/import", textContent: "Reading on this device" })] : []),
             el("a", { href: "/account", textContent: "Account" }),
             logout,
@@ -243,6 +257,18 @@ function init(bar: HTMLElement): void {
             shortcut("/me/reading", "Reading", BOOK, "reading"),
             el("div", { className: "tb-menu" }, btn, list),
         );
+        snapshot();
+    }
+
+    /** Keep the user part's markup for the next page's inline script, without this page's highlight. */
+    function snapshot(): void {
+        const copy = userEl.cloneNode(true) as HTMLElement;
+        for (const a of copy.querySelectorAll("[aria-current]")) a.removeAttribute("aria-current");
+        try {
+            localStorage.setItem(NAV_KEY, copy.innerHTML);
+        } catch {
+            /* storage blocked */
+        }
     }
 
     let shown = cache.get();
@@ -254,8 +280,7 @@ function init(bar: HTMLElement): void {
         }
     }
 
-    fetch("/api/me", { credentials: "same-origin" })
-        .then(async (r) => ({ ok: r.ok, body: (await r.json()) as MeResponse }))
+    meRequest()
         .then(({ ok, body }) => {
             const u = ok ? body.user : null;
             const st: MeState = {

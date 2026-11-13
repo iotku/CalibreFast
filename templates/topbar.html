@@ -56,6 +56,10 @@ pages stay the same for everyone and cacheable.
     <div id="user-nav" class="tb-user" data-active="{{ .Active }}">
         <div class="throbber" role="status" aria-label="Loading account"><span class="throbber-dot"></span><span class="throbber-dot"></span><span class="throbber-dot"></span></div>
     </div>
+    {{/* The user part as last drawn (nav.ts keeps it as cf-nav), put in at
+         once: nav.js is a module, so it waits for the whole page to parse.
+         It then redraws it, live, and again if /api/me's answer changed. */}}
+    <script>try{var u=document.getElementById("user-nav"),h=localStorage.getItem("cf-nav");if(h){u.innerHTML=h;if(u.dataset.active)u.querySelectorAll('[data-nav="'+u.dataset.active+'"]').forEach(function(a){a.setAttribute("aria-current","page")});var s=u.querySelector("a[data-next]");if(s)s.href="/login?next="+encodeURIComponent(location.pathname+location.search)}}catch(e){}</script>
 </header>
 <script type="module" src="{{ asset "nav.js" }}"></script>
 {{ end }}
