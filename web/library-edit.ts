@@ -24,7 +24,7 @@ const MERGE_MAX = 20;
 
 type ColKey = "title" | "authors" | "series" | "publisher" | "pubdate" | "languages" | "tags" | "formats" | "added";
 /** The bulk edit field a column's cells edit. */
-type EditField = "title" | "authors" | "publisher" | "date" | "tags" | "languages";
+type EditField = "title" | "authors" | "series" | "publisher" | "date" | "tags" | "languages";
 
 interface Column {
     key: ColKey;
@@ -44,7 +44,7 @@ const unknown = (s: string): boolean => !s.trim() || s.trim().toLowerCase() === 
 const COLUMNS: Column[] = [
     { key: "title", label: "Title", edit: "title", text: (b) => b.title, blank: (b) => unknown(b.title) },
     { key: "authors", label: "Authors", edit: "authors", text: (b) => b.authors, blank: (b) => b.authors.split("&").every(unknown) },
-    { key: "series", label: "Series", text: (b) => (b.series ? `${b.series} [${b.series_index}]` : ""), blank: (b) => !b.series.trim() },
+    { key: "series", label: "Series", edit: "series", text: (b) => (b.series ? `${b.series} [${b.series_index}]` : ""), blank: (b) => !b.series.trim() },
     { key: "publisher", label: "Publisher", edit: "publisher", text: (b) => b.publisher, blank: (b) => unknown(b.publisher) },
     // "" is Calibre's "no date" (year 101) too: tableDate in bulk_edit.go.
     { key: "pubdate", label: "Published", edit: "date", text: (b) => b.pubdate, blank: (b) => !b.pubdate },
@@ -754,6 +754,8 @@ function cellValue(b: TableBook, field: EditField): string {
             return b.title;
         case "authors":
             return b.authors;
+        case "series":
+            return b.series ? `${b.series} [${b.series_index}]` : "";
         case "publisher":
             return b.publisher;
         case "date":
@@ -763,6 +765,14 @@ function cellValue(b: TableBook, field: EditField): string {
         case "languages":
             return b.languages.join(", ");
     }
+}
+
+/** "Dune [2]" (or "Dune #2") as a series and its number; "Dune" leaves the number alone. */
+function seriesEdit(value: string): BulkEdit {
+    const m = /^(.*?)\s*(?:\[\s*([^\]]*?)\s*\]|#\s*(\d+(?:\.\d+)?))$/.exec(value);
+    if (!m) return { series: value };
+    const index = m[2] ?? m[3] ?? "";
+    return index ? { series: m[1]!, series_index: index } : { series: m[1]! };
 }
 
 let editing: { cell: HTMLElement; input: HTMLInputElement } | null = null;
@@ -785,6 +795,11 @@ function startEdit(cell: HTMLElement): boolean {
     if (field === "languages") attachSuggest(input, { category: "language", multi: true, key: languageKey });
     if (field === "authors") attachSuggest(input, { category: "author", multi: true, separators: "&" });
     if (field === "publisher") attachSuggest(input, { category: "publisher" });
+    if (field === "series") {
+        attachSuggest(input, { category: "series" });
+        input.placeholder = "Series [number]";
+        input.title = "The series, and the book's number in it in brackets: Dune [2]. Without a number the book keeps its own; empty: no series.";
+    }
     cell.replaceChildren(input);
     cell.classList.add("lt-editing");
     editing = { cell, input };
@@ -803,7 +818,7 @@ function startEdit(cell: HTMLElement): boolean {
         }
         input.disabled = true;
         try {
-            const res = await sendEdit([uuid], { [field]: value });
+            const res = await sendEdit([uuid], field === "series" ? seriesEdit(value) : { [field]: value });
             say(res.failed.length ? resultText(res) : `Saved “${res.books[0]?.title ?? r.b.title}”.`, res.failed.length ? "error" : "ok");
         } catch (err) {
             say(`Couldn't save: ${errorMessage(err)}`, "error");
@@ -852,13 +867,18 @@ attachSuggest(field("add_languages"), { category: "language", multi: true, key: 
 attachSuggest(field("languages"), { category: "language", multi: true, key: languageKey });
 attachSuggest(field("authors"), { category: "author", multi: true, separators: "&" });
 attachSuggest(field("publisher"), { category: "publisher" });
+attachSuggest(field("series"), { category: "series" });
 // Typing in a "set" box ticks it.
-for (const name of ["tags", "languages", "authors", "publisher", "date"]) {
+for (const name of ["tags", "languages", "authors", "series", "publisher", "date"]) {
     field(name).addEventListener("input", () => {
         field(`${name}_on`).checked = true;
         updateSummary();
     });
 }
+field("series_index").addEventListener("input", () => {
+    field("series_on").checked = true;
+    updateSummary();
+});
 form.addEventListener("input", updateSummary);
 form.addEventListener("change", updateSummary);
 
@@ -894,6 +914,11 @@ function buildEdit(): BulkEdit {
     if (addLangs.length) edit.add_languages = addLangs;
     if (field("languages_on").checked) edit.languages = field("languages").value;
     if (field("authors_on").checked && field("authors").value.trim()) edit.authors = field("authors").value;
+    if (field("series_on").checked) {
+        edit.series = field("series").value;
+        const index = field("series_index").value.trim();
+        if (index && edit.series.trim()) edit.series_index = index;
+    }
     if (field("publisher_on").checked) edit.publisher = field("publisher").value;
     if (field("date_on").checked) edit.date = field("date").value;
     return edit;
@@ -909,6 +934,10 @@ function updateSummary(): void {
     if (e.remove_languages) parts.push(`remove ${plural(e.remove_languages.length, "language")}`);
     if (e.add_languages) parts.push(`add ${plural(e.add_languages.length, "language")}`);
     if (e.authors !== undefined) parts.push("set the authors");
+    if (e.series !== undefined) {
+        const name = e.series.trim();
+        parts.push(!name ? "remove the series" : e.series_index ? `series “${name}”, number ${e.series_index}` : `series “${name}”`);
+    }
     if (e.publisher !== undefined) parts.push(e.publisher.trim() ? "set the publisher" : "clear the publisher");
     if (e.date !== undefined) parts.push(e.date ? "set the date" : "clear the date");
     summary.textContent = parts.length ? `For ${plural(selected.size, "book")}: ${parts.join(", ")}.` : "Nothing to change yet.";

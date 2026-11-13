@@ -20,6 +20,7 @@ import (
 	"net/http"
 	"path/filepath"
 	"slices"
+	"strconv"
 	"strings"
 	"sync"
 )
@@ -218,6 +219,12 @@ type bulkEdit struct {
 	Publisher *string `json:"publisher,omitempty"`
 	Date      *string `json:"date,omitempty"` // YYYY-MM-DD, "" for none
 
+	// Series: the books' series becomes this ("" for none). SeriesIndex:
+	// their number in it; without one a book keeps its number, or gets 1
+	// if it had no series. SeriesIndex alone renumbers books in a series.
+	Series      *string `json:"series,omitempty"`
+	SeriesIndex *string `json:"series_index,omitempty"`
+
 	Tags       *string  `json:"tags,omitempty"` // "a, b": the book's tags become these
 	AddTags    []string `json:"add_tags,omitempty"`
 	RemoveTags []string `json:"remove_tags,omitempty"` // any case
@@ -229,12 +236,20 @@ type bulkEdit struct {
 
 func (e *bulkEdit) empty() bool {
 	return e.Title == nil && e.Authors == nil && e.Publisher == nil && e.Date == nil &&
+		e.Series == nil && e.SeriesIndex == nil &&
 		e.Tags == nil && len(e.AddTags) == 0 && len(e.RemoveTags) == 0 &&
 		e.Languages == nil && len(e.AddLanguages) == 0 && len(e.RemoveLanguages) == 0
 }
 
 // apply makes the changes to m, and says whether anything changed.
 func (e *bulkEdit) apply(m *OPFMetadata) bool {
+	// No tags or languages are an empty list after, as before.
+	if m.Subjects == nil {
+		m.Subjects = []string{}
+	}
+	if m.Languages == nil {
+		m.Languages = []string{}
+	}
 	before, _ := json.Marshal(m)
 	if e.Title != nil && strings.TrimSpace(*e.Title) != "" {
 		m.Title = strings.TrimSpace(*e.Title)
@@ -253,6 +268,23 @@ func (e *bulkEdit) apply(m *OPFMetadata) bool {
 		} else {
 			m.Date = normalizeDate(d)
 		}
+	}
+
+	if e.Series != nil || e.SeriesIndex != nil {
+		name := m.Series
+		if e.Series != nil {
+			name = strings.Join(strings.Fields(*e.Series), " ")
+		}
+		index := m.SeriesIndex
+		if e.SeriesIndex != nil && strings.TrimSpace(*e.SeriesIndex) != "" {
+			index = formatSeriesIndex(*e.SeriesIndex)
+		} else if m.Series == "" {
+			index = "1"
+		}
+		if name == "" {
+			index = ""
+		}
+		m.Series, m.SeriesIndex, m.SeriesSet = name, index, true
 	}
 
 	if e.Tags != nil {
@@ -308,7 +340,8 @@ func (e *bulkEdit) apply(m *OPFMetadata) bool {
 }
 
 // bookEditMetadata is a book's metadata as the editor starts from it: its
-// metadata.opf, with the date as metadata.db stores dates.
+// metadata.opf, with the date as metadata.db stores dates and the series as
+// metadata.db has it (which the OPF may not match).
 func bookEditMetadata(uuid string) (*OPFMetadata, error) {
 	path, err := resolveBookPath(uuid)
 	if err != nil {
@@ -321,6 +354,17 @@ func bookEditMetadata(uuid string) (*OPFMetadata, error) {
 	m := opf.Metadata
 	if strings.TrimSpace(m.Date) != "" {
 		m.Date = normalizeDate(m.Date)
+	}
+	m.Series, m.SeriesIndex = "", ""
+	var series sql.NullString
+	var index float64
+	err = calibreDB.QueryRow(`SELECT (SELECT s.name FROM books_series_link x JOIN series s ON s.id = x.series WHERE x.book = b.id LIMIT 1), b.series_index
+		FROM books b WHERE b.uuid = ?`, uuid).Scan(&series, &index)
+	if err != nil {
+		return nil, fmt.Errorf("couldn't read the series: %w", err)
+	}
+	if series.Valid && strings.TrimSpace(series.String) != "" {
+		m.Series, m.SeriesIndex = series.String, strconv.FormatFloat(index, 'f', -1, 64)
 	}
 	return &m, nil
 }
@@ -407,6 +451,19 @@ func bulkEditHandler(w http.ResponseWriter, r *http.Request) {
 	if req.Edit.empty() {
 		http.Error(w, "nothing to change", http.StatusBadRequest)
 		return
+	}
+	if e := req.Edit; e.Series != nil || e.SeriesIndex != nil {
+		name, index := "x", ""
+		if e.Series != nil {
+			name = *e.Series
+		}
+		if e.SeriesIndex != nil {
+			index = *e.SeriesIndex
+		}
+		if _, _, err := cleanSeries(name, index); err != nil {
+			http.Error(w, err.Error(), http.StatusBadRequest)
+			return
+		}
 	}
 	res := bulkEditBooks(uniqueStrings(req.UUIDs), &req.Edit)
 	if res.Changed > 0 {

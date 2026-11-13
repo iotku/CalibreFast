@@ -50,7 +50,7 @@
                     <li>a dashed format is a file in the book's folder that metadata.db doesn't list (Calibre won't show it); <code>folder</code> in Formats finds them</li>
                     <li>the tick box beside a column's name: only books with nothing there, or the default a book gets when nothing was known (author or title <code>Unknown</code>, language <code>und</code>)</li>
                 </ul>
-                <p>Click a tag, language or format in a row to filter by it; <strong>+N</strong> shows the ones that don't fit. Double-click a title, author, publisher, date, tags or languages to edit it there (tags and languages also have a ✎ button before them) (Enter saves, Esc cancels). Shift-click ticks a range.</p>
+                <p>Click a tag, language or format in a row to filter by it; <strong>+N</strong> shows the ones that don't fit. Double-click a title, author, series, publisher, date, tags or languages to edit it there (tags and languages also have a ✎ button before them) (Enter saves, Esc cancels); a series' number goes in brackets: <code>Dune [2]</code>. Shift-click ticks a range.</p>
             </div>
         </details>
     </div>
@@ -96,6 +96,8 @@
         <fieldset class="lt-fieldset">
             <legend>Set for every book</legend>
             <label class="lt-field"><span><input type="checkbox" name="authors_on"> Authors</span> <input name="authors" autocomplete="off" placeholder="First Author &amp; Second Author"></label>
+            <label class="lt-field"><span><input type="checkbox" name="series_on"> Series</span> <input name="series" autocomplete="off" placeholder="(empty: none)"></label>
+            <label class="lt-field lt-field-sub">Number <input name="series_index" inputmode="decimal" autocomplete="off" placeholder="(empty: each keeps its own)"></label>
             <label class="lt-field"><span><input type="checkbox" name="publisher_on"> Publisher</span> <input name="publisher" autocomplete="off" placeholder="(empty: none)"></label>
             <label class="lt-field"><span><input type="checkbox" name="date_on"> Published</span> <input name="date" type="date"></label>
         </fieldset>
