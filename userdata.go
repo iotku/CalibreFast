@@ -106,7 +106,11 @@ func serveUUIDList(w http.ResponseWriter, r *http.Request, l uuidList) {
 		if page < 1 {
 			page = 1
 		}
-		uuids, err := l.Page(booksPerPage, (page-1)*booksPerPage)
+		limit, offset := booksPerPage, (page-1)*booksPerPage
+		if r.URL.Query().Get("all") == "1" { // the whole list, to arrange (list_order.go)
+			limit, offset = maxArrangeBooks, 0
+		}
+		uuids, err := l.Page(limit, offset)
 		if err != nil {
 			http.Error(w, "query failed", http.StatusInternalServerError)
 			return
@@ -167,19 +171,28 @@ func countQuery(q string, args ...any) func() (int, error) {
 func favoritesList(u *User) uuidList {
 	return uuidList{
 		Title: "Favorites", EmptyText: "No favorites yet — star a book to add it here.", BaseURL: "/me/favorites",
+		Extra: map[string]any{"Arrange": "/api/me/lists/favorites/order"},
 		Count: countQuery(`SELECT COUNT(*) FROM favorites WHERE user_id = ?`, u.ID),
 		Page: func(limit, offset int) ([]string, error) {
-			return scanStrings(appDB.Query(`SELECT book_uuid FROM favorites WHERE user_id = ? ORDER BY created_at DESC, book_uuid LIMIT ? OFFSET ?`, u.ID, limit, offset))
+			return scanStrings(appDB.Query(`SELECT book_uuid FROM favorites WHERE user_id = ? `+favoritesOrder+` LIMIT ? OFFSET ?`, u.ID, limit, offset))
 		},
 	}
 }
 
 func statusList(u *User, status, title, empty string) uuidList {
+	order := statusOrder
+	if status == "reading" { // most recently read first, always
+		order = `ORDER BY updated_at DESC, book_uuid`
+	}
+	var extra map[string]any
+	if arrangeable[status] {
+		extra = map[string]any{"Arrange": "/api/me/lists/" + status + "/order"}
+	}
 	return uuidList{
-		Title: title, EmptyText: empty, BaseURL: "/me/" + status,
+		Title: title, EmptyText: empty, BaseURL: "/me/" + status, Extra: extra,
 		Count: countQuery(`SELECT COUNT(*) FROM reading_status WHERE user_id = ? AND status = ?`, u.ID, status),
 		Page: func(limit, offset int) ([]string, error) {
-			return scanStrings(appDB.Query(`SELECT book_uuid FROM reading_status WHERE user_id = ? AND status = ? ORDER BY updated_at DESC, book_uuid LIMIT ? OFFSET ?`, u.ID, status, limit, offset))
+			return scanStrings(appDB.Query(`SELECT book_uuid FROM reading_status WHERE user_id = ? AND status = ? `+order+` LIMIT ? OFFSET ?`, u.ID, status, limit, offset))
 		},
 	}
 }
@@ -278,7 +291,8 @@ func setStatus(userID int64, uuid, status, source string) error {
 			return err
 		}
 		_, err := appDB.Exec(`INSERT INTO reading_status (user_id, book_uuid, status, source, updated_at) VALUES (?, ?, ?, 'manual', ?)
-			ON CONFLICT(user_id, book_uuid) DO UPDATE SET status = excluded.status, source = 'manual', updated_at = excluded.updated_at`,
+			ON CONFLICT(user_id, book_uuid) DO UPDATE SET status = excluded.status, source = 'manual', updated_at = excluded.updated_at,
+				position = CASE WHEN status = excluded.status THEN position END`,
 			userID, uuid, status, nowUnix())
 		return err
 	}
@@ -292,7 +306,8 @@ func setStatus(userID int64, uuid, status, source string) error {
 		return nil
 	}
 	_, err := appDB.Exec(`INSERT INTO reading_status (user_id, book_uuid, status, source, updated_at) VALUES (?, ?, ?, 'auto', ?)
-		ON CONFLICT(user_id, book_uuid) DO UPDATE SET status = excluded.status, source = 'auto', updated_at = excluded.updated_at`,
+		ON CONFLICT(user_id, book_uuid) DO UPDATE SET status = excluded.status, source = 'auto', updated_at = excluded.updated_at,
+			position = CASE WHEN status = excluded.status THEN position END`,
 		userID, uuid, status, nowUnix())
 	return err
 }

@@ -268,6 +268,14 @@ var migrations = []string{
 		PRIMARY KEY (user_id, name)
 	);
 	`,
+	// 15: books arranged by hand (list_order.go): Favorites, Want to read,
+	// Finished and shelves keep the order the user gave them. NULL: not
+	// arranged (added since), placed by date.
+	`
+	ALTER TABLE favorites ADD COLUMN position INTEGER;
+	ALTER TABLE reading_status ADD COLUMN position INTEGER;
+	ALTER TABLE shelf_books ADD COLUMN position INTEGER;
+	`,
 }
 
 // openAppDB opens (creating if needed) and migrates the app database.

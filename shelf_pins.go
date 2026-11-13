@@ -215,7 +215,7 @@ func fillShelfBooks(shelves []homeShelf) error {
 	}
 	rows, err := appDB.Query(`SELECT shelf_id, book_uuid FROM (
 			SELECT shelf_id, book_uuid,
-				ROW_NUMBER() OVER (PARTITION BY shelf_id ORDER BY added_at, book_uuid) AS n
+				ROW_NUMBER() OVER (PARTITION BY shelf_id `+shelfOrder+`) AS n
 			FROM shelf_books WHERE shelf_id IN (`+placeholders(len(ids))+`))
 		WHERE n <= ? ORDER BY shelf_id, n`, append(ids, shelfRowBooks)...)
 	if err != nil {

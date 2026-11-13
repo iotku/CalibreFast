@@ -5,7 +5,7 @@ package main
 //   - marks: the same as /api/me/reading, for every card on the page;
 //   - reading: the books being read, most recently active first (the newer
 //     of the status change and the last position, from any device);
-//   - wanted: want to read, most recently added first;
+//   - wanted: want to read, in its page's order (newest first unless arranged);
 //   - the page's layout and hidden tags (home_layout.go);
 // each capped, with the full counts for "See all". Book details come from
 // the catalog: nothing is read from the library.
@@ -65,7 +65,12 @@ func homeHandler(w http.ResponseWriter, r *http.Request) {
 	for uuid := range marks.Reading {
 		reading = append(reading, uuid)
 	}
-	reading, wanted := newestFirst(reading), newestFirst(marks.Wanted)
+	reading = newestFirst(reading)
+	wanted, err := wantedInOrder(currentUser(r)) // as arranged on its page (list_order.go)
+	if err != nil {
+		http.Error(w, "query failed", http.StatusInternalServerError)
+		return
+	}
 
 	ans := homeAnswer{Marks: marks, ReadingCount: len(reading), WantedCount: len(wanted)}
 	if ans.Reading, err = booksByUUIDs(reading[:min(len(reading), homeRowMax)]); err != nil {
