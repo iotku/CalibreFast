@@ -32,6 +32,7 @@ import { setupBookClickHandlers, loadBook, HASH_PREFIX } from "./modal.js";
 import { agrees, applyChange, cachedMarks, coverAction, fetchMarks, markCard, saveMarks, statusOf, type BookChange, type BookState, type Marks } from "./reading.js";
 import { sweep } from "./book-cache.js";
 import { markSelected, setupSelection } from "./select-books.js";
+import { setupPageDragScroll } from "./drag-scroll.js";
 
 const RENDER_AHEAD = 1; // screens of rows in the DOM past the viewport, in the scroll direction
 const RENDER_BEHIND = 0.5; // ...and the other way
@@ -163,6 +164,7 @@ window.addEventListener("DOMContentLoaded", () => {
     // the browser's scroll anchoring to do but fight the spacers.
     booksEl.style.overflowAnchor = "none";
     setupCoverStates(booksEl);
+    setupPageDragScroll(booksEl); // drag (and flick) the grid with the mouse, as on a phone
     booksEl.replaceChildren(topSpacer, bottomSpacer);
     lastWidth = booksEl.getBoundingClientRect().width;
     measure();
