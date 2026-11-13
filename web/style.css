@@ -3497,8 +3497,13 @@ body.selecting .book.selected .cover-wrapper {
     z-index: 4;
 }
 @media (hover: none) {
+    /* Alone on the cover here: the corner, at the touch size of the
+       row's other buttons. */
     .book .cover-action.rec-hide {
         display: grid;
+        top: 8px;
+        width: var(--touch-target);
+        height: var(--touch-target);
         opacity: 1;
         pointer-events: auto;
     }
