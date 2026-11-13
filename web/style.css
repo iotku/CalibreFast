@@ -411,10 +411,26 @@ input[type="number"],
     scroll-snap-type: x mandatory;
     scrollbar-width: thin;
     scrollbar-color: var(--border-medium) transparent;
-    padding-bottom: var(--gap-small);
+    /* Room under the cards for the scrollbar. Overlay scrollbars (Firefox
+       on KDE and GTK, macOS) are drawn inside this padding rather than
+       taking space of their own, and the cards (stacking contexts of their
+       own) can paint over them: the padding keeps the bar clear of the
+       covers, at its widest (hovered) size too. */
+    padding-bottom: 14px;
 }
 .row-books[hidden] {
     display: none;
+}
+/* Dragged with the mouse (web/drag-scroll.ts): no snapping or smooth
+   scrolling while it follows the pointer, and no text selection. */
+.row-books.drag-scrolling {
+    scroll-snap-type: none;
+    scroll-behavior: auto;
+    cursor: grabbing;
+    user-select: none;
+}
+.row-books.drag-scrolling .book {
+    cursor: grabbing;
 }
 .row-books > .book {
     scroll-snap-align: start;

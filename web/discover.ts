@@ -46,6 +46,7 @@ import {
 } from "./reading.js";
 import { forgetLocalReading, localReading, LOCAL_FINISHED } from "./local-reading.js";
 import { maxCovers } from "./cover-limits.js";
+import { setupDragScroll } from "./drag-scroll.js";
 
 const STRIP = 12; // books in a row
 const CURSOR_KEY = "cf-shuffle"; // ShuffleState
@@ -1058,6 +1059,7 @@ function openFromHash(): void {
 }
 
 setupCoverStates(root);
+setupDragScroll(root, ".row-books");
 setupIntro();
 setupShelves();
 const homeIn = setupHome();
