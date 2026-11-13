@@ -26,6 +26,7 @@ import (
 	"errors"
 	"hash/fnv"
 	"log"
+	"math/rand/v2"
 	"net/http"
 	"os"
 	"path/filepath"
@@ -153,69 +154,15 @@ func pinnedShelves(u *User, limit int) ([]homeShelf, error) {
 	for i, at := range shelves {
 		out[at] = sub[i]
 	}
-	names := make([]string, len(tagRows))
-	for i, at := range tagRows {
-		names[i] = out[at].Name
-	}
-	found := catalogTagBooks(currentCatalog(), names, shelfRowBooks)
+	// A tag's row starts at a random place in its books each time, so the
+	// page shows different ones on every load (tag_strip.go).
+	ix := currentTagIndex()
 	for _, at := range tagRows {
-		t := found[strings.ToLower(out[at].Name)]
-		out[at].Books, out[at].Count = t.books, t.count
+		name := out[at].Name
+		out[at].Count = ix.count(name)
+		out[at].Books, _ = ix.strip(name, rand.IntN(max(1, out[at].Count)), shelfRowBooks, nil)
 	}
 	return out, nil
-}
-
-// catalogTagBooks: for each tag named (as browsed, after groups), up to n of
-// its books in the shuffle order, and how many it has. One pass.
-func catalogTagBooks(c *catalog, names []string, n int) map[string]struct {
-	books []Book
-	count int
-} {
-	type acc struct {
-		books []Book
-		count int
-		seen  map[int32]bool
-	}
-	want := map[string]*acc{}
-	for _, name := range names {
-		want[strings.ToLower(name)] = &acc{books: []Book{}, seen: map[int32]bool{}}
-	}
-	byID := map[int32]*acc{}
-	for id, name := range c.tagNames {
-		if a := want[strings.ToLower(tagEntity(name))]; a != nil {
-			byID[id] = a
-		}
-	}
-	if len(byID) > 0 {
-		for _, slot := range c.shuffle {
-			b := &c.books[slot]
-			if b.Removed {
-				continue
-			}
-			for _, t := range b.TagIDs {
-				a := byID[t]
-				if a == nil || a.seen[slot] {
-					continue
-				}
-				a.seen[slot] = true
-				a.count++
-				if len(a.books) < n {
-					a.books = append(a.books, b.Book)
-				}
-			}
-		}
-	}
-	out := map[string]struct {
-		books []Book
-		count int
-	}{}
-	for k, a := range want {
-		out[k] = struct {
-			books []Book
-			count int
-		}{a.books, a.count}
-	}
-	return out
 }
 
 // featuredShelves: every featured shelf, in the featured order.
@@ -635,7 +582,7 @@ func savePinOrder(u *User, refs []pinRef) error {
 // PUT /api/me/tag-pins/{name}: a tag on the user's page (at the end).
 func tagPinHandler(w http.ResponseWriter, r *http.Request) {
 	name := tagEntity(strings.TrimSpace(r.PathValue("name")))
-	if name == "" || len(name) > maxDiscoverTagNameLen || catalogTagBooks(currentCatalog(), []string{name}, 0)[strings.ToLower(name)].count == 0 {
+	if name == "" || len(name) > maxDiscoverTagNameLen || currentTagIndex().count(name) == 0 {
 		http.Error(w, "no such tag", http.StatusNotFound)
 		return
 	}

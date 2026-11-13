@@ -3,6 +3,7 @@ package main
 import (
 	"encoding/json"
 	"net/http"
+	"net/url"
 	"os"
 	"path/filepath"
 	"slices"
@@ -58,7 +59,7 @@ func TestTagRows(t *testing.T) {
 	mux.HandleFunc("PUT /api/admin/discover/settings", requireAdminUser(discoverSettingsPutHandler))
 	mux.HandleFunc("PUT /api/admin/discover/tags/{name}", requireAdminUser(discoverTagPutHandler))
 	mux.HandleFunc("DELETE /api/admin/discover/tags/{name}", requireAdminUser(discoverTagDeleteHandler))
-	mux.Handle("GET /pages/", servePages("pages"))
+	mux.HandleFunc("GET /api/tag-strip", tagStripHandler)
 	do := func(who *User, method, path, body string, want int) []byte {
 		t.Helper()
 		rec := call(t, mux, who, method, path, body)
@@ -90,35 +91,26 @@ func TestTagRows(t *testing.T) {
 	if rows()["SF"] != 5 {
 		t.Fatalf("SF counts its members' books once each: %v", rows())
 	}
-	// Each file: the tag's books (the group's, for SF), at most tagRowBooks.
+	// Each row's books, from /api/tag-strip: the tag's (the group's, for SF).
 	for _, r := range currentTagRows().index {
-		data, err := os.ReadFile(tagRowFile(r.N))
-		if err != nil {
-			t.Fatal(err)
-		}
-		var books []Book
-		_ = json.Unmarshal(data, &books)
+		var got tagStripAnswer
+		_ = json.Unmarshal(do(reader, "GET", "/api/tag-strip?start=0&tag="+url.QueryEscape(r.Name), "", http.StatusOK), &got)
 		want := byTag[r.Name]
 		if r.Name == "SF" {
 			want = append(slices.Clone(byTag["Sci-Fi"]), byTag["Science Fiction"]...)
 		}
-		if len(books) != len(want) {
-			t.Fatalf("%s: %d books, want %d", r.Name, len(books), len(want))
+		if len(got.Books) != len(want) || got.Count != len(want) {
+			t.Fatalf("%s: %d books of %d, want %d", r.Name, len(got.Books), got.Count, len(want))
 		}
-		for _, b := range books {
+		for _, b := range got.Books {
 			if !slices.Contains(want, b.UUID) {
 				t.Fatalf("%s holds %s", r.Name, b.Title)
 			}
 		}
 	}
-	// Cached for good under the rows' version, revalidated otherwise.
-	v := currentTagRows().version
-	rec := call(t, mux, reader, "GET", "/pages/discover/tag-0.json?v="+v, "")
-	if cc := rec.Header().Get("Cache-Control"); rec.Code != 200 || cc != "private, max-age=31536000, immutable" {
-		t.Fatalf("tag file: %d %q", rec.Code, cc)
-	}
-	if cc := call(t, mux, reader, "GET", "/pages/discover/tag-0.json?v=old", "").Header().Get("Cache-Control"); cc != "no-cache" {
-		t.Fatalf("stale tag file: %q", cc)
+	// Files from older versions go.
+	if err := os.WriteFile(tagRowFile(0), []byte("[]"), 0o644); err != nil {
+		t.Fatal(err)
 	}
 
 	// Admins only.
@@ -135,11 +127,8 @@ func TestTagRows(t *testing.T) {
 	if got := names(); !slices.Equal(got, []string{"Fiction", "Rare", "Space Opera"}) {
 		t.Fatalf("rows after include/deny: %q", got)
 	}
-	if v2 := currentTagRows().version; v2 == v {
-		t.Fatal("version unchanged")
-	}
-	if _, err := os.Stat(tagRowFile(3)); err == nil {
-		t.Fatal("a file from the longer list was left behind")
+	if _, err := os.Stat(tagRowFile(0)); err == nil {
+		t.Fatal("an old tag file was left behind")
 	}
 	var answer struct {
 		Share float64           `json:"broad_tag_share"`

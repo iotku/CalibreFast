@@ -17,9 +17,9 @@ type DiscoverPageData struct {
 	// featured.json's stamp; "" when no shelf is featured. Signed-out
 	// visitors' shelf rows (signed-in users' come with /api/me/home).
 	FeaturedVersion string
-	// The tag rows: their index (JSON) and their files' stamp.
-	TagRows, TagVersion string
-	ShuffleTotal        int
+	// The tag rows' index (JSON).
+	TagRows      string
+	ShuffleTotal int
 	// For the introduction's sign-in line, shown to signed-out visitors
 	// (only -public servers let them see this page at all).
 	Registration     bool // -allow-registrations
@@ -44,7 +44,6 @@ func discoverHandler(w http.ResponseWriter, r *http.Request) {
 		Version:          currentPagesVersion(),
 		FeaturedVersion:  currentFeaturedVersion(),
 		TagRows:          tags.json,
-		TagVersion:       tags.version,
 		ShuffleTotal:     int(shuffleTotal.Load()),
 		Registration:     allowRegistrations,
 		ReadNeedsAccount: publicCatalog && !publicRead,

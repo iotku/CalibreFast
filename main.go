@@ -269,13 +269,11 @@ func writeJSONFile(path string, data []byte) error {
 }
 
 // pagesFileVersion: the version of a Discover file that has its own
-// (featured shelves, tag rows), else "".
+// (featured shelves), else "".
 func pagesFileVersion(path string) string {
 	switch {
 	case path == "/pages/discover/featured.json":
 		return currentFeaturedVersion()
-	case strings.HasPrefix(path, "/pages/discover/tag-"):
-		return currentTagRows().version
 	}
 	return ""
 }
