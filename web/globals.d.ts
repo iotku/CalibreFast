@@ -43,6 +43,8 @@ declare namespace EpubJS {
     }
     interface View {
         document: Document;
+        /** The highlights' SVG layer, once one is drawn; render() places them again from their text. */
+        pane?: { render(): void };
     }
     /** A rendered chapter (its iframe's document). */
     interface Contents {
@@ -64,6 +66,8 @@ declare namespace EpubJS {
         /** "paginated" or "scrolled-doc". */
         flow(flow: string): void;
         getContents(): Contents[];
+        /** The chapters on screen: the manager's collection, or [] before there is one. */
+        views(): { all(): View[] } | View[];
         hooks: { content: { register(fn: (contents: Contents) => void): void } };
         annotations: {
             highlight(cfi: string, data?: object, cb?: () => void, className?: string, styles?: Record<string, string>): void;

@@ -242,6 +242,24 @@ rendition.hooks.content.register((contents) => styleDocument(contents.document))
 // Settings that change how much fits on a page: lay out again, once the
 // taps on a stepper have stopped.
 let relayoutTimer: ReturnType<typeof setTimeout> | undefined;
+// epub.js places highlights again only when a chapter's frame changes size,
+// and resize() does nothing when the window hasn't. Text that moved inside
+// the same frame (line spacing, font, alignment) would leave them where the
+// words were, so they're placed again after every relayout, and once it has
+// settled on a page (a resize that does take shows the chapter again, later).
+const placeMarks = (): void => {
+    requestAnimationFrame(() => {
+        const views = rendition.views();
+        for (const v of Array.isArray(views) ? views : views.all()) v.pane?.render();
+    });
+};
+const relayout = (): void => {
+    rendition.resize();
+    placeMarks();
+};
+rendition.on("relocated", placeMarks);
+// A font that arrives after the text was laid out moves it again.
+rendition.hooks.content.register((contents) => contents.document.fonts.addEventListener("loadingdone", placeMarks));
 onSettingsChange((s, changed) => {
     if (changed.includes("margin")) document.body.dataset.margin = s.margin;
     if (changed.includes("flow")) {
@@ -253,13 +271,13 @@ onSettingsChange((s, changed) => {
     if (!changed.some((k) => layout.includes(k))) return;
     restyle();
     clearTimeout(relayoutTimer);
-    relayoutTimer = setTimeout(() => rendition.resize(), 150);
+    relayoutTimer = setTimeout(relayout, 150);
 });
 // The page's box moves with the bars' measured heights, which epub.js
 // (watching only the window) wouldn't notice.
 new ResizeObserver(() => {
     clearTimeout(relayoutTimer);
-    relayoutTimer = setTimeout(() => rendition.resize(), 150);
+    relayoutTimer = setTimeout(relayout, 150);
 }).observe(container);
 
 // ---- position: resume (local or synced), save as the reader moves ----------
