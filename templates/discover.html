@@ -56,7 +56,7 @@
             <section class="row" id="row-reading" aria-labelledby="row-reading-title" hidden>
                 <header class="row-head">
                     <h2 id="row-reading-title">Continue reading<span class="row-sub" id="row-reading-device" hidden> on this device</span></h2>
-                    <a href="/me/reading" class="row-all" hidden>See all</a>
+                    <a href="/me/reading" class="row-btn row-all" hidden><span>See all</span><svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M9 6l6 6-6 6"/></svg></a>
                 </header>
                 <p class="row-hint" hidden>Books you open in the reader, or mark as reading, appear here.</p>
                 <div class="row-books"></div>
@@ -65,7 +65,7 @@
             <section class="row" id="row-wanted" aria-labelledby="row-wanted-title" hidden>
                 <header class="row-head">
                     <h2 id="row-wanted-title">Want to read</h2>
-                    <a href="/me/wanted" class="row-all" hidden>See all</a>
+                    <a href="/me/wanted" class="row-btn row-all" hidden><span>See all</span><svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M9 6l6 6-6 6"/></svg></a>
                 </header>
                 <p class="row-hint" hidden>Hover over a cover and click the bookmark to add a book here.</p>
                 <div class="row-books"></div>
@@ -87,6 +87,13 @@
             <section class="row" id="row-recommended" aria-labelledby="row-recommended-title" hidden>
                 <header class="row-head">
                     <h2 id="row-recommended-title">Recommended for you</h2>
+                    {{/* The row stays as it is until asked for more: the next page of the user's list. */}}
+                    <div class="row-tools">
+                        <button type="button" class="row-btn" id="rec-next" hidden>
+                            <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M21 12a9 9 0 1 1-2.64-6.36"/><path d="M21 3v6h-6"/></svg>
+                            <span>Refresh</span>
+                        </button>
+                    </div>
                 </header>
                 <p class="row-hint" hidden>Mark books as reading or want to read, or star them, and suggestions like them appear here.</p>
                 <div class="row-books"></div>
@@ -117,7 +124,7 @@
             <section class="row" id="row-latest" aria-labelledby="row-latest-title" hidden>
                 <header class="row-head">
                     <h2 id="row-latest-title">Recently added</h2>
-                    <a href="/latest">See all</a>
+                    <a href="/latest" class="row-btn row-all"><span>See all</span><svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M9 6l6 6-6 6"/></svg></a>
                 </header>
                 <div class="row-books"></div>
             </section>

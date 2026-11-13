@@ -234,6 +234,21 @@ var migrations = []string{
 		PRIMARY KEY (user_id, name)
 	);
 	`,
+	// 12: Recommended for you (recommendations_state.go): the books a user
+	// isn't interested in, and where their row is (its seed and page).
+	`
+	CREATE TABLE not_interested (
+		user_id    INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+		book_uuid  TEXT    NOT NULL,
+		created_at INTEGER NOT NULL,
+		PRIMARY KEY (user_id, book_uuid)
+	);
+	CREATE TABLE rec_state (
+		user_id INTEGER PRIMARY KEY REFERENCES users(id) ON DELETE CASCADE,
+		seed    INTEGER NOT NULL,
+		page    INTEGER NOT NULL
+	);
+	`,
 }
 
 // openAppDB opens (creating if needed) and migrates the app database.

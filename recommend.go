@@ -13,9 +13,13 @@ package main
 //   - Candidates: the books of the top tags (a bounded number, in the
 //     shuffle order), scored by their tags' scores, plus a bonus for a
 //     seed's author, with a little randomness so the row changes between
-//     visits. Books the user has marked in any way are left out.
+//     seed; the seed is the user's own, so the row stays the same until
+//     they ask for more (recommendations_state.go). Books the user has
+//     marked in any way, or said they're not interested in, are left out.
 //   - Next in series first: for a series the user is reading or finished
 //     a book of, the next book after the furthest one they're on.
+//   - Pages: the whole ranked list, a row at a time. Refresh steps to the
+//     next page, and after the last back to the first with a new seed.
 //
 // Tags count after tag groups, as everywhere else.
 
@@ -35,7 +39,7 @@ const (
 	recPerTag       = 1000 // candidates from each
 	recAffinityTags = 3    // the user's own tag rows
 	recAuthorBonus  = 0.5  // of the best tag's score
-	recJitter       = 0.15 // up to this share of a score, at random
+	recJitter       = 0.15 // up to this share of a score, at random (the seed's)
 	recSeriesMax    = 6
 )
 
@@ -143,8 +147,10 @@ func (ix *recIndex) bookTags(b *catalogBook) []int32 {
 	return out
 }
 
-// recommend works out the Recommended row and the user's strongest tags.
-func recommend(m readingMarks, rng *rand.Rand) (recs []recBook, tags []string) {
+// recommend works out a page of the Recommended row (recRowMax books), how
+// many pages there are, and the user's strongest tags. hide: books the user
+// isn't interested in. A page past the last is the first.
+func recommend(m readingMarks, hide map[string]bool, rng *rand.Rand, page int) (recs []recBook, pages int, tags []string) {
 	ix := currentRecIndex()
 	c := ix.cat
 	recs = []recBook{}
@@ -168,7 +174,7 @@ func recommend(m readingMarks, rng *rand.Rand) (recs []recBook, tags []string) {
 	add(m.Favorites, 3)
 	add(m.Wanted, 1)
 	if len(weight) == 0 {
-		return recs, tags
+		return recs, 0, tags
 	}
 
 	// Seeds in the catalog, in a fixed order (scores don't depend on map order).
@@ -223,13 +229,30 @@ func recommend(m readingMarks, rng *rand.Rand) (recs []recBook, tags []string) {
 	}
 	slices.SortFunc(nexts, func(a, b seriesNext) int { return cmp.Compare(c.books[a.slot].Title, c.books[b.slot].Title) })
 	shown := map[int32]bool{}
-	for _, n := range nexts[:min(len(nexts), recSeriesMax)] {
+	var series []recBook
+	for _, n := range nexts {
 		b := &c.books[n.slot]
-		if marked[b.UUID] && !slices.Contains(m.Wanted, b.UUID) {
+		if len(series) >= recSeriesMax || hide[b.UUID] || (marked[b.UUID] && !slices.Contains(m.Wanted, b.UUID)) {
 			continue
 		}
 		shown[n.slot] = true
-		recs = append(recs, recBook{Book: b.Book, Kind: "series", Because: n.after})
+		series = append(series, recBook{Book: b.Book, Kind: "series", Because: n.after})
+	}
+	// The page of the whole list (series, then cands) from page*recRowMax.
+	paged := func(nCands int, cand func(i int) recBook) ([]recBook, int, []string) {
+		total := len(series) + nCands
+		pages = (total + recRowMax - 1) / recRowMax
+		if page < 0 || page >= pages {
+			page = 0
+		}
+		for i := page * recRowMax; i < min(total, (page+1)*recRowMax); i++ {
+			if i < len(series) {
+				recs = append(recs, series[i])
+			} else {
+				recs = append(recs, cand(i-len(series)))
+			}
+		}
+		return recs, pages, tags
 	}
 
 	// Tag affinity.
@@ -263,7 +286,7 @@ func recommend(m readingMarks, rng *rand.Rand) (recs []recBook, tags []string) {
 		tags = append(tags, ix.names[e])
 	}
 	if len(top) == 0 {
-		return recs, tags
+		return paged(0, nil)
 	}
 	best := score[top[0]]
 
@@ -277,7 +300,7 @@ func recommend(m readingMarks, rng *rand.Rand) (recs []recBook, tags []string) {
 	for _, e := range top[:min(len(top), recTopTags)] {
 		for _, slot := range ix.postings[e][:min(len(ix.postings[e]), recPerTag)] {
 			b := &c.books[slot]
-			if seen[slot] || shown[slot] || marked[b.UUID] {
+			if seen[slot] || shown[slot] || marked[b.UUID] || hide[b.UUID] {
 				continue
 			}
 			seen[slot] = true
@@ -301,14 +324,10 @@ func recommend(m readingMarks, rng *rand.Rand) (recs []recBook, tags []string) {
 		}
 		return cmp.Compare(a.slot, b.slot)
 	})
-	for _, cd := range cands {
-		if len(recs) >= recRowMax {
-			break
-		}
-		b := &c.books[cd.slot]
-		recs = append(recs, recBook{Book: b.Book, Kind: "tags", Because: because(ix, b, seeds)})
-	}
-	return recs, tags
+	return paged(len(cands), func(i int) recBook {
+		b := &c.books[cands[i].slot]
+		return recBook{Book: b.Book, Kind: "tags", Because: because(ix, b, seeds)}
+	})
 }
 
 // because: the seed sharing the most tags with b (the heaviest, on a tie).

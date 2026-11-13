@@ -13,11 +13,9 @@ package main
 // (the Discover page's "on this device" row for signed-out visitors).
 
 import (
-	"math/rand/v2"
 	"net/http"
 	"slices"
 	"strings"
-	"time"
 )
 
 const (
@@ -73,7 +71,10 @@ func homeHandler(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "query failed", http.StatusInternalServerError)
 		return
 	}
-	ans.Recommended, ans.Tags = recommend(marks, rand.New(rand.NewPCG(uint64(time.Now().UnixNano()), 0)))
+	if ans.Recommended, ans.Tags, err = userRecommend(currentUser(r), marks); err != nil {
+		http.Error(w, "query failed", http.StatusInternalServerError)
+		return
+	}
 	if ans.Shelves, err = pinnedShelves(currentUser(r), shelfRowsMax); err != nil {
 		http.Error(w, "query failed", http.StatusInternalServerError)
 		return

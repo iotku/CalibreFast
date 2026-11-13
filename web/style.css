@@ -376,6 +376,11 @@ input[type="number"],
 .row-btn[hidden] {
     display: none;
 }
+/* "See all": a button like the rest, not a link in the text. */
+.row-head a.row-btn {
+    color: var(--text-primary);
+    text-decoration: none;
+}
 .row-btn:hover:not(:disabled) {
     background: var(--bg-elevated);
     border-color: var(--border-medium);
@@ -3482,6 +3487,51 @@ body.selecting .book.selected .cover-wrapper {
 .tag-row.pinned-away,
 .tag-menu[hidden] {
     display: none;
+}
+/* Recommended for you: Not interested, under the cover's other buttons
+   (shown on touch screens too, where those are left to the popup). */
+.rec-hide {
+    position: absolute;
+    top: 50px;
+    right: 8px;
+    z-index: 4;
+}
+@media (hover: none) {
+    /* Alone on the cover here: the corner, at the touch size of the
+       row's other buttons. */
+    .book .cover-action.rec-hide {
+        display: grid;
+        top: 8px;
+        width: var(--touch-target);
+        height: var(--touch-target);
+        opacity: 1;
+        pointer-events: auto;
+    }
+}
+/* A card the user isn't interested in: said so, with Undo, until the row
+   is next filled. */
+.book.rec-hidden > :not(.rec-gone) {
+    visibility: hidden;
+}
+.rec-gone {
+    position: absolute;
+    inset: 0;
+    z-index: 5;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    gap: var(--gap-medium);
+    padding: var(--gap-medium);
+    border: 1px dashed var(--border-light);
+    border-radius: var(--radius-large);
+    background: var(--bg-surface);
+    color: var(--text-muted);
+    text-align: center;
+    cursor: default;
+}
+.rec-gone p {
+    margin: 0;
 }
 /* Recommended for you: why each book is there. */
 .book-because {

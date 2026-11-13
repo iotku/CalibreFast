@@ -10,9 +10,14 @@
  *     finished are skipped. There's deliberately no link to /shuffle.
  *   - Shelves: the signed-in user's pinned and featured shelves (from
  *     /api/me/home), which they can unpin and reorder; for a signed-out
- *     visitor, the featured ones (pages/discover/featured.json).
+ *     visitor, the featured ones (pages/discover/featured.json). A pinned
+ *     tag's row starts somewhere new on each load and walks its tag with
+ *     Shuffle and Previous, like the "More in" rows.
  *   - Recommended for you (signed in): from /api/me/home, next in series
- *     first, each with what it follows or is like.
+ *     first, each with what it follows or is like. It stays the same until
+ *     the user asks for more (Refresh: the next page of their list, from
+ *     /api/me/recommended/next); Not interested on a card hides that book
+ *     from their recommendations for good, with Undo in its place.
  *   - More in <tag>: a few tag rows; the signed-in user's strongest tags
  *     first, then picked at random from the index in the page (weighted by
  *     size; tags an admin included weighted up), each filled from
@@ -49,6 +54,7 @@ import { maxCovers } from "./cover-limits.js";
 import { setupDragScroll } from "./drag-scroll.js";
 
 const STRIP = 12; // books in a row
+const PIN_STRIP = 24; // books in a pinned tag's row (Go: shelfRowBooks)
 const CURSOR_KEY = "cf-shuffle"; // ShuffleState
 const INTRO_KEY = "cf-intro-hidden";
 
@@ -78,6 +84,30 @@ const store = {
         }
     },
 };
+
+/** A row's "See all" button. */
+function seeAll(href: string): string {
+    return `<a href="${escapeHtml(href)}" class="row-btn row-all">
+        <span>See all</span>
+        <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M9 6l6 6-6 6"/></svg>
+    </a>`;
+}
+
+const SHUFFLE_ICON = `<svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M16 3h5v5M4 20L21 3M21 16v5h-5M15 15l6 6M4 4l5 5"/></svg>`;
+const BACK_ICON = `<svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M9 14L4 9l5-5"/><path d="M4 9h11a5 5 0 0 1 0 10h-3"/></svg>`;
+
+/** A tag row's Previous and Shuffle (hidden when the tag fits in one strip). */
+function tagStepButtons(name: string, hidden: boolean): string {
+    const h = hidden ? " hidden" : "";
+    return `<button type="button" class="row-btn" data-act="tag-back" aria-label="Previous books in ${name}" disabled${h}>
+                    ${BACK_ICON}
+                    <span>Previous</span>
+                </button>
+                <button type="button" class="row-btn" data-act="tag-next" aria-label="More books in ${name}"${h}>
+                    ${SHUFFLE_ICON}
+                    <span>Shuffle</span>
+                </button>`;
+}
 
 /* ------------------------------------------------------------------ */
 /* Page files                                                          */
@@ -132,7 +162,7 @@ function fillRow(row: string | HTMLElement, books: Book[], { hint = false, all =
 
 async function latestRow(): Promise<void> {
     if (!totalBooks) return;
-    fillRow("row-latest", (await pageFile("/pages/", 1)).slice(0, STRIP));
+    fillRow("row-latest", (await pageFile("/pages/", 1)).slice(0, STRIP), { all: true });
 }
 
 /*
@@ -380,6 +410,8 @@ interface HomeShelf {
     featured?: boolean;
     count: number;
     books: Book[];
+    start?: number; // a tag's: where its strip starts, and the next one
+    next?: number;
 }
 
 function repaintMarks(only?: string): void {
@@ -568,12 +600,13 @@ function featured(): Promise<HomeShelf[]> {
 let reordering: Reorderable | null = null;
 
 /**
- * A pinned tag's books as first shown on this page. The server starts a
- * tag's row at a random place on each answer, so the page differs on every
- * load; the answers that come after (a mark changed, back to the tab) keep
- * the books the row already has instead of swapping them under the user.
+ * A pinned tag's row as this page has it: its walker and the books it
+ * shows. The server starts a tag's row at a random place on each answer,
+ * so the page differs on every load; the answers that come after (a mark
+ * changed, back to the tab) keep the books the row already has instead of
+ * swapping them under the user, and where Shuffle got to.
  */
-const pinnedTagBooks = new Map<string, Book[]>();
+const pinnedTagWalkers = new Map<string, TagWalker>();
 
 /**
  * The shelf rows. own: the signed-in user's, with Remove and Reorder.
@@ -586,10 +619,22 @@ function showShelves(shelves: HomeShelf[], own: boolean): void {
     pinnedTags = new Set(shelves.filter((s) => s.kind === "tag").map((s) => s.name.toLowerCase()));
     shelves.forEach((s, i) => {
         const tag = s.kind === "tag";
+        let walker: TagWalker | undefined;
         if (tag) {
             const key = s.name.toLowerCase();
-            if (!pinnedTagBooks.has(key)) pinnedTagBooks.set(key, s.books);
-            s = { ...s, books: pinnedTagBooks.get(key)! };
+            walker = pinnedTagWalkers.get(key);
+            if (!walker) {
+                walker = {
+                    row: { n: 0, name: s.name, href: s.href, count: s.count },
+                    size: PIN_STRIP,
+                    cur: { starts: [s.start ?? 0], next: s.next ?? null },
+                    books: s.books,
+                    busy: false,
+                };
+                pinnedTagWalkers.set(key, walker);
+            }
+            walker.row.count = s.count;
+            s = { ...s, books: walker.books };
         }
         if (!s.books.length) return;
         const section = document.createElement("section");
@@ -603,7 +648,8 @@ function showShelves(shelves: HomeShelf[], own: boolean): void {
             <header class="row-head">
                 <h2 id="pin-${i}-title"><a class="row-title-link" href="${escapeHtml(s.href)}">${name}</a>${tag ? '<span class="row-sub"> tag</span>' : ""}</h2>
                 <div class="row-tools">
-                    <a href="${escapeHtml(s.href)}" class="row-all">See all</a>
+                    ${tag ? tagStepButtons(name, s.count <= PIN_STRIP) : ""}
+                    ${seeAll(s.href)}
                     ${
                         own
                             ? `<details class="row-menu">
@@ -622,6 +668,10 @@ function showShelves(shelves: HomeShelf[], own: boolean): void {
             <div class="row-books"></div>`;
         list.append(section);
         fillRow(section, s.books, { all: true });
+        if (walker) {
+            tagWalkers.set(section, walker);
+            updateTagButtons(section, walker);
+        }
     });
     pinControls(own);
     updateTagRows(own);
@@ -630,18 +680,82 @@ function showShelves(shelves: HomeShelf[], own: boolean): void {
 /** The user's strongest tags (lower case): their rows come first. */
 let affinityTags: string[] = [];
 
-/** Recommended for you, each card saying why. */
+const HIDE_ICON = `<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M6 6l12 12M18 6L6 18" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round"/></svg>`;
+
+/** Recommended for you, each card saying why, with Not interested. */
 function showRecommended(recs: RecBook[]): void {
     const section = byId("row-recommended");
     fillRow(section, recs.map((r) => r.book), { hint: true });
+    byId("rec-next").hidden = recs.length === 0;
     recs.forEach((r, i) => {
         const card = section.querySelectorAll<HTMLElement>(".row-books > .book")[i];
-        const info = card?.querySelector(".book-info");
+        if (!card) return;
+        const hide = document.createElement("button");
+        hide.type = "button";
+        hide.className = "cover-action rec-hide";
+        hide.dataset["act"] = "rec-hide";
+        hide.title = "Not interested";
+        hide.setAttribute("aria-label", `Not interested in ${r.book.title || "this book"}`);
+        hide.innerHTML = HIDE_ICON;
+        card.append(hide);
+        const info = card.querySelector(".book-info");
         if (!info || !r.because) return;
         const why = document.createElement("div");
         why.className = "book-because";
         why.textContent = r.kind === "series" ? `Next after ${r.because}` : `Like ${r.because}`;
         info.append(why);
+    });
+}
+
+/** The cached answer's Recommended row, changed in place. */
+function keepRecommended(change: (recs: RecBook[]) => RecBook[]): void {
+    const h = cachedHome();
+    if (!h) return;
+    h.recommended = change(h.recommended ?? []);
+    store.set(HOME_KEY, JSON.stringify(h));
+}
+
+function setupRecommended(): void {
+    const section = byId("row-recommended");
+    const next = byId("rec-next", HTMLButtonElement);
+    next.addEventListener("click", () => {
+        if (next.disabled) return;
+        next.disabled = true;
+        void api<{ recommended: RecBook[] }>("POST", "/api/me/recommended/next")
+            .then((a) => {
+                showRecommended(a.recommended ?? []);
+                keepRecommended(() => a.recommended ?? []);
+                const list = section.querySelector<HTMLElement>(".row-books");
+                if (list) list.scrollLeft = 0;
+            })
+            .catch(() => {})
+            .finally(() => (next.disabled = false));
+    });
+    section.addEventListener("click", (e) => {
+        const btn = e.target instanceof Element ? e.target.closest<HTMLButtonElement>('[data-act="rec-hide"], [data-act="rec-undo"]') : null;
+        const card = btn?.closest<HTMLElement>(".book");
+        const uuid = card?.dataset["uuid"];
+        if (!btn || !card || !uuid) return;
+        e.preventDefault();
+        const hide = btn.dataset["act"] === "rec-hide";
+        // At once here: the card says it's hidden, with Undo; the row fills
+        // the gap the next time it's loaded.
+        const set = (on: boolean): void => {
+            card.classList.toggle("rec-hidden", on);
+            card.querySelector(".rec-gone")?.remove();
+            if (!on) return;
+            const gone = document.createElement("div");
+            gone.className = "rec-gone";
+            gone.innerHTML = `<p>Not interested</p><button type="button" class="row-btn" data-act="rec-undo">Undo</button>`;
+            card.append(gone);
+            gone.querySelector("button")!.focus();
+        };
+        set(hide);
+        void api("PUT", `/api/me/books/${encodeURIComponent(uuid)}/not-interested`, { not_interested: hide })
+            .then(() => {
+                if (hide) keepRecommended((recs) => recs.filter((r) => r.book.uuid !== uuid));
+            })
+            .catch(() => set(!hide));
     });
 }
 
@@ -796,13 +910,13 @@ interface TagStrip {
 
 const tagStrips = new Map<string, Promise<TagStrip | null>>();
 
-/** The strip of the tag's books from start (null: a random place). */
-function tagStrip(name: string, start: number | null): Promise<TagStrip | null> {
-    const key = `${name.toLowerCase()}\n${start}`;
+/** n of the tag's books from start (null: a random place). */
+function tagStrip(name: string, start: number | null, n: number): Promise<TagStrip | null> {
+    const key = `${name.toLowerCase()}\n${start}\n${n}`;
     let p = start === null ? undefined : tagStrips.get(key);
     if (!p) {
         const at = start === null ? "" : `&start=${start}`;
-        p = fetch(`/api/tag-strip?tag=${encodeURIComponent(name)}&n=${STRIP}${at}`, { credentials: "same-origin" })
+        p = fetch(`/api/tag-strip?tag=${encodeURIComponent(name)}&n=${n}${at}`, { credentials: "same-origin" })
             .then((r) => (r.ok ? (r.json() as Promise<TagStrip>) : null))
             .catch(() => null);
         if (start !== null) {
@@ -813,10 +927,12 @@ function tagStrip(name: string, start: number | null): Promise<TagStrip | null> 
     return p;
 }
 
-/** A tag row's Shuffle and Previous. */
+/** A tag row's Shuffle and Previous ("More in", or a pinned tag's). */
 interface TagWalker {
     row: TagRow;
+    size: number; // books in a strip
     cur: TagCursor;
+    books: Book[]; // on screen
     busy: boolean;
 }
 
@@ -838,7 +954,7 @@ async function showTagStrip(section: HTMLElement, w: TagWalker, start: number | 
     w.busy = true;
     updateTagButtons(section, w);
     try {
-        const s = await tagStrip(w.row.name, start);
+        const s = await tagStrip(w.row.name, start, w.size);
         if (!s) return false;
         // The server leaves out what the user finished; this also leaves
         // out what was finished on this device.
@@ -847,7 +963,10 @@ async function showTagStrip(section: HTMLElement, w: TagWalker, start: number | 
         if (push) w.cur.starts = [...w.cur.starts, s.start].slice(-SHUFFLE_HISTORY);
         w.cur.next = s.next;
         saveTagCursor(w.row.name.toLowerCase(), w.cur);
-        if (books.length) fillRow(section, books, { all: true });
+        if (books.length) {
+            w.books = books;
+            fillRow(section, books, { all: true });
+        }
         return books.length > 0;
     } finally {
         w.busy = false;
@@ -885,22 +1004,16 @@ function setupTagRows(): void {
                 return;
             }
             const row = queue.splice(k, 1)[0]!;
-            const w: TagWalker = { row, cur: cursors.get(row.name.toLowerCase()) ?? { starts: [], next: null }, busy: false };
+            const cur = cursors.get(row.name.toLowerCase()) ?? { starts: [], next: null };
+            const w: TagWalker = { row, size: STRIP, cur, books: [], busy: false };
             const name = escapeHtml(row.name);
             const href = escapeHtml(row.href);
             section.dataset["name"] = row.name;
             section.querySelector("header")!.innerHTML = `
             <h2 id="tag-row-${i}-title">More in <a class="row-title-link" href="${href}">${name}</a></h2>
             <div class="row-tools">
-                <button type="button" class="row-btn" data-act="tag-back" aria-label="Previous books in ${name}" disabled>
-                    <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M9 14L4 9l5-5"/><path d="M4 9h11a5 5 0 0 1 0 10h-3"/></svg>
-                    <span>Previous</span>
-                </button>
-                <button type="button" class="row-btn" data-act="tag-next" aria-label="More books in ${name}">
-                    <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M16 3h5v5M4 20L21 3M21 16v5h-5M15 15l6 6M4 4l5 5"/></svg>
-                    <span>Shuffle</span>
-                </button>
-                <a href="${href}" class="row-all">See all</a>
+                ${tagStepButtons(name, row.count <= STRIP)}
+                ${seeAll(row.href)}
                 <details class="row-menu tag-menu" hidden>
                     <summary class="row-btn" aria-label="Options for ${name}">
                         <svg viewBox="0 0 24 24" width="16" height="16" fill="currentColor" aria-hidden="true"><circle cx="5" cy="12" r="2"/><circle cx="12" cy="12" r="2"/><circle cx="19" cy="12" r="2"/></svg>
@@ -910,8 +1023,6 @@ function setupTagRows(): void {
                     </div>
                 </details>
             </div>`;
-            // A tag that fits in one strip shows all its books already.
-            for (const b of section.querySelectorAll<HTMLElement>('[data-act^="tag-"]')) b.hidden = row.count <= STRIP;
             tagWalkers.set(section, w);
             if (await showTagStrip(section, w, w.cur.next, true)) break;
         }
@@ -941,21 +1052,6 @@ function setupTagRows(): void {
     }
     updateTagRows(signedIn() === true);
     box.addEventListener("click", (e) => {
-        const step = e.target instanceof Element ? e.target.closest<HTMLButtonElement>('[data-act="tag-next"], [data-act="tag-back"]') : null;
-        const stepRow = step?.closest<HTMLElement>(".tag-row");
-        const w = stepRow && tagWalkers.get(stepRow);
-        if (step && stepRow && w && !w.busy) {
-            if (step.dataset["act"] === "tag-next") {
-                void showTagStrip(stepRow, w, w.cur.next, true).then(() => {
-                    // Still on the button: get the strip after this one ready too.
-                    if (step.matches(":hover, :focus-visible")) preloadTagStrip(w);
-                });
-            } else if (w.cur.starts.length >= 2) {
-                w.cur.starts = w.cur.starts.slice(0, -1);
-                void showTagStrip(stepRow, w, w.cur.starts[w.cur.starts.length - 1]!, false);
-            }
-            return;
-        }
         const btn = e.target instanceof Element ? e.target.closest<HTMLButtonElement>('[data-act="pin-tag"]') : null;
         const section = btn?.closest<HTMLElement>(".tag-row");
         const name = section?.dataset["name"];
@@ -968,15 +1064,6 @@ function setupTagRows(): void {
             .catch(() => {})
             .then(() => refreshHome());
     });
-    // About to shuffle: fetch the next strip's covers now, so they show at once.
-    const aboutTo = (e: Event): void => {
-        const btn = e.target instanceof Element ? e.target.closest('[data-act="tag-next"]') : null;
-        const section = btn?.closest<HTMLElement>(".tag-row");
-        const w = section && tagWalkers.get(section);
-        if (w) preloadTagStrip(w);
-    };
-    box.addEventListener("pointerover", aboutTo);
-    box.addEventListener("focusin", aboutTo);
     // A menu closes when the click is elsewhere.
     document.addEventListener("click", (e) => {
         for (const m of box.querySelectorAll<HTMLDetailsElement>(".row-menu[open]")) {
@@ -985,10 +1072,38 @@ function setupTagRows(): void {
     });
 }
 
+/** Shuffle and Previous of the tag rows ("More in" and pinned ones). */
+function setupTagSteps(): void {
+    root.addEventListener("click", (e) => {
+        const step = e.target instanceof Element ? e.target.closest<HTMLButtonElement>('[data-act="tag-next"], [data-act="tag-back"]') : null;
+        const section = step?.closest<HTMLElement>(".row");
+        const w = section && tagWalkers.get(section);
+        if (!step || !section || !w || w.busy) return;
+        if (step.dataset["act"] === "tag-next") {
+            void showTagStrip(section, w, w.cur.next, true).then(() => {
+                // Still on the button: get the strip after this one ready too.
+                if (step.matches(":hover, :focus-visible")) preloadTagStrip(w);
+            });
+        } else if (w.cur.starts.length >= 2) {
+            w.cur.starts = w.cur.starts.slice(0, -1);
+            void showTagStrip(section, w, w.cur.starts[w.cur.starts.length - 1]!, false);
+        }
+    });
+    // About to shuffle: fetch the next strip's covers now, so they show at once.
+    const aboutTo = (e: Event): void => {
+        const btn = e.target instanceof Element ? e.target.closest('[data-act="tag-next"]') : null;
+        const section = btn?.closest<HTMLElement>(".row");
+        const w = section && tagWalkers.get(section);
+        if (w) preloadTagStrip(w);
+    };
+    root.addEventListener("pointerover", aboutTo);
+    root.addEventListener("focusin", aboutTo);
+}
+
 /** The covers of a tag row's next strip, into the browser's cache. */
 function preloadTagStrip(w: TagWalker): void {
     if (w.busy || w.cur.next === null) return;
-    void tagStrip(w.row.name, w.cur.next).then((s) => {
+    void tagStrip(w.row.name, w.cur.next, w.size).then((s) => {
         for (const b of s?.books ?? []) preloadCover(coverUrl(b));
     });
 }
@@ -1062,6 +1177,8 @@ setupCoverStates(root);
 setupDragScroll(root, ".row-books");
 setupIntro();
 setupShelves();
+setupTagSteps();
+setupRecommended();
 const homeIn = setupHome();
 setupTagRows(); // after the cached home answer: pinned tags aren't picked
 openFromHash();
