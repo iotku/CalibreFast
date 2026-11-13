@@ -24,6 +24,10 @@ interface FetchEvent extends ExtendableEvent {
     request: Request;
     respondWith(r: Response | Promise<Response>): void;
 }
+// Chrome 123+: requests matching a route skip this worker altogether.
+interface InstallEvent extends ExtendableEvent {
+    addRoutes?(rules: { condition: { urlPattern: string }; source: "network" }[]): Promise<void>;
+}
 interface ExtendableMessageEvent extends ExtendableEvent {
     data: unknown;
 }
@@ -32,7 +36,8 @@ interface SWScope {
     skipWaiting(): Promise<void>;
     clients: { claim(): Promise<void> };
     registration: { scope: string };
-    addEventListener(type: "install" | "activate", fn: (e: ExtendableEvent) => void): void;
+    addEventListener(type: "install", fn: (e: InstallEvent) => void): void;
+    addEventListener(type: "activate", fn: (e: ExtendableEvent) => void): void;
     addEventListener(type: "fetch", fn: (e: FetchEvent) => void): void;
     addEventListener(type: "message", fn: (e: ExtendableMessageEvent) => void): void;
 }
@@ -44,7 +49,22 @@ const OFFLINE = "/offline";
 
 const assets = (): string[] => sw.CF_ASSETS ?? [];
 
+/**
+ * What this worker never handles, sent straight to the browser's own cache
+ * and the network. Without these routes every cover on a page wakes the
+ * worker first (starting it, if it was idle) only to be passed on, which
+ * delays covers the browser already has.
+ */
+const BYPASS = ["/cover-thumb/*", "/cover/*", "/pages/*", "/api/*"];
+
 sw.addEventListener("install", (e) => {
+    if (e.addRoutes) {
+        e.waitUntil(
+            e.addRoutes(BYPASS.map((p) => ({ condition: { urlPattern: p }, source: "network" }))).catch(() => {
+                /* routes not supported: the fetch handler passes them on as before */
+            }),
+        );
+    }
     e.waitUntil(
         (async () => {
             const cache = await caches.open(STATIC);

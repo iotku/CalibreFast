@@ -145,7 +145,7 @@ func coverThumbHandler(w http.ResponseWriter, r *http.Request) {
 	// A book already found to have no cover isn't looked for again on the
 	// library (which may be slow storage) until its cover or entry changes.
 	if _, missing := noCover.Load(uuid); missing {
-		http.NotFound(w, r)
+		noThumb(w, r)
 		return
 	}
 
@@ -173,6 +173,8 @@ func coverThumbHandler(w http.ResponseWriter, r *http.Request) {
 	case err != nil:
 		if errors.Is(err, fs.ErrNotExist) {
 			noCover.Store(uuid, struct{}{})
+			noThumb(w, r)
+			return
 		}
 		http.NotFound(w, r)
 	default:
@@ -294,6 +296,18 @@ func writeThumb(w http.ResponseWriter, data []byte, cacheHit bool) {
 	w.Header().Set("Cache-Control", "public, max-age=31536000, immutable")
 	w.Header().Set("X-Cache-Hit", strconv.FormatBool(cacheHit))
 	_, _ = w.Write(data)
+}
+
+// noThumb answers for a book without a cover. The browser keeps the answer
+// for a day, so a coverless card costs one request per day rather than one
+// per view (or several on one page, where the book shows in more than one
+// row). The URL carries the book's last_modified stamp, which a new cover
+// changes, so the cover shows at once when one is added. A day, not a year:
+// a library on a network mount that was briefly missing would otherwise
+// leave covers blank for good.
+func noThumb(w http.ResponseWriter, r *http.Request) {
+	w.Header().Set("Cache-Control", "public, max-age=86400")
+	http.NotFound(w, r)
 }
 
 func resizeToWidth(img image.Image, width int) image.Image {
