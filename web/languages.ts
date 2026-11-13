@@ -52,6 +52,11 @@ export function languageKey(code: string): string {
     return ((known ? known.code : base) + (rest ? `-${rest}` : "")).toLowerCase();
 }
 
+/** "English" for "eng" or "en"; an unknown code as is. */
+export function languageName(code: string): string {
+    return table[split(code)[0].toLowerCase()]?.name ?? code;
+}
+
 /** Chip label: "English (eng)", "English (en-US)"; unknown codes as is. */
 export function languageChipLabel(code: string): string {
     const known = table[split(code)[0].toLowerCase()];

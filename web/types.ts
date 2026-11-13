@@ -42,6 +42,8 @@ export interface MeResponse {
 export interface ValueSuggestion {
     value: string;
     label?: string;
+    /** Books with this value. */
+    count?: number;
 }
 
 /** An identifier as Go sends it (Go: opfIdentifier in opf.go). */

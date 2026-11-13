@@ -331,9 +331,15 @@ body {
     gap: 8px 12px;
 }
 
+.lookup-status-row {
+    flex: 1 1 240px;
+    display: flex;
+    align-items: center;
+    gap: 8px;
+}
+
 .lookup-status {
     margin: 0;
-    flex: 1 1 240px;
     color: var(--muted);
 }
 
@@ -440,6 +446,18 @@ body {
 
 .lookup-result.picked .lookup-result-label {
     color: var(--accent);
+}
+
+a.lookup-result-label {
+    display: inline-flex;
+    align-items: center;
+    gap: 4px;
+    text-decoration: none;
+}
+
+a.lookup-result-label:hover {
+    color: var(--accent);
+    text-decoration: underline;
 }
 
 @media (max-width: 480px) {
@@ -1773,7 +1791,26 @@ input[type="date"].meta-input::-webkit-calendar-picker-indicator:hover {
 .merge-book-formats {
     display: flex;
     flex-wrap: wrap;
+    align-items: center;
     gap: 4px;
+}
+
+/* One file: its format, then Preview (EPUB, PDF) and download. */
+.merge-file {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+}
+
+.merge-file a {
+    color: var(--accent);
+    text-decoration: none;
+    padding-left: 6px;
+    border-left: 1px solid var(--border);
+}
+
+.merge-file a:hover {
+    text-decoration: underline;
 }
 
 .merge-keep {
@@ -1923,4 +1960,141 @@ input[type="date"].meta-input::-webkit-calendar-picker-indicator:hover {
 
 .merge-readers-note:empty {
     display: none;
+}
+
+/* ── Info buttons: how the page works, shown on a click ── */
+.sr-only {
+    position: absolute;
+    width: 1px;
+    height: 1px;
+    overflow: hidden;
+    clip: rect(0 0 0 0);
+    white-space: nowrap;
+}
+
+/* The popover is placed against the section around it (position: relative
+   there), not the small button, so it fits on a phone. */
+.info-tip {
+    display: inline-block;
+    flex-shrink: 0;
+}
+
+.info-tip-btn {
+    list-style: none;
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    cursor: pointer;
+    color: var(--muted);
+    font-size: 0.75rem;
+}
+
+.info-tip-btn::-webkit-details-marker {
+    display: none;
+}
+
+.info-tip-i {
+    flex-shrink: 0;
+    display: block;
+}
+
+.info-tip-btn:hover,
+.info-tip[open] > .info-tip-btn {
+    color: var(--accent);
+}
+
+.info-tip-btn:focus-visible {
+    outline: 2px solid var(--accent);
+    outline-offset: 2px;
+    border-radius: 4px;
+}
+
+/* A popover under the button, over what follows */
+.info-tip-body {
+    position: absolute;
+    z-index: 20;
+    margin-top: 6px;
+    left: 12px;
+    width: min(26rem, calc(100% - 24px));
+    box-sizing: border-box;
+    padding: 10px 14px;
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    box-shadow: 0 12px 30px rgba(0, 0, 0, 0.5);
+    font-size: 0.8rem;
+    line-height: 1.5;
+    color: var(--text);
+}
+
+.info-tip-body p {
+    margin: 0;
+}
+
+.info-tip-body p + p {
+    margin-top: 0.6em;
+}
+
+.info-tip-body a {
+    color: var(--accent);
+}
+
+/* The banner's: in its top right corner, opening leftwards */
+.book-banner-info {
+    position: relative;
+}
+
+.book-banner-info > .info-tip > .info-tip-btn {
+    position: absolute;
+    top: 2px;
+    right: 0;
+}
+
+.book-banner-info > .info-tip .info-tip-body {
+    top: 28px;
+    margin-top: 0;
+    left: auto;
+    right: 0;
+    width: min(26rem, 100%);
+}
+
+.lookup-bar {
+    position: relative;
+}
+
+.book-banner-title {
+    padding-right: 28px;
+}
+
+/* The merge panel's: a line at its foot that opens in place */
+.merge-info {
+    display: block;
+    margin-top: 10px;
+}
+
+.merge-info .info-tip-body {
+    position: static;
+    width: auto;
+    text-align: left;
+    margin-top: 6px;
+    box-shadow: none;
+    color: var(--muted);
+}
+
+/* The library's commonest languages, one click each (web/metadata.ts) */
+.common-languages {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 6px;
+    margin-top: 8px;
+}
+
+.common-languages[hidden] {
+    display: none;
+}
+
+.common-languages-label {
+    font-size: 0.75rem;
+    color: var(--muted);
 }

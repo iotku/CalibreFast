@@ -41,6 +41,8 @@ export type ChipInput = HTMLDivElement & {
     textInput: HTMLInputElement;
     /** Redraw the chips (e.g. once labelFor has its data). */
     rerender(): void;
+    /** Add one value as a chip, as if typed (what's half typed stays). */
+    addValue(value: string): void;
 };
 
 export function parseList(value: string | null | undefined): string[] {
@@ -353,6 +355,12 @@ export function createChipInput(
     root.activeValues = () => active().map((c) => c.text);
     root.textInput = text;
     root.rerender = render;
+    root.addValue = (value: string) => {
+        addItems([value]);
+        dropPlaceholders();
+        render();
+        emit();
+    };
     render();
     return root;
 }

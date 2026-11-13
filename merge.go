@@ -109,6 +109,15 @@ func (b *mergeBook) DownloadURL(format string) string {
 	return "/download/" + b.UUID + "/" + format
 }
 
+// PreviewURL opens the book's file in format in a reader's preview mode, to
+// see which copy is which ("" for a format no reader opens: download it).
+func (b *mergeBook) PreviewURL(format string) string {
+	if b.Incoming() {
+		return previewFormatLink("import", b.Import, format)
+	}
+	return previewFormatLink("uuid", b.UUID, format)
+}
+
 // mergeFormatView is one format a merge can keep, for the page.
 type mergeFormatView struct {
 	Ext     string

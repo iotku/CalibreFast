@@ -1171,6 +1171,9 @@ button.row-icon:hover {
 }
 
 .site-bar {
+    /* The same on every page, whatever font the page itself uses */
+    font-family: var(--font-family);
+    font-weight: 400;
     height: var(--topbar-total);
     padding: 0 var(--page-padding);
     gap: 10px;

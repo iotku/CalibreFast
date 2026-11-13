@@ -52,6 +52,10 @@ const FOUND_IN: Record<IsbnCandidate["source"], string> = {
 type Source = "openlibrary" | "google";
 const SOURCE_NAMES: Record<Source, string> = { openlibrary: "Open Library", google: "Google Books" };
 
+/** "Opens in a new window": a box with an arrow out of its corner. */
+const EXTERNAL_ICON =
+    '<svg viewBox="0 0 24 24" width="12" height="12" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6"/><path d="M15 3h6v6"/><path d="M10 14 21 3"/></svg>';
+
 /** Pages of a PDF read for ISBNs: copyright pages are near either end. */
 const PDF_FIRST_PAGES = 5;
 const PDF_LAST_PAGES = 3;
@@ -371,9 +375,8 @@ function mountLookup(host: IsbnToolsHost): { lookUpIsbn(isbn: string): void; sug
     function renderStatus(): void {
         if (busy) return;
         if (found) return say(found);
-        say(isbnBox.value.trim()
-            ? "Fill in this book's details from Open Library: search by its ISBN (the likeliest match), or by title and author."
-            : "Fill in this book's details from Open Library: enter its ISBN, or search by title and author.");
+        // How it works is behind the bar's info button.
+        say("Look up on Open Library");
     }
 
     function renderActions(): void {
@@ -392,6 +395,31 @@ function mountLookup(host: IsbnToolsHost): { lookUpIsbn(isbn: string): void; sug
             add("Try Google Books", `Sends ${describe(g)} to Google. Google Books often has a description.`, () => void askGoogle(g));
         }
         more.replaceChildren(...buttons);
+    }
+
+    /** The match's own page on the site it came from; "" when it has no id. */
+    const pageUrl = (m: Match): string => {
+        const id = (scheme: string): string =>
+            m.meta.Identifiers?.find((i) => i.Scheme.toLowerCase() === scheme)?.Value ?? "";
+        if (m.source === "google") {
+            const g = id("google");
+            return g ? `https://books.google.com/books?id=${encodeURIComponent(g)}` : "";
+        }
+        // An edition (OL…M) when the ISBN found one, else the work (OL…W).
+        const olid = id("olid");
+        if (/^OL\d+M$/i.test(olid)) return `https://openlibrary.org/books/${olid}`;
+        if (/^OL\d+W$/i.test(olid)) return `https://openlibrary.org/works/${olid}`;
+        return "";
+    };
+
+    /** The source's name (its pills' name once ticked), linking to the match's page. */
+    function resultLabel(m: Match): HTMLElement {
+        const name = m.label ?? SOURCE_NAMES[m.source];
+        const url = pageUrl(m);
+        if (!url) return el("span", { className: "lookup-result-label" }, name);
+        const a = el("a", { className: "lookup-result-label", href: url, target: "_blank", rel: "noopener noreferrer", title: `Open this ${SOURCE_NAMES[m.source]} page in a new tab` }, name);
+        a.insertAdjacentHTML("beforeend", EXTERNAL_ICON);
+        return a;
     }
 
     function renderList(): void {
@@ -423,7 +451,7 @@ function mountLookup(host: IsbnToolsHost): { lookUpIsbn(isbn: string): void; sug
                             details ? el("span", { className: "lookup-result-meta" }, details) : "",
                         ),
                     ),
-                    el("span", { className: "lookup-result-label" }, m.label ? `→ ${m.label}` : SOURCE_NAMES[m.source]),
+                    resultLabel(m),
                     compare,
                 );
             }),
