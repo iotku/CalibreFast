@@ -314,7 +314,7 @@ Per book, in localStorage: position (`progress-<uuid>-<format>`), bookmarks (`bo
 - Guest positions are saved with `pending: false` and guest highlights and bookmarks with `synced: false`. The import reads those as-is.
 - Records saved before #98 are under the plain names, so they're guest data too, including a signed-in user's changes that hadn't been sent. The review hides any that already match the account, so a user's own older copies don't show up as conflicts.
 - Sign-out drops the user's synced records and keeps unsent ones under their name, so they never become guest data.
-- **Still to do for the flow:** `cf-local-reading` (section 5a) indexes guest books only. The flow finds guest highlights and bookmarks by scanning for `cf-annotations-*` and `cf-bookmarks-*` keys. The scan runs once per sign-in, and only when the index or such a key exists.
+- **Finding guest data:** `cf-local-reading` (section 5a) indexes guest books only. The flow finds guest highlights and bookmarks by scanning for `cf-annotations-*` and `cf-bookmarks-*` keys. The scan runs once per sign-in, and only when the index or such a key exists.
 - After a successful import the guest records are deleted (the account now has them, under `cf-u/<username>/` once the reader next opens the book). Skipped books keep their guest records.
 
 #### The flow
