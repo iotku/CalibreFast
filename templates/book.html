@@ -93,9 +93,10 @@
                 </a>
                 {{ end }}
             </div>
-            <!-- Per-user controls (/book/me/<uuid>) are loaded by user.ts, below
-                 the buttons, so nothing you might tap moves when they arrive.
-                 Space is reserved while the throbber shows. -->
+            <!-- Per-user controls (/book/me/<uuid>), loaded by user.ts. The
+                 column's CSS puts Favorite and the reading status above the
+                 cover (the throbber holds their place, so nothing moves when
+                 they arrive) and the shelves under the buttons. -->
             <div class="book-user-actions" data-uuid="{{ .UUID }}">
                 <div class="throbber" role="status" aria-label="Loading"><span class="throbber-dot"></span><span class="throbber-dot"></span><span class="throbber-dot"></span></div>
             </div>
