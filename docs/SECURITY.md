@@ -91,6 +91,8 @@ The metadata editor's lookup bar sends a book's ISBN (**Search ISBN**) or its ti
 
 CalibreFast writes to the same `metadata.db` and book folders that the Calibre desktop app uses. Editing in both at once can lose changes or confuse Calibre. **Close Calibre while editing through CalibreFast.**
 
+Changes made to the library outside CalibreFast (in Calibre, `calibre-server` or by hand) show up after CalibreFast restarts: at startup it notices that `metadata.db` changed and reads the library again. Until then, pages show the library as it was.
+
 ## Where data is stored
 
 - **`-datadir`** (default `./data`) holds `calibrefast.db`: accounts, sessions, sync key hashes, favorites, progress (including KOReader devices' positions and names), bookmarks, highlights and notes, and shelves. It also caches the fingerprints KOReader uses for library files.

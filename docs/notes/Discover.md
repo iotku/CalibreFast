@@ -150,7 +150,7 @@ func currentCatalog() *catalog  // never nil after startup
 - Changes arriving together (a bulk edit's batches) are coalesced: callers enqueue uuids, and one goroutine applies everything queued at most every 250 ms.
 - **Group changes** don't touch the library: they only re-map tag ids to groups in memory.
 - New books get random positions in the shuffle. Removed books stay as tombstones until restart, as the page gaps do (`removeFromPages`).
-- A missed call site only means a stale title or tag in a row until the next restart or external-change check, never a wrong book. `TestCatalogHooks` (below) lists the write endpoints and fails if one doesn't notify the catalog.
+- A missed call site only means a stale title or tag in a row until the next restart, never a wrong book. `TestCatalogHooks` (below) lists the write endpoints and fails if one doesn't notify the catalog.
 
 **Snapshot on the SSD.** After a build or change (debounced, 5 s), the catalog is written to `<cachedir>/catalog.snap`: a versioned binary encoding (`encoding/gob`, or a hand-rolled one if gob's reflection is slow at 100k entries; measure). Alongside it go the `stat` key of `metadata.db` and its `-wal`/`-journal` files (size + mtime) and the library's `PRAGMA data_version`/schema cookie.
 
@@ -159,12 +159,7 @@ func currentCatalog() *catalog  // never nil after startup
   - With a snapshot from before, serve from that snapshot while the build runs.
   - Without one, the server waits for the build, as it does today.
 
-**External changes** (Calibre desktop or `calibre-server` writing the same `metadata.db` while CalibreFast runs; today only a restart picks them up):
-
-- **Only while the site is in use**: at most once a minute, a page load triggers a background `PRAGMA data_version` on the held connection. It never blocks the request. A fixed timer would wake a sleeping drive every minute, all night; this way an idle server leaves the library alone.
-- If another process committed, read the `books` table's `id, uuid, last_modified` in one sequential pass (~4 MB at 100k) and diff it against the catalog. Changed and new ids go through `catalogChanged`, missing ones through `catalogRemoved`, and the affected pages are rewritten.
-- `-library-poll=0` turns it off; `-library-poll=10m` checks less often.
-- Separate phase (10). SQLite's own locking over network filesystems is a known caveat and unchanged by this.
+**External changes** (Calibre desktop or `calibre-server` writing the same `metadata.db` while CalibreFast runs): not planned. A restart picks them up, since the snapshot key no longer matches and the library is read again; an outside commit while running also ends snapshot saving for that run. The docs (`docs/SECURITY.md`) say to restart after editing elsewhere. Polling `PRAGMA data_version` and diffing `books` (the dropped phase 10) would have served a workflow the docs already advise against.
 
 **First users** (phase 1, no visible change):
 - `booksByUUIDs` (userdata.go:31) answers from the catalog: every `/me/*` list, shelves, and later `/api/me/home`. A miss falls back to the SQL it uses today (and counts in `libraryIO`, so tests show if it happens).
@@ -361,7 +356,7 @@ The Discover "Continue reading" row switches from the device's guest list to `/a
 | Upload, edit, bulk edit, merge, import, repairs, covers | `catalogChanged(uuids)`: indexed re-read of those books only (section 1) | page1 as today; the tag files holding them rewritten, `pagesVersion` bumped; shuffle files untouched until restart |
 | Remove / restore | `catalogRemoved` / `catalogChanged`: tombstone and back | `removeFromPages` / `restoreToPages` also handle shuffle and tag files |
 | Group change | re-map tags to groups in memory (no library read) | rewrite tag files |
-| External change (phase 10) | `data_version` check, `books` diff, then the same calls | affected pages rewritten |
+| External change | picked up at the next restart (snapshot key differs) | every page checked |
 | Any of the above | snapshot rewritten to `-cachedir` (debounced) | — |
 | Discover tag settings | recompute the eligible set (no rebuild) | rewrite tag files |
 | Featured shelf change | — | rewrite `featured.json`, bump `featuredVersion` |
@@ -407,7 +402,7 @@ Goal from the maintainer: a thumbnail the browser already has should cost **no r
 7. **Tag rows + admin include/deny + cutoff setting**.
 8. **Recommendations + next in series** (denied tags excluded).
 9. **Invalidation polish**, docs (`ARCHITECTURE.md`, `FEATURES.md`).
-10. **External changes**: `data_version` polling, `books` diff, `-library-poll`.
+10. ~~**External changes**: `data_version` polling, `books` diff, `-library-poll`.~~ Dropped: a restart resyncs, and the docs say to restart after editing the library elsewhere.
 
 ## Decisions
 
