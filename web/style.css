@@ -1823,23 +1823,22 @@ body.book-standalone {
     white-space: nowrap;
 }
 
+/* Read's left padding matches Download's width, so its label centers on
+   the whole row: down the middle of the cover, like a full-row Download. */
 .book-actions .btn-action-read {
     grid-column: 1;
+    padding-left: calc(var(--pad) + var(--side));
     border-top-right-radius: 0;
     border-bottom-right-radius: 0;
 }
 
 /* The labels share one width, so the icons stack in a column (the book's
-   spine over the download arrow's stem) and the words start together. */
+   spine over the download arrow's stem); the words center in it, and a
+   margin as wide as the icon balances it, so they center on the row. */
 .book-actions .btn-action:not(.is-side) span {
     min-width: 7.5em;
-    text-align: left;
-}
-
-/* With Read buttons above, a full-row Download centers its label where
-   theirs are (their half of the row) rather than on the whole row. */
-.book-actions:has(.is-side) > .btn-action-download:not(.is-side) {
-    padding-right: calc(var(--pad) + var(--side));
+    margin-right: calc(16px + 0.5rem);
+    text-align: center;
 }
 
 /* Read's other half: dark, with a gold icon and outline, so it reads as
@@ -2232,10 +2231,11 @@ body.book-standalone {
     /* the 160px column: Read's label alone fits beside Download */
     .book-actions .btn-action:not(.is-side) span {
         min-width: 0;
+        margin-right: 0;
     }
 
-    .book-actions:has(.is-side) > .btn-action-download:not(.is-side) {
-        padding-right: var(--pad);
+    .book-actions .btn-action-read {
+        padding-left: var(--pad);
     }
 
 
