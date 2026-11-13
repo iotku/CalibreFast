@@ -54,25 +54,24 @@ let previews: Preview[] = [];
 
 const params = new URLSearchParams(location.search);
 const onlyBook = params.get("book");
-/** Where to go afterwards: an allowed path on this site, or nowhere. */
+/**
+ * Where to go afterwards: back into the reader the user signed in from
+ * (guest-sync.ts), on this site, or nowhere. Parsed as a URL and checked by
+ * its exact path, so nothing else (another site, "//host", "/\\host") can
+ * be reached through it.
+ */
+const RETURN_PATHS = new Set(["/read", "/read-pdf"]);
 const next = ((): string | null => {
     const raw = params.get("next");
     if (!raw) return null;
-
     let url: URL;
     try {
         url = new URL(raw, location.origin);
     } catch {
         return null;
     }
-
-    if (url.origin !== location.origin) return null;
-
-    const candidate = `${url.pathname}${url.search}${url.hash}`;
-
-    // Keep this list tight: only routes that are valid "return to" targets for this flow.
-    const allowedPrefixes = ["/reader", "/library", "/account"];
-    return allowedPrefixes.some((p) => candidate === p || candidate.startsWith(`${p}/`)) ? candidate : null;
+    if (url.origin !== location.origin || !RETURN_PATHS.has(url.pathname)) return null;
+    return `${url.pathname}${url.search}${url.hash}`;
 })();
 
 /** On to next (single-book mode), or say so on the page. */
