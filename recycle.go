@@ -918,6 +918,7 @@ func restoreFromBin(batchID string, uuids, formats []string, by string) ([]resto
 			b.RestoredBy = by
 			changed = true
 			catalogChanged(b.UUID)
+			forgetRedirect(b.UUID) // itself again, not the book it was merged into
 			logErr(restoreToPages(b.UUID), "recycling bin: couldn't put "+b.UUID+" back in the library pages")
 			log.Printf("recycling bin: %s restored %q (%s) from batch %s", by, b.Title, b.UUID, batch.ID)
 		}

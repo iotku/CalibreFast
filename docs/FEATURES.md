@@ -196,7 +196,8 @@ The same book added twice (its EPUB once, its PDF another time, or two copies wi
   - the other books go to the Recycling Bin whole, as one batch marked **Merged** that names the kept book. Restoring one brings it back as a separate book; the merged book keeps the files it took;
   - readers' favorites, reading status, places and shelves for the other books are copied to the kept book (the newest status and place win, per format);
   - readers' bookmarks and highlights are tied to the exact file they were made in, so per format they follow only from books whose file is byte for byte the one kept. A book whose file in that format differs (another edition, another scan) keeps its readers' places but not their bookmarks and highlights, which would land in the wrong places. The page says, under each format, whose won't carry over for the file chosen. The kept book's own bookmarks and highlights in a file that's replaced go to the bin with that file. The originals stay with the old books for a restore;
-  - the metadata is saved as the editor saves it.
+  - the metadata is saved as the editor saves it;
+  - links to the merged-away books (their page or popup, the readers, downloads) lead to the kept book from then on, through later merges too. Restoring one from the bin makes its links its own again.
 - Afterwards the merged book opens.
 
 ## Bulk metadata editor
