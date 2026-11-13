@@ -1809,7 +1809,9 @@ body.book-standalone {
    format without a reader gets Download across the row. */
 .book-actions {
     display: grid;
-    grid-template-columns: minmax(0, 1fr) 48px;
+    --side: 48px; /* Download beside Read */
+    --pad: 0.6rem;
+    grid-template-columns: minmax(0, 1fr) var(--side);
     gap: 0.5rem 0;
     margin-top: 1rem;
 }
@@ -1817,36 +1819,46 @@ body.book-standalone {
 .book-actions .btn-action {
     grid-column: 1 / -1;
     min-width: 0;
+    padding: 0 var(--pad);
     white-space: nowrap;
 }
 
-/* Read's label is centered on the whole row (the left padding matches
-   Download's width), so it lines up with a full-row Download below. */
 .book-actions .btn-action-read {
     grid-column: 1;
-    padding: 0 0.6rem 0 calc(0.6rem + 48px);
     border-top-right-radius: 0;
     border-bottom-right-radius: 0;
 }
 
-/* Read's other half: a deeper gold, so it reads as its own action, with a
-   darker line between them. */
+/* The labels share one width, so the icons stack in a column (the book's
+   spine over the download arrow's stem) and the words start together. */
+.book-actions .btn-action:not(.is-side) span {
+    min-width: 7.5em;
+    text-align: left;
+}
+
+/* With Read buttons above, a full-row Download centers its label where
+   theirs are (their half of the row) rather than on the whole row. */
+.book-actions:has(.is-side) > .btn-action-download:not(.is-side) {
+    padding-right: calc(var(--pad) + var(--side));
+}
+
+/* Read's other half: dark, with a gold icon and outline, so it reads as
+   its own action. */
 .book-actions .is-side {
     grid-column: 2;
     padding: 0;
-    background: #8f7647;
-    border-color: #8f7647;
-    border-left-color: rgba(0, 0, 0, 0.45);
+    background: var(--bg-surface, #222);
+    border-color: #c8a96e;
+    border-left-width: 0;
     border-top-left-radius: 0;
     border-bottom-left-radius: 0;
-    color: #121212;
+    color: #c8a96e;
 }
 
 .book-actions .is-side:hover {
-    background: #a48a58;
-    border-color: #a48a58;
-    border-left-color: rgba(0, 0, 0, 0.45);
-    color: #000;
+    background: var(--bg-elevated, #2c2c2c);
+    border-color: #d8be8a;
+    color: #d8be8a;
 }
 
 .book-actions .is-side .action-icon {
@@ -2212,15 +2224,20 @@ body.book-standalone {
     }
 
     .book-actions {
-        grid-template-columns: minmax(0, 1fr) 44px;
-        gap: 0.5rem 0;
+        --side: 44px;
+        --pad: 0.5rem;
         margin-top: 0.75rem;
     }
 
     /* the 160px column: Read's label alone fits beside Download */
-    .book-actions .btn-action-read {
-        padding: 0 0.5rem;
+    .book-actions .btn-action:not(.is-side) span {
+        min-width: 0;
     }
+
+    .book-actions:has(.is-side) > .btn-action-download:not(.is-side) {
+        padding-right: var(--pad);
+    }
+
 
     .book-actions .btn-action-read .action-icon {
         display: none;
