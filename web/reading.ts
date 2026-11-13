@@ -10,11 +10,17 @@
  *
  * The last answer is kept in localStorage (with whose it is), so on repeat
  * visits cards are marked as they render; the request then corrects it.
+ * Changes made here (cover buttons, the book popup's controls) are applied
+ * to the marks in place rather than asking the server again; the popup's
+ * controls, loaded fresh whenever it opens, are checked against them
+ * (agrees), and a disagreement fetches them anew.
  */
 
 import { api } from "./dom.js";
 
 export interface Marks {
+    /** Whose marks these are; null when signed out. */
+    user: string | null;
     signedIn: boolean;
     /** uuid -> fraction read (0..1), or null when no position is known. */
     reading: Map<string, number | null>;
@@ -39,6 +45,7 @@ export interface StoredMarks {
 
 function toMarks(v: StoredMarks | null): Marks {
     return {
+        user: v?.user ?? null,
         signedIn: v !== null,
         reading: new Map(Object.entries(v?.reading ?? {})),
         resume: new Map(Object.entries(v?.resume ?? {})),
@@ -82,6 +89,72 @@ export function cachedMarks(): Marks {
 export function marksFromAnswer(v: StoredMarks | null): Marks {
     store(v);
     return toMarks(v);
+}
+
+function toStored(m: Marks): StoredMarks | null {
+    if (m.user === null) return null;
+    return {
+        user: m.user,
+        reading: Object.fromEntries(m.reading),
+        resume: Object.fromEntries(m.resume),
+        wanted: [...m.wanted],
+        finished: [...m.finished],
+        favorites: [...m.favorites],
+    };
+}
+
+/** Keep marks changed in place as the cache; returns them as stored (null for a guest's). */
+export function saveMarks(m: Marks): StoredMarks | null {
+    const v = toStored(m);
+    if (v) store(v);
+    return v;
+}
+
+/** A book's reading status as the server has it: "", "wanted", "reading" or "finished". */
+export function statusOf(m: Marks, uuid: string): string {
+    return m.finished.has(uuid) ? "finished" : m.reading.has(uuid) ? "reading" : m.wanted.has(uuid) ? "wanted" : "";
+}
+
+/** A change to one book, made and saved elsewhere (the book popup's controls). */
+export interface BookChange {
+    uuid: string;
+    favorite?: boolean;
+    status?: string;
+}
+
+/**
+ * Apply a saved change to marks, in place. False when marks can't show it
+ * without the server: a book newly marked "reading" (where to resume it,
+ * how far along).
+ */
+export function applyChange(m: Marks, c: BookChange): boolean {
+    if (c.favorite !== undefined) {
+        if (c.favorite) m.favorites.add(c.uuid);
+        else m.favorites.delete(c.uuid);
+    }
+    if (c.status === undefined || c.status === statusOf(m, c.uuid)) return true;
+    if (c.status === "reading") return false;
+    m.reading.delete(c.uuid);
+    m.resume.delete(c.uuid);
+    m.wanted.delete(c.uuid);
+    m.finished.delete(c.uuid);
+    if (c.status === "wanted") m.wanted.add(c.uuid);
+    else if (c.status === "finished") m.finished.add(c.uuid);
+    return true;
+}
+
+/** What the book popup's controls show for a book, just loaded from the server. */
+export interface BookState {
+    uuid: string;
+    signedIn: boolean;
+    favorite: boolean;
+    status: string;
+}
+
+/** Whether marks agree with what the server just said about a book. */
+export function agrees(m: Marks, s: BookState): boolean {
+    if (s.signedIn !== m.signedIn) return false;
+    return !s.signedIn || (s.favorite === m.favorites.has(s.uuid) && s.status === statusOf(m, s.uuid));
 }
 
 /** The current marks; none when signed out, null when they couldn't be fetched. */
@@ -195,7 +268,8 @@ function paintActions(card: HTMLElement, uuid: string, marks: Marks): void {
 /**
  * Do a cover button's action for a book: toggle favorite, or toggle "want
  * to read" (only offered for books not started). marks is updated at once;
- * repaint is called then, and again if saving fails (marks put back).
+ * repaint is called then, and again if saving fails (marks put back). Once
+ * saved, marks are kept as the cache: no need to ask the server again.
  */
 export async function coverAction(action: string, uuid: string, marks: Marks, repaint: () => void): Promise<void> {
     if (action === "favorite") {
@@ -205,6 +279,7 @@ export async function coverAction(action: string, uuid: string, marks: Marks, re
         repaint();
         try {
             await api("PUT", `/api/me/books/${encodeURIComponent(uuid)}/favorite`, { favorite: on });
+            saveMarks(marks);
         } catch {
             set(!on);
             repaint();
@@ -216,6 +291,7 @@ export async function coverAction(action: string, uuid: string, marks: Marks, re
         repaint();
         try {
             await api("PUT", `/api/me/books/${encodeURIComponent(uuid)}/status`, { status: on ? "wanted" : "" });
+            saveMarks(marks);
         } catch {
             set(!on);
             repaint();

@@ -30,9 +30,20 @@ import type { Book } from "./types.js";
 import { coverUrl, escapeHtml, renderBookCard, setupCoverStates } from "./utils.js";
 import { makeReorderable, type Reorderable } from "./reorder.js";
 import { setupBookClickHandlers, loadBook, HASH_PREFIX } from "./modal.js";
-import { cachedMarks, coverAction, markCard, marksFromAnswer, type Marks, type StoredMarks } from "./reading.js";
+import {
+    agrees,
+    applyChange,
+    cachedMarks,
+    coverAction,
+    markCard,
+    marksFromAnswer,
+    saveMarks,
+    type BookChange,
+    type BookState,
+    type Marks,
+    type StoredMarks,
+} from "./reading.js";
 import { forgetLocalReading, localReading, LOCAL_FINISHED } from "./local-reading.js";
-import { forgetControls } from "./user.js";
 import { maxCovers } from "./cover-limits.js";
 
 const STRIP = 12; // books in a row
@@ -375,6 +386,15 @@ function repaintMarks(only?: string): void {
     }
 }
 
+/** Marks changed in place: keep them in the cached answer too. */
+function keepMarks(): void {
+    const stored = saveMarks(marks);
+    const h = cachedHome();
+    if (!stored || !h || h.marks.user !== stored.user) return;
+    h.marks = stored;
+    store.set(HOME_KEY, JSON.stringify(h));
+}
+
 /** The cached answer, if it's whoever the top bar says is signed in. */
 function cachedHome(): HomeAnswer | null {
     try {
@@ -410,7 +430,7 @@ function guestMarks(): Marks {
             resume.set(uuid, (e.format === "pdf" ? "/read-pdf?uuid=" : "/read?uuid=") + encodeURIComponent(uuid));
         }
     }
-    return { signedIn: false, reading, resume, wanted: new Set(), finished, favorites: new Set() };
+    return { user: null, signedIn: false, reading, resume, wanted: new Set(), finished, favorites: new Set() };
 }
 
 /** Continue reading, for a signed-out visitor: this device's books, newest first. */
@@ -489,7 +509,6 @@ function setupHome(): Promise<void> {
         void showGuest();
     }
     const fresh = refreshHome();
-    document.addEventListener("cf:status", () => void refreshHome());
     window.addEventListener("pageshow", (e) => {
         if (e.persisted) void refreshHome();
     });
@@ -497,15 +516,32 @@ function setupHome(): Promise<void> {
         // Back from the reader in another tab: progress may have moved.
         if (document.visibilityState === "visible" && Date.now() - homeFetchedAt > 15_000) void refreshHome();
     });
+    // Saved in the book popup (user.ts). A status change moves books between
+    // the rows, which only the server can fill; a favorite is just a mark.
+    document.addEventListener("cf:status", (e) => {
+        const change = (e as CustomEvent<BookChange>).detail;
+        if (change.status !== undefined || !applyChange(marks, change)) {
+            void refreshHome();
+            return;
+        }
+        keepMarks();
+        repaintMarks(change.uuid);
+    });
+    // The popup's controls, just loaded: what the server says now.
+    document.addEventListener("cf:book-state", (e) => {
+        if (!agrees(marks, (e as CustomEvent<BookState>).detail)) void refreshHome();
+    });
     // The buttons over a card's cover; "continue reading" is a plain link.
     document.addEventListener("click", (e) => {
         const btn = e.target instanceof Element ? e.target.closest<HTMLButtonElement>(".cover-actions button") : null;
         const uuid = btn?.closest<HTMLElement>(".book")?.dataset["uuid"];
         if (!btn || !uuid) return;
         e.preventDefault();
-        void coverAction(btn.dataset["action"] ?? "", uuid, marks, () => repaintMarks(uuid)).then(() => {
-            forgetControls(uuid);
-            void refreshHome();
+        const action = btn.dataset["action"] ?? "";
+        void coverAction(action, uuid, marks, () => repaintMarks(uuid)).then(() => {
+            // Want to read has a row of its own; a favorite is only the mark.
+            if (action === "want") void refreshHome();
+            else keepMarks();
         });
     });
     return fresh;

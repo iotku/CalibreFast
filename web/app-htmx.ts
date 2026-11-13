@@ -29,8 +29,7 @@ import type { Book } from "./types.js";
 import { coverUrl, renderBookCard, setupCoverStates } from "./utils.js";
 import { maxCovers } from "./cover-limits.js";
 import { setupBookClickHandlers, loadBook, HASH_PREFIX } from "./modal.js";
-import { cachedMarks, coverAction, fetchMarks, markCard, type Marks } from "./reading.js";
-import { forgetControls } from "./user.js";
+import { agrees, applyChange, cachedMarks, coverAction, fetchMarks, markCard, saveMarks, statusOf, type BookChange, type BookState, type Marks } from "./reading.js";
 import { sweep } from "./book-cache.js";
 import { markSelected, setupSelection } from "./select-books.js";
 
@@ -41,6 +40,7 @@ const FETCH_LEAD = 2; // ...and at speed, how many fetch-times of scrolling ahea
 const MAX_PAGE_FETCHES = 2; // concurrent page-JSON requests
 const RETRY_FAILED_MS = 5000; // a page that failed isn't asked for again sooner
 const READING_REFRESH_MS = 15_000; // coming back to the tab re-checks reading progress, at most this often
+const READING_POLL_MS = 120_000; // while the tab is shown, marks are fetched again this often
 const HISTORY_DEBOUNCE_MS = 300; // browsers throttle rapid history updates
 const COVERS_WAIT_SCREENS_PER_SEC = 4; // faster than this, covers wait until it slows
 const SETTLE_MS = 120; // no scrolling for this long: stopped
@@ -195,15 +195,26 @@ async function refreshReading(): Promise<void> {
     if (!fresh) return;
     marks = fresh;
     for (const el of cards.values()) markReading(el);
-    // Books kept for offline reading: drop old ones and ones back to "not started".
-    if (marks.signedIn) {
-        const m = marks;
-        const statusOf = (u: string): string => (m.finished.has(u) ? "finished" : m.reading.has(u) ? "reading" : m.wanted.has(u) ? "wanted" : "");
-        void sweep(statusOf).catch(() => {});
-    }
+    sweepKept();
 }
 
-/** Fetch now; again when the user comes back (from the reader, another tab) or changes a status in the popup. */
+/** Books kept for offline reading: drop old ones and ones back to "not started". */
+function sweepKept(): void {
+    if (!marks.signedIn) return;
+    const m = marks;
+    void sweep((u) => statusOf(m, u)).catch(() => {});
+}
+
+function repaintBook(uuid: string): void {
+    for (const el of cards.values()) if (el.dataset["uuid"] === uuid) markReading(el);
+}
+
+/**
+ * Fetch now, and again: every READING_POLL_MS while the tab is shown, when
+ * the user comes back (from the reader, another tab), and when the book
+ * popup's controls disagree with the marks. Changes made here are applied
+ * in place (reading.ts), without asking again.
+ */
 function setupReading(): void {
     void refreshReading();
     window.addEventListener("pageshow", (e) => {
@@ -212,7 +223,25 @@ function setupReading(): void {
     document.addEventListener("visibilitychange", () => {
         if (document.visibilityState === "visible" && Date.now() - readingFetchedAt > READING_REFRESH_MS) void refreshReading();
     });
-    document.addEventListener("cf:status", () => void refreshReading());
+    setInterval(() => {
+        if (document.visibilityState === "visible" && Date.now() - readingFetchedAt >= READING_POLL_MS) void refreshReading();
+    }, READING_POLL_MS / 4);
+
+    // Saved in the book popup (user.ts).
+    document.addEventListener("cf:status", (e) => {
+        const change = (e as CustomEvent<BookChange>).detail;
+        if (!applyChange(marks, change)) {
+            void refreshReading();
+            return;
+        }
+        saveMarks(marks);
+        repaintBook(change.uuid);
+        if (change.status !== undefined) sweepKept();
+    });
+    // The popup's controls, just loaded: what the server says now.
+    document.addEventListener("cf:book-state", (e) => {
+        if (!agrees(marks, (e as CustomEvent<BookState>).detail)) void refreshReading();
+    });
 
     // The buttons over a card's cover (reading.ts). The "continue reading"
     // one is a plain link.
@@ -221,13 +250,7 @@ function setupReading(): void {
         const uuid = btn?.closest<HTMLElement>(".book")?.dataset["uuid"];
         if (!btn || !uuid) return;
         e.preventDefault();
-        const repaint = (): void => {
-            for (const el of cards.values()) if (el.dataset["uuid"] === uuid) markReading(el);
-        };
-        void coverAction(btn.dataset["action"] ?? "", uuid, marks, repaint).then(() => {
-            forgetControls(uuid); // the popup's prefetched controls are out of date
-            void refreshReading(); // and the cached marks
-        });
+        void coverAction(btn.dataset["action"] ?? "", uuid, marks, () => repaintBook(uuid));
     });
 }
 

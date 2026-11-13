@@ -198,16 +198,6 @@ export function setupModal(): void {
         true,
     );
 
-    // Hovering a card preloads the book (hx-preload) and its user controls.
-    document.addEventListener(
-        "mouseover",
-        (e) => {
-            const href = e.target instanceof Element ? e.target.closest(".book-link")?.getAttribute("href") : null;
-            if (href?.startsWith(HASH_PREFIX)) prefetchControls(decodeURIComponent(href.slice(HASH_PREFIX.length)));
-        },
-        { passive: true },
-    );
-
     // The modal follows the URL. Back/forward between entries whose ?page
     // differs (the grid moved after the modal closed) isn't a hash change, so
     // popstate covers it. htmx history is off on these pages (htmx-config

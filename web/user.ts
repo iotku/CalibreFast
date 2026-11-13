@@ -4,14 +4,17 @@
  * file loads them into each book page's .book-user-actions and wires up
  * clicks.
  *
- * In the book modal they're fetched ahead: when the pointer is over a book
- * card (alongside the card's hx-preload of the book) and as soon as the
- * modal starts loading the book, so they arrive with it rather than a round
- * trip after it.
+ * In the book modal they're fetched as soon as the modal starts loading the
+ * book, so they arrive with it rather than a round trip after it. Not on
+ * hover: the grid's marks (reading.ts) already say what the cover buttons
+ * need. Each time the controls load, what they show is reported
+ * ("cf:book-state") so the grid can check its marks against the server;
+ * changes saved here are reported too ("cf:status"), for the grid to apply.
  */
 
 import { api, errorMessage } from "./dom.js";
 import { deleteBooks } from "./delete-books.js";
+import type { BookChange, BookState } from "./reading.js";
 
 interface StatusResponse {
     status: string;
@@ -46,7 +49,28 @@ async function loadControls(container: HTMLElement, fresh = false): Promise<void
     const hit = prefetched.get(uuid);
     prefetched.delete(uuid);
     const html = await (!fresh && hit && hit.expires > Date.now() ? hit.html : fetchControls(uuid));
-    if (html !== null && container.isConnected) container.innerHTML = html;
+    if (html === null || !container.isConnected) return;
+    container.innerHTML = html;
+    reportState(container, uuid);
+}
+
+/** Tell the grid what the server says about the book, as the controls just loaded show it. */
+function reportState(container: HTMLElement, uuid: string): void {
+    const controls = container.querySelector<HTMLElement>(".book-user-controls");
+    if (!controls) return;
+    const star = controls.querySelector(".btn-favorite");
+    const detail: BookState = {
+        uuid,
+        signedIn: star !== null,
+        favorite: star?.getAttribute("aria-pressed") === "true",
+        status: controls.querySelector<HTMLSelectElement>(".book-status")?.value ?? "",
+    };
+    document.dispatchEvent(new CustomEvent<BookState>("cf:book-state", { detail }));
+}
+
+/** Tell the grid about a change saved here, for it to apply to its marks. */
+function reportChange(change: BookChange): void {
+    document.dispatchEvent(new CustomEvent<BookChange>("cf:status", { detail: change }));
 }
 
 function bind(controls: HTMLElement): void {
@@ -67,7 +91,7 @@ function bind(controls: HTMLElement): void {
         paint(want); // optimistic
         try {
             await api("PUT", `/api/me/books/${uuid}/favorite`, { favorite: want });
-            document.dispatchEvent(new CustomEvent("cf:status", { detail: { uuid } })); // the grid re-marks its cards
+            reportChange({ uuid, favorite: want });
         } catch {
             paint(!want);
         }
@@ -81,7 +105,7 @@ function bind(controls: HTMLElement): void {
             const res = await api<StatusResponse>("PUT", `/api/me/books/${uuid}/status`, { status: status.value });
             current = res.status;
             if (note) note.textContent = note.dataset["progress"] || (res.status && res.status_source === "auto" ? "set by the reader" : "");
-            document.dispatchEvent(new CustomEvent("cf:status", { detail: { uuid, status: res.status } })); // the grid re-marks its cards
+            reportChange({ uuid, status: res.status });
         } catch {
             status.value = current;
         }
