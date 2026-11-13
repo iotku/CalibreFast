@@ -1,10 +1,10 @@
 /**
  * The signed-in user's marks on the library grid's cards: a ring colored by
- * reading status (dashed for want to read; solid for reading and finished,
+ * reading status (dashed for saved; solid for reading and finished,
  * with a bar along the bottom showing how far along, full once finished),
  * and every card gets two buttons over its cover on hover:
  *   - top left: favorite (☆/★; a ★ stays shown without hover);
- *   - top right, by reading status: "want to read" for a book not started
+ *   - top right, by reading status: "save" for a book not started
  *     (a toggle: /me/wanted), "continue reading" for one being read (opens
  *     the reader in the format last read), a check mark once finished.
  *
@@ -233,7 +233,7 @@ function paintProgress(card: HTMLElement, progress: number | null | undefined, f
 }
 
 const BOOKMARK_PATH = "M6 3h12a1 1 0 0 1 1 1v17l-7-4.5L5 21V4a1 1 0 0 1 1-1z";
-/** The cover buttons' icons (also the book popup's Want to read button, user.ts). */
+/** The cover buttons' icons (also the book popup's Save button, user.ts). */
 export const ICONS = {
     want: `<svg viewBox="0 0 24 24" aria-hidden="true"><path d="${BOOKMARK_PATH}" fill="none" stroke="currentColor" stroke-width="2" stroke-linejoin="round"/></svg>`,
     wanted: `<svg viewBox="0 0 24 24" aria-hidden="true"><path d="${BOOKMARK_PATH}" fill="currentColor" stroke="currentColor" stroke-width="2" stroke-linejoin="round"/></svg>`,
@@ -270,7 +270,7 @@ function paintActions(card: HTMLElement, uuid: string, marks: Marks): void {
     switch (right) {
         case "want":
         case "wanted": {
-            const title = right === "wanted" ? "Remove from Want to read" : "Want to read";
+            const title = right === "wanted" ? "Remove from Saved" : "Save for later";
             html += `<button type="button" class="cover-action cover-want${right === "wanted" ? " is-on" : ""}" data-action="want" aria-pressed="${right === "wanted"}" title="${title}" aria-label="${title}">${ICONS[right]}</button>`;
             break;
         }

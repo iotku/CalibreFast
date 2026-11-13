@@ -203,7 +203,7 @@ func meListHandler(w http.ResponseWriter, r *http.Request) {
 	case "favorites":
 		serveUUIDList(w, r, favoritesList(u))
 	case "wanted":
-		serveUUIDList(w, r, statusList(u, "wanted", "Want to read", "Nothing here yet. Hover over a cover and click the bookmark to add it."))
+		serveUUIDList(w, r, statusList(u, "wanted", "Saved", "Nothing here yet. Save a book (the bookmark on its cover, or Save in its page) to add it."))
 	case "reading":
 		serveUUIDList(w, r, statusList(u, "reading", "Reading", "Nothing in progress. Books you open in the reader, or mark as reading, appear here."))
 	case "finished":
@@ -280,7 +280,7 @@ var errBadStatus = errors.New(`status must be "", "wanted", "reading" or "finish
 // setStatus records a status. Manual changes always apply. Automatic ones
 // (from reader progress) only move forward: none or wanted → reading →
 // finished, and never override a status the user chose themselves for that
-// stage. Starting a wanted book takes it off "want to read".
+// stage. Starting a wanted book takes it off Saved.
 func setStatus(userID int64, uuid, status, source string) error {
 	if status != "" && status != "wanted" && status != "reading" && status != "finished" {
 		return errBadStatus

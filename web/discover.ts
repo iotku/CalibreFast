@@ -600,7 +600,7 @@ function setupHome(): Promise<void> {
         e.preventDefault();
         const action = btn.dataset["action"] ?? "";
         void coverAction(action, uuid, marks, () => repaintMarks(uuid)).then(() => {
-            // Want to read has a row of its own; a favorite is only the mark.
+            // Saved has a row of its own; a favorite is only the mark.
             if (action === "want") void refreshHome();
             else keepMarks();
         });

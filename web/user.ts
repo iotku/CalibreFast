@@ -74,17 +74,17 @@ function reportChange(change: BookChange): void {
     document.dispatchEvent(new CustomEvent<BookChange>("cf:status", { detail: change }));
 }
 
-/** Paint the Want to read button for a status. */
+/** Paint the Save button for a status ("wanted" is shown as Saved). */
 function paintWant(btn: HTMLButtonElement, status: string): void {
     const toggle = status === "" || status === "wanted";
     const on = status === "wanted";
     const icon = status === "reading" ? ICONS.read : status === "finished" ? ICONS.done : on ? ICONS.wanted : ICONS.want;
-    const label = status === "reading" ? "Reading" : status === "finished" ? "Finished" : "Want to read";
+    const label = status === "reading" ? "Reading" : status === "finished" ? "Finished" : on ? "Saved" : "Save";
     btn.innerHTML = `${icon}<span>${label}</span>`;
     btn.classList.toggle("is-on", status !== "");
     if (toggle) btn.setAttribute("aria-pressed", String(on));
     else btn.removeAttribute("aria-pressed");
-    btn.title = on ? "Remove from Want to read" : toggle ? "Add to Want to read" : "Change reading status";
+    btn.title = on ? "Remove from Saved" : toggle ? "Save for later" : "Change reading status";
 }
 
 function bind(controls: HTMLElement): void {
@@ -132,7 +132,7 @@ function bind(controls: HTMLElement): void {
         if (want) paintWant(want, current);
     };
     status?.addEventListener("change", () => void save(status.value));
-    // Like the cover's button: toggles Want to read for a book not started.
+    // Like the cover's button: toggles Saved for a book not started.
     // Once reading or finished it shows that, and opens the menu.
     want?.addEventListener("click", () => {
         if (!status) return;

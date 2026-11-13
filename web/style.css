@@ -29,7 +29,7 @@
 
     /* Colors - Reading status on the cards (reading.ts). Hues far apart
        (blue / gold / green), and each also differs in shape, so they don't
-       rely on color alone: want to read is a dashed ring, reading a solid
+       rely on color alone: saved is a dashed ring, reading a solid
        ring with a partial bar, finished a solid ring with a full bar. */
     --status-wanted: #6aa7e8;
     --status-reading: #c8a96e;
@@ -1542,7 +1542,7 @@ button.row-icon:hover {
     }
 }
 
-/* ≤ 640px: search becomes an icon; want to read/favorites/reading live in the user menu */
+/* ≤ 640px: search becomes an icon; saved/favorites/reading live in the user menu */
 @media (max-width: 640px) {
     .site-bar {
         gap: 6px;
@@ -2203,7 +2203,7 @@ body.book-standalone {
         max-width: 160px;
     }
 
-    /* the 160px column: Favorite and Want to read each fill a line */
+    /* the 160px column: Favorite and Save each fill a line */
     .book-user-row .btn-action {
         padding: 0 0.5rem;
     }
@@ -3076,12 +3076,12 @@ label.group-row span {
     border-color: rgba(243, 201, 105, 0.6);
 }
 
-/* Want to read (a toggle) with the full status menu as its caret. */
+/* Save (a toggle) with the full status menu as its caret. */
 .book-status-split {
     display: inline-flex;
 }
 
-/* Narrower than other actions, so Favorite and Want to read share a line
+/* Narrower than other actions, so Favorite and Save share a line
    in the popup's cover column. */
 .book-user-row .btn-action {
     padding: 0 0.8rem;
@@ -3655,7 +3655,7 @@ body.selecting .book {
     cursor: pointer;
 }
 
-/* The cover's own buttons (favorite, want to read) would sit on the tick. */
+/* The cover's own buttons (favorite, save) would sit on the tick. */
 body.selecting .book .cover-actions {
     display: none;
 }

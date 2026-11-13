@@ -8,13 +8,13 @@
                 aria-pressed="{{ .Favorite }}" title="{{ if .Favorite }}Remove from favorites{{ else }}Add to favorites{{ end }}">
             {{ if .Favorite }}★{{ else }}☆{{ end }} Favorite
         </button>
-        {{/* Want to read: a toggle like the cover's (user.ts paints it from
+        {{/* Save: a toggle like the cover's (user.ts paints it from
              the status), with the menu beside it for every status. */}}
         <div class="book-status-split">
             <button type="button" class="btn-action btn-want"></button>
             <select class="book-status" title="Reading status" aria-label="Reading status">
                 <option value="" {{ if eq .Status "" }}selected{{ end }}>Not reading</option>
-                <option value="wanted" {{ if eq .Status "wanted" }}selected{{ end }}>Want to read</option>
+                <option value="wanted" {{ if eq .Status "wanted" }}selected{{ end }}>Saved</option>
                 <option value="reading" {{ if eq .Status "reading" }}selected{{ end }}>Reading</option>
                 <option value="finished" {{ if eq .Status "finished" }}selected{{ end }}>Finished</option>
             </select>
