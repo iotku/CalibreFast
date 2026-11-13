@@ -23,6 +23,11 @@
  * DRAG_SLOP is a click as before; one that dragged doesn't open the book it
  * started on.
  *
+ * Reduced motion (the system's setting; on Linux, desktop animations off)
+ * keeps the flick, as phones do: it's the user's own throw carried on, and
+ * scrolling far without it is hard work. Only the recoil, the page's own
+ * flourish, is instant then (style.css).
+ *
  * The books' offset past an end is --drag-over on the element dragged, a
  * translate value; style.css moves the books by it.
  */
@@ -168,8 +173,6 @@ function swallowClick(): void {
     setTimeout(() => window.removeEventListener("click", swallow, { capture: true }), 0);
 }
 
-const reducedMotion = (): boolean => window.matchMedia("(prefers-reduced-motion: reduce)").matches;
-
 /** A press that may drag: a mouse's main button, not on a control. */
 function draggable(e: PointerEvent): boolean {
     if (e.pointerType !== "mouse" || e.button !== 0) return false;
@@ -236,7 +239,7 @@ function press(e: PointerEvent, s: Scroller): void {
         if (ev.type === "pointerup" && ev.timeStamp - lastMove.t <= FLICK_STILL && lastMove.t > first.t) {
             speed = (lastMove.at - first.at) / (lastMove.t - first.t);
         }
-        if (Math.abs(speed) < FLICK_MIN || reducedMotion()) {
+        if (Math.abs(speed) < FLICK_MIN) {
             recoil(s);
             return;
         }
