@@ -1,0 +1,39 @@
+<!doctype html>
+<html lang="en">
+<head>
+    <meta charset="utf-8">
+    {{ robotsMeta }}
+    <title>Home page tags — {{ .Title }}</title>
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <link rel="stylesheet" href="{{ asset "style.css" }}">
+</head>
+<body class="auth-body">
+{{ $tb := topbar "Active" "admin-discover" "Title" "Home page tags" }}
+{{ template "topbar-start" $tb }}
+{{ template "topbar-end" $tb }}
+<main class="auth-main auth-wide">
+    <section class="auth-card">
+        <h1>Tag rows on the home page</h1>
+        <p class="auth-muted">The home page shows a few “More in …” rows, picked from the tags that have one.
+            Tags on a large share of the library (“Fiction”, “Ebook”) are left out, as are tags with very few books;
+            of the rest, the biggest have rows. <strong>Include</strong> gives a tag a row whatever its size;
+            <strong>Exclude</strong> keeps it off the home page.</p>
+        <p id="discover-status" class="auth-notice" role="status" hidden></p>
+        <form id="discover-cutoff" class="discover-cutoff">
+            <label>Leave out tags on more than
+                <input id="cutoff" name="cutoff" type="number" min="1" max="100" step="1" required> % of the library</label>
+            <button type="submit" class="btn-standard">Save</button>
+        </form>
+        <div class="discover-filter">
+            <input id="tag-filter" type="search" placeholder="Find a tag…" aria-label="Find a tag" autocomplete="off">
+            <span id="tag-summary" class="auth-muted"></span>
+        </div>
+        <table class="admin-users discover-tags">
+            <thead><tr><th>Tag</th><th>Books</th><th>Home page</th><th>Setting</th></tr></thead>
+            <tbody id="tag-list"><tr><td colspan="4" class="auth-muted">Loading…</td></tr></tbody>
+        </table>
+    </section>
+</main>
+<script type="module" src="{{ asset "admin-discover.js" }}"></script>
+</body>
+</html>

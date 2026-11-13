@@ -11,6 +11,9 @@
  *   - Shelves: the signed-in user's pinned and featured shelves (from
  *     /api/me/home), which they can unpin and reorder; for a signed-out
  *     visitor, the featured ones (pages/discover/featured.json).
+ *   - More in <tag>: a few tag rows, picked at random from the index in the
+ *     page (weighted by size; tags an admin included weighted up), each
+ *     filled from pages/discover/tag-N.json as it nears the screen.
  *   - Recently added: the start of pages/page1.json.
  *   - The introduction's sign-in line, for signed-out visitors, and Hide.
  *
@@ -68,7 +71,11 @@ const pageFiles = new Map<string, Promise<Book[]>>();
 
 /** A page file's books ([] when it can't be had). */
 function pageFile(dir: string, n: number): Promise<Book[]> {
-    const url = `${dir}page${n}.json?v=${encodeURIComponent(version)}`;
+    return booksFile(`${dir}page${n}.json?v=${encodeURIComponent(version)}`);
+}
+
+/** A file of books, fetched once ([] when it can't be had). */
+function booksFile(url: string): Promise<Book[]> {
     let p = pageFiles.get(url);
     if (!p) {
         p = fetch(url, { credentials: "same-origin" })
@@ -613,6 +620,81 @@ function setupShelves(): void {
 }
 
 /* ------------------------------------------------------------------ */
+/* Tag rows                                                            */
+/* ------------------------------------------------------------------ */
+
+/** An entry of the tag-row index (Go: tagRow). */
+interface TagRow {
+    n: number;
+    name: string;
+    href: string;
+    count: number;
+    include?: boolean;
+}
+
+const TAG_ROWS = 3;
+
+/** k rows, at random, bigger tags (and included ones) more likely. */
+function pickTagRows(index: TagRow[], k: number): TagRow[] {
+    const top = Math.max(1, ...index.map((t) => t.count));
+    const pool = index.map((t) => ({ t, w: t.include ? top : Math.max(1, t.count) }));
+    const out: TagRow[] = [];
+    while (out.length < k && pool.length) {
+        let r = Math.random() * pool.reduce((s, p) => s + p.w, 0);
+        let i = 0;
+        while (i < pool.length - 1 && (r -= pool[i]!.w) > 0) i++;
+        out.push(pool.splice(i, 1)[0]!.t);
+    }
+    return out;
+}
+
+function setupTagRows(): void {
+    const box = byId("tag-rows");
+    const tagVersion = box.dataset["version"] ?? "";
+    let index: TagRow[] = [];
+    try {
+        index = JSON.parse(box.dataset["tags"] ?? "[]") as TagRow[];
+    } catch {
+        /* none */
+    }
+    if (!tagVersion || !index.length) return;
+    const fill = async (section: HTMLElement, row: TagRow): Promise<void> => {
+        const books = await booksFile(`/pages/discover/tag-${row.n}.json?v=${encodeURIComponent(tagVersion)}`);
+        // Finished books aren't suggestions any more.
+        fillRow(section, books.filter((b) => !marks.finished.has(b.uuid)), { all: true });
+        box.hidden = !box.querySelector(".row:not([hidden])");
+    };
+    const near = new IntersectionObserver(
+        (entries) => {
+            for (const e of entries) {
+                if (!e.isIntersecting) continue;
+                near.unobserve(e.target);
+                const el = e.target as HTMLElement;
+                const row = picked[Number(el.dataset["i"])];
+                if (row) void fill(el, row);
+            }
+        },
+        { rootMargin: "800px 0px" },
+    );
+    const picked = pickTagRows(index, TAG_ROWS);
+    box.hidden = false;
+    picked.forEach((row, i) => {
+        const section = document.createElement("section");
+        section.className = "row tag-row";
+        section.dataset["i"] = String(i);
+        section.setAttribute("aria-labelledby", `tag-row-${i}-title`);
+        section.innerHTML = `
+            <header class="row-head">
+                <h2 id="tag-row-${i}-title">More in <a class="row-title-link" href="${escapeHtml(row.href)}">${escapeHtml(row.name)}</a></h2>
+                <a href="${escapeHtml(row.href)}" class="row-all">See all</a>
+            </header>
+            <div class="row-books"></div>`;
+        box.append(section);
+        near.observe(section);
+    });
+}
+
+/* ------------------------------------------------------------------ */
 /* Introduction                                                        */
 /* ------------------------------------------------------------------ */
 
@@ -665,6 +747,7 @@ function openFromHash(): void {
 setupCoverStates(root);
 setupIntro();
 setupShelves();
+setupTagRows();
 const homeIn = setupHome();
 openFromHash();
 const empty = maybeId("discover-empty");

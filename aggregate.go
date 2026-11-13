@@ -497,6 +497,9 @@ func groupPutHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	refreshAllCaches()
+	if c.Key == "tag" {
+		refreshTagRows() // groups decide what a tag row is
+	}
 
 	// Where the page should go next: the group, or the original value if the
 	// group was dissolved.
