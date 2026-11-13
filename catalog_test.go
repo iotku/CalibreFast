@@ -279,6 +279,10 @@ func TestThumbRemembersMissingCover(t *testing.T) {
 	get := func() int {
 		rec := httptest.NewRecorder()
 		coverThumbHandler(rec, httptest.NewRequest(http.MethodGet, "/cover-thumb/"+uuid, nil))
+		// The browser keeps the answer, so it doesn't ask on every view.
+		if cc := rec.Header().Get("Cache-Control"); cc != "public, max-age=86400" {
+			t.Errorf("Cache-Control %q", cc)
+		}
 		return rec.Code
 	}
 	if code := get(); code != http.StatusNotFound {
