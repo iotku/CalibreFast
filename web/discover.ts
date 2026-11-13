@@ -51,7 +51,7 @@ import {
 } from "./reading.js";
 import { forgetLocalReading, localReading, LOCAL_FINISHED } from "./local-reading.js";
 import { maxCovers } from "./cover-limits.js";
-import { setupDragScroll } from "./drag-scroll.js";
+import { setupDragScroll, setupPageDragScroll } from "./drag-scroll.js";
 
 const STRIP = 12; // books in a row
 const PIN_STRIP = 24; // books in a pinned tag's row (Go: shelfRowBooks)
@@ -1175,6 +1175,7 @@ function openFromHash(): void {
 
 setupCoverStates(root);
 setupDragScroll(root, ".row-books");
+setupPageDragScroll(root); // after the rows: on a row, the direction decides which
 setupIntro();
 setupShelves();
 setupTagSteps();

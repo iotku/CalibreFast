@@ -437,47 +437,52 @@ input[type="number"],
     cursor: grabbing;
 }
 /* Past an end, the books follow the pointer (--drag-over, drag-scroll.ts),
-   and recoil when let go: a row's cards sideways, the library grid down. */
+   and recoil when let go: a row's cards sideways; a page that drags (the
+   library grid, the home page) down. A row doesn't take its page's offset:
+   its own (inline) replaces this. */
+.row-books {
+    --drag-over: initial;
+}
 .row-books > * {
     translate: var(--drag-over, none);
 }
-#books {
+.drag-page {
     translate: var(--drag-over, none);
 }
 .row-books.drag-recoil > *,
-#books.drag-recoil {
+.drag-page.drag-recoil {
     transition: translate 260ms cubic-bezier(0.2, 0.8, 0.2, 1);
 }
-#books.drag-scrolling {
+.drag-page.drag-scrolling {
     cursor: grabbing;
     user-select: none;
 }
-#books.drag-scrolling .book {
+.drag-page.drag-scrolling .book {
     cursor: grabbing;
 }
 /* Dragging (and until the pointer next moves): no hover buttons or details
    on the cards, whatever is under the pointer. */
-:is(.row-books, #books).drag-scrolling .book .cover-action:not(.cover-fav.is-on),
-:is(.row-books, #books).drag-settling .book:not(.drag-hover) .cover-action:not(.cover-fav.is-on) {
+:is(.row-books, .drag-page).drag-scrolling .book .cover-action:not(.cover-fav.is-on),
+:is(.row-books, .drag-page).drag-settling .book:not(.drag-hover) .cover-action:not(.cover-fav.is-on) {
     opacity: 0;
 }
-:is(.row-books, #books).drag-scrolling .book .book-info,
-:is(.row-books, #books).drag-settling .book:not(.drag-hover) .book-info {
+:is(.row-books, .drag-page).drag-scrolling .book .book-info,
+:is(.row-books, .drag-page).drag-settling .book:not(.drag-hover) .book-info {
     opacity: 0;
     transform: translateY(8px);
 }
 /* Just let go: the card under the pointer shows them, as hovered (the
    browser catches up when the pointer next moves). */
-:is(.row-books, #books).drag-settling .book.drag-hover .cover-action {
+:is(.row-books, .drag-page).drag-settling .book.drag-hover .cover-action {
     opacity: 1;
 }
-:is(.row-books, #books).drag-settling .book.drag-hover .book-info {
+:is(.row-books, .drag-page).drag-settling .book.drag-hover .book-info {
     opacity: 1;
     transform: translateY(0);
 }
 @media (prefers-reduced-motion: reduce) {
     .row-books.drag-recoil > *,
-    #books.drag-recoil {
+    .drag-page.drag-recoil {
         transition: none;
     }
 }
