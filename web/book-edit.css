@@ -1773,7 +1773,26 @@ input[type="date"].meta-input::-webkit-calendar-picker-indicator:hover {
 .merge-book-formats {
     display: flex;
     flex-wrap: wrap;
+    align-items: center;
     gap: 4px;
+}
+
+/* One file: its format, then Preview (EPUB, PDF) and download. */
+.merge-file {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+}
+
+.merge-file a {
+    color: var(--accent);
+    text-decoration: none;
+    padding-left: 6px;
+    border-left: 1px solid var(--border);
+}
+
+.merge-file a:hover {
+    text-decoration: underline;
 }
 
 .merge-keep {

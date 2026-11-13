@@ -133,7 +133,17 @@
                         <div class="merge-book-info">
                             {{ if .Incoming }}<span class="merge-book-title">{{ or .Title "New files" }}</span>{{ else }}<a href="{{ .Link }}" target="_blank" class="merge-book-title">{{ .Title }}</a>{{ end }}
                             <span class="merge-book-authors">{{ .Authors }}</span>
-                            <span class="merge-book-formats">{{ range .FormatList }}<span class="uuid-badge">{{ . }}</span>{{ else }}<span class="auth-muted">no files</span>{{ end }}</span>
+                            <!-- Per file: Preview (EPUB and PDF, in the reader; nothing about reading it saved) and download -->
+                            {{ $b := . }}
+                            <span class="merge-book-formats">
+                                {{ range .FormatList }}
+                                <span class="uuid-badge merge-file">
+                                    <span class="merge-file-name">{{ . }}</span>
+                                    {{ with $b.PreviewURL . }}<a href="{{ . }}" target="_blank" title="Open {{ $b.Letter }}'s file in the reader, in a new tab. Nobody's place or reading status changes.">Preview</a>{{ end }}
+                                    <a href="{{ $b.DownloadURL . }}" download title="Download {{ $b.Letter }}'s {{ . }}" aria-label="Download {{ $b.Letter }}'s {{ . }}">↓</a>
+                                </span>
+                                {{ else }}<span class="auth-muted">no files</span>{{ end }}
+                            </span>
                             {{ if $.Merge.Incoming }}
                             <span class="merge-keep auth-muted">{{ if .Incoming }}New files (what they say about themselves){{ else }}The book they're added to{{ end }}</span>
                             {{ else }}

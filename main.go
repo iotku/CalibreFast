@@ -1197,16 +1197,25 @@ func formatsHandler(w http.ResponseWriter, r *http.Request) {
 // for the metadata editor: EPUB when there is one, else PDF, else "". param
 // names the book: "uuid" in the library, "import" in the import queue.
 func previewReadLink(param, id string, formats []string) string {
-	q := param + "=" + url.QueryEscape(id) + "&preview=1"
-	for _, f := range formats {
-		if strings.EqualFold(f, "epub") {
-			return "/read?" + q
+	for _, want := range []string{"epub", "pdf"} {
+		for _, f := range formats {
+			if strings.EqualFold(f, want) {
+				return previewFormatLink(param, id, f)
+			}
 		}
 	}
-	for _, f := range formats {
-		if strings.EqualFold(f, "pdf") {
-			return "/read-pdf?" + q
-		}
+	return ""
+}
+
+// previewFormatLink is the reader's preview mode for one format of a book,
+// "" for a format no reader opens (only EPUB and PDF have one).
+func previewFormatLink(param, id, format string) string {
+	q := param + "=" + url.QueryEscape(id) + "&preview=1"
+	switch strings.ToLower(format) {
+	case "epub":
+		return "/read?" + q
+	case "pdf":
+		return "/read-pdf?" + q
 	}
 	return ""
 }
