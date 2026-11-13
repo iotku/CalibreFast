@@ -3466,3 +3466,12 @@ body.selecting .book.selected .cover-wrapper {
 .tag-menu[hidden] {
     display: none;
 }
+/* Recommended for you: why each book is there. */
+.book-because {
+    margin-top: 2px;
+    font-size: 0.72rem;
+    color: var(--text-muted);
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}

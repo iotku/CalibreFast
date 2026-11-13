@@ -13,9 +13,11 @@ package main
 // (the Discover page's "on this device" row for signed-out visitors).
 
 import (
+	"math/rand/v2"
 	"net/http"
 	"slices"
 	"strings"
+	"time"
 )
 
 const (
@@ -32,6 +34,9 @@ type homeAnswer struct {
 	// The shelf rows: pinned ones, and featured ones not unpinned
 	// (shelf_pins.go).
 	Shelves []homeShelf `json:"shelves"`
+	// Recommended for you, and the user's strongest tags (recommend.go).
+	Recommended []recBook `json:"recommended"`
+	Tags        []string  `json:"tags"`
 }
 
 func homeHandler(w http.ResponseWriter, r *http.Request) {
@@ -68,6 +73,7 @@ func homeHandler(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "query failed", http.StatusInternalServerError)
 		return
 	}
+	ans.Recommended, ans.Tags = recommend(marks, rand.New(rand.NewPCG(uint64(time.Now().UnixNano()), 0)))
 	if ans.Shelves, err = pinnedShelves(currentUser(r), shelfRowsMax); err != nil {
 		http.Error(w, "query failed", http.StatusInternalServerError)
 		return

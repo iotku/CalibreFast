@@ -11,9 +11,12 @@
  *   - Shelves: the signed-in user's pinned and featured shelves (from
  *     /api/me/home), which they can unpin and reorder; for a signed-out
  *     visitor, the featured ones (pages/discover/featured.json).
- *   - More in <tag>: a few tag rows, picked at random from the index in the
- *     page (weighted by size; tags an admin included weighted up), each
- *     filled from pages/discover/tag-N.json as it nears the screen.
+ *   - Recommended for you (signed in): from /api/me/home, next in series
+ *     first, each with what it follows or is like.
+ *   - More in <tag>: a few tag rows; the signed-in user's strongest tags
+ *     first, then picked at random from the index in the page (weighted by
+ *     size; tags an admin included weighted up), each filled from
+ *     pages/discover/tag-N.json as it nears the screen.
  *   - Recently added: the start of pages/page1.json.
  *   - The introduction's sign-in line, for signed-out visitors, and Hide.
  *
@@ -343,6 +346,15 @@ interface HomeAnswer {
     wanted: Book[];
     wanted_count: number;
     shelves?: HomeShelf[];
+    recommended?: RecBook[];
+    tags?: string[];
+}
+
+/** A recommendation (Go: recBook). */
+interface RecBook {
+    book: Book;
+    kind: "series" | "tags";
+    because?: string;
 }
 
 /** A shelf row (Go: homeShelf). */
@@ -380,6 +392,8 @@ function showHome(h: HomeAnswer): void {
     fillRow("row-reading", h.reading, { hint: true, all: h.reading_count > 0 });
     fillRow("row-wanted", h.wanted, { hint: true, all: h.wanted_count > 0 });
     showShelves(h.shelves ?? [], true);
+    showRecommended(h.recommended ?? []);
+    affinityTags = (h.tags ?? []).map((t) => t.toLowerCase());
     // Something to go back to: the introduction steps aside.
     byId("intro").classList.toggle("compact", h.reading.length > 0 || !!store.get(INTRO_KEY));
 }
@@ -425,6 +439,7 @@ async function showGuest(): Promise<void> {
     // has since said otherwise: its rows stand.
     if (serverSignedIn) return;
     byId("row-wanted").hidden = true;
+    byId("row-recommended").hidden = true;
     byId("row-reading-device").hidden = false;
     fillRow("row-reading", books);
     const shelves = await featured();
@@ -561,6 +576,24 @@ function showShelves(shelves: HomeShelf[], own: boolean): void {
     updateTagRows(own);
 }
 
+/** The user's strongest tags (lower case): their rows come first. */
+let affinityTags: string[] = [];
+
+/** Recommended for you, each card saying why. */
+function showRecommended(recs: RecBook[]): void {
+    const section = byId("row-recommended");
+    fillRow(section, recs.map((r) => r.book), { hint: true });
+    recs.forEach((r, i) => {
+        const card = section.querySelectorAll<HTMLElement>(".row-books > .book")[i];
+        const info = card?.querySelector(".book-info");
+        if (!info || !r.because) return;
+        const why = document.createElement("div");
+        why.className = "book-because";
+        why.textContent = r.kind === "series" ? `Next after ${r.because}` : `Like ${r.because}`;
+        info.append(why);
+    });
+}
+
 /** Pinned tags (lower case): their "More in" rows step aside. */
 let pinnedTags = new Set<string>();
 
@@ -680,7 +713,14 @@ function setupTagRows(): void {
         let row: TagRow | undefined;
         let books: Book[] = [];
         while (!books.length) {
-            const k = queue.findIndex((t) => !pinnedTags.has(t.name.toLowerCase()));
+            const free = (t: TagRow): boolean => !pinnedTags.has(t.name.toLowerCase());
+            // The user's own tags first (when they have a row), then the rest.
+            let k = -1;
+            for (const a of affinityTags) {
+                k = queue.findIndex((t) => free(t) && t.name.toLowerCase() === a);
+                if (k >= 0) break;
+            }
+            if (k < 0) k = queue.findIndex(free);
             if (k < 0) {
                 section.hidden = true; // none left
                 return;
