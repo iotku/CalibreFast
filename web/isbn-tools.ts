@@ -189,6 +189,8 @@ export function mountIsbnTools(host: IsbnToolsHost): void {
         const adopted = host.adoptUnlabeledIsbn(candidates.map((c) => c.isbn13));
         if (adopted) moved = `Moved the unlabeled identifier ${adopted} into the ISBN field: it's an ISBN in the book's files.`;
         render();
+        // Ebook editions come first: the likeliest one to look up.
+        if (candidates[0]) lookups?.suggestIsbn(candidates[0].isbn13);
         const n = candidates.length;
         const found = n === 0
             ? "No ISBNs found in the book's files."
@@ -255,7 +257,7 @@ export function mountIsbnTools(host: IsbnToolsHost): void {
  * The lookup bar at the top of the editor, its list of matches and the
  * lookup dialog. Returns null when lookups are off (-no-lookups).
  */
-function mountLookup(host: IsbnToolsHost): { lookUpIsbn(isbn: string): void } | null {
+function mountLookup(host: IsbnToolsHost): { lookUpIsbn(isbn: string): void; suggestIsbn(isbn: string): void } | null {
     const barEl = maybeId("lookup-bar");
     const statusEl = maybeId("lookup-status");
     const isbnFormEl = maybeId("lookup-isbn-form", HTMLFormElement);
@@ -592,6 +594,11 @@ function mountLookup(host: IsbnToolsHost): { lookUpIsbn(isbn: string): void } | 
             bar.scrollIntoView({ behavior: "smooth", block: "nearest" });
             isbnBox.value = isbn;
             search({ isbn });
+        },
+        // An ISBN found in the book's files, for a book whose ISBN field is
+        // empty: ready to search, without searching. Never over what's typed.
+        suggestIsbn(isbn) {
+            if (!host.currentIsbn() && !isbnBox.value.trim()) isbnBox.value = isbn;
         },
     };
 }
