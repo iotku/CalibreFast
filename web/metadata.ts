@@ -347,7 +347,9 @@ function createCustomIdentifierRow(
   const typeInput = document.createElement("input");
   typeInput.type = "text";
   typeInput.className = "meta-input identifier-type-input";
-  typeInput.placeholder = "Type (e.g. google, amazon, calibre, uuid)";
+  // The column is narrow (Identifiers shares a row with Tags): examples in the tooltip
+  typeInput.placeholder = "Type";
+  typeInput.title = "Identifier type, e.g. google, amazon, calibre, uuid";
   typeInput.value = scheme;
 
   const valInput = document.createElement("input");
