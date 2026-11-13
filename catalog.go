@@ -359,6 +359,7 @@ func catalogFlush() error {
 	libraryCatalog.Store(next)
 	scheduleCatalogSnapshot()
 	refreshFeatured() // a title or cover on a featured shelf
+	refreshTagRows()  // the tag files holding these books
 	return nil
 }
 

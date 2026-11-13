@@ -268,6 +268,18 @@ func writeJSONFile(path string, data []byte) error {
 	return os.Rename(tmp, path)
 }
 
+// pagesFileVersion: the version of a Discover file that has its own
+// (featured shelves, tag rows), else "".
+func pagesFileVersion(path string) string {
+	switch {
+	case path == "/pages/discover/featured.json":
+		return currentFeaturedVersion()
+	case strings.HasPrefix(path, "/pages/discover/tag-"):
+		return currentTagRows().version
+	}
+	return ""
+}
+
 // servePages serves /pages/ from dir (pages/*.json). A request with the
 // current ?v= (what index.html asks for) may be cached for good: the
 // version changes when the files do. Anything else is revalidated.
@@ -275,7 +287,7 @@ func servePages(dir string) http.Handler {
 	files := http.StripPrefix("/pages/", http.FileServer(http.Dir(dir)))
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		v := r.URL.Query().Get("v")
-		if v == currentPagesVersion() || (v != "" && r.URL.Path == "/pages/discover/featured.json" && v == currentFeaturedVersion()) {
+		if v == currentPagesVersion() || (v != "" && pagesFileVersion(r.URL.Path) == v) {
 			w.Header().Set("Cache-Control", "private, max-age=31536000, immutable")
 		} else {
 			w.Header().Set("Cache-Control", "no-cache")
@@ -1101,6 +1113,7 @@ func writeLibraryPages() error {
 	// have served other contents under the stamp it would otherwise keep.
 	pagesVersion.Store(time.Now().UnixNano())
 	refreshFeatured()
+	refreshTagRows()
 	return nil
 }
 

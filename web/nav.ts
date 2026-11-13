@@ -226,6 +226,7 @@ function init(bar: HTMLElement): void {
             ...(st.canEdit ? [el("a", { href: "/recycle-bin", textContent: "Recycling Bin", ...current("recycle-bin") })] : []),
             ...(st.canEdit ? [el("a", { href: "/admin/repairs", textContent: "Library repairs", ...current("library-repairs") })] : []),
             ...(st.isAdmin ? [el("a", { href: "/admin/users", textContent: "Manage users" })] : []),
+            ...(st.isAdmin ? [el("a", { href: "/admin/discover", textContent: "Home page tags", ...current("admin-discover") })] : []),
             ...(guestBooks ? [el("a", { href: "/account/import", textContent: "Reading on this device" })] : []),
             el("a", { href: "/account", textContent: "Account" }),
             logout,

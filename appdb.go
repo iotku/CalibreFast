@@ -212,6 +212,18 @@ var migrations = []string{
 	);
 	CREATE INDEX shelf_pins_shelf ON shelf_pins(shelf_id);
 	`,
+	// 10: the Discover page's tag rows (tag_rows.go): tags an admin always
+	// or never shows, and app settings (discover.broad_tag_share).
+	`
+	CREATE TABLE discover_tags (
+		name TEXT PRIMARY KEY COLLATE NOCASE,
+		mode TEXT NOT NULL CHECK (mode IN ('include', 'deny'))
+	);
+	CREATE TABLE settings (
+		key   TEXT PRIMARY KEY,
+		value TEXT NOT NULL
+	);
+	`,
 }
 
 // openAppDB opens (creating if needed) and migrates the app database.

@@ -746,6 +746,7 @@ func registerAuthRoutes() {
 	registerGuestImportRoutes()
 	registerAnnotationRoutes()
 	registerShelfRoutes()
+	registerDiscoverAdminRoutes()
 	registerLinkRoutes()
 	registerKosyncRoutes(http.DefaultServeMux)
 }
