@@ -546,8 +546,19 @@ function showShelves(shelves: HomeShelf[], own: boolean): void {
         list.append(section);
         fillRow(section, s.books, { all: true });
     }
-    byId("pin-rows").hidden = list.children.length === 0;
-    byId("pin-foot").hidden = !own || list.children.length < 2;
+    pinControls(own);
+}
+
+/**
+ * Reordering needs two rows or more: with fewer, neither the button under
+ * the rows nor the menus' Reorder shelves is offered.
+ */
+function pinControls(own: boolean): void {
+    const list = byId("pin-list");
+    const n = list.children.length;
+    byId("pin-rows").hidden = n === 0;
+    byId("pin-foot").hidden = !own || n < 2;
+    for (const item of list.querySelectorAll<HTMLElement>('.row-menu [data-act="reorder"]')) item.hidden = n < 2;
 }
 
 function setReordering(on: boolean): void {
@@ -588,8 +599,7 @@ function setupShelves(): void {
         }
         // Remove from home: at once here; the server's answer follows.
         row.remove();
-        byId("pin-rows").hidden = list.children.length === 0;
-        byId("pin-foot").hidden = list.children.length < 2;
+        pinControls(true);
         void api("DELETE", `/api/me/pins/${row.dataset["id"]}`)
             .catch(() => {})
             .then(() => refreshHome());
