@@ -1,6 +1,8 @@
 // Shapes of the JSON the Go server sends and receives. Keep in sync with the
 // Go structs named in each comment.
 
+import type { StoredMarks } from "./reading.js";
+
 /** A grid entry (Go: Book in main.go). */
 export interface Book {
     uuid: string;
@@ -32,6 +34,8 @@ export interface MeResponse {
      * can review them, when there is a watch folder or something is waiting.
      */
     pending_imports?: number;
+    /** The user's reading marks, when asked for (?reading=1), as /api/me/reading has them. */
+    reading?: StoredMarks;
 }
 
 /** A library value suggestion (Go: groupValuesHandler). */

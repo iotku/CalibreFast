@@ -1,6 +1,7 @@
 package main
 
 import (
+	"encoding/json"
 	"net/http"
 	"net/http/cookiejar"
 	"net/http/httptest"
@@ -285,4 +286,56 @@ func TestRegisterFollowsNext(t *testing.T) {
 			t.Errorf("next %q: %d %q, want %q", c.next, rec.Code, rec.Header().Get("Location"), c.want)
 		}
 	}
+}
+
+// /api/me?reading=1 carries the reading marks /api/me/reading would send
+// (the library grids' first look); plain /api/me doesn't.
+func TestMeWithReading(t *testing.T) {
+	setupTestAppDB(t)
+	u, err := createUser("reader", "a long enough password", false)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := setStatus(u.ID, "book-1", "wanted", "manual"); err != nil {
+		t.Fatal(err)
+	}
+	get := func(target string) map[string]json.RawMessage {
+		t.Helper()
+		rec := httptest.NewRecorder()
+		meHandler(rec, asUser(httptest.NewRequest(http.MethodGet, target, nil), u))
+		if rec.Code != http.StatusOK {
+			t.Fatalf("%s: status %d: %s", target, rec.Code, rec.Body)
+		}
+		var me map[string]json.RawMessage
+		if err := json.Unmarshal(rec.Body.Bytes(), &me); err != nil {
+			t.Fatal(err)
+		}
+		return me
+	}
+	if _, ok := get("/api/me")["reading"]; ok {
+		t.Error("plain /api/me sent the marks")
+	}
+	var marks readingMarks
+	if err := json.Unmarshal(get("/api/me?reading=1")["reading"], &marks); err != nil {
+		t.Fatal(err)
+	}
+	if marks.User != "reader" || len(marks.Wanted) != 1 || marks.Wanted[0] != "book-1" {
+		t.Errorf("marks = %+v", marks)
+	}
+	rec := httptest.NewRecorder()
+	readingHandler(rec, asUser(httptest.NewRequest(http.MethodGet, "/api/me/reading", nil), u))
+	var alone readingMarks
+	_ = json.Unmarshal(rec.Body.Bytes(), &alone)
+	if a, b := mustJSON(t, marks), mustJSON(t, alone); a != b {
+		t.Errorf("?reading=1 marks %s differ from /api/me/reading's %s", a, b)
+	}
+}
+
+func mustJSON(t *testing.T, v any) string {
+	t.Helper()
+	b, err := json.Marshal(v)
+	if err != nil {
+		t.Fatal(err)
+	}
+	return string(b)
 }

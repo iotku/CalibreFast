@@ -189,9 +189,10 @@ function markReading(el: HTMLElement): void {
     markCard(el, marks);
 }
 
-async function refreshReading(): Promise<void> {
+/** first: the page's first look, which comes with its /api/me answer (me.ts). */
+async function refreshReading(first = false): Promise<void> {
     readingFetchedAt = Date.now();
-    const fresh = await fetchMarks();
+    const fresh = await fetchMarks(first);
     if (!fresh) return;
     marks = fresh;
     for (const el of cards.values()) markReading(el);
@@ -216,7 +217,7 @@ function repaintBook(uuid: string): void {
  * in place (reading.ts), without asking again.
  */
 function setupReading(): void {
-    void refreshReading();
+    void refreshReading(true);
     window.addEventListener("pageshow", (e) => {
         if (e.persisted) void refreshReading();
     });

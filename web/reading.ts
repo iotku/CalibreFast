@@ -17,6 +17,7 @@
  */
 
 import { api } from "./dom.js";
+import { meRequest } from "./me.js";
 
 export interface Marks {
     /** Whose marks these are; null when signed out. */
@@ -157,8 +158,27 @@ export function agrees(m: Marks, s: BookState): boolean {
     return !s.signedIn || (s.favorite === m.favorites.has(s.uuid) && s.status === statusOf(m, s.uuid));
 }
 
-/** The current marks; none when signed out, null when they couldn't be fetched. */
-export async function fetchMarks(): Promise<Marks | null> {
+/**
+ * The current marks; none when signed out, null when they couldn't be fetched.
+ * first: the page's first look, which takes them from its /api/me answer
+ * (me.ts asks for them on the grids) rather than asking separately.
+ */
+export async function fetchMarks(first = false): Promise<Marks | null> {
+    if (first) {
+        try {
+            const me = await meRequest();
+            if (me.status === 401) {
+                store(null);
+                return toMarks(null);
+            }
+            if (me.ok && me.body.reading) {
+                store(me.body.reading);
+                return toMarks(me.body.reading);
+            }
+        } catch {
+            /* offline, or no marks in the answer: ask /api/me/reading */
+        }
+    }
     try {
         const res = await fetch("/api/me/reading", { credentials: "same-origin" });
         if (res.status === 401) {
