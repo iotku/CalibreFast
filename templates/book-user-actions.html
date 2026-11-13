@@ -19,8 +19,9 @@
                 <option value="finished" {{ if eq .Status "finished" }}selected{{ end }}>Finished</option>
             </select>
         </div>
-        <span class="book-status-note" data-progress="{{ .Progress }}">{{ if .Progress }}{{ .Progress }}{{ else if and .Status (eq .StatusSource "auto") }}set by the reader{{ end }}</span>
     </div>
+    {{/* where you are in the book, or who set the status: under the cover */}}
+    <span class="book-status-note" data-progress="{{ .Progress }}">{{ if .Progress }}{{ .Progress }}{{ else if and .Status (eq .StatusSource "auto") }}set by the reader{{ end }}</span>
     <details class="book-shelves">
         <summary>Shelves<span class="book-shelves-count">{{ if .OnShelves }} ({{ .OnShelves }}){{ end }}</span></summary>
         <div class="book-shelves-list">
