@@ -98,6 +98,7 @@ func extractEPUBMeta(r io.ReaderAt, size int64, filename string) (*UploadedBookM
 	}
 
 	m := pkg.Metadata
+	m.fillSeries()
 	meta := &UploadedBookMeta{OPFMetadata: m, Format: "epub", FileName: filename}
 
 	return meta, nil

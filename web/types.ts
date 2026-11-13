@@ -63,6 +63,9 @@ export interface MetaSource {
     Languages: string[] | null;
     Subjects: string[] | null;
     Identifiers: OPFIdentifier[] | null;
+    /** The series and the book's number in it (Go: OPFMetadata.Series). */
+    Series?: string;
+    SeriesIndex?: string;
     /** Set by the editor on answers from an online lookup. */
     External?: boolean;
 }

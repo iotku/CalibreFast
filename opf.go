@@ -25,6 +25,15 @@ type OPFMetadata struct {
 	Subjects    []string        `xml:"http://purl.org/dc/elements/1.1/ subject"`
 	Creators    []string        `xml:"http://purl.org/dc/elements/1.1/ creator"`
 	Meta        []opfMeta       `xml:"meta"`
+
+	// The series, for the editor (JSON only; series.go): read from the
+	// calibre:series meta (or EPUB 3's belongs-to-collection) by fillSeries,
+	// written back by syncSeriesMeta.
+	Series      string `xml:"-" json:",omitempty"`
+	SeriesIndex string `xml:"-" json:",omitempty"` // as typed: "2", "2.5"
+	// SeriesSet: the editor sent a series (perhaps none): saving replaces
+	// the book's. Otherwise the book's series is left as it is.
+	SeriesSet bool `xml:"-" json:"-"`
 }
 
 type opfIdentifier struct {
@@ -66,6 +75,8 @@ type opfMeta struct {
 	Content  string `xml:"content,attr"`
 	Property string `xml:"property,attr"` // EPUB3
 	Value    string `xml:",chardata"`     // You probably want Content
+	ID       string `xml:"id,attr"`       // EPUB3: what a refines="#id" points at
+	Refines  string `xml:"refines,attr"`  // EPUB3
 
 	FileAs string `xml:"file-as,attr"`
 }
@@ -82,7 +93,7 @@ func loadOPF(path string) (*OPF, error) {
 	if err != nil {
 		return nil, err
 	}
-
+	opf.Metadata.fillSeries()
 	return &opf, nil
 }
 
@@ -180,6 +191,12 @@ func writeOPF(opf *OPF, path string, bookUUID string) error {
 		}
 		if m.FileAs != "" {
 			attrs = append(attrs, xml.Attr{Name: xml.Name{Local: "file-as"}, Value: m.FileAs})
+		}
+		if m.ID != "" {
+			attrs = append(attrs, xml.Attr{Name: xml.Name{Local: "id"}, Value: m.ID})
+		}
+		if m.Refines != "" {
+			attrs = append(attrs, xml.Attr{Name: xml.Name{Local: "refines"}, Value: m.Refines})
 		}
 		start := xml.StartElement{Name: xml.Name{Local: "meta"}, Attr: attrs}
 		enc.EncodeToken(start)

@@ -793,6 +793,9 @@ func GetOptionsForBook(w http.ResponseWriter, r *http.Request) {
 	opf, err := loadOPF(filepath.Join(baseDir, path, "metadata.opf"))
 	if err == nil {
 		opf.Metadata.Date = normalizeDateOnly(opf.Metadata.Date)
+		// The series as metadata.db has it (what "next in series" goes by),
+		// which the OPF may not match.
+		opf.Metadata.Series, opf.Metadata.SeriesIndex = librarySeriesFields(uuid)
 		metas = append(metas, &UploadedBookMeta{
 			OPFMetadata: opf.Metadata,
 			Format:      "current",
@@ -833,6 +836,10 @@ type ApplyMetadataRequest struct {
 	Language    string         `json:"language"`  // legacy single-language field
 	Subjects    string         `json:"subjects"`
 	Identifiers identifierList `json:"identifiers"`
+	// The series and the book's number in it; nil (not sent) leaves the
+	// book's series as it is, "" removes it.
+	Series      *string `json:"series"`
+	SeriesIndex *string `json:"series_index"`
 	// Override: add a book from the import queue though it looks like one
 	// already in the library (duplicates.go).
 	Override bool `json:"override"`
@@ -969,7 +976,7 @@ func metadataFromRequest(req ApplyMetadataRequest) OPFMetadata {
 	if title == "" {
 		title = "Unknown"
 	}
-	return OPFMetadata{
+	m := OPFMetadata{
 		Title:       title,
 		Creators:    parseCreatorsString(req.Creators),
 		Description: strings.TrimSpace(req.Description),
@@ -979,6 +986,14 @@ func metadataFromRequest(req ApplyMetadataRequest) OPFMetadata {
 		Subjects:    parseSubjectsString(req.Subjects),
 		Identifiers: req.Identifiers,
 	}
+	if req.Series != nil {
+		m.SeriesSet = true
+		m.Series = strings.TrimSpace(*req.Series)
+		if req.SeriesIndex != nil {
+			m.SeriesIndex = strings.TrimSpace(*req.SeriesIndex)
+		}
+	}
+	return m
 }
 
 func applyMetadataHandler(w http.ResponseWriter, r *http.Request) {
@@ -1007,6 +1022,10 @@ func applyMetadataHandler(w http.ResponseWriter, r *http.Request) {
 	}
 
 	meta := metadataFromRequest(req)
+	if _, _, err := cleanSeries(meta.Series, meta.SeriesIndex); err != nil {
+		http.Error(w, err.Error(), http.StatusBadRequest)
+		return
+	}
 
 	bookPath, err := updateBookInCalibreDB(calibreDB, baseDir, uuid, &meta)
 	if err != nil {

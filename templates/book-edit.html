@@ -220,6 +220,21 @@
                         <div class="meta-source-buttons" data-field="publisher"></div>
                     </fieldset>
 
+                    <fieldset class="meta-field series-field">
+                        <legend>Series</legend>
+                        <div class="series-inputs">
+                            <input type="text" name="series" class="meta-input" placeholder="e.g. Dune" aria-label="Series name" autocomplete="off" />
+                            <label class="series-number">
+                                <span>Book</span>
+                                <input type="text" name="series_index" class="meta-input" inputmode="decimal" placeholder="1" aria-label="Number in the series" autocomplete="off" />
+                            </label>
+                        </div>
+                        <div class="series-pills">
+                            <div class="meta-source-buttons" data-field="series"></div>
+                            <div class="meta-source-buttons" data-field="series_index"></div>
+                        </div>
+                    </fieldset>
+
                     <fieldset class="meta-field">
                         <legend>Publication Date</legend>
                         <input type="date" name="date" value="{{ .Date }}" class="meta-input" />

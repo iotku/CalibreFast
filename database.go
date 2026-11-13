@@ -215,6 +215,12 @@ func updateBookInCalibreDB(db *sql.DB, baseDir string, bookUUID string, meta *OP
 		return "", fmt.Errorf("book with uuid %s not found: %w", bookUUID, err)
 	}
 
+	// Checked before anything is written.
+	seriesName, seriesIndex, err := cleanSeries(meta.Series, meta.SeriesIndex)
+	if meta.SeriesSet && err != nil {
+		return "", err
+	}
+
 	tx, err := db.Begin()
 	if err != nil {
 		return "", fmt.Errorf("begin tx: %w", err)
@@ -476,11 +482,11 @@ func updateBookInCalibreDB(db *sql.DB, baseDir string, bookUUID string, meta *OP
 		}
 	}
 
-	seriesName := meta.getMeta("calibre:series")
-	if seriesName != "" {
-		seriesID, sErr := upsertSimpleEntity(tx, "series", seriesName)
-		if sErr == nil {
-			tx.Exec(`INSERT OR IGNORE INTO books_series_link (book, series) VALUES (?, ?)`, bookID, seriesID)
+	// The series, when the editor sent one (series.go); otherwise the book's
+	// stays as it is.
+	if meta.SeriesSet {
+		if err = setBookSeries(tx, bookID, seriesName, seriesIndex); err != nil {
+			return "", fmt.Errorf("series: %w", err)
 		}
 	}
 
@@ -497,7 +503,14 @@ func updateBookInCalibreDB(db *sql.DB, baseDir string, bookUUID string, meta *OP
 				Metadata: *meta,
 			}
 			existingOPF.Metadata.Identifiers = editedIDs
+			if meta.SeriesSet {
+				existingOPF.Metadata.syncSeriesMeta()
+			}
 		} else {
+			if meta.SeriesSet {
+				existingOPF.Metadata.Series, existingOPF.Metadata.SeriesIndex = meta.Series, meta.SeriesIndex
+				existingOPF.Metadata.syncSeriesMeta()
+			}
 			existingOPF.Metadata.Title = meta.Title
 			existingOPF.Metadata.Creators = meta.Creators
 			existingOPF.Metadata.Publisher = meta.Publisher
