@@ -102,7 +102,7 @@ func TestMigrationWantedStatus(t *testing.T) {
 	if err := db.QueryRow(`SELECT status FROM reading_status WHERE book_uuid = 'book-a'`).Scan(&status); err != nil || status != "finished" {
 		t.Fatalf("kept status: %q %v", status, err)
 	}
-	if _, err := db.Exec(`INSERT INTO reading_status VALUES (1, 'book-b', 'wanted', 'manual', 6)`); err != nil {
+	if _, err := db.Exec(`INSERT INTO reading_status (user_id, book_uuid, status, source, updated_at) VALUES (1, 'book-b', 'wanted', 'manual', 6)`); err != nil {
 		t.Fatalf("wanted: %v", err)
 	}
 	// Deleting the user still deletes their statuses (the foreign key survived).

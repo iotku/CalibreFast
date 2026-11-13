@@ -373,6 +373,9 @@ func shelfPageHandler(w http.ResponseWriter, r *http.Request) {
 	if u != nil {
 		s.Pinned = shelfPinnedFor(u, s)
 		extra = map[string]any{"Shelf": s, "CanFeature": s.Global && u.IsAdmin}
+		if s.canEdit(u) {
+			extra["Arrange"] = "/api/shelves/" + itoa(s.ID) + "/order"
+		}
 	}
 	serveUUIDList(w, r, uuidList{
 		Title: s.Name, Sub: sub, BaseURL: "/shelf/" + itoa(s.ID),
@@ -380,7 +383,7 @@ func shelfPageHandler(w http.ResponseWriter, r *http.Request) {
 		Extra:     extra,
 		Count:     countQuery(`SELECT COUNT(*) FROM shelf_books WHERE shelf_id = ?`, s.ID),
 		Page: func(limit, offset int) ([]string, error) {
-			return scanStrings(appDB.Query(`SELECT book_uuid FROM shelf_books WHERE shelf_id = ? ORDER BY added_at, book_uuid LIMIT ? OFFSET ?`, s.ID, limit, offset))
+			return scanStrings(appDB.Query(`SELECT book_uuid FROM shelf_books WHERE shelf_id = ? `+shelfOrder+` LIMIT ? OFFSET ?`, s.ID, limit, offset))
 		},
 	})
 }
@@ -395,4 +398,5 @@ func registerShelfRoutes() {
 	http.HandleFunc("PUT /api/shelves/{id}/books/{uuid}", requireUser(shelfAddBookHandler))
 	http.HandleFunc("DELETE /api/shelves/{id}/books/{uuid}", requireUser(shelfRemoveBookHandler))
 	registerShelfPinRoutes()
+	registerListOrderRoutes()
 }

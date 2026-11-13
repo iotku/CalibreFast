@@ -534,15 +534,15 @@ button.row-icon:hover {
     color: var(--text-muted);
 }
 
-/* The top bar's Edit: a pen, a check while editing. */
-.home-edit .home-edit-done,
-.home-edit[aria-pressed="true"] .home-edit-pen {
+/* The top bar's Edit (home page, lists and shelves): a pen, a check while editing. */
+.edit-toggle .edit-done,
+.edit-toggle[aria-pressed="true"] .edit-pen {
     display: none;
 }
-.home-edit[aria-pressed="true"] .home-edit-done {
+.edit-toggle[aria-pressed="true"] .edit-done {
     display: block;
 }
-.home-edit[aria-pressed="true"] {
+.edit-toggle[aria-pressed="true"] {
     background: var(--bg-elevated);
     border-color: var(--border-medium);
 }
@@ -673,6 +673,103 @@ button.row-icon:hover {
     .reorder-btn {
         width: var(--touch-target);
         height: var(--touch-target);
+    }
+}
+
+/* Arranging a list's books (web/list-edit.ts): the grid becomes a list. */
+.list-editing #books,
+.list-editing #status,
+.list-editing #scroll-badge,
+.list-editing .tb-pager {
+    display: none !important;
+}
+.arrange {
+    max-width: 760px;
+    margin: var(--topbar-total) auto 0;
+    padding: var(--gap-medium);
+}
+.arrange-hint {
+    margin: 0 0 var(--gap-small);
+    color: var(--text-secondary);
+}
+.arrange-status {
+    min-height: 1.4em;
+    margin: 0 0 var(--gap-small);
+    font-size: var(--font-size-small);
+    color: var(--text-muted);
+}
+.arrange-status.error {
+    color: #e08a8a;
+}
+.arrange-list {
+    display: flex;
+    flex-direction: column;
+    gap: var(--gap-small);
+    margin: 0;
+    padding: 0;
+    list-style: none;
+}
+.arrange-item {
+    display: flex;
+    align-items: center;
+    gap: var(--gap-medium);
+    padding: var(--gap-small) var(--gap-medium);
+    border: 1px solid var(--border-light);
+    border-radius: var(--radius-large);
+    background: var(--bg-surface);
+}
+/* The grip first, as on the home page; the buttons after the title. */
+.arrange-controls,
+.arrange-controls .reorder {
+    display: contents;
+}
+.arrange-controls .reorder-grip {
+    order: -1;
+}
+.arrange-controls .reorder-btn {
+    order: 1;
+}
+.arrange-cover {
+    flex: none;
+    width: 36px;
+    height: 54px;
+    object-fit: cover;
+    border-radius: var(--radius-small);
+    background: var(--bg-elevated);
+}
+.arrange-text {
+    display: flex;
+    flex: 1;
+    flex-direction: column;
+    min-width: 0;
+}
+.arrange-title,
+.arrange-author {
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+.arrange-title {
+    font-weight: 600;
+}
+.arrange-author {
+    font-size: var(--font-size-small);
+    color: var(--text-secondary);
+}
+.arrange-item .reorder-btn:first-of-type {
+    margin-left: auto;
+}
+@media (max-width: 600px) {
+    /* The buttons on a line of their own: the title needs the room. */
+    .arrange-item {
+        flex-wrap: wrap;
+        row-gap: 0;
+    }
+    .arrange-text {
+        flex-basis: calc(100% - 120px);
+    }
+    .arrange-item .reorder-btn:first-of-type {
+        margin-left: calc(28px + 36px + 2 * var(--gap-medium));
     }
 }
 
