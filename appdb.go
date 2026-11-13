@@ -249,6 +249,11 @@ var migrations = []string{
 		page    INTEGER NOT NULL
 	);
 	`,
+	// 13: the Recommended row as last shown (recommendations_state.go), so
+	// a book that drops out is replaced where it was, the rest staying put.
+	`
+	ALTER TABLE rec_state ADD COLUMN shown TEXT;
+	`,
 }
 
 // openAppDB opens (creating if needed) and migrates the app database.
