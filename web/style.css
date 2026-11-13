@@ -457,12 +457,23 @@ input[type="number"],
 }
 /* Dragging (and until the pointer next moves): no hover buttons or details
    on the cards, whatever is under the pointer. */
-:is(.row-books, #books):is(.drag-scrolling, .drag-settling) .book .cover-action:not(.cover-fav.is-on) {
+:is(.row-books, #books).drag-scrolling .book .cover-action:not(.cover-fav.is-on),
+:is(.row-books, #books).drag-settling .book:not(.drag-hover) .cover-action:not(.cover-fav.is-on) {
     opacity: 0;
 }
-:is(.row-books, #books):is(.drag-scrolling, .drag-settling) .book .book-info {
+:is(.row-books, #books).drag-scrolling .book .book-info,
+:is(.row-books, #books).drag-settling .book:not(.drag-hover) .book-info {
     opacity: 0;
     transform: translateY(8px);
+}
+/* Just let go: the card under the pointer shows them, as hovered (the
+   browser catches up when the pointer next moves). */
+:is(.row-books, #books).drag-settling .book.drag-hover .cover-action {
+    opacity: 1;
+}
+:is(.row-books, #books).drag-settling .book.drag-hover .book-info {
+    opacity: 1;
+    transform: translateY(0);
 }
 @media (prefers-reduced-motion: reduce) {
     .row-books.drag-recoil > *,

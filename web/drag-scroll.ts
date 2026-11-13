@@ -102,12 +102,18 @@ function setOver(s: Scroller, px: number): void {
     else s.el.style.setProperty("--drag-over", s.axis === "x" ? `${px}px` : `0 ${px}px`);
 }
 
-/** Back to the end, if past it. */
-function recoil(s: Scroller): void {
-    if (!s.el.style.getPropertyValue("--drag-over")) return;
+/** Back to the end, if past it; then done (at once if it wasn't). */
+function recoil(s: Scroller, done?: () => void): void {
+    if (!s.el.style.getPropertyValue("--drag-over")) {
+        done?.();
+        return;
+    }
     s.el.classList.add("drag-recoil");
     setOver(s, 0);
-    setTimeout(() => s.el.classList.remove("drag-recoil"), RECOIL_MS + 50);
+    setTimeout(() => {
+        s.el.classList.remove("drag-recoil");
+        done?.();
+    }, RECOIL_MS + 50);
 }
 
 /**
@@ -138,8 +144,8 @@ function stopFlick(s: Scroller): void {
     flicks.delete(s.el);
 }
 
-/** Carry on from want at speed (px/ms, in scroll terms) until it stops. */
-function flick(s: Scroller, want: number, speed: number, runway: number): void {
+/** Carry on from want at speed (px/ms, in scroll terms) until it stops; then done. */
+function flick(s: Scroller, want: number, speed: number, runway: number, done: () => void): void {
     let last = performance.now();
     const step = (now: number): void => {
         const dt = Math.min(32, now - last); // a stalled tab doesn't jump
@@ -151,7 +157,7 @@ function flick(s: Scroller, want: number, speed: number, runway: number): void {
         if (over !== 0 && Math.abs(over) >= runway) speed = 0;
         if (Math.abs(speed) < FLICK_STOP) {
             flicks.delete(s.el);
-            recoil(s);
+            recoil(s, done);
             return;
         }
         flicks.set(s.el, requestAnimationFrame(step));
@@ -229,10 +235,23 @@ function press(e: PointerEvent, s: Scroller): void {
         // The click this release makes isn't a click on the card.
         swallowClick();
         s.el.classList.remove("drag-scrolling");
-        // Hover buttons wait for the pointer to move: until then the
-        // browser may still count the card it was pressed on as hovered.
+        // Until the pointer next moves, the browser may count the wrong card
+        // as hovered (the one the press began on, which held the pointer):
+        // only the card actually under the pointer shows its buttons, once
+        // the books have stopped (after a flick, or the recoil).
         s.el.classList.add("drag-settling");
-        window.addEventListener("pointermove", () => s.el.classList.remove("drag-settling"), { once: true });
+        let under: HTMLElement | null = null;
+        const settle = (): void => {
+            s.el.classList.remove("drag-settling");
+            under?.classList.remove("drag-hover");
+        };
+        window.addEventListener("pointermove", settle, { once: true });
+        const markUnder = (): void => {
+            if (!s.el.classList.contains("drag-settling")) return; // moved since: the browser knows
+            const hit = document.elementFromPoint(ev.clientX, ev.clientY);
+            under = hit && s.el.contains(hit) ? hit.closest<HTMLElement>(".book") : null;
+            under?.classList.add("drag-hover");
+        };
 
         // The speed at release, over the last moments of movement; none if
         // the pointer had stopped first.
@@ -243,11 +262,11 @@ function press(e: PointerEvent, s: Scroller): void {
             speed = (lastMove.at - first.at) / (lastMove.t - first.t);
         }
         if (Math.abs(speed) < FLICK_MIN) {
-            recoil(s);
+            recoil(s, markUnder);
             return;
         }
         speed = Math.max(-FLICK_MAX, Math.min(FLICK_MAX, speed));
-        flick(s, start - (lastMove.at - from), -speed, runway);
+        flick(s, start - (lastMove.at - from), -speed, runway, markUnder);
     };
 
     window.addEventListener("pointermove", move);
