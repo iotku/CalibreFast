@@ -36,7 +36,7 @@ func TestDiscoverPage(t *testing.T) {
 	for _, want := range []string{
 		`id="greeting"`, `id="home-edit"`, `id="home-rows"`,
 		`data-total-books="3"`, `data-shuffle-total="3"`, `data-version="` + currentPagesVersion() + `"`,
-		`id="row-shuffle"`, `id="row-latest"`, `href="/latest"`, `href="/shuffle"`, `href="/me/reading"`, `href="/me/wanted"`, `id="shuffle-next"`, `id="shuffle-back"`,
+		`id="row-shuffle"`, `id="row-latest"`, `href="/latest"`, `href="/shuffle"`, `href="/me/reading"`, `href="/me/saved"`, `id="shuffle-next"`, `id="shuffle-back"`,
 		"Reading books here needs one too.", // -public without -public-read
 	} {
 		if !strings.Contains(body, want) {

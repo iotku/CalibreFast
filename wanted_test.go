@@ -31,9 +31,14 @@ func TestWantedStatus(t *testing.T) {
 	mux.HandleFunc("GET /me/{list}", requireUser(meListHandler))
 	_ = setStatus(u.ID, b, "wanted", "manual")
 	var got []Book
-	rec := call(t, mux, u, "GET", "/me/wanted?api=1&page=1", "")
+	rec := call(t, mux, u, "GET", "/me/saved?api=1&page=1", "")
 	if rec.Code != 200 || json.Unmarshal(rec.Body.Bytes(), &got) != nil || len(got) != 1 || got[0].UUID != b {
-		t.Fatalf("/me/wanted: %d %s", rec.Code, rec.Body)
+		t.Fatalf("/me/saved: %d %s", rec.Code, rec.Body)
+	}
+	// Its old address redirects, keeping the query.
+	rec = call(t, mux, u, "GET", "/me/wanted?api=1&page=1", "")
+	if loc := rec.Header().Get("Location"); rec.Code != http.StatusMovedPermanently || loc != "/me/saved?api=1&page=1" {
+		t.Fatalf("/me/wanted: %d %q", rec.Code, loc)
 	}
 }
 

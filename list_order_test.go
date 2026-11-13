@@ -88,7 +88,7 @@ func TestListOrder(t *testing.T) {
 		call(t, mux, alice, "PUT", "/api/me/books/"+u+"/status", `{"status":"wanted"}`)
 	}
 	call(t, mux, alice, "PUT", "/api/me/lists/wanted/order", orderBody(b, c, a))
-	if got := listUUIDs(t, mux, alice, "/me/wanted"); !slices.Equal(got, []string{b, c, a}) {
+	if got := listUUIDs(t, mux, alice, "/me/saved"); !slices.Equal(got, []string{b, c, a}) {
 		t.Fatalf("wanted: %v", got)
 	}
 	if got, _ := wantedInOrder(alice); !slices.Equal(got, []string{b, c, a}) {
@@ -100,11 +100,11 @@ func TestListOrder(t *testing.T) {
 	if pos != nil {
 		t.Errorf("finished book kept its wanted place: %d", *pos)
 	}
-	if got := listUUIDs(t, mux, alice, "/me/wanted"); !slices.Equal(got, []string{c, a}) {
+	if got := listUUIDs(t, mux, alice, "/me/saved"); !slices.Equal(got, []string{c, a}) {
 		t.Fatalf("wanted after finishing one: %v", got)
 	}
 	// The grid page offers Edit.
-	if rec := call(t, mux, alice, "GET", "/me/wanted", ""); !strings.Contains(rec.Body.String(), `id="list-edit"`) {
+	if rec := call(t, mux, alice, "GET", "/me/saved", ""); !strings.Contains(rec.Body.String(), `id="list-edit"`) {
 		t.Errorf("no Edit button on Want to read")
 	}
 	if rec := call(t, mux, alice, "GET", "/me/reading", ""); strings.Contains(rec.Body.String(), `id="list-edit"`) {

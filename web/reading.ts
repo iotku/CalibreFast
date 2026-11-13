@@ -5,7 +5,7 @@
  * and every card gets two buttons over its cover on hover:
  *   - top left: favorite (☆/★; a ★ stays shown without hover);
  *   - top right, by reading status: "save" for a book not started
- *     (a toggle: /me/wanted), "continue reading" for one being read (opens
+ *     (a toggle: /me/saved), "continue reading" for one being read (opens
  *     the reader in the format last read), a check mark once finished.
  *
  * The last answer is kept in localStorage (with whose it is), so on repeat

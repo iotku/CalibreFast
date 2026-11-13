@@ -230,7 +230,7 @@ function init(bar: HTMLElement): void {
             "div",
             { className: "tb-menu-list", hidden: true },
             mark(el("a", { href: "/me/favorites", textContent: "★ Favorites" }), "favorites"),
-            mark(el("a", { href: "/me/wanted", textContent: "Saved" }), "wanted"),
+            mark(el("a", { href: "/me/saved", textContent: "Saved" }), "saved"),
             mark(el("a", { href: "/me/reading", textContent: "Reading" }), "reading"),
             mark(el("a", { href: "/me/finished", textContent: "Finished" }), "finished"),
             el("hr"),
@@ -252,7 +252,7 @@ function init(bar: HTMLElement): void {
         userEl.replaceChildren(
             ...(importsShortcut ? [importsShortcut] : []),
             ...(st.canEdit ? [shortcut("/upload", "Upload books", UPLOAD, "upload")] : []),
-            shortcut("/me/wanted", "Saved", BOOKMARK, "wanted"),
+            shortcut("/me/saved", "Saved", BOOKMARK, "saved"),
             shortcut("/me/favorites", "Favorites", STAR, "favorites"),
             shortcut("/me/reading", "Reading", BOOK, "reading"),
             el("div", { className: "tb-menu" }, btn, list),
