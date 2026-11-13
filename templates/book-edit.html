@@ -78,7 +78,7 @@
                     {{ end }}
                     <!-- How the page works: shown on a click (.info-tip, script below) -->
                     <details class="info-tip">
-                        <summary class="info-tip-btn" title="How editing works"><span class="info-tip-i" aria-hidden="true">i</span><span class="sr-only">How editing works</span></summary>
+                        <summary class="info-tip-btn" title="How editing works"><svg class="info-tip-i" viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" aria-hidden="true"><circle cx="12" cy="12" r="10"/><path d="M12 11v6"/><circle cx="12" cy="7.5" r="0.6" fill="currentColor"/></svg><span class="sr-only">How editing works</span></summary>
                         <div class="info-tip-body">
                             {{ if and .Merge .Merge.Incoming }}
                             <p><strong>current</strong> is the book's own metadata, <strong>New epub</strong>, <strong>New pdf</strong>… what the new files say. If the book's metadata is already right, add the files as they are; otherwise pick values below, and choose which files and cover to keep.</p>
@@ -181,7 +181,7 @@
                 </div>
                 {{ end }}
                 <details class="info-tip merge-info">
-                    <summary class="info-tip-btn info-tip-labelled"><span class="info-tip-i" aria-hidden="true">i</span>What happens to replaced files and readers' data</summary>
+                    <summary class="info-tip-btn info-tip-labelled"><svg class="info-tip-i" viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" aria-hidden="true"><circle cx="12" cy="12" r="10"/><path d="M12 11v6"/><circle cx="12" cy="7.5" r="0.6" fill="currentColor"/></svg>What happens to replaced files and readers' data</summary>
                     <div class="info-tip-body">
                 {{ if .Incoming }}
                 <p>
@@ -206,7 +206,7 @@
                     <div class="lookup-status-row">
                         <p id="lookup-status" class="lookup-status" role="status">Look up on Open Library</p>
                         <details class="info-tip">
-                            <summary class="info-tip-btn" title="How looking up works"><span class="info-tip-i" aria-hidden="true">i</span><span class="sr-only">How looking up works</span></summary>
+                            <summary class="info-tip-btn" title="How looking up works"><svg class="info-tip-i" viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" aria-hidden="true"><circle cx="12" cy="12" r="10"/><path d="M12 11v6"/><circle cx="12" cy="7.5" r="0.6" fill="currentColor"/></svg><span class="sr-only">How looking up works</span></summary>
                             <div class="info-tip-body">
                                 <p>Search Open Library by the book's ISBN (the likeliest match) or by its title and author. Nothing is sent until you click a search.</p>
                                 <p>Matches are listed here: tick one to offer its values as pills under each field, or open it to compare it with the current metadata and accept all of it.</p>

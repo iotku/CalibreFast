@@ -1982,25 +1982,12 @@ input[type="date"].meta-input::-webkit-calendar-picker-indicator:hover {
 }
 
 .info-tip-i {
-    width: 18px;
-    height: 18px;
-    display: inline-flex;
-    align-items: center;
-    justify-content: center;
-    border: 1px solid var(--border);
-    border-radius: 50%;
-    font: italic 600 0.72rem var(--serif);
-    color: var(--muted);
+    flex-shrink: 0;
+    display: block;
 }
 
 .info-tip-btn:hover,
 .info-tip[open] > .info-tip-btn {
-    color: var(--accent);
-}
-
-.info-tip-btn:hover .info-tip-i,
-.info-tip[open] .info-tip-i {
-    border-color: var(--accent);
     color: var(--accent);
 }
 
