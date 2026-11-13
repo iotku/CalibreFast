@@ -422,6 +422,147 @@ input[type="number"],
     text-align: center;
 }
 
+/* Shelf rows (pinned and featured shelves). */
+.pin-rows {
+    display: flex;
+    flex-direction: column;
+    gap: var(--gap-xlarge);
+}
+.pin-list {
+    display: flex;
+    flex-direction: column;
+    gap: var(--gap-xlarge);
+}
+.pin-foot {
+    display: flex;
+    justify-content: flex-end;
+    margin-top: calc(-1 * var(--gap-large));
+}
+.pin-rows[hidden],
+.pin-foot[hidden] {
+    display: none;
+}
+.row-title-link {
+    color: inherit !important;
+    text-decoration: none;
+}
+.row-title-link:hover {
+    text-decoration: underline;
+}
+.row-tools {
+    align-items: center;
+}
+.row-menu {
+    position: relative;
+}
+.row-menu > summary {
+    list-style: none;
+    min-width: 32px;
+    justify-content: center;
+    padding: 0;
+}
+.row-menu > summary::-webkit-details-marker {
+    display: none;
+}
+.row-menu-list {
+    position: absolute;
+    right: 0;
+    top: calc(100% + 4px);
+    z-index: 20;
+    display: flex;
+    flex-direction: column;
+    min-width: 12rem;
+    padding: var(--gap-small) 0;
+    background: var(--bg-elevated);
+    border: 1px solid var(--border-medium);
+    border-radius: var(--radius-large);
+    box-shadow: 0 8px 24px rgb(0 0 0 / 0.25);
+}
+.row-menu-list button {
+    padding: var(--gap-medium) var(--gap-large);
+    background: none;
+    border: none;
+    color: var(--text-primary);
+    font: inherit;
+    text-align: left;
+    cursor: pointer;
+}
+.row-menu-list button:hover,
+.row-menu-list button:focus-visible {
+    background: var(--bg-surface);
+}
+/* Reordering: each shelf shrinks to its title, with the handles. */
+.pin-list.reordering {
+    gap: var(--gap-medium);
+}
+.pin-list.reordering .row-books,
+.pin-list.reordering .row-tools {
+    display: none;
+}
+.pin-list.reordering .pin-row {
+    padding: var(--gap-small) var(--gap-medium);
+    border: 1px solid var(--border-light);
+    border-radius: var(--radius-large);
+    background: var(--bg-surface);
+}
+.pin-list.reordering .row-head {
+    justify-content: flex-start;
+    align-items: center;
+    margin: 0;
+}
+
+/* Drag to reorder (web/reorder.ts). */
+.reorder {
+    display: inline-flex;
+    align-items: center;
+    gap: 2px;
+    flex: none;
+}
+.reorder-grip {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    width: 28px;
+    height: 32px;
+    color: var(--text-muted);
+    cursor: grab;
+    touch-action: none;
+}
+.reorder-btn {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    width: 32px;
+    height: 32px;
+    padding: 0;
+    background: none;
+    border: 1px solid transparent;
+    border-radius: var(--radius-small);
+    color: var(--text-primary);
+    cursor: pointer;
+}
+.reorder-btn:hover:not(:disabled) {
+    border-color: var(--border-medium);
+}
+.reorder-btn:disabled {
+    opacity: 0.3;
+    cursor: default;
+}
+.reordering .dragging {
+    opacity: 0.7;
+    outline: 2px dashed var(--border-medium);
+}
+.reordering .dragging .reorder-grip {
+    cursor: grabbing;
+}
+@media (pointer: coarse) {
+    .reorder-grip,
+    .reorder-btn {
+        width: var(--touch-target);
+        height: var(--touch-target);
+    }
+}
+
 @media (min-width: 1800px) {
     .discover {
         --row-cols: 8;
@@ -2121,7 +2262,8 @@ body.book-standalone {
 }
 
 .btn-group-toggle:hover,
-.btn-group-toggle[aria-expanded="true"] {
+.btn-group-toggle[aria-expanded="true"],
+.btn-group-toggle[aria-pressed="true"] {
     color: var(--text-primary);
     border-style: solid;
 }
@@ -2775,6 +2917,27 @@ label.group-row span {
 .shelf-count {
     font-size: 0.8rem;
     color: var(--text-muted);
+}
+
+.shelf-badge {
+    font-size: 0.75rem;
+    padding: 0 0.4rem;
+    border: 1px solid var(--border-medium);
+    border-radius: var(--radius-round);
+    color: var(--text-muted);
+}
+
+.shelf-toggle[aria-pressed="true"] {
+    border-color: var(--text-link);
+    color: var(--text-link);
+}
+
+.shelf-order.reordering .shelf-row {
+    justify-content: flex-start;
+}
+
+.shelf-order.reordering .shelf-actions {
+    margin-left: auto;
 }
 
 .shelf-desc {

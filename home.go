@@ -29,6 +29,9 @@ type homeAnswer struct {
 	ReadingCount int          `json:"reading_count"`
 	Wanted       []Book       `json:"wanted"`
 	WantedCount  int          `json:"wanted_count"`
+	// The shelf rows: pinned ones, and featured ones not unpinned
+	// (shelf_pins.go).
+	Shelves []homeShelf `json:"shelves"`
 }
 
 func homeHandler(w http.ResponseWriter, r *http.Request) {
@@ -62,6 +65,10 @@ func homeHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	if ans.Wanted, err = booksByUUIDs(wanted[:min(len(wanted), homeRowMax)]); err != nil {
+		http.Error(w, "query failed", http.StatusInternalServerError)
+		return
+	}
+	if ans.Shelves, err = pinnedShelves(currentUser(r), shelfRowsMax); err != nil {
 		http.Error(w, "query failed", http.StatusInternalServerError)
 		return
 	}

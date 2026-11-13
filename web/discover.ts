@@ -8,6 +8,9 @@
  *     so the same books don't come back until the whole library has gone
  *     by; Previous goes back through the strips shown. Books the user
  *     finished are skipped. There's deliberately no link to /shuffle.
+ *   - Shelves: the signed-in user's pinned and featured shelves (from
+ *     /api/me/home), which they can unpin and reorder; for a signed-out
+ *     visitor, the featured ones (pages/discover/featured.json).
  *   - Recently added: the start of pages/page1.json.
  *   - The introduction's sign-in line, for signed-out visitors, and Hide.
  *
@@ -16,9 +19,10 @@
  * a few at a time (maxCovers).
  */
 
-import { byId, maybeId } from "./dom.js";
+import { api, byId, maybeId } from "./dom.js";
 import type { Book } from "./types.js";
-import { coverUrl, renderBookCard, setupCoverStates } from "./utils.js";
+import { coverUrl, escapeHtml, renderBookCard, setupCoverStates } from "./utils.js";
+import { makeReorderable, type Reorderable } from "./reorder.js";
 import { setupBookClickHandlers, loadBook, HASH_PREFIX } from "./modal.js";
 import { cachedMarks, coverAction, markCard, marksFromAnswer, type Marks, type StoredMarks } from "./reading.js";
 import { forgetLocalReading, localReading, LOCAL_FINISHED } from "./local-reading.js";
@@ -35,6 +39,7 @@ const version = cfg["version"] ?? "";
 const pageSize = Math.max(1, parseInt(cfg["pageSize"] ?? "", 10) || 60);
 const totalBooks = parseInt(cfg["totalBooks"] ?? "", 10) || 0;
 const shuffleTotal = parseInt(cfg["shuffleTotal"] ?? "", 10) || 0;
+const featuredVersion = cfg["featuredVersion"] ?? "";
 
 let marks: Marks = cachedMarks();
 
@@ -86,8 +91,8 @@ const loadedCovers = new Set<string>(); // cover URLs the browser has: shown at 
  * layout is the same for everyone); without, it's hidden. all shows its
  * "See all" link.
  */
-function fillRow(id: string, books: Book[], { hint = false, all = false } = {}): void {
-    const section = byId(id);
+function fillRow(row: string | HTMLElement, books: Book[], { hint = false, all = false } = {}): void {
+    const section = typeof row === "string" ? byId(row) : row;
     const list = section.querySelector<HTMLElement>(".row-books");
     if (!list) return;
     list.innerHTML = books.map((b) => renderBookCard(b, loadedCovers.has(coverUrl(b)))).join("");
@@ -330,6 +335,18 @@ interface HomeAnswer {
     reading_count: number;
     wanted: Book[];
     wanted_count: number;
+    shelves?: HomeShelf[];
+}
+
+/** A shelf row (Go: homeShelf). */
+interface HomeShelf {
+    id: number;
+    name: string;
+    href: string;
+    global: boolean;
+    featured: boolean;
+    count: number;
+    books: Book[];
 }
 
 function repaintMarks(only?: string): void {
@@ -354,6 +371,7 @@ function showHome(h: HomeAnswer): void {
     byId("row-reading-device").hidden = true;
     fillRow("row-reading", h.reading, { hint: true, all: h.reading_count > 0 });
     fillRow("row-wanted", h.wanted, { hint: true, all: h.wanted_count > 0 });
+    showShelves(h.shelves ?? [], true);
     // Something to go back to: the introduction steps aside.
     byId("intro").classList.toggle("compact", h.reading.length > 0 || !!store.get(INTRO_KEY));
 }
@@ -401,6 +419,8 @@ async function showGuest(): Promise<void> {
     byId("row-wanted").hidden = true;
     byId("row-reading-device").hidden = false;
     fillRow("row-reading", books);
+    const shelves = await featured();
+    if (!serverSignedIn) showShelves(shelves, false);
     // The introduction stays open for a guest (only Hide folds it): its
     // sign-in line is how this reading would follow them to other devices.
 }
@@ -469,6 +489,120 @@ function setupHome(): Promise<void> {
 }
 
 /* ------------------------------------------------------------------ */
+/* Shelves                                                             */
+/* ------------------------------------------------------------------ */
+
+let featuredFile: Promise<HomeShelf[]> | null = null;
+
+/** The featured shelves, for a signed-out visitor ([] when there are none). */
+function featured(): Promise<HomeShelf[]> {
+    if (!featuredVersion) return Promise.resolve([]);
+    featuredFile ??= fetch(`/pages/discover/featured.json?v=${encodeURIComponent(featuredVersion)}`, { credentials: "same-origin" })
+        .then((r) => (r.ok ? (r.json() as Promise<HomeShelf[] | null>) : null))
+        .then((s) => s ?? [])
+        .catch(() => []);
+    return featuredFile;
+}
+
+let reordering: Reorderable | null = null;
+
+/**
+ * The shelf rows. own: the signed-in user's, with Remove and Reorder.
+ * Empty shelves are left out.
+ */
+function showShelves(shelves: HomeShelf[], own: boolean): void {
+    if (reordering) return; // being moved: the list stays as the user has it
+    const list = byId("pin-list");
+    list.replaceChildren();
+    for (const s of shelves) {
+        if (!s.books.length) continue;
+        const section = document.createElement("section");
+        section.className = "row pin-row";
+        section.dataset["id"] = String(s.id);
+        section.dataset["name"] = s.name;
+        section.setAttribute("aria-labelledby", `pin-${s.id}-title`);
+        const name = escapeHtml(s.name);
+        section.innerHTML = `
+            <header class="row-head">
+                <h2 id="pin-${s.id}-title"><a class="row-title-link" href="${escapeHtml(s.href)}">${name}</a></h2>
+                <div class="row-tools">
+                    <a href="${escapeHtml(s.href)}" class="row-all">See all</a>
+                    ${
+                        own
+                            ? `<details class="row-menu">
+                        <summary class="row-btn" aria-label="Options for ${name}">
+                            <svg viewBox="0 0 24 24" width="16" height="16" fill="currentColor" aria-hidden="true"><circle cx="5" cy="12" r="2"/><circle cx="12" cy="12" r="2"/><circle cx="19" cy="12" r="2"/></svg>
+                        </summary>
+                        <div class="row-menu-list">
+                            <button type="button" data-act="unpin">Remove from home</button>
+                            <button type="button" data-act="reorder">Reorder shelves</button>
+                        </div>
+                    </details>`
+                            : ""
+                    }
+                </div>
+            </header>
+            <div class="row-books"></div>`;
+        list.append(section);
+        fillRow(section, s.books, { all: true });
+    }
+    byId("pin-rows").hidden = list.children.length === 0;
+    byId("pin-foot").hidden = !own || list.children.length < 2;
+}
+
+function setReordering(on: boolean): void {
+    const btn = byId("pins-edit");
+    const list = byId("pin-list");
+    if (on === !!reordering) return;
+    if (on) {
+        for (const m of list.querySelectorAll<HTMLDetailsElement>(".row-menu")) m.open = false;
+        reordering = makeReorderable({
+            list,
+            items: ".pin-row",
+            label: (el) => el.dataset["name"] ?? "",
+            slot: (el) => el.querySelector<HTMLElement>(".row-head")!,
+            onChange: (ids) => void api("PUT", "/api/me/pins", { ids: ids.map(Number) }).catch(() => {}),
+        });
+    } else {
+        reordering?.stop();
+        reordering = null;
+        void refreshHome();
+    }
+    btn.setAttribute("aria-pressed", String(on));
+    btn.querySelector("span")!.textContent = on ? "Done" : "Reorder shelves";
+    pumpSoon();
+}
+
+function setupShelves(): void {
+    byId("pins-edit").addEventListener("click", () => setReordering(!reordering));
+    const list = byId("pin-list");
+    list.addEventListener("click", (e) => {
+        const btn = e.target instanceof Element ? e.target.closest<HTMLButtonElement>(".row-menu [data-act]") : null;
+        const row = btn?.closest<HTMLElement>(".pin-row");
+        if (!btn || !row) return;
+        btn.closest("details")!.open = false;
+        if (btn.dataset["act"] === "reorder") {
+            setReordering(true);
+            byId("pins-edit").scrollIntoView({ block: "nearest" });
+            return;
+        }
+        // Remove from home: at once here; the server's answer follows.
+        row.remove();
+        byId("pin-rows").hidden = list.children.length === 0;
+        byId("pin-foot").hidden = list.children.length < 2;
+        void api("DELETE", `/api/me/pins/${row.dataset["id"]}`)
+            .catch(() => {})
+            .then(() => refreshHome());
+    });
+    // A menu closes when the click is elsewhere.
+    document.addEventListener("click", (e) => {
+        for (const m of list.querySelectorAll<HTMLDetailsElement>(".row-menu[open]")) {
+            if (!(e.target instanceof Node && m.contains(e.target))) m.open = false;
+        }
+    });
+}
+
+/* ------------------------------------------------------------------ */
 /* Introduction                                                        */
 /* ------------------------------------------------------------------ */
 
@@ -520,6 +654,7 @@ function openFromHash(): void {
 
 setupCoverStates(root);
 setupIntro();
+setupShelves();
 const homeIn = setupHome();
 openFromHash();
 const empty = maybeId("discover-empty");

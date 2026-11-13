@@ -274,7 +274,8 @@ func writeJSONFile(path string, data []byte) error {
 func servePages(dir string) http.Handler {
 	files := http.StripPrefix("/pages/", http.FileServer(http.Dir(dir)))
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		if r.URL.Query().Get("v") == currentPagesVersion() {
+		v := r.URL.Query().Get("v")
+		if v == currentPagesVersion() || (v != "" && r.URL.Path == "/pages/discover/featured.json" && v == currentFeaturedVersion()) {
 			w.Header().Set("Cache-Control", "private, max-age=31536000, immutable")
 		} else {
 			w.Header().Set("Cache-Control", "no-cache")
@@ -492,8 +493,26 @@ var templates = template.Must(
 		"join":         strings.Join,
 		"robotsMeta":   robotsMeta,
 		"count":        countLabel,
+		"dict":         templateDict,
 	}).ParseGlob("templates/*.html"),
 )
+
+// templateDict makes a map from key, value pairs, to pass several values
+// to a template ({{ template "x" (dict "A" .a "B" .b) }}).
+func templateDict(kv ...any) (map[string]any, error) {
+	if len(kv)%2 != 0 {
+		return nil, errors.New("dict: odd number of arguments")
+	}
+	m := make(map[string]any, len(kv)/2)
+	for i := 0; i < len(kv); i += 2 {
+		k, ok := kv[i].(string)
+		if !ok {
+			return nil, errors.New("dict: keys must be strings")
+		}
+		m[k] = kv[i+1]
+	}
+	return m, nil
+}
 
 // countLabel is "1 book", "48,211 books".
 func countLabel(n int, one, many string) string {
@@ -1081,6 +1100,7 @@ func writeLibraryPages() error {
 	// A new stamp every start, even when no file changed: an older run may
 	// have served other contents under the stamp it would otherwise keep.
 	pagesVersion.Store(time.Now().UnixNano())
+	refreshFeatured()
 	return nil
 }
 
