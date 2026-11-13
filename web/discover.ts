@@ -347,11 +347,12 @@ interface HomeAnswer {
 
 /** A shelf row (Go: homeShelf). */
 interface HomeShelf {
-    id: number;
+    kind?: "shelf" | "tag"; // a tag the user pinned: no id
+    id?: number;
     name: string;
     href: string;
-    global: boolean;
-    featured: boolean;
+    global?: boolean;
+    featured?: boolean;
     count: number;
     books: Book[];
 }
@@ -521,17 +522,20 @@ function showShelves(shelves: HomeShelf[], own: boolean): void {
     if (reordering) return; // being moved: the list stays as the user has it
     const list = byId("pin-list");
     list.replaceChildren();
-    for (const s of shelves) {
-        if (!s.books.length) continue;
+    pinnedTags = new Set(shelves.filter((s) => s.kind === "tag").map((s) => s.name.toLowerCase()));
+    shelves.forEach((s, i) => {
+        if (!s.books.length) return;
+        const tag = s.kind === "tag";
         const section = document.createElement("section");
         section.className = "row pin-row";
-        section.dataset["id"] = String(s.id);
+        // "s:7" a shelf, "t:Space Opera" a tag (the order sent back says which).
+        section.dataset["id"] = tag ? `t:${s.name}` : `s:${s.id}`;
         section.dataset["name"] = s.name;
-        section.setAttribute("aria-labelledby", `pin-${s.id}-title`);
+        section.setAttribute("aria-labelledby", `pin-${i}-title`);
         const name = escapeHtml(s.name);
         section.innerHTML = `
             <header class="row-head">
-                <h2 id="pin-${s.id}-title"><a class="row-title-link" href="${escapeHtml(s.href)}">${name}</a></h2>
+                <h2 id="pin-${i}-title"><a class="row-title-link" href="${escapeHtml(s.href)}">${name}</a>${tag ? '<span class="row-sub"> tag</span>' : ""}</h2>
                 <div class="row-tools">
                     <a href="${escapeHtml(s.href)}" class="row-all">See all</a>
                     ${
@@ -542,7 +546,7 @@ function showShelves(shelves: HomeShelf[], own: boolean): void {
                         </summary>
                         <div class="row-menu-list">
                             <button type="button" data-act="unpin">Remove from home</button>
-                            <button type="button" data-act="reorder">Reorder shelves</button>
+                            <button type="button" data-act="reorder">Reorder rows</button>
                         </div>
                     </details>`
                             : ""
@@ -552,9 +556,13 @@ function showShelves(shelves: HomeShelf[], own: boolean): void {
             <div class="row-books"></div>`;
         list.append(section);
         fillRow(section, s.books, { all: true });
-    }
+    });
     pinControls(own);
+    updateTagRows(own);
 }
+
+/** Pinned tags (lower case): their "More in" rows step aside. */
+let pinnedTags = new Set<string>();
 
 /**
  * Reordering needs two rows or more: with fewer, neither the button under
@@ -579,7 +587,10 @@ function setReordering(on: boolean): void {
             items: ".pin-row",
             label: (el) => el.dataset["name"] ?? "",
             slot: (el) => el.querySelector<HTMLElement>(".row-head")!,
-            onChange: (ids) => void api("PUT", "/api/me/pins", { ids: ids.map(Number) }).catch(() => {}),
+            onChange: (ids) =>
+                void api("PUT", "/api/me/pins", {
+                    rows: ids.map((id) => (id.startsWith("t:") ? { tag: id.slice(2) } : { shelf: Number(id.slice(2)) })),
+                }).catch(() => {}),
         });
     } else {
         reordering?.stop();
@@ -587,7 +598,7 @@ function setReordering(on: boolean): void {
         void refreshHome();
     }
     btn.setAttribute("aria-pressed", String(on));
-    btn.querySelector("span")!.textContent = on ? "Done" : "Reorder shelves";
+    btn.querySelector("span")!.textContent = on ? "Done" : "Reorder rows";
     pumpSoon();
 }
 
@@ -607,7 +618,9 @@ function setupShelves(): void {
         // Remove from home: at once here; the server's answer follows.
         row.remove();
         pinControls(true);
-        void api("DELETE", `/api/me/pins/${row.dataset["id"]}`)
+        const id = row.dataset["id"] ?? "";
+        const path = id.startsWith("t:") ? `/api/me/tag-pins/${encodeURIComponent(id.slice(2))}` : `/api/me/pins/${id.slice(2)}`;
+        void api("DELETE", path)
             .catch(() => {})
             .then(() => refreshHome());
     });
@@ -658,10 +671,42 @@ function setupTagRows(): void {
         /* none */
     }
     if (!tagVersion || !index.length) return;
-    const fill = async (section: HTMLElement, row: TagRow): Promise<void> => {
-        const books = await booksFile(`/pages/discover/tag-${row.n}.json?v=${encodeURIComponent(tagVersion)}`);
-        // Finished books aren't suggestions any more.
-        fillRow(section, books.filter((b) => !marks.finished.has(b.uuid)), { all: true });
+    // Every tag in a random order (bigger ones sooner). Each row takes the
+    // next one as it nears the screen, by when the user's pinned tags are
+    // usually known: a pinned tag has its own row, so it's skipped.
+    const queue = pickTagRows(index, index.length);
+    const fill = async (section: HTMLElement, i: number): Promise<void> => {
+        // The next tag that isn't pinned and has books the user hasn't finished.
+        let row: TagRow | undefined;
+        let books: Book[] = [];
+        while (!books.length) {
+            const k = queue.findIndex((t) => !pinnedTags.has(t.name.toLowerCase()));
+            if (k < 0) {
+                section.hidden = true; // none left
+                return;
+            }
+            row = queue.splice(k, 1)[0]!;
+            const all = await booksFile(`/pages/discover/tag-${row.n}.json?v=${encodeURIComponent(tagVersion)}`);
+            // Finished books aren't suggestions any more.
+            books = all.filter((b) => !marks.finished.has(b.uuid));
+        }
+        if (!row) return;
+        section.dataset["name"] = row.name;
+        section.querySelector("header")!.innerHTML = `
+            <h2 id="tag-row-${i}-title">More in <a class="row-title-link" href="${escapeHtml(row.href)}">${escapeHtml(row.name)}</a></h2>
+            <div class="row-tools">
+                <a href="${escapeHtml(row.href)}" class="row-all">See all</a>
+                <details class="row-menu tag-menu" hidden>
+                    <summary class="row-btn" aria-label="Options for ${escapeHtml(row.name)}">
+                        <svg viewBox="0 0 24 24" width="16" height="16" fill="currentColor" aria-hidden="true"><circle cx="5" cy="12" r="2"/><circle cx="12" cy="12" r="2"/><circle cx="19" cy="12" r="2"/></svg>
+                    </summary>
+                    <div class="row-menu-list">
+                        <button type="button" data-act="pin-tag">Pin to home</button>
+                    </div>
+                </details>
+            </div>`;
+        fillRow(section, books, { all: true });
+        updateTagRows(serverSignedIn ?? signedIn() === true);
         box.hidden = !box.querySelector(".row:not([hidden])");
     };
     const near = new IntersectionObserver(
@@ -670,28 +715,56 @@ function setupTagRows(): void {
                 if (!e.isIntersecting) continue;
                 near.unobserve(e.target);
                 const el = e.target as HTMLElement;
-                const row = picked[Number(el.dataset["i"])];
-                if (row) void fill(el, row);
+                void fill(el, Number(el.dataset["i"]));
             }
         },
         { rootMargin: "800px 0px" },
     );
-    const picked = pickTagRows(index, TAG_ROWS);
     box.hidden = false;
-    picked.forEach((row, i) => {
+    for (let i = 0; i < Math.min(TAG_ROWS, index.length); i++) {
         const section = document.createElement("section");
         section.className = "row tag-row";
         section.dataset["i"] = String(i);
         section.setAttribute("aria-labelledby", `tag-row-${i}-title`);
-        section.innerHTML = `
-            <header class="row-head">
-                <h2 id="tag-row-${i}-title">More in <a class="row-title-link" href="${escapeHtml(row.href)}">${escapeHtml(row.name)}</a></h2>
-                <a href="${escapeHtml(row.href)}" class="row-all">See all</a>
-            </header>
-            <div class="row-books"></div>`;
+        section.innerHTML = `<header class="row-head"></header><div class="row-books"></div>`;
         box.append(section);
         near.observe(section);
+    }
+    updateTagRows(signedIn() === true);
+    box.addEventListener("click", (e) => {
+        const btn = e.target instanceof Element ? e.target.closest<HTMLButtonElement>('[data-act="pin-tag"]') : null;
+        const section = btn?.closest<HTMLElement>(".tag-row");
+        const name = section?.dataset["name"];
+        if (!btn || !section || !name) return;
+        btn.closest("details")!.open = false;
+        // Pinned: it moves up among the pinned rows (from the server's answer).
+        pinnedTags.add(name.toLowerCase());
+        updateTagRows(true);
+        void api("PUT", `/api/me/tag-pins/${encodeURIComponent(name)}`)
+            .catch(() => {})
+            .then(() => refreshHome());
     });
+    // A menu closes when the click is elsewhere.
+    document.addEventListener("click", (e) => {
+        for (const m of box.querySelectorAll<HTMLDetailsElement>(".row-menu[open]")) {
+            if (!(e.target instanceof Node && m.contains(e.target))) m.open = false;
+        }
+    });
+}
+
+/**
+ * "More in" rows: Pin to home for a signed-in user; a tag already pinned
+ * has its own row up with the pinned ones, so its "More in" row steps aside.
+ */
+function updateTagRows(own: boolean): void {
+    const box = maybeId("tag-rows");
+    if (!box) return;
+    for (const section of box.querySelectorAll<HTMLElement>(".tag-row")) {
+        const menu = section.querySelector<HTMLElement>(".tag-menu");
+        if (menu) menu.hidden = !own;
+        const pinned = pinnedTags.has((section.dataset["name"] ?? "").toLowerCase());
+        section.classList.toggle("pinned-away", pinned);
+    }
 }
 
 /* ------------------------------------------------------------------ */
@@ -747,8 +820,8 @@ function openFromHash(): void {
 setupCoverStates(root);
 setupIntro();
 setupShelves();
-setupTagRows();
 const homeIn = setupHome();
+setupTagRows(); // after the cached home answer: pinned tags aren't picked
 openFromHash();
 const empty = maybeId("discover-empty");
 if (empty) empty.hidden = totalBooks > 0;

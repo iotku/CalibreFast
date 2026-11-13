@@ -3462,3 +3462,7 @@ body.selecting .book.selected .cover-wrapper {
 .discover-tags a {
     color: var(--text-link);
 }
+.tag-row.pinned-away,
+.tag-menu[hidden] {
+    display: none;
+}
