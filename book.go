@@ -69,7 +69,9 @@ func bookHandler(w http.ResponseWriter, r *http.Request) {
 
 	path, err := resolveBookPath(uuid)
 	if err != nil {
-		http.NotFound(w, r)
+		if !redirectMerged(w, r, uuid) {
+			http.NotFound(w, r)
+		}
 		return
 	}
 

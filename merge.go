@@ -715,6 +715,7 @@ func mergeInto(books []*mergeBook, req *mergeRequest, by string) (*mergeResult, 
 	if err != nil {
 		errs = append(errs, fmt.Errorf("readers' data: %w", err))
 	}
+	noteMerged(keep.UUID, otherUUIDs) // their old links lead here
 
 	// 5. The metadata, as the editor saves it.
 	if strings.TrimSpace(req.Date) == "" {
