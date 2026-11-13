@@ -1810,41 +1810,33 @@ body.book-standalone {
 .book-actions {
     display: grid;
     --side: 48px; /* Download beside Read */
-    --pad: 0.6rem;
+    --pad: 0.9rem;
     grid-template-columns: minmax(0, 1fr) var(--side);
     gap: 0.5rem 0;
     margin-top: 1rem;
 }
 
+/* Icons and labels at the left, so they line up down the rows. */
 .book-actions .btn-action {
     grid-column: 1 / -1;
+    justify-content: flex-start;
     min-width: 0;
     padding: 0 var(--pad);
     white-space: nowrap;
 }
 
-/* Read's left padding matches Download's width, so its label centers on
-   the whole row: down the middle of the cover, like a full-row Download. */
 .book-actions .btn-action-read {
     grid-column: 1;
-    padding-left: calc(var(--pad) + var(--side));
     border-top-right-radius: 0;
     border-bottom-right-radius: 0;
 }
 
-/* The labels share one width, so the icons stack in a column (the book's
-   spine over the download arrow's stem); the words center in it, and a
-   margin as wide as the icon balances it, so they center on the row. */
-.book-actions .btn-action:not(.is-side) span {
-    min-width: 7.5em;
-    margin-right: calc(16px + 0.5rem);
-    text-align: center;
-}
 
 /* Read's other half: dark, with a gold icon and outline, so it reads as
    its own action. */
 .book-actions .is-side {
     grid-column: 2;
+    justify-content: center;
     padding: 0;
     background: var(--bg-surface, #222);
     border-color: #c8a96e;
@@ -2229,14 +2221,6 @@ body.book-standalone {
     }
 
     /* the 160px column: Read's label alone fits beside Download */
-    .book-actions .btn-action:not(.is-side) span {
-        min-width: 0;
-        margin-right: 0;
-    }
-
-    .book-actions .btn-action-read {
-        padding-left: var(--pad);
-    }
 
 
     .book-actions .btn-action-read .action-icon {
