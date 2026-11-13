@@ -637,6 +637,7 @@ func serveLibraryHTTP() {
 
 	// Merging books, and the bulk metadata editor (merge.go, bulk_edit.go)
 	registerMergeRoutes()
+	registerAddFormatRoutes()
 	registerBulkEditRoutes()
 	registerLibraryRepairRoutes()
 	registerNotDuplicateRoutes()

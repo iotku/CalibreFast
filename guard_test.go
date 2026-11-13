@@ -121,6 +121,8 @@ func TestBulkEditAndMergeRoutesNeedWrites(t *testing.T) {
 	mux := http.NewServeMux()
 	withMux(mux, func() {
 		registerMergeRoutes()
+		registerAddFormatRoutes()
+		registerRecycleRoutes()
 		registerBulkEditRoutes()
 		registerNotDuplicateRoutes()
 		registerLibraryRepairRoutes()
@@ -140,6 +142,11 @@ func TestBulkEditAndMergeRoutesNeedWrites(t *testing.T) {
 		{"GET", "/book/merge?ids=a,b"},
 		{"GET", "/merge/metadata?ids=a,b"},
 		{"POST", "/merge/apply"},
+		{"POST", "/book/add-format/a"},
+		{"GET", "/book/add-format/a/b"},
+		{"GET", "/book/add-format/a/b/metadata"},
+		{"POST", "/book/add-format/a/b/apply"},
+		{"POST", "/api/library/books/a/formats/epub/remove"},
 	}
 	// (That an admin gets through with -allow-writes is TestRequireWrites.)
 	allowWrites = false
@@ -179,6 +186,7 @@ func TestAdminRoutesLookMissing(t *testing.T) {
 		registerImportRoutes()
 		registerRecycleRoutes()
 		registerMergeRoutes()
+		registerAddFormatRoutes()
 	})
 	reader, _ := createUser("reader1", "correct horse battery", false)
 

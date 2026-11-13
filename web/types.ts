@@ -130,6 +130,8 @@ export interface DuplicateBook {
     same_authors: boolean;
     /** It holds a file identical to one being added: that can't be added again. */
     same_file: boolean;
+    /** It has one of the ISBNs asked about (new files for a book). */
+    same_isbn?: boolean;
 }
 
 /** Library books a book may duplicate (Go: duplicateCheck). */
@@ -149,6 +151,10 @@ export interface ImportSummary {
     has_cover: boolean;
     /** Library books it may duplicate; absent for none. */
     duplicate?: DuplicateCheck;
+    /** New files for this library book (Go: add_format.go), reviewed at link. */
+    into?: string;
+    into_title?: string;
+    link?: string;
 }
 
 /** GET /api/imports (Go: importQueue). */
@@ -188,14 +194,40 @@ export interface RecycleBatch {
     deleted_at: string;
     deleted_by: string;
     books: RecycledBook[];
+    /** Single files taken from books still in the library (Go: recycle_formats.go). */
+    formats: RecycledFormat[];
     /** The books a merge took into another (Go: mergeNote in merge.go). */
     merged_into?: MergeNote;
 }
 
-/** Go: mergeNote. replaced: the kept book's files the merge replaced, in the batch's replaced/ folder. */
+/** One file of a book in the Recycling Bin (Go: recycleFormatView). */
+export interface RecycledFormat {
+    uuid: string;
+    title: string;
+    authors: string;
+    /** "EPUB" */
+    format: string;
+    file: string;
+    size: number;
+    /** A merge or a new file took its place (else it was removed). */
+    replaced?: boolean;
+    reader_data?: Record<string, number>;
+    restored_at?: string;
+    restored_by?: string;
+    /** What POST …/restore takes in formats. */
+    key: string;
+    in_bin: boolean;
+}
+
+/**
+ * Go: mergeNote. added_files: the batch is from adding new files to the book
+ * (they replaced its files in it). replaced: older batches' replaced files, in
+ * their replaced/ folder.
+ */
 export interface MergeNote {
     uuid: string;
     title: string;
+    added_files?: string[];
     replaced?: string[];
 }
 
@@ -207,7 +239,7 @@ export interface RecycleBin {
 
 /** POST /api/recycle-bin/{batch}/restore (Go: restoreResult). */
 export interface RestoreResponse {
-    results: { uuid: string; title: string; error?: string }[];
+    results: { uuid: string; title: string; format?: string; error?: string }[];
 }
 
 /** A row of the bulk editor, GET /api/library/table (Go: tableBook in bulk_edit.go). */

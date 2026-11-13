@@ -91,6 +91,9 @@ type recycleBatch struct {
 	Books     []recycledBook `json:"books"`
 	// MergedInto: the batch is the books a merge took into another (merge.go).
 	MergedInto *mergeNote `json:"merged_into,omitempty"`
+	// Formats: single files taken from books that stay in the library
+	// (recycle_formats.go): removed, or replaced by a merge or a new file.
+	Formats []recycledFormat `json:"formats,omitempty"`
 }
 
 func (b *recycleBatch) dir() string { return filepath.Join(recycleBinDir(), b.ID) }
@@ -134,6 +137,26 @@ func newRecycleBatchID(now time.Time) string {
 	var r [4]byte
 	_, _ = rand.Read(r[:])
 	return now.UTC().Format("20060102-150405") + "-" + hex.EncodeToString(r[:])
+}
+
+// create gives the batch its id and folder, with a copy of metadata.db as
+// it is now, before anything is removed. abandon drops it again.
+func (b *recycleBatch) create() (abandon func(), err error) {
+	now := time.Now()
+	b.ID = newRecycleBatchID(now)
+	b.DeletedAt = now.UTC().Format(time.RFC3339)
+	if err := os.MkdirAll(recycleBinDir(), 0o700); err != nil {
+		return nil, fmt.Errorf("recycling bin: %w", err)
+	}
+	if err := os.Mkdir(b.dir(), 0o700); err != nil {
+		return nil, fmt.Errorf("recycling bin: %w", err)
+	}
+	abandon = func() { logErr(os.RemoveAll(b.dir()), "recycling bin: couldn't remove abandoned batch "+b.ID) }
+	if _, err := calibreDB.Exec(`VACUUM INTO ?`, filepath.Join(b.dir(), recycleDBFile)); err != nil {
+		abandon()
+		return nil, fmt.Errorf("couldn't back up metadata.db: %w", err)
+	}
+	return abandon, nil
 }
 
 // libraryBookDir is a book's folder from its books.path, refusing anything
@@ -196,21 +219,9 @@ func recycleBooks(uuids []string, by string) (*recycleBatch, error) {
 		return nil, err
 	}
 
-	now := time.Now()
-	batch.ID = newRecycleBatchID(now)
-	batch.DeletedAt = now.UTC().Format(time.RFC3339)
-	if err := os.MkdirAll(recycleBinDir(), 0o700); err != nil {
-		return nil, fmt.Errorf("recycling bin: %w", err)
-	}
-	if err := os.Mkdir(batch.dir(), 0o700); err != nil {
-		return nil, fmt.Errorf("recycling bin: %w", err)
-	}
-	abandon := func() { logErr(os.RemoveAll(batch.dir()), "recycling bin: couldn't remove abandoned batch "+batch.ID) }
-
-	// The database as it is now, before anything is removed.
-	if _, err := calibreDB.Exec(`VACUUM INTO ?`, filepath.Join(batch.dir(), recycleDBFile)); err != nil {
-		abandon()
-		return nil, fmt.Errorf("couldn't back up metadata.db: %w", err)
+	abandon, err := batch.create()
+	if err != nil {
+		return nil, err
 	}
 	if err := saveReaderData(batch); err != nil {
 		abandon()
@@ -855,14 +866,22 @@ func restoreEntity(ctx context.Context, tx *sql.Tx, e linkedEntity, old int64, i
 
 // restoreResult is what happened to one book a restore asked for.
 type restoreResult struct {
-	UUID  string `json:"uuid"`
-	Title string `json:"title"`
-	Error string `json:"error,omitempty"`
+	UUID   string `json:"uuid"`
+	Title  string `json:"title"`
+	Format string `json:"format,omitempty"` // a single file of the book's ("EPUB")
+	Error  string `json:"error,omitempty"`
 }
 
 // restoreRecycled puts books from a batch back in the library: those with
 // these UUIDs, or every one still in the bin when there are none.
 func restoreRecycled(batchID string, uuids []string, by string) ([]restoreResult, error) {
+	return restoreFromBin(batchID, uuids, nil, by)
+}
+
+// restoreFromBin restores the books with these UUIDs and the files named
+// in formats ("<uuid>/<FORMAT>", recycle_formats.go); with neither, every
+// book and file of the batch still in the bin.
+func restoreFromBin(batchID string, uuids, formats []string, by string) ([]restoreResult, error) {
 	recycleMu.Lock()
 	defer recycleMu.Unlock()
 
@@ -870,16 +889,20 @@ func restoreRecycled(batchID string, uuids []string, by string) ([]restoreResult
 	if err != nil {
 		return nil, err
 	}
+	all := len(uuids) == 0 && len(formats) == 0
 	bakPath := filepath.Join(batch.dir(), recycleDBFile)
-	if _, err := os.Stat(bakPath); err != nil {
-		return nil, fmt.Errorf("the batch's copy of metadata.db is gone: %w", err)
+	if len(batch.Books) > 0 && (all || len(uuids) > 0) {
+		if _, err := os.Stat(bakPath); err != nil {
+			return nil, fmt.Errorf("the batch's copy of metadata.db is gone: %w", err)
+		}
 	}
 
 	var results []restoreResult
 	changed := false
+	// Books first: a file may belong to one of them.
 	for i := range batch.Books {
 		b := &batch.Books[i]
-		if len(uuids) > 0 {
+		if !all {
 			if !slices.Contains(uuids, b.UUID) {
 				continue
 			}
@@ -900,9 +923,36 @@ func restoreRecycled(batchID string, uuids []string, by string) ([]restoreResult
 		}
 		results = append(results, r)
 	}
+	for i := range batch.Formats {
+		f := &batch.Formats[i]
+		if !all {
+			if !slices.Contains(formats, f.key()) {
+				continue
+			}
+		} else if f.RestoredAt != "" || !batch.formatInBin(f) {
+			continue
+		}
+		r := restoreResult{UUID: f.UUID, Title: f.Title, Format: f.Format}
+		if err := batch.restoreFormat(f); err != nil {
+			r.Error = err.Error()
+			log.Printf("recycling bin: %s couldn't restore %q's %s from batch %s: %v", by, f.Title, f.Format, batch.ID, err)
+		} else {
+			f.RestoredAt = time.Now().UTC().Format(time.RFC3339)
+			f.RestoredBy = by
+			changed = true
+			log.Printf("recycling bin: %s restored %q's %s (%s) from batch %s", by, f.Title, f.Format, f.UUID, batch.ID)
+		}
+		results = append(results, r)
+	}
 	for _, u := range uuids {
 		if !slices.ContainsFunc(batch.Books, func(b recycledBook) bool { return b.UUID == u }) {
 			results = append(results, restoreResult{UUID: u, Error: "not in this batch"})
+		}
+	}
+	for _, k := range formats {
+		if !slices.ContainsFunc(batch.Formats, func(f recycledFormat) bool { return f.key() == k }) {
+			u, f, _ := strings.Cut(k, "/")
+			results = append(results, restoreResult{UUID: u, Format: f, Error: "not in this batch"})
 		}
 	}
 	if changed {
@@ -1054,6 +1104,7 @@ func registerRecycleRoutes() {
 	http.HandleFunc("GET /api/recycle-bin", requireWrites(recycleBinHandler))
 	http.HandleFunc("POST /api/recycle-bin/{batch}/restore", requireWrites(recycleRestoreHandler))
 	http.HandleFunc("POST /api/library/delete", requireWrites(recycleDeleteHandler))
+	http.HandleFunc("POST /api/library/books/{uuid}/formats/{format}/remove", requireWrites(recycleFormatHandler))
 }
 
 func recycleBinPage(w http.ResponseWriter, r *http.Request) {
@@ -1068,11 +1119,19 @@ type recycleBookView struct {
 }
 
 type recycleBatchView struct {
-	ID         string            `json:"id"`
-	DeletedAt  string            `json:"deleted_at"`
-	DeletedBy  string            `json:"deleted_by"`
-	Books      []recycleBookView `json:"books"`
-	MergedInto *mergeNote        `json:"merged_into,omitempty"`
+	ID         string              `json:"id"`
+	DeletedAt  string              `json:"deleted_at"`
+	DeletedBy  string              `json:"deleted_by"`
+	Books      []recycleBookView   `json:"books"`
+	Formats    []recycleFormatView `json:"formats"`
+	MergedInto *mergeNote          `json:"merged_into,omitempty"`
+}
+
+// recycleFormatView is a single file in GET /api/recycle-bin (web/types.ts RecycledFormat).
+type recycleFormatView struct {
+	recycledFormat
+	Key   string `json:"key"`    // what POST …/restore takes in formats
+	InBin bool   `json:"in_bin"` // can be restored
 }
 
 func recycleBinHandler(w http.ResponseWriter, r *http.Request) {
@@ -1083,10 +1142,14 @@ func recycleBinHandler(w http.ResponseWriter, r *http.Request) {
 	}
 	views := []recycleBatchView{}
 	for _, b := range batches {
-		v := recycleBatchView{ID: b.ID, DeletedAt: b.DeletedAt, DeletedBy: b.DeletedBy, Books: []recycleBookView{}, MergedInto: b.MergedInto}
+		v := recycleBatchView{ID: b.ID, DeletedAt: b.DeletedAt, DeletedBy: b.DeletedBy, Books: []recycleBookView{}, Formats: []recycleFormatView{}, MergedInto: b.MergedInto}
 		for i := range b.Books {
 			bk := &b.Books[i]
 			v.Books = append(v.Books, recycleBookView{*bk, bk.RestoredAt == "" && b.inBin(bk)})
+		}
+		for i := range b.Formats {
+			f := &b.Formats[i]
+			v.Formats = append(v.Formats, recycleFormatView{*f, f.key(), f.RestoredAt == "" && b.formatInBin(f)})
 		}
 		views = append(views, v)
 	}
@@ -1097,25 +1160,36 @@ func recycleBinHandler(w http.ResponseWriter, r *http.Request) {
 
 type uuidsRequest struct {
 	UUIDs []string `json:"uuids"`
+	// Formats: single files to restore, "<uuid>/<FORMAT>" (restore only).
+	Formats []string `json:"formats"`
 }
 
 func readUUIDs(w http.ResponseWriter, r *http.Request) ([]string, bool) {
+	req, ok := readUUIDsRequest(w, r)
+	return req.UUIDs, ok
+}
+
+func readUUIDsRequest(w http.ResponseWriter, r *http.Request) (uuidsRequest, bool) {
 	var req uuidsRequest
 	if err := json.NewDecoder(http.MaxBytesReader(w, r.Body, 1<<20)).Decode(&req); err != nil {
 		http.Error(w, "bad request: "+err.Error(), http.StatusBadRequest)
-		return nil, false
+		return req, false
+	}
+	if len(req.Formats) > recycleMaxBooks {
+		http.Error(w, fmt.Sprintf("at most %d files at a time", recycleMaxBooks), http.StatusBadRequest)
+		return req, false
 	}
 	if len(req.UUIDs) > recycleMaxBooks {
 		http.Error(w, fmt.Sprintf("at most %d books at a time", recycleMaxBooks), http.StatusBadRequest)
-		return nil, false
+		return req, false
 	}
 	for _, u := range req.UUIDs {
 		if !isSafeUUIDComponent(u) {
 			http.Error(w, "bad book id", http.StatusBadRequest)
-			return nil, false
+			return req, false
 		}
 	}
-	return req.UUIDs, true
+	return req, true
 }
 
 func recycleDeleteHandler(w http.ResponseWriter, r *http.Request) {
@@ -1142,11 +1216,11 @@ func recycleDeleteHandler(w http.ResponseWriter, r *http.Request) {
 }
 
 func recycleRestoreHandler(w http.ResponseWriter, r *http.Request) {
-	uuids, ok := readUUIDs(w, r)
+	req, ok := readUUIDsRequest(w, r)
 	if !ok {
 		return
 	}
-	results, err := restoreRecycled(r.PathValue("batch"), uuids, currentUser(r).Username)
+	results, err := restoreFromBin(r.PathValue("batch"), req.UUIDs, req.Formats, currentUser(r).Username)
 	if errors.Is(err, fs.ErrNotExist) {
 		http.Error(w, "no such batch in the recycling bin (emptied on the server?)", http.StatusNotFound)
 		return

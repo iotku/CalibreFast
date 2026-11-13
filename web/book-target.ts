@@ -10,6 +10,8 @@ export interface BookTarget {
     pending: boolean;
     /** Merging several library books into this one (Go: merge.go). */
     merge?: boolean;
+    /** Adding new files to this library book (Go: add_format.go); merge is set too. */
+    adding?: boolean;
     /** More to send with the form's values when applying (a merge's choices). */
     extra?: () => Record<string, unknown>;
     /** GET: the metadata sources ("current", then each file's). */
@@ -78,6 +80,23 @@ export function mergeBooks(keep: string, ids: string[], extra: () => Record<stri
         merge: true,
         metadata: `/merge/metadata?${q}`,
         apply: "/merge/apply",
+        extra,
+    };
+}
+
+/**
+ * New files being added to a library book (Go: add_format.go): the merge
+ * editor, with the uploaded files (waiting in the import queue as importId)
+ * as the other book.
+ */
+export function addFiles(uuid: string, importId: string, extra: () => Record<string, unknown>): BookTarget {
+    const base = `/book/add-format/${encodeURIComponent(uuid)}/${encodeURIComponent(importId)}`;
+    return {
+        ...libraryBook(uuid),
+        merge: true,
+        adding: true,
+        metadata: `${base}/metadata`,
+        apply: `${base}/apply`,
         extra,
     };
 }

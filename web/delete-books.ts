@@ -41,7 +41,7 @@ function plural(n: number, one: string, many = `${one}s`): string {
  * Ask, remove, and offer Undo. Resolves true when the library changed (the
  * books were removed and not put back), so the caller can reload.
  */
-export function deleteBooks(books: BookToDelete[]): Promise<boolean> {
+export function deleteBooks(books: BookToDelete[], { note = "" }: { note?: string } = {}): Promise<boolean> {
     return new Promise((resolve) => {
         if (books.length === 0) {
             resolve(false);
@@ -61,6 +61,7 @@ export function deleteBooks(books: BookToDelete[]): Promise<boolean> {
         const warning = el(
             "div",
             { className: "delete-warning" },
+            ...(note ? [el("p", {}, el("strong", {}, note))] : []),
             el("p", {}, `${n === 1 ? "This book disappears" : `These ${n} books disappear`} from the library for everyone: nobody can find, read or download ${n === 1 ? "it" : "them"}, and ${n === 1 ? "its" : "their"} files leave the library folder.`),
             el("p", {}, "They are moved to the Recycling Bin, with a copy of metadata.db from just before, and can be restored from there until the server's owner empties it. Readers' bookmarks, highlights, notes and places are kept and come back with them."),
         );

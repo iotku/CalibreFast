@@ -15,12 +15,18 @@ package main
 //  2. The other books go to the Recycling Bin (recycleBooks), whole: they
 //     can be restored as they were. The batch notes the merge.
 //  3. The copies get their real names and data rows. A file of the kept
-//     book's that one of them replaces is moved into the batch's folder
-//     (replaced/), so nothing is deleted.
+//     book's that one of them replaces goes to the batch as a file of its
+//     own (recycle_formats.go), so nothing is deleted and it can be put back.
 //  4. Readers' data about the other books (favorites, reading status,
 //     places, bookmarks, highlights, shelves) is copied to the kept book;
-//     the originals stay with the old uuids for a restore.
+//     the originals stay with the old uuids for a restore. Bookmarks and
+//     highlights are tied to the file they were made in, so they follow only
+//     where a book's file in that format is byte for byte the one kept
+//     (mergeReaderData); places always do.
 //  5. The metadata is saved as the editor saves it (updateBookInCalibreDB).
+//
+// Adding a new file to a book (add_format.go) is the same merge with one of
+// the "books" being the uploaded file, waiting in the import queue.
 
 import (
 	"context"
@@ -41,22 +47,28 @@ import (
 // mergeMaxBooks bounds one merge.
 const mergeMaxBooks = 20
 
-// recycleReplacedDir holds, in a merge's batch, the kept book's files that
-// the merge replaced.
+// recycleReplacedDir held, in a merge's batch, the kept book's files that
+// the merge replaced, before they became the batch's Formats.
 const recycleReplacedDir = "replaced"
 
 // mergeNote is in batch.json for a batch a merge made.
 type mergeNote struct {
-	UUID     string   `json:"uuid"`
-	Title    string   `json:"title"`
-	Replaced []string `json:"replaced,omitempty"` // file names under replaced/
+	UUID  string `json:"uuid"`
+	Title string `json:"title"`
+	// AddedFiles: the batch is from adding new files to the book
+	// (add_format.go), and holds the files they replaced.
+	AddedFiles []string `json:"added_files,omitempty"`
+	// Replaced: file names under replaced/, in batches from before replaced
+	// files were the batch's Formats.
+	Replaced []string `json:"replaced,omitempty"`
 }
 
 // mergeBook is one of the books being merged.
 type mergeBook struct {
 	Letter       string // "A", "B", … in the order named
 	ID           int64
-	UUID         string
+	UUID         string // for a new file, incomingUUID
+	Import       string // a new file: its id in the import queue (add_format.go)
 	Title        string
 	Authors      string
 	Path         string
@@ -64,6 +76,37 @@ type mergeBook struct {
 	Files        map[string]string // format -> file
 	HasCover     bool
 	CoverModTime int64
+}
+
+// incomingUUID stands for a new file's "book" (add_format.go) in a merge's
+// choices.
+const incomingUUID = "new"
+
+// Incoming: the new file being added to a book, not a library book.
+func (b *mergeBook) Incoming() bool { return b.Import != "" }
+
+// Link is where the page links the book.
+func (b *mergeBook) Link() string {
+	if b.Incoming() {
+		return ""
+	}
+	return "/book/get/" + b.UUID
+}
+
+// CoverURL is the book's cover thumbnail.
+func (b *mergeBook) CoverURL() string {
+	if b.Incoming() {
+		return "/import/" + b.Import + "/cover"
+	}
+	return fmt.Sprintf("/cover-thumb/%s?t=%d", b.UUID, b.CoverModTime)
+}
+
+// DownloadURL is the book's file in format.
+func (b *mergeBook) DownloadURL(format string) string {
+	if b.Incoming() {
+		return "/import/" + b.Import + "/file/" + format
+	}
+	return "/download/" + b.UUID + "/" + format
 }
 
 // mergeFormatView is one format a merge can keep, for the page.
@@ -78,7 +121,11 @@ type mergeFormatView struct {
 type mergeFileView struct {
 	Letter, UUID string
 	Size         string
-	Chosen       bool
+	Download     string // the file, to compare
+	// Hash: the start of the file's SHA-256, so the page can say whose
+	// bookmarks and highlights follow the file chosen ("": unknown).
+	Hash   string
+	Chosen bool
 	// SameAs: the letter of an earlier book whose file this one is
 	// identical to, when not all of them are.
 	SameAs string
@@ -94,6 +141,11 @@ type mergePageData struct {
 	Keep    string
 	IDs     string // "a,b,c", as the page was asked for
 	Formats []mergeFormatView
+	// Incoming: adding new files to the kept book (add_format.go), the id
+	// of the waiting upload. Then the other "book" is the new files.
+	Incoming string
+	// IncomingFiles: the new files' names.
+	IncomingFiles []string
 }
 
 func (d *mergePageData) KeepBook() *mergeBook {
@@ -123,46 +175,69 @@ func loadMergeBooks(uuids []string) ([]*mergeBook, error) {
 	}
 	var out []*mergeBook
 	for i, u := range uuids {
-		if !isSafeUUIDComponent(u) {
-			return nil, errors.New("bad book id")
-		}
-		// The uuid as metadata.db has it, not the request's: paths are built from it.
-		b := &mergeBook{Letter: letterOf(i), Files: map[string]string{}}
-		if err := calibreDB.QueryRow(`SELECT b.id, b.uuid, b.title, `+bookAuthorsSQL+`, b.path FROM books b WHERE b.uuid = ?`, u).
-			Scan(&b.ID, &b.UUID, &b.Title, &b.Authors, &b.Path); err != nil {
-			return nil, fmt.Errorf("%w: %s", errNoSuchBook, u)
-		}
-		dir, err := libraryBookDir(b.Path)
+		b, err := loadMergeBook(u, letterOf(i))
 		if err != nil {
 			return nil, err
-		}
-		b.Dir = dir
-		files, err := bookFiles(calibreDB, baseDir, b.ID, b.Path)
-		if err != nil {
-			return nil, err
-		}
-		for _, f := range files {
-			if _, ok := b.Files[f.Format]; !ok {
-				b.Files[f.Format] = f.Path
-			}
-		}
-		if len(b.Files) == 0 {
-			// metadata.db lists no files: the book files in its folder, as
-			// the rest of CalibreFast finds them (resolveFormats).
-			for _, name := range resolveFormats(b.UUID, baseDir, b.Path) {
-				f := strings.ToLower(strings.TrimPrefix(filepath.Ext(name), "."))
-				if _, ok := b.Files[f]; !ok {
-					b.Files[f] = filepath.Join(dir, name)
-				}
-			}
-		}
-		if st, err := os.Stat(filepath.Join(dir, "cover.jpg")); err == nil {
-			b.HasCover = true
-			b.CoverModTime = st.ModTime().UnixNano()
 		}
 		out = append(out, b)
 	}
 	return out, nil
+}
+
+// loadMergeBook reads one library book.
+func loadMergeBook(u, letter string) (*mergeBook, error) {
+	if !isSafeUUIDComponent(u) {
+		return nil, errors.New("bad book id")
+	}
+	// The uuid as metadata.db has it, not the request's: paths are built from it.
+	b := &mergeBook{Letter: letter, Files: map[string]string{}}
+	if err := calibreDB.QueryRow(`SELECT b.id, b.uuid, b.title, `+bookAuthorsSQL+`, b.path FROM books b WHERE b.uuid = ?`, u).
+		Scan(&b.ID, &b.UUID, &b.Title, &b.Authors, &b.Path); err != nil {
+		return nil, fmt.Errorf("%w: %s", errNoSuchBook, u)
+	}
+	dir, err := libraryBookDir(b.Path)
+	if err != nil {
+		return nil, err
+	}
+	b.Dir = dir
+	files, err := bookFiles(calibreDB, baseDir, b.ID, b.Path)
+	if err != nil {
+		return nil, err
+	}
+	for _, f := range files {
+		if _, ok := b.Files[f.Format]; !ok {
+			b.Files[f.Format] = f.Path
+		}
+	}
+	if len(b.Files) == 0 {
+		// metadata.db lists no files: the book files in its folder, as
+		// the rest of CalibreFast finds them (resolveFormats).
+		for _, name := range resolveFormats(b.UUID, baseDir, b.Path) {
+			f := strings.ToLower(strings.TrimPrefix(filepath.Ext(name), "."))
+			if _, ok := b.Files[f]; !ok {
+				b.Files[f] = filepath.Join(dir, name)
+			}
+		}
+	}
+	if st, err := os.Stat(filepath.Join(dir, "cover.jpg")); err == nil {
+		b.HasCover = true
+		b.CoverModTime = st.ModTime().UnixNano()
+	}
+	return b, nil
+}
+
+// fileHash is the file's SHA-256 ("" if it can't be read).
+func fileHash(p string) string {
+	st, err := os.Stat(p)
+	if err != nil {
+		return ""
+	}
+	h, err := fileSHA256(p, st)
+	if err != nil {
+		log.Printf("merge: hashing %s: %v", p, err)
+		return ""
+	}
+	return h
 }
 
 func (b *mergeBook) FormatList() []string {
@@ -217,9 +292,9 @@ func humanSize(n int64) string {
 	return fmt.Sprintf("%d B", n)
 }
 
-func newMergePageData(books []*mergeBook, keep, ids string) *mergePageData {
+func newMergePageData(books []*mergeBook, keep, ids string, chosen map[string]string) *mergePageData {
 	d := &mergePageData{Books: books, Keep: keep, IDs: ids}
-	picked := mergeFormats(books, keep, nil)
+	picked := mergeFormats(books, keep, chosen)
 	exts := make([]string, 0, len(picked))
 	for f := range picked {
 		exts = append(exts, f)
@@ -236,13 +311,13 @@ func newMergePageData(books []*mergeBook, keep, ids string) *mergePageData {
 			size, hash := "", ""
 			if st, err := os.Stat(p); err == nil {
 				size = humanSize(st.Size())
-				if h, err := fileSHA256(p, st); err == nil {
-					hash = h
-				} else {
-					log.Printf("merge: hashing %s: %v", p, err)
-				}
+				hash = fileHash(p)
 			}
-			v.Choices = append(v.Choices, mergeFileView{Letter: b.Letter, UUID: b.UUID, Size: size, Chosen: picked[f] == b})
+			short := hash
+			if len(short) > 16 {
+				short = short[:16]
+			}
+			v.Choices = append(v.Choices, mergeFileView{Letter: b.Letter, UUID: b.UUID, Size: size, Download: b.DownloadURL(f), Hash: short, Chosen: picked[f] == b})
 			hashes = append(hashes, hash)
 		}
 		if len(v.Choices) > 1 {
@@ -296,7 +371,7 @@ func mergePage(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, err.Error(), status)
 		return
 	}
-	d := newMergePageData(books, keep, strings.Join(ids, ","))
+	d := newMergePageData(books, keep, strings.Join(ids, ","), nil)
 	kb := d.KeepBook()
 	data := EditBookPageData{
 		UUID:         keep,
@@ -333,6 +408,9 @@ func mergeSources(books []*mergeBook, keep string) []UploadedBookMeta {
 		return 0
 	})
 	for _, b := range ordered {
+		if b.Incoming() {
+			continue // new files have no record: what they say follows
+		}
 		opf, err := loadOPF(filepath.Join(b.Dir, "metadata.opf"))
 		if err != nil {
 			log.Printf("merge: %s: %v", b.UUID, err)
@@ -386,6 +464,9 @@ type mergeResult struct {
 	Title  string `json:"title"`
 	Batch  string `json:"batch"`
 	Merged int    `json:"merged"` // books merged into it
+	// Dropped: readers' bookmarks and highlights not carried over, as they
+	// were made in a file other than the one kept.
+	Dropped int `json:"dropped"`
 }
 
 func mergeTempName(ext string) string {
@@ -403,13 +484,24 @@ func mergeBooks(req *mergeRequest, by string) (*mergeResult, error) {
 	if err != nil {
 		return nil, err
 	}
+	return mergeInto(books, req, by)
+}
+
+// mergeInto merges books into req.Keep, one of them; the caller holds
+// bulkMu. Library books other than the kept one go to the Recycling Bin;
+// a new file's "book" (Incoming) is left for the caller to clear away.
+func mergeInto(books []*mergeBook, req *mergeRequest, by string) (*mergeResult, error) {
 	var keep *mergeBook
-	var others []*mergeBook
+	var others, recycled []*mergeBook
 	for _, b := range books {
-		if b.UUID == req.Keep {
+		switch {
+		case b.UUID == req.Keep && !b.Incoming():
 			keep = b
-		} else {
+		default:
 			others = append(others, b)
+			if !b.Incoming() {
+				recycled = append(recycled, b)
+			}
 		}
 	}
 	if keep == nil {
@@ -419,7 +511,41 @@ func mergeBooks(req *mergeRequest, by string) (*mergeResult, error) {
 		return nil, err
 	}
 
+	// Which file each format keeps, and whose files are that same file.
+	picked := mergeFormats(books, keep.UUID, req.Formats)
+	formats := make([]string, 0, len(picked))
+	for f := range picked {
+		formats = append(formats, f)
+	}
+	slices.Sort(formats)
+	keptHash := map[string]string{} // format -> SHA-256 of the file kept
+	for _, f := range formats {
+		keptHash[f] = fileHash(picked[f].Files[f])
+	}
+	sameFile := func(b *mergeBook, f string) bool {
+		p, ok := b.Files[f]
+		if !ok || keptHash[f] == "" {
+			return false
+		}
+		if picked[f] == b {
+			return true
+		}
+		return fileHash(p) == keptHash[f]
+	}
+
+	// Whose bookmarks and highlights follow (step 4), while their files are
+	// still where they were.
+	same := map[string][]string{}
+	for _, b := range recycled {
+		for _, f := range b.FormatList() {
+			if sameFile(b, f) {
+				same[b.UUID] = append(same[b.UUID], f)
+			}
+		}
+	}
+
 	// 1. Copy what's taken from the other books in, under temporary names.
+	// A file identical to the kept book's own needs no copy.
 	type staged struct {
 		format, temp string
 		from         *mergeBook
@@ -434,15 +560,10 @@ func mergeBooks(req *mergeRequest, by string) (*mergeResult, error) {
 			os.Remove(coverTemp)
 		}
 	}
-	picked := mergeFormats(books, keep.UUID, req.Formats)
-	formats := make([]string, 0, len(picked))
-	for f := range picked {
-		formats = append(formats, f)
-	}
-	slices.Sort(formats)
+	replacing := false
 	for _, f := range formats {
 		from := picked[f]
-		if from == keep {
+		if from == keep || sameFile(keep, f) {
 			continue
 		}
 		tmp := filepath.Join(keep.Dir, mergeTempName(f))
@@ -452,6 +573,9 @@ func mergeBooks(req *mergeRequest, by string) (*mergeResult, error) {
 			return nil, fmt.Errorf("couldn't copy %s's %s: %w", from.Title, strings.ToUpper(f), err)
 		}
 		copies = append(copies, staged{f, tmp, from})
+		if _, ok := keep.Files[f]; ok {
+			replacing = true
+		}
 	}
 	if req.Cover != "" && req.Cover != keep.UUID {
 		for _, b := range others {
@@ -467,15 +591,29 @@ func mergeBooks(req *mergeRequest, by string) (*mergeResult, error) {
 		}
 	}
 
-	// 2. The other books go to the Recycling Bin, whole.
-	otherUUIDs := make([]string, len(others))
-	for i, b := range others {
+	// 2. The other books go to the Recycling Bin, whole. With none, a batch
+	// of its own holds the files replaced, if any.
+	otherUUIDs := make([]string, len(recycled))
+	for i, b := range recycled {
 		otherUUIDs[i] = b.UUID
 	}
-	batch, err := recycleBooks(otherUUIDs, by)
-	if err != nil {
-		cleanup()
-		return nil, err
+	var batch *recycleBatch
+	switch {
+	case len(recycled) > 0:
+		var err error
+		if batch, err = recycleBooks(otherUUIDs, by); err != nil {
+			cleanup()
+			return nil, err
+		}
+	case replacing:
+		recycleMu.Lock()
+		batch = &recycleBatch{DeletedBy: by}
+		_, err := batch.create()
+		recycleMu.Unlock()
+		if err != nil {
+			cleanup()
+			return nil, err
+		}
 	}
 
 	// 3. The copies take their places.
@@ -495,26 +633,31 @@ func mergeBooks(req *mergeRequest, by string) (*mergeResult, error) {
 			continue
 		}
 		upper := strings.ToUpper(c.format)
+		if c.from.Incoming() {
+			note.AddedFiles = append(note.AddedFiles, upper)
+		}
 		if old, ok := keep.Files[c.format]; ok {
-			// Replacing the kept book's own file: it goes to the batch.
-			dst := filepath.Join(batch.dir(), recycleReplacedDir, filepath.Base(old))
-			if err := os.MkdirAll(filepath.Dir(dst), 0o700); err != nil {
-				errs = append(errs, err)
-				os.Remove(c.temp)
-				continue
+			// Replacing the kept book's own file: it goes to the batch, with
+			// readers' bookmarks and highlights made in it.
+			rf := recycledFormat{UUID: keep.UUID, Title: keep.Title, Authors: keep.Authors, Format: upper, File: filepath.Base(old), Replaced: true}
+			if ost, err := os.Stat(old); err == nil {
+				rf.Size = ost.Size()
 			}
-			if err := moveFile(old, dst); err != nil {
+			if rf.Stored, err = batch.moveFormatFile(old); err != nil {
 				errs = append(errs, fmt.Errorf("couldn't move the replaced %s aside: %w", upper, err))
 				os.Remove(c.temp)
 				continue
 			}
-			note.Replaced = append(note.Replaced, filepath.Base(old))
 			if err := os.Rename(c.temp, old); err != nil {
 				errs = append(errs, fmt.Errorf("couldn't put %s's %s in place: %w", c.from.Title, upper, err))
-				logErr(moveFile(dst, old), "merge: couldn't put "+old+" back")
+				logErr(moveFile(batch.formatPath(&rf), old), "merge: couldn't put "+old+" back")
 				os.Remove(c.temp)
 				continue
 			}
+			if err := batch.takeFormatRows(&rf, []string{"bookmarks", "annotations"}); err != nil {
+				errs = append(errs, fmt.Errorf("readers' bookmarks and highlights in the replaced %s: %w", upper, err))
+			}
+			batch.Formats = append(batch.Formats, rf)
 			res, err := calibreDB.Exec(`UPDATE data SET uncompressed_size = ? WHERE book = ? AND format = ?`, st.Size(), keep.ID, upper)
 			if err != nil {
 				errs = append(errs, err)
@@ -556,6 +699,9 @@ func mergeBooks(req *mergeRequest, by string) (*mergeResult, error) {
 		} else {
 			now := time.Now()
 			_ = os.Chtimes(coverPath, now, now)
+			if _, err := calibreDB.Exec(`UPDATE books SET has_cover = 1 WHERE id = ?`, keep.ID); err != nil {
+				errs = append(errs, err)
+			}
 			if err := os.Remove(thumbCachePath(keep.UUID, oldStamp)); err != nil && !os.IsNotExist(err) {
 				log.Printf("merge: couldn't remove %s's old thumbnail: %v", keep.UUID, err)
 			}
@@ -563,8 +709,10 @@ func mergeBooks(req *mergeRequest, by string) (*mergeResult, error) {
 		}
 	}
 
-	// 4. Readers' data follows the books.
-	if err := mergeReaderData(keep.UUID, otherUUIDs); err != nil {
+	// 4. Readers' data follows the books: bookmarks and highlights only
+	// where the file they were made in is the one kept.
+	dropped, err := mergeReaderData(keep.UUID, otherUUIDs, same)
+	if err != nil {
 		errs = append(errs, fmt.Errorf("readers' data: %w", err))
 	}
 
@@ -580,19 +728,24 @@ func mergeBooks(req *mergeRequest, by string) (*mergeResult, error) {
 	}
 	note.Title = meta.Title
 
-	recycleMu.Lock()
-	batch.MergedInto = note
-	logErr(batch.save(), "merge: couldn't note the merge in batch "+batch.ID)
-	recycleMu.Unlock()
+	res := &mergeResult{UUID: keep.UUID, Title: meta.Title, Merged: len(recycled), Dropped: dropped}
+	if batch != nil {
+		recycleMu.Lock()
+		batch.MergedInto = note
+		logErr(batch.save(), "merge: couldn't note the merge in batch "+batch.ID)
+		recycleMu.Unlock()
+		res.Batch = batch.ID
+	}
 
-	formatCache.Delete(keep.UUID)
-	bookMetadataCache.Delete(keep.UUID)
-	catalogChanged(keep.UUID)
+	formatsChanged(keep.UUID)
 	refreshLibraryPages()
 	refreshAllCaches()
-	log.Printf("merge: %s merged %d book(s) into %q (%s), batch %s", by, len(others), meta.Title, keep.UUID, batch.ID)
+	if len(recycled) > 0 {
+		log.Printf("merge: %s merged %d book(s) into %q (%s), batch %s; %d bookmark(s)/highlight(s) not carried over", by, len(recycled), meta.Title, keep.UUID, res.Batch, dropped)
+	} else {
+		log.Printf("merge: %s added %s to %q (%s); replaced files in batch %q", by, strings.Join(note.AddedFiles, ", "), meta.Title, keep.UUID, res.Batch)
+	}
 
-	res := &mergeResult{UUID: keep.UUID, Title: meta.Title, Batch: batch.ID, Merged: len(others)}
 	if err := errors.Join(errs...); err != nil {
 		log.Printf("merge into %s: %v", keep.UUID, err)
 		return res, fmt.Errorf("merged, but: %w", err)
@@ -602,14 +755,17 @@ func mergeBooks(req *mergeRequest, by string) (*mergeResult, error) {
 
 // mergeReaderData copies readers' rows about the merged books to the kept
 // one. A row the kept book already has (same key) stays, except for places
-// and reading status, where the newest wins.
-func mergeReaderData(keep string, others []string) error {
+// and reading status, where the newest wins. Bookmarks and highlights are
+// copied only in the formats same names for their book (its file is the one
+// kept, byte for byte): elsewhere they'd point at the wrong places. It
+// answers how many weren't copied.
+func mergeReaderData(keep string, others []string, same map[string][]string) (int, error) {
 	if appDB == nil || len(others) == 0 {
-		return nil
+		return 0, nil
 	}
 	tx, err := appDB.Begin()
 	if err != nil {
-		return err
+		return 0, err
 	}
 	defer tx.Rollback()
 	args := append([]any{keep}, toArgs(others)...)
@@ -630,15 +786,16 @@ func mergeReaderData(keep string, others []string) error {
 	}
 	for _, s := range stmts {
 		if _, err := tx.Exec(s, args...); err != nil {
-			return err
+			return 0, err
 		}
 	}
 	// Bookmarks and highlights are keyed by the reader's own id, which the
 	// copies keep with a suffix (the originals stay for a restore).
+	dropped := 0
 	for _, table := range []string{"bookmarks", "annotations"} {
 		cols, err := tableColumns(context.Background(), tx, "main", table)
 		if err != nil {
-			return err
+			return 0, err
 		}
 		sel := make([]string, len(cols))
 		for i, c := range cols {
@@ -651,12 +808,33 @@ func mergeReaderData(keep string, others []string) error {
 				sel[i] = quoteIdent(c)
 			}
 		}
-		q := `INSERT OR IGNORE INTO ` + quoteIdent(table) + ` (` + columnList(cols) + `) SELECT ` + strings.Join(sel, ", ") + ` FROM ` + quoteIdent(table) + ` WHERE ` + in
-		if _, err := tx.Exec(q, args...); err != nil {
-			return fmt.Errorf("%s: %w", table, err)
+		live := ""
+		if table == "annotations" {
+			live = " AND deleted = 0" // a deleted highlight isn't lost
+		}
+		for _, u := range others {
+			var total int
+			if err := tx.QueryRow(`SELECT COUNT(*) FROM `+quoteIdent(table)+` WHERE book_uuid = ?`+live, u).Scan(&total); err != nil {
+				return 0, err
+			}
+			fs := same[u]
+			if len(fs) == 0 {
+				dropped += total
+				continue
+			}
+			q := `INSERT OR IGNORE INTO ` + quoteIdent(table) + ` (` + columnList(cols) + `) SELECT ` + strings.Join(sel, ", ") +
+				` FROM ` + quoteIdent(table) + ` WHERE book_uuid = ? AND lower(format) IN (` + placeholders(len(fs)) + `)`
+			if _, err := tx.Exec(q, append([]any{keep, u}, toArgs(fs)...)...); err != nil {
+				return 0, fmt.Errorf("%s: %w", table, err)
+			}
+			var kept int
+			if err := tx.QueryRow(`SELECT COUNT(*) FROM `+quoteIdent(table)+` WHERE book_uuid = ? AND lower(format) IN (`+placeholders(len(fs))+`)`+live, append([]any{u}, toArgs(fs)...)...).Scan(&kept); err != nil {
+				return 0, err
+			}
+			dropped += total - kept
 		}
 	}
-	return tx.Commit()
+	return dropped, tx.Commit()
 }
 
 func mergeApplyHandler(w http.ResponseWriter, r *http.Request) {
