@@ -16,7 +16,8 @@
  *   - More in <tag>: a few tag rows; the signed-in user's strongest tags
  *     first, then picked at random from the index in the page (weighted by
  *     size; tags an admin included weighted up), each filled from
- *     pages/discover/tag-N.json as it nears the screen.
+ *     /api/tag-strip as it nears the screen and walked a strip at a time
+ *     with its own Shuffle and Previous, like the Shuffle row.
  *   - Recently added: the start of pages/page1.json.
  *   - The introduction's sign-in line, for signed-out visitors, and Hide.
  *
@@ -566,6 +567,14 @@ function featured(): Promise<HomeShelf[]> {
 let reordering: Reorderable | null = null;
 
 /**
+ * A pinned tag's books as first shown on this page. The server starts a
+ * tag's row at a random place on each answer, so the page differs on every
+ * load; the answers that come after (a mark changed, back to the tab) keep
+ * the books the row already has instead of swapping them under the user.
+ */
+const pinnedTagBooks = new Map<string, Book[]>();
+
+/**
  * The shelf rows. own: the signed-in user's, with Remove and Reorder.
  * Empty shelves are left out.
  */
@@ -575,8 +584,13 @@ function showShelves(shelves: HomeShelf[], own: boolean): void {
     list.replaceChildren();
     pinnedTags = new Set(shelves.filter((s) => s.kind === "tag").map((s) => s.name.toLowerCase()));
     shelves.forEach((s, i) => {
-        if (!s.books.length) return;
         const tag = s.kind === "tag";
+        if (tag) {
+            const key = s.name.toLowerCase();
+            if (!pinnedTagBooks.has(key)) pinnedTagBooks.set(key, s.books);
+            s = { ...s, books: pinnedTagBooks.get(key)! };
+        }
+        if (!s.books.length) return;
         const section = document.createElement("section");
         section.className = "row pin-row";
         // "s:7" a shelf, "t:Space Opera" a tag (the order sent back says which).
@@ -730,25 +744,133 @@ function pickTagRows(index: TagRow[], k: number): TagRow[] {
     return out;
 }
 
+/*
+ * Each tag row walks its tag's books a strip at a time (/api/tag-strip: the
+ * tag's books in the server's random order), as the Shuffle row walks the
+ * library: Shuffle shows the next strip, Previous goes back, and where a
+ * tag got to is kept in localStorage (cf-tag-shuffle) so the next load
+ * shows the strip after it. A tag seen for the first time starts at a
+ * random place.
+ */
+interface TagCursor {
+    starts: number[]; // strips shown, oldest first; the last is on screen
+    next: number | null; // where the next strip starts; null: anywhere
+}
+const TAG_CURSOR_KEY = "cf-tag-shuffle";
+const TAG_CURSORS_MAX = 60; // tags remembered, most recently walked kept
+
+function loadTagCursors(): Map<string, TagCursor> {
+    const out = new Map<string, TagCursor>();
+    try {
+        const v = JSON.parse(store.get(TAG_CURSOR_KEY) ?? "null") as { version?: string; tags?: [string, TagCursor][] } | null;
+        // A restart made a new order: the places mean nothing in it.
+        if (v?.version !== version || !Array.isArray(v.tags)) return out;
+        const ok = (n: unknown): n is number => Number.isInteger(n) && (n as number) >= 0;
+        for (const [k, c] of v.tags) {
+            if (typeof k === "string" && Array.isArray(c?.starts) && c.starts.every(ok) && (c.next === null || ok(c.next))) {
+                out.set(k, { starts: c.starts.slice(-SHUFFLE_HISTORY), next: c.next });
+            }
+        }
+    } catch {
+        /* unreadable: start somewhere new */
+    }
+    return out;
+}
+
+function saveTagCursor(key: string, cur: TagCursor): void {
+    const all = loadTagCursors();
+    all.delete(key); // to the end: the most recent
+    all.set(key, cur);
+    const tags = [...all].slice(-TAG_CURSORS_MAX);
+    store.set(TAG_CURSOR_KEY, JSON.stringify({ version, tags }));
+}
+
+/** A strip of a tag's books (Go: tagStripAnswer). */
+interface TagStrip {
+    books: Book[];
+    start: number;
+    next: number;
+    count: number;
+}
+
+const tagStrips = new Map<string, Promise<TagStrip | null>>();
+
+/** The strip of the tag's books from start (null: a random place). */
+function tagStrip(name: string, start: number | null): Promise<TagStrip | null> {
+    const key = `${name.toLowerCase()}\n${start}`;
+    let p = start === null ? undefined : tagStrips.get(key);
+    if (!p) {
+        const at = start === null ? "" : `&start=${start}`;
+        p = fetch(`/api/tag-strip?tag=${encodeURIComponent(name)}&n=${STRIP}${at}`, { credentials: "same-origin" })
+            .then((r) => (r.ok ? (r.json() as Promise<TagStrip>) : null))
+            .catch(() => null);
+        if (start !== null) {
+            tagStrips.set(key, p);
+            void p.then((s) => s ?? tagStrips.delete(key)); // a failure is tried again
+        }
+    }
+    return p;
+}
+
+/** A tag row's Shuffle and Previous. */
+interface TagWalker {
+    row: TagRow;
+    cur: TagCursor;
+    busy: boolean;
+}
+
+const tagWalkers = new WeakMap<HTMLElement, TagWalker>();
+
+function updateTagButtons(section: HTMLElement, w: TagWalker): void {
+    const back = section.querySelector<HTMLButtonElement>('[data-act="tag-back"]');
+    if (back) back.disabled = w.busy || w.cur.starts.length < 2;
+    const next = section.querySelector<HTMLButtonElement>('[data-act="tag-next"]');
+    if (next) next.disabled = w.busy;
+}
+
+/**
+ * Show the walker's strip at start (null: where it got to, or anywhere): a
+ * new one (push) or one already in its history. False when it had nothing
+ * to show (every book finished, or no answer).
+ */
+async function showTagStrip(section: HTMLElement, w: TagWalker, start: number | null, push: boolean): Promise<boolean> {
+    w.busy = true;
+    updateTagButtons(section, w);
+    try {
+        const s = await tagStrip(w.row.name, start);
+        if (!s) return false;
+        // The server leaves out what the user finished; this also leaves
+        // out what was finished on this device.
+        const books = s.books.filter((b) => !marks.finished.has(b.uuid));
+        if (!books.length && section.querySelector(".row-books .book")) return false;
+        if (push) w.cur.starts = [...w.cur.starts, s.start].slice(-SHUFFLE_HISTORY);
+        w.cur.next = s.next;
+        saveTagCursor(w.row.name.toLowerCase(), w.cur);
+        if (books.length) fillRow(section, books, { all: true });
+        return books.length > 0;
+    } finally {
+        w.busy = false;
+        updateTagButtons(section, w);
+    }
+}
+
 function setupTagRows(): void {
     const box = byId("tag-rows");
-    const tagVersion = box.dataset["version"] ?? "";
     let index: TagRow[] = [];
     try {
         index = JSON.parse(box.dataset["tags"] ?? "[]") as TagRow[];
     } catch {
         /* none */
     }
-    if (!tagVersion || !index.length) return;
+    if (!index.length) return;
+    const cursors = loadTagCursors();
     // Every tag in a random order (bigger ones sooner). Each row takes the
     // next one as it nears the screen, by when the user's pinned tags are
     // usually known: a pinned tag has its own row, so it's skipped.
     const queue = pickTagRows(index, index.length);
     const fill = async (section: HTMLElement, i: number): Promise<void> => {
         // The next tag that isn't pinned and has books the user hasn't finished.
-        let row: TagRow | undefined;
-        let books: Book[] = [];
-        while (!books.length) {
+        for (;;) {
             const free = (t: TagRow): boolean => !pinnedTags.has(t.name.toLowerCase());
             // The user's own tags first (when they have a row), then the rest.
             let k = -1;
@@ -761,19 +883,25 @@ function setupTagRows(): void {
                 section.hidden = true; // none left
                 return;
             }
-            row = queue.splice(k, 1)[0]!;
-            const all = await booksFile(`/pages/discover/tag-${row.n}.json?v=${encodeURIComponent(tagVersion)}`);
-            // Finished books aren't suggestions any more.
-            books = all.filter((b) => !marks.finished.has(b.uuid));
-        }
-        if (!row) return;
-        section.dataset["name"] = row.name;
-        section.querySelector("header")!.innerHTML = `
-            <h2 id="tag-row-${i}-title">More in <a class="row-title-link" href="${escapeHtml(row.href)}">${escapeHtml(row.name)}</a></h2>
+            const row = queue.splice(k, 1)[0]!;
+            const w: TagWalker = { row, cur: cursors.get(row.name.toLowerCase()) ?? { starts: [], next: null }, busy: false };
+            const name = escapeHtml(row.name);
+            const href = escapeHtml(row.href);
+            section.dataset["name"] = row.name;
+            section.querySelector("header")!.innerHTML = `
+            <h2 id="tag-row-${i}-title">More in <a class="row-title-link" href="${href}">${name}</a></h2>
             <div class="row-tools">
-                <a href="${escapeHtml(row.href)}" class="row-all">See all</a>
+                <button type="button" class="row-btn" data-act="tag-back" aria-label="Previous books in ${name}" disabled>
+                    <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M9 14L4 9l5-5"/><path d="M4 9h11a5 5 0 0 1 0 10h-3"/></svg>
+                    <span>Previous</span>
+                </button>
+                <button type="button" class="row-btn" data-act="tag-next" aria-label="More books in ${name}">
+                    <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M16 3h5v5M4 20L21 3M21 16v5h-5M15 15l6 6M4 4l5 5"/></svg>
+                    <span>Shuffle</span>
+                </button>
+                <a href="${href}" class="row-all">See all</a>
                 <details class="row-menu tag-menu" hidden>
-                    <summary class="row-btn" aria-label="Options for ${escapeHtml(row.name)}">
+                    <summary class="row-btn" aria-label="Options for ${name}">
                         <svg viewBox="0 0 24 24" width="16" height="16" fill="currentColor" aria-hidden="true"><circle cx="5" cy="12" r="2"/><circle cx="12" cy="12" r="2"/><circle cx="19" cy="12" r="2"/></svg>
                     </summary>
                     <div class="row-menu-list">
@@ -781,7 +909,11 @@ function setupTagRows(): void {
                     </div>
                 </details>
             </div>`;
-        fillRow(section, books, { all: true });
+            // A tag that fits in one strip shows all its books already.
+            for (const b of section.querySelectorAll<HTMLElement>('[data-act^="tag-"]')) b.hidden = row.count <= STRIP;
+            tagWalkers.set(section, w);
+            if (await showTagStrip(section, w, w.cur.next, true)) break;
+        }
         updateTagRows(serverSignedIn ?? signedIn() === true);
         box.hidden = !box.querySelector(".row:not([hidden])");
     };
@@ -808,6 +940,21 @@ function setupTagRows(): void {
     }
     updateTagRows(signedIn() === true);
     box.addEventListener("click", (e) => {
+        const step = e.target instanceof Element ? e.target.closest<HTMLButtonElement>('[data-act="tag-next"], [data-act="tag-back"]') : null;
+        const stepRow = step?.closest<HTMLElement>(".tag-row");
+        const w = stepRow && tagWalkers.get(stepRow);
+        if (step && stepRow && w && !w.busy) {
+            if (step.dataset["act"] === "tag-next") {
+                void showTagStrip(stepRow, w, w.cur.next, true).then(() => {
+                    // Still on the button: get the strip after this one ready too.
+                    if (step.matches(":hover, :focus-visible")) preloadTagStrip(w);
+                });
+            } else if (w.cur.starts.length >= 2) {
+                w.cur.starts = w.cur.starts.slice(0, -1);
+                void showTagStrip(stepRow, w, w.cur.starts[w.cur.starts.length - 1]!, false);
+            }
+            return;
+        }
         const btn = e.target instanceof Element ? e.target.closest<HTMLButtonElement>('[data-act="pin-tag"]') : null;
         const section = btn?.closest<HTMLElement>(".tag-row");
         const name = section?.dataset["name"];
@@ -820,11 +967,28 @@ function setupTagRows(): void {
             .catch(() => {})
             .then(() => refreshHome());
     });
+    // About to shuffle: fetch the next strip's covers now, so they show at once.
+    const aboutTo = (e: Event): void => {
+        const btn = e.target instanceof Element ? e.target.closest('[data-act="tag-next"]') : null;
+        const section = btn?.closest<HTMLElement>(".tag-row");
+        const w = section && tagWalkers.get(section);
+        if (w) preloadTagStrip(w);
+    };
+    box.addEventListener("pointerover", aboutTo);
+    box.addEventListener("focusin", aboutTo);
     // A menu closes when the click is elsewhere.
     document.addEventListener("click", (e) => {
         for (const m of box.querySelectorAll<HTMLDetailsElement>(".row-menu[open]")) {
             if (!(e.target instanceof Node && m.contains(e.target))) m.open = false;
         }
+    });
+}
+
+/** The covers of a tag row's next strip, into the browser's cache. */
+function preloadTagStrip(w: TagWalker): void {
+    if (w.busy || w.cur.next === null) return;
+    void tagStrip(w.row.name, w.cur.next).then((s) => {
+        for (const b of s?.books ?? []) preloadCover(coverUrl(b));
     });
 }
 

@@ -93,8 +93,8 @@
             </section>
 
             {{/* "More in <tag>": a few of these, picked by discover.ts, each
-                 filled from its pages/discover/tag-N.json as it nears the screen. */}}
-            <div class="tag-rows" id="tag-rows" data-tags="{{ .TagRows }}" data-version="{{ .TagVersion }}" hidden></div>
+                 filled a strip at a time from /api/tag-strip as it nears the screen. */}}
+            <div class="tag-rows" id="tag-rows" data-tags="{{ .TagRows }}" hidden></div>
 
             <section class="row" id="row-shuffle" aria-labelledby="row-shuffle-title" hidden>
                 <header class="row-head">

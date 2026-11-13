@@ -373,6 +373,9 @@ input[type="number"],
     font-size: var(--font-size-small);
     cursor: pointer;
 }
+.row-btn[hidden] {
+    display: none;
+}
 .row-btn:hover:not(:disabled) {
     background: var(--bg-elevated);
     border-color: var(--border-medium);

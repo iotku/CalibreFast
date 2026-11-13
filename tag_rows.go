@@ -3,10 +3,10 @@ package main
 // Tag rows on the Discover page ("More in Space Opera"; docs/notes/Discover.md,
 // section 3).
 //
-// From the catalog, the eligible tags each get pages/discover/tag-N.json: up
-// to tagRowBooks of their books, in the shuffle order (so a row isn't just
-// the tag's newest books). Their index goes into the Discover HTML; the
-// browser picks a few rows from it. Nothing here reads the library.
+// From the catalog, the eligible tags' index goes into the Discover HTML; the
+// browser picks a few rows from it and fills each a strip at a time from
+// /api/tag-strip, in the shuffle order (tag_strip.go), so a row isn't just
+// the tag's newest books. Nothing here reads the library.
 //
 // Eligible tags, by name after tag groups (a group stands for its members):
 //   - included by an admin: always (if they have books);
@@ -15,16 +15,14 @@ package main
 //     broad_tag_share of the library (25% by default), so "Fiction" or
 //     "Ebook" don't make dull rows, and with at least tagRowMinBooks.
 //
-// The files are written again at startup, after catalog changes, and when
-// tag groups or the admin's settings change; only those that differ.
+// The index is made again at startup, after catalog changes, and when tag
+// groups or the admin's settings change.
 
 import (
-	"bytes"
 	"cmp"
 	"database/sql"
 	"encoding/json"
 	"errors"
-	"hash/fnv"
 	"log"
 	"math"
 	"net/http"
@@ -38,7 +36,6 @@ import (
 )
 
 const (
-	tagRowBooks           = 24
 	tagRowsMax            = 40
 	tagRowMinBooks        = 3
 	defaultBroadTagShare  = 0.25
@@ -48,7 +45,7 @@ const (
 
 // tagRow is an entry of the index in the Discover HTML.
 type tagRow struct {
-	N       int    `json:"n"` // pages/discover/tag-N.json
+	N       int    `json:"n"`
 	Name    string `json:"name"`
 	Href    string `json:"href"`
 	Count   int    `json:"count"`
@@ -56,9 +53,8 @@ type tagRow struct {
 }
 
 type tagRowsState struct {
-	index   []tagRow
-	json    string // index, for the HTML
-	version string // hash of the index and files, for their ?v=
+	index []tagRow
+	json  string // index, for the HTML
 }
 
 var (
@@ -73,6 +69,7 @@ func currentTagRows() *tagRowsState {
 	return &tagRowsState{json: "[]"}
 }
 
+// tagRowFile: where older versions kept a row's books (removed at startup).
 func tagRowFile(n int) string {
 	return filepath.Join("pages", "discover", "tag-"+strconv.Itoa(n)+".json")
 }
@@ -129,7 +126,6 @@ func tagEntity(name string) string {
 type tagStat struct {
 	Name  string
 	Count int
-	books []int32 // in shuffle order, at most tagRowBooks: filled for eligible tags only
 }
 
 // Why a tag is or isn't a row (the admin page shows it).
@@ -230,8 +226,7 @@ func tagStats(c *catalog, set discoverTagSettings) (stats []*tagStat, status map
 
 func hasRow(status string) bool { return status == tagInRows || status == tagIncluded }
 
-// refreshTagRows works out the eligible tags and writes their files (those
-// that changed), then the index and version the Discover page uses.
+// refreshTagRows works out the eligible tags: the index the Discover page uses.
 func refreshTagRows() {
 	c := libraryCatalog.Load()
 	if appDB == nil || c == nil {
@@ -251,71 +246,22 @@ func refreshTagRows() {
 			rows = append(rows, st)
 		}
 	}
-	// Books for the rows, in the shuffle order: one pass.
-	want := map[int32][]*tagStat{} // tag id -> rows it feeds
-	for id, name := range c.tagNames {
-		key := strings.ToLower(tagEntity(name))
-		for _, st := range rows {
-			if strings.ToLower(st.Name) == key {
-				want[id] = append(want[id], st)
-			}
-		}
-	}
-	added := map[*tagStat]map[int32]bool{}
-	for _, st := range rows {
-		added[st] = map[int32]bool{}
-	}
-	for _, slot := range c.shuffle {
-		b := &c.books[slot]
-		if b.Removed {
-			continue
-		}
-		for _, t := range b.TagIDs {
-			for _, st := range want[t] {
-				if len(st.books) < tagRowBooks && !added[st][slot] {
-					added[st][slot] = true
-					st.books = append(st.books, slot)
-				}
-			}
-		}
-	}
-
-	h := fnv.New64a()
 	index := make([]tagRow, 0, len(rows))
 	for n, st := range rows {
-		books := make([]Book, len(st.books))
-		for i, slot := range st.books {
-			books[i] = c.books[slot].Book
-		}
-		data, err := json.Marshal(books)
-		if err != nil {
-			return
-		}
-		h.Write(data)
-		if cur, err := os.ReadFile(tagRowFile(n)); err != nil || !bytes.Equal(cur, data) {
-			if err := writeJSONFile(tagRowFile(n), data); err != nil {
-				log.Printf("tag rows: %v", err)
-				return
-			}
-		}
 		index = append(index, tagRow{
 			N: n, Name: st.Name, Href: categoryByKey("tag").href(st.Name),
 			Count: st.Count, Include: status[strings.ToLower(st.Name)] == tagIncluded,
 		})
 	}
-	// Files beyond the last row are left from a longer list.
-	for n := len(rows); ; n++ {
+	// The rows' books come from /api/tag-strip now (tag_strip.go): files
+	// left by older versions go.
+	for n := 0; ; n++ {
 		if err := os.Remove(tagRowFile(n)); err != nil {
 			break
 		}
 	}
 	idx, _ := json.Marshal(index)
-	h.Write(idx)
-	v := ""
-	if len(index) > 0 {
-		v = strconv.FormatUint(h.Sum64(), 36)
-	}
-	tagRows.Store(&tagRowsState{index: index, json: string(idx), version: v})
+	tagRows.Store(&tagRowsState{index: index, json: string(idx)})
 }
 
 // ---------------------------------------------------------------------------
