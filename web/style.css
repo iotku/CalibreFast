@@ -3048,8 +3048,8 @@ label.group-row span {
    Book popup: per-user controls
    ============================================ */
 /* The controls' pieces are laid out by the cover column itself: Favorite
-   and reading status (or the sign-in hint) above the cover, shelves under
-   the buttons. */
+   and reading status (or the sign-in hint) above the cover, the status
+   note (page, sync) just under it, shelves under the buttons. */
 .book-user-actions,
 .book-user-controls {
     display: contents;
@@ -3058,8 +3058,13 @@ label.group-row span {
 .book-user-row,
 .book-user-actions > .throbber,
 .user-signin-hint {
-    order: -1;
+    order: -2;
     margin-bottom: 0.75rem;
+}
+
+.book-page-cover,
+.book-status-note {
+    order: -1;
 }
 
 /* Favorite at the left, reading status at the right. */
@@ -3133,9 +3138,10 @@ label.group-row span {
 }
 
 .book-status-note {
-    width: 100%;
+    margin-top: 0.5rem;
     font-size: 0.75rem;
     color: var(--text-muted);
+    text-align: center;
 }
 
 .book-status-note:empty {
