@@ -953,3 +953,57 @@ func TestApplyMetadataHandler_MultipleLanguages(t *testing.T) {
 		t.Errorf("legacy field: %v", got)
 	}
 }
+
+// A book's authors (shown in link order) and its author_sort must list the
+// same people in the same order, after upload and after every edit.
+func TestUpdateBookInCalibreDB_AuthorSortFollowsAuthorOrder(t *testing.T) {
+	db, tempDir := setupTestDB(t)
+	defer os.RemoveAll(tempDir)
+	defer db.Close()
+
+	meta := &UploadedBookMeta{OPFMetadata: OPFMetadata{
+		Title:    "Shared Work",
+		Creators: []string{"Alan Donovan", "Brian Kernighan"},
+	}}
+	_, bookUUID, bookPath, err := insertBookIntoCalibreDB(db, meta, nil)
+	if err != nil {
+		t.Fatalf("insert: %v", err)
+	}
+	_ = os.MkdirAll(filepath.Join(tempDir, bookPath), 0755)
+
+	check := func(step, wantNames, wantSort string) {
+		t.Helper()
+		var names, sort string
+		err := db.QueryRow(`SELECT `+bookAuthorsSQL+`, b.author_sort FROM books b WHERE b.uuid = ?`, bookUUID).Scan(&names, &sort)
+		if err != nil {
+			t.Fatalf("%s: query: %v", step, err)
+		}
+		if names != wantNames || sort != wantSort {
+			t.Errorf("%s: authors %q / author_sort %q, want %q / %q", step, names, sort, wantNames, wantSort)
+		}
+	}
+	check("upload", "Alan Donovan & Brian Kernighan", "Donovan, Alan & Kernighan, Brian")
+
+	edit := func(creators ...string) {
+		t.Helper()
+		if _, err := updateBookInCalibreDB(db, tempDir, bookUUID, &OPFMetadata{Title: "Shared Work", Creators: creators}); err != nil {
+			t.Fatalf("update %v: %v", creators, err)
+		}
+	}
+
+	edit("Brian Kernighan", "Alan Donovan")
+	check("reorder", "Brian Kernighan & Alan Donovan", "Kernighan, Brian & Donovan, Alan")
+
+	edit("Rob Pike", "Brian Kernighan", "Alan Donovan")
+	check("add first", "Rob Pike & Brian Kernighan & Alan Donovan", "Pike, Rob & Kernighan, Brian & Donovan, Alan")
+
+	edit("Alan Donovan", "Rob Pike", "Alan Donovan")
+	check("drop and repeat", "Alan Donovan & Rob Pike", "Donovan, Alan & Pike, Rob")
+
+	// A sort set in Calibre is kept, not re-guessed from the name.
+	if _, err := db.Exec(`UPDATE authors SET sort = 'Pike, Robert' WHERE name = 'Rob Pike'`); err != nil {
+		t.Fatal(err)
+	}
+	edit("Rob Pike", "Alan Donovan")
+	check("stored sort", "Rob Pike & Alan Donovan", "Pike, Robert & Donovan, Alan")
+}

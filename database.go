@@ -62,6 +62,7 @@ func insertBookIntoCalibreDB(db *sql.DB, meta *UploadedBookMeta, formats []forma
 	authorDir := sanitizePath(meta.Creators[0])
 	titleDir := sanitizePath(meta.Title)
 
+	// The book's author_sort is set once its authors are linked, below.
 	authorSort := authorSortKey(meta.Creators[0])
 	seriesIndex := meta.getMeta("calibre:series_index") // TODO: do we actually set this anywhere?
 	if seriesIndex == "" {
@@ -111,16 +112,13 @@ func insertBookIntoCalibreDB(db *sql.DB, meta *UploadedBookMeta, formats []forma
 		return
 	}
 
-	for _, authorName := range meta.Creators {
-		authorID, aErr := upsertAuthor(tx, authorName)
-		if aErr != nil {
-			retErr = fmt.Errorf("upsert author %q: %w", authorName, aErr)
-			return
-		}
-		if _, aErr = tx.Exec(`INSERT OR IGNORE INTO books_authors_link (book, author) VALUES (?, ?)`, bookID, authorID); aErr != nil {
-			retErr = fmt.Errorf("link author: %w", aErr)
-			return
-		}
+	if _, authorSort, err = linkBookAuthors(tx, bookID, meta.Creators); err != nil {
+		retErr = err
+		return
+	}
+	if _, err = tx.Exec(`UPDATE books SET author_sort = ? WHERE id = ?`, authorSort, bookID); err != nil {
+		retErr = fmt.Errorf("set author_sort: %w", err)
+		return
 	}
 
 	for _, f := range formats {
@@ -203,6 +201,49 @@ func insertBookIntoCalibreDB(db *sql.DB, meta *UploadedBookMeta, formats []forma
 
 // deleteBookFromCalibreDB is in recycle.go.
 
+// linkBookAuthors links the book to creators, in that order, replacing its
+// links: Calibre lists a book's authors by link id, so links are rewritten
+// rather than kept, or a reorder would show the old order. It returns the
+// linked author ids and the book's author_sort, each author's stored sort
+// ("Last, First", or what was set in Calibre) joined with " & " in the same
+// order as the names. Blank and repeated names are skipped.
+func linkBookAuthors(tx *sql.Tx, bookID int64, creators []string) ([]int64, string, error) {
+	if _, err := tx.Exec(`DELETE FROM books_authors_link WHERE book = ?`, bookID); err != nil {
+		return nil, "", fmt.Errorf("clear author links: %w", err)
+	}
+	var ids []int64
+	var sorts []string
+	seen := map[int64]bool{}
+	for _, c := range creators {
+		name := strings.TrimSpace(c)
+		if name == "" {
+			continue
+		}
+		id, err := upsertAuthor(tx, name)
+		if err != nil {
+			return nil, "", fmt.Errorf("upsert author %q: %w", name, err)
+		}
+		if seen[id] {
+			continue
+		}
+		seen[id] = true
+		if _, err = tx.Exec(`INSERT INTO books_authors_link (book, author) VALUES (?, ?)`, bookID, id); err != nil {
+			return nil, "", fmt.Errorf("link author: %w", err)
+		}
+		var sort sql.NullString
+		if err = tx.QueryRow(`SELECT sort FROM authors WHERE id = ?`, id).Scan(&sort); err != nil {
+			return nil, "", fmt.Errorf("author sort %q: %w", name, err)
+		}
+		if s := strings.TrimSpace(sort.String); s != "" {
+			sorts = append(sorts, s)
+		} else {
+			sorts = append(sorts, authorSortKey(name))
+		}
+		ids = append(ids, id)
+	}
+	return ids, strings.Join(sorts, " & "), nil
+}
+
 // updateBookInCalibreDB updates a book's metadata in the Calibre database and its on-disk metadata.opf.
 // It ensures strict Calibre database compatibility, including cleaning up orphaned authors, tags,
 // publishers, and languages when the edited book was the only book linked to them.
@@ -238,14 +279,29 @@ func updateBookInCalibreDB(db *sql.DB, baseDir string, bookUUID string, meta *OP
 		tSort = "Unknown"
 	}
 
-	authorSortParts := make([]string, 0, len(meta.Creators))
-	for _, c := range meta.Creators {
-		trimmed := strings.TrimSpace(c)
-		if trimmed != "" {
-			authorSortParts = append(authorSortParts, authorSortKey(trimmed))
+	// Authors first: books.author_sort is built from the linked authors, in
+	// the order they're linked, so the two always agree.
+	var oldAuthorIDs []int64
+	rows, err := tx.Query(`SELECT author FROM books_authors_link WHERE book = ?`, bookID)
+	if err != nil {
+		return "", fmt.Errorf("fetch current authors: %w", err)
+	}
+	for rows.Next() {
+		var aID int64
+		if err := rows.Scan(&aID); err == nil {
+			oldAuthorIDs = append(oldAuthorIDs, aID)
 		}
 	}
-	authorSort := strings.Join(authorSortParts, " & ")
+	rows.Close()
+
+	newAuthorIDs, authorSort, err := linkBookAuthors(tx, bookID, meta.Creators)
+	if err != nil {
+		return "", err
+	}
+	newAuthorIDMap := make(map[int64]bool, len(newAuthorIDs))
+	for _, id := range newAuthorIDs {
+		newAuthorIDMap[id] = true
+	}
 	if authorSort == "" {
 		authorSort = "Unknown"
 	}
@@ -287,41 +343,9 @@ func updateBookInCalibreDB(db *sql.DB, baseDir string, bookUUID string, meta *OP
 		}
 	}
 
-	// 3. Authors and books_authors_link
-	var oldAuthorIDs []int64
-	rows, err := tx.Query(`SELECT author FROM books_authors_link WHERE book = ?`, bookID)
-	if err != nil {
-		return "", fmt.Errorf("fetch current authors: %w", err)
-	}
-	for rows.Next() {
-		var aID int64
-		if err := rows.Scan(&aID); err == nil {
-			oldAuthorIDs = append(oldAuthorIDs, aID)
-		}
-	}
-	rows.Close()
-
-	newAuthorIDMap := make(map[int64]bool)
-	for _, authorName := range meta.Creators {
-		trimmed := strings.TrimSpace(authorName)
-		if trimmed == "" {
-			continue
-		}
-		aID, aErr := upsertAuthor(tx, trimmed)
-		if aErr != nil {
-			return "", fmt.Errorf("upsert author %q: %w", trimmed, aErr)
-		}
-		newAuthorIDMap[aID] = true
-		if _, aErr = tx.Exec(`INSERT OR IGNORE INTO books_authors_link (book, author) VALUES (?, ?)`, bookID, aID); aErr != nil {
-			return "", fmt.Errorf("link author: %w", aErr)
-		}
-	}
-
+	// 3. Authors no longer on the book (linked above)
 	for _, oldID := range oldAuthorIDs {
 		if !newAuthorIDMap[oldID] {
-			if _, dErr := tx.Exec(`DELETE FROM books_authors_link WHERE book = ? AND author = ?`, bookID, oldID); dErr != nil {
-				return "", fmt.Errorf("unlink author %d: %w", oldID, dErr)
-			}
 			// Clean up orphan author ONLY if this book was the only book linked to that author
 			var count int
 			if cErr := tx.QueryRow(`SELECT COUNT(*) FROM books_authors_link WHERE author = ?`, oldID).Scan(&count); cErr == nil && count == 0 {
