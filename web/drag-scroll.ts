@@ -226,8 +226,10 @@ function press(e: PointerEvent, ...choices: Scroller[]): void {
             s = pick;
             start = starts.get(s)!;
             runway = runwayOf(s);
-            from = coord(e);
-            samples.push({ t: e.timeStamp, at: from });
+            // From here, not the press: the books start moving now, rather
+            // than jumping the slop's worth at once.
+            from = coord(ev);
+            samples.push({ t: ev.timeStamp, at: from });
             for (const c of choices) if (c !== s) recoil(c); // pressed mid-recoil
             dragging = true;
             s.el.classList.add("drag-scrolling");
