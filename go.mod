@@ -8,7 +8,7 @@ require (
 	github.com/mattn/go-sqlite3 v1.14.53
 	github.com/microcosm-cc/bluemonday v1.0.27
 	github.com/pdfcpu/pdfcpu v0.16.4
-	golang.org/x/crypto v0.58.0
+	golang.org/x/crypto v0.59.0
 	golang.org/x/image v0.48.0
 )
 
@@ -20,7 +20,7 @@ require (
 	github.com/mattn/go-runewidth v0.0.31 // indirect
 	github.com/xdg-go/stringprep v1.0.4 // indirect
 	go.yaml.in/yaml/v3 v3.0.5 // indirect
-	golang.org/x/net v0.60.0 // indirect
+	golang.org/x/net v0.62.0 // indirect
 	golang.org/x/sys v0.50.0 // indirect
 	golang.org/x/text v0.44.0 // indirect
 )
