@@ -1,4 +1,4 @@
-module CalibreFast
+module github.com/iotku/CalibreFast
 
 go 1.26.0
 

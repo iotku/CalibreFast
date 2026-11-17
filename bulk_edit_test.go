@@ -9,6 +9,8 @@ import (
 	"path/filepath"
 	"slices"
 	"testing"
+
+	"github.com/iotku/CalibreFast/pkg/opf"
 )
 
 // addOPFTestBook is addRecycleTestBook with a real metadata.opf, which the
@@ -20,7 +22,7 @@ func addOPFTestBook(t *testing.T, db *sql.DB, title string, authors, tags, langs
 	if _, err := updateBookInCalibreDB(db, baseDir, b.uuid, &meta); err != nil {
 		t.Fatal(err)
 	}
-	if err := writeOPF(&OPF{Metadata: meta}, filepath.Join(baseDir, b.path, "metadata.opf"), b.uuid); err != nil {
+	if err := opf.Write(&OPF{Metadata: meta}, filepath.Join(baseDir, b.path, "metadata.opf"), b.uuid); err != nil {
 		t.Fatal(err)
 	}
 	return b
@@ -215,7 +217,7 @@ func TestBulkEditSeries(t *testing.T) {
 		if err != nil {
 			t.Fatal(err)
 		}
-		opf, err := loadOPF(filepath.Join(baseDir, tableRow(t, db, u).path, "metadata.opf"))
+		opf, err := opf.Load(filepath.Join(baseDir, tableRow(t, db, u).path, "metadata.opf"))
 		if err != nil {
 			t.Fatal(err)
 		}

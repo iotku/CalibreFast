@@ -28,6 +28,7 @@ import (
 	"time"
 
 	"github.com/google/uuid"
+	"github.com/iotku/CalibreFast/pkg/opf"
 	"github.com/mattn/go-sqlite3"
 	_ "github.com/mattn/go-sqlite3"
 )
@@ -664,7 +665,7 @@ func serveLibraryHTTP() {
 		}
 
 		opfPath := filepath.Join(baseDir, bookPath.(string), "metadata.opf")
-		existingOPF, err := loadOPF(opfPath)
+		existingOPF, err := opf.Load(opfPath)
 		if err != nil {
 			http.Error(w, "Failed to load metadata.opf: "+err.Error(), http.StatusInternalServerError)
 			return
@@ -673,7 +674,7 @@ func serveLibraryHTTP() {
 		// A missing or odd date must not block editing.
 		var dateStr, rawDate string
 		if raw := strings.TrimSpace(existingOPF.Metadata.Date); raw != "" {
-			if parsedDate, err := parseAnyDate(raw); err == nil {
+			if parsedDate, err := opf.ParseAnyDate(raw); err == nil {
 				dateStr = parsedDate.Format("2006-01-02")
 			} else {
 				rawDate = raw
@@ -792,14 +793,14 @@ func GetOptionsForBook(w http.ResponseWriter, r *http.Request) {
 	var metas []*UploadedBookMeta
 
 	// Always try to include the current on-disk merged metadata.
-	opf, err := loadOPF(filepath.Join(baseDir, path, "metadata.opf"))
+	opfDoc, err := opf.Load(filepath.Join(baseDir, path, "metadata.opf"))
 	if err == nil {
-		opf.Metadata.Date = normalizeDateOnly(opf.Metadata.Date)
+		opfDoc.Metadata.Date = normalizeDateOnly(opfDoc.Metadata.Date)
 		// The series as metadata.db has it (what "next in series" goes by),
 		// which the OPF may not match.
-		opf.Metadata.Series, opf.Metadata.SeriesIndex = librarySeriesFields(uuid)
+		opfDoc.Metadata.Series, opfDoc.Metadata.SeriesIndex = librarySeriesFields(uuid)
 		metas = append(metas, &UploadedBookMeta{
-			OPFMetadata: opf.Metadata,
+			OPFMetadata: opfDoc.Metadata,
 			Format:      "current",
 			FileName:    "",
 		})
@@ -821,7 +822,7 @@ func GetOptionsForBook(w http.ResponseWriter, r *http.Request) {
 	shown := make([]UploadedBookMeta, len(metas))
 	for i, m := range metas {
 		shown[i] = *m
-		_, shown[i].Identifiers = splitLibraryIdentifiers(m.Identifiers)
+		_, shown[i].Identifiers = opf.SplitLibraryIdentifiers(m.Identifiers)
 	}
 
 	w.Header().Set("content-type", "application/json")
@@ -851,9 +852,9 @@ type ApplyMetadataRequest struct {
 // back to the legacy single "language" field.
 func requestLanguages(req ApplyMetadataRequest) []string {
 	if req.Languages != nil {
-		return parseLanguagesString(*req.Languages)
+		return opf.ParseLanguages(*req.Languages)
 	}
-	return parseLanguagesString(req.Language)
+	return opf.ParseLanguages(req.Language)
 }
 
 // identifierList accepts a JSON array of {scheme, value, id} objects (lossless,
@@ -894,23 +895,7 @@ func parseCreatorsString(s string) []string {
 }
 
 func parseSubjectsString(s string) []string {
-	return uniqueTags(strings.Split(s, ","))
-}
-
-// uniqueTags trims tags and drops empty ones and repeats, ignoring case: the
-// first spelling stays. A book never has the same tag twice, whether it came
-// from the editor, a file or a lookup.
-func uniqueTags(tags []string) []string {
-	out := make([]string, 0, len(tags))
-	seen := map[string]bool{}
-	for _, t := range tags {
-		t = strings.TrimSpace(t)
-		if k := strings.ToLower(t); t != "" && !seen[k] {
-			seen[k] = true
-			out = append(out, t)
-		}
-	}
-	return out
+	return opf.UniqueTags(strings.Split(s, ","))
 }
 
 func parseIdentifiersString(s string) []opfIdentifier {
@@ -947,7 +932,7 @@ func parseIdentifiersString(s string) []opfIdentifier {
 }
 
 // unparseableStoredDate returns the book's current dc:date if it is set but
-// not in a format parseAnyDate understands; otherwise "".
+// not in a format opf.ParseAnyDate understands; otherwise "".
 func unparseableStoredDate(uuid string) string {
 	bookPath, ok := uuidPathIndex.Load(uuid)
 	if !ok {
@@ -957,15 +942,15 @@ func unparseableStoredDate(uuid string) string {
 		}
 		bookPath = p
 	}
-	opf, err := loadOPF(filepath.Join(baseDir, bookPath.(string), "metadata.opf"))
+	opfDoc, err := opf.Load(filepath.Join(baseDir, bookPath.(string), "metadata.opf"))
 	if err != nil {
 		return ""
 	}
-	raw := strings.TrimSpace(opf.Metadata.Date)
+	raw := strings.TrimSpace(opfDoc.Metadata.Date)
 	if raw == "" {
 		return ""
 	}
-	if _, err := parseAnyDate(raw); err != nil {
+	if _, err := opf.ParseAnyDate(raw); err != nil {
 		return raw
 	}
 	return ""
@@ -1024,7 +1009,7 @@ func applyMetadataHandler(w http.ResponseWriter, r *http.Request) {
 	}
 
 	meta := metadataFromRequest(req)
-	if _, _, err := cleanSeries(meta.Series, meta.SeriesIndex); err != nil {
+	if _, _, err := opf.CleanSeries(meta.Series, meta.SeriesIndex); err != nil {
 		http.Error(w, err.Error(), http.StatusBadRequest)
 		return
 	}

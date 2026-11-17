@@ -33,6 +33,9 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
+
+	"github.com/iotku/CalibreFast/pkg/isbn"
+	"github.com/iotku/CalibreFast/pkg/opf"
 )
 
 func addFormatPath(it *pendingImport) string {
@@ -88,7 +91,7 @@ func incomingDuplicates(it *pendingImport) *duplicateCheck {
 	var isbns []string
 	for _, s := range append([]*UploadedBookMeta{&it.Merged}, it.Sources...) {
 		for _, id := range s.Identifiers {
-			if n := identifierISBN(id.Scheme, id.Value); n != "" {
+			if n := isbn.FromIdentifier(id.Scheme, id.Value); n != "" {
 				isbns = append(isbns, n)
 			}
 		}
@@ -233,7 +236,7 @@ func addFormatApplyHandler(w http.ResponseWriter, r *http.Request) {
 	}
 	{
 		meta := metadataFromRequest(req.ApplyMetadataRequest)
-		if _, _, err := cleanSeries(meta.Series, meta.SeriesIndex); err != nil {
+		if _, _, err := opf.CleanSeries(meta.Series, meta.SeriesIndex); err != nil {
 			http.Error(w, err.Error(), http.StatusBadRequest)
 			return
 		}

@@ -1,4 +1,4 @@
-package main
+package xml11
 
 import (
 	"bytes"
@@ -8,23 +8,6 @@ import (
 	"strings"
 )
 
-// encoding/xml reads only XML 1.0: it refuses a document whose declaration
-// says version="1.1", and it refuses character references to the C0 control
-// characters that XML 1.1 allows (&#x1; to &#x1F;). Some EPUBs declare 1.1,
-// so every XML document the server reads goes through xml11To10 first, which
-// turns an XML 1.1 document into the XML 1.0 document that means the same
-// thing as far as a reader of its text can tell:
-//
-//   - The declaration's version becomes "1.0".
-//   - XML 1.1's extra line ends (NEL, U+0085, alone or after a CR, and LSEP,
-//     U+2028) become "\n", as an XML 1.1 parser normalizes them (§2.11).
-//   - References to the C0 controls XML 1.0 lacks are dropped: XML 1.0, and
-//     so encoding/xml, cannot hold those characters, and they have no
-//     visible text to keep. References inside CDATA sections, comments and
-//     processing instructions are literal text there and are left alone.
-//
-// A document that isn't XML 1.1 is returned as is.
-
 // xmlDeclRE matches an XML declaration at the very start of a document (after
 // an optional UTF-8 byte order mark), capturing the version's value.
 var xmlDeclRE = regexp.MustCompile(`^\x{FEFF}?<\?xml\s+version\s*=\s*(?:"([^"]*)"|'([^']*)')[^?]*\?>`)
@@ -32,7 +15,10 @@ var xmlDeclRE = regexp.MustCompile(`^\x{FEFF}?<\?xml\s+version\s*=\s*(?:"([^"]*)
 // xmlEncodingRE captures the encoding named in an XML declaration.
 var xmlEncodingRE = regexp.MustCompile(`\sencoding\s*=\s*(?:"([^"]*)"|'([^']*)')`)
 
-func xml11To10(data []byte) []byte {
+// XML11To10 rewrites an XML 1.1 document as the equivalent XML 1.0 document,
+// as described in the package documentation. A document that doesn't declare
+// version 1.1 is returned unchanged.
+func XML11To10(data []byte) []byte {
 	m := xmlDeclRE.FindSubmatchIndex(data)
 	if m == nil {
 		return data
@@ -135,7 +121,7 @@ func restrictedCharRef(ref []byte) (int, bool) {
 	return end + 1, true
 }
 
-// xmlUnmarshal is xml.Unmarshal for XML 1.0 or 1.1.
-func xmlUnmarshal(data []byte, v any) error {
-	return xml.Unmarshal(xml11To10(data), v)
+// Unmarshal is xml.Unmarshal for XML 1.0 or 1.1.
+func Unmarshal(data []byte, v any) error {
+	return xml.Unmarshal(XML11To10(data), v)
 }

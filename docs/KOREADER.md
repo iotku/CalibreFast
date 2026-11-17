@@ -110,7 +110,7 @@ The protocol is that of KOReader's `kosync.koplugin` and the [reference sync ser
 
 - Authenticated requests carry `x-auth-user` (the username) and `x-auth-key` (the MD5 of the sync key).
 - The `Accept: application/vnd.koreader.v1+json` header is accepted but not required.
-- The implementation is in `kosync.go` (API and keys), `kosync_digest.go` (fingerprints) and `kosync_position.go` (EPUB position translation).
-- Annotation files: `koreader_annotations.go` (the two endpoints), `koreader_lua.go` (reading KOReader's Lua files as data) and `koreader_text.go` (exact text positions). To check them against a real export, put `book.epub` and its `book.epub.annotations.lua` in a folder, point `KOREADER_ANNOTATIONS` at it and run `go test -run KOReaderAnnotationsFixture`.
+- The implementation is in `kosync_server.go` (API and keys) and `kosync_digest.go` (matching fingerprints to books), using [`pkg/kosync`](../pkg/kosync) (fingerprints, keys, the protocol's errors) and [`pkg/koreader`](../pkg/koreader) (EPUB position translation).
+- Annotation files: `koreader_annotations.go` (the two endpoints), and in `pkg/koreader`, `annotations.go` (the file format), `lua.go` (reading KOReader's Lua files as data) and `text.go` (exact text positions). To check them against a real export, put `book.epub` and its `book.epub.annotations.lua` in a folder, point `KOREADER_ANNOTATIONS` at it and run `go test ./pkg/koreader -run KOReaderAnnotationsFixture`.
 
-To check the fingerprint against KOReader's own test files, point `KOREADER_TEST_DATA` at a checkout of [koreader/test-data](https://github.com/koreader/test-data) and run `go test -run Fixture`.
+To check the fingerprint and position translation against KOReader's own test files, point `KOREADER_TEST_DATA` at a checkout of [koreader/test-data](https://github.com/koreader/test-data) and run `go test ./pkg/kosync ./pkg/koreader -run Fixture`.

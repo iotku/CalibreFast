@@ -1,13 +1,9 @@
 package main
 
 import (
-	"bytes"
 	"encoding/base64"
 	"errors"
 	"fmt"
-	"image"
-	"image/jpeg"
-	_ "image/png" // register PNG decoder
 	"io"
 	"log"
 	"net/http"
@@ -15,6 +11,8 @@ import (
 	"path/filepath"
 	"strings"
 	"time"
+
+	"github.com/iotku/CalibreFast/pkg/imageutil"
 )
 
 // uploadCoverHandler handles POST /upload-cover/{uuid}: the image in the
@@ -75,28 +73,17 @@ const (
 	coverUploadMaxBytes = 32 << 20
 )
 
-// coverJPEG is the cover.jpg to save for an image file's bytes. A JPEG at
-// most coverMaxWidth wide and coverKeepMaxBytes big is kept as it is:
-// re-encoding it would only lose quality. Anything else is decoded, scaled
+// coverJPEG is the cover.jpg to save for an image file's bytes
+// (imageutil.CoverJPEG): a JPEG at most coverMaxWidth wide and
+// coverKeepMaxBytes big is kept as it is; anything else is decoded, scaled
 // down to coverMaxWidth if wider, and encoded once at coverQuality. Its
 // errors are about the image (the client's, for an upload).
 func coverJPEG(data []byte) ([]byte, error) {
-	// Decoded either way, so a kept file is known to be a whole image.
-	img, format, err := image.Decode(bytes.NewReader(data))
-	if err != nil {
-		return nil, fmt.Errorf("not an image that can be read (use JPG or PNG): %w", err)
-	}
-	if format == "jpeg" && img.Bounds().Dx() <= coverMaxWidth && len(data) <= coverKeepMaxBytes {
-		return data, nil
-	}
-	if img.Bounds().Dx() > coverMaxWidth {
-		img = resizeToWidth(img, coverMaxWidth)
-	}
-	var buf bytes.Buffer
-	if err := jpeg.Encode(&buf, img, &jpeg.Options{Quality: coverQuality}); err != nil {
-		return nil, fmt.Errorf("encoding the cover: %w", err)
-	}
-	return buf.Bytes(), nil
+	return imageutil.CoverJPEG(data, imageutil.CoverOptions{
+		MaxWidth:     coverMaxWidth,
+		KeepMaxBytes: coverKeepMaxBytes,
+		Quality:      coverQuality,
+	})
 }
 
 // readCoverUpload reads the cover a request carries, as cover.jpg's bytes

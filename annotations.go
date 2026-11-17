@@ -12,7 +12,7 @@ package main
 //
 // What is stored is what KOReader keeps for its own highlights (text, note,
 // colour, chapter, page, created and updated times), so an import or export
-// in its format stays possible. Its sync protocol (kosync.go) carries reading
+// in its format stays possible. Its sync protocol (kosync_server.go) carries reading
 // positions only, so annotations don't travel to devices today.
 
 import (

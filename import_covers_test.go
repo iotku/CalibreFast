@@ -6,6 +6,7 @@ import (
 	"context"
 	"image"
 	"image/color"
+	"image/jpeg"
 	"image/png"
 	"io"
 	"os"
@@ -15,6 +16,22 @@ import (
 	pdfapi "github.com/pdfcpu/pdfcpu/pkg/api"
 	"github.com/pdfcpu/pdfcpu/pkg/pdfcpu"
 )
+
+// testJPEG is a w×h JPEG of a pattern, at quality.
+func testJPEG(t *testing.T, w, h, quality int) []byte {
+	t.Helper()
+	img := image.NewRGBA(image.Rect(0, 0, w, h))
+	for y := 0; y < h; y++ {
+		for x := 0; x < w; x++ {
+			img.Set(x, y, color.RGBA{uint8(x * 7), uint8(y * 3), uint8(x ^ y), 255})
+		}
+	}
+	var buf bytes.Buffer
+	if err := jpeg.Encode(&buf, img, &jpeg.Options{Quality: quality}); err != nil {
+		t.Fatal(err)
+	}
+	return buf.Bytes()
+}
 
 // testPNG is a w×h PNG of one color.
 func testPNG(t *testing.T, w, h int) []byte {
@@ -60,49 +77,6 @@ func coverEPUB(t *testing.T, meta, manifest string, img []byte) []byte {
 		t.Fatal(err)
 	}
 	return buf.Bytes()
-}
-
-func TestEPUBCoverHref(t *testing.T) {
-	cases := []struct{ name, meta, manifest, want string }{
-		{"epub3", ``, `<item id="x" href="images/c.png" media-type="image/png" properties="cover-image"/>`, "OEBPS/images/c.png"},
-		{"epub2", `<meta name="cover" content="img1"/>`, `<item id="img1" href="images/c.png" media-type="image/png"/>`, "OEBPS/images/c.png"},
-		{"id cover", ``, `<item id="cover" href="images/c.png" media-type="image/png"/>`, "OEBPS/images/c.png"},
-		{"relative", ``, `<item id="x" href="../Images/My%20c.png#frag" media-type="image/png" properties="cover-image"/>`, "Images/My c.png"},
-		{"not an image", ``, `<item id="cover" href="cover.xhtml" media-type="application/xhtml+xml"/>`, ""},
-		{"none", ``, `<item id="x" href="images/c.png" media-type="image/png"/>`, ""},
-	}
-	for _, c := range cases {
-		opf := `<package xmlns="http://www.idpf.org/2007/opf"><metadata>` + c.meta + `</metadata><manifest>` + c.manifest + `</manifest></package>`
-		got, err := epubCoverHref("OEBPS/content.opf", []byte(opf))
-		if c.want == "" {
-			if err == nil {
-				t.Errorf("%s: got %q, want no cover", c.name, got)
-			}
-			continue
-		}
-		if err != nil || got != c.want {
-			t.Errorf("%s: got %q, %v; want %q", c.name, got, err, c.want)
-		}
-	}
-}
-
-func TestPDFImageIsPage(t *testing.T) {
-	cases := []struct {
-		w, h         int
-		pageW, pageH float64
-		want         bool
-	}{
-		{1240, 1754, 595, 842, true},  // A4 scan
-		{1754, 1240, 595, 842, true},  // turned with /Rotate
-		{1200, 1200, 595, 842, false}, // a square picture on the page
-		{200, 283, 595, 842, false},   // a logo of the page's shape
-		{1650, 2550, 612, 792, false}, // a taller picture than the Letter page (0.65 vs 0.77)
-	}
-	for _, c := range cases {
-		if got := pdfImageIsPage(c.w, c.h, c.pageW, c.pageH); got != c.want {
-			t.Errorf("%dx%d on %vx%v: got %v, want %v", c.w, c.h, c.pageW, c.pageH, got, c.want)
-		}
-	}
 }
 
 func TestExtractImportCoverEPUB(t *testing.T) {

@@ -406,7 +406,7 @@ type AuthPageData struct {
 	Providers    []string // enabled OAuth providers
 	Registration bool
 	Identities   []Identity
-	SyncURL      string       // KOReader's custom sync server address (kosync.go)
+	SyncURL      string       // KOReader's custom sync server address (kosync_server.go)
 	SyncKey      *syncKeyInfo // nil: no sync key
 	NewSyncKey   string       // shown once, right after it is generated
 	SyncNotice   string

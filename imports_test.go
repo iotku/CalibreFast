@@ -14,6 +14,9 @@ import (
 	"strings"
 	"testing"
 	"time"
+
+	"github.com/iotku/CalibreFast/pkg/isbn"
+	"github.com/iotku/CalibreFast/pkg/opf"
 )
 
 // importTestEPUB is an EPUB with a title, an author, an ISBN and its own uuid.
@@ -249,7 +252,7 @@ func TestApproveAddsTheBookToTheLibrary(t *testing.T) {
 			t.Errorf("%s isn't in the book's folder", name)
 		}
 	}
-	opf, err := loadOPF(filepath.Join(bookDir, "metadata.opf"))
+	opf, err := opf.Load(filepath.Join(bookDir, "metadata.opf"))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -382,7 +385,7 @@ func TestImportHandlers(t *testing.T) {
 	}
 
 	rec := call(importISBNsHandler, admin, "GET", it.ID)
-	var isbns isbnResponse
+	var isbns isbn.Response
 	json.Unmarshal(rec.Body.Bytes(), &isbns)
 	if len(isbns.Candidates) != 1 || isbns.Candidates[0].ISBN13 != "9780134190440" {
 		t.Errorf("ISBNs in the waiting book's files: %s", rec.Body)

@@ -11,6 +11,7 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/iotku/CalibreFast/pkg/opf"
 	_ "github.com/mattn/go-sqlite3"
 )
 
@@ -468,7 +469,7 @@ func TestUpdateBookInCalibreDB_TagsPublishersCommentsIdentifiers(t *testing.T) {
 	}
 
 	// 5. Check metadata.opf on disk
-	opf, err := loadOPF(filepath.Join(tempDir, bookPath, "metadata.opf"))
+	opf, err := opf.Load(filepath.Join(tempDir, bookPath, "metadata.opf"))
 	if err != nil {
 		t.Fatalf("failed to read written metadata.opf: %v", err)
 	}
@@ -658,7 +659,7 @@ func TestApplyMetadataHandler_PreservesIdentifiers(t *testing.T) {
 		{Scheme: "uuid", Value: bookUUID, ID: "uuid_id"},
 		{Value: "urn:uuid:5a1d2c3e-1111-4222-8333-944455556666", ID: "uid"}, // an EPUB's package id
 	}
-	if err := writeOPF(&OPF{Metadata: OPFMetadata{
+	if err := opf.Write(&OPF{Metadata: OPFMetadata{
 		Title: "Ids", Creators: []string{"A"},
 		Identifiers: append(slices.Clone(library), opfIdentifier{Scheme: "isbn", Value: "9780000000002"}),
 	}}, opfPath, bookUUID); err != nil {
@@ -709,7 +710,7 @@ func TestApplyMetadataHandler_PreservesIdentifiers(t *testing.T) {
 		t.Fatalf("expected 200, got %d", resp.StatusCode)
 	}
 
-	opf, err := loadOPF(opfPath)
+	opf, err := opf.Load(opfPath)
 	if err != nil {
 		t.Fatalf("load opf: %v", err)
 	}
@@ -764,7 +765,7 @@ func TestApplyMetadataHandler_KeepsUnparseableDate(t *testing.T) {
 	}
 	dir := filepath.Join(tempDir, bookPath)
 	_ = os.MkdirAll(dir, 0755)
-	if err := writeOPF(&OPF{Metadata: OPFMetadata{Title: "Dates", Date: "Spring 1987"}}, filepath.Join(dir, "metadata.opf"), bookUUID); err != nil {
+	if err := opf.Write(&OPF{Metadata: OPFMetadata{Title: "Dates", Date: "Spring 1987"}}, filepath.Join(dir, "metadata.opf"), bookUUID); err != nil {
 		t.Fatalf("write opf: %v", err)
 	}
 
@@ -785,7 +786,7 @@ func TestApplyMetadataHandler_KeepsUnparseableDate(t *testing.T) {
 		}
 	}
 	readDate := func() string {
-		opf, err := loadOPF(filepath.Join(dir, "metadata.opf"))
+		opf, err := opf.Load(filepath.Join(dir, "metadata.opf"))
 		if err != nil {
 			t.Fatalf("load opf: %v", err)
 		}
@@ -855,7 +856,7 @@ func TestApplyMetadataHandler_DedupesTags(t *testing.T) {
 	if got := tagsOf(); !slices.Equal(got, []string{"Fiction", "Go", "Programming"}) {
 		t.Errorf("after save: %q", got)
 	}
-	opf, err := loadOPF(filepath.Join(tempDir, bookPath, "metadata.opf"))
+	opf, err := opf.Load(filepath.Join(tempDir, bookPath, "metadata.opf"))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -920,7 +921,7 @@ func TestApplyMetadataHandler_MultipleLanguages(t *testing.T) {
 		}
 	}
 	opfLangs := func() []string {
-		opf, err := loadOPF(filepath.Join(dir, "metadata.opf"))
+		opf, err := opf.Load(filepath.Join(dir, "metadata.opf"))
 		if err != nil {
 			t.Fatal(err)
 		}

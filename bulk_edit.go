@@ -23,6 +23,9 @@ import (
 	"strconv"
 	"strings"
 	"sync"
+
+	"github.com/iotku/CalibreFast/pkg/langcodes"
+	"github.com/iotku/CalibreFast/pkg/opf"
 )
 
 // bulkMaxBooks bounds one bulk request.
@@ -277,7 +280,7 @@ func (e *bulkEdit) apply(m *OPFMetadata) bool {
 		}
 		index := m.SeriesIndex
 		if e.SeriesIndex != nil && strings.TrimSpace(*e.SeriesIndex) != "" {
-			index = formatSeriesIndex(*e.SeriesIndex)
+			index = opf.FormatSeriesIndex(*e.SeriesIndex)
 		} else if m.Series == "" {
 			index = "1"
 		}
@@ -300,38 +303,38 @@ func (e *bulkEdit) apply(m *OPFMetadata) bool {
 	if len(e.AddTags) > 0 {
 		m.Subjects = append(slices.Clone(m.Subjects), e.AddTags...)
 	}
-	m.Subjects = uniqueTags(m.Subjects)
+	m.Subjects = opf.UniqueTags(m.Subjects)
 
 	if e.Languages != nil {
-		m.Languages = parseLanguagesString(*e.Languages)
+		m.Languages = opf.ParseLanguages(*e.Languages)
 	}
 	if len(e.RemoveLanguages) > 0 {
 		gone := map[string]bool{}
 		for _, l := range e.RemoveLanguages {
-			gone[canonicalLanguage(l)] = true
+			gone[langcodes.Canonical(l)] = true
 			gone[strings.ToLower(strings.TrimSpace(l))] = true
 		}
 		m.Languages = slices.DeleteFunc(slices.Clone(m.Languages), func(l string) bool {
-			return gone[strings.ToLower(strings.TrimSpace(l))] || gone[canonicalLanguage(l)]
+			return gone[strings.ToLower(strings.TrimSpace(l))] || gone[langcodes.Canonical(l)]
 		})
 	}
 	if len(e.AddLanguages) > 0 {
 		have := map[string]bool{}
 		for _, l := range m.Languages {
-			have[canonicalLanguage(l)] = true
+			have[langcodes.Canonical(l)] = true
 		}
 		langs := slices.Clone(m.Languages)
-		for _, l := range cleanLanguages(e.AddLanguages) {
-			if !have[canonicalLanguage(l)] {
-				have[canonicalLanguage(l)] = true
+		for _, l := range opf.CleanLanguages(e.AddLanguages) {
+			if !have[langcodes.Canonical(l)] {
+				have[langcodes.Canonical(l)] = true
 				langs = append(langs, l)
 			}
 		}
 		m.Languages = langs
 	}
-	langs := cleanLanguages(m.Languages)
+	langs := opf.CleanLanguages(m.Languages)
 	if len(langs) == 0 && len(m.Languages) > 0 {
-		langs = []string{undefinedLanguage} // "und" stays "und"
+		langs = []string{opf.UndefinedLanguage} // "und" stays "und"
 	}
 	m.Languages = langs
 
@@ -347,7 +350,7 @@ func bookEditMetadata(uuid string) (*OPFMetadata, error) {
 	if err != nil {
 		return nil, fmt.Errorf("%w: %s", errNoSuchBook, uuid)
 	}
-	opf, err := loadOPF(filepath.Join(baseDir, path, "metadata.opf"))
+	opf, err := opf.Load(filepath.Join(baseDir, path, "metadata.opf"))
 	if err != nil {
 		return nil, fmt.Errorf("couldn't read metadata.opf: %w", err)
 	}
@@ -460,7 +463,7 @@ func bulkEditHandler(w http.ResponseWriter, r *http.Request) {
 		if e.SeriesIndex != nil {
 			index = *e.SeriesIndex
 		}
-		if _, _, err := cleanSeries(name, index); err != nil {
+		if _, _, err := opf.CleanSeries(name, index); err != nil {
 			http.Error(w, err.Error(), http.StatusBadRequest)
 			return
 		}

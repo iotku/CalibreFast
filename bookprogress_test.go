@@ -8,6 +8,9 @@ import (
 	"strings"
 	"testing"
 	"time"
+
+	"github.com/iotku/CalibreFast/pkg/koreader/koreadertest"
+	"github.com/iotku/CalibreFast/pkg/kosync"
 )
 
 // minimalPDF is a valid PDF with n empty pages.
@@ -59,7 +62,7 @@ func TestTimeAgo(t *testing.T) {
 func TestBookProgress(t *testing.T) {
 	u, books := setupLibraryAndUser(t, 3)
 	epub, pdf, other := books[0], books[1], books[2]
-	addBookFile(t, epub, "Novel", "epub", testEPUB(t))
+	addBookFile(t, epub, "Novel", "epub", koreadertest.EPUB(t))
 	addBookFile(t, pdf, "Scan", "pdf", minimalPDF(3))
 	now := time.Now()
 	ms := func(ago time.Duration) int64 { return now.Add(-ago).UnixMilli() }
@@ -86,8 +89,8 @@ func TestBookProgress(t *testing.T) {
 		pct           float64
 		at            int64
 	}{
-		{fileNameDigest("Novel.epub"), "/body/DocFragment[3]/body/section/p[2]", 0.42, ms(2 * time.Minute)},
-		{md5Hex("elsewhere"), "1", 0.9, ms(time.Second)},
+		{kosync.FileNameDigest("Novel.epub"), "/body/DocFragment[3]/body/section/p[2]", 0.42, ms(2 * time.Minute)},
+		{kosync.MD5Hex("elsewhere"), "1", 0.9, ms(time.Second)},
 	} {
 		if _, err := appDB.Exec(`INSERT INTO device_progress (user_id, document, progress, percentage, device, updated_at)
 			VALUES (?, ?, ?, ?, 'Kobo Clara', ?)`, u.ID, d.doc, d.progress, d.pct, d.at); err != nil {

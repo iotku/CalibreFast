@@ -1,4 +1,4 @@
-package main
+package koreader
 
 // Reading and writing the Lua tables KOReader keeps its settings in.
 //
@@ -21,24 +21,30 @@ const (
 	maxLuaItems = 200000 // values in one file
 )
 
-// luaTable is a Lua table: its array part (keys 1…n, in order) and the rest.
-type luaTable struct {
-	arr  []any
-	hash map[string]any
+// LuaTable is a Lua table: its array part (keys 1…n, in order) and the
+// rest, keyed by string (numeric keys outside the array part are written as
+// their decimal string). Values are nil, bool, float64 (int is accepted when
+// writing), string or *LuaTable.
+type LuaTable struct {
+	Arr  []any
+	Hash map[string]any
 }
 
-func (t *luaTable) str(key string) string {
-	s, _ := t.hash[key].(string)
+// Str is the string at key, or "".
+func (t *LuaTable) Str(key string) string {
+	s, _ := t.Hash[key].(string)
 	return s
 }
 
-func (t *luaTable) num(key string) (float64, bool) {
-	f, ok := t.hash[key].(float64)
+// Num is the number at key.
+func (t *LuaTable) Num(key string) (float64, bool) {
+	f, ok := t.Hash[key].(float64)
 	return f, ok
 }
 
-func (t *luaTable) table(key string) *luaTable {
-	v, _ := t.hash[key].(*luaTable)
+// Table is the table at key, or nil.
+func (t *LuaTable) Table(key string) *LuaTable {
+	v, _ := t.Hash[key].(*LuaTable)
 	return v
 }
 
@@ -48,8 +54,8 @@ type luaParser struct {
 	items int
 }
 
-// parseLuaTable reads a file of the form "return { … }" (comments allowed).
-func parseLuaTable(src string) (*luaTable, error) {
+// ParseLuaTable reads a file of the form "return { … }" (comments allowed).
+func ParseLuaTable(src string) (*LuaTable, error) {
 	p := &luaParser{s: src}
 	p.skip()
 	if !strings.HasPrefix(p.s[p.pos:], "return") {
@@ -60,7 +66,7 @@ func parseLuaTable(src string) (*luaTable, error) {
 	if err != nil {
 		return nil, err
 	}
-	t, ok := v.(*luaTable)
+	t, ok := v.(*LuaTable)
 	if !ok {
 		return nil, errors.New("not a KOReader settings file: no table")
 	}
@@ -244,7 +250,7 @@ func (p *luaParser) table(depth int) (any, error) {
 		return nil, p.errorf("tables nested too deeply")
 	}
 	p.pos++ // {
-	t := &luaTable{hash: map[string]any{}}
+	t := &LuaTable{Hash: map[string]any{}}
 	numbered := map[int]any{}
 	for {
 		p.skip()
@@ -296,9 +302,9 @@ func (p *luaParser) table(depth int) (any, error) {
 		}
 		switch k := key.(type) {
 		case nil:
-			t.arr = append(t.arr, v)
+			t.Arr = append(t.Arr, v)
 		case string:
-			t.hash[k] = v
+			t.Hash[k] = v
 		case float64:
 			if k == math.Trunc(k) && k >= 1 && k <= maxLuaItems {
 				// Re-check as an integer: k is already in range, but CodeQL
@@ -307,10 +313,10 @@ func (p *luaParser) table(depth int) (any, error) {
 					numbered[int(i)] = v
 				}
 			} else {
-				t.hash[strconv.FormatFloat(k, 'g', -1, 64)] = v
+				t.Hash[strconv.FormatFloat(k, 'g', -1, 64)] = v
 			}
 		case bool:
-			t.hash[strconv.FormatBool(k)] = v
+			t.Hash[strconv.FormatBool(k)] = v
 		default:
 			return nil, p.errorf("a table can't be a key")
 		}
@@ -320,23 +326,23 @@ func (p *luaParser) table(depth int) (any, error) {
 		}
 	}
 	// [1] = …, [2] = … continue the array part; a gap ends it.
-	for i := len(t.arr) + 1; ; i++ {
+	for i := len(t.Arr) + 1; ; i++ {
 		v, ok := numbered[i]
 		if !ok {
 			break
 		}
-		t.arr = append(t.arr, v)
+		t.Arr = append(t.Arr, v)
 		delete(numbered, i)
 	}
 	for i, v := range numbered {
-		t.hash[strconv.Itoa(i)] = v
+		t.Hash[strconv.Itoa(i)] = v
 	}
 	return t, nil
 }
 
-// writeLua writes a value the way KOReader's own dump does: one entry per
+// WriteLua writes a value the way KOReader's own dump does: one entry per
 // line, four spaces a level, array entries as [n] = …, keys sorted.
-func writeLua(b *strings.Builder, v any, indent int) {
+func WriteLua(b *strings.Builder, v any, indent int) {
 	switch v := v.(type) {
 	case nil:
 		b.WriteString("nil")
@@ -352,16 +358,16 @@ func writeLua(b *strings.Builder, v any, indent int) {
 		}
 	case string:
 		writeLuaString(b, v)
-	case *luaTable:
+	case *LuaTable:
 		pad := strings.Repeat("    ", indent+1)
 		b.WriteString("{\n")
-		for i, item := range v.arr {
+		for i, item := range v.Arr {
 			fmt.Fprintf(b, "%s[%d] = ", pad, i+1)
-			writeLua(b, item, indent+1)
+			WriteLua(b, item, indent+1)
 			b.WriteString(",\n")
 		}
-		keys := make([]string, 0, len(v.hash))
-		for k := range v.hash {
+		keys := make([]string, 0, len(v.Hash))
+		for k := range v.Hash {
 			keys = append(keys, k)
 		}
 		sort.Strings(keys)
@@ -369,7 +375,7 @@ func writeLua(b *strings.Builder, v any, indent int) {
 			b.WriteString(pad + "[")
 			writeLuaString(b, k)
 			b.WriteString("] = ")
-			writeLua(b, v.hash[k], indent+1)
+			WriteLua(b, v.Hash[k], indent+1)
 			b.WriteString(",\n")
 		}
 		b.WriteString(strings.Repeat("    ", indent) + "}")

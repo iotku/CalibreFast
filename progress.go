@@ -52,7 +52,7 @@ func getProgress(userID int64, uuid, format string) (*progressRec, error) {
 }
 
 // progressGetHandler returns the latest position: the web readers' own, or a
-// KOReader device's (kosync.go) when that is newer.
+// KOReader device's (kosync_server.go) when that is newer.
 func progressGetHandler(w http.ResponseWriter, r *http.Request) {
 	u := currentUser(r)
 	format := r.URL.Query().Get("format")
