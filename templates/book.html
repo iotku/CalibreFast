@@ -208,15 +208,17 @@
 {{/* The placeholder (the book's library-card colour, title and author)
      shows when there's no cover, and stands in until a cover image loads;
      an image that fails is removed. */}}
-{{ define "book-cover-stack" }}<span class="cover-stack">
+{{/* With the cover's size known, the images and placeholder take its shape
+     from the start, so the cover doesn't change height when an image loads. */}}
+{{ define "book-cover-stack" }}<span class="cover-stack"{{ if and .CoverW .CoverH }} style="--cover-ratio: {{ .CoverW }} / {{ .CoverH }}"{{ end }}>
     <span class="cover-placeholder" style="--cover-hue: {{ .CoverHue }}"{{ if .HasCover }} aria-hidden="true"{{ end }}>
         <span class="cover-placeholder-title">{{ .Title }}</span>
         {{ if .Authors }}<span class="cover-placeholder-author">{{ range $i, $a := .Authors }}{{ if $i }}, {{ end }}{{ $a }}{{ end }}</span>{{ end }}
     </span>
     {{ if .HasCover }}
-    <img class="thumbnail" alt="Cover" src="/cover-thumb/{{ .UUID }}{{ if .ModTime }}?t={{ .ModTime }}{{ end }}"
+    <img class="thumbnail" alt="Cover"{{ if and .CoverW .CoverH }} width="{{ .CoverW }}" height="{{ .CoverH }}"{{ end }} src="/cover-thumb/{{ .UUID }}{{ if .ModTime }}?t={{ .ModTime }}{{ end }}"
         onload="this.classList.add('loaded')" onerror="this.remove()" />
-    <img class="cover-full" alt="" aria-hidden="true" decoding="async"
+    <img class="cover-full" alt=""{{ if and .CoverW .CoverH }} width="{{ .CoverW }}" height="{{ .CoverH }}"{{ end }} aria-hidden="true" decoding="async"
         src="/cover/{{ .UUID }}?t={{ .CoverStamp }}" onload="this.classList.add('loaded')" onerror="this.remove()" />
     {{ end }}
 </span>{{ end }}

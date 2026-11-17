@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"fmt"
 	"html/template"
+	"image"
 	"net/http"
 	"os"
 	"path/filepath"
@@ -51,6 +52,9 @@ type BookPageData struct {
 	CoverStamp string // cache-buster for the full cover: cover.jpg's modification time
 
 	HasCover bool // cover.jpg exists; otherwise only the placeholder is shown
+	// cover.jpg's size in pixels (0 when unknown): the page reserves the
+	// cover's shape before any image loads, so nothing moves when it does.
+	CoverW, CoverH int
 	CoverHue int  // placeholder colour, as on the book's library card
 }
 
@@ -179,6 +183,9 @@ func bookHandler(w http.ResponseWriter, r *http.Request) {
 		HasCover: hasCover,
 		CoverHue: coverHue(uuid),
 	}
+	if hasCover {
+		data.CoverW, data.CoverH = imageSize(filepath.Join(baseDir, path, "cover.jpg"))
+	}
 	data.Series, data.SeriesIndex = librarySeriesFields(uuid)
 	// render into buffer first
 	var buf bytes.Buffer
@@ -191,6 +198,21 @@ func bookHandler(w http.ResponseWriter, r *http.Request) {
 
 	w.Header().Set("Content-Type", "text/html; charset=utf-8")
 	_, _ = buf.WriteTo(w)
+}
+
+// imageSize is an image file's width and height, read from its header
+// (0, 0 when it can't be read).
+func imageSize(p string) (int, int) {
+	f, err := os.Open(p)
+	if err != nil {
+		return 0, 0
+	}
+	defer f.Close()
+	cfg, _, err := image.DecodeConfig(f)
+	if err != nil {
+		return 0, 0
+	}
+	return cfg.Width, cfg.Height
 }
 
 // BookLanguage is one language tag in the book modal.
