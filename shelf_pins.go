@@ -43,10 +43,11 @@ const (
 	maxOrderIDs   = 1000
 )
 
-// homeShelf is a pinned row on the Discover page: a shelf, or a tag the
-// user pinned (Kind "tag": no ID, Name is the tag as browsed, after groups).
+// homeShelf is a pinned row on the Discover page: a shelf, or a tag or
+// series the user pinned (Kind "tag" or "series": no ID, Name is the tag or
+// series as browsed, after groups).
 type homeShelf struct {
-	Kind     string `json:"kind"` // "shelf" or "tag"
+	Kind     string `json:"kind"` // "shelf", "tag" or "series"
 	ID       int64  `json:"id,omitempty"`
 	Name     string `json:"name"`
 	Href     string `json:"href"`
@@ -58,10 +59,14 @@ type homeShelf struct {
 	// the next one does (tag_strip.go), for its Shuffle and Previous.
 	Start int `json:"start,omitempty"`
 	Next  int `json:"next,omitempty"`
+	// A series' row (series_pins.go): whether it shows the books the user
+	// finished, and how many it leaves out when it doesn't.
+	ShowFinished bool `json:"show_finished,omitempty"`
+	Finished     int  `json:"finished,omitempty"`
 }
 
 // pinnedShelves: the pinned rows on u's page, in order, at most limit:
-// the shelves and tags the user placed, by position (one order for both),
+// the shelves, tags and series the user placed, by position (one order),
 // then featured shelves they have no row for, by featured order.
 func pinnedShelves(u *User, limit int) ([]homeShelf, error) {
 	type placed struct {
@@ -119,6 +124,33 @@ func pinnedShelves(u *User, limit int) ([]homeShelf, error) {
 	if err := tags.Err(); err != nil {
 		return nil, err
 	}
+	series, err := appDB.Query(`SELECT name, position, show_finished FROM series_pins WHERE user_id = ?`, u.ID)
+	if err != nil {
+		return nil, err
+	}
+	seenSeries := map[string]bool{}
+	for series.Next() {
+		var name string
+		var pos int64
+		var showFinished bool
+		if err := series.Scan(&name, &pos, &showFinished); err != nil {
+			series.Close()
+			return nil, err
+		}
+		name = seriesEntity(name)
+		if seenSeries[strings.ToLower(name)] {
+			continue
+		}
+		seenSeries[strings.ToLower(name)] = true
+		all = append(all, placed{
+			row: homeShelf{Kind: "series", Name: name, Href: categoryByKey("series").href(name), ShowFinished: showFinished},
+			pos: sql.NullInt64{Int64: pos, Valid: true},
+		})
+	}
+	series.Close()
+	if err := series.Err(); err != nil {
+		return nil, err
+	}
 	slices.SortStableFunc(all, func(a, b placed) int {
 		if a.pos.Valid != b.pos.Valid {
 			if a.pos.Valid {
@@ -135,15 +167,18 @@ func pinnedShelves(u *User, limit int) ([]homeShelf, error) {
 		return cmp.Compare(a.row.ID, b.row.ID)
 	})
 	out := []homeShelf{}
-	var shelves, tagRows []int
+	var shelves, tagRows, seriesRows []int
 	for _, p := range all {
 		if len(out) == limit {
 			break
 		}
-		if p.row.Kind == "shelf" {
+		switch p.row.Kind {
+		case "shelf":
 			shelves = append(shelves, len(out))
-		} else {
+		case "tag":
 			tagRows = append(tagRows, len(out))
+		default:
+			seriesRows = append(seriesRows, len(out))
 		}
 		out = append(out, p.row)
 	}
@@ -166,6 +201,11 @@ func pinnedShelves(u *User, limit int) ([]homeShelf, error) {
 		out[at].Count = ix.count(name)
 		out[at].Start = rand.IntN(max(1, out[at].Count))
 		out[at].Books, out[at].Next = ix.strip(name, out[at].Start, shelfRowBooks, nil)
+	}
+	if len(seriesRows) > 0 {
+		if err := fillSeriesRows(u, out, seriesRows); err != nil {
+			return nil, err
+		}
 	}
 	return out, nil
 }
@@ -448,19 +488,21 @@ func renumber(table, key, col, where string, args []any, ids []int64) error {
 	return tx.Commit()
 }
 
-// nextPinPosition: after every row the user placed (?1: the user), shelves
-// and tags alike.
+// nextPinPosition: after every row the user placed (?1: the user), shelves,
+// tags and series alike.
 const nextPinPosition = `(SELECT COALESCE(MAX(p), -1) + 1 FROM (
 		SELECT position AS p FROM shelf_pins WHERE user_id = ?1 AND pinned = 1
-		UNION ALL SELECT position FROM tag_pins WHERE user_id = ?1))`
+		UNION ALL SELECT position FROM tag_pins WHERE user_id = ?1
+		UNION ALL SELECT position FROM series_pins WHERE user_id = ?1))`
 
-// pinRef names a pinned row: a shelf or a tag.
+// pinRef names a pinned row: a shelf, a tag or a series.
 type pinRef struct {
-	Shelf int64  `json:"shelf,omitempty"`
-	Tag   string `json:"tag,omitempty"`
+	Shelf  int64  `json:"shelf,omitempty"`
+	Tag    string `json:"tag,omitempty"`
+	Series string `json:"series,omitempty"`
 }
 
-// PUT /api/me/pins {"rows": [{"shelf": 7}, {"tag": "Space Opera"}, …]}
+// PUT /api/me/pins {"rows": [{"shelf": 7}, {"tag": "Space Opera"}, {"series": "Dune"}, …]}
 // (or {"ids": [7, …]}, shelves only): the order of the pinned rows on the
 // user's page, as shown there. Every shelf listed is stored as pinned, so
 // the featured ones the user sees keep their place from now on. Rows not
@@ -480,11 +522,19 @@ func pinOrderHandler(w http.ResponseWriter, r *http.Request) {
 	}
 	seen := map[string]bool{}
 	for _, ref := range refs {
-		key := "s" + itoa(ref.Shelf)
+		key, kinds := "s"+itoa(ref.Shelf), 0
+		if ref.Shelf != 0 {
+			kinds++
+		}
 		if ref.Tag != "" {
 			key = "t" + strings.ToLower(tagEntity(ref.Tag))
+			kinds++
 		}
-		if seen[key] || (ref.Tag == "") == (ref.Shelf == 0) {
+		if ref.Series != "" {
+			key = "r" + strings.ToLower(seriesEntity(ref.Series))
+			kinds++
+		}
+		if seen[key] || kinds != 1 {
 			http.Error(w, "invalid order", http.StatusBadRequest)
 			return
 		}
@@ -518,6 +568,21 @@ func savePinOrder(u *User, refs []pinRef) error {
 		stored[strings.ToLower(tagEntity(name))] = name
 	}
 	rows.Close()
+	// The series pinned, likewise.
+	storedSeries := map[string]string{}
+	rows, err = tx.Query(`SELECT name FROM series_pins WHERE user_id = ?`, u.ID)
+	if err != nil {
+		return err
+	}
+	for rows.Next() {
+		var name string
+		if err := rows.Scan(&name); err != nil {
+			rows.Close()
+			return err
+		}
+		storedSeries[strings.ToLower(seriesEntity(name))] = name
+	}
+	rows.Close()
 	// Out of the way of the new positions, keeping their order.
 	const shift = 1 << 30
 	if _, err := tx.Exec(`UPDATE shelf_pins SET position = position + ? WHERE user_id = ? AND pinned = 1`, shift, u.ID); err != nil {
@@ -526,7 +591,20 @@ func savePinOrder(u *User, refs []pinRef) error {
 	if _, err := tx.Exec(`UPDATE tag_pins SET position = position + ? WHERE user_id = ?`, shift, u.ID); err != nil {
 		return err
 	}
+	if _, err := tx.Exec(`UPDATE series_pins SET position = position + ? WHERE user_id = ?`, shift, u.ID); err != nil {
+		return err
+	}
 	for i, ref := range refs {
+		if ref.Series != "" {
+			name, ok := storedSeries[strings.ToLower(seriesEntity(ref.Series))]
+			if !ok {
+				continue // unpinned meanwhile: stays so
+			}
+			if _, err := tx.Exec(`UPDATE series_pins SET position = ? WHERE user_id = ? AND name = ?`, i, u.ID, name); err != nil {
+				return err
+			}
+			continue
+		}
 		if ref.Tag != "" {
 			name, ok := stored[strings.ToLower(tagEntity(ref.Tag))]
 			if !ok {
@@ -549,21 +627,23 @@ func savePinOrder(u *User, refs []pinRef) error {
 			return err
 		}
 	}
-	// 0, 1, … again, shelves and tags together.
+	// 0, 1, … again, shelves, tags and series together.
 	type row struct {
-		shelf int64
-		tag   string
+		shelf  int64
+		tag    string
+		series string
 	}
 	var order []row
-	q, err := tx.Query(`SELECT shelf_id, '', position FROM shelf_pins WHERE user_id = ?1 AND pinned = 1
-		UNION ALL SELECT 0, name, position FROM tag_pins WHERE user_id = ?1 ORDER BY 3`, u.ID)
+	q, err := tx.Query(`SELECT shelf_id, '', '', position FROM shelf_pins WHERE user_id = ?1 AND pinned = 1
+		UNION ALL SELECT 0, name, '', position FROM tag_pins WHERE user_id = ?1
+		UNION ALL SELECT 0, '', name, position FROM series_pins WHERE user_id = ?1 ORDER BY 4`, u.ID)
 	if err != nil {
 		return err
 	}
 	for q.Next() {
 		var rw row
 		var pos int64
-		if err := q.Scan(&rw.shelf, &rw.tag, &pos); err != nil {
+		if err := q.Scan(&rw.shelf, &rw.tag, &rw.series, &pos); err != nil {
 			q.Close()
 			return err
 		}
@@ -572,7 +652,9 @@ func savePinOrder(u *User, refs []pinRef) error {
 	q.Close()
 	for i, rw := range order {
 		var err error
-		if rw.tag != "" {
+		if rw.series != "" {
+			_, err = tx.Exec(`UPDATE series_pins SET position = ? WHERE user_id = ? AND name = ?`, i, u.ID, rw.series)
+		} else if rw.tag != "" {
 			_, err = tx.Exec(`UPDATE tag_pins SET position = ? WHERE user_id = ? AND name = ?`, i, u.ID, rw.tag)
 		} else {
 			_, err = tx.Exec(`UPDATE shelf_pins SET position = ? WHERE user_id = ? AND shelf_id = ?`, i, u.ID, rw.shelf)

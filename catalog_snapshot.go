@@ -33,7 +33,7 @@ import (
 
 // catalogSnapshotVersion changes whenever catalogBook or the snapshot's
 // layout does: an older snapshot is then ignored.
-const catalogSnapshotVersion = 1
+const catalogSnapshotVersion = 2
 
 type libraryKey struct {
 	Library     string // -basedir, absolute

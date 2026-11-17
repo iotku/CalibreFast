@@ -344,6 +344,11 @@ input[type="number"],
     background: var(--bg-elevated);
     border-color: var(--border-medium);
 }
+/* A pinned series' Show finished, when on. */
+.row-btn[aria-pressed="true"] {
+    border-color: var(--text-link);
+    color: var(--text-link);
+}
 .row-btn:disabled {
     opacity: 0.4;
     cursor: default;
@@ -4233,7 +4238,8 @@ body.selecting .book.selected .cover-wrapper {
     display: none;
 }
 /* Recommended for you: Not interested, under the cover's other buttons
-   (shown on touch screens too, where those are left to the popup). */
+   (shown on touch screens too, where those are left to the popup); On
+   deck's ✕ the same. */
 .rec-hide {
     position: absolute;
     top: 50px;

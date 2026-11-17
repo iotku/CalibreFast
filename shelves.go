@@ -398,5 +398,6 @@ func registerShelfRoutes() {
 	http.HandleFunc("PUT /api/shelves/{id}/books/{uuid}", requireUser(shelfAddBookHandler))
 	http.HandleFunc("DELETE /api/shelves/{id}/books/{uuid}", requireUser(shelfRemoveBookHandler))
 	registerShelfPinRoutes()
+	registerSeriesPinRoutes()
 	registerListOrderRoutes()
 }
