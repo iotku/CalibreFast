@@ -15,7 +15,7 @@
 import { api, errorMessage } from "./dom.js";
 import { deleteBooks } from "./delete-books.js";
 import "./book-files.js"; // the book page's Files row (admins)
-import { ICONS, type BookChange, type BookState } from "./reading.js";
+import { ICONS, cachedMarks, type BookChange, type BookState } from "./reading.js";
 
 interface StatusResponse {
     status: string;
@@ -199,9 +199,32 @@ function scan(root: Node): void {
     for (const c of containers) {
         if (c.dataset["loading"]) continue;
         c.dataset["loading"] = "1";
+        c.dataset["expect"] = expected(c.dataset["uuid"] ?? "");
         void loadControls(c);
     }
 }
+
+/**
+ * What the controls will most likely show, from the grid's cached marks
+ * (reading.ts): the sign-in hint, or the buttons and Shelves, with a
+ * progress note under the cover for a book being read from a known place. The
+ * placeholders in book.html take that much room until they arrive. A guess
+ * that's wrong only costs the shift there'd have been anyway.
+ */
+function expected(uuid: string): string {
+    const m = cachedMarks();
+    if (!m.signedIn) return "out";
+    return m.reading.get(uuid) != null ? "in note" : "in"; // a position: "Page 5 of 25 · synced …"
+}
+
+/* "+N more" on a book's tags and authors: shows the rest, for good. */
+document.addEventListener("click", (e) => {
+    const btn = e.target instanceof Element ? e.target.closest<HTMLButtonElement>(".more-toggle") : null;
+    const list = btn?.closest(".more-list");
+    if (!btn || !list) return;
+    list.classList.add("show-all");
+    btn.setAttribute("aria-expanded", "true");
+});
 
 new MutationObserver((records) => {
     for (const r of records) for (const n of r.addedNodes) scan(n);

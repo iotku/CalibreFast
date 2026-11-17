@@ -42,9 +42,10 @@
                     </a>{{ end }}</h1>
             </div>
             {{ if .Authors }}
-            <div class="book-authors">
-                by {{ range $i, $author := .Authors }}{{ if $i }}, {{ end }}<a href="/author/{{ $author }}"
-                    class="meta-link author-link">{{ $author }}</a>{{ end }}
+            <div class="book-authors more-list">
+                by {{ range $i, $author := .Authors }}<span{{ if ge $i $.AuthorLimit }} class="more-extra"{{ end }}>{{ if $i }}, {{ end }}<a href="/author/{{ $author }}"
+                    class="meta-link author-link">{{ $author }}</a></span>{{ end }}
+                {{ if .MoreAuthors }}<button type="button" class="more-toggle more-toggle-text" aria-expanded="false">and {{ .MoreAuthors }} more</button>{{ end }}
             </div>
             {{ end }}
         </div>
@@ -107,6 +108,13 @@
                  they arrive) and the shelves under the buttons. -->
             <div class="book-user-actions" data-uuid="{{ .UUID }}">
                 <div class="throbber" role="status" aria-label="Loading"><span class="throbber-dot"></span><span class="throbber-dot"></span><span class="throbber-dot"></span></div>
+                {{/* Stand-ins the size of what's expected (user.ts sets
+                     data-expect from what it knows before they load), so
+                     the cover, buttons and details don't move when the
+                     controls replace them. */}}
+                <span class="meta-link user-signin-hint user-ph" aria-hidden="true">Sign in to favorite, track and shelve this book</span>
+                <span class="book-status-note user-ph" aria-hidden="true">&nbsp;</span>
+                <div class="book-shelves user-ph" aria-hidden="true"><div class="book-shelves-ph">&nbsp;</div></div>
             </div>
         </div>
         <div class="book-page-info">
@@ -129,14 +137,13 @@
             </div>
             {{ end }}
 
-            <div class="meta-row">
+            <div class="meta-row more-list">
                 {{ range .Languages }}<a href="/lang/{{ .Code }}" class="tag meta-link" title="{{ .Code }}">Language: {{ .Name }}</a>
                 {{ end }}
-                {{ if .Tags }}
-                {{ range .Tags }}
-                <a href="/tag/{{ . }}" class="tag meta-link">{{ . }}</a>
+                {{ range $i, $tag := .Tags }}
+                <a href="/tag/{{ $tag }}" class="tag meta-link{{ if ge $i $.TagLimit }} more-extra{{ end }}">{{ $tag }}</a>
                 {{ end }}
-                {{ end }}
+                {{ if .MoreTags }}<button type="button" class="tag more-toggle" aria-expanded="false">+{{ .MoreTags }} more</button>{{ end }}
             </div>
             {{ if .Description }}
             <div class="description">{{ .Description }}</div>

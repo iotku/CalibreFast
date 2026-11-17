@@ -1,6 +1,7 @@
 {{ define "book-user-actions" }}
 <div class="book-user-controls" data-uuid="{{ .UUID }}">
 {{ if not .SignedIn }}
+    {{/* book.html's placeholder repeats this text, to take the same room */}}
     <a href="/login?next={{ .Next }}" class="meta-link user-signin-hint">Sign in to favorite, track and shelve this book</a>
 {{ else }}
     <div class="book-user-row">
