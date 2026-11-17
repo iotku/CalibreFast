@@ -91,7 +91,6 @@ type AggregateDisplayItem struct {
 	Href    string // path-escaped link, e.g. "/author/Terry%20Pratchett"
 	Count   int
 	Grouped bool
-	Members string // "en, eng, en-US" when grouped
 	Tier    int    // 1–5, the cloud's text size (aggregateTiers)
 	Sort    string // A–Z key, "" for Name
 }
@@ -368,7 +367,6 @@ func displayItem(c *category, item AggregateItem, tiers [4]int) AggregateDisplay
 		Href:    c.href(item.Name),
 		Count:   item.Count,
 		Grouped: len(item.Members) > 0,
-		Members: strings.Join(item.Members, ", "),
 		Tier:    tierOf(tiers, item.Count),
 		Sort:    item.Sort,
 	}

@@ -74,7 +74,6 @@ function plural(n: number): string {
 function link(item: AggregateEntry, className: string): HTMLAnchorElement {
     const a = el("a", { className, href: prefix + encodeURIComponent(item.name) });
     a.dataset["count"] = String(item.count);
-    a.title = item.members?.length ? `Group: ${item.members.join(", ")} · ${plural(item.count)}` : plural(item.count);
     if (item.members?.length) a.classList.add("agg-group");
     a.append(item.display || item.name);
     if (item.display && item.display !== item.name) a.append(" ", el("span", { className: "agg-sub" }, item.name));
