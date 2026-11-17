@@ -2427,6 +2427,38 @@ body.book-standalone {
     opacity: 0.55;
 }
 
+/* Tags past the 10th and authors past the 5th wait for "+N more" (user.ts). */
+.more-list:not(.show-all) .more-extra,
+.more-list.show-all .more-toggle {
+    display: none;
+}
+
+.more-toggle {
+    font: inherit;
+    cursor: pointer;
+}
+
+.more-toggle.tag {
+    font-size: var(--font-size-tiny);
+    border: 1px dashed var(--border-medium);
+    color: var(--text-muted);
+}
+
+.more-toggle-text {
+    padding: 0;
+    margin-left: 0.25rem;
+    background: none;
+    border: none;
+    color: var(--text-muted);
+    text-decoration: underline;
+    min-height: 0;
+    height: auto;
+}
+
+.more-toggle-text:hover {
+    color: var(--text-primary);
+}
+
 .book-authors {
     margin-top: 0.35rem;
 }
@@ -3263,6 +3295,29 @@ label.group-row span {
     display: none;
 }
 
+/* Placeholders for the controls while they load (book.html, user.ts):
+   none shows until user.ts says what to expect. */
+.book-user-actions > .user-ph {
+    display: none;
+    visibility: hidden;
+}
+
+.book-user-actions[data-expect~="in"] > .book-shelves.user-ph,
+.book-user-actions[data-expect~="note"] > .book-status-note.user-ph,
+.book-user-actions[data-expect~="out"] > .user-signin-hint.user-ph {
+    display: block;
+}
+
+/* Signed out: the hint's line stands in for the button row. */
+.book-user-actions[data-expect~="out"] > .throbber {
+    display: none;
+}
+
+/* As tall as the Shelves summary it stands in for. */
+.book-shelves-ph {
+    padding: 0.35rem 0;
+}
+
 .book-shelves {
     margin-top: 1rem;
     font-size: 0.9rem;
@@ -3315,6 +3370,7 @@ label.group-row span {
 
 .user-signin-hint {
     font-size: 0.85rem;
+    line-height: 1.4;
 }
 
 /* ============================================

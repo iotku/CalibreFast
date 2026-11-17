@@ -54,6 +54,21 @@ type BookPageData struct {
 	CoverHue int  // placeholder colour, as on the book's library card
 }
 
+// The book page shows this many tags and authors; a "+N more" button
+// (user.ts) shows the rest.
+const (
+	bookPageTagLimit    = 10
+	bookPageAuthorLimit = 5
+)
+
+// TagLimit and AuthorLimit are bookPageTagLimit and bookPageAuthorLimit, for the template.
+func (BookPageData) TagLimit() int    { return bookPageTagLimit }
+func (BookPageData) AuthorLimit() int { return bookPageAuthorLimit }
+
+// MoreTags and MoreAuthors are how many are left out until "+N more" is clicked.
+func (d BookPageData) MoreTags() int    { return max(0, len(d.Tags)-bookPageTagLimit) }
+func (d BookPageData) MoreAuthors() int { return max(0, len(d.Authors)-bookPageAuthorLimit) }
+
 // coverHue is the hue of a book's placeholder cover: the same string hash as
 // coverHue in web/utils.ts (JavaScript's 32-bit arithmetic), so the book page
 // matches the book's card in the library.
