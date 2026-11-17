@@ -1505,6 +1505,17 @@ button.row-icon:hover {
     display: none;
 }
 
+/* Both dropdowns (user menu, ☰ menu) hang off the fixed bar: on a short
+   screen (a phone on its side) they'd run past the bottom, and a swipe on
+   them would scroll the page behind. Cap them at the room left under the
+   bar and let them scroll on their own. */
+.tb-menu-list,
+.site-bar.nav-open .tb-nav {
+    max-height: calc(100dvh - var(--topbar-total) - 20px - env(safe-area-inset-bottom, 0px));
+    overflow-y: auto;
+    overscroll-behavior: contain;
+}
+
 .tb-menu-list form {
     display: contents;
 }
