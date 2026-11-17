@@ -168,6 +168,8 @@ export interface DuplicateBook {
     same_isbn?: boolean;
     /** Which of the checked book's files (by name) are identical to one of its. */
     same_files?: string[];
+    /** Its formats, upper case ("EPUB"). */
+    formats?: string[];
 }
 
 /** Library books a book may duplicate (Go: duplicateCheck). */

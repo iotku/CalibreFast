@@ -44,6 +44,8 @@ type duplicateBook struct {
 	// SameFiles: which of the checked book's files (by base name) are
 	// identical to one of this book's.
 	SameFiles []string `json:"same_files,omitempty"`
+	// Formats: the book's, upper case ("EPUB"), for comparing.
+	Formats []string `json:"formats,omitempty"`
 }
 
 // duplicateCheck is what findDuplicates found (TS: DuplicateCheck).
@@ -186,6 +188,9 @@ func findDuplicatesISBN(db *sql.DB, libDir, title string, authors []string, file
 		}
 		d.SameFile = len(d.SameFiles) > 0
 		if d.SameAuthors || d.SameFile || d.SameISBN {
+			if d.Formats, err = bookFormatsIn(db, c.id); err != nil {
+				return nil, err
+			}
 			check.Books = append(check.Books, d)
 		}
 	}
@@ -217,6 +222,24 @@ func isbnForms(isbns []string) []string {
 		}
 	}
 	return uniqueStrings(out)
+}
+
+// bookFormatsIn is a book's formats, upper case.
+func bookFormatsIn(db *sql.DB, bookID int64) ([]string, error) {
+	rows, err := db.Query(`SELECT upper(format) FROM data WHERE book = ? ORDER BY format`, bookID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var out []string
+	for rows.Next() {
+		var f string
+		if err := rows.Scan(&f); err != nil {
+			return nil, err
+		}
+		out = append(out, f)
+	}
+	return out, rows.Err()
 }
 
 func bookAuthorNames(db *sql.DB, bookID int64) ([]string, error) {

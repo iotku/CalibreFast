@@ -2112,3 +2112,75 @@ input[type="date"].meta-input::-webkit-calendar-picker-indicator:hover {
     font-size: 0.75rem;
     color: var(--muted);
 }
+
+/* Adding a book that may already be in the library: side by side (metadata.ts) */
+#duplicate-body {
+    padding: 6px 18px 18px;
+}
+
+.dup-compare + .dup-compare {
+    margin-top: 18px;
+    padding-top: 12px;
+    border-top: 1px solid var(--border);
+}
+
+.dup-why {
+    margin: 8px 0;
+    color: var(--muted);
+    font-size: 0.85rem;
+}
+
+.dup-table {
+    width: 100%;
+    border-collapse: collapse;
+    table-layout: fixed;
+    font-size: 0.88rem;
+}
+
+.dup-table th,
+.dup-table td {
+    padding: 6px 8px;
+    text-align: left;
+    vertical-align: top;
+    border-bottom: 1px solid var(--border);
+    overflow-wrap: anywhere;
+}
+
+.dup-table thead th {
+    font-family: var(--mono);
+    font-size: 0.72rem;
+    letter-spacing: 0.08em;
+    text-transform: uppercase;
+    color: var(--muted);
+}
+
+.dup-table thead th a {
+    color: var(--accent, #c8a96e);
+}
+
+.dup-table tbody th {
+    width: 7.5rem;
+    font-weight: 500;
+    color: var(--muted);
+}
+
+.dup-table tr.dup-differ td {
+    background: rgba(200, 169, 110, 0.1);
+}
+
+.dup-cover {
+    display: block;
+    width: 90px;
+    border-radius: 4px;
+}
+
+.dup-nocover {
+    color: var(--muted);
+    font-size: 0.8rem;
+}
+
+@media (max-width: 560px) {
+    .dup-table tbody th {
+        width: 5.5rem;
+    }
+}

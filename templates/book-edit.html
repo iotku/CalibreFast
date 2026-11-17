@@ -412,6 +412,21 @@
                 </footer>
             </dialog>
 
+            {{ if .Import }}
+            <!-- Adding a book that may already be in the library: it beside the library's (web/metadata.ts) -->
+            <dialog id="duplicate-dialog" class="compare-dialog duplicate-dialog" aria-labelledby="duplicate-title" data-formats="{{ range $i, $f := .Import.Files }}{{ if $i }},{{ end }}{{ $f.Format }}{{ end }}">
+                <header class="compare-header">
+                    <h2 id="duplicate-title">Possibly already in the library</h2>
+                    <form method="dialog"><button class="compare-close" aria-label="Close">✕</button></form>
+                </header>
+                <div id="duplicate-body"></div>
+                <footer class="compare-footer">
+                    <form method="dialog"><button class="btn-secondary">Cancel</button></form>
+                    <button type="button" id="duplicate-add" class="btn-primary">Add anyway</button>
+                </footer>
+            </dialog>
+            {{ end }}
+
             <!-- One lookup match vs the current metadata (web/isbn-tools.ts) -->
             <dialog id="lookup-dialog" class="compare-dialog" aria-labelledby="lookup-title">
                 <header class="compare-header">

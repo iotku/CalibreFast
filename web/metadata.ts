@@ -6,7 +6,7 @@ import { createDescriptionEditor } from "./description.js";
 import { closeOnBackdropClick, el as tag, errorMessage, maybeId } from "./dom.js";
 import { isbnDigits, mountIsbnTools } from "./isbn-tools.js";
 import { joinAuthors, splitAuthors, tidyAuthors } from "./authors.js";
-import type { DuplicateCheck, MetaSource, ValueSuggestion } from "./types.js";
+import type { DuplicateBook, DuplicateCheck, MetaSource, ValueSuggestion } from "./types.js";
 
 type FieldKind = "string" | "date" | "list" | "identifiers";
 type FieldKey =
@@ -770,6 +770,45 @@ export async function applyValues(book: BookTarget, values: FormValues, { overri
   return (await res.json()) as ApplyResult;
 }
 
+/** Plain text of a description's HTML, cut short. */
+function plainText(html: string, max = 280): string {
+  const text = (new DOMParser().parseFromString(html, "text/html").body.textContent ?? "").replace(/\s+/g, " ").trim();
+  return text.length > max ? `${text.slice(0, max)}…` : text;
+}
+
+/** One library book beside the book being added, field by field; rows that differ are marked. */
+function duplicateComparison(b: DuplicateBook, lib: MetaSource, adding: MetaSource, formats: string[], cover: string): HTMLElement {
+  const why = b.same_authors ? "same title & authors" : b.same_isbn ? "same ISBN" : b.same_file ? "identical file" : "";
+  const coverCell = (src: string, label: string): HTMLElement =>
+    tag("td", { className: "dup-cover-cell" }, src
+      ? tag("img", { className: "dup-cover", src, alt: `Cover: ${label}`, loading: "lazy" })
+      : tag("span", { className: "dup-nocover" }, "No cover"));
+  const table = tag("table", { className: "dup-table" },
+    tag("thead", {}, tag("tr", {}, tag("th", {}), tag("th", {}, tag("a", { href: `/book/get/${encodeURIComponent(b.uuid)}`, target: "_blank" }, "In the library")), tag("th", {}, "Adding"))),
+  );
+  const body = tag("tbody", {}, tag("tr", {}, tag("th", { scope: "row" }, "Cover"), coverCell(`/cover-thumb/${encodeURIComponent(b.uuid)}`, b.title), coverCell(cover, "adding")));
+  const row = (label: string, a: string, c: string): void => {
+    if (!a && !c) return;
+    const differ = a.trim().toLowerCase() !== c.trim().toLowerCase();
+    body.append(tag("tr", { className: differ ? "dup-differ" : "" }, tag("th", { scope: "row" }, label), tag("td", {}, a || "—"), tag("td", {}, c || "—")));
+  };
+  for (const { key, kind } of FIELDS) {
+    if (key === "series_index") continue;
+    const v = (m: MetaSource): string => {
+      if (key === "description") return plainText(fieldValue(m, key, kind));
+      if (key === "series") return m.Series ? `${m.Series}${m.SeriesIndex ? ` #${m.SeriesIndex}` : ""}` : "";
+      if (key === "languages") return metaList(m, key).map(languageName).join(", ");
+      return fieldValue(m, key, kind);
+    };
+    row(FIELD_LABELS[key], v(lib), v(adding));
+  }
+  row("Formats", (b.formats ?? []).join(", "), formats.join(", "));
+  table.append(body);
+  return tag("section", { className: "dup-compare" },
+    tag("p", { className: "dup-why" }, `“${b.title}”${why ? ` · ${why}` : ""}`),
+    table);
+}
+
 // ---------------------------------------------------------------------------
 // Compare: pre-existing ("current") metadata vs what's in the form now
 // ---------------------------------------------------------------------------
@@ -1142,17 +1181,55 @@ export async function mountMetadataEditor(book: BookTarget, form: HTMLFormElemen
       }
       statusEl.textContent = err.sameFile
         ? `✕ Not added: the library already has this file (${names}). Discard it from the queue instead.`
-        : `⚠ Not added: possibly already in the library as ${names}.`;
-      if (err.sameFile) return;
+        : `⚠ Not added: possibly already in the library as ${names}. `;
+      if (err.sameFile || !dupDialog) return;
       const again = document.createElement("button");
       again.type = "button";
       again.className = "btn-standard btn-override";
-      again.textContent = "Add anyway";
-      again.addEventListener("click", () => {
-        overrideNext = true;
-        form.requestSubmit();
-      });
+      again.textContent = "Compare…";
+      again.addEventListener("click", () => void openDuplicate(err.check));
       statusEl.append(again);
+      void openDuplicate(err.check);
+    };
+
+    // "Possibly already in the library": the book being added beside each
+    // library book it may be, before adding it anyway.
+    const dupDialog = maybeId("duplicate-dialog", HTMLDialogElement);
+    if (dupDialog) closeOnBackdropClick(dupDialog);
+    maybeId("duplicate-add")?.addEventListener("click", () => {
+      dupDialog?.close();
+      overrideNext = true;
+      form.requestSubmit();
+    });
+    const openDuplicate = async (check: DuplicateCheck): Promise<void> => {
+      if (!dupDialog) return;
+      const values = collectValues(form);
+      const adding: MetaSource = {
+        Format: "adding", FileName: "",
+        Title: values.title ?? "", Creators: splitAuthors(values.creators ?? ""),
+        Description: values.description ?? "", Publisher: values.publisher ?? "", Date: values.date ?? "",
+        Languages: parseList(values.languages ?? ""), Subjects: parseList(values.subjects ?? ""),
+        Identifiers: (values.identifiers ?? []).map((i) => ({ Scheme: i.scheme, Value: i.value, ID: i.id })),
+        Series: values.series ?? "", SeriesIndex: values.series ? values.series_index ?? "" : "",
+      };
+      const formats = (dupDialog.dataset["formats"] ?? "").split(",").filter(Boolean).map((f) => f.toUpperCase());
+      const cover = maybeId("edit-cover-img", HTMLImageElement)?.getAttribute("src") ?? "";
+      const sections = await Promise.all(check.books.map(async (b) => {
+        let lib: MetaSource | null = null;
+        try {
+          const res = await fetch(`/metadata/${encodeURIComponent(b.uuid)}`, { credentials: "same-origin" });
+          const metas = res.ok ? ((await res.json()) as MetaSource[] | null) : null;
+          lib = metas?.find((m) => m.Format === "current") ?? null;
+        } catch { /* shown with what the check says */ }
+        lib ??= { Format: "current", FileName: "", Title: b.title, Creators: b.authors, Description: "", Publisher: "", Date: "",
+          Languages: null, Subjects: null, Identifiers: null };
+        return duplicateComparison(b, lib, adding, formats, cover);
+      }));
+      maybeId("duplicate-body")?.replaceChildren(...sections);
+      const title = maybeId("duplicate-title");
+      if (title) title.textContent = check.books.length === 1 ? "Possibly already in the library" : `Possibly already in the library (${check.books.length} books)`;
+      if (!dupDialog.open) dupDialog.showModal();
+      maybeId("duplicate-add")?.focus();
     };
 
     form.addEventListener("submit", async (e) => {
