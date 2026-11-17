@@ -421,10 +421,12 @@
                 </header>
                 <p id="duplicate-intro" class="duplicate-intro" hidden></p>
                 <div id="duplicate-body"></div>
+                <ul id="duplicate-files" hidden>{{ range .Import.Files }}<li data-name="{{ .Name }}" data-format="{{ .Format }}"></li>{{ end }}</ul>
                 <footer class="compare-footer">
                     <form method="dialog"><button class="btn-secondary">Cancel</button></form>
                     <button type="button" id="duplicate-add" class="btn-primary">Add anyway</button>
                     <button type="button" id="duplicate-discard" class="btn-primary btn-blocked" hidden>Discard from queue</button>
+                    <button type="button" id="duplicate-split" class="btn-primary" hidden></button>
                 </footer>
             </dialog>
             {{ end }}

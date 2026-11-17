@@ -6,6 +6,7 @@ import (
 	"net/http/httptest"
 	"path/filepath"
 	"slices"
+	"strings"
 	"testing"
 )
 
@@ -48,8 +49,27 @@ func TestDiscardExistingFiles(t *testing.T) {
 	mixed := add(map[string][]byte{"C.epub": epub, "C.mobi": []byte("new")}) // only the EPUB
 	other := add(map[string][]byte{"D.pdf": []byte("%PDF-1.4 another")})     // nothing
 
+	// From one book's review page, with the editor's title: only its
+	// identical file goes, and the page to go on to is the rest's.
+	page := add(map[string][]byte{"E.epub": epub, "E.azw3": []byte("new too")})
 	rec := httptest.NewRecorder()
-	req := httptest.NewRequest("POST", "/api/imports/discard-existing", nil)
+	req := httptest.NewRequest("POST", "/import/"+page.ID+"/discard-identical", strings.NewReader(`{"title":"Uploaded","creators":"Someone"}`))
+	req.SetPathValue("id", page.ID)
+	importDiscardIdenticalHandler(rec, req.WithContext(withUserCtx(req, admin)))
+	var one struct {
+		Discarded int
+		URL       string
+	}
+	json.Unmarshal(rec.Body.Bytes(), &one)
+	if rec.Code != http.StatusOK || one.Discarded != 1 || one.URL != "/book/add-format/"+book+"/"+page.ID {
+		t.Fatalf("discard-identical: %d %s", rec.Code, rec.Body)
+	}
+	if left := w.inbox.get(page.ID); left == nil || len(left.Files) != 1 || left.Files[0].Name != "E.azw3" {
+		t.Fatalf("left waiting: %+v", left)
+	}
+
+	rec = httptest.NewRecorder()
+	req = httptest.NewRequest("POST", "/api/imports/discard-existing", nil)
 	importDiscardExistingHandler(rec, req.WithContext(withUserCtx(req, admin)))
 	if rec.Code != http.StatusOK {
 		t.Fatalf("%d %s", rec.Code, rec.Body)
