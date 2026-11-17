@@ -18,6 +18,7 @@ package main
 // -datadir, not the library, so Calibre never sees a half-imported book.
 
 import (
+	"database/sql"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -82,6 +83,9 @@ type pendingImport struct {
 	// Into: new files for this library book (add_format.go), reviewed at
 	// /book/<into>/add-format/<id>; "" for a book of its own.
 	Into string `json:"into,omitempty"`
+	// Placeholder: the placeholder book these files are for
+	// (placeholders.go), deleted once the book is added.
+	Placeholder string `json:"placeholder,omitempty"`
 	// Merged is the starting metadata (mergeMeta of Sources), shown as the
 	// editor's "current"; Sources is what each file says, by format.
 	Merged  UploadedBookMeta    `json:"merged"`
@@ -258,6 +262,32 @@ func (b *importInbox) stage(paths []string, from, into string) (*pendingImport, 
 	// (import_covers.go); else the review page picks one.
 	extractImportCover(dir, it.Files)
 	b.put(it)
+	return it, nil
+}
+
+// stageForPlaceholder queues files for placeholder p: what p says is the
+// starting metadata, and p's cover is the book's unless the files have one.
+func (b *importInbox) stageForPlaceholder(paths []string, p *placeholder) (*pendingImport, error) {
+	it, err := b.stage(paths, "", "")
+	if err != nil {
+		return nil, err
+	}
+	dir := b.itemDir(it.ID)
+	b.mu.Lock()
+	defer b.mu.Unlock()
+	it.Placeholder = p.UUID
+	it.Merged.OPFMetadata = withPlaceholder(it.Merged.OPFMetadata, p)
+	if data, err := json.MarshalIndent(it, "", "  "); err == nil {
+		if err := os.WriteFile(filepath.Join(dir, "item.json"), data, 0o600); err != nil {
+			log.Printf("imports: %s: %v", it.ID, err)
+		}
+	}
+	cover := filepath.Join(dir, "cover.jpg")
+	if _, err := os.Stat(cover); err != nil && strings.HasSuffix(p.Cover, ".jpg") {
+		if err := copyFile(filepath.Join(dataDir, placeholderCoversDir, p.Cover), cover); err != nil {
+			log.Printf("imports: %s: the placeholder's cover: %v", it.ID, err)
+		}
+	}
 	return it, nil
 }
 
@@ -907,6 +937,11 @@ func importApplyHandler(w http.ResponseWriter, r *http.Request) {
 		log.Println("imports: add to library:", err)
 		http.Error(w, "Couldn't add the book to the library: "+err.Error(), http.StatusInternalServerError)
 		return
+	}
+	if it.Placeholder != "" {
+		if err := deletePlaceholder(it.Placeholder); err != nil && !errors.Is(err, sql.ErrNoRows) {
+			log.Printf("imports: placeholder %s: %v", it.Placeholder, err)
+		}
 	}
 	catalogChanged(bookUUID)
 	refreshLibraryPages()

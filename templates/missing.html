@@ -1,0 +1,57 @@
+<!doctype html>
+<html lang="en">
+<head>
+    <meta charset="utf-8">
+    {{ robotsMeta }}
+    <title>{{ .Title }}</title>
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <link rel="stylesheet" href="{{ asset "style.css" }}">
+</head>
+<body class="auth-body">
+{{ $tb := topbar "Active" "missing" "Title" "Missing books" }}
+{{ template "topbar-start" $tb }}
+{{ template "topbar-end" $tb }}
+<!-- Placeholder books and the gaps in the library's series (placeholders.go) -->
+<main class="auth-main auth-wide">
+    <section class="auth-card">
+        <div class="ph-head">
+            <h1>Missing books</h1>
+            <a class="btn-standard btn-primary" href="/missing/new">New placeholder</a>
+        </div>
+        <p class="auth-muted">Placeholders are books that aren't in the library yet. They're kept in CalibreFast's own database, not Calibre's, and show on their series', authors' and publishers' pages and in On deck.</p>
+        {{ if not .Series }}<p class="auth-muted"><em>No placeholders yet.</em></p>{{ end }}
+        {{ range .Series }}
+        <h2 class="ph-group">{{ if .Name }}<a href="{{ .Href }}">{{ .Name }}</a>{{ else }}Not in a series{{ end }}</h2>
+        <ul class="ph-list">
+            {{ range .Books }}
+            <li>
+                <a href="{{ .Href }}" class="ph-item">
+                    {{ if .Index }}<span class="ph-index">#{{ .Index }}</span>{{ end }}
+                    <span class="ph-title">{{ .Title }}</span>
+                    {{ if .Authors }}<span class="ph-sub">{{ .Authors }}</span>{{ end }}
+                    {{ if .Date }}<span class="ph-sub">{{ .Date }}</span>{{ end }}
+                </a>
+            </li>
+            {{ end }}
+        </ul>
+        {{ end }}
+    </section>
+    <section class="auth-card">
+        <h2>Gaps in series</h2>
+        <p class="auth-muted">Numbers below a series' highest that no book or placeholder has. Pick one to make a placeholder for it.</p>
+        {{ if not .Gaps }}<p class="auth-muted"><em>No gaps.</em></p>{{ end }}
+        <ul class="ph-list">
+            {{ range .Gaps }}{{ $g := . }}
+            <li class="ph-gap">
+                <a href="{{ .Href }}" class="ph-title">{{ .Series }}</a>
+                <span class="ph-gap-nums">
+                    {{ range .Numbers }}<a class="ph-gap-num" href="/missing/new?series={{ $g.Series | urlquery }}&amp;index={{ . }}&amp;authors={{ $g.Authors | urlquery }}" title="New placeholder: {{ $g.Series }} #{{ . }}">#{{ . }}</a>{{ end }}
+                    {{ if .More }}<span class="ph-sub">and {{ .More }} more</span>{{ end }}
+                </span>
+            </li>
+            {{ end }}
+        </ul>
+    </section>
+</main>
+</body>
+</html>

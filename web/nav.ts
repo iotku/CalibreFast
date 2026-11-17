@@ -243,6 +243,7 @@ function init(bar: HTMLElement): void {
             ...(imports !== null ? [mark(el("a", { href: "/import", textContent: imports ? `Review imports (${imports})` : "Review imports" }), "imports")] : []),
             ...(st.canEdit ? [mark(el("a", { href: "/library/edit", textContent: "Bulk edit" }), "library-edit")] : []),
             ...(st.canEdit ? [mark(el("a", { href: "/recycle-bin", textContent: "Recycling Bin" }), "recycle-bin")] : []),
+            ...(st.canEdit ? [mark(el("a", { href: "/missing", textContent: "Missing books" }), "missing")] : []),
             ...(st.canEdit ? [mark(el("a", { href: "/admin/repairs", textContent: "Library repairs" }), "library-repairs")] : []),
             ...(st.isAdmin ? [el("a", { href: "/admin/users", textContent: "Manage users" })] : []),
             ...(st.isAdmin ? [mark(el("a", { href: "/admin/discover", textContent: "Home page tags" }), "admin-discover")] : []),

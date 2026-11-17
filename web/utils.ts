@@ -140,6 +140,29 @@ function renderSeriesCard(book: Book, s: NonNullable<Book["series_card"]>, cover
 }
 
 /**
+ * A book not in the library yet (Book.placeholder): its picture, or its
+ * title and author on the card's colour, under a "Not in library" banner,
+ * linking to its page. No data-uuid, so reading marks, selection and the
+ * popup pass it by; data-placeholder names it (On deck's ✕).
+ */
+function renderPlaceholderCard(book: Book, p: NonNullable<Book["placeholder"]>): string {
+    const title = escapeHtml(book.title || "Untitled");
+    const author = escapeHtml(book.authors || "");
+    const img = p.cover ? `<img class="book-cover loaded" src="${escapeHtml(p.cover)}" alt="" />` : "";
+    const index = book.series_index && book.series_index !== 1 ? ` #${book.series_index}` : "";
+    return `<div class="book placeholder-card" data-placeholder="${escapeHtml(book.uuid)}">
+    <a href="${escapeHtml(p.href)}" class="book-link placeholder-link" aria-label="${title}${escapeHtml(index)}, not in the library">
+        <div class="cover-wrapper${img ? "" : " no-cover"}" style="--cover-hue:${coverHue(book)}">${img}<span class="placeholder-banner" aria-hidden="true">Not in library</span></div>
+    </a>
+    <div class="book-info">
+        <h2>${title}</h2>
+        <div class="book-author">${author}</div>
+        <div class="formats"></div>
+    </div>
+</div>`;
+}
+
+/**
  * Render a single book card HTML
  * Plain link to #book/<uuid>; modal logic lives in setupModal(). htmx only
  * preloads the book on hover (hx-trigger="none": the click is the hash
@@ -151,6 +174,7 @@ function renderSeriesCard(book: Book, s: NonNullable<Book["series_card"]>, cover
  */
 export function renderBookCard(book: Book, coverReady = false): string {
     if (book.series_card) return renderSeriesCard(book, book.series_card, coverReady);
+    if (book.placeholder) return renderPlaceholderCard(book, book.placeholder);
     const title = escapeHtml(book.title || "Untitled");
     const author = escapeHtml(book.authors || "Unknown Author");
     const uuid = escapeHtml(book.uuid);

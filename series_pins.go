@@ -20,6 +20,7 @@ package main
 import (
 	"cmp"
 	"encoding/json"
+	"math"
 	"net/http"
 	"slices"
 	"strings"
@@ -197,32 +198,51 @@ func nextInSeries(ix *recIndex, m readingMarks, dismissed map[string]bool, activ
 		last[s] = max(last[s], active[id])
 	}
 	type card struct {
-		slot int32
+		book Book
+		sort string
 		at   int64
 	}
 	var cards []card
 	for s, f := range furthest {
+		next := int32(-1)
+		held := map[float64]bool{}
 		for _, slot := range ix.series[s] {
 			b := &c.books[slot]
-			if !seriesLess(&c.books[f], b) || finished[b.UUID] {
-				continue
+			held[b.SeriesIndex] = true
+			if next < 0 && seriesLess(&c.books[f], b) && !finished[b.UUID] {
+				next = slot
 			}
-			// The next one. Being read: it's in Continue reading.
-			if _, reading := m.Reading[b.UUID]; !reading && !dismissed[b.UUID] {
-				cards = append(cards, card{slot, last[s]})
+		}
+		// The next one may not be in the library yet: a placeholder
+		// numbered between the one finished and the library's next.
+		before := math.Inf(1)
+		if next >= 0 {
+			before = c.books[next].SeriesIndex
+		}
+		if p := nextPlaceholder(c.seriesNames[s], c.books[f].SeriesIndex, before, held); p != nil {
+			if !dismissed[p.UUID] {
+				cards = append(cards, card{p.book(), titleSort(p.Meta.Title), last[s]})
 			}
-			break
+			continue
+		}
+		if next < 0 {
+			continue
+		}
+		// Being read: it's in Continue reading.
+		b := &c.books[next]
+		if _, reading := m.Reading[b.UUID]; !reading && !dismissed[b.UUID] {
+			cards = append(cards, card{b.Book, b.Sort, last[s]})
 		}
 	}
 	slices.SortFunc(cards, func(a, b card) int {
 		if a.at != b.at {
 			return cmp.Compare(b.at, a.at)
 		}
-		return cmp.Compare(c.books[a.slot].Sort, c.books[b.slot].Sort)
+		return cmp.Compare(a.sort, b.sort)
 	})
 	out := []Book{}
 	for _, d := range cards[:min(len(cards), homeRowMax)] {
-		out = append(out, c.books[d.slot].Book)
+		out = append(out, d.book)
 	}
 	return out
 }
@@ -246,8 +266,9 @@ func recHide(u *User, m readingMarks) (map[string]bool, error) {
 
 // DELETE /api/me/on-deck/{uuid}: off On Deck for good.
 func onDeckDismissHandler(w http.ResponseWriter, r *http.Request) {
-	uuid, ok := requireBook(w, r)
-	if !ok {
+	uuid := r.PathValue("uuid")
+	if uuid == "" || (!bookExists(uuid) && placeholderByUUID(uuid) == nil) { // a book, or one not in the library yet
+		http.Error(w, "no such book", http.StatusNotFound)
 		return
 	}
 	if _, err := appDB.Exec(`INSERT OR IGNORE INTO on_deck_dismissed (user_id, book_uuid, created_at) VALUES (?, ?, ?)`,

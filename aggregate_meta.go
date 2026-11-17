@@ -101,8 +101,15 @@ func aggregateImage(data []byte) (*aggImage, error) {
 // saveAggregateImage writes a picture (from aggregateImage) under its
 // content's hash and returns the file name.
 func saveAggregateImage(img *aggImage) (string, error) {
+	return saveHashedImage(aggregateImagesDir, img)
+}
+
+// saveHashedImage writes a picture into <datadir>/<dirName> under its
+// content's hash and returns the file name (aggregate pictures, placeholder
+// covers).
+func saveHashedImage(dirName string, img *aggImage) (string, error) {
 	data := img.data
-	dir := filepath.Join(dataDir, aggregateImagesDir)
+	dir := filepath.Join(dataDir, dirName)
 	if err := os.MkdirAll(dir, 0o755); err != nil {
 		return "", err
 	}
@@ -316,6 +323,11 @@ func featuredHandler(w http.ResponseWriter, r *http.Request) {
 // sent with a CSP that runs no script and loads nothing, should it be
 // opened as a page.
 func aggregateImageHandler(w http.ResponseWriter, r *http.Request) {
+	serveHashedImage(w, r, aggregateImagesDir)
+}
+
+// serveHashedImage serves the {file} of <datadir>/<dirName> (saveHashedImage).
+func serveHashedImage(w http.ResponseWriter, r *http.Request, dirName string) {
 	name := r.PathValue("file")
 	if !aggregateImageRe.MatchString(name) {
 		http.NotFound(w, r)
@@ -329,7 +341,7 @@ func aggregateImageHandler(w http.ResponseWriter, r *http.Request) {
 	} else {
 		w.Header().Set("Content-Type", "image/jpeg")
 	}
-	http.ServeFile(w, r, filepath.Join(dataDir, aggregateImagesDir, name))
+	http.ServeFile(w, r, filepath.Join(dataDir, dirName, name))
 }
 
 // groupAlias is the name a value is shown under when it has an alias: a

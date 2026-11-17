@@ -121,9 +121,13 @@ type FilteredPageData struct {
 	Description string // the entry's description (aggregate_meta)
 	ImageURL    string // the entry's picture, "" for none
 	PageURL     string // API base URL; template appends &page={n}
-	TotalBooks  int
-	EmptyText   string         // shown when there are no books (default: "No books found.")
-	Extra       map[string]any // page-specific extras (e.g. shelf controls)
+	// Missing: placeholders among the books (placeholders.go), counted in
+	// TotalBooks. NewPlaceholder: where admins start one for this page.
+	Missing        int
+	NewPlaceholder string
+	TotalBooks     int
+	EmptyText      string         // shown when there are no books (default: "No books found.")
+	Extra          map[string]any // page-specific extras (e.g. shelf controls)
 }
 
 // SearchPageData is passed to search.html.
@@ -393,6 +397,18 @@ func filteredBooksHandler(w http.ResponseWriter, r *http.Request, c *category) {
 	}
 	offset := (page - 1) * booksPerPage
 
+	// Books not in the library yet go among the rest (placeholders.go).
+	if phs := placeholdersFor(c, members); len(phs) > 0 {
+		books, err := filteredPageWithPlaceholders(c, members, phs, page)
+		if err != nil {
+			log.Println("filtered books error:", err)
+			http.Error(w, "query failed", http.StatusInternalServerError)
+			return
+		}
+		writeJSON(w, http.StatusOK, books)
+		return
+	}
+
 	query := fmt.Sprintf(`
 		SELECT b.uuid, b.title, `+bookAuthorsSQL+` AS authors,
 			b.pubdate, b.path, b.last_modified
@@ -460,6 +476,21 @@ func filteredPageHandler(c *category) http.HandlerFunc {
 			TotalBooks:  getFilteredTotal(c, name, members),
 			Writable:    canEditLibrary(r),
 		}
+		inLibrary := data.TotalBooks
+		data.Missing = len(placeholdersFor(c, members))
+		data.TotalBooks += data.Missing
+		if data.Missing > 0 {
+			w.Header().Set("Cache-Control", "no-cache")
+		}
+		if data.Writable && (c.Key == "series" || c.Key == "author") {
+			q := url.Values{}
+			if c.Key == "series" {
+				q.Set("series", name)
+			} else {
+				q.Set("authors", name)
+			}
+			data.NewPlaceholder = "/missing/new?" + q.Encode()
+		}
 		if m, ok := aggregateMetaFor(c.Key, name); ok {
 			data.Description, data.ImageURL = m.Description, m.imageURL()
 		}
@@ -471,13 +502,13 @@ func filteredPageHandler(c *category) http.HandlerFunc {
 		}
 		// A tag can be pinned to the user's home page (shelf_pins.go), and
 		// so can a series (series_pins.go).
-		if u := currentUser(r); u != nil && c.Key == "tag" && data.TotalBooks > 0 {
+		if u := currentUser(r); u != nil && c.Key == "tag" && inLibrary > 0 {
 			w.Header().Set("Cache-Control", "private, no-store")
 			data.Extra = map[string]any{"TagPin": name, "Pinned": tagPinnedFor(u, name)}
 		}
 		// A series can be pinned to home (series_pins.go) and go on a shelf,
 		// whole (shelf_series.go).
-		if u := currentUser(r); u != nil && c.Key == "series" && data.TotalBooks > 0 {
+		if u := currentUser(r); u != nil && c.Key == "series" && inLibrary > 0 {
 			w.Header().Set("Cache-Control", "private, no-store")
 			if data.Extra == nil {
 				data.Extra = map[string]any{}

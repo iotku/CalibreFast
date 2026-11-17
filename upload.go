@@ -561,6 +561,12 @@ func addBookToLibrary(meta *UploadedBookMeta, entries []formatEntry) (bookUUID, 
 
 	uuidPathIndex.Store(bookUUID, bookPath)
 	formatCache.Delete(bookUUID)
+	// A placeholder for this book (placeholders.go) has served its turn.
+	added := meta.OPFMetadata
+	if added.Series == "" {
+		added.FillSeries()
+	}
+	resolvePlaceholders(&added)
 	return bookUUID, bookPath, nil
 }
 
