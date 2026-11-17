@@ -41,6 +41,33 @@ featureBtn?.addEventListener("click", async () => {
     }
 });
 
+/**
+ * A picked file as a bitmap. Browsers decode SVG only through an image
+ * element (createImageBitmap rejects an SVG blob), so that is the fallback.
+ */
+async function pictureBitmap(file: File): Promise<ImageBitmap> {
+    try {
+        return await createImageBitmap(file);
+    } catch (err) {
+        if (file.type !== "image/svg+xml" && !/\.svg$/i.test(file.name)) throw err;
+    }
+    const url = URL.createObjectURL(file);
+    try {
+        const img = new Image();
+        img.src = url;
+        await img.decode();
+        // Drawn on a canvas first: a bitmap made straight from an SVG image
+        // can come out blank. One with no size of its own is drawn square.
+        const canvas = document.createElement("canvas");
+        canvas.width = img.naturalWidth || 264;
+        canvas.height = img.naturalHeight || 264;
+        canvas.getContext("2d")?.drawImage(img, 0, 0, canvas.width, canvas.height);
+        return await createImageBitmap(canvas);
+    } finally {
+        URL.revokeObjectURL(url);
+    }
+}
+
 function init(panel: HTMLElement, toggle: HTMLElement): void {
     const category = panel.dataset["category"] ?? "";
     const key = panel.dataset["key"] ?? "";
@@ -104,7 +131,7 @@ function init(panel: HTMLElement, toggle: HTMLElement): void {
         const n = ++drawn;
         let bmp: ImageBitmap;
         try {
-            bmp = await createImageBitmap(file);
+            bmp = await pictureBitmap(file);
         } catch {
             if (n !== drawn) return;
             newImage = null;
