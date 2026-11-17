@@ -269,13 +269,22 @@ func canEditLibrary(r *http.Request) bool {
 }
 
 // isPublicPath: reachable without signing in even when the library is
-// private (sign-in and registration themselves, static assets, and the
-// KOReader sync API, which checks its own credentials).
+// private: sign-in and registration themselves, sign-in/invitation links,
+// the KOReader sync API (which checks its own credentials), and the one
+// stylesheet those pages use. Nothing else under /static/: the app's
+// scripts and styles describe every feature, so they, the service worker
+// (whose asset list names them all) and its offline page need a session.
 func isPublicPath(p string) bool {
 	return p == "/login" || p == "/logout" || p == "/register" || p == "/api/me" ||
-		p == "/sw.js" || p == "/offline" || p == "/robots.txt" || // no library data in either (sw.go)
-		strings.HasPrefix(p, "/l/") || isKosyncPath(p) ||
-		strings.HasPrefix(p, "/auth/") || strings.HasPrefix(p, "/static/")
+		p == "/robots.txt" || strings.HasPrefix(p, "/l/") || isKosyncPath(p) ||
+		strings.HasPrefix(p, "/auth/") || isPublicAsset(p)
+}
+
+// isPublicAsset: the signed-out pages' stylesheet (web/auth.css), at this
+// build's URL.
+func isPublicAsset(p string) bool {
+	u, err := assetURL("auth.css")
+	return err == nil && p == u
 }
 
 // withAuth loads the session user into the request context and, with

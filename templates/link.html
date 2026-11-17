@@ -6,12 +6,11 @@
     <meta name="referrer" content="no-referrer">
     <title>{{ if .Link }}{{ if eq .Link.Kind "invite" }}Invitation{{ else }}Sign in{{ end }}{{ else }}Link{{ end }} — {{ .Title }}</title>
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <link rel="stylesheet" href="{{ asset "style.css" }}">
+    {{/* Like the sign-in page: the small signed-out stylesheet and no top
+         bar, so holding a link shows nothing of the app beyond this. */}}
+    <link rel="stylesheet" href="{{ asset "auth.css" }}">
 </head>
 <body class="auth-body">
-{{ $tb := topbar }}
-{{ template "topbar-start" $tb }}
-{{ template "topbar-end" $tb }}
 <main class="auth-main">
     <section class="auth-card">
     {{ if not .Link }}

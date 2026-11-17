@@ -6,6 +6,8 @@ import (
 	"net/http/cookiejar"
 	"net/http/httptest"
 	"net/url"
+	"os"
+	"regexp"
 	"strings"
 	"testing"
 	"time"
@@ -139,6 +141,11 @@ func TestLibraryPrivateByDefault(t *testing.T) {
 		}
 	}
 
+	authCSS, err := assetURL("auth.css")
+	if err != nil {
+		t.Fatal(err)
+	}
+	styleCSS, _ := assetURL("style.css")
 	publicCatalog = false // the default
 	check(map[string]int{
 		"/": http.StatusUnauthorized, "/pages/page1.json": http.StatusUnauthorized,
@@ -148,7 +155,10 @@ func TestLibraryPrivateByDefault(t *testing.T) {
 		"/latest": http.StatusUnauthorized, "/?page=2": http.StatusUnauthorized,
 		"/api/books?uuids=x": http.StatusUnauthorized, "/pages/discover/featured.json": http.StatusUnauthorized,
 		"/api/me/pins": http.StatusUnauthorized, "/api/tag-strip?tag=x": http.StatusUnauthorized,
-		"/login": 200, "/register": 200, "/static/dist/style-X.css": 200, "/auth/github/start": 200, "/api/me": 200,
+		"/login": 200, "/register": 200, "/auth/github/start": 200, "/api/me": 200, "/l/some-token": 200,
+		authCSS: 200, styleCSS: http.StatusUnauthorized, authCSS + ".map": http.StatusUnauthorized,
+		"/static/vendor/epubjs@0.3.93/dist/epub.min.js": http.StatusUnauthorized,
+		"/sw.js": http.StatusUnauthorized, "/offline": http.StatusUnauthorized,
 	})
 	// Browsers are sent to the sign-in page instead.
 	req := httptest.NewRequest("GET", "/tag/x?page=2", nil)
@@ -160,7 +170,7 @@ func TestLibraryPrivateByDefault(t *testing.T) {
 	}
 
 	publicCatalog = true // -public
-	check(map[string]int{"/": 200, "/cover-thumb/some-uuid": 200, "/shelves": 200})
+	check(map[string]int{"/": 200, "/cover-thumb/some-uuid": 200, "/shelves": 200, styleCSS: 200, "/sw.js": 200, "/offline": 200})
 }
 
 func TestLoginRateLimit(t *testing.T) {
@@ -261,6 +271,37 @@ func TestLoginPageRevealsNothing(t *testing.T) {
 	for _, leak := range []string{"Secret Stacks", "CalibreFast", `href="/"`, "/authors", "/search", "<script", "tb-nav", "user-nav"} {
 		if strings.Contains(body, leak) {
 			t.Errorf("sign-in page contains %q", leak)
+		}
+	}
+	// Nor the app's stylesheet, which names every feature: only its own.
+	if want, _ := assetURL("auth.css"); !strings.Contains(body, want) {
+		t.Errorf("sign-in page doesn't link %s", want)
+	}
+	if full, _ := assetURL("style.css"); strings.Contains(body, full) {
+		t.Errorf("sign-in page links the app stylesheet %s", full)
+	}
+}
+
+// auth.css styles the signed-out pages and nothing else: every class it
+// names is one login.html or link.html uses, so it can't grow a
+// description of the rest of the app.
+func TestAuthCSSOnlyNamesAuthPageClasses(t *testing.T) {
+	css, err := os.ReadFile("web/auth.css")
+	if err != nil {
+		t.Fatal(err)
+	}
+	var pages []byte
+	for _, name := range []string{"login.html", "link.html"} {
+		b, err := os.ReadFile("templates/" + name)
+		if err != nil {
+			t.Fatal(err)
+		}
+		pages = append(pages, b...)
+	}
+	css = regexp.MustCompile(`(?s)/\*.*?\*/`).ReplaceAll(css, nil)
+	for _, m := range regexp.MustCompile(`\.([a-zA-Z][\w-]*)`).FindAllSubmatch(css, -1) {
+		if c := string(m[1]); !regexp.MustCompile(`class="[^"]*\b` + regexp.QuoteMeta(c) + `\b`).Match(pages) {
+			t.Errorf("auth.css names .%s, which neither login.html nor link.html uses", c)
 		}
 	}
 }

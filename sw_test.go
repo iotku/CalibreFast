@@ -29,9 +29,11 @@ func TestServiceWorker(t *testing.T) {
 	if rec.Code != 200 || !strings.Contains(rec.Body.String(), "offline-books") {
 		t.Fatalf("offline page: %d", rec.Code)
 	}
+	// On a private server neither loads without a session: the worker's
+	// asset list names every script and stylesheet.
 	for _, p := range []string{"/sw.js", "/offline"} {
-		if !isPublicPath(p) {
-			t.Errorf("%s needs a sign-in: the worker and its page must load for anyone", p)
+		if isPublicPath(p) {
+			t.Errorf("%s is public: it describes the app to signed-out visitors", p)
 		}
 	}
 }
