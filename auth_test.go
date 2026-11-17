@@ -13,18 +13,6 @@ import (
 	"time"
 )
 
-func setupTestAppDB(t *testing.T) {
-	t.Helper()
-	db, err := openAppDB(t.TempDir())
-	if err != nil {
-		t.Fatal(err)
-	}
-	orig := appDB
-	appDB = db
-	t.Cleanup(func() { db.Close(); appDB = orig })
-	resetKosyncCaches()
-}
-
 func TestPasswordAuth(t *testing.T) {
 	setupTestAppDB(t)
 	if _, err := createUser("al", "longenough-pw", false); err != errBadUsername {

@@ -16,17 +16,16 @@ import (
 )
 
 func setupTestDB(t *testing.T) (*sql.DB, string) {
+	t.Helper()
 	registerCalibreDriver()
-	tempDir, err := os.MkdirTemp("", "calibre-test-*")
-	if err != nil {
-		t.Fatalf("failed to create temp dir: %v", err)
-	}
+	tempDir := t.TempDir()
 
 	dbPath := filepath.Join(tempDir, "metadata.db")
 	db, err := sql.Open("sqlite3_calibre", dbPath)
 	if err != nil {
 		t.Fatalf("failed to open test db: %v", err)
 	}
+	t.Cleanup(func() { db.Close() })
 
 	schema := `
 	CREATE TABLE authors (
@@ -193,7 +192,6 @@ func setupTestDB(t *testing.T) (*sql.DB, string) {
 
 func TestInsertBookIntoCalibreDB_UUIDMatchesDatabase(t *testing.T) {
 	db, tempDir := setupTestDB(t)
-	defer os.RemoveAll(tempDir)
 	defer db.Close()
 
 	meta := &UploadedBookMeta{
@@ -243,7 +241,6 @@ func TestInsertBookIntoCalibreDB_UUIDMatchesDatabase(t *testing.T) {
 
 func TestUpdateBookInCalibreDB_OrphanAuthorCleanup(t *testing.T) {
 	db, tempDir := setupTestDB(t)
-	defer os.RemoveAll(tempDir)
 	defer db.Close()
 
 	// Insert a single book with author "Unique Author"
@@ -308,7 +305,6 @@ func TestUpdateBookInCalibreDB_OrphanAuthorCleanup(t *testing.T) {
 
 func TestUpdateBookInCalibreDB_SharedAuthorPreserved(t *testing.T) {
 	db, tempDir := setupTestDB(t)
-	defer os.RemoveAll(tempDir)
 	defer db.Close()
 
 	// Insert Book 1 with "Shared Author"
@@ -381,7 +377,6 @@ func TestUpdateBookInCalibreDB_SharedAuthorPreserved(t *testing.T) {
 
 func TestUpdateBookInCalibreDB_TagsPublishersCommentsIdentifiers(t *testing.T) {
 	db, tempDir := setupTestDB(t)
-	defer os.RemoveAll(tempDir)
 	defer db.Close()
 
 	meta := &UploadedBookMeta{
@@ -483,7 +478,6 @@ func TestUpdateBookInCalibreDB_TagsPublishersCommentsIdentifiers(t *testing.T) {
 
 func TestApplyMetadataHandler_HTTP(t *testing.T) {
 	db, tempDir := setupTestDB(t)
-	defer os.RemoveAll(tempDir)
 	defer db.Close()
 
 	origDB := calibreDB
@@ -639,7 +633,6 @@ func TestNormalizeDate(t *testing.T) {
 // identifiers (calibre, uuid) aren't shown in the editor and stay as they were.
 func TestApplyMetadataHandler_PreservesIdentifiers(t *testing.T) {
 	db, tempDir := setupTestDB(t)
-	defer os.RemoveAll(tempDir)
 	defer db.Close()
 
 	origDB, origBaseDir := calibreDB, baseDir
@@ -750,7 +743,6 @@ func TestApplyMetadataHandler_PreservesIdentifiers(t *testing.T) {
 // editor submits "". That must not overwrite the stored value.
 func TestApplyMetadataHandler_KeepsUnparseableDate(t *testing.T) {
 	db, tempDir := setupTestDB(t)
-	defer os.RemoveAll(tempDir)
 	defer db.Close()
 
 	origDB, origBaseDir := calibreDB, baseDir
@@ -809,7 +801,6 @@ func TestApplyMetadataHandler_KeepsUnparseableDate(t *testing.T) {
 // Tags sent twice (in any case) are saved once, in the OPF and the database.
 func TestApplyMetadataHandler_DedupesTags(t *testing.T) {
 	db, tempDir := setupTestDB(t)
-	defer os.RemoveAll(tempDir)
 	defer db.Close()
 	origDB, origBaseDir := calibreDB, baseDir
 	calibreDB, baseDir = db, tempDir
@@ -867,7 +858,6 @@ func TestApplyMetadataHandler_DedupesTags(t *testing.T) {
 
 func TestApplyMetadataHandler_MultipleLanguages(t *testing.T) {
 	db, tempDir := setupTestDB(t)
-	defer os.RemoveAll(tempDir)
 	defer db.Close()
 
 	origDB, origBaseDir := calibreDB, baseDir
@@ -959,7 +949,6 @@ func TestApplyMetadataHandler_MultipleLanguages(t *testing.T) {
 // same people in the same order, after upload and after every edit.
 func TestUpdateBookInCalibreDB_AuthorSortFollowsAuthorOrder(t *testing.T) {
 	db, tempDir := setupTestDB(t)
-	defer os.RemoveAll(tempDir)
 	defer db.Close()
 
 	meta := &UploadedBookMeta{OPFMetadata: OPFMetadata{
