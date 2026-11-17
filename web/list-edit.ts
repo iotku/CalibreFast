@@ -8,7 +8,7 @@
  */
 import { api, byId, errorMessage } from "./dom.js";
 import type { Book } from "./types.js";
-import { colorFromBook, coverUrl, escapeHtml } from "./utils.js";
+import { colorFromBook, coverUrl, escapeHtml, seriesLabel } from "./utils.js";
 import { makeReorderable, type Reorderable } from "./reorder.js";
 
 const SAVE_DELAY_MS = 400; // moves in a row are one save
@@ -49,9 +49,12 @@ function flush(): Promise<void> {
 
 function row(b: Book): string {
     const title = escapeHtml(b.title || "Untitled");
-    return `<li class="arrange-item" data-id="${escapeHtml(b.uuid)}" data-name="${title}">
+    // A shelf's whole series (shelf_series.go): one entry, moved like a book.
+    const series = b.series_card;
+    const sub = series ? `<span class="arrange-series">${escapeHtml(seriesLabel(series.count))}</span>` : escapeHtml(b.authors || "Unknown Author");
+    return `<li class="arrange-item${series ? " is-series" : ""}" data-id="${escapeHtml(b.uuid)}" data-name="${title}">
         <img class="arrange-cover" src="${escapeHtml(coverUrl(b))}" alt="" loading="lazy" decoding="async" style="background:${colorFromBook(b)}" />
-        <span class="arrange-text"><span class="arrange-title">${title}</span><span class="arrange-author">${escapeHtml(b.authors || "Unknown Author")}</span></span>
+        <span class="arrange-text"><span class="arrange-title">${title}</span><span class="arrange-author">${sub}</span></span>
         <span class="arrange-controls"></span>
     </li>`;
 }

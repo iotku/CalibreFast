@@ -160,6 +160,9 @@ type Book struct {
 	Path         string  `json:"path"` // e.g "Author Name/Book Title" not direct link to specific file format
 	UUID         string  `json:"uuid"`
 	LastModified string  `json:"last_modified"`
+	// SeriesCard: set on a shelf's whole-series entry (shelf_series.go),
+	// whose UUID is its "series:<name>" key rather than a book's.
+	SeriesCard *seriesCard `json:"series_card,omitempty"`
 }
 
 type LibraryInfo struct {

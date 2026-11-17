@@ -475,9 +475,17 @@ func filteredPageHandler(c *category) http.HandlerFunc {
 			w.Header().Set("Cache-Control", "private, no-store")
 			data.Extra = map[string]any{"TagPin": name, "Pinned": tagPinnedFor(u, name)}
 		}
+		// A series can be pinned to home (series_pins.go) and go on a shelf,
+		// whole (shelf_series.go).
 		if u := currentUser(r); u != nil && c.Key == "series" && data.TotalBooks > 0 {
 			w.Header().Set("Cache-Control", "private, no-store")
-			data.Extra = map[string]any{"SeriesPin": name, "Pinned": seriesPinnedFor(u, name)}
+			if data.Extra == nil {
+				data.Extra = map[string]any{}
+			}
+			data.Extra["SeriesPin"] = name
+			data.Extra["Pinned"] = seriesPinnedFor(u, name)
+			data.Extra["SeriesShelf"] = name
+			data.Extra["SeriesShelves"] = seriesShelfMarks(u, name)
 		}
 		logErr(templates.ExecuteTemplate(w, "filtered.html", data), "failed to execute filtered template")
 	}

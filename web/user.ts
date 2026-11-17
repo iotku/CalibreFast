@@ -15,6 +15,7 @@
 import { api, errorMessage } from "./dom.js";
 import { deleteBooks } from "./delete-books.js";
 import "./book-files.js"; // the book page's Files row (admins)
+import "./series-shelf.js"; // "Add series to shelf" (also the series page's, via app-htmx.ts)
 import { ICONS, cachedMarks, type BookChange, type BookState } from "./reading.js";
 
 interface StatusResponse {
