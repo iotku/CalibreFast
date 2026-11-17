@@ -44,7 +44,7 @@
             {{ if .Authors }}
             <div class="book-authors more-list">
                 by {{ range $i, $author := .Authors }}<span{{ if ge $i $.AuthorLimit }} class="more-extra"{{ end }}>{{ if $i }}, {{ end }}<a href="/author/{{ $author }}"
-                    class="meta-link author-link">{{ $author }}</a></span>{{ end }}
+                    class="meta-link author-link">{{ alias "author" $author }}</a></span>{{ end }}
                 {{ if .MoreAuthors }}<button type="button" class="more-toggle more-toggle-text" aria-expanded="false">and {{ .MoreAuthors }} more</button>{{ end }}
             </div>
             {{ end }}
@@ -120,16 +120,16 @@
         <div class="book-page-info">
             {{ if .Series }}
             <div class="meta-row">
-                Book {{ .SeriesIndex }} in <a href="/series/{{ .Series }}" class="meta-link">{{ .Series }}</a>
+                Book {{ .SeriesIndex }} in <a href="/series/{{ .Series }}" class="meta-link">{{ alias "series" .Series }}</a>
             </div>
             {{ end }}
             {{ if and .Publisher .Date }}
             <div class="meta-row">
-                Published by <a href="/publisher/{{ .Publisher }}" class="meta-link">{{ .Publisher }}</a> on {{ .Date }}
+                Published by <a href="/publisher/{{ .Publisher }}" class="meta-link">{{ alias "publisher" .Publisher }}</a> on {{ .Date }}
             </div>
             {{ else if .Publisher }}
             <div class="meta-row">
-                Published by <a href="/publisher/{{ .Publisher }}" class="meta-link">{{ .Publisher }}</a>
+                Published by <a href="/publisher/{{ .Publisher }}" class="meta-link">{{ alias "publisher" .Publisher }}</a>
             </div>
             {{ else if .Date }}
             <div class="meta-row">
@@ -141,7 +141,7 @@
                 {{ range .Languages }}<a href="/lang/{{ .Code }}" class="tag meta-link" title="{{ .Code }}">Language: {{ .Name }}</a>
                 {{ end }}
                 {{ range $i, $tag := .Tags }}
-                <a href="/tag/{{ $tag }}" class="tag meta-link{{ if ge $i $.TagLimit }} more-extra{{ end }}">{{ $tag }}</a>
+                <a href="/tag/{{ $tag }}" class="tag meta-link{{ if ge $i $.TagLimit }} more-extra{{ end }}">{{ alias "tag" $tag }}</a>
                 {{ end }}
                 {{ if .MoreTags }}<button type="button" class="tag more-toggle" aria-expanded="false">+{{ .MoreTags }} more</button>{{ end }}
             </div>

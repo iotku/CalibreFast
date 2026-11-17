@@ -1,0 +1,316 @@
+package main
+
+import (
+	"crypto/sha256"
+	"database/sql"
+	"encoding/hex"
+	"encoding/json"
+	"errors"
+	"fmt"
+	"log"
+	"net/http"
+	"os"
+	"path/filepath"
+	"regexp"
+	"strings"
+
+	"github.com/iotku/CalibreFast/pkg/imageutil"
+	"github.com/iotku/CalibreFast/pkg/langcodes"
+)
+
+// What the aggregate pages keep beyond Calibre's values and the groups
+// (groups.go): entries featured at the top of a category's page, and an
+// entry's description and picture. An entry is what a filtered page shows:
+// a group, by its name, or a single value. All of it lives in the app DB
+// and <datadir>/aggregate-images, never in the library folder.
+
+const aggregateImagesDir = "aggregate-images"
+
+const (
+	// aggregateImageMaxWidth: a wider picture is scaled down to this.
+	aggregateImageMaxWidth = 1200
+	// aggregateImageKeepMaxBytes: a JPEG up to this size (and width) is
+	// kept byte for byte.
+	aggregateImageKeepMaxBytes = 1 << 20
+	aggregateImageQuality      = 88
+	// aggregateDescriptionMax bounds a description, in bytes.
+	aggregateDescriptionMax = 10000
+)
+
+// aggregateImageRe: the names aggregate pictures are saved under (the
+// content's hash), the only ones served.
+var aggregateImageRe = regexp.MustCompile(`^[0-9a-f]{32}\.jpg$`)
+
+// AggregateMeta is an entry's description and picture.
+type AggregateMeta struct {
+	Description string
+	Image       string // file name in aggregateImagesDir, "" for none
+}
+
+func (m AggregateMeta) imageURL() string {
+	if m.Image == "" {
+		return ""
+	}
+	return "/" + aggregateImagesDir + "/" + m.Image
+}
+
+// aggregateMetaFor returns the meta of the entry cat/name (ok false: none).
+func aggregateMetaFor(cat, name string) (AggregateMeta, bool) {
+	var m AggregateMeta
+	if appDB == nil {
+		return m, false
+	}
+	err := appDB.QueryRow(`SELECT description, image FROM aggregate_meta WHERE category = ? AND name = ?`, cat, name).
+		Scan(&m.Description, &m.Image)
+	if err != nil {
+		if !errors.Is(err, sql.ErrNoRows) {
+			log.Printf("aggregate meta %s/%s: %v", cat, name, err)
+		}
+		return m, false
+	}
+	return m, m.Description != "" || m.Image != ""
+}
+
+// aggregateImageJPEG is the picture to save for an uploaded image's bytes.
+func aggregateImageJPEG(data []byte) ([]byte, error) {
+	return imageutil.CoverJPEG(data, imageutil.CoverOptions{
+		MaxWidth:     aggregateImageMaxWidth,
+		KeepMaxBytes: aggregateImageKeepMaxBytes,
+		Quality:      aggregateImageQuality,
+	})
+}
+
+// saveAggregateImage writes a picture (from aggregateImageJPEG) under its
+// content's hash and returns the file name.
+func saveAggregateImage(data []byte) (string, error) {
+	dir := filepath.Join(dataDir, aggregateImagesDir)
+	if err := os.MkdirAll(dir, 0o755); err != nil {
+		return "", err
+	}
+	sum := sha256.Sum256(data)
+	name := hex.EncodeToString(sum[:16]) + ".jpg"
+	path := filepath.Join(dir, name)
+	if _, err := os.Stat(path); err == nil {
+		return name, nil // the same picture is already there
+	}
+	tmp, err := os.CreateTemp(dir, ".upload-*")
+	if err != nil {
+		return "", err
+	}
+	defer os.Remove(tmp.Name()) // no-op after the rename
+	if _, err := tmp.Write(data); err != nil {
+		tmp.Close()
+		return "", err
+	}
+	if err := tmp.Close(); err != nil {
+		return "", err
+	}
+	return name, os.Rename(tmp.Name(), path)
+}
+
+// removeUnusedAggregateImage deletes a picture no entry uses any more.
+func removeUnusedAggregateImage(name string) {
+	if name == "" || !aggregateImageRe.MatchString(name) {
+		return
+	}
+	var n int
+	if err := appDB.QueryRow(`SELECT COUNT(*) FROM aggregate_meta WHERE image = ?`, name).Scan(&n); err != nil || n > 0 {
+		return
+	}
+	if err := os.Remove(filepath.Join(dataDir, aggregateImagesDir, name)); err != nil && !os.IsNotExist(err) {
+		log.Printf("aggregate image %s: %v", name, err)
+	}
+}
+
+// metaEdit is a change to an entry's meta: nil Description leaves it as
+// it is, Image (JPEG bytes) replaces the picture, RemoveImage drops it.
+type metaEdit struct {
+	Description *string
+	Image       []byte
+	RemoveImage bool
+}
+
+func (e metaEdit) empty() bool { return e.Description == nil && e.Image == nil && !e.RemoveImage }
+
+// setAggregateMeta applies e to the entry cat/name. A row left with no
+// description and no picture is deleted.
+func setAggregateMeta(cat, name string, e metaEdit) error {
+	if e.empty() {
+		return nil
+	}
+	old, _ := aggregateMetaFor(cat, name)
+	m := old
+	if e.Description != nil {
+		m.Description = strings.TrimSpace(*e.Description)
+		if len(m.Description) > aggregateDescriptionMax {
+			return fmt.Errorf("the description is too long (at most %d characters)", aggregateDescriptionMax)
+		}
+	}
+	if e.RemoveImage {
+		m.Image = ""
+	}
+	if e.Image != nil {
+		img, err := saveAggregateImage(e.Image)
+		if err != nil {
+			return err
+		}
+		m.Image = img
+	}
+	var err error
+	if m.Description == "" && m.Image == "" {
+		_, err = appDB.Exec(`DELETE FROM aggregate_meta WHERE category = ? AND name = ?`, cat, name)
+	} else {
+		_, err = appDB.Exec(`
+			INSERT INTO aggregate_meta (category, name, description, image, updated_at) VALUES (?, ?, ?, ?, ?)
+			ON CONFLICT (category, name) DO UPDATE SET
+				name = excluded.name, description = excluded.description,
+				image = excluded.image, updated_at = excluded.updated_at`,
+			cat, name, m.Description, m.Image, nowUnix())
+	}
+	if err != nil {
+		return err
+	}
+	if old.Image != m.Image {
+		removeUnusedAggregateImage(old.Image)
+	}
+	return nil
+}
+
+// renameAggregate carries an entry's meta and Featured place over to its
+// new name (a group renamed, made or dissolved). Where the new name has
+// its own already, that is kept.
+func renameAggregate(cat, from, to string) {
+	if appDB == nil || from == to || from == "" || to == "" {
+		return
+	}
+	for _, q := range []string{
+		`UPDATE OR IGNORE aggregate_meta SET name = ? WHERE category = ? AND name = ?`,
+		`UPDATE OR IGNORE featured_aggregates SET name = ? WHERE category = ? AND name = ?`,
+	} {
+		if _, err := appDB.Exec(q, to, cat, from); err != nil {
+			log.Printf("rename aggregate %s/%s: %v", cat, from, err)
+		}
+	}
+}
+
+// ---------------------------------------------------------------------------
+// Featured
+// ---------------------------------------------------------------------------
+
+// FeaturedCard is one entry of an aggregate page's Featured section.
+type FeaturedCard struct {
+	Name        string // label shown
+	Sub         string // raw value when Name is a display name
+	Href        string
+	Count       int
+	Grouped     bool
+	Description string
+	ImageURL    string
+}
+
+func isFeaturedAggregate(cat, name string) bool {
+	if appDB == nil {
+		return false
+	}
+	var n int
+	err := appDB.QueryRow(`SELECT COUNT(*) FROM featured_aggregates WHERE category = ? AND name = ?`, cat, name).Scan(&n)
+	return err == nil && n > 0
+}
+
+// featuredCards lists c's featured entries in the order they were
+// featured, as they are browsed now (a value since grouped shows as its
+// group), leaving out any with no books.
+func featuredCards(c *category) []FeaturedCard {
+	if appDB == nil {
+		return nil
+	}
+	rows, err := appDB.Query(`SELECT name FROM featured_aggregates WHERE category = ? ORDER BY position, created_at`, c.Key)
+	if err != nil {
+		log.Printf("featured %s: %v", c.Key, err)
+		return nil
+	}
+	var names []string
+	for rows.Next() {
+		var n string
+		if rows.Scan(&n) == nil {
+			names = append(names, n)
+		}
+	}
+	rows.Close()
+
+	seen := map[string]bool{}
+	var out []FeaturedCard
+	for _, v := range names {
+		name, members, grouped := groups.resolve(c.Key, v)
+		if seen[strings.ToLower(name)] {
+			continue
+		}
+		seen[strings.ToLower(name)] = true
+		count := getFilteredTotal(c, name, members)
+		if count == 0 {
+			continue
+		}
+		card := FeaturedCard{Name: name, Href: c.href(name), Count: count, Grouped: grouped}
+		if c.Key == "language" && !grouped {
+			if dn, ok := langcodes.DisplayName(name); ok && dn != name {
+				card.Name, card.Sub = dn, name
+			}
+		}
+		if m, ok := aggregateMetaFor(c.Key, name); ok {
+			card.Description, card.ImageURL = m.Description, m.imageURL()
+		}
+		out = append(out, card)
+	}
+	return out
+}
+
+// featuredHandler: PUT /api/aggregates/{cat}/featured/{value...}
+// features the entry value is browsed as; DELETE takes it off.
+func featuredHandler(w http.ResponseWriter, r *http.Request) {
+	c := categoryByKey(r.PathValue("cat"))
+	value := r.PathValue("value")
+	if c == nil || value == "" {
+		http.NotFound(w, r)
+		return
+	}
+	name, _, _ := groups.resolve(c.Key, value)
+	var err error
+	if r.Method == http.MethodDelete {
+		_, err = appDB.Exec(`DELETE FROM featured_aggregates WHERE category = ? AND (name = ? OR name = ?)`, c.Key, name, value)
+	} else {
+		_, err = appDB.Exec(`
+			INSERT OR IGNORE INTO featured_aggregates (category, name, position, created_at)
+			SELECT ?, ?, COALESCE(MAX(position), 0) + 1, ? FROM featured_aggregates WHERE category = ?`,
+			c.Key, name, nowUnix(), c.Key)
+	}
+	if err != nil {
+		log.Println("featured:", err)
+		http.Error(w, "failed to save", http.StatusInternalServerError)
+		return
+	}
+	w.Header().Set("Content-Type", "application/json")
+	logErr(json.NewEncoder(w).Encode(map[string]any{"featured": r.Method != http.MethodDelete, "name": name}), "encode featured")
+}
+
+// aggregateImageHandler: GET /aggregate-images/{file}. A file's name is its
+// content's hash, so it never changes.
+func aggregateImageHandler(w http.ResponseWriter, r *http.Request) {
+	name := r.PathValue("file")
+	if !aggregateImageRe.MatchString(name) {
+		http.NotFound(w, r)
+		return
+	}
+	w.Header().Set("Cache-Control", "private, max-age=31536000, immutable")
+	w.Header().Set("Content-Type", "image/jpeg")
+	http.ServeFile(w, r, filepath.Join(dataDir, aggregateImagesDir, name))
+}
+
+// groupAlias is the name a value is shown under when it has an alias: a
+// group whose one member it is ("COMPUTERS" shown as "Computers").
+// Otherwise the value itself. For templates ({{ alias "tag" . }}).
+func groupAlias(cat, v string) string {
+	if name, members, grouped := groups.resolve(cat, v); grouped && len(members) == 1 {
+		return name
+	}
+	return v
+}

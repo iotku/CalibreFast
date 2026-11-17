@@ -237,7 +237,81 @@ function styleDocument(doc: Document): void {
 function restyle(): void {
     for (const c of rendition.getContents()) styleDocument(c.document);
 }
-rendition.hooks.content.register((contents) => styleDocument(contents.document));
+rendition.hooks.content.register((contents) => {
+    relativeFontSizes(contents.document);
+    styleDocument(contents.document);
+});
+
+// ---- the book's font sizes --------------------------------------------------
+// The reader's text size is the root size (html, above). A book that sizes its
+// text in absolute units (p { font-size: 12pt }, or px, or "small") ignores
+// it, so those sizes become the same size in rem: what the publisher meant at
+// the default text size, scaled by the reader's. Relative sizes (em, %, rem)
+// already follow the root and are left alone, so headings, small print and
+// the like keep their proportions.
+
+/** One rem is the default 16px (12pt). */
+const REM_PER_UNIT: Record<string, number> = { px: 1 / 16, pt: 1 / 12, pc: 1, in: 6, cm: 6 / 2.54, mm: 0.6 / 2.54, q: 0.15 / 2.54 };
+/** The CSS absolute-size keywords, as browsers size them from a 16px medium. */
+const KEYWORD_REM: Record<string, number> = {
+    "xx-small": 9 / 16, "x-small": 10 / 16, small: 13 / 16, medium: 1, large: 18 / 16, "x-large": 1.5, "xx-large": 2, "xxx-large": 3,
+};
+
+/** An absolute font size as rem, or "" for a relative one (or anything else). */
+function remFontSize(value: string): string {
+    const v = value.trim().toLowerCase();
+    const kw = KEYWORD_REM[v];
+    if (kw !== undefined) return `${+kw.toFixed(4)}rem`;
+    const m = /^(\d*\.?\d+)(px|pt|pc|in|cm|mm|q)$/.exec(v);
+    if (!m) return "";
+    return `${+(parseFloat(m[1]) * REM_PER_UNIT[m[2]]).toFixed(4)}rem`;
+}
+
+function relativeStyle(style: CSSStyleDeclaration): void {
+    const rem = style.fontSize ? remFontSize(style.fontSize) : "";
+    if (rem) style.setProperty("font-size", rem, style.getPropertyPriority("font-size"));
+}
+
+// Duck-typed: a chapter's frame has CSSOM classes of its own, so instanceof
+// with ours would never match.
+function relativeRules(rules: CSSRuleList, depth: number): void {
+    for (const rule of Array.from(rules)) {
+        const r = rule as Partial<CSSImportRule & CSSStyleRule & CSSGroupingRule>;
+        if (r.styleSheet) {
+            if (depth < 8) relativeSheet(r.styleSheet, depth + 1);
+            continue;
+        }
+        // Style rules, and the ones inside @media, @supports and the like.
+        if (r.style) relativeStyle(r.style);
+        if (r.cssRules) relativeRules(r.cssRules, depth);
+    }
+}
+
+function relativeSheet(sheet: CSSStyleSheet, depth: number): void {
+    try {
+        relativeRules(sheet.cssRules, depth);
+    } catch {
+        // A sheet we may not read (another origin): it keeps its sizes.
+    }
+}
+
+/** Turns the chapter's absolute font sizes, in its stylesheets and style attributes, into rem. */
+function relativeFontSizes(doc: Document): void {
+    const done = new WeakSet<StyleSheet>();
+    const sweep = (): void => {
+        for (const sheet of Array.from(doc.styleSheets)) {
+            if (done.has(sheet) || (sheet.ownerNode as Element | null)?.id === STYLE_ID) continue;
+            done.add(sheet);
+            relativeSheet(sheet, 0);
+        }
+    };
+    sweep();
+    // Sheets still loading are done when they arrive.
+    for (const link of Array.from(doc.querySelectorAll<HTMLLinkElement>('link[rel~="stylesheet"]'))) {
+        if (!link.sheet) link.addEventListener("load", sweep, { once: true });
+    }
+    for (const el of Array.from(doc.querySelectorAll<HTMLElement>("[style]"))) relativeStyle(el.style);
+}
 
 // Settings that change how much fits on a page: lay out again, once the
 // taps on a stepper have stopped.

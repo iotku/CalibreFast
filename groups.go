@@ -165,7 +165,8 @@ func cleanMembers(in []string) []string {
 
 // set replaces the group that `key` resolves to (creating one if none) with g.
 // Members are exclusive per category: they're taken out of any other group.
-// No members, or a single member equal to the name, removes the group.
+// No members, or a single member exactly equal to the name, removes the
+// group (a single member spelled differently is an alias and is kept).
 // Returns the stored group (zero value when removed).
 func (s *groupStore) set(cat, key string, g Group) (Group, error) {
 	s.mu.Lock()
@@ -189,8 +190,10 @@ func (s *groupStore) set(cat, key string, g Group) (Group, error) {
 		}
 	}
 
+	// A single member under another spelling ("COMPUTERS" shown as
+	// "Computers") is an alias, not trivial: only the exact same name is.
 	trivial := len(g.Members) == 0 ||
-		(len(g.Members) == 1 && strings.EqualFold(g.Members[0], g.Name))
+		(len(g.Members) == 1 && g.Members[0] == g.Name)
 
 	if self >= 0 {
 		if trivial {
