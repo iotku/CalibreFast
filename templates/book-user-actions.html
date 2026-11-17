@@ -38,6 +38,31 @@
             </div>
         </div>
     </details>
+    {{ if .Series }}
+    {{/* The whole series, as one entry on a shelf (series-shelf.ts). */}}
+    <details class="book-shelves book-series-shelves" data-series="{{ .Series }}">
+        <summary>Add series to shelf<span class="book-shelves-count">{{ with .SeriesOnShelves }} ({{ . }}){{ end }}</span></summary>
+        <p class="series-shelf-hint">All of <strong>{{ .Series }}</strong>, as one entry.</p>
+        {{ template "series-shelf-list" .SeriesShelves }}
+    </details>
+    {{ end }}
 {{ end }}
+</div>
+{{ end }}
+
+{{/* Checkboxes for the shelves a series can go on, and a new one
+     (series-shelf.ts). The list's container has data-series. */}}
+{{ define "series-shelf-list" }}
+<div class="book-shelves-list series-shelf-list">
+    {{ range . }}
+    <label class="book-shelf">
+        <input type="checkbox" data-series-shelf="{{ .ID }}" {{ if .Has }}checked{{ end }}>
+        {{ .Name }}{{ if .Global }}<span class="book-shelf-global">global</span>{{ end }}
+    </label>
+    {{ end }}
+    <div class="book-shelf-create">
+        <input type="text" class="series-shelf-new" placeholder="New shelf…" autocomplete="off" maxlength="100" aria-label="New shelf name">
+        <button type="button" class="btn-action series-shelf-add">Add</button>
+    </div>
 </div>
 {{ end }}

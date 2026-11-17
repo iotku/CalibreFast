@@ -262,18 +262,26 @@ func fillShelfBooks(shelves []homeShelf) error {
 		return err
 	}
 	defer rows.Close()
-	cat := currentCatalog()
+	var shelfOf []int64
+	var keys []string
 	for rows.Next() {
 		var id int64
 		var uuid string
 		if err := rows.Scan(&id, &uuid); err != nil {
 			return err
 		}
-		if b, ok := cat.lookup(uuid); ok {
-			shelves[at[id]].Books = append(shelves[at[id]].Books, b.Book)
+		shelfOf, keys = append(shelfOf, id), append(keys, uuid)
+	}
+	if err := rows.Err(); err != nil {
+		return err
+	}
+	find := shelfEntryLookup(currentCatalog(), keys) // books and whole series (shelf_series.go)
+	for i, k := range keys {
+		if b, ok := find(k); ok {
+			shelves[at[shelfOf[i]]].Books = append(shelves[at[shelfOf[i]]].Books, b)
 		}
 	}
-	return rows.Err()
+	return nil
 }
 
 // shelfPinnedFor: whether s is on u's page.

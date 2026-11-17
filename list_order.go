@@ -43,7 +43,11 @@ func readBookOrder(w http.ResponseWriter, r *http.Request) ([]string, bool) {
 	}
 	seen := make(map[string]bool, len(req.Order))
 	for _, u := range req.Order {
-		if u == "" || len(u) > 64 || seen[u] {
+		maxLen := 64
+		if _, ok := shelfSeriesName(u); ok { // a shelf's whole series (shelf_series.go)
+			maxLen = maxShelfKey
+		}
+		if u == "" || len(u) > maxLen || seen[u] {
 			http.Error(w, "invalid order", http.StatusBadRequest)
 			return nil, false
 		}
