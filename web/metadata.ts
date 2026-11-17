@@ -1224,11 +1224,21 @@ export async function mountMetadataEditor(book: BookTarget, form: HTMLFormElemen
     // "Possibly already in the library": the book being added beside each
     // library book it may be, before adding it anyway.
     const dupDialog = maybeId("duplicate-dialog", HTMLDialogElement);
+    let dupAdding: MetaSource | null = null; // the book being added, as last compared
     if (dupDialog) closeOnBackdropClick(dupDialog);
     maybeId("duplicate-add")?.addEventListener("click", () => {
       dupDialog?.close();
       overrideNext = true;
       form.requestSubmit();
+    });
+    maybeId("duplicate-edit")?.addEventListener("click", () => {
+      const importId = form.dataset["import"];
+      if (!importId) return;
+      try {
+        localStorage.setItem(importEditsKey(importId), JSON.stringify(dupAdding));
+      } catch {
+        /* storage blocked: its files' metadata is still offered */
+      }
     });
     maybeId("duplicate-split")?.addEventListener("click", async (e) => {
       const btn = e.currentTarget as HTMLButtonElement;
@@ -1268,6 +1278,7 @@ export async function mountMetadataEditor(book: BookTarget, form: HTMLFormElemen
         Identifiers: (values.identifiers ?? []).map((i) => ({ Scheme: i.scheme, Value: i.value, ID: i.id })),
         Series: values.series ?? "", SeriesIndex: values.series ? values.series_index ?? "" : "",
       };
+      dupAdding = adding;
       const formats = (dupDialog.dataset["formats"] ?? "").split(",").filter(Boolean).map((f) => f.toUpperCase());
       const cover = maybeId("edit-cover-img", HTMLImageElement)?.getAttribute("src") ?? "";
       const sections = await Promise.all(check.books.map(async (b) => {
@@ -1286,25 +1297,13 @@ export async function mountMetadataEditor(book: BookTarget, form: HTMLFormElemen
       // The library's book says something else than this one: offer to
       // correct it there, with this one's metadata to pick from.
       const importId = form.dataset["import"];
-      if (blocked && importId) {
-        check.books.forEach((b, i) => {
-          const section = sections[i];
-          if (!b.same_file || !section?.querySelector('tr.dup-differ:not([data-field="Formats"])')) return;
-          const edit = tag("a", {
-            className: "btn-standard dup-edit",
-            href: `/book/edit/${encodeURIComponent(b.uuid)}?import=${encodeURIComponent(importId)}`,
-            target: "_blank",
-            title: "Open the library book's metadata editor, with this book's metadata offered as sources",
-          }, `Edit “${b.title}”'s metadata`);
-          edit.addEventListener("click", () => {
-            try {
-              localStorage.setItem(importEditsKey(importId), JSON.stringify(adding));
-            } catch {
-              /* storage blocked: its files' metadata is still offered */
-            }
-          });
-          section.querySelector(".dup-why")?.append(" ", edit);
-        });
+      const editLink = maybeId("duplicate-edit", HTMLAnchorElement);
+      const differing = blocked && importId
+        ? check.books.find((b, i) => b.same_file && sections[i]?.querySelector('tr.dup-differ:not([data-field="Formats"])'))
+        : undefined;
+      if (editLink) {
+        editLink.hidden = !differing;
+        if (differing && importId) editLink.href = `/book/edit/${encodeURIComponent(differing.uuid)}?import=${encodeURIComponent(importId)}`;
       }
       maybeId("duplicate-body")?.replaceChildren(...sections);
       const many = check.books.length === 1 ? "" : ` (${check.books.length} books)`;

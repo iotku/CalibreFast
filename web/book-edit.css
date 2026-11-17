@@ -2210,9 +2210,6 @@ input[type="date"].meta-input::-webkit-calendar-picker-indicator:hover {
     display: none;
 }
 
-.dup-edit {
-    margin-left: 8px;
-    padding: 4px 10px;
-    font-size: 0.8rem;
+#duplicate-edit {
     text-decoration: none;
 }
