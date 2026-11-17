@@ -24,6 +24,18 @@ jobs:
       with:
         go-version: '1.26.0'
 
+    - name: Generate (type-check TypeScript, rebuild static/dist)
+      run: go generate ./...
+
+    - name: Check generated files are committed
+      run: |
+        if [ -n "$(git status --porcelain)" ]; then
+          echo "go generate changed files; run it and commit the result:"
+          git status --porcelain
+          git diff --stat
+          exit 1
+        fi
+
     - name: Build
       run: go build -v -tags sqlite_fts5 ./...
 
