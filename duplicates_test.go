@@ -235,14 +235,19 @@ func TestAddedFilesAreWhereCalibreLooks(t *testing.T) {
 	}
 	t.Cleanup(func() { uuidPathIndex.Delete(u); bookMetadataCache.Delete(u) })
 
-	// A file already where the next book's would go: it gets another name,
-	// and data.name follows. (The next book is id 3 in a fresh library.)
-	writeTestFile(t, filepath.Join(baseDir, "Jane Austen", "Persuasion (3)", "Persuasion.epub"), []byte("in the way"))
+	// A folder already where the next book's would go, which metadata.db
+	// doesn't know: it's moved aside, kept, and the book gets its own.
+	// (The next book is id 3 in a fresh library.)
+	stray := filepath.Join(baseDir, "Jane Austen", "Persuasion (3)")
+	writeTestFile(t, filepath.Join(stray, "Persuasion.epub"), []byte("in the way"))
 	uploadFiles(t, "p.epub", titledEPUB(t, "Persuasion", "Jane Austen", ""), false)
 	var name string
 	db.QueryRow(`SELECT d.name FROM data d JOIN books b ON b.id = d.book WHERE b.title = 'Persuasion'`).Scan(&name)
-	if name == "Persuasion" || !strings.HasPrefix(name, "Persuasion_") {
+	if name != "Persuasion" {
 		t.Errorf("data.name after a clash: %q", name)
+	}
+	if got, _ := filepath.Glob(stray + " (stray *)/Persuasion.epub"); len(got) != 1 {
+		t.Errorf("the stray folder's file wasn't kept aside: %v", got)
 	}
 
 	calibreFindsFiles(t, db)

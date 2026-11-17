@@ -1,6 +1,7 @@
 package main
 
 import (
+	"cmp"
 	"database/sql"
 	"fmt"
 	"path/filepath"
@@ -46,6 +47,13 @@ func calibreDateTime(t time.Time) string {
 // insertBookIntoCalibreDB inserts a book and all its formats into metadata.db,
 // following Calibre's schema exactly so the library remains Calibre-compatible.
 func insertBookIntoCalibreDB(db *sql.DB, meta *UploadedBookMeta, formats []formatEntry) (bookID int64, bookUUID string, bookPath string, retErr error) {
+	return insertBookTx(db, meta, formats, nil)
+}
+
+// insertBookTx is insertBookIntoCalibreDB, calling beforeCommit (if not nil)
+// with the new book's id, uuid and path just before the commit: an error
+// from it rolls the insert back.
+func insertBookTx(db *sql.DB, meta *UploadedBookMeta, formats []formatEntry, beforeCommit func(tx *sql.Tx, bookID int64, bookUUID, bookPath string) error) (bookID int64, bookUUID string, bookPath string, retErr error) {
 	meta.Subjects = opf.UniqueTags(meta.Subjects)
 	tx, err := db.Begin()
 	if err != nil {
@@ -131,7 +139,7 @@ func insertBookIntoCalibreDB(db *sql.DB, meta *UploadedBookMeta, formats []forma
 			f.Size,
 			// The name the file gets in the book's folder (addBookToLibrary):
 			// Calibre finds a format's file as <path>/<name>.<format>.
-			bookFileStem(meta.Title),
+			cmp.Or(f.Stem, bookFileStem(meta.Title)),
 		); fErr != nil {
 			retErr = fmt.Errorf("insert format %s: %w", f.Ext, fErr)
 			return
@@ -192,6 +200,12 @@ func insertBookIntoCalibreDB(db *sql.DB, meta *UploadedBookMeta, formats []forma
 		tx.Exec(`INSERT OR IGNORE INTO identifiers (book, type, val) VALUES (?, ?, ?)`, bookID, idType, idVal)
 	}
 
+	if beforeCommit != nil {
+		if err = beforeCommit(tx, bookID, bookUUID, bookPath); err != nil {
+			retErr = err
+			return
+		}
+	}
 	if err = tx.Commit(); err != nil {
 		retErr = fmt.Errorf("commit: %w", err)
 		return

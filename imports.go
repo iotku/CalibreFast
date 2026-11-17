@@ -349,32 +349,20 @@ func (b *importInbox) approve(id string, meta OPFMetadata, override bool) (bookU
 		book.SyncSeriesMeta() // …or as the editor sent it
 	}
 
-	bookUUID, bookPath, err := addBookToLibrary(book, entries)
+	// The cover and the editor's metadata go in with the book, and the
+	// queue folder is removed once it's in (add_journal.go: finishAdd), so
+	// even a crash part way through leaves the book here or there, whole.
+	opts := addOptions{Import: &addJournalImport{Dir: dir, Meta: book.OPFMetadata, SeriesSet: book.SeriesSet}}
+	if _, err := os.Stat(filepath.Join(dir, "cover.jpg")); err == nil {
+		opts.Cover = filepath.Join(dir, "cover.jpg")
+	}
+	bookUUID, _, err = addBook(book, entries, opts)
 	if err != nil {
 		b.put(it)
 		return "", err
 	}
-
-	// From here the book is in the library: what's left can't undo that.
-	destDir := filepath.Join(baseDir, bookPath)
-	if _, err := os.Stat(filepath.Join(dir, "cover.jpg")); err == nil {
-		if err := copyFile(filepath.Join(dir, "cover.jpg"), filepath.Join(destDir, "cover.jpg")); err != nil {
-			log.Printf("imports: %s: couldn't copy the cover: %v", bookUUID, err)
-		} else if _, err := calibreDB.Exec(`UPDATE books SET has_cover = 1 WHERE uuid = ?`, bookUUID); err != nil {
-			log.Printf("imports: %s: failed to set has_cover: %v", bookUUID, err)
-		}
-	}
-	// The same write the editor's Apply does: the description, every
-	// author's sort name and the identifiers reach metadata.db too.
-	if _, err := updateBookInCalibreDB(calibreDB, baseDir, bookUUID, &book.OPFMetadata); err != nil {
-		log.Printf("imports: %s: added, but its metadata is incomplete: %v", bookUUID, err)
-	}
 	// What each file said stays on offer in the editor, as after an upload.
 	bookMetadataCache.Store(bookUUID, it.Sources)
-
-	if err := os.RemoveAll(dir); err != nil {
-		log.Printf("imports: couldn't remove %s: %v", dir, err)
-	}
 	return bookUUID, nil
 }
 
