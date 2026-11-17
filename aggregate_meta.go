@@ -39,7 +39,13 @@ const (
 
 // aggregateImageRe: the names aggregate pictures are saved under (the
 // content's hash), the only ones served.
-var aggregateImageRe = regexp.MustCompile(`^[0-9a-f]{32}\.jpg$`)
+var aggregateImageRe = regexp.MustCompile(`^[0-9a-f]{32}\.(jpg|svg)$`)
+
+// aggImage is a picture ready to save: a JPEG, or a cleaned SVG.
+type aggImage struct {
+	data []byte
+	ext  string // "jpg" or "svg"
+}
 
 // AggregateMeta is an entry's description and picture.
 type AggregateMeta struct {
@@ -71,24 +77,37 @@ func aggregateMetaFor(cat, name string) (AggregateMeta, bool) {
 	return m, m.Description != "" || m.Image != ""
 }
 
-// aggregateImageJPEG is the picture to save for an uploaded image's bytes.
-func aggregateImageJPEG(data []byte) ([]byte, error) {
-	return imageutil.CoverJPEG(data, imageutil.CoverOptions{
+// aggregateImage is the picture to save for an uploaded image's bytes: an
+// SVG cleaned (sanitizeSVG), anything else as a JPEG.
+func aggregateImage(data []byte) (*aggImage, error) {
+	if looksLikeSVG(data) {
+		svg, err := sanitizeSVG(data)
+		if err != nil {
+			return nil, err
+		}
+		return &aggImage{svg, "svg"}, nil
+	}
+	jpg, err := imageutil.CoverJPEG(data, imageutil.CoverOptions{
 		MaxWidth:     aggregateImageMaxWidth,
 		KeepMaxBytes: aggregateImageKeepMaxBytes,
 		Quality:      aggregateImageQuality,
 	})
+	if err != nil {
+		return nil, err
+	}
+	return &aggImage{jpg, "jpg"}, nil
 }
 
-// saveAggregateImage writes a picture (from aggregateImageJPEG) under its
+// saveAggregateImage writes a picture (from aggregateImage) under its
 // content's hash and returns the file name.
-func saveAggregateImage(data []byte) (string, error) {
+func saveAggregateImage(img *aggImage) (string, error) {
+	data := img.data
 	dir := filepath.Join(dataDir, aggregateImagesDir)
 	if err := os.MkdirAll(dir, 0o755); err != nil {
 		return "", err
 	}
 	sum := sha256.Sum256(data)
-	name := hex.EncodeToString(sum[:16]) + ".jpg"
+	name := hex.EncodeToString(sum[:16]) + "." + img.ext
 	path := filepath.Join(dir, name)
 	if _, err := os.Stat(path); err == nil {
 		return name, nil // the same picture is already there
@@ -123,10 +142,10 @@ func removeUnusedAggregateImage(name string) {
 }
 
 // metaEdit is a change to an entry's meta: nil Description leaves it as
-// it is, Image (JPEG bytes) replaces the picture, RemoveImage drops it.
+// it is, Image replaces the picture, RemoveImage drops it.
 type metaEdit struct {
 	Description *string
-	Image       []byte
+	Image       *aggImage
 	RemoveImage bool
 }
 
@@ -293,7 +312,9 @@ func featuredHandler(w http.ResponseWriter, r *http.Request) {
 }
 
 // aggregateImageHandler: GET /aggregate-images/{file}. A file's name is its
-// content's hash, so it never changes.
+// content's hash, so it never changes. An SVG (cleaned when saved) is also
+// sent with a CSP that runs no script and loads nothing, should it be
+// opened as a page.
 func aggregateImageHandler(w http.ResponseWriter, r *http.Request) {
 	name := r.PathValue("file")
 	if !aggregateImageRe.MatchString(name) {
@@ -301,7 +322,13 @@ func aggregateImageHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	w.Header().Set("Cache-Control", "private, max-age=31536000, immutable")
-	w.Header().Set("Content-Type", "image/jpeg")
+	w.Header().Set("X-Content-Type-Options", "nosniff")
+	if strings.HasSuffix(name, ".svg") {
+		w.Header().Set("Content-Type", "image/svg+xml")
+		w.Header().Set("Content-Security-Policy", "default-src 'none'; img-src data:; style-src 'unsafe-inline'; sandbox")
+	} else {
+		w.Header().Set("Content-Type", "image/jpeg")
+	}
 	http.ServeFile(w, r, filepath.Join(dataDir, aggregateImagesDir, name))
 }
 

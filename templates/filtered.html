@@ -104,7 +104,7 @@
                     <span id="group-image-empty"{{ if .ImageURL }} hidden{{ end }}>Add picture</span>
                 </button>
                 <button type="button" id="group-image-remove" class="group-image-remove"{{ if not .ImageURL }} hidden{{ end }}>Remove</button>
-                <input id="group-image-file" type="file" accept="image/*" hidden>
+                <input id="group-image-file" type="file" accept="image/*,.svg" hidden>
             </div>
             <div class="group-fields">
                 <label class="group-field">

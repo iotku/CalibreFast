@@ -542,8 +542,8 @@ type groupEdit struct {
 }
 
 // readGroupEdit reads a group edit: a JSON body, or a multipart form with
-// the JSON in "data" and a new picture in "image".
-func readGroupEdit(r *http.Request) (e groupEdit, img []byte, err error) {
+// the JSON in "data" and a new picture (raster or SVG) in "image".
+func readGroupEdit(r *http.Request) (e groupEdit, img *aggImage, err error) {
 	if !strings.HasPrefix(r.Header.Get("Content-Type"), "multipart/form-data") {
 		err = json.NewDecoder(r.Body).Decode(&e)
 		return
@@ -562,7 +562,7 @@ func readGroupEdit(r *http.Request) (e groupEdit, img []byte, err error) {
 	case ferr != nil:
 		return e, nil, ferr
 	}
-	img, err = aggregateImageJPEG(data)
+	img, err = aggregateImage(data)
 	return
 }
 

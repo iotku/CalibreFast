@@ -12,6 +12,7 @@ import (
 	"os"
 	"path/filepath"
 	"slices"
+	"strings"
 	"testing"
 )
 
@@ -193,6 +194,35 @@ func TestAggregateFeaturedAndMeta(t *testing.T) {
 	do(admin, "DELETE", "/api/aggregates/tag/featured/Space", "", http.StatusOK)
 	if isFeaturedAggregate("tag", "Outer Space") {
 		t.Error("still featured")
+	}
+
+	// An SVG picture is kept as SVG, cleaned, and served with a CSP.
+	body.Reset()
+	mw = multipart.NewWriter(&body)
+	_ = mw.WriteField("data", `{}`)
+	fw, _ = mw.CreateFormFile("image", "pic.svg")
+	_, _ = fw.Write([]byte(`<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 4 4" onload="alert(1)"><rect width="4" height="4"/></svg>`))
+	_ = mw.Close()
+	req = asUser(httptest.NewRequest("PUT", "/api/groups/tag/Space", &body), admin)
+	req.Header.Set("Content-Type", mw.FormDataContentType())
+	rec = httptest.NewRecorder()
+	mux.ServeHTTP(rec, req)
+	if rec.Code != http.StatusOK {
+		t.Fatalf("svg save: %d %s", rec.Code, rec.Body)
+	}
+	m4, _ := aggregateMetaFor("tag", "Outer Space")
+	if filepath.Ext(m4.Image) != ".svg" || !aggregateImageRe.MatchString(m4.Image) {
+		t.Fatalf("svg stored as %q", m4.Image)
+	}
+	rec = do(reader, "GET", m4.imageURL(), "", http.StatusOK)
+	if ct := rec.Header().Get("Content-Type"); ct != "image/svg+xml" {
+		t.Errorf("svg served as %q", ct)
+	}
+	if csp := rec.Header().Get("Content-Security-Policy"); !strings.Contains(csp, "sandbox") || !strings.Contains(csp, "default-src 'none'") {
+		t.Errorf("svg CSP %q", csp)
+	}
+	if strings.Contains(rec.Body.String(), "onload") || !strings.Contains(rec.Body.String(), "<rect") {
+		t.Errorf("svg body %s", rec.Body)
 	}
 }
 
