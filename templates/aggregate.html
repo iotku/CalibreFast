@@ -11,7 +11,7 @@
 {{ $tb := topbar "Active" .Active "Title" .Title "NavTitle" true }}
 {{ template "topbar-start" $tb }}
 {{ template "topbar-end" $tb }}
-<main id="aggregate-page" data-src="{{ .DataURL }}" data-prefix="{{ .Prefix }}">
+<main id="aggregate-page" data-src="{{ .DataURL }}" data-prefix="{{ .Prefix }}" data-tiers="{{ .Tiers }}">
     {{/* Finds every entry, single-book ones too (web/aggregate.ts). */}}
     <div class="agg-search">
         <input id="agg-search" class="input-search" type="search" placeholder="Find a {{ .Label }}…" aria-label="Find a {{ .Label }}"
@@ -19,32 +19,64 @@
                data-1p-ignore data-lpignore="true" data-form-type="other" />
     </div>
     <div id="agg-results" class="agg-cloud" hidden aria-live="polite"></div>
-    {{ with .Featured }}
-    <section id="agg-featured" class="agg-featured" aria-label="Featured">
-        <h2 class="agg-heading">Featured</h2>
-        <div class="agg-cards">
-            {{- range . }}
-            <a class="agg-card{{ if .Grouped }} agg-group{{ end }}" href="{{ .Href }}">
-                {{ if .ImageURL }}<img class="agg-card-img" src="{{ .ImageURL }}" alt="" loading="lazy">{{ end }}
-                <span class="agg-card-body">
-                    <span class="agg-card-name">{{ .Name }}{{ if .Sub }} <span class="agg-sub">{{ .Sub }}</span>{{ end }}</span>
-                    <span class="agg-card-count">{{ count .Count "book" "books" }}</span>
-                    {{ if .Description }}<span class="agg-card-desc">{{ .Description }}</span>{{ end }}
-                </span>
-            </a>
-            {{- end }}
-        </div>
-    </section>
-    {{ end }}
-    <div id="aggregate-grid" class="agg-cloud">
-        {{- range .Items }}
-        <a class="agg-item{{ if .Grouped }} agg-group{{ end }}" href="{{ .Href }}" style="font-size: {{ .FontSize }}px; --o: {{ .Opacity }}"
-           {{- if .Grouped }} title="Group: {{ .Members }}"{{ end }}>{{ .Name }}{{ if .Sub }} <span class="agg-sub">{{ .Sub }}</span>{{ end }} ({{ .Count }})</a>
-        {{- else }}
-        <p class="status-message">Nothing with more than one book. Search to find the rest.</p>
-        {{- end }}
+    <div id="agg-browse">
+        {{ with .Featured }}
+        <section class="agg-featured" aria-label="Featured">
+            <h2 class="agg-heading">Featured</h2>
+            <div class="agg-cards">
+                {{- range . }}
+                <a class="agg-card{{ if .Grouped }} agg-group{{ end }}" href="{{ .Href }}">
+                    {{ if .ImageURL }}<img class="agg-card-img" src="{{ .ImageURL }}" alt="" loading="lazy">{{ end }}
+                    <span class="agg-card-body">
+                        <span class="agg-card-name">{{ .Name }}{{ if .Sub }} <span class="agg-sub">{{ .Sub }}</span>{{ end }}</span>
+                        <span class="agg-card-count">{{ count .Count "book" "books" }}</span>
+                        {{ if .Description }}<span class="agg-card-desc">{{ .Description }}</span>{{ end }}
+                    </span>
+                </a>
+                {{- end }}
+            </div>
+        </section>
+        {{ end }}
+        {{ with .Discover }}
+        {{/* A random few, single-book ones too; the button draws another few. */}}
+        <section class="agg-discover" aria-labelledby="agg-discover-h">
+            <div class="agg-section-head">
+                <h2 class="agg-heading" id="agg-discover-h">Discover</h2>
+                <button type="button" id="agg-reshuffle" class="agg-pill" hidden>Show others</button>
+            </div>
+            <div id="agg-discover-list" class="agg-chips">
+                {{- range . }}
+                {{ template "agg-entry" (dict "E" . "Class" "agg-chip") }}
+                {{- end }}
+            </div>
+        </section>
+        {{ end }}
+        <section class="agg-all" aria-labelledby="agg-all-h">
+            <div class="agg-section-head">
+                <h2 class="agg-heading" id="agg-all-h">All {{ .Title }}</h2>
+                <div id="agg-order" class="agg-order" role="group" aria-label="Order" hidden>
+                    <button type="button" class="agg-pill" data-order="count" aria-pressed="true">Most books</button>
+                    <button type="button" class="agg-pill" data-order="az" aria-pressed="false">A–Z</button>
+                    <button type="button" class="agg-pill" data-order="shuffle" aria-pressed="false" title="A new random order each time">Shuffle</button>
+                </div>
+            </div>
+            <nav id="agg-letters" class="agg-letters" aria-label="Jump to letter" hidden></nav>
+            <div id="aggregate-grid" class="agg-cloud">
+                {{- range .Items }}
+                {{ template "agg-entry" (dict "E" . "Class" (printf "agg-item agg-t%d" .Tier)) }}
+                {{- else }}
+                <p class="status-message">Nothing with more than one book. Search to find the rest.</p>
+                {{- end }}
+            </div>
+        </section>
     </div>
+    <div id="agg-preview" class="agg-preview" hidden></div>
 </main>
 <script type="module" src="{{ asset "aggregate.js" }}"></script>
 </body>
 </html>
+{{/* One entry of the cloud or Discover (AggregateDisplayItem as .E); web/aggregate.ts builds the same. */}}
+{{ define "agg-entry" }}{{ with .E -}}
+<a class="{{ $.Class }}{{ if .Grouped }} agg-group{{ end }}" href="{{ .Href }}" data-count="{{ .Count }}"{{ if .Sort }} data-sort="{{ .Sort }}"{{ end }}
+   title="{{ if .Grouped }}Group: {{ .Members }} · {{ end }}{{ count .Count "book" "books" }}">{{ .Name }}{{ if .Sub }} <span class="agg-sub">{{ .Sub }}</span>{{ end }}<span class="agg-count">{{ .Count }}</span></a>
+{{- end }}{{ end }}

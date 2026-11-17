@@ -2427,13 +2427,214 @@ body.book-standalone {
 }
 
 .agg-cloud {
-    line-height: 2;
+    display: flex;
+    flex-wrap: wrap;
+    align-items: baseline;
+    gap: 2px 4px;
+    line-height: 1.25;
 }
 
 .agg-cloud[hidden],
-#aggregate-grid[hidden],
-.agg-featured[hidden] {
+#agg-browse[hidden],
+.agg-letters[hidden],
+.agg-order[hidden],
+.agg-preview[hidden],
+.agg-pill[hidden] {
     display: none;
+}
+
+.agg-section-head {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    justify-content: space-between;
+    gap: 8px 12px;
+    margin: 0 0 0.6rem;
+}
+
+.agg-section-head .agg-heading {
+    margin: 0;
+}
+
+.agg-discover {
+    margin: 0 0 1.75rem;
+}
+
+/* Small rounded buttons: the cloud's order and Discover's "Show others" */
+.agg-order {
+    display: inline-flex;
+    padding: 2px;
+    gap: 2px;
+    background: var(--bg-surface);
+    border: 1px solid var(--border-medium);
+    border-radius: 999px;
+}
+
+.agg-pill {
+    min-height: 32px;
+    padding: 0 12px;
+    font: inherit;
+    font-size: 0.85rem;
+    color: var(--text-secondary);
+    background: transparent;
+    border: 1px solid transparent;
+    border-radius: 999px;
+    cursor: pointer;
+}
+
+.agg-discover .agg-pill {
+    border-color: var(--border-medium);
+}
+
+.agg-pill:hover {
+    color: var(--text-primary);
+}
+
+.agg-pill[aria-pressed="true"] {
+    color: var(--bg-primary);
+    background: #c8a96e;
+}
+
+/* Discover: same-size chips, so a one-book entry reads as well as any */
+.agg-chips {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 8px;
+}
+
+.agg-chip {
+    display: inline-flex;
+    align-items: baseline;
+    gap: 6px;
+    padding: 6px 12px;
+    color: var(--text-primary);
+    text-decoration: none;
+    background: var(--bg-surface);
+    border: 1px solid var(--border-medium);
+    border-radius: 999px;
+    transition: border-color 0.15s;
+}
+
+.agg-chip:hover,
+.agg-chip:focus-visible {
+    border-color: #c8a96e;
+}
+
+/* A phone: eight, so the cloud starts within the first screen */
+@media (max-width: 640px) {
+    .agg-chips > :nth-child(n + 9) {
+        display: none;
+    }
+}
+
+/* A–Z: a letter before each run, and a bar to jump between them */
+.agg-letters {
+    position: sticky;
+    top: var(--topbar-total);
+    z-index: 2;
+    display: flex;
+    flex-wrap: wrap;
+    gap: 2px;
+    margin: 0 0 0.75rem;
+    padding: 6px 0;
+    background: var(--bg-primary);
+}
+
+.agg-letters a {
+    min-width: 28px;
+    padding: 4px 6px;
+    text-align: center;
+    font-size: 0.85rem;
+    color: var(--text-secondary);
+    text-decoration: none;
+    border-radius: var(--radius-small, 4px);
+}
+
+.agg-letters a:hover,
+.agg-letters a:focus-visible {
+    color: var(--text-primary);
+    background: var(--bg-elevated);
+}
+
+.agg-letter {
+    flex-basis: 100%;
+    margin: 0.9rem 0 0.2rem;
+    padding-bottom: 2px;
+    font-size: 0.8rem;
+    font-weight: 600;
+    letter-spacing: 0.06em;
+    color: #c8a96e;
+    border-bottom: 1px solid var(--border-subtle);
+    scroll-margin-top: calc(var(--topbar-total) + 56px);
+}
+
+.agg-letter:first-child {
+    margin-top: 0;
+}
+
+/* Hover preview: a few of the entry's covers */
+.agg-preview {
+    position: fixed;
+    z-index: 50;
+    max-width: min(360px, calc(100vw - 16px));
+    padding: 10px 12px;
+    background: var(--bg-surface);
+    border: 1px solid var(--border-medium);
+    border-radius: var(--radius-medium);
+    box-shadow: 0 8px 24px rgba(0, 0, 0, 0.5);
+    pointer-events: none;
+}
+
+.agg-preview-head {
+    margin-bottom: 8px;
+    font-size: 0.85rem;
+    color: var(--text-secondary);
+    overflow-wrap: anywhere;
+}
+
+.agg-preview-head strong {
+    color: var(--text-primary);
+}
+
+.agg-preview-covers {
+    display: flex;
+    gap: 6px;
+}
+
+.agg-preview-cover {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    width: 60px;
+    height: 90px;
+    flex: none;
+    overflow: hidden;
+    border-radius: 3px;
+}
+
+.agg-preview-cover img {
+    width: 100%;
+    height: 100%;
+    object-fit: cover;
+}
+
+.agg-preview-title {
+    padding: 4px;
+    font-size: 0.65rem;
+    line-height: 1.2;
+    text-align: center;
+    color: #fff;
+    overflow: hidden;
+    display: -webkit-box;
+    -webkit-line-clamp: 5;
+    line-clamp: 5;
+    -webkit-box-orient: vertical;
+}
+
+.agg-preview-more {
+    margin-top: 6px;
+    font-size: 0.8rem;
+    color: var(--text-muted);
 }
 
 .agg-search {
@@ -2565,17 +2766,38 @@ body.book-standalone {
     }
 }
 
+/* A cloud entry. Five sizes by rank (Go: aggregateTiers); the smallest
+   stays readable, so the long tail isn't lost in faint 12px text. */
 .agg-item {
+    padding: 3px 8px;
     color: var(--text-primary, #eee);
     text-decoration: none;
-    padding: 4px 8px;
-    display: inline-block;
-    opacity: var(--o, 1);
-    transition: opacity 0.15s;
+    border-radius: var(--radius-small, 4px);
+    transition: background-color 0.15s, color 0.15s;
 }
 
-.agg-item:hover {
-    opacity: 1;
+.agg-item:hover,
+.agg-item:focus-visible {
+    background: var(--bg-elevated);
+    color: #e3c88f;
+}
+
+.agg-t1 { font-size: 0.95rem; color: var(--text-secondary); }
+.agg-t2 { font-size: 1.08rem; }
+.agg-t3 { font-size: 1.25rem; }
+.agg-t4 { font-size: 1.5rem; font-weight: 500; }
+.agg-t5 { font-size: 1.9rem; font-weight: 600; }
+
+.agg-count {
+    margin-left: 0.3em;
+    font-size: 0.7rem;
+    font-weight: 400;
+    color: var(--text-muted);
+    font-variant-numeric: tabular-nums;
+}
+
+.agg-chip .agg-count {
+    margin-left: 0;
 }
 
 .meta-link {
