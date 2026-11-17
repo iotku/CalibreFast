@@ -111,13 +111,15 @@
                     <strong>Possible duplicate.</strong> {{ if .SameFile }}Another book in the library has an identical file.{{ else }}Another book in the library has the same title and authors.{{ end }}
                     {{ end }}
                 </p>
-                <ul>
+                {{ $pick := not (or $.Merge $.Import) }}
+                <ul{{ if $pick }} id="duplicate-list" class="duplicate-pick" data-uuid="{{ $.UUID }}"{{ end }}>
                     {{ range .Books }}
-                    <li><a href="/book/get/{{ .UUID }}" target="_blank">“{{ .Title }}”</a>{{ if .Authors }} by {{ join .Authors " & " }}{{ end }}
+                    <li>{{ if $pick }}<input type="checkbox" value="{{ .UUID }}" aria-label="Merge “{{ .Title }}” into this book"{{ if .SameFile }} checked{{ end }}> {{ end }}<a href="/book/get/{{ .UUID }}" target="_blank">“{{ .Title }}”</a>{{ if .Authors }} by {{ join .Authors " & " }}{{ end }}
                         <span class="duplicate-why">{{ if .SameFile }}identical file{{ else if .SameAuthors }}same title &amp; authors{{ else if .SameISBN }}same ISBN{{ end }}</span>
                         {{ if and $.Merge $.Merge.Incoming }}<a class="btn-standard duplicate-merge" href="/book/merge?ids={{ $.UUID }},{{ .UUID }}&amp;keep={{ $.UUID }}" title="Merge “{{ .Title }}” into this book, in the merge editor">Merge it into this book</a>{{ end }}</li>
                     {{ end }}
                 </ul>
+                {{ if $pick }}<button type="button" id="duplicate-merge-selected" class="btn-standard duplicate-merge-selected">Merge Selected</button>{{ end }}
             </section>
             {{ end }}{{ end }}
 
@@ -471,6 +473,20 @@ import { mountMetadataEditor } from {{ asset "metadata.js" }};
             import { addFiles, libraryBook, mergeBooks, pendingImport } from {{ asset "book-target.js" }};
 
             const form = document.getElementById("metadata-form");
+            // Possible duplicates of a library book: merge the ones ticked into it.
+            const dupList = document.getElementById("duplicate-list");
+            const dupMerge = document.getElementById("duplicate-merge-selected");
+            if (dupList && dupMerge) {
+                const picked = () => [...dupList.querySelectorAll("input:checked")].map((c) => c.value);
+                const sync = () => { dupMerge.disabled = picked().length === 0; };
+                dupList.addEventListener("change", sync);
+                sync();
+                dupMerge.addEventListener("click", () => {
+                    const keep = dupList.dataset.uuid;
+                    const ids = [keep, ...picked()].map(encodeURIComponent).join(",");
+                    location.assign(`/book/merge?ids=${ids}&keep=${encodeURIComponent(keep)}`);
+                });
+            }
             const mergePanel = document.getElementById("merge-panel");
             // A book in the library, one waiting in the import queue, or
             // books being merged into one.

@@ -791,6 +791,7 @@ func registerImportRoutes() {
 	http.HandleFunc("GET /import/{id}/metadata", requireEditor(importMetadataHandler))
 	http.HandleFunc("POST /import/{id}/apply", requireEditor(importApplyHandler))
 	http.HandleFunc("POST /import/{id}/discard", requireEditor(importDiscardHandler))
+	http.HandleFunc("POST /api/imports/discard-existing", requireEditor(importDiscardExistingHandler))
 	http.HandleFunc("/import/{id}/isbns", requireEditor(importISBNsHandler))
 	http.HandleFunc("GET /import/{id}/formats", requireEditor(importFormatsHandler))
 	http.HandleFunc("GET /import/{id}/file/{format}", requireEditor(importFileHandler))
