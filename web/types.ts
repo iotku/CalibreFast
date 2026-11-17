@@ -19,6 +19,19 @@ export interface Book {
      * path, authors and dates are the first book's.
      */
     series_card?: SeriesCard;
+    /**
+     * A book not in the library yet (Go: placeholderCard in
+     * placeholders.go): its uuid is the placeholder's.
+     */
+    placeholder?: PlaceholderCard;
+}
+
+/** A placeholder book's card (Go: placeholderCard). */
+export interface PlaceholderCard {
+    /** Its page. */
+    href: string;
+    /** Its picture; absent for none. */
+    cover?: string;
 }
 
 /** A series on a shelf, shown as one card (Go: seriesCard). */

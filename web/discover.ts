@@ -975,7 +975,7 @@ function setupOnDeck(): void {
     section.addEventListener("click", (e) => {
         const btn = e.target instanceof Element ? e.target.closest<HTMLButtonElement>('[data-act="deck-hide"]') : null;
         const card = btn?.closest<HTMLElement>(".book");
-        const uuid = card?.dataset["uuid"];
+        const uuid = card?.dataset["uuid"] ?? card?.dataset["placeholder"]; // a book, or one not in the library yet
         if (!btn || !card || !uuid) return;
         e.preventDefault();
         // Off the row at once; for good on the server.

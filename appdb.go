@@ -325,6 +325,21 @@ var migrations = []string{
 		PRIMARY KEY (user_id, book_uuid)
 	);
 	`,
+	// 19: placeholder books (placeholders.go): books not in the library
+	// yet, kept here so metadata.db never holds guesses. meta is the
+	// metadata as JSON (opf.Metadata); cover a file in placeholder-covers.
+	// source says who made it: "manual", or a lookup service later.
+	`
+	CREATE TABLE placeholders (
+		uuid       TEXT    PRIMARY KEY,
+		meta       TEXT    NOT NULL,
+		cover      TEXT    NOT NULL DEFAULT '',
+		source     TEXT    NOT NULL DEFAULT 'manual',
+		created_by INTEGER REFERENCES users(id) ON DELETE SET NULL,
+		created_at INTEGER NOT NULL,
+		updated_at INTEGER NOT NULL
+	);
+	`,
 }
 
 // openAppDB opens (creating if needed) and migrates the app database.

@@ -163,6 +163,9 @@ type Book struct {
 	// SeriesCard: set on a shelf's whole-series entry (shelf_series.go),
 	// whose UUID is its "series:<name>" key rather than a book's.
 	SeriesCard *seriesCard `json:"series_card,omitempty"`
+	// Placeholder: set on a book not in the library (placeholders.go),
+	// whose UUID is the placeholder's.
+	Placeholder *placeholderCard `json:"placeholder,omitempty"`
 }
 
 type LibraryInfo struct {
@@ -646,6 +649,7 @@ func serveLibraryHTTP() {
 	// Merging books, and the bulk metadata editor (merge.go, bulk_edit.go)
 	registerMergeRoutes()
 	registerAddFormatRoutes()
+	registerPlaceholderRoutes()
 	registerBulkEditRoutes()
 	registerLibraryRepairRoutes()
 	registerNotDuplicateRoutes()
