@@ -72,7 +72,9 @@ func serveWorker(w http.ResponseWriter, r *http.Request) {
 
 // offlineHandler: GET /offline, the page the service worker shows when the
 // server can't be reached. It's the same for everyone (the list of kept
-// books is filled in by the browser), so it needs no sign-in.
+// books is filled in by the browser). On a private server it, like /sw.js,
+// needs a session: the worker is only registered by signed-in pages, and
+// fetches both (with the cookie) when it installs.
 func offlineHandler(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Cache-Control", "no-cache")
 	logErr(templates.ExecuteTemplate(w, "offline.html", PageData{Title: SiteTitle}), "render offline page")

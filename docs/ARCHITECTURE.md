@@ -58,7 +58,7 @@ Each book's `authors` is its authors' names in Calibre's order, `A & B` (`bookAu
 
 ## Frontend
 
-- **TypeScript and CSS, built by Go tools.** Browser code is TypeScript in `web/`, along with the stylesheets: `web/style.css` for the app, and `web/login.css`, the sign-in page's own (just what its form uses, so signed-out visitors don't get the whole app's styles; `TestLoginCSSOnlyNamesLoginClasses` keeps it to `login.html`'s classes). There's no Node, npm or `package.json`.
+- **TypeScript and CSS, built by Go tools.** Browser code is TypeScript in `web/`, along with the stylesheets: `web/style.css` for the app, and `web/auth.css`, for the pages seen before signing in (`login.html`, `link.html`): just what they use, so signed-out visitors don't get the whole app's styles. `TestAuthCSSOnlyNamesAuthPageClasses` keeps it to those pages' classes. On a private server it's the only `/static/` file served without a session (`isPublicPath`); the rest, `/sw.js` and `/offline` answer 401. There's no Node, npm or `package.json`.
   - `go generate` runs two steps, both pinned as Go tools in their own module, `tools/go.mod`, so the server itself still builds with Go 1.25 and none of their dependencies. Working on the browser code needs Go 1.26+, which `tsgo` requires.
     1. `tsgo`, the Go-native TypeScript compiler, type-checks `web/` (`tsconfig.json`: strict mode, no unused locals/parameters, every file is a module). It writes nothing.
     2. `tools/jsbuild` uses esbuild's Go API to bundle each entry with its imports, minify it, and write it to `static/dist/` named by content hash (`app-htmx-NGM5EDXU.js`), with a source map and `manifest.json`.
