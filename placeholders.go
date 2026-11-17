@@ -26,7 +26,6 @@ import (
 	"errors"
 	"fmt"
 	"log"
-	"math"
 	"net/http"
 	"net/url"
 	"os"
@@ -181,6 +180,11 @@ func savePlaceholder(p *placeholder, by *User) error {
 	}
 	now := nowUnix()
 	p.UpdatedAt = now
+	// Its series' gaps, before and after (series_gaps.go).
+	if old := placeholderByUUID(p.UUID); old != nil {
+		defer gapsPlaceholderChanged(old.Meta.Series)
+	}
+	defer gapsPlaceholderChanged(p.Meta.Series)
 	if p.UUID == "" {
 		p.UUID = uuid.New().String()
 		p.CreatedAt = now
@@ -210,6 +214,7 @@ func deletePlaceholder(id string) error {
 		return err
 	}
 	placeholdersChanged()
+	gapsPlaceholderChanged(p.Meta.Series)
 	removeUnusedPlaceholderCover(p.Cover)
 	return nil
 }
@@ -395,95 +400,6 @@ func nextPlaceholder(name string, after, before float64, held map[float64]bool) 
 }
 
 // ---------------------------------------------------------------------------
-// Gaps in the library's series
-// ---------------------------------------------------------------------------
-
-// seriesGap: a number missing from a series, for /missing.
-type seriesGap struct {
-	Series  string
-	Href    string // the series page
-	Numbers []int  // missing, at most gapsShown
-	More    int    // missing beyond those
-	Authors string // of its first book, to start a placeholder with
-}
-
-const (
-	gapsShown = 12
-	// gapsMaxIndex: series numbered past this (years, issue numbers) are
-	// left out.
-	gapsMaxIndex = 500
-)
-
-// seriesGaps: the whole numbers from 1 to each library series' highest
-// (a book's or a placeholder's) that neither a book nor a placeholder has.
-func seriesGaps(c *catalog, phs []*placeholder) []seriesGap {
-	type seen struct {
-		have  map[int]bool
-		top   float64
-		first *catalogBook
-	}
-	by := map[int32]*seen{}
-	for i := range c.books {
-		b := &c.books[i]
-		if b.Removed || b.Series == 0 {
-			continue
-		}
-		s := by[b.Series]
-		if s == nil {
-			s = &seen{have: map[int]bool{}}
-			by[b.Series] = s
-		}
-		if b.SeriesIndex == math.Trunc(b.SeriesIndex) {
-			s.have[int(b.SeriesIndex)] = true
-		}
-		s.top = max(s.top, b.SeriesIndex)
-		if s.first == nil || seriesLess(b, s.first) {
-			s.first = b
-		}
-	}
-	held := map[string]map[int]bool{}
-	tops := map[string]float64{}
-	for _, p := range phs {
-		if p.Meta.Series == "" {
-			continue
-		}
-		k := strings.ToLower(p.Meta.Series)
-		if held[k] == nil {
-			held[k] = map[int]bool{}
-		}
-		i := p.index()
-		if i == math.Trunc(i) {
-			held[k][int(i)] = true
-		}
-		tops[k] = max(tops[k], i)
-	}
-	var out []seriesGap
-	for id, s := range by {
-		name := c.seriesNames[id]
-		s.top = max(s.top, tops[strings.ToLower(name)])
-		if s.top > gapsMaxIndex {
-			continue
-		}
-		g := seriesGap{Series: name, Href: categoryByKey("series").href(name), Authors: s.first.Authors}
-		for n := 1; n <= int(s.top); n++ {
-			if s.have[n] || held[strings.ToLower(name)][n] {
-				continue
-			}
-			if len(g.Numbers) < gapsShown {
-				g.Numbers = append(g.Numbers, n)
-			} else {
-				g.More++
-			}
-		}
-		if len(g.Numbers) > 0 {
-			out = append(out, g)
-		}
-	}
-	slices.SortFunc(out, func(a, b seriesGap) int { return cmp.Compare(strings.ToLower(a.Series), strings.ToLower(b.Series)) })
-	return out
-}
-
-// ---------------------------------------------------------------------------
 // Pages
 // ---------------------------------------------------------------------------
 
@@ -594,7 +510,7 @@ func newPlaceholderPageHandler(w http.ResponseWriter, r *http.Request) {
 // GET /missing: every placeholder, and the gaps in the library's series.
 func missingPageHandler(w http.ResponseWriter, r *http.Request) {
 	phs := allPlaceholders()
-	d := MissingPageData{Title: "Missing books — " + SiteTitle, Count: len(phs), Writable: true, Gaps: seriesGaps(currentCatalog(), phs)}
+	d := MissingPageData{Title: "Missing books — " + SiteTitle, Count: len(phs), Writable: true, Gaps: seriesGaps()}
 	by := map[string]*missingSeries{}
 	for _, p := range phs {
 		k := strings.ToLower(p.Meta.Series)

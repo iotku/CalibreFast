@@ -359,6 +359,7 @@ func catalogFlush() error {
 		return err
 	}
 	libraryCatalog.Store(next)
+	gapsCatalogChanged(old, next, append(reread, removed...)) // only their series (series_gaps.go)
 	scheduleCatalogSnapshot()
 	refreshFeatured() // a title or cover on a featured shelf
 	refreshTagRows()  // the tags' counts

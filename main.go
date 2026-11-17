@@ -1120,6 +1120,7 @@ func writeLibraryPages() error {
 		return err
 	}
 	libraryCatalog.Store(cat)
+	gapsReset() // worked out again at the next /missing view (series_gaps.go)
 	if _, err := writePagesFromCatalog(cat); err != nil {
 		return err
 	}

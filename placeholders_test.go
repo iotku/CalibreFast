@@ -136,8 +136,8 @@ func TestPlaceholders(t *testing.T) {
 	}
 
 	// No gaps (Other has 1 and 2); editing keeps it; /missing lists them.
-	if gaps := seriesGaps(currentCatalog(), allPlaceholders()); len(gaps) != 0 {
-		t.Errorf("gaps %+v", gaps)
+	if g := seriesGaps(); len(g) != 0 {
+		t.Errorf("gaps %+v", g)
 	}
 	create(`{"title":"Other Six","series":"other","series_index":"6"}`)
 	do(admin, "PUT", "/api/placeholders/"+half, `{"title":"Other One and a Half","series":"Other","series_index":"1.5","creators":"Writer"}`, http.StatusOK)
@@ -169,25 +169,84 @@ func TestPlaceholders(t *testing.T) {
 func TestSeriesGaps(t *testing.T) {
 	db := catalogFixture(t)
 	setupTestAppDB(t)
+	placeholdersChanged()
+	t.Cleanup(placeholdersChanged)
 	t.Chdir(t.TempDir())
+	saga := map[float64]string{}
 	for _, n := range []float64{1, 2, 5, 2.5} {
 		uuid := addTestBook(t, db, "Book", []string{"W"}, nil, "Saga", "epub")
 		mustExec(t, db, `UPDATE books SET series_index = ? WHERE uuid = ?`, n, uuid)
+		saga[n] = uuid
 	}
 	uuid := addTestBook(t, db, "Year", []string{"W"}, nil, "Annual", "epub")
 	mustExec(t, db, `UPDATE books SET series_index = 2004 WHERE uuid = ?`, uuid)
+	addTestBook(t, db, "Lone", []string{"W"}, nil, "Other", "epub") // #1: no gaps
 	if err := writeLibraryPages(); err != nil {
 		t.Fatal(err)
 	}
-	phs := []*placeholder{
-		{Meta: OPFMetadata{Title: "Four", Series: "saga", SeriesIndex: "4"}},
-		{Meta: OPFMetadata{Title: "Eight", Series: "Saga", SeriesIndex: "8"}},
-		{Meta: OPFMetadata{Title: "Alone", Series: "Nowhere", SeriesIndex: "3"}}, // no library books: not listed
+	newPH := func(title, series, index string) *placeholder {
+		t.Helper()
+		p := &placeholder{Meta: OPFMetadata{Title: title, Series: series, SeriesIndex: index}}
+		if err := savePlaceholder(p, nil); err != nil {
+			t.Fatal(err)
+		}
+		return p
 	}
-	gaps := seriesGaps(currentCatalog(), phs)
-	if len(gaps) != 1 || gaps[0].Series != "Saga" || !slices.Equal(gaps[0].Numbers, []int{3, 6, 7}) || gaps[0].Authors != "W" {
-		t.Fatalf("gaps %+v, want Saga #3, #6, #7 only (years left out)", gaps)
+	four := newPH("Four", "saga", "4")
+	eight := newPH("Eight", "Saga", "8")
+	newPH("Alone", "Nowhere", "3") // no library books: not listed
+	want := func(nums ...int) {
+		t.Helper()
+		got := seriesGaps()
+		if len(got) != 1 || got[0].Series != "Saga" || !slices.Equal(got[0].Numbers, nums) || got[0].Authors != "W" {
+			t.Fatalf("gaps %+v, want Saga %v only (years left out)", got, nums)
+		}
 	}
+	// Nothing is worked out before the first view.
+	if gaps.from != nil {
+		t.Fatal("gaps worked out before /missing was viewed")
+	}
+	want(3, 6, 7)
+
+	// Book changes move only their own numbers, and mark only their series.
+	flush := func(uuids ...string) {
+		t.Helper()
+		catalogChanged(uuids...)
+		if err := catalogFlush(); err != nil {
+			t.Fatal(err)
+		}
+		if gaps.from != currentCatalog() {
+			t.Fatal("gaps not kept up to date with the catalog")
+		}
+		if _, other := gaps.dirty["other"]; other || len(gaps.dirty) != 1 {
+			t.Fatalf("marked %v, want only saga", gaps.dirty)
+		}
+	}
+	three := addTestBook(t, db, "Three", []string{"W"}, nil, "Saga", "epub")
+	mustExec(t, db, `UPDATE books SET series_index = 3 WHERE uuid = ?`, three)
+	flush(three)
+	want(6, 7)
+	mustExec(t, db, `UPDATE books SET series_index = 9 WHERE uuid = ?`, saga[5])
+	flush(saga[5])
+	want(5, 6, 7)
+
+	// So do placeholders.
+	if err := deletePlaceholder(eight.UUID); err != nil {
+		t.Fatal(err)
+	}
+	if err := deletePlaceholder(four.UUID); err != nil {
+		t.Fatal(err)
+	}
+	want(4, 5, 6, 7, 8) // book 9 is the highest now
+
+	// A rebuilt catalog (startup) starts over at the next view.
+	if err := writeLibraryPages(); err != nil {
+		t.Fatal(err)
+	}
+	if gaps.from != nil {
+		t.Fatal("a new catalog kept the old gaps")
+	}
+	want(4, 5, 6, 7, 8)
 }
 
 func TestWithPlaceholder(t *testing.T) {
