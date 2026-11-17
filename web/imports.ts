@@ -133,11 +133,18 @@ discardExisting.addEventListener("click", async () => {
     }
 });
 
+// The last "couldn't load" message shown, cleared by the next load that works
+// (the server was only restarting, say), unless something else was said since.
+let loadError = "";
 async function refresh(): Promise<void> {
+    const status = byId("imports-status");
     try {
         render(await api<ImportQueue>("GET", "/api/imports"));
+        if (loadError && status.textContent === loadError) status.hidden = true;
+        loadError = "";
     } catch (err) {
-        say(`Couldn't load the queue: ${errorMessage(err)}`, true);
+        loadError = `Couldn't load the queue: ${errorMessage(err)}`;
+        say(loadError, true);
     }
 }
 
