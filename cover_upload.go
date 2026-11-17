@@ -97,17 +97,9 @@ func readCoverUpload(r *http.Request) ([]byte, error) {
 		if err := r.ParseMultipartForm(coverUploadMaxBytes); err != nil {
 			return nil, fmt.Errorf("failed to parse form: %w", err)
 		}
-		file, _, err := r.FormFile("cover")
+		data, err := formImageFile(r, "cover")
 		if err != nil {
-			return nil, fmt.Errorf("missing cover file: %w", err)
-		}
-		defer file.Close()
-		data, err := io.ReadAll(io.LimitReader(file, coverUploadMaxBytes+1))
-		if err != nil {
-			return nil, errors.New("failed to read the cover file")
-		}
-		if len(data) > coverUploadMaxBytes {
-			return nil, errors.New("the cover file is too big")
+			return nil, err
 		}
 		return coverJPEG(data)
 	}
@@ -130,6 +122,25 @@ func readCoverUpload(r *http.Request) ([]byte, error) {
 		return nil, fmt.Errorf("failed to decode base64: %w", err)
 	}
 	return coverJPEG(imgData)
+}
+
+// formImageFile reads the image file in a parsed multipart form's field,
+// up to coverUploadMaxBytes. A missing file is an error wrapping
+// http.ErrMissingFile. Its errors are the client's (400).
+func formImageFile(r *http.Request, field string) ([]byte, error) {
+	file, _, err := r.FormFile(field)
+	if err != nil {
+		return nil, fmt.Errorf("missing %s file: %w", field, err)
+	}
+	defer file.Close()
+	data, err := io.ReadAll(io.LimitReader(file, coverUploadMaxBytes+1))
+	if err != nil {
+		return nil, fmt.Errorf("failed to read the %s file", field)
+	}
+	if len(data) > coverUploadMaxBytes {
+		return nil, fmt.Errorf("the %s file is too big", field)
+	}
+	return data, nil
 }
 
 // saveCoverJPEG writes data (from coverJPEG) as dir/cover.jpg. The cover it

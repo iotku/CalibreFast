@@ -459,7 +459,10 @@ function jumpTo(to: Anchor): void {
     const row = clamp(Math.floor(to.index / cols), 0, Math.max(0, rows - 1));
     const [r0, r1] = windowRows(row);
     setWindow(r0 * cols, Math.min(total, r1 * cols)); // the document is full height before scrolling
-    window.scrollBy({ top: (row + to.frac) * rowH - viewTop(), behavior: "instant" });
+    // The first row: the top of the page, so what's above the grid (a
+    // filtered page's picture and description) shows too.
+    if (row === 0 && to.frac === 0) window.scrollTo({ top: 0, behavior: "instant" });
+    else window.scrollBy({ top: (row + to.frac) * rowH - viewTop(), behavior: "instant" });
     lastY = window.scrollY; // ours, not the user's: no fling, and the anchor stays exact
     sync();
     scheduleHistoryUpdate();
@@ -600,7 +603,8 @@ function scrollToPageTop(): void {
     const y = viewTop();
     let page = targetPage;
     if (pageTopRow(page) * rowH >= y - 2) page--;
-    const to = page < 1 ? 0 : pageTopRow(page) * rowH;
+    if (page < 1) return window.scrollTo({ top: 0, behavior: "instant" });
+    const to = pageTopRow(page) * rowH;
     window.scrollBy({ top: to - y, behavior: "instant" });
 }
 

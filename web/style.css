@@ -2367,11 +2367,156 @@ body.book-standalone {
 /* ============================================
    Page-Specific - Aggregate
    ============================================ */
-#aggregate-grid {
+#aggregate-page {
     padding: calc(var(--topbar-total) + 1rem) 2rem 2rem;
     max-width: 1200px;
     margin: 0 auto;
+}
+
+@media (max-width: 640px) {
+    #aggregate-page {
+        padding-left: 16px;
+        padding-right: 16px;
+    }
+}
+
+.agg-cloud {
     line-height: 2;
+}
+
+.agg-cloud[hidden],
+#aggregate-grid[hidden],
+.agg-featured[hidden] {
+    display: none;
+}
+
+.agg-search {
+    margin: 0 0 1rem;
+}
+
+.agg-search .input-search {
+    width: min(420px, 100%);
+    box-sizing: border-box;
+}
+
+.agg-more {
+    color: var(--text-muted);
+    font-size: 0.85rem;
+}
+
+/* Featured entries (aggregate_meta.go): cards above the cloud */
+.agg-featured {
+    margin: 0 0 1.5rem;
+}
+
+.agg-heading {
+    margin: 0 0 0.6rem;
+    font-size: 0.8rem;
+    font-weight: 600;
+    letter-spacing: 0.06em;
+    text-transform: uppercase;
+    color: var(--text-muted);
+}
+
+.agg-cards {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(220px, 1fr));
+    gap: 12px;
+}
+
+.agg-card {
+    display: flex;
+    flex-direction: column;
+    overflow: hidden;
+    color: var(--text-primary);
+    text-decoration: none;
+    background: var(--bg-surface);
+    border: 1px solid var(--border-medium);
+    border-radius: var(--radius-medium);
+    transition: border-color 0.15s;
+}
+
+.agg-card:hover {
+    border-color: #c8a96e;
+}
+
+.agg-card-img {
+    width: 100%;
+    aspect-ratio: 16 / 9;
+    object-fit: cover;
+    background: var(--bg-elevated);
+}
+
+.agg-card-body {
+    display: flex;
+    flex-direction: column;
+    gap: 2px;
+    padding: 0.6rem 0.75rem 0.75rem;
+    min-width: 0;
+}
+
+.agg-card-name {
+    font-weight: 600;
+    overflow-wrap: anywhere;
+}
+
+.agg-card-count {
+    font-size: 0.8rem;
+    color: var(--text-muted);
+}
+
+.agg-card-desc {
+    margin-top: 4px;
+    font-size: 0.85rem;
+    line-height: 1.4;
+    color: var(--text-secondary);
+    display: -webkit-box;
+    -webkit-line-clamp: 3;
+    line-clamp: 3;
+    -webkit-box-orient: vertical;
+    overflow: hidden;
+    white-space: pre-line;
+}
+
+/* An entry's picture and description on its filtered page */
+.agg-header {
+    display: flex;
+    gap: 1rem;
+    align-items: flex-start;
+    max-width: 1200px;
+    margin: calc(var(--topbar-total) + 1rem) auto 1rem;
+    padding: 0 var(--page-padding, 16px);
+}
+
+.agg-header + #books {
+    margin-top: 0;
+}
+
+.agg-header-img {
+    width: 160px;
+    max-height: 160px;
+    object-fit: cover;
+    border-radius: var(--radius-medium);
+    flex: none;
+}
+
+.agg-header-desc {
+    margin: 0;
+    line-height: 1.5;
+    color: var(--text-secondary);
+    white-space: pre-line;
+    overflow-wrap: anywhere;
+}
+
+@media (max-width: 640px) {
+    .agg-header {
+        flex-direction: column;
+    }
+
+    .agg-header-img {
+        width: 100%;
+        max-height: 200px;
+    }
 }
 
 .agg-item {
@@ -2676,14 +2821,17 @@ body.book-standalone {
     border-style: solid;
 }
 
+/* The name, description, picture and buttons stay at the top; the member
+   list below takes what height is left and scrolls on its own. */
 .group-panel {
     position: fixed;
     top: calc(var(--topbar-total) + 8px);
     left: 20px;
     z-index: 999;
+    display: flex;
+    flex-direction: column;
     width: min(460px, calc(100vw - 32px));
     max-height: calc(100dvh - var(--topbar-total) - 24px);
-    overflow-y: auto;
     padding: 1rem 1.1rem;
     box-sizing: border-box;
     background: var(--bg-modal);
@@ -2698,8 +2846,104 @@ body.book-standalone {
     display: none;
 }
 
+.group-head {
+    flex: none;
+}
+
+.group-meta {
+    display: flex;
+    gap: 12px;
+    margin-bottom: 0.6rem;
+}
+
+.group-image {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 4px;
+    flex: none;
+}
+
+.group-image-pick {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    width: 88px;
+    height: 88px;
+    padding: 0;
+    overflow: hidden;
+    font-size: 0.75rem;
+    color: var(--text-muted);
+    background: var(--bg-surface);
+    border: 1px dashed var(--border-medium);
+    border-radius: var(--radius-small);
+    cursor: pointer;
+}
+
+.group-image-pick:hover {
+    color: var(--text-primary);
+    border-style: solid;
+}
+
+.group-image-pick img,
+.group-image-pick canvas {
+    width: 100%;
+    height: 100%;
+    object-fit: cover;
+}
+
+.group-image-pick [hidden],
+.group-image-remove[hidden] {
+    display: none;
+}
+
+.group-image-remove {
+    padding: 0;
+    font-size: 0.75rem;
+    color: var(--text-muted);
+    background: none;
+    border: none;
+    cursor: pointer;
+}
+
+.group-image-remove:hover {
+    color: var(--text-primary);
+}
+
+.group-fields {
+    display: flex;
+    flex-direction: column;
+    gap: 0.5rem;
+    flex: 1;
+    min-width: 0;
+}
+
+.group-field {
+    display: flex;
+    flex-direction: column;
+    gap: 3px;
+}
+
+.group-field span {
+    font-size: 0.8rem;
+    color: var(--text-muted);
+}
+
+.group-field .input-search {
+    width: 100%;
+    box-sizing: border-box;
+}
+
+.group-field textarea {
+    resize: vertical;
+    min-height: 3.5em;
+    max-height: 30vh;
+    font: inherit;
+    line-height: 1.4;
+}
+
 .group-hint {
-    margin: 0 0 0.75rem;
+    margin: 0.6rem 0 0.6rem;
     font-size: 0.8rem;
     line-height: 1.45;
     color: var(--text-muted);
@@ -2708,9 +2952,13 @@ body.book-standalone {
 .group-members {
     display: flex;
     flex-wrap: wrap;
+    align-content: flex-start;
     gap: 6px;
-    margin: 0 0 0.75rem;
-    padding: 0;
+    flex: 1 1 auto;
+    min-height: 2.5rem;
+    overflow-y: auto;
+    margin: 0;
+    padding: 2px 0 0;
     list-style: none;
 }
 
@@ -2772,7 +3020,7 @@ label.group-row span {
 
 .group-actions {
     justify-content: flex-end;
-    margin: 0.25rem 0 0;
+    margin: 0;
 }
 
 .btn-primary {
