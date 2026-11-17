@@ -486,6 +486,7 @@ func filteredPageHandler(c *category) http.HandlerFunc {
 			data.Extra["Pinned"] = seriesPinnedFor(u, name)
 			data.Extra["SeriesShelf"] = name
 			data.Extra["SeriesShelves"] = seriesShelfMarks(u, name)
+		}
 		logErr(templates.ExecuteTemplate(w, "filtered.html", data), "failed to execute filtered template")
 	}
 }
