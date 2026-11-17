@@ -232,26 +232,38 @@ function init(bar: HTMLElement): void {
             forgetSynced(name);
             void keepOnlyUser(null).catch(() => {});
         });
+        // Sections, with a rule between those that have anything in them:
+        // reading, library tools, admin, then the account itself.
+        const sections: HTMLElement[][] = [
+            [
+                mark(el("a", { href: "/me/favorites", textContent: "★ Favorites" }), "favorites"),
+                mark(el("a", { href: "/me/saved", textContent: "Saved" }), "saved"),
+                mark(el("a", { href: "/me/reading", textContent: "Reading" }), "reading"),
+                mark(el("a", { href: "/me/finished", textContent: "Finished" }), "finished"),
+            ],
+            [
+                ...(st.canEdit ? [mark(el("a", { href: "/upload", textContent: "Upload books" }), "upload")] : []),
+                ...(imports !== null ? [mark(el("a", { href: "/import", textContent: imports ? `Review imports (${imports})` : "Review imports" }), "imports")] : []),
+                ...(st.canEdit ? [mark(el("a", { href: "/library/edit", textContent: "Bulk edit" }), "library-edit")] : []),
+                ...(st.canEdit ? [mark(el("a", { href: "/recycle-bin", textContent: "Recycling Bin" }), "recycle-bin")] : []),
+                ...(st.canEdit ? [mark(el("a", { href: "/missing", textContent: "Missing books" }), "missing")] : []),
+            ],
+            [
+                ...(st.canAdmin ? [mark(el("a", { href: "/admin/repairs", textContent: "Library repairs" }), "library-repairs")] : []),
+                ...(st.isAdmin ? [el("a", { href: "/admin/users", textContent: "Manage users" })] : []),
+                ...(st.isAdmin ? [el("a", { href: "/admin/activity", textContent: "Activity" })] : []),
+                ...(st.isAdmin ? [mark(el("a", { href: "/admin/discover", textContent: "Home page tags" }), "admin-discover")] : []),
+            ],
+            [
+                ...(guestBooks ? [el("a", { href: "/account/import", textContent: "Reading on this device" })] : []),
+                el("a", { href: "/account", textContent: "Account" }),
+                logout,
+            ],
+        ];
         const list = el(
             "div",
             { className: "tb-menu-list", hidden: true },
-            mark(el("a", { href: "/me/favorites", textContent: "★ Favorites" }), "favorites"),
-            mark(el("a", { href: "/me/saved", textContent: "Saved" }), "saved"),
-            mark(el("a", { href: "/me/reading", textContent: "Reading" }), "reading"),
-            mark(el("a", { href: "/me/finished", textContent: "Finished" }), "finished"),
-            el("hr"),
-            ...(st.canEdit ? [mark(el("a", { href: "/upload", textContent: "Upload books" }), "upload")] : []),
-            ...(imports !== null ? [mark(el("a", { href: "/import", textContent: imports ? `Review imports (${imports})` : "Review imports" }), "imports")] : []),
-            ...(st.canEdit ? [mark(el("a", { href: "/library/edit", textContent: "Bulk edit" }), "library-edit")] : []),
-            ...(st.canEdit ? [mark(el("a", { href: "/recycle-bin", textContent: "Recycling Bin" }), "recycle-bin")] : []),
-            ...(st.canEdit ? [mark(el("a", { href: "/missing", textContent: "Missing books" }), "missing")] : []),
-            ...(st.canAdmin ? [mark(el("a", { href: "/admin/repairs", textContent: "Library repairs" }), "library-repairs")] : []),
-            ...(st.isAdmin ? [el("a", { href: "/admin/users", textContent: "Manage users" })] : []),
-            ...(st.isAdmin ? [el("a", { href: "/admin/activity", textContent: "Activity" })] : []),
-            ...(st.isAdmin ? [mark(el("a", { href: "/admin/discover", textContent: "Home page tags" }), "admin-discover")] : []),
-            ...(guestBooks ? [el("a", { href: "/account/import", textContent: "Reading on this device" })] : []),
-            el("a", { href: "/account", textContent: "Account" }),
-            logout,
+            ...sections.filter((s) => s.length).flatMap((s, i) => (i ? [el("hr"), ...s] : s)),
         );
         userToggle = register(btn, (open) => {
             list.hidden = !open;

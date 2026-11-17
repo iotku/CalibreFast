@@ -6,6 +6,7 @@ testout.opf
 /data/
 /covers/
 /TestData/Library/
+/TestData/dev/
 
 # macOS
 .DS_Store
