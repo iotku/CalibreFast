@@ -58,13 +58,14 @@ function init(panel: HTMLElement, toggle: HTMLElement): void {
     // The picture: a new file, or the saved one removed.
     const imageFile = byId("group-image-file", HTMLInputElement);
     const imagePreview = byId("group-image-preview", HTMLImageElement);
+    const imageCanvas = byId("group-image-canvas", HTMLCanvasElement);
     const imageEmpty = byId("group-image-empty");
     const imageRemove = byId("group-image-remove", HTMLButtonElement);
     const initialImage = panel.dataset["image"] ?? "";
     const initialDesc = descInput.value;
     let newImage: File | null = null;
     let removeImage = false;
-    let previewURL = "";
+    let drawn = 0; // the latest pick's draw; older ones give up
 
     const initial = [...list.querySelectorAll<HTMLElement>("li[data-member]")].map((li) => li.dataset["member"] ?? "");
     let members: Member[] = initial.map((value) => ({ value, removed: false, added: false }));
@@ -87,16 +88,37 @@ function init(panel: HTMLElement, toggle: HTMLElement): void {
         return groupDirty() || descDirty() || newImage !== null || removeImage;
     }
 
+    // The saved picture stays in the <img> the server rendered; a new pick
+    // is drawn on the canvas, so no script ever sets an image URL.
     function showImage(): void {
-        if (previewURL) URL.revokeObjectURL(previewURL);
-        previewURL = newImage ? URL.createObjectURL(newImage) : "";
-        const src = previewURL || (removeImage ? "" : initialImage);
-        if (src) imagePreview.src = src;
-        else imagePreview.removeAttribute("src");
-        imagePreview.hidden = !src;
-        imageEmpty.hidden = !!src;
-        imageRemove.hidden = !src;
+        const pick = newImage !== null;
+        const saved = !pick && !removeImage && initialImage !== "";
+        imageCanvas.hidden = !pick;
+        imagePreview.hidden = !saved;
+        imageEmpty.hidden = pick || saved;
+        imageRemove.hidden = !(pick || saved);
         render();
+    }
+
+    async function drawPick(file: File): Promise<void> {
+        const n = ++drawn;
+        let bmp: ImageBitmap;
+        try {
+            bmp = await createImageBitmap(file);
+        } catch {
+            if (n !== drawn) return;
+            newImage = null;
+            setStatus("That file isn't a picture this browser can show.", true);
+            showImage();
+            return;
+        }
+        if (n === drawn) {
+            const scale = Math.min(1, 264 / Math.max(bmp.width, bmp.height));
+            imageCanvas.width = Math.max(1, Math.round(bmp.width * scale));
+            imageCanvas.height = Math.max(1, Math.round(bmp.height * scale));
+            imageCanvas.getContext("2d")?.drawImage(bmp, 0, 0, imageCanvas.width, imageCanvas.height);
+        }
+        bmp.close();
     }
 
     function setStatus(text: string, isError = false): void {
@@ -312,6 +334,7 @@ function init(panel: HTMLElement, toggle: HTMLElement): void {
         removeImage = false;
         setStatus("");
         showImage();
+        void drawPick(file);
     });
     imageRemove.addEventListener("click", () => {
         newImage = null;

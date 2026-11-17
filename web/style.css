@@ -2885,7 +2885,8 @@ body.book-standalone {
     border-style: solid;
 }
 
-.group-image-pick img {
+.group-image-pick img,
+.group-image-pick canvas {
     width: 100%;
     height: 100%;
     object-fit: cover;

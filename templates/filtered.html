@@ -69,6 +69,7 @@
             <div class="group-image">
                 <button type="button" id="group-image-pick" class="group-image-pick" title="Choose a picture">
                     <img id="group-image-preview" alt=""{{ if .ImageURL }} src="{{ .ImageURL }}"{{ else }} hidden{{ end }}>
+                    <canvas id="group-image-canvas" hidden></canvas>
                     <span id="group-image-empty"{{ if .ImageURL }} hidden{{ end }}>Add picture</span>
                 </button>
                 <button type="button" id="group-image-remove" class="group-image-remove"{{ if not .ImageURL }} hidden{{ end }}>Remove</button>
