@@ -52,6 +52,22 @@
     font: inherit;
 }
 
+.lt-tool[hidden],
+#lt-split[hidden] {
+    display: none;
+}
+
+.lt-tool .lt-taglen {
+    width: 5em;
+    height: 30px;
+    padding: 0 6px;
+    background: var(--bg-surface);
+    color: var(--text-primary);
+    border: 1px solid var(--border-medium);
+    border-radius: var(--radius-small);
+    font: inherit;
+}
+
 .lt-count {
     font-size: 0.85rem;
     color: var(--text-muted);

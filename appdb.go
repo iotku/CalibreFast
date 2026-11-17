@@ -286,9 +286,27 @@ var migrations = []string{
 	);
 	CREATE INDEX book_redirects_new ON book_redirects(new_uuid);
 	`,
-	// 17: reserved for another change in progress (a no-op placeholder
-	// here, so the one after is number 18; replaced by that change).
-	`SELECT 1`,
+	// 17: the aggregate pages (aggregate_meta.go): entries (an author, a
+	// tag, a group, …) featured at the top of their page, in order, and an
+	// entry's description and picture (a file in <datadir>/aggregate-images).
+	// name is what the entry is browsed as: its group's name, or the value.
+	`
+	CREATE TABLE featured_aggregates (
+		category   TEXT    NOT NULL,
+		name       TEXT    NOT NULL COLLATE NOCASE,
+		position   INTEGER NOT NULL,
+		created_at INTEGER NOT NULL,
+		PRIMARY KEY (category, name)
+	);
+	CREATE TABLE aggregate_meta (
+		category    TEXT    NOT NULL,
+		name        TEXT    NOT NULL COLLATE NOCASE,
+		description TEXT    NOT NULL DEFAULT '',
+		image       TEXT    NOT NULL DEFAULT '',  -- file name in aggregate-images, '' for none
+		updated_at  INTEGER NOT NULL,
+		PRIMARY KEY (category, name)
+	);
+	`,
 	// 18: series on a user's home page (series_pins.go), ordered together
 	// with their pinned shelves and tags (one position space); and On Deck
 	// cards the user dismissed.

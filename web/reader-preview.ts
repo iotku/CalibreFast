@@ -53,20 +53,44 @@ export function previewSync(onStatus: (text: string) => void): ReadingSync {
     };
 }
 
+/** Whether a page of the library led here (a link, not an address typed or bookmarked). */
+function fromLibraryPage(): boolean {
+    if (!document.referrer) return false;
+    try {
+        return new URL(document.referrer).origin === location.origin;
+    } catch {
+        return false;
+    }
+}
+
 /**
- * The top bar's Back: leaves the reader, skipping its `depth` in-book jumps.
+ * Whether the browser's Back, past `depth` in-book jumps, returns to a page
+ * of the library. A reader opened in a new tab, from a bookmark or from
+ * another site has nothing of ours behind it: Back would do nothing, or
+ * leave the library.
+ */
+const canGoBack = (depth: number): boolean => history.length > depth + 1 && fromLibraryPage();
+
+/**
+ * The top bar's Back: leaves the reader, skipping its `depth` in-book jumps,
+ * or goes to the book's page when there is nothing to go back to.
  * A preview closes its tab (or split view, or window) instead: it was opened
  * beside the editor, which is still there. If the browser won't close it,
- * `onStuck` says so; a preview never navigates away.
+ * `onStuck` says so; a preview opened on its own (no page of ours led to it)
+ * goes to the editor instead.
  */
 export function leaveReader(book: ReaderBook, depth: number, onStuck: (text: string) => void): void {
     if (!book.preview) {
-        history.go(-(depth + 1));
+        if (canGoBack(depth)) history.go(-(depth + 1));
+        else location.assign(book.id ? `/book/get/${encodeURIComponent(book.id)}` : "/");
         return;
     }
     window.close();
     // Still here: the browser keeps tabs it didn't let a script open.
-    setTimeout(() => onStuck("Preview — close this tab when you're done"), 150);
+    setTimeout(() => {
+        if (fromLibraryPage() || window.opener) onStuck("Preview — close this tab when you're done");
+        else location.assign(book.editor);
+    }, 150);
 }
 
 /**

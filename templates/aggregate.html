@@ -11,13 +11,40 @@
 {{ $tb := topbar "Active" .Active "Title" .Title "NavTitle" true }}
 {{ template "topbar-start" $tb }}
 {{ template "topbar-end" $tb }}
-<div id="aggregate-grid">
-    {{- range .Items }}
-    <a class="agg-item{{ if .Grouped }} agg-group{{ end }}" href="{{ .Href }}" style="font-size: {{ .FontSize }}px; --o: {{ .Opacity }}"
-       {{- if .Grouped }} title="Group: {{ .Members }}"{{ end }}>{{ .Name }}{{ if .Sub }} <span class="agg-sub">{{ .Sub }}</span>{{ end }} ({{ .Count }})</a>
-    {{- else }}
-    <p class="status-message">Nothing found.</p>
-    {{- end }}
-</div>
+<main id="aggregate-page" data-src="{{ .DataURL }}" data-prefix="{{ .Prefix }}">
+    {{/* Finds every entry, single-book ones too (web/aggregate.ts). */}}
+    <div class="agg-search">
+        <input id="agg-search" class="input-search" type="search" placeholder="Find a {{ .Label }}…" aria-label="Find a {{ .Label }}"
+               autocomplete="off" autocorrect="off" autocapitalize="off" spellcheck="false"
+               data-1p-ignore data-lpignore="true" data-form-type="other" />
+    </div>
+    <div id="agg-results" class="agg-cloud" hidden aria-live="polite"></div>
+    {{ with .Featured }}
+    <section id="agg-featured" class="agg-featured" aria-label="Featured">
+        <h2 class="agg-heading">Featured</h2>
+        <div class="agg-cards">
+            {{- range . }}
+            <a class="agg-card{{ if .Grouped }} agg-group{{ end }}" href="{{ .Href }}">
+                {{ if .ImageURL }}<img class="agg-card-img" src="{{ .ImageURL }}" alt="" loading="lazy">{{ end }}
+                <span class="agg-card-body">
+                    <span class="agg-card-name">{{ .Name }}{{ if .Sub }} <span class="agg-sub">{{ .Sub }}</span>{{ end }}</span>
+                    <span class="agg-card-count">{{ count .Count "book" "books" }}</span>
+                    {{ if .Description }}<span class="agg-card-desc">{{ .Description }}</span>{{ end }}
+                </span>
+            </a>
+            {{- end }}
+        </div>
+    </section>
+    {{ end }}
+    <div id="aggregate-grid" class="agg-cloud">
+        {{- range .Items }}
+        <a class="agg-item{{ if .Grouped }} agg-group{{ end }}" href="{{ .Href }}" style="font-size: {{ .FontSize }}px; --o: {{ .Opacity }}"
+           {{- if .Grouped }} title="Group: {{ .Members }}"{{ end }}>{{ .Name }}{{ if .Sub }} <span class="agg-sub">{{ .Sub }}</span>{{ end }} ({{ .Count }})</a>
+        {{- else }}
+        <p class="status-message">Nothing with more than one book. Search to find the rest.</p>
+        {{- end }}
+    </div>
+</main>
+<script type="module" src="{{ asset "aggregate.js" }}"></script>
 </body>
 </html>

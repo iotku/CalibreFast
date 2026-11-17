@@ -12,6 +12,7 @@ import (
 	"strconv"
 	"strings"
 	"sync"
+	"sync/atomic"
 
 	"github.com/iotku/CalibreFast/pkg/langcodes"
 )
@@ -31,14 +32,17 @@ type category struct {
 	NameCol   string // display/value column in Table
 	LinkTable string // books_<x>_link
 	LinkCol   string // column in LinkTable referencing Table.id
+	// ShowSingles: the aggregate page lists values with a single book too
+	// (otherwise only the search box finds them).
+	ShowSingles bool
 }
 
 var categories = []*category{
-	{"author", "authors", "author", "Authors", "author", "authors", "name", "books_authors_link", "author"},
-	{"publisher", "publishers", "publisher", "Publishers", "publisher", "publishers", "name", "books_publishers_link", "publisher"},
-	{"tag", "tags", "tag", "Tags", "tag", "tags", "name", "books_tags_link", "tag"},
-	{"language", "languages", "lang", "Languages", "language", "languages", "lang_code", "books_languages_link", "lang_code"},
-	{"series", "series", "series", "Series", "series", "series", "name", "books_series_link", "series"},
+	{"author", "authors", "author", "Authors", "author", "authors", "name", "books_authors_link", "author", false},
+	{"publisher", "publishers", "publisher", "Publishers", "publisher", "publishers", "name", "books_publishers_link", "publisher", false},
+	{"tag", "tags", "tag", "Tags", "tag", "tags", "name", "books_tags_link", "tag", false},
+	{"language", "languages", "lang", "Languages", "language", "languages", "lang_code", "books_languages_link", "lang_code", true},
+	{"series", "series", "series", "Series", "series", "series", "name", "books_series_link", "series", false},
 }
 
 // bookOrder: how a filtered page lists its books. A series reads in order:
@@ -89,9 +93,13 @@ type AggregateDisplayItem struct {
 
 // AggregatePageData is passed to aggregate.html for server-side rendering.
 type AggregatePageData struct {
-	Title  string
-	Active string // top-bar nav item: the category's plural, e.g. "authors"
-	Items  []AggregateDisplayItem
+	Title    string
+	Active   string // top-bar nav item: the category's plural, e.g. "authors"
+	Label    string // "author", for the search box
+	Prefix   string // filtered page path prefix: "/author/"
+	DataURL  string // every entry as JSON (/api/<plural>), for the search box
+	Items    []AggregateDisplayItem
+	Featured []FeaturedCard
 }
 
 // FilteredPageData is passed to filtered.html.
@@ -109,6 +117,9 @@ type FilteredPageData struct {
 	Grouped     bool
 	GroupsError string // non-empty when grouping is read-only
 	Writable    bool   // server started with -allow-writes (shows the group editor)
+	Featured    bool   // on the aggregate page's Featured list
+	Description string // the entry's description (aggregate_meta)
+	ImageURL    string // the entry's picture, "" for none
 	PageURL     string // API base URL; template appends &page={n}
 	TotalBooks  int
 	EmptyText   string         // shown when there are no books (default: "No books found.")
@@ -127,6 +138,10 @@ type SearchPageData struct {
 // ---------------------------------------------------------------------------
 
 var (
+	// aggregateGen changes whenever an aggregate cache is rebuilt: the
+	// search box's /api/<plural>?v= URL, so a browser never searches a
+	// stale copy.
+	aggregateGen atomic.Uint64
 	// aggregateDisplayCache: plural ("authors") -> []AggregateDisplayItem
 	aggregateDisplayCache sync.Map
 	// aggregateJSONCache: plural -> pre-serialised []AggregateItem
@@ -154,6 +169,7 @@ func refreshAggregateCache(c *category) {
 		aggregateJSONCache.Store(c.Plural, data)
 	}
 	aggregateDisplayCache.Store(c.Plural, computeAggregateDisplay(c, items))
+	aggregateGen.Add(1)
 }
 
 // refreshAllCaches rebuilds every cache. Called after book upload, metadata
@@ -284,8 +300,11 @@ func computeAggregateDisplay(c *category, items []AggregateItem) []AggregateDisp
 	if maxCount < 1 {
 		maxCount = 1
 	}
-	display := make([]AggregateDisplayItem, len(items))
-	for i, item := range items {
+	display := make([]AggregateDisplayItem, 0, len(items))
+	for _, item := range items {
+		if item.Count < 2 && !c.ShowSingles {
+			continue // found by the search box
+		}
 		ratio := float64(item.Count) / float64(maxCount)
 		label := item.Name
 		if item.Display != "" {
@@ -295,7 +314,7 @@ func computeAggregateDisplay(c *category, items []AggregateItem) []AggregateDisp
 		if label != item.Name {
 			sub = item.Name
 		}
-		display[i] = AggregateDisplayItem{
+		display = append(display, AggregateDisplayItem{
 			Name:     label,
 			Sub:      sub,
 			Href:     c.href(item.Name),
@@ -304,7 +323,7 @@ func computeAggregateDisplay(c *category, items []AggregateItem) []AggregateDisp
 			Members:  strings.Join(item.Members, ", "),
 			FontSize: fmt.Sprintf("%.1f", 12+ratio*24),
 			Opacity:  fmt.Sprintf("%.2f", 0.4+ratio*0.6),
-		}
+		})
 	}
 	return display
 }
@@ -441,6 +460,12 @@ func filteredPageHandler(c *category) http.HandlerFunc {
 			TotalBooks:  getFilteredTotal(c, name, members),
 			Writable:    canEditLibrary(r),
 		}
+		if m, ok := aggregateMetaFor(c.Key, name); ok {
+			data.Description, data.ImageURL = m.Description, m.imageURL()
+		}
+		if data.Writable {
+			data.Featured = isFeaturedAggregate(c.Key, name)
+		}
 		if groups.readOnly != nil {
 			data.GroupsError = groups.readOnly.Error()
 		}
@@ -461,7 +486,15 @@ func filteredPageHandler(c *category) http.HandlerFunc {
 // aggregatePageHandler serves the server-rendered tag cloud.
 func aggregatePageHandler(c *category) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
-		data := AggregatePageData{Title: c.Title, Active: c.Plural, Items: getAggregateDisplay(c)}
+		data := AggregatePageData{
+			Title:    c.Title,
+			Active:   c.Plural,
+			Label:    c.Label,
+			Prefix:   "/" + c.URLPrefix + "/",
+			DataURL:  fmt.Sprintf("/api/%s?v=%d", c.Plural, aggregateGen.Load()),
+			Items:    getAggregateDisplay(c),
+			Featured: featuredCards(c),
+		}
 		w.Header().Set("Cache-Control", "no-cache")
 		if err := templates.ExecuteTemplate(w, "aggregate.html", data); err != nil {
 			http.Error(w, err.Error(), http.StatusInternalServerError)
@@ -492,8 +525,44 @@ func groupValuesHandler(w http.ResponseWriter, r *http.Request) {
 	logErr(json.NewEncoder(w).Encode(names), "encode group values")
 }
 
+// groupEdit is what the editor on a filtered page saves.
+type groupEdit struct {
+	Name        string    `json:"name"`
+	Members     *[]string `json:"members"`     // nil: the grouping is left as it is; empty: dissolved
+	Description *string   `json:"description"` // nil: left as it is
+	RemoveImage bool      `json:"removeImage"`
+}
+
+// readGroupEdit reads a group edit: a JSON body, or a multipart form with
+// the JSON in "data" and a new picture in "image".
+func readGroupEdit(r *http.Request) (e groupEdit, img []byte, err error) {
+	if !strings.HasPrefix(r.Header.Get("Content-Type"), "multipart/form-data") {
+		err = json.NewDecoder(r.Body).Decode(&e)
+		return
+	}
+	r.Body = http.MaxBytesReader(nil, r.Body, coverUploadMaxBytes+1<<20)
+	if err = r.ParseMultipartForm(coverUploadMaxBytes); err != nil {
+		return e, nil, fmt.Errorf("failed to parse form: %w", err)
+	}
+	if err = json.Unmarshal([]byte(r.FormValue("data")), &e); err != nil {
+		return
+	}
+	data, ferr := formImageFile(r, "image")
+	switch {
+	case errors.Is(ferr, http.ErrMissingFile):
+		return e, nil, nil
+	case ferr != nil:
+		return e, nil, ferr
+	}
+	img, err = aggregateImageJPEG(data)
+	return
+}
+
 // groupPutHandler: PUT /api/groups/{cat}/{value...} with {"name","members"}
-// replaces the group that value resolves to. Empty members removes it.
+// replaces the group that value resolves to (empty members removes it), and
+// with "description", "removeImage" and an "image" file (multipart) sets
+// the entry's description and picture (aggregate_meta.go). A single value
+// works the same: leave out "members" and only the meta changes.
 func groupPutHandler(w http.ResponseWriter, r *http.Request) {
 	c := categoryByKey(r.PathValue("cat"))
 	value := r.PathValue("value")
@@ -501,37 +570,55 @@ func groupPutHandler(w http.ResponseWriter, r *http.Request) {
 		http.NotFound(w, r)
 		return
 	}
-	var g Group
-	if err := json.NewDecoder(r.Body).Decode(&g); err != nil {
-		http.Error(w, "invalid JSON: "+err.Error(), http.StatusBadRequest)
+	e, img, err := readGroupEdit(r)
+	if err != nil {
+		http.Error(w, "invalid request: "+err.Error(), http.StatusBadRequest)
 		return
 	}
-	saved, err := groups.set(c.Key, value, g)
-	switch {
-	case errors.Is(err, errGroupNameTaken):
-		http.Error(w, err.Error(), http.StatusConflict)
+	if e.Description != nil && len(*e.Description) > aggregateDescriptionMax {
+		http.Error(w, fmt.Sprintf("the description is too long (at most %d characters)", aggregateDescriptionMax), http.StatusBadRequest)
 		return
-	case errors.Is(err, errGroupsReadOnly):
-		http.Error(w, err.Error(), http.StatusServiceUnavailable)
-		return
-	case err != nil:
-		log.Println("save groups:", err)
-		http.Error(w, "failed to save groups: "+err.Error(), http.StatusInternalServerError)
-		return
-	}
-	refreshAllCaches()
-	if c.Key == "tag" {
-		refreshTagRows() // groups decide what a tag row is
 	}
 
-	// Where the page should go next: the group, or the original value if the
-	// group was dissolved.
-	next := value
-	if saved.Name != "" {
-		next = saved.Name
-	} else if len(g.Members) > 0 {
-		next = cleanMembers(g.Members)[0]
+	oldName, _, _ := groups.resolve(c.Key, value)
+	newName := oldName
+	next := value // where the page should go next
+	var saved Group
+	if e.Members != nil {
+		g := Group{Name: e.Name, Members: *e.Members}
+		saved, err = groups.set(c.Key, value, g)
+		switch {
+		case errors.Is(err, errGroupNameTaken):
+			http.Error(w, err.Error(), http.StatusConflict)
+			return
+		case errors.Is(err, errGroupsReadOnly):
+			http.Error(w, err.Error(), http.StatusServiceUnavailable)
+			return
+		case err != nil:
+			log.Println("save groups:", err)
+			http.Error(w, "failed to save groups: "+err.Error(), http.StatusInternalServerError)
+			return
+		}
+		refreshAllCaches()
+		if c.Key == "tag" {
+			refreshTagRows() // groups decide what a tag row is
+		}
+		// The group, or the original value if the group was dissolved.
+		if saved.Name != "" {
+			next = saved.Name
+		} else if ms := cleanMembers(g.Members); len(ms) > 0 {
+			next = ms[0]
+		}
+		newName, _, _ = groups.resolve(c.Key, next)
+		renameAggregate(c.Key, oldName, newName)
 	}
+
+	if err := setAggregateMeta(c.Key, newName, metaEdit{Description: e.Description, Image: img, RemoveImage: e.RemoveImage}); err != nil {
+		log.Println("save aggregate meta:", err)
+		http.Error(w, "failed to save the description or picture: "+err.Error(), http.StatusInternalServerError)
+		return
+	}
+
 	w.Header().Set("Content-Type", "application/json")
 	logErr(json.NewEncoder(w).Encode(map[string]any{
 		"group": saved,
@@ -557,4 +644,7 @@ func registerCategoryRoutes() {
 	http.HandleFunc("GET /api/groups/{cat}/values", groupValuesHandler)
 	http.HandleFunc("GET /api/languages/codes", languageCodesHandler)
 	http.HandleFunc("PUT /api/groups/{cat}/{value...}", requireWrites(groupPutHandler))
+	http.HandleFunc("PUT /api/aggregates/{cat}/featured/{value...}", requireWrites(featuredHandler))
+	http.HandleFunc("DELETE /api/aggregates/{cat}/featured/{value...}", requireWrites(featuredHandler))
+	http.HandleFunc("GET /"+aggregateImagesDir+"/{file}", aggregateImageHandler)
 }

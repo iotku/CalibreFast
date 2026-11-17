@@ -8,6 +8,7 @@ import (
 	"net/http/httptest"
 	"path/filepath"
 	"slices"
+	"strings"
 	"testing"
 
 	"github.com/iotku/CalibreFast/pkg/opf"
@@ -292,5 +293,49 @@ func TestBulkEditSeriesBadNumber(t *testing.T) {
 	}
 	if r := tableRow(t, db, a.uuid); r.Series != "" {
 		t.Errorf("series %q written", r.Series)
+	}
+}
+
+func TestSplitTags(t *testing.T) {
+	for _, c := range []struct{ in, want []string }{
+		{[]string{"a; b", "c"}, []string{"a", "b", "c"}},
+		{[]string{"Fiction;  fantasy ;", "Fantasy"}, []string{"Fiction", "Fantasy"}},
+		{[]string{"x;X;y", "z"}, []string{"x", "y", "z"}},
+		{[]string{";", "plain"}, []string{"plain"}},
+		{[]string{"a;b", "b;c"}, []string{"a", "b", "c"}},
+		{[]string{"none"}, []string{"none"}},
+		{[]string{}, []string{}},
+	} {
+		if got := splitTags(c.in, ";"); !slices.Equal(got, c.want) {
+			t.Errorf("splitTags(%q) = %q, want %q", c.in, got, c.want)
+		}
+	}
+}
+
+func TestBulkEditSplitTags(t *testing.T) {
+	db := setupRecycleLibrary(t)
+	a := addOPFTestBook(t, db, "Alpha", []string{"Ann"}, []string{"Fiction; Fantasy;  Magic ", "fantasy"}, []string{"eng"})
+	b := addOPFTestBook(t, db, "Beta", []string{"Bob"}, []string{"History"}, nil)
+	res := bulkEditBooks([]string{a.uuid, b.uuid}, &bulkEdit{SplitTags: ";"})
+	if res.Changed != 1 || res.Unchanged != 1 || len(res.Failed) != 0 || len(res.Books) != 1 {
+		t.Fatalf("result %+v", res)
+	}
+	got := slices.Clone(res.Books[0].Tags)
+	slices.Sort(got)
+	if !slices.Equal(got, []string{"Fiction", "Magic", "fantasy"}) {
+		t.Errorf("tags %q, want Fiction, Magic, fantasy", got)
+	}
+	if n := count(t, db, `SELECT COUNT(*) FROM tags WHERE name LIKE '%;%'`); n != 0 {
+		t.Errorf("a tag with ; kept")
+	}
+	m, err := bookEditMetadata(a.uuid)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if slices.ContainsFunc(m.Subjects, func(s string) bool { return strings.Contains(s, ";") }) {
+		t.Errorf("OPF subjects %q", m.Subjects)
+	}
+	if (&bulkEdit{SplitTags: ";"}).empty() {
+		t.Error("a split counts as an edit")
 	}
 }
