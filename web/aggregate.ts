@@ -2,23 +2,20 @@
  * The search box of the aggregate pages (/authors, /tags, …,
  * templates/aggregate.html). The page lists what has more than one book;
  * the box finds every entry, single-book ones too, from /api/<plural>.
- * Matching ignores case and accents; names that start with the query come
- * first, then those that contain it. An empty box shows the page as it was.
+ * Matching is fuzzy (see fuzzy.ts): names that start with the query come
+ * first, then those containing it, then typo and initials matches; ties go
+ * to the entry with more books. An empty box shows the page as it was.
  */
 
 import { byId, el } from "./dom.js";
+import { bestScore, type Hay, prepare, prepareQuery } from "./fuzzy.js";
 import type { AggregateEntry } from "./types.js";
 
 const MAX_RESULTS = 300;
 
 interface Entry {
     item: AggregateEntry;
-    hay: string[]; // folded name, display name and members
-}
-
-/** Lower case without accents: "Émile" and "emile" match. */
-function fold(s: string): string {
-    return s.normalize("NFD").replace(/\p{M}/gu, "").toLowerCase();
+    hay: Hay[]; // name, display name and members
 }
 
 const page = byId("aggregate-page");
@@ -43,7 +40,7 @@ function load(): Promise<Entry[]> {
             maxCount = Math.max(1, ...items.map((i) => i.count));
             entries = items.map((item) => ({
                 item,
-                hay: [item.name, item.display ?? "", ...(item.members ?? [])].filter(Boolean).map(fold),
+                hay: [item.name, item.display ?? "", ...(item.members ?? [])].filter(Boolean).map(prepare),
             }));
             return entries;
         })
@@ -55,15 +52,16 @@ function load(): Promise<Entry[]> {
     return loading;
 }
 
-/** Entries matching q (folded): prefix matches first, then substring, each by book count. */
+/** Entries matching q, best match first, then by book count. */
 function search(all: Entry[], q: string): AggregateEntry[] {
-    const starts: AggregateEntry[] = [];
-    const contains: AggregateEntry[] = [];
+    const query = prepareQuery(q);
+    const found: { item: AggregateEntry; score: number }[] = [];
     for (const e of all) {
-        if (e.hay.some((h) => h.startsWith(q))) starts.push(e.item);
-        else if (e.hay.some((h) => h.includes(q))) contains.push(e.item);
+        const score = bestScore(query, e.hay);
+        if (score) found.push({ item: e.item, score });
     }
-    return starts.concat(contains);
+    found.sort((a, b) => b.score - a.score || b.item.count - a.item.count);
+    return found.map((f) => f.item);
 }
 
 function link(item: AggregateEntry): HTMLAnchorElement {
@@ -88,14 +86,14 @@ function show(searching: boolean): void {
 }
 
 async function update(): Promise<void> {
-    const q = fold(input.value.trim());
+    const q = input.value.trim();
     if (!q) {
         show(false);
         results.replaceChildren();
         return;
     }
     const all = entries ?? (await load());
-    if (fold(input.value.trim()) !== q) return; // typed on meanwhile
+    if (input.value.trim() !== q) return; // typed on meanwhile
     const found = search(all, q);
     const shown = found.slice(0, MAX_RESULTS);
     results.replaceChildren(...shown.map(link));
