@@ -4083,8 +4083,15 @@ label.group-row span {
     border-color: rgba(186, 90, 90, 0.4);
 }
 
-.import-duplicate a {
+.import-duplicate a,
+.import-info .duplicate-note a {
     color: inherit;
+}
+
+.import-info .duplicate-note {
+    margin-top: 6px;
+    font-size: 0.85rem;
+    color: #e8cf9a;
 }
 
 .import-actions {

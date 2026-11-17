@@ -4,9 +4,10 @@
 // follows the folder: it's asked for again every few seconds while the page
 // is in view.
 
-import { api, byId, el, errorMessage, statusLine } from "./dom.js";
-import { formatBytes } from "./cover-sources.js";
-import type { DiscardExistingResult, DuplicateCheck, ImportQueue, ImportSummary } from "./types.js";
+import { api, byId, el, errorMessage, maybeId, statusLine } from "./dom.js";
+import { pendingImport } from "./book-target.js";
+import { epubPages, formatBytes, pdfPages, type CoverChoice } from "./cover-sources.js";
+import type { AcceptAllResult, DiscardExistingResult, DuplicateCheck, ImportQueue, ImportSummary } from "./types.js";
 
 const POLL_MS = 5000;
 
@@ -16,6 +17,12 @@ const empty = byId("imports-empty");
 const folder = byId("imports-folder");
 const count = byId("imports-count");
 const discardExisting = byId("imports-discard-existing", HTMLButtonElement);
+const acceptAll = maybeId("imports-accept-all", HTMLButtonElement); // admins only
+/** Why the last mass import left a book waiting, by id. */
+const notAdded = new Map<string, string>();
+let queue: ImportQueue | null = null;
+/** A mass import can add it: not new files for a book, not maybe in the library already. */
+const addable = (it: ImportSummary): boolean => !it.into && !it.duplicate?.books.length;
 
 /** The waiting book's files the library already holds, byte for byte. */
 function identicalFiles(item: ImportSummary): Set<string> {
@@ -79,6 +86,8 @@ function row(item: ImportSummary): HTMLLIElement {
                 ? [el("div", { className: "duplicate-note" }, "New file for ", el("a", { href: `/book/get/${encodeURIComponent(item.into)}` }, `“${item.into_title || "a library book"}”`), ": review it to add it to that book.")]
                 : []),
             ...(item.duplicate?.books.length ? [duplicateNote(item, item.duplicate)] : []),
+            // Why the mass import left it, unless the row already says (new files for a book, a duplicate).
+            ...(notAdded.has(item.id) && !item.into && !item.duplicate?.books.length ? [el("div", { className: "import-duplicate import-duplicate-same" }, `Not mass imported: ${notAdded.get(item.id)}`)] : []),
         ),
         el("div", { className: "import-actions" }, el("a", { href: review, className: "btn-standard" }, "Review"), discard),
     );
@@ -86,7 +95,8 @@ function row(item: ImportSummary): HTMLLIElement {
 
 let shown = "";
 function render(q: ImportQueue): void {
-    const json = JSON.stringify(q);
+    queue = q;
+    const json = JSON.stringify(q) + JSON.stringify([...notAdded]);
     if (json === shown) return; // nothing new: leave the page (and focus) alone
     shown = json;
 
@@ -97,6 +107,7 @@ function render(q: ImportQueue): void {
     empty.hidden = n > 0;
     const same = q.items.reduce((sum, it) => sum + identicalFiles(it).size, 0);
     discardExisting.hidden = same === 0;
+    if (acceptAll) acceptAll.hidden = !q.items.some(addable);
     discardExisting.title = `Discard the ${same} file${same === 1 ? "" : "s"} the library already has, byte for byte. A book's other formats stay, as new files for the book that has the rest.`;
 
     const parts: string[] = [];
@@ -136,6 +147,54 @@ discardExisting.addEventListener("click", async () => {
 // The last "couldn't load" message shown, cleared by the next load that works
 // (the server was only restarting, say), unless something else was said since.
 let loadError = "";
+/** The first cover offered by a book's files: the EPUB's (its own cover, else its first page), else the PDF's first page. */
+async function defaultCover(item: ImportSummary): Promise<boolean> {
+    const book = pendingImport(item.id);
+    const formats = new Set(item.files.map((f) => f.format));
+    const sources: ((b: typeof book) => AsyncGenerator<CoverChoice>)[] = [];
+    if (formats.has("epub")) sources.push(epubPages);
+    if (formats.has("pdf")) sources.push(pdfPages);
+    for (const pages of sources) {
+        try {
+            for await (const c of pages(book)) {
+                if (!c.save) continue;
+                await c.save();
+                return true; // leaving the loop closes the book
+            }
+        } catch (err) {
+            console.warn(`No cover from ${item.title}:`, err);
+        }
+    }
+    return false;
+}
+
+acceptAll?.addEventListener("click", async () => {
+    const items = (queue?.items ?? []).filter(addable);
+    if (!items.length) return;
+    const waiting = queue?.items.length ?? 0;
+    if (!confirm(`Add ${items.length} book${items.length === 1 ? "" : "s"} to the library with the metadata their files offer, without review?${waiting > items.length ? `\n\n${waiting - items.length} other${waiting - items.length === 1 ? "" : "s"} (maybe already in the library, or new files for a library book) stay here for review.` : ""}`)) return;
+    acceptAll.disabled = discardExisting.disabled = true;
+    try {
+        // Covers first, while each book is still here: the browser renders
+        // what the server can't (a PDF page of text, an EPUB's first page).
+        const bare = items.filter((it) => !it.has_cover);
+        for (const [i, it] of bare.entries()) {
+            say(`Finding covers: ${i + 1} of ${bare.length}…`);
+            await defaultCover(it);
+        }
+        say(`Adding ${items.length} book${items.length === 1 ? "" : "s"} to the library…`);
+        const res = await api<AcceptAllResult>("POST", "/api/imports/accept-all");
+        notAdded.clear();
+        for (const l of res.left) notAdded.set(l.id, l.reason);
+        say(`Added ${res.added} book${res.added === 1 ? "" : "s"} to the library.${res.left.length ? ` ${res.left.length} left here for review: see each one's reason.` : ""}`);
+        await refresh();
+    } catch (err) {
+        say(errorMessage(err), true);
+    } finally {
+        acceptAll.disabled = discardExisting.disabled = false;
+    }
+});
+
 async function refresh(): Promise<void> {
     const status = byId("imports-status");
     try {

@@ -188,6 +188,13 @@ export interface DiscardExistingResult {
     errors?: string[];
 }
 
+/** POST /api/imports/accept-all (Go: acceptAllResult). */
+export interface AcceptAllResult {
+    added: number;
+    /** Still waiting, and why. */
+    left: { id: string; title: string; reason: string }[];
+}
+
 /** A book waiting in the import queue (Go: importSummary). */
 export interface ImportSummary {
     id: string;

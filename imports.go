@@ -792,6 +792,7 @@ func registerImportRoutes() {
 	http.HandleFunc("POST /import/{id}/apply", requireEditor(importApplyHandler))
 	http.HandleFunc("POST /import/{id}/discard", requireEditor(importDiscardHandler))
 	http.HandleFunc("POST /api/imports/discard-existing", requireEditor(importDiscardExistingHandler))
+	http.HandleFunc("POST /api/imports/accept-all", requireWrites(importAcceptAllHandler))
 	http.HandleFunc("POST /import/{id}/discard-identical", requireEditor(importDiscardIdenticalHandler))
 	http.HandleFunc("/import/{id}/isbns", requireEditor(importISBNsHandler))
 	http.HandleFunc("GET /import/{id}/formats", requireEditor(importFormatsHandler))
@@ -817,7 +818,12 @@ func importFromRequest(w http.ResponseWriter, r *http.Request) *pendingImport {
 
 func importQueuePage(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Cache-Control", "no-store")
-	logErr(templates.ExecuteTemplate(w, "imports.html", PageData{Title: SiteTitle}), "render imports")
+	u := currentUser(r)
+	data := struct {
+		Title string
+		Admin bool // offered the mass import (imports_accept.go)
+	}{SiteTitle, u != nil && u.IsAdmin}
+	logErr(templates.ExecuteTemplate(w, "imports.html", data), "render imports")
 }
 
 func importQueueHandler(w http.ResponseWriter, r *http.Request) {
