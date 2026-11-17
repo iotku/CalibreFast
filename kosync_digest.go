@@ -17,68 +17,21 @@ package main
 // any files.
 
 import (
-	"crypto/md5"
-	"encoding/hex"
 	"errors"
-	"io"
 	"log"
 	"os"
 	"path/filepath"
 	"strings"
 	"sync"
 	"time"
+
+	"github.com/iotku/CalibreFast/pkg/kosync"
 )
 
 // bookFile is one format of a book in the library.
 type bookFile struct {
 	UUID   string
 	Format string // lower-case extension: "epub", "pdf", …
-}
-
-// partialMD5 is KOReader's document id for a file's contents
-// (frontend/util.lua, util.partialMD5): the MD5 of 1 KiB samples taken at
-// offsets 0, 1 KiB, 4 KiB, 16 KiB, … 1 GiB, stopping at the first one at or
-// beyond the end of the file. The last sample may be short.
-//
-// KOReader computes the offsets as bit.lshift(1024, 2*i) for i = -1..10.
-// LuaJIT masks the shift count to five bits, so i = -1 shifts 1024 left by
-// 30, which overflows 32 bits to 0: the first sample is at 0, not 256.
-func partialMD5(r io.ReaderAt) (string, error) {
-	h := md5.New()
-	buf := make([]byte, 1024)
-	for i := -1; i <= 10; i++ {
-		var off int64
-		if i >= 0 {
-			off = 1024 << (2 * i)
-		}
-		n, err := r.ReadAt(buf, off)
-		if n == 0 {
-			if err != nil && err != io.EOF {
-				return "", err
-			}
-			break // at or past the end
-		}
-		h.Write(buf[:n])
-		if err != nil && err != io.EOF {
-			return "", err
-		}
-	}
-	return hex.EncodeToString(h.Sum(nil)), nil
-}
-
-func partialMD5File(path string) (string, error) {
-	f, err := os.Open(path)
-	if err != nil {
-		return "", err
-	}
-	defer f.Close()
-	return partialMD5(f)
-}
-
-// fileNameDigest is KOReader's id under the filename matching method.
-func fileNameDigest(name string) string {
-	sum := md5.Sum([]byte(name))
-	return hex.EncodeToString(sum[:])
 }
 
 // bookFilePath is the file of a book's format on disk.
@@ -115,7 +68,7 @@ func bookDigest(uuid, format string) (string, error) {
 	if err == nil && size == fi.Size() && mtime == fi.ModTime().UnixNano() {
 		return digest, nil
 	}
-	if digest, err = partialMD5File(path); err != nil {
+	if digest, err = kosync.PartialMD5File(path); err != nil {
 		return "", err
 	}
 	_, err = appDB.Exec(`INSERT INTO book_digests (book_uuid, format, digest, size, mtime) VALUES (?, ?, ?, ?, ?)
@@ -132,7 +85,7 @@ func bookDocumentIDs(uuid, format string) []string {
 		ids = append(ids, d)
 	}
 	if path, err := bookFilePath(uuid, format); err == nil {
-		ids = append(ids, fileNameDigest(filepath.Base(path)))
+		ids = append(ids, kosync.FileNameDigest(filepath.Base(path)))
 	}
 	return ids
 }
@@ -196,7 +149,7 @@ func buildNameIndex() (map[string]bookFile, error) {
 			continue
 		}
 		format = strings.ToLower(format)
-		id := fileNameDigest(name + "." + format)
+		id := kosync.FileNameDigest(name + "." + format)
 		if prev, dup := ids[id]; dup && prev.UUID != uuid {
 			ids[id] = bookFile{} // two books with the same file name: match neither
 			continue

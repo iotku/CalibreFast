@@ -1,8 +1,8 @@
-package main
+package koreader
 
 // Exact text positions in an EPUB chapter, in the two forms the readers use.
 //
-// kosync_position.go converts reading positions, where the paragraph is
+// epub.go converts reading positions, where the paragraph is
 // enough. A highlight needs its first and last character, and the two
 // readers count characters differently:
 //
@@ -31,6 +31,8 @@ import (
 	"strings"
 	"unicode/utf16"
 	"unicode/utf8"
+
+	"github.com/iotku/CalibreFast/pkg/xml11"
 )
 
 // tnode is an element (name set) or a run of text.
@@ -57,7 +59,7 @@ type textPoint struct {
 }
 
 func parseChapter(data []byte) (*chapter, error) {
-	d := xml.NewDecoder(bytes.NewReader(xml11To10(data)))
+	d := xml.NewDecoder(bytes.NewReader(xml11.XML11To10(data)))
 	d.Strict = false
 	d.AutoClose = xml.HTMLAutoClose
 	d.Entity = xml.HTMLEntity
@@ -244,7 +246,7 @@ func (c *chapter) xpointer(fragment int, p textPoint) (string, bool) {
 	path += "." + strconv.Itoa(off)
 
 	// Elements up to <body>; an index only where there are several of a name,
-	// as kosync_position.go writes them.
+	// as epub.go writes them.
 	n := p.node.parent
 	for ; n != nil && n.parent != nil; n = n.parent {
 		pos, same := 0, 0

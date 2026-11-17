@@ -4,11 +4,11 @@ package main
 //
 // KOReader's Progress sync plugin talks to a small JSON API: it stores one
 // reading position per (user, document), where the document is an id the
-// device derives from the book (kosync_digest.go). CalibreFast serves that
-// API so the user can enter https://<server>/kosync as KOReader's custom
-// sync server, and joins device positions with the web readers' positions
+// device derives from the book (kosync_digest.go, pkg/kosync). CalibreFast
+// serves that API so the user can enter https://<server>/kosync as
+// KOReader's custom sync server, and joins device positions with the web readers' positions
 // for books it can match to the library: whichever was saved last wins, in
-// both directions (kosync_position.go converts EPUB positions).
+// both directions (pkg/koreader converts EPUB positions).
 //
 // The protocol: KOReader's plugins/kosync.koplugin and
 // github.com/koreader/koreader-sync-server; also described in
@@ -23,93 +23,47 @@ package main
 // Accounts come from CalibreFast, so registering from KOReader is refused.
 
 import (
-	"crypto/md5"
-	"crypto/rand"
-	"crypto/sha256"
 	"crypto/subtle"
 	"database/sql"
-	"encoding/hex"
 	"encoding/json"
 	"log"
 	"math"
 	"net/http"
-	"regexp"
 	"strconv"
 	"strings"
-	"sync"
 	"time"
+
+	"github.com/iotku/CalibreFast/pkg/koreader"
+	"github.com/iotku/CalibreFast/pkg/kosync"
 )
 
 const (
-	kosyncPrefix      = "/kosync"
-	maxDeviceNameLen  = 200
 	webReaderDevice   = "CalibreFast" // shown by KOReader: "Sync to latest location 42% from device 'CalibreFast'?"
 	webReaderDeviceID = "calibrefast-web"
 )
 
-// KOReader's document ids are 32 hex digits; allow a little more for other
-// clients, but nothing a GET path couldn't carry back.
-var kosyncDocumentRe = regexp.MustCompile(`^[A-Za-z0-9_.-]{1,128}$`)
+// kosyncGuesses limits key guessing from one address.
+var kosyncGuesses = kosync.NewGuessLimiter(10, 15*time.Minute)
 
-// Error codes are those of the reference server (KOReader shows the message).
-const (
-	kosyncErrUnauthorized   = 2001
-	kosyncErrInvalidRequest = 2003
-	kosyncErrDocument       = 2004
-	kosyncErrNoRegistration = 2005
-)
-
+// kosyncError writes an error in the protocol's form.
 func kosyncError(w http.ResponseWriter, status, code int, message string) {
-	writeJSON(w, status, map[string]any{"code": code, "message": message})
+	kosync.WriteError(w, status, code, message)
 }
+
+// isKosyncPath: the sync API authenticates devices itself (no session).
+func isKosyncPath(p string) bool { return kosync.IsPath(p) }
 
 // ---------------------------------------------------------------------------
 // Sync keys
 // ---------------------------------------------------------------------------
 
-// Sync keys are typed on e-reader keyboards: 16 lower-case letters (no l or
-// o, which look like 1 and 0), about 73 bits.
-const (
-	syncKeyLen      = 16
-	syncKeyAlphabet = "abcdefghijkmnpqrstuvwxyz"
-)
-
-func randomSyncKey() string {
-	out := make([]byte, 0, syncKeyLen)
-	buf := make([]byte, 32)
-	for len(out) < syncKeyLen {
-		if _, err := rand.Read(buf); err != nil {
-			panic(err)
-		}
-		for _, b := range buf {
-			// Reject the top of the byte range so each letter is equally likely.
-			if int(b) < 256/len(syncKeyAlphabet)*len(syncKeyAlphabet) && len(out) < syncKeyLen {
-				out = append(out, syncKeyAlphabet[int(b)%len(syncKeyAlphabet)])
-			}
-		}
-	}
-	return string(out)
-}
-
-// syncKeyHash is what is stored for a key: the SHA-256 of what KOReader
-// sends as x-auth-key, the lower-case hex MD5 of the key.
-func syncKeyHash(authKey string) string {
-	sum := sha256.Sum256([]byte(authKey))
-	return hex.EncodeToString(sum[:])
-}
-
-func md5Hex(s string) string {
-	sum := md5.Sum([]byte(s))
-	return hex.EncodeToString(sum[:])
-}
-
 // newSyncKey replaces the user's sync key (devices using the old one stop
 // syncing) and returns the new key, which is never stored.
 func newSyncKey(userID int64) (string, error) {
-	key := randomSyncKey()
+	key := kosync.RandomKey()
 	_, err := appDB.Exec(`INSERT INTO sync_keys (user_id, key_hash, created_at) VALUES (?, ?, ?)
 		ON CONFLICT(user_id) DO UPDATE SET key_hash = excluded.key_hash, created_at = excluded.created_at, last_used_at = NULL`,
-		userID, syncKeyHash(md5Hex(key)), nowUnix())
+		userID, kosync.KeyHash(kosync.MD5Hex(key)), nowUnix())
 	return key, err
 }
 
@@ -118,19 +72,17 @@ func revokeSyncKey(userID int64) error {
 	return err
 }
 
-var dummySyncKeyHash = syncKeyHash(md5Hex("calibrefast-timing-dummy"))
-
 // syncKeyUser checks a device's credentials: a CalibreFast username and the
 // MD5 of that user's sync key. Unknown users, wrong or revoked keys and
 // disabled accounts all fail the same way.
 func syncKeyUser(username, authKey string) *User {
 	var u User
 	var hash sql.NullString
-	stored := dummySyncKeyHash
+	stored := kosync.DummyKeyHash
 	err := appDB.QueryRow(`SELECT u.id, u.username, u.password_hash, u.is_admin, u.disabled, k.key_hash
 		FROM users u JOIN sync_keys k ON k.user_id = u.id WHERE u.username = ?`, username).
 		Scan(&u.ID, &u.Username, &hash, &u.IsAdmin, &u.Disabled, &stored)
-	match := subtle.ConstantTimeCompare([]byte(syncKeyHash(authKey)), []byte(stored)) == 1
+	match := subtle.ConstantTimeCompare([]byte(kosync.KeyHash(authKey)), []byte(stored)) == 1
 	if err != nil || !match || u.Disabled || username == "" || authKey == "" {
 		return nil
 	}
@@ -141,73 +93,23 @@ func syncKeyUser(username, authKey string) *User {
 	return &u
 }
 
-// guessLimiter stops a client address guessing keys: it may try a limited
-// number of different wrong (username, key) pairs per window. A device that
-// keeps sending the same stale key (KOReader pushes every 25 seconds while
-// reading) counts once, so it can't lock out other devices behind the same
-// address.
-type guessLimiter struct {
-	mu     sync.Mutex
-	fails  map[string]map[string]time.Time // address → pair → first failure
-	max    int
-	window time.Duration
-	now    func() time.Time
-}
-
-var kosyncGuesses = &guessLimiter{fails: map[string]map[string]time.Time{}, max: 10, window: 15 * time.Minute, now: time.Now}
-
-func (g *guessLimiter) prune(addr string) {
-	cut := g.now().Add(-g.window)
-	for k, t := range g.fails[addr] {
-		if t.Before(cut) {
-			delete(g.fails[addr], k)
-		}
-	}
-	if len(g.fails[addr]) == 0 {
-		delete(g.fails, addr)
-	}
-}
-
-func (g *guessLimiter) blocked(addr string) bool {
-	g.mu.Lock()
-	defer g.mu.Unlock()
-	g.prune(addr)
-	return len(g.fails[addr]) >= g.max
-}
-
-func (g *guessLimiter) fail(addr, pair string) {
-	g.mu.Lock()
-	defer g.mu.Unlock()
-	if len(g.fails) > 10000 {
-		for a := range g.fails {
-			g.prune(a)
-		}
-	}
-	if g.fails[addr] == nil {
-		g.fails[addr] = map[string]time.Time{}
-	}
-	if _, seen := g.fails[addr][pair]; !seen {
-		g.fails[addr][pair] = g.now()
-	}
-}
-
 const kosyncBadCredentials = "Wrong username or sync key. Use your CalibreFast username, and the sync key from your account page as the password."
 
 // kosyncAuth checks a device's x-auth-user / x-auth-key headers.
 func kosyncAuth(h func(http.ResponseWriter, *http.Request, *User)) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		addr := clientIP(r)
-		if kosyncGuesses.blocked(addr) {
+		if kosyncGuesses.Blocked(addr) {
 			// Not 401: KOReader keeps a push that failed this way and retries it.
-			kosyncError(w, http.StatusTooManyRequests, kosyncErrUnauthorized, "Too many failed sign-ins. Try again in a few minutes.")
+			kosyncError(w, http.StatusTooManyRequests, kosync.ErrUnauthorized, "Too many failed sign-ins. Try again in a few minutes.")
 			return
 		}
 		name := strings.TrimSpace(r.Header.Get("x-auth-user"))
 		key := r.Header.Get("x-auth-key")
 		u := syncKeyUser(name, key)
 		if u == nil {
-			kosyncGuesses.fail(addr, strings.ToLower(name)+"\x00"+syncKeyHash(key))
-			kosyncError(w, http.StatusUnauthorized, kosyncErrUnauthorized, kosyncBadCredentials)
+			kosyncGuesses.Fail(addr, strings.ToLower(name)+"\x00"+kosync.KeyHash(key))
+			kosyncError(w, http.StatusUnauthorized, kosync.ErrUnauthorized, kosyncBadCredentials)
 			return
 		}
 		h(w, r, u)
@@ -269,7 +171,7 @@ func webPosition(b bookFile, d *devicePosition) (*progressRec, bool) {
 		if err != nil {
 			return nil, false
 		}
-		if rec.Position, err = xpointerToCFI(file, d.Progress); err != nil {
+		if rec.Position, err = koreader.XPointerToCFI(file, d.Progress); err != nil {
 			return nil, false
 		}
 	default:
@@ -292,7 +194,7 @@ func devicePositionFromWeb(b bookFile, p *progressRec) (string, bool) {
 		if err != nil {
 			return "", false
 		}
-		xp, err := cfiToXPointer(file, p.Position)
+		xp, err := koreader.CFIToXPointer(file, p.Position)
 		return xp, err == nil
 	}
 	return "", false
@@ -325,7 +227,7 @@ func kosyncHealthHandler(w http.ResponseWriter, r *http.Request) {
 // CalibreFast's. 402 is the only failure KOReader expects here, and it shows
 // the message.
 func kosyncRegisterHandler(w http.ResponseWriter, r *http.Request) {
-	kosyncError(w, http.StatusPaymentRequired, kosyncErrNoRegistration,
+	kosyncError(w, http.StatusPaymentRequired, kosync.ErrNoRegistration,
 		"Accounts can't be registered from KOReader. Use Login with your CalibreFast username, and the sync key from your account page as the password.")
 }
 
@@ -341,24 +243,24 @@ func kosyncPutHandler(w http.ResponseWriter, r *http.Request, u *User) {
 	dec := json.NewDecoder(http.MaxBytesReader(w, r.Body, 16<<10))
 	dec.UseNumber()
 	if err := dec.Decode(&in); err != nil || in == nil {
-		kosyncError(w, http.StatusBadRequest, kosyncErrInvalidRequest, "The body must be a JSON object.")
+		kosyncError(w, http.StatusBadRequest, kosync.ErrInvalidRequest, "The body must be a JSON object.")
 		return
 	}
 	doc, _ := in["document"].(string)
-	if !kosyncDocumentRe.MatchString(doc) {
-		kosyncError(w, http.StatusForbidden, kosyncErrDocument, "Field 'document' not provided.")
+	if !kosync.DocumentRe.MatchString(doc) {
+		kosyncError(w, http.StatusForbidden, kosync.ErrDocument, "Field 'document' not provided.")
 		return
 	}
-	percentage, okPct := jsonFloat(in["percentage"])
-	progress, okProg := jsonString(in["progress"])
+	percentage, okPct := kosync.JSONFloat(in["percentage"])
+	progress, okProg := kosync.JSONString(in["progress"])
 	device, okDev := in["device"].(string)
 	var deviceID sql.NullString
 	if s, ok := in["device_id"].(string); ok {
 		deviceID = sql.NullString{String: s, Valid: true}
 	}
 	if !okPct || !okProg || !okDev || len(progress) > maxPositionLen ||
-		len(device) > maxDeviceNameLen || len(deviceID.String) > maxDeviceNameLen {
-		kosyncError(w, http.StatusForbidden, kosyncErrInvalidRequest, "Invalid request")
+		len(device) > kosync.MaxDeviceNameLen || len(deviceID.String) > kosync.MaxDeviceNameLen {
+		kosyncError(w, http.StatusForbidden, kosync.ErrInvalidRequest, "Invalid request")
 		return
 	}
 	now := time.Now().UnixMilli()
@@ -368,7 +270,7 @@ func kosyncPutHandler(w http.ResponseWriter, r *http.Request, u *User) {
 			device = excluded.device, device_id = excluded.device_id, updated_at = excluded.updated_at`,
 		u.ID, doc, progress, percentage, device, deviceID, now); err != nil {
 		log.Println("kosync: save progress:", err)
-		kosyncError(w, http.StatusBadGateway, 2000, "Unknown server error.")
+		kosyncError(w, http.StatusBadGateway, kosync.ErrUnknown, "Unknown server error.")
 		return
 	}
 	// Opening a book (0%) isn't reading it yet, as in the web readers.
@@ -387,8 +289,8 @@ func kosyncPutHandler(w http.ResponseWriter, r *http.Request, u *User) {
 // the web reader's when that is newer. Unknown documents are 200 {}.
 func kosyncGetHandler(w http.ResponseWriter, r *http.Request, u *User) {
 	doc := r.PathValue("document")
-	if !kosyncDocumentRe.MatchString(doc) {
-		kosyncError(w, http.StatusForbidden, kosyncErrDocument, "Field 'document' not provided.")
+	if !kosync.DocumentRe.MatchString(doc) {
+		kosyncError(w, http.StatusForbidden, kosync.ErrDocument, "Field 'document' not provided.")
 		return
 	}
 	ids := []string{doc}
@@ -434,51 +336,18 @@ func kosyncGetHandler(w http.ResponseWriter, r *http.Request, u *User) {
 func kosyncWrongURLHandler(w http.ResponseWriter, r *http.Request) {
 	msg := "This is CalibreFast: set the custom sync server to " + kosyncServerURL(r) + " (ending in /kosync)."
 	if r.URL.Path == "/users/create" {
-		kosyncError(w, http.StatusPaymentRequired, kosyncErrNoRegistration, msg)
+		kosyncError(w, http.StatusPaymentRequired, kosync.ErrNoRegistration, msg)
 		return
 	}
-	kosyncError(w, http.StatusUnauthorized, kosyncErrUnauthorized, msg)
-}
-
-// jsonFloat accepts a JSON number or a numeric string (as the reference
-// server does).
-func jsonFloat(v any) (float64, bool) {
-	var s string
-	switch t := v.(type) {
-	case json.Number:
-		s = t.String()
-	case string:
-		s = strings.TrimSpace(t)
-	default:
-		return 0, false
-	}
-	f, err := strconv.ParseFloat(s, 64)
-	return f, err == nil && !math.IsNaN(f) && !math.IsInf(f, 0)
-}
-
-// jsonString accepts a string, or a number (stored as written).
-func jsonString(v any) (string, bool) {
-	switch t := v.(type) {
-	case string:
-		return t, true
-	case json.Number:
-		return t.String(), true
-	}
-	return "", false
-}
-
-// isKosyncPath: the sync API authenticates devices itself (no session).
-func isKosyncPath(p string) bool {
-	return strings.HasPrefix(p, kosyncPrefix+"/") || p == "/users/auth" || p == "/users/create" ||
-		p == "/syncs/progress" || strings.HasPrefix(p, "/syncs/progress/")
+	kosyncError(w, http.StatusUnauthorized, kosync.ErrUnauthorized, msg)
 }
 
 func registerKosyncRoutes(mux *http.ServeMux) {
-	mux.HandleFunc("GET "+kosyncPrefix+"/healthcheck", kosyncHealthHandler)
-	mux.HandleFunc("POST "+kosyncPrefix+"/users/create", kosyncRegisterHandler)
-	mux.HandleFunc("GET "+kosyncPrefix+"/users/auth", kosyncAuth(kosyncAuthorizeHandler))
-	mux.HandleFunc("PUT "+kosyncPrefix+"/syncs/progress", kosyncAuth(kosyncPutHandler))
-	mux.HandleFunc("GET "+kosyncPrefix+"/syncs/progress/{document}", kosyncAuth(kosyncGetHandler))
+	mux.HandleFunc("GET "+kosync.Prefix+"/healthcheck", kosyncHealthHandler)
+	mux.HandleFunc("POST "+kosync.Prefix+"/users/create", kosyncRegisterHandler)
+	mux.HandleFunc("GET "+kosync.Prefix+"/users/auth", kosyncAuth(kosyncAuthorizeHandler))
+	mux.HandleFunc("PUT "+kosync.Prefix+"/syncs/progress", kosyncAuth(kosyncPutHandler))
+	mux.HandleFunc("GET "+kosync.Prefix+"/syncs/progress/{document}", kosyncAuth(kosyncGetHandler))
 	mux.HandleFunc("POST /users/create", kosyncWrongURLHandler)
 	mux.HandleFunc("GET /users/auth", kosyncWrongURLHandler)
 	mux.HandleFunc("PUT /syncs/progress", kosyncWrongURLHandler)
@@ -499,7 +368,7 @@ type syncKeyInfo struct {
 
 // kosyncServerURL is the address to enter in KOReader.
 func kosyncServerURL(r *http.Request) string {
-	return baseURL(r) + kosyncPrefix
+	return baseURL(r) + kosync.Prefix
 }
 
 func formatDay(unix int64) string { return time.Unix(unix, 0).Format("2 Jan 2006 15:04") }

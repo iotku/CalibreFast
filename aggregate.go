@@ -12,6 +12,8 @@ import (
 	"strconv"
 	"strings"
 	"sync"
+
+	"github.com/iotku/CalibreFast/pkg/langcodes"
 )
 
 // ---------------------------------------------------------------------------
@@ -224,7 +226,7 @@ func queryRawItems(c *category) []AggregateItem {
 		}
 		item.Slug = item.Name
 		if c.Key == "language" {
-			if name, ok := languageDisplayName(item.Name); ok {
+			if name, ok := langcodes.DisplayName(item.Name); ok {
 				item.Display = name
 			}
 		}
@@ -412,10 +414,10 @@ func filteredPageHandler(c *category) http.HandlerFunc {
 		name, members, grouped := groups.resolve(c.Key, value)
 		display, suggest := name, name
 		if c.Key == "language" && !grouped {
-			if dn, ok := languageDisplayName(name); ok {
+			if dn, ok := langcodes.DisplayName(name); ok {
 				display = dn
 				// Grouping "en" with others defaults to "English", not "en (US)".
-				suggest, _ = languageDisplayName(strings.SplitN(strings.ReplaceAll(name, "_", "-"), "-", 2)[0])
+				suggest, _ = langcodes.DisplayName(strings.SplitN(strings.ReplaceAll(name, "_", "-"), "-", 2)[0])
 			}
 		}
 		sub := ""

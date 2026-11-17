@@ -1,4 +1,4 @@
-package main
+package imageutil
 
 import (
 	"bytes"
@@ -9,6 +9,10 @@ import (
 	"image/png"
 	"testing"
 )
+
+const thumbWidth = 400
+
+var coverOpts = CoverOptions{MaxWidth: 2560, KeepMaxBytes: 5 << 20, Quality: 92}
 
 func testJPEG(t *testing.T, w, h, quality int) []byte {
 	t.Helper()
@@ -28,12 +32,12 @@ func testJPEG(t *testing.T, w, h, quality int) []byte {
 func TestMakeThumb(t *testing.T) {
 	// Small cover: returned unchanged, never upscaled.
 	small := testJPEG(t, 300, 450, 90)
-	if got, _ := makeThumb(small, noAbort); !bytes.Equal(got, small) {
+	if got, _ := Thumb(small, thumbWidth, 80, nil); !bytes.Equal(got, small) {
 		t.Error("small cover was re-encoded")
 	}
 	// Large cover: scaled to thumbWidth, and smaller than the original.
 	large := testJPEG(t, 1200, 1800, 92)
-	got, err := makeThumb(large, noAbort)
+	got, err := Thumb(large, thumbWidth, 80, nil)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -46,17 +50,15 @@ func TestMakeThumb(t *testing.T) {
 	}
 	// Large but already tiny in bytes: the original wins.
 	tiny := testJPEG(t, 800, 1200, 5)
-	if got, _ := makeThumb(tiny, noAbort); len(got) > len(tiny) {
+	if got, _ := Thumb(tiny, thumbWidth, 80, nil); len(got) > len(tiny) {
 		t.Errorf("thumb %d bytes > original %d", len(got), len(tiny))
 	}
 }
 
-func noAbort() error { return nil }
-
 func TestMakeThumbAbort(t *testing.T) {
 	stop := errors.New("stop")
 	large := testJPEG(t, 1200, 1800, 92)
-	if _, err := makeThumb(large, func() error { return stop }); !errors.Is(err, stop) {
+	if _, err := Thumb(large, thumbWidth, 80, func() error { return stop }); !errors.Is(err, stop) {
 		t.Errorf("err = %v, want the abort error", err)
 	}
 }
@@ -73,17 +75,17 @@ func TestCoverJPEG(t *testing.T) {
 
 	// A JPEG of a reasonable size is kept byte for byte.
 	jpg := testJPEG(t, 1600, 2400, 85)
-	if got, err := coverJPEG(jpg); err != nil || !bytes.Equal(got, jpg) {
+	if got, err := CoverJPEG(jpg, coverOpts); err != nil || !bytes.Equal(got, jpg) {
 		t.Errorf("JPEG re-encoded (%v)", err)
 	}
 
-	// Too wide: scaled down to coverMaxWidth.
-	wide := testJPEG(t, coverMaxWidth+400, 4000, 85)
-	got, err := coverJPEG(wide)
+	// Too wide: scaled down to coverOpts.MaxWidth.
+	wide := testJPEG(t, coverOpts.MaxWidth+400, 4000, 85)
+	got, err := CoverJPEG(wide, coverOpts)
 	if err != nil {
 		t.Fatal(err)
 	}
-	if f, w, h := decode(t, got); f != "jpeg" || w != coverMaxWidth || h != 3459 {
+	if f, w, h := decode(t, got); f != "jpeg" || w != coverOpts.MaxWidth || h != 3459 {
 		t.Errorf("too wide: %s %dx%d", f, w, h)
 	}
 
@@ -96,10 +98,10 @@ func TestCoverJPEG(t *testing.T) {
 	if err := jpeg.Encode(&buf, noise, &jpeg.Options{Quality: 100}); err != nil {
 		t.Fatal(err)
 	}
-	if buf.Len() <= coverKeepMaxBytes {
+	if buf.Len() <= coverOpts.KeepMaxBytes {
 		t.Fatalf("test image is only %d bytes", buf.Len())
 	}
-	if got, err := coverJPEG(buf.Bytes()); err != nil || len(got) >= buf.Len() {
+	if got, err := CoverJPEG(buf.Bytes(), coverOpts); err != nil || len(got) >= buf.Len() {
 		t.Errorf("too big: %d bytes, %v", len(got), err)
 	} else if f, w, h := decode(t, got); f != "jpeg" || w != 1800 || h != 1800 {
 		t.Errorf("too big: %s %dx%d", f, w, h)
@@ -110,7 +112,7 @@ func TestCoverJPEG(t *testing.T) {
 	if err := png.Encode(&pngBuf, image.NewRGBA(image.Rect(0, 0, 300, 450))); err != nil {
 		t.Fatal(err)
 	}
-	if got, err := coverJPEG(pngBuf.Bytes()); err != nil {
+	if got, err := CoverJPEG(pngBuf.Bytes(), coverOpts); err != nil {
 		t.Error(err)
 	} else if f, w, h := decode(t, got); f != "jpeg" || w != 300 || h != 450 {
 		t.Errorf("PNG: %s %dx%d", f, w, h)
@@ -118,8 +120,34 @@ func TestCoverJPEG(t *testing.T) {
 
 	// Not an image, or a cut-off JPEG: refused.
 	for _, bad := range [][]byte{[]byte("not an image"), jpg[:len(jpg)/2]} {
-		if _, err := coverJPEG(bad); err == nil {
+		if _, err := CoverJPEG(bad, coverOpts); err == nil {
 			t.Errorf("%d bytes of not an image accepted", len(bad))
 		}
+	}
+}
+
+func TestPDFImageIsPage(t *testing.T) {
+	cases := []struct {
+		w, h         int
+		pageW, pageH float64
+		want         bool
+	}{
+		{1240, 1754, 595, 842, true},  // A4 scan
+		{1754, 1240, 595, 842, true},  // turned with /Rotate
+		{1200, 1200, 595, 842, false}, // a square picture on the page
+		{200, 283, 595, 842, false},   // a logo of the page's shape
+		{1650, 2550, 612, 792, false}, // a taller picture than the Letter page (0.65 vs 0.77)
+	}
+	for _, c := range cases {
+		if got := PDFImageIsPage(c.w, c.h, c.pageW, c.pageH); got != c.want {
+			t.Errorf("%dx%d on %vx%v: got %v, want %v", c.w, c.h, c.pageW, c.pageH, got, c.want)
+		}
+	}
+}
+
+func TestResizeToWidth(t *testing.T) {
+	img := image.NewRGBA(image.Rect(0, 0, 300, 1))
+	if got := ResizeToWidth(img, 100).Bounds(); got.Dx() != 100 || got.Dy() != 1 {
+		t.Errorf("got %v", got)
 	}
 }

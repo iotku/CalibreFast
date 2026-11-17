@@ -42,6 +42,9 @@ import (
 	"slices"
 	"strings"
 	"time"
+
+	"github.com/iotku/CalibreFast/pkg/filehash"
+	"github.com/iotku/CalibreFast/pkg/opf"
 )
 
 // mergeMaxBooks bounds one merge.
@@ -241,7 +244,7 @@ func fileHash(p string) string {
 	if err != nil {
 		return ""
 	}
-	h, err := fileSHA256(p, st)
+	h, err := filehash.SHA256(p, st)
 	if err != nil {
 		log.Printf("merge: hashing %s: %v", p, err)
 		return ""
@@ -403,7 +406,7 @@ func mergeSources(books []*mergeBook, keep string) []UploadedBookMeta {
 	var out []UploadedBookMeta
 	add := func(m UploadedBookMeta) {
 		m.Date = normalizeDateOnly(m.Date)
-		_, m.Identifiers = splitLibraryIdentifiers(m.Identifiers)
+		_, m.Identifiers = opf.SplitLibraryIdentifiers(m.Identifiers)
 		out = append(out, m)
 	}
 	ordered := slices.Clone(books)
@@ -420,7 +423,7 @@ func mergeSources(books []*mergeBook, keep string) []UploadedBookMeta {
 		if b.Incoming() {
 			continue // new files have no record: what they say follows
 		}
-		opf, err := loadOPF(filepath.Join(b.Dir, "metadata.opf"))
+		opf, err := opf.Load(filepath.Join(b.Dir, "metadata.opf"))
 		if err != nil {
 			log.Printf("merge: %s: %v", b.UUID, err)
 			continue

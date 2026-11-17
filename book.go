@@ -12,6 +12,7 @@ import (
 	"time"
 	"unicode/utf16"
 
+	"github.com/iotku/CalibreFast/pkg/opf"
 	"github.com/microcosm-cc/bluemonday"
 )
 
@@ -113,7 +114,7 @@ func bookHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	opf, err := loadOPF(opfPath)
+	opfDoc, err := opf.Load(opfPath)
 	if err != nil {
 		http.Error(w, err.Error(), http.StatusInternalServerError)
 		return
@@ -128,8 +129,8 @@ func bookHandler(w http.ResponseWriter, r *http.Request) {
 		formats = append(formats, ext)
 	}
 
-	formattedDate := opf.Metadata.Date
-	if t, err := parseAnyDate(opf.Metadata.Date); err == nil {
+	formattedDate := opfDoc.Metadata.Date
+	if t, err := opf.ParseAnyDate(opfDoc.Metadata.Date); err == nil {
 		formattedDate = t.Format("January 2, 2006")
 	}
 
@@ -142,17 +143,17 @@ func bookHandler(w http.ResponseWriter, r *http.Request) {
 		UUID:       uuid,
 		Standalone: standalone,
 
-		Title:     opf.Metadata.Title,
-		Authors:   opf.Metadata.Creators,
-		Publisher: opf.Metadata.Publisher,
+		Title:     opfDoc.Metadata.Title,
+		Authors:   opfDoc.Metadata.Creators,
+		Publisher: opfDoc.Metadata.Publisher,
 		Date:      formattedDate,
-		Languages: bookLanguages(opf.Metadata.Languages),
+		Languages: bookLanguages(opfDoc.Metadata.Languages),
 		Writable:  canEditLibrary(r),
-		Tags:      opf.Metadata.Subjects,
+		Tags:      opfDoc.Metadata.Subjects,
 
 		Description: template.HTML(
 			descriptionPolicy.Sanitize(
-				opf.Metadata.Description,
+				opfDoc.Metadata.Description,
 			),
 		),
 
@@ -185,7 +186,7 @@ type BookLanguage struct {
 
 func bookLanguages(codes []string) []BookLanguage {
 	out := []BookLanguage{}
-	for _, c := range cleanLanguages(codes) {
+	for _, c := range opf.CleanLanguages(codes) {
 		out = append(out, BookLanguage{Code: c, Name: languageLabel(c)})
 	}
 	return out

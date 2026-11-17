@@ -11,17 +11,16 @@ package main
 // byte for byte, can't be added again.
 
 import (
-	"crypto/sha256"
 	"database/sql"
-	"encoding/hex"
 	"fmt"
-	"io"
 	"os"
 	"path/filepath"
 	"strconv"
 	"strings"
-	"sync"
 	"time"
+
+	"github.com/iotku/CalibreFast/pkg/filehash"
+	"github.com/iotku/CalibreFast/pkg/isbn"
 )
 
 // dupFile is one of the files of the book being checked.
@@ -118,7 +117,7 @@ func findDuplicates(db *sql.DB, libDir, title string, authors []string, files []
 }
 
 // findDuplicatesISBN is findDuplicates that also looks at the books with
-// one of these ISBNs (any form: normalizeISBN), whatever their titles.
+// one of these ISBNs (any form: isbn.Normalize), whatever their titles.
 func findDuplicatesISBN(db *sql.DB, libDir, title string, authors []string, files []dupFile, exclude string, isbns []string) (*duplicateCheck, error) {
 	check := &duplicateCheck{Books: []duplicateBook{}}
 	title = strings.Join(strings.Fields(title), " ")
@@ -194,7 +193,7 @@ func findDuplicatesISBN(db *sql.DB, libDir, title string, authors []string, file
 func isbnForms(isbns []string) []string {
 	var out []string
 	for _, s := range isbns {
-		n := normalizeISBN(s)
+		n := isbn.Normalize(s)
 		if n == "" {
 			continue
 		}
@@ -256,11 +255,11 @@ func holdsSameFile(db *sql.DB, libDir string, bookID int64, bookPath string, fil
 			if err != nil || fi.Size() != li.Size() {
 				continue
 			}
-			a, err := fileSHA256(f.Path, fi)
+			a, err := filehash.SHA256(f.Path, fi)
 			if err != nil {
 				return false, err
 			}
-			b, err := fileSHA256(l.Path, li)
+			b, err := filehash.SHA256(l.Path, li)
 			if err != nil {
 				return false, err
 			}
@@ -317,43 +316,6 @@ func bookFiles(db *sql.DB, libDir string, bookID int64, bookPath string) ([]dupF
 		}
 	}
 	return out, nil
-}
-
-// fileHashes remembers files' hashes by path, size and modification time,
-// so the import queue's list doesn't read its books (or the library's) on
-// every refresh.
-var fileHashes struct {
-	sync.Mutex
-	m map[string]string
-}
-
-const maxFileHashes = 4096
-
-func fileSHA256(p string, info os.FileInfo) (string, error) {
-	key := fmt.Sprintf("%s\x00%d\x00%d", p, info.Size(), info.ModTime().UnixNano())
-	fileHashes.Lock()
-	h, ok := fileHashes.m[key]
-	fileHashes.Unlock()
-	if ok {
-		return h, nil
-	}
-	f, err := os.Open(p)
-	if err != nil {
-		return "", err
-	}
-	defer f.Close()
-	sum := sha256.New()
-	if _, err := io.Copy(sum, f); err != nil {
-		return "", err
-	}
-	h = hex.EncodeToString(sum.Sum(nil))
-	fileHashes.Lock()
-	if fileHashes.m == nil || len(fileHashes.m) >= maxFileHashes {
-		fileHashes.m = map[string]string{}
-	}
-	fileHashes.m[key] = h
-	fileHashes.Unlock()
-	return h, nil
 }
 
 // libraryBookDuplicates is findDuplicates for a book in the library: other

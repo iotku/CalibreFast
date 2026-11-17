@@ -1,175 +1,15 @@
 package main
 
 import (
-	"archive/zip"
-	"bytes"
 	"encoding/json"
 	"net/http"
-	"os"
-	"path/filepath"
 	"strings"
 	"testing"
 	"time"
+
+	"github.com/iotku/CalibreFast/pkg/koreader"
+	"github.com/iotku/CalibreFast/pkg/koreader/koreadertest"
 )
-
-// A chapter with what makes the two readers count differently: runs of
-// white space, white space at the start of blocks, text split by inline
-// elements, an entity and a character outside the BMP.
-const koChapter = `<?xml version="1.0" encoding="utf-8"?>
-<html xmlns="http://www.w3.org/1999/xhtml"><head><title>t</title></head><body>
-<div>
-  <p>Alpha   beta
- gamma.</p>
-  <p>One <b>two</b> three &amp; four 😀 five.</p>
-</div>
-<p> Lead <i>x</i> <i>y</i> tail</p>
-</body></html>`
-
-func koEPUB(t *testing.T) []byte {
-	t.Helper()
-	var buf bytes.Buffer
-	z := zip.NewWriter(&buf)
-	for _, f := range [][2]string{
-		{"mimetype", "application/epub+zip"},
-		{"META-INF/container.xml", `<container xmlns="urn:oasis:names:tc:opendocument:xmlns:container"><rootfiles><rootfile full-path="content.opf"/></rootfiles></container>`},
-		// An EPUB 3 package: <meta> with text inside.
-		{"content.opf", `<package xmlns="http://www.idpf.org/2007/opf" version="3.0"><metadata><meta property="dcterms:modified">2026-01-01T00:00:00Z</meta></metadata><manifest>
-			<item id="a" href="a.xhtml"/><item id="b" href="b.xhtml"/></manifest>
-			<spine><itemref idref="a"/><itemref idref="b"/></spine></package>`},
-		{"a.xhtml", `<html><head/><body><p>First chapter.</p></body></html>`},
-		{"b.xhtml", koChapter},
-	} {
-		w, _ := z.Create(f[0])
-		_, _ = w.Write([]byte(f[1]))
-	}
-	z.Close()
-	return buf.Bytes()
-}
-
-func TestLuaTable(t *testing.T) {
-	src := `-- /mnt/onboard/Book.epub.annotations.lua
-return {
-    ["annotations"] = {
-        [1] = {
-            ["note"] = "two\
-lines \"quoted\" \\ \65\066 caf\195\169",
-            ["pos0"] = { x = 12.5, ["y"] = -3, page = 0x10 },
-            ["flag"] = false,
-        },
-        [2] = { "a", 'b', nil, true },
-    },
-    ["paging"] = true, -- trailing comment
-    --[[ a block
-         comment ]]
-    [7] = "sparse",
-}
-`
-	tab, err := parseLuaTable(src)
-	if err != nil {
-		t.Fatal(err)
-	}
-	list := tab.table("annotations")
-	if list == nil || len(list.arr) != 2 || tab.hash["paging"] != true || tab.hash["7"] != "sparse" {
-		t.Fatalf("parsed: %+v", tab)
-	}
-	first := list.arr[0].(*luaTable)
-	if got := first.str("note"); got != "two\nlines \"quoted\" \\ AB café" {
-		t.Errorf("note: %q", got)
-	}
-	pos := first.table("pos0")
-	if x, _ := pos.num("x"); x != 12.5 {
-		t.Errorf("x: %v", x)
-	}
-	if p, _ := pos.num("page"); p != 16 {
-		t.Errorf("hex page: %v", p)
-	}
-	if arr := list.arr[1].(*luaTable).arr; len(arr) != 4 || arr[0] != "a" || arr[2] != nil || arr[3] != true {
-		t.Errorf("array part: %v", arr)
-	}
-
-	// What we write reads back the same.
-	var b strings.Builder
-	b.WriteString("return ")
-	writeLua(&b, tab, 0)
-	again, err := parseLuaTable(b.String())
-	if err != nil {
-		t.Fatalf("our own output: %v\n%s", err, b.String())
-	}
-	if got := again.table("annotations").arr[0].(*luaTable).str("note"); got != first.str("note") {
-		t.Errorf("note after a round trip: %q", got)
-	}
-
-	// Only data is read: code is a syntax error, never run.
-	for _, bad := range []string{
-		``, `{}`, `return 5`, `return { a = os.execute("x") }`, `return { a = b }`, `return { f() }`,
-		`return { "unfinished }`, `return { a = 1 } print(1)`, `return { a = 1 + 2 }`, `return {` + strings.Repeat("{", 100),
-	} {
-		if _, err := parseLuaTable(bad); err == nil {
-			t.Errorf("accepted %q", bad)
-		}
-	}
-}
-
-// Places in koChapter, as each reader writes them. The XPointers follow
-// crengine's rules for text (see koreader_text.go), read from its source;
-// they have not been checked on a device.
-var koPlaces = []struct{ word, cfi, xpointer string }{
-	{"Alpha", "/4/2/2/1:0", "/body/DocFragment[2]/body/div/p[1]/text().0"},
-	{"gamma", "/4/2/2/1:14", "/body/DocFragment[2]/body/div/p[1]/text().11"}, // three spaces and a line break became two spaces
-	{"One", "/4/2/4/1:0", "/body/DocFragment[2]/body/div/p[2]/text()[1].0"},
-	{"two", "/4/2/4/2/1:0", "/body/DocFragment[2]/body/div/p[2]/b/text().0"},
-	{"four", "/4/2/4/3:9", "/body/DocFragment[2]/body/div/p[2]/text()[2].9"},
-	{"five", "/4/2/4/3:17", "/body/DocFragment[2]/body/div/p[2]/text()[2].16"}, // the emoji: two UTF-16 units, one character
-	{"Lead", "/4/4/1:1", "/body/DocFragment[2]/body/p/text()[1].1"},
-	{"tail", "/4/4/5:1", "/body/DocFragment[2]/body/p/text()[3].1"}, // the space between the two <i> is text()[2]
-}
-
-func TestKOReaderTextPositions(t *testing.T) {
-	c, err := parseChapter([]byte(koChapter))
-	if err != nil {
-		t.Fatal(err)
-	}
-	for _, place := range koPlaces {
-		p, ok := c.fromCFIPath(place.cfi)
-		if !ok || !strings.HasPrefix(string(p.node.text[p.off:]), place.word) {
-			t.Errorf("%s: CFI %s points at %q", place.word, place.cfi, string(p.node.text))
-			continue
-		}
-		if xp, ok := c.xpointer(2, p); !ok || xp != place.xpointer {
-			t.Errorf("%s: XPointer %q, want %q", place.word, xp, place.xpointer)
-		}
-		back, exact, ok := c.fromXPointer(place.xpointer)
-		if !ok || !exact || back != p {
-			t.Errorf("%s: XPointer %s points at %q+%d", place.word, place.xpointer, string(back.node.text), back.off)
-		}
-		elements, text := cfiSteps(p)
-		if got := strings.Join(elements, "") + text; got != place.cfi {
-			t.Errorf("%s: CFI %q, want %q", place.word, got, place.cfi)
-		}
-	}
-	// The index is optional where there is one of a kind, as newer KOReader writes it.
-	if p, exact, ok := c.fromXPointer("/body[1]/DocFragment[2]/body[1]/div[1]/p[1]/text()[1].11"); !ok || !exact || !strings.HasPrefix(string(p.node.text[p.off:]), "gamma") {
-		t.Errorf("explicit [1]: %v %v", exact, ok)
-	}
-	// A path this file doesn't have resolves as far as it goes.
-	if _, exact, ok := c.fromXPointer("/body/DocFragment[2]/body/div/p[2]/span[4]/text().3"); !ok || exact {
-		t.Errorf("unknown element: exact=%v ok=%v", exact, ok)
-	}
-	// White space that crengine drops has no XPointer of its own: the next text does.
-	blank := c.root.children[1].children[0] // the line break after <body>
-	if xp, ok := c.xpointer(2, textPoint{blank, 0}); !ok || xp != koPlaces[0].xpointer {
-		t.Errorf("dropped white space: %q", xp)
-	}
-
-	start, _ := c.fromCFIPath("/4/2/4/2/1:0")
-	end, _ := c.fromCFIPath("/4/2/4/3:13")
-	if got := cfiRange(6, 1, start, end); got != "epubcfi(/6/4!/4/2/4,/2/1:0,/3:13)" {
-		t.Errorf("range: %s", got)
-	}
-	if item, a, b, ok := splitCFI("epubcfi(/6/4[ch,ap]!/4/2[x^]y]/4,/2/1:0,/3:13)"); !ok || item != 1 || a != "/4/2/4/2/1:0" || b != "/4/2/4/3:13" {
-		t.Errorf("splitCFI: %d %q %q %v", item, a, b, ok)
-	}
-}
 
 func koMux() *http.ServeMux {
 	mux := annotationMux()
@@ -200,7 +40,7 @@ func TestKOReaderExportImportEPUB(t *testing.T) {
 	u, books := setupLibraryAndUser(t, 1)
 	other, _ := createUser("other", "longenough-pw", false)
 	b := books[0]
-	libraryBook(t, b, "A Book - Someone", "epub", koEPUB(t))
+	libraryBook(t, b, "A Book - Someone", "epub", koreadertest.KOEPUB(t))
 	mux := koMux()
 	now := time.Now().UnixMilli()
 
@@ -234,15 +74,15 @@ func TestKOReaderExportImportEPUB(t *testing.T) {
 		t.Fatalf("exported %s, skipped %s", rec.Header().Get("X-Annotations-Exported"), rec.Header().Get("X-Annotations-Skipped"))
 	}
 	file := rec.Body.String()
-	tab, err := parseLuaTable(file)
+	tab, err := koreader.ParseLuaTable(file)
 	if err != nil {
 		t.Fatalf("the export doesn't parse: %v\n%s", err, file)
 	}
 	// Dated so that KOReader's import removes nothing of its own; not marked as paged.
-	if tab.str("datetime") != koreaderOldest || tab.str("device_id") != koreaderDevice || tab.hash["paging"] != nil {
-		t.Errorf("header: %+v", tab.hash)
+	if tab.Str("datetime") != koreader.Oldest || tab.Str("device_id") != koreaderDevice || tab.Hash["paging"] != nil {
+		t.Errorf("header: %+v", tab.Hash)
 	}
-	item := tab.table("annotations").arr[0].(*luaTable)
+	item := tab.Table("annotations").Arr[0].(*koreader.LuaTable)
 	for key, want := range map[string]string{
 		"pos0":     "/body/DocFragment[2]/body/div/p[2]/b/text().0",
 		"pos1":     "/body/DocFragment[2]/body/div/p[2]/text()[2].13",
@@ -252,14 +92,14 @@ func TestKOReaderExportImportEPUB(t *testing.T) {
 		"color":    "green",
 		"drawer":   "lighten",
 		"chapter":  "Two",
-		"datetime": time.UnixMilli(web.CreatedAt).Format(koreaderTime),
+		"datetime": time.UnixMilli(web.CreatedAt).Format(koreader.TimeLayout),
 		"epubcfi":  web.Anchor,
 	} {
-		if got := item.str(key); got != want {
+		if got := item.Str(key); got != want {
 			t.Errorf("%s: %q, want %q", key, got, want)
 		}
 	}
-	if n, _ := item.num("pageno"); n != 3 {
+	if n, _ := item.Num("pageno"); n != 3 {
 		t.Errorf("pageno: %v", n)
 	}
 
@@ -273,7 +113,7 @@ func TestKOReaderExportImportEPUB(t *testing.T) {
 	}
 	got := listAnnotations(t, mux, other, b)
 	if len(got) != 1 || got[0].Anchor != web.Anchor || got[0].Text != web.Text || got[0].Note != web.Note ||
-		got[0].Color != "green" || got[0].Page != 3 || !strings.HasPrefix(got[0].ID, koreaderIDPrefix) {
+		got[0].Color != "green" || got[0].Page != 3 || !strings.HasPrefix(got[0].ID, koreader.IDPrefix) {
 		t.Fatalf("imported: %+v", got)
 	}
 	if res := koImport(t, mux, other, b, "epub", file); res != (koreaderImport{Unchanged: 1}) {
@@ -292,7 +132,7 @@ func TestKOReaderExportImportEPUB(t *testing.T) {
 func TestKOReaderImportEPUB(t *testing.T) {
 	u, books := setupLibraryAndUser(t, 1)
 	b := books[0]
-	libraryBook(t, b, "Book", "epub", koEPUB(t))
+	libraryBook(t, b, "Book", "epub", koreadertest.KOEPUB(t))
 	mux := koMux()
 
 	// As a device writes them. The first has exact XPointers. The second's
@@ -332,12 +172,12 @@ func TestKOReaderImportEPUB(t *testing.T) {
 	}
 	first := byText["beta gamma"]
 	if first.Anchor != "epubcfi(/6/4!/4/2/2,/1:8,/1:19)" || first.Color != "red" || first.Chapter != "Two" || first.Page != 4 ||
-		first.CreatedAt != koreaderMillis("2025-03-01 10:00:00") {
+		first.CreatedAt != koreader.Millis("2025-03-01 10:00:00") {
 		t.Errorf("exact XPointers: %+v", first)
 	}
 	second := byText["three & four\n😀 five"]
 	if second.Anchor != "epubcfi(/6/4!/4/2/4,/3:1,/3:21)" || second.Color != "yellow" || second.Note != "found by its text" ||
-		second.UpdatedAt != koreaderMillis("2025-03-02 08:00:00") {
+		second.UpdatedAt != koreader.Millis("2025-03-02 08:00:00") {
 		t.Errorf("found by text: %+v", second)
 	}
 	if third := byText["Lead x y tail"]; third.Anchor != "epubcfi(/6/4!/4/4,/1:1,/5:5)" || third.Color != "blue" {
@@ -388,23 +228,23 @@ func TestKOReaderExportImportPDF(t *testing.T) {
 	call(t, mux, u, "PUT", "/api/me/annotations/"+b+"/web-1", string(body))
 
 	rec := call(t, mux, u, "GET", "/api/me/annotations/"+b+"/koreader?format=pdf", "")
-	tab, err := parseLuaTable(rec.Body.String())
-	if rec.Code != 200 || err != nil || tab.hash["paging"] != true {
+	tab, err := koreader.ParseLuaTable(rec.Body.String())
+	if rec.Code != 200 || err != nil || tab.Hash["paging"] != true {
 		t.Fatalf("export: %d %v", rec.Code, err)
 	}
-	item := tab.table("annotations").arr[0].(*luaTable)
-	if page, _ := item.num("page"); page != 3 {
+	item := tab.Table("annotations").Arr[0].(*koreader.LuaTable)
+	if page, _ := item.Num("page"); page != 3 {
 		t.Errorf("page: %v", page)
 	}
 	// pos0 and pos1 are inside the first and last word; the boxes are x, y, width, height.
-	pos0, pos1, boxes := item.table("pos0"), item.table("pos1"), item.table("pboxes")
-	if x, _ := pos0.num("x"); x != 118.9 {
+	pos0, pos1, boxes := item.Table("pos0"), item.Table("pos1"), item.Table("pboxes")
+	if x, _ := pos0.Num("x"); x != 118.9 {
 		t.Errorf("pos0.x: %v", x)
 	}
-	if y, _ := pos1.num("y"); y != (96.4+109.3)/2 {
+	if y, _ := pos1.Num("y"); y != (96.4+109.3)/2 {
 		t.Errorf("pos1.y: %v", y)
 	}
-	if w, _ := boxes.arr[1].(*luaTable).num("w"); len(boxes.arr) != 2 || w != 204.9-72 {
+	if w, _ := boxes.Arr[1].(*koreader.LuaTable).Num("w"); len(boxes.Arr) != 2 || w != 204.9-72 {
 		t.Errorf("pboxes: %v", w)
 	}
 
@@ -430,46 +270,5 @@ func TestKOReaderExportImportPDF(t *testing.T) {
 	}
 	if rec := call(t, mux, u, "POST", "/api/me/annotations/"+b+"/koreader?format=pdf", `return { ["annotations"] = {} }`); rec.Code != http.StatusBadRequest {
 		t.Errorf("an EPUB's file for the PDF: %d", rec.Code)
-	}
-}
-
-// KOReader's own sample, when a checkout of koreader/test-data is at hand.
-func TestKOReaderAnnotationsFixture(t *testing.T) {
-	dir := os.Getenv("KOREADER_ANNOTATIONS")
-	if dir == "" {
-		t.Skip("set KOREADER_ANNOTATIONS to a folder with book.epub and book.epub.annotations.lua exported by KOReader")
-	}
-	src, err := os.ReadFile(filepath.Join(dir, "book.epub.annotations.lua"))
-	if err != nil {
-		t.Fatal(err)
-	}
-	tab, err := parseLuaTable(string(src))
-	if err != nil {
-		t.Fatal(err)
-	}
-	recs, res, err := koreaderAnnotations(filepath.Join(dir, "book.epub"), "epub", tab)
-	if err != nil {
-		t.Fatal(err)
-	}
-	t.Logf("%d highlights placed, %d not, %d bookmarks", len(recs), res.Skipped, res.Bookmarks)
-	// Where KOReader saved a CFI (newer versions), ours from its XPointers must agree.
-	book, err := openKOBook(filepath.Join(dir, "book.epub"))
-	if err != nil {
-		t.Fatal(err)
-	}
-	defer book.Close()
-	for _, v := range tab.table("annotations").arr {
-		item := v.(*luaTable)
-		want := item.str("epubcfi")
-		if want == "" || item.str("drawer") == "" {
-			continue
-		}
-		delete(item.hash, "epubcfi")
-		got, _ := koreaderEPUBAnchor(book, item)
-		_, a, b, _ := splitCFI(want)
-		_, c, d, _ := splitCFI(got)
-		if a != c || b != d {
-			t.Errorf("%q: ours %s, KOReader's %s", item.str("text"), got, want)
-		}
 	}
 }

@@ -10,6 +10,7 @@ import (
 	"time"
 
 	"github.com/google/uuid"
+	"github.com/iotku/CalibreFast/pkg/opf"
 )
 
 var titleSortRE = regexp.MustCompile(`(?i)^(a|an|the)\s+`)
@@ -45,7 +46,7 @@ func calibreDateTime(t time.Time) string {
 // insertBookIntoCalibreDB inserts a book and all its formats into metadata.db,
 // following Calibre's schema exactly so the library remains Calibre-compatible.
 func insertBookIntoCalibreDB(db *sql.DB, meta *UploadedBookMeta, formats []formatEntry) (bookID int64, bookUUID string, bookPath string, retErr error) {
-	meta.Subjects = uniqueTags(meta.Subjects)
+	meta.Subjects = opf.UniqueTags(meta.Subjects)
 	tx, err := db.Begin()
 	if err != nil {
 		return 0, "", "", fmt.Errorf("begin tx: %w", err)
@@ -64,7 +65,7 @@ func insertBookIntoCalibreDB(db *sql.DB, meta *UploadedBookMeta, formats []forma
 
 	// The book's author_sort is set once its authors are linked, below.
 	authorSort := authorSortKey(meta.Creators[0])
-	seriesIndex := meta.getMeta("calibre:series_index") // TODO: do we actually set this anywhere?
+	seriesIndex := meta.GetMeta("calibre:series_index") // TODO: do we actually set this anywhere?
 	if seriesIndex == "" {
 		seriesIndex = "1.0"
 	}
@@ -161,7 +162,7 @@ func insertBookIntoCalibreDB(db *sql.DB, meta *UploadedBookMeta, formats []forma
 		}
 	}
 
-	seriesName := meta.getMeta("calibre:series")
+	seriesName := meta.GetMeta("calibre:series")
 	if seriesName != "" {
 		seriesID, sErr := upsertSimpleEntity(tx, "series", seriesName)
 		if sErr != nil {
@@ -175,7 +176,7 @@ func insertBookIntoCalibreDB(db *sql.DB, meta *UploadedBookMeta, formats []forma
 	}
 
 	// Language and identifier are best-effort; don't abort the whole insert on failure.
-	for i, lang := range cleanLanguages(meta.Languages) {
+	for i, lang := range opf.CleanLanguages(meta.Languages) {
 		if langID, lErr := upsertLanguage(tx, lang); lErr == nil {
 			tx.Exec(`INSERT OR IGNORE INTO books_languages_link (book, lang_code, item_order) VALUES (?, ?, ?)`, bookID, langID, i)
 		}
@@ -248,7 +249,7 @@ func linkBookAuthors(tx *sql.Tx, bookID int64, creators []string) ([]int64, stri
 // It ensures strict Calibre database compatibility, including cleaning up orphaned authors, tags,
 // publishers, and languages when the edited book was the only book linked to them.
 func updateBookInCalibreDB(db *sql.DB, baseDir string, bookUUID string, meta *OPFMetadata) (string, error) {
-	meta.Subjects = uniqueTags(meta.Subjects)
+	meta.Subjects = opf.UniqueTags(meta.Subjects)
 	var bookID int64
 	var bookPath string
 	err := db.QueryRow(`SELECT id, path FROM books WHERE uuid = ?`, bookUUID).Scan(&bookID, &bookPath)
@@ -257,7 +258,7 @@ func updateBookInCalibreDB(db *sql.DB, baseDir string, bookUUID string, meta *OP
 	}
 
 	// Checked before anything is written.
-	seriesName, seriesIndex, err := cleanSeries(meta.Series, meta.SeriesIndex)
+	seriesName, seriesIndex, err := opf.CleanSeries(meta.Series, meta.SeriesIndex)
 	if meta.SeriesSet && err != nil {
 		return "", err
 	}
@@ -461,7 +462,7 @@ func updateBookInCalibreDB(db *sql.DB, baseDir string, bookUUID string, meta *OP
 
 	// A book can have several languages; keep all of them, in order.
 	keepLang := map[int64]bool{}
-	for i, lang := range cleanLanguages(meta.Languages) {
+	for i, lang := range opf.CleanLanguages(meta.Languages) {
 		langID, lErr := upsertLanguage(tx, lang)
 		if lErr != nil {
 			return "", fmt.Errorf("upsert language %q: %w", lang, lErr)
@@ -487,7 +488,7 @@ func updateBookInCalibreDB(db *sql.DB, baseDir string, bookUUID string, meta *OP
 
 	// 7. Identifiers. Library identifiers (calibre, uuid) aren't edited: the
 	// book's rows stay, and any in meta are ignored.
-	_, editedIDs := splitLibraryIdentifiers(meta.Identifiers)
+	_, editedIDs := opf.SplitLibraryIdentifiers(meta.Identifiers)
 	if _, err = tx.Exec(`DELETE FROM identifiers WHERE book = ? AND lower(type) NOT IN ('calibre', 'uuid')`, bookID); err != nil {
 		return "", fmt.Errorf("delete old identifiers: %w", err)
 	}
@@ -521,19 +522,19 @@ func updateBookInCalibreDB(db *sql.DB, baseDir string, bookUUID string, meta *OP
 	// 8. Update metadata.opf on disk
 	if baseDir != "" && bookPath != "" {
 		opfPath := filepath.Join(baseDir, bookPath, "metadata.opf")
-		existingOPF, lErr := loadOPF(opfPath)
+		existingOPF, lErr := opf.Load(opfPath)
 		if lErr != nil || existingOPF == nil {
 			existingOPF = &OPF{
 				Metadata: *meta,
 			}
 			existingOPF.Metadata.Identifiers = editedIDs
 			if meta.SeriesSet {
-				existingOPF.Metadata.syncSeriesMeta()
+				existingOPF.Metadata.SyncSeriesMeta()
 			}
 		} else {
 			if meta.SeriesSet {
 				existingOPF.Metadata.Series, existingOPF.Metadata.SeriesIndex = meta.Series, meta.SeriesIndex
-				existingOPF.Metadata.syncSeriesMeta()
+				existingOPF.Metadata.SyncSeriesMeta()
 			}
 			existingOPF.Metadata.Title = meta.Title
 			existingOPF.Metadata.Creators = meta.Creators
@@ -543,10 +544,10 @@ func updateBookInCalibreDB(db *sql.DB, baseDir string, bookUUID string, meta *OP
 			existingOPF.Metadata.Subjects = meta.Subjects
 			existingOPF.Metadata.Description = meta.Description
 			// The OPF's library identifiers stay as they were (ids too), first.
-			libraryIDs, _ := splitLibraryIdentifiers(existingOPF.Metadata.Identifiers)
+			libraryIDs, _ := opf.SplitLibraryIdentifiers(existingOPF.Metadata.Identifiers)
 			existingOPF.Metadata.Identifiers = append(libraryIDs, editedIDs...)
 		}
-		_ = writeOPF(existingOPF, opfPath, bookUUID)
+		_ = opf.Write(existingOPF, opfPath, bookUUID)
 	}
 
 	uuidPathIndex.Store(bookUUID, bookPath)

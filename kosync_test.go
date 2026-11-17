@@ -11,6 +11,9 @@ import (
 	"strings"
 	"testing"
 	"time"
+
+	"github.com/iotku/CalibreFast/pkg/koreader/koreadertest"
+	"github.com/iotku/CalibreFast/pkg/kosync"
 )
 
 // kosyncTestMux serves the sync API and the web readers' progress API.
@@ -33,7 +36,7 @@ func resetKosyncCaches() {
 
 func freshGuessLimiter(t *testing.T) {
 	orig := kosyncGuesses
-	kosyncGuesses = &guessLimiter{fails: map[string]map[string]time.Time{}, max: 10, window: 15 * time.Minute, now: time.Now}
+	kosyncGuesses = kosync.NewGuessLimiter(10, 15*time.Minute)
 	t.Cleanup(func() { kosyncGuesses = orig })
 }
 
@@ -48,7 +51,7 @@ func device(t *testing.T, h http.Handler, method, path, user, key, body string) 
 	}
 	if user != "" {
 		req.Header.Set("x-auth-user", user)
-		req.Header.Set("x-auth-key", md5Hex(key))
+		req.Header.Set("x-auth-key", kosync.MD5Hex(key))
 	}
 	rec := httptest.NewRecorder()
 	h.ServeHTTP(rec, req)
@@ -69,7 +72,7 @@ func TestKosyncAuth(t *testing.T) {
 	}
 	// Accounts come from CalibreFast: 402 is what KOReader expects, and it
 	// shows the message.
-	rec, out := device(t, mux, "POST", "/kosync/users/create", "", "", `{"username":"new","password":"`+md5Hex("pw")+`"}`)
+	rec, out := device(t, mux, "POST", "/kosync/users/create", "", "", `{"username":"new","password":"`+kosync.MD5Hex("pw")+`"}`)
 	if rec.Code != http.StatusPaymentRequired || out["code"] != 2005.0 || !strings.Contains(out["message"].(string), "sync key") {
 		t.Fatalf("register: %d %v", rec.Code, out)
 	}
@@ -98,7 +101,7 @@ func TestKosyncAuth(t *testing.T) {
 	// Only a hash of what KOReader sends is stored.
 	var stored string
 	_ = appDB.QueryRow(`SELECT key_hash FROM sync_keys WHERE user_id = ?`, u.ID).Scan(&stored)
-	if stored == key || stored == md5Hex(key) || stored != syncKeyHash(md5Hex(key)) {
+	if stored == key || stored == kosync.MD5Hex(key) || stored != kosync.KeyHash(kosync.MD5Hex(key)) {
 		t.Fatalf("stored %q", stored)
 	}
 	if code := auth("reader", key); code != 200 {
@@ -210,7 +213,7 @@ func TestKosyncRateLimit(t *testing.T) {
 		t.Fatalf("after ten wrong keys: %d %v", rec.Code, out)
 	}
 	// The window passes.
-	kosyncGuesses.now = func() time.Time { return time.Now().Add(16 * time.Minute) }
+	kosyncGuesses.Now = func() time.Time { return time.Now().Add(16 * time.Minute) }
 	if rec, _ := device(t, mux, "GET", "/kosync/users/auth", "reader", key, ""); rec.Code != 200 {
 		t.Fatalf("after the window: %d", rec.Code)
 	}
@@ -296,8 +299,8 @@ func TestKosyncProgressRoundTrip(t *testing.T) {
 // would use for it (binary, filename).
 func libraryBook(t *testing.T, uuid, name, format string, content []byte) (binary, filename string) {
 	addBookFile(t, uuid, name, format, content)
-	binary, _ = partialMD5(bytes.NewReader(content))
-	return binary, fileNameDigest(name + "." + format)
+	binary, _ = kosync.PartialMD5(bytes.NewReader(content))
+	return binary, kosync.FileNameDigest(name + "." + format)
 }
 
 type webProgress struct {
@@ -328,7 +331,7 @@ func TestKosyncJoinsWebReaderEPUB(t *testing.T) {
 	freshGuessLimiter(t)
 	key, _ := newSyncKey(u.ID)
 	book := books[0]
-	binary, filename := libraryBook(t, book, "Book 0 - A", "epub", testEPUB(t))
+	binary, filename := libraryBook(t, book, "Book 0 - A", "epub", koreadertest.EPUB(t))
 	mux := kosyncTestMux()
 
 	// Opening the book on the web hashes its file, so devices are recognised.

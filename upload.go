@@ -19,61 +19,19 @@ import (
 	"sync"
 	"time"
 
+	"github.com/iotku/CalibreFast/pkg/epubzip"
+	"github.com/iotku/CalibreFast/pkg/opf"
+	"github.com/iotku/CalibreFast/pkg/xml11"
 	pdfapi "github.com/pdfcpu/pdfcpu/pkg/api"
 )
 
-var bookMetadataCache sync.Map  // Key: SessionID (string), Value: []UploadedBookMeta
-const undefinedLanguage = "und" // ISO 639-2 code for undetermined language
+var bookMetadataCache sync.Map // Key: SessionID (string), Value: []UploadedBookMeta
 
 // UploadedBookMeta holds all metadata we can extract from an ebook file.
 type UploadedBookMeta struct {
 	OPFMetadata
 	Format   string // "epub" | "pdf" | ...
 	FileName string // original filename
-}
-
-// epubPackagePath is the path of an EPUB's package document (the OPF):
-// from META-INF/container.xml, else the first .opf in the archive.
-func epubPackagePath(zr *zip.Reader) (string, error) {
-	if data, err := readZipEntry(zr, "META-INF/container.xml", 1<<20); err == nil {
-		var c struct {
-			Rootfiles []struct {
-				FullPath string `xml:"full-path,attr"`
-			} `xml:"rootfiles>rootfile"`
-		}
-		if xmlUnmarshal(data, &c) == nil && len(c.Rootfiles) > 0 && c.Rootfiles[0].FullPath != "" {
-			return c.Rootfiles[0].FullPath, nil
-		}
-	}
-	for _, f := range zr.File {
-		if strings.HasSuffix(f.Name, ".opf") {
-			return f.Name, nil
-		}
-	}
-	return "", errors.New("could not find OPF in epub")
-}
-
-// readZipEntry reads one file from a zip, refusing entries over max bytes.
-func readZipEntry(zr *zip.Reader, name string, max int64) ([]byte, error) {
-	for _, f := range zr.File {
-		if f.Name != name {
-			continue
-		}
-		rc, err := f.Open()
-		if err != nil {
-			return nil, err
-		}
-		defer rc.Close()
-		data, err := io.ReadAll(io.LimitReader(rc, max+1))
-		if err != nil {
-			return nil, err
-		}
-		if int64(len(data)) > max {
-			return nil, fmt.Errorf("%s is larger than %d bytes", name, max)
-		}
-		return data, nil
-	}
-	return nil, fmt.Errorf("%s not found", name)
 }
 
 // --- EPUB metadata extraction ---
@@ -83,22 +41,22 @@ func extractEPUBMeta(r io.ReaderAt, size int64, filename string) (*UploadedBookM
 		return nil, fmt.Errorf("not a valid zip/epub: %w", err)
 	}
 
-	opfPath, err := epubPackagePath(zr)
+	opfPath, err := epubzip.PackagePath(zr)
 	if err != nil {
 		return nil, err
 	}
-	opfData, err := readZipEntry(zr, opfPath, 16<<20)
+	opfData, err := epubzip.ReadEntry(zr, opfPath, 16<<20)
 	if err != nil {
 		return nil, fmt.Errorf("could not read OPF file: %w", err)
 	}
 
 	var pkg OPF
-	if err := xmlUnmarshal(opfData, &pkg); err != nil {
+	if err := xml11.Unmarshal(opfData, &pkg); err != nil {
 		return nil, fmt.Errorf("failed to parse OPF: %w", err)
 	}
 
 	m := pkg.Metadata
-	m.fillSeries()
+	m.FillSeries()
 	meta := &UploadedBookMeta{OPFMetadata: m, Format: "epub", FileName: filename}
 
 	return meta, nil
@@ -106,11 +64,11 @@ func extractEPUBMeta(r io.ReaderAt, size int64, filename string) (*UploadedBookM
 
 // --- PDF metadata extraction via pdfcpu ---
 func extractPDFMeta(r io.ReadSeeker, filename string) *OPF {
-	opf := &OPF{
+	opfDoc := &OPF{
 		Metadata: OPFMetadata{},
 	}
-	meta := &opf.Metadata
-	meta.Languages = []string{undefinedLanguage} // undetermined; caller can override
+	meta := &opfDoc.Metadata
+	meta.Languages = []string{opf.UndefinedLanguage} // undetermined; caller can override
 
 	info, err := pdfapi.PDFInfo(context.Background(), r, filename, nil, false, nil)
 	if err != nil {
@@ -135,7 +93,7 @@ func extractPDFMeta(r io.ReadSeeker, filename string) *OPF {
 	if meta.Title == "" {
 		meta.Title = strings.TrimSuffix(filename, filepath.Ext(filename))
 	}
-	return opf
+	return opfDoc
 }
 
 // --- Metadata merging ---
@@ -174,7 +132,7 @@ func mergeMeta(metas []*UploadedBookMeta) *UploadedBookMeta {
 			merged.Date = m.Date
 		}
 		// Prefer the source declaring the most real (non-"und") languages.
-		if len(cleanLanguages(m.Languages)) > len(cleanLanguages(merged.Languages)) {
+		if len(opf.CleanLanguages(m.Languages)) > len(opf.CleanLanguages(merged.Languages)) {
 			merged.Languages = m.Languages
 		}
 		if len(m.Subjects) > len(merged.Subjects) {
@@ -206,8 +164,8 @@ func mergeMeta(metas []*UploadedBookMeta) *UploadedBookMeta {
 	if len(merged.Creators) == 0 {
 		merged.Creators = []string{"Unknown"}
 	}
-	if len(cleanLanguages(merged.Languages)) == 0 {
-		merged.Languages = []string{undefinedLanguage}
+	if len(opf.CleanLanguages(merged.Languages)) == 0 {
+		merged.Languages = []string{opf.UndefinedLanguage}
 	}
 	if merged.Date == "" {
 		merged.Date = "0101-01-01 00:00:00+00:00"
@@ -313,69 +271,12 @@ func sanitizePath(s string) string {
 	return strings.TrimSpace(b.String())
 }
 
-func parseAnyDate(s string) (time.Time, error) {
-	s = strings.TrimSpace(s)
-	if s == "" {
-		return time.Time{}, errors.New("empty date string")
-	}
-
-	clean := s
-	// Handle PDF date prefix "D:" or "d:"
-	if strings.HasPrefix(clean, "D:") || strings.HasPrefix(clean, "d:") {
-		clean = clean[2:]
-	}
-	// Remove PDF timezone apostrophes e.g. +00'00' or -05'00'
-	if strings.Contains(clean, "'") {
-		clean = strings.ReplaceAll(clean, "'", "")
-	}
-
-	layouts := []string{
-		"2006-01-02 15:04:05.000000-07:00",
-		"2006-01-02 15:04:05.000000",
-		"2006-01-02 15:04:05-07:00",
-		"2006-01-02 15:04:05",
-		time.RFC3339Nano,
-		time.RFC3339,
-		"2006-01-02T15:04:05Z07:00",
-		"2006-01-02T15:04:05",
-		"2006-01-02",
-		"2006-01",
-		"2006",
-		"January 2, 2006",
-		"2 January 2006",
-		"Jan 2, 2006",
-		"Jan 2006",
-		"January 2006",
-		"20060102150405-0700",
-		"20060102150405Z0700",
-		"20060102150405Z",
-		"20060102150405",
-		"20060102",
-	}
-
-	for _, layout := range layouts {
-		if t, err := time.Parse(layout, clean); err == nil {
-			return t, nil
-		}
-	}
-
-	if clean != s {
-		for _, layout := range layouts {
-			if t, err := time.Parse(layout, s); err == nil {
-				return t, nil
-			}
-		}
-	}
-
-	return time.Time{}, fmt.Errorf("unable to parse date %q", s)
-}
-
 func normalizeDate(s string) string {
 	s = strings.TrimSpace(s)
 	if s == "" {
 		return "0101-01-01 00:00:00+00:00"
 	}
-	t, err := parseAnyDate(s)
+	t, err := opf.ParseAnyDate(s)
 	if err != nil {
 		return s
 	}
@@ -387,7 +288,7 @@ func normalizeDateOnly(s string) string {
 		return ""
 	}
 
-	t, err := parseAnyDate(s)
+	t, err := opf.ParseAnyDate(s)
 	if err != nil {
 		return s
 	}
@@ -628,7 +529,7 @@ func addBookToLibrary(meta *UploadedBookMeta, entries []formatEntry) (bookUUID, 
 			Meta:        meta.Meta,
 		},
 	}
-	if err := writeOPF(bookOPF, opfPath, bookUUID); err != nil {
+	if err := opf.Write(bookOPF, opfPath, bookUUID); err != nil {
 		undo()
 		return "", "", fmt.Errorf("failed to write metadata.opf: %w", err)
 	}

@@ -1,4 +1,4 @@
-package main
+package koreader
 
 // Converting EPUB reading positions between KOReader and the web reader.
 //
@@ -30,6 +30,8 @@ import (
 	"regexp"
 	"strconv"
 	"strings"
+
+	"github.com/iotku/CalibreFast/pkg/xml11"
 )
 
 // epubBook is the reading order of an EPUB file.
@@ -87,7 +89,7 @@ func (b *epubBook) readPackage() error {
 			Path string `xml:"full-path,attr"`
 		} `xml:"rootfiles>rootfile"`
 	}
-	if err := xmlUnmarshal(data, &container); err != nil || len(container.Rootfiles) == 0 {
+	if err := xml11.Unmarshal(data, &container); err != nil || len(container.Rootfiles) == 0 {
 		return errors.New("no package document")
 	}
 	opfPath := container.Rootfiles[0].Path
@@ -166,7 +168,7 @@ func (b *epubBook) content(i int) (*xnode, error) {
 // keepAttrs is for the package document: attributes are kept, and it is read
 // as XML proper.
 func parseXML(data []byte, keepAttrs bool) (*xnode, error) {
-	d := xml.NewDecoder(bytes.NewReader(xml11To10(data)))
+	d := xml.NewDecoder(bytes.NewReader(xml11.XML11To10(data)))
 	d.Strict = false
 	if !keepAttrs {
 		// Content documents may leave <br> or <img> open, as HTML does. The
@@ -262,8 +264,8 @@ func parseXPointer(xp string) (fragment int, steps []xpStep, ok bool) {
 	return fragment, steps, true
 }
 
-// xpointerToCFI converts a KOReader position in an EPUB file to an EPUB CFI.
-func xpointerToCFI(file, xp string) (string, error) {
+// XPointerToCFI converts a KOReader position in an EPUB file to an EPUB CFI.
+func XPointerToCFI(file, xp string) (string, error) {
 	fragment, steps, ok := parseXPointer(xp)
 	if !ok {
 		return "", fmt.Errorf("not a crengine XPointer: %q", xp)
@@ -352,9 +354,9 @@ func parseCFI(cfi string) (item int, steps []int, ok bool) {
 	return n/2 - 1, steps, true
 }
 
-// cfiToXPointer converts a web reader position in an EPUB file to a
+// CFIToXPointer converts a web reader position in an EPUB file to a
 // KOReader XPointer.
-func cfiToXPointer(file, cfi string) (string, error) {
+func CFIToXPointer(file, cfi string) (string, error) {
 	item, steps, ok := parseCFI(cfi)
 	if !ok {
 		return "", fmt.Errorf("not an EPUB CFI: %q", cfi)

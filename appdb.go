@@ -117,7 +117,7 @@ var migrations = []string{
 		used_at      INTEGER,
 		used_by      INTEGER REFERENCES users(id) ON DELETE SET NULL
 	);`,
-	// 5: KOReader progress sync (kosync.go)
+	// 5: KOReader progress sync (kosync_server.go)
 	`
 	CREATE TABLE sync_keys (
 		user_id      INTEGER PRIMARY KEY REFERENCES users(id) ON DELETE CASCADE,

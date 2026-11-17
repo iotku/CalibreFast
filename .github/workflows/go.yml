@@ -22,7 +22,21 @@ jobs:
     - name: Set up Go
       uses: actions/setup-go@v4
       with:
-        go-version: '1.25'
+        # tools/go.mod (tsgo, jsbuild for go generate) needs the newest Go of
+        # the two modules.
+        go-version-file: tools/go.mod
+
+    - name: Generate (type-check TypeScript, rebuild static/dist)
+      run: go generate ./...
+
+    - name: Check generated files are committed
+      run: |
+        if [ -n "$(git status --porcelain)" ]; then
+          echo "go generate changed files; run it and commit the result:"
+          git status --porcelain
+          git diff --stat
+          exit 1
+        fi
 
     - name: Build
       run: go build -v -tags sqlite_fts5 ./...

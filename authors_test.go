@@ -4,6 +4,8 @@ import (
 	"os"
 	"reflect"
 	"testing"
+
+	"github.com/iotku/CalibreFast/pkg/opf"
 )
 
 // Authors split on "&" only: other lists and "Last, First" stay as written
@@ -69,8 +71,8 @@ func TestUniqueTags(t *testing.T) {
 	if want := []string{"Programming", "go", "Fiction"}; !reflect.DeepEqual(got, want) {
 		t.Errorf("parseSubjectsString = %q, want %q", got, want)
 	}
-	if got := uniqueTags(nil); len(got) != 0 {
-		t.Errorf("uniqueTags(nil) = %q", got)
+	if got := opf.UniqueTags(nil); len(got) != 0 {
+		t.Errorf("opf.UniqueTags(nil) = %q", got)
 	}
 }
 

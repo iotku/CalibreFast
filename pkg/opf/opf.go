@@ -1,34 +1,37 @@
-package main
+package opf
 
 import (
 	"encoding/xml"
 	"os"
 	"slices"
 	"strings"
+
+	"github.com/iotku/CalibreFast/pkg/xml11"
 )
 
-// This is unlikely to be compliant, but for spec reference see below.
-// https://idpf.org/epub/20/spec/OPF_2.0_final_spec.html#Section2.2
-
-type OPF struct {
-	XMLName  xml.Name    `xml:"http://www.idpf.org/2007/opf package"`
-	Metadata OPFMetadata `xml:"metadata"`
+// Package is an OPF package document, as far as its metadata.
+type Package struct {
+	XMLName  xml.Name `xml:"http://www.idpf.org/2007/opf package"`
+	Metadata Metadata `xml:"metadata"`
 }
 
-type OPFMetadata struct {
-	Title       string          `xml:"http://purl.org/dc/elements/1.1/ title"`
-	Description string          `xml:"http://purl.org/dc/elements/1.1/ description"`
-	Publisher   string          `xml:"http://purl.org/dc/elements/1.1/ publisher"`
-	Date        string          `xml:"http://purl.org/dc/elements/1.1/ date"`
-	Languages   []string        `xml:"http://purl.org/dc/elements/1.1/ language"` // in order; first is primary
-	Identifiers []opfIdentifier `xml:"http://purl.org/dc/elements/1.1/ identifier"`
-	Subjects    []string        `xml:"http://purl.org/dc/elements/1.1/ subject"`
-	Creators    []string        `xml:"http://purl.org/dc/elements/1.1/ creator"`
-	Meta        []opfMeta       `xml:"meta"`
+// Metadata is the <metadata> of an OPF package: the Dublin Core elements
+// Calibre reads and writes, and the <meta> elements, plus the series as
+// FillSeries reads it. Its JSON form is used by CalibreFast's editor.
+type Metadata struct {
+	Title       string       `xml:"http://purl.org/dc/elements/1.1/ title"`
+	Description string       `xml:"http://purl.org/dc/elements/1.1/ description"`
+	Publisher   string       `xml:"http://purl.org/dc/elements/1.1/ publisher"`
+	Date        string       `xml:"http://purl.org/dc/elements/1.1/ date"`
+	Languages   []string     `xml:"http://purl.org/dc/elements/1.1/ language"` // in order; first is primary
+	Identifiers []Identifier `xml:"http://purl.org/dc/elements/1.1/ identifier"`
+	Subjects    []string     `xml:"http://purl.org/dc/elements/1.1/ subject"`
+	Creators    []string     `xml:"http://purl.org/dc/elements/1.1/ creator"`
+	Meta        []Meta       `xml:"meta"`
 
 	// The series, for the editor (JSON only; series.go): read from the
-	// calibre:series meta (or EPUB 3's belongs-to-collection) by fillSeries,
-	// written back by syncSeriesMeta.
+	// calibre:series meta (or EPUB 3's belongs-to-collection) by FillSeries,
+	// written back by SyncSeriesMeta.
 	Series      string `xml:"-" json:",omitempty"`
 	SeriesIndex string `xml:"-" json:",omitempty"` // as typed: "2", "2.5"
 	// SeriesSet: the editor sent a series (perhaps none): saving replaces
@@ -36,7 +39,8 @@ type OPFMetadata struct {
 	SeriesSet bool `xml:"-" json:"-"`
 }
 
-type opfIdentifier struct {
+// Identifier is a <dc:identifier>: an ISBN, a uuid, Calibre's book id, ….
+type Identifier struct {
 	Scheme string `xml:"scheme,attr"` // may be empty: such identifiers must still round-trip
 	Value  string `xml:",chardata"`
 	ID     string `xml:"id,attr"` // e.g. "uuid_id", "calibre_id"; preserved on rewrite
@@ -48,7 +52,9 @@ type opfIdentifier struct {
 // keeps the book's own as they are.
 var libraryIdentifierSchemes = map[string]bool{"calibre": true, "uuid": true}
 
-func isLibraryIdentifier(id opfIdentifier) bool {
+// IsLibraryIdentifier reports whether id is library bookkeeping (see above)
+// rather than an identifier of the work, such as an ISBN.
+func IsLibraryIdentifier(id Identifier) bool {
 	scheme := strings.TrimSpace(id.Scheme)
 	if scheme == "" {
 		value := strings.TrimSpace(id.Value)
@@ -57,11 +63,11 @@ func isLibraryIdentifier(id opfIdentifier) bool {
 	return libraryIdentifierSchemes[strings.ToLower(scheme)]
 }
 
-// splitLibraryIdentifiers separates library identifiers from the others,
+// SplitLibraryIdentifiers separates library identifiers from the others,
 // keeping each group's order.
-func splitLibraryIdentifiers(ids []opfIdentifier) (library, others []opfIdentifier) {
+func SplitLibraryIdentifiers(ids []Identifier) (library, others []Identifier) {
 	for _, id := range ids {
-		if isLibraryIdentifier(id) {
+		if IsLibraryIdentifier(id) {
 			library = append(library, id)
 		} else {
 			others = append(others, id)
@@ -70,7 +76,9 @@ func splitLibraryIdentifiers(ids []opfIdentifier) (library, others []opfIdentifi
 	return library, others
 }
 
-type opfMeta struct {
+// Meta is a <meta> element: EPUB 2's name/content pairs, or EPUB 3's
+// property/refines with the value as text.
+type Meta struct {
 	Name     string `xml:"name,attr"`
 	Content  string `xml:"content,attr"`
 	Property string `xml:"property,attr"` // EPUB3
@@ -81,19 +89,20 @@ type opfMeta struct {
 	FileAs string `xml:"file-as,attr"`
 }
 
-func loadOPF(path string) (*OPF, error) {
+// Load reads the OPF file at path (XML 1.0 or 1.1) and fills in the series.
+func Load(path string) (*Package, error) {
 	data, err := os.ReadFile(path)
 	if err != nil {
 		return nil, err
 	}
 
-	var opf OPF
+	var opf Package
 
-	err = xmlUnmarshal(data, &opf)
+	err = xml11.Unmarshal(data, &opf)
 	if err != nil {
 		return nil, err
 	}
-	opf.Metadata.fillSeries()
+	opf.Metadata.FillSeries()
 	return &opf, nil
 }
 
@@ -102,9 +111,9 @@ func loadOPF(path string) (*OPF, error) {
 // whose value is the book's uuid in metadata.db.
 const uuidIdentifierID = "uuid_id"
 
-// writeOPF writes opf to path. bookUUID is the book's uuid in metadata.db
+// Write writes opf to path. bookUUID is the book's uuid in metadata.db
 // ("" if unknown); see identifiersForWrite for what it does to identifiers.
-func writeOPF(opf *OPF, path string, bookUUID string) error {
+func Write(opf *Package, path string, bookUUID string) error {
 	f, err := os.Create(path)
 	if err != nil {
 		return err
@@ -227,30 +236,30 @@ func writeOPF(opf *OPF, path string, bookUUID string) error {
 // Without bookUUID, it is the identifier already called uuid_id, else one
 // whose value is "urn:uuid:…", else one with scheme "uuid". If there is none,
 // no identifier gets uuid_id.
-func identifiersForWrite(ids []opfIdentifier, bookUUID string) []opfIdentifier {
+func identifiersForWrite(ids []Identifier, bookUUID string) []Identifier {
 	out := slices.Clone(ids)
 	bookUUID = strings.TrimSpace(bookUUID)
-	hasUUIDScheme := func(id opfIdentifier) bool { return strings.EqualFold(strings.TrimSpace(id.Scheme), "uuid") }
-	isHolder := func(id opfIdentifier) bool { return id.ID == uuidIdentifierID }
+	hasUUIDScheme := func(id Identifier) bool { return strings.EqualFold(strings.TrimSpace(id.Scheme), "uuid") }
+	isHolder := func(id Identifier) bool { return id.ID == uuidIdentifierID }
 
 	var pick int
 	if bookUUID != "" {
-		holdsBook := func(id opfIdentifier) bool {
+		holdsBook := func(id Identifier) bool {
 			return !typedAsOther(id) && strings.EqualFold(bareUUID(id.Value), bookUUID)
 		}
 		pick = firstMatch(out,
-			func(id opfIdentifier) bool { return holdsBook(id) && isHolder(id) },
-			func(id opfIdentifier) bool { return holdsBook(id) && hasUUIDScheme(id) },
+			func(id Identifier) bool { return holdsBook(id) && isHolder(id) },
+			func(id Identifier) bool { return holdsBook(id) && hasUUIDScheme(id) },
 			holdsBook,
 		)
 		if pick == -1 {
-			out = slices.Insert(out, 0, opfIdentifier{Scheme: "uuid", Value: bookUUID})
+			out = slices.Insert(out, 0, Identifier{Scheme: "uuid", Value: bookUUID})
 			pick = 0
 		}
 	} else {
 		pick = firstMatch(out,
-			func(id opfIdentifier) bool { return isHolder(id) && !typedAsOther(id) },
-			func(id opfIdentifier) bool { return !typedAsOther(id) && isURNUUID(id.Value) },
+			func(id Identifier) bool { return isHolder(id) && !typedAsOther(id) },
+			func(id Identifier) bool { return !typedAsOther(id) && isURNUUID(id.Value) },
 			hasUUIDScheme,
 		)
 	}
@@ -268,7 +277,7 @@ func identifiersForWrite(ids []opfIdentifier, bookUUID string) []opfIdentifier {
 
 // firstMatch returns the index of the first identifier matching the first
 // predicate that matches any, or -1.
-func firstMatch(ids []opfIdentifier, preds ...func(opfIdentifier) bool) int {
+func firstMatch(ids []Identifier, preds ...func(Identifier) bool) int {
 	for _, p := range preds {
 		if i := slices.IndexFunc(ids, p); i != -1 {
 			return i
@@ -280,7 +289,7 @@ func firstMatch(ids []opfIdentifier, preds ...func(opfIdentifier) bool) int {
 // typedAsOther reports whether an identifier says it is something other than
 // a UUID: an opf:scheme other than "uuid" (isbn, calibre, …), or a URN of
 // another kind ("urn:isbn:…").
-func typedAsOther(id opfIdentifier) bool {
+func typedAsOther(id Identifier) bool {
 	if s := strings.TrimSpace(id.Scheme); s != "" {
 		return !strings.EqualFold(s, "uuid")
 	}
@@ -305,8 +314,8 @@ func bareUUID(v string) string {
 	return v
 }
 
-// getMeta returns the content value for a named meta entry, or "" if not found.
-func (m *OPFMetadata) getMeta(name string) string {
+// GetMeta returns the content value for a named meta entry, or "" if not found.
+func (m *Metadata) GetMeta(name string) string {
 	for _, meta := range m.Meta {
 		if meta.Name == name {
 			return meta.Content
@@ -315,15 +324,15 @@ func (m *OPFMetadata) getMeta(name string) string {
 	return ""
 }
 
-// cleanLanguages trims, drops empties and "und", and de-duplicates
+// CleanLanguages trims, drops empties and "und", and de-duplicates
 // (case-insensitively) while keeping the original order.
-func cleanLanguages(in []string) []string {
+func CleanLanguages(in []string) []string {
 	seen := map[string]bool{}
 	out := make([]string, 0, len(in))
 	for _, l := range in {
 		l = strings.TrimSpace(l)
 		k := strings.ToLower(l)
-		if l == "" || k == undefinedLanguage || seen[k] {
+		if l == "" || k == UndefinedLanguage || seen[k] {
 			continue
 		}
 		seen[k] = true
@@ -332,10 +341,10 @@ func cleanLanguages(in []string) []string {
 	return out
 }
 
-// parseLanguagesString splits the editor's "eng, fra" field. Language codes
+// ParseLanguages splits the editor's "eng, fra" field. Language codes
 // never contain commas, semicolons or spaces, so this is lossless.
-func parseLanguagesString(s string) []string {
-	return cleanLanguages(strings.FieldsFunc(s, func(r rune) bool {
+func ParseLanguages(s string) []string {
+	return CleanLanguages(strings.FieldsFunc(s, func(r rune) bool {
 		return r == ',' || r == ';' || r == ' ' || r == '\n' || r == '\t'
 	}))
 }

@@ -6,9 +6,9 @@ A fast, minimal web frontend for your [Calibre](https://calibre-ebook.com/) libr
 >
 > 🔒 **Accounts are new and haven't been independently reviewed.** Only admins can change the library, and only when the server is started with `-allow-writes`. Read [SECURITY.md](docs/SECURITY.md) before exposing CalibreFast beyond your own machine.
 
-![Search Screenshot](image-3.png)
+![Search Screenshot](docs/images/image-3.png)
 
-![Book Info](image-2.png)
+![Book Info](docs/images/image-2.png)
 ---
 
 ## Is this AI Slop?
@@ -139,6 +139,21 @@ Editors: VS Code's TypeScript support reads `tsconfig.json` as-is. See [ARCHITEC
 - [ARCHITECTURE.md](docs/ARCHITECTURE.md): how it works under the hood
 - [notes/Performance.md](docs/notes/Performance.md): performance notes
 - [AI-DISCLOSURE.md](docs/AI-DISCLOSURE.md): how AI is used in this project
+
+## Reusable packages
+
+Parts of CalibreFast that are useful on their own are Go packages under `pkg/` (module `github.com/iotku/CalibreFast`), each with a README:
+
+- [xml11](pkg/xml11/README.md): read XML 1.1 documents with `encoding/xml`
+- [epubzip](pkg/epubzip/README.md): find the package document and cover inside an EPUB
+- [opf](pkg/opf/README.md): read and write OPF metadata, as Calibre's `metadata.opf`
+- [langcodes](pkg/langcodes/README.md): language names and ISO 639 codes
+- [isbn](pkg/isbn/README.md): check ISBNs and find them in EPUB, MOBI and PDF files
+- [metalookup](pkg/metalookup/README.md): look books up on Open Library and Google Books
+- [kosync](pkg/kosync/README.md): KOReader progress sync protocol building blocks
+- [koreader](pkg/koreader/README.md): KOReader positions ↔ EPUB CFIs, annotation files, Lua data files
+- [imageutil](pkg/imageutil/README.md): covers, thumbnails, a PDF's first-page picture
+- [filehash](pkg/filehash/README.md): cached SHA-256 of files
 
 ## License
 

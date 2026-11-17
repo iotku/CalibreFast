@@ -4,6 +4,8 @@ import (
 	"crypto/tls"
 	"net/http/httptest"
 	"testing"
+
+	"github.com/iotku/CalibreFast/pkg/kosync"
 )
 
 // Behind an HTTPS reverse proxy, links and the device sync address use https.
@@ -34,12 +36,12 @@ func TestBaseURLScheme(t *testing.T) {
 		if got := baseURL(r); got != tt.want {
 			t.Errorf("%s: %q, want %q", tt.name, got, tt.want)
 		}
-		if got := kosyncServerURL(r); got != tt.want+kosyncPrefix {
+		if got := kosyncServerURL(r); got != tt.want+kosync.Prefix {
 			t.Errorf("%s: sync %q", tt.name, got)
 		}
 	}
 	publicURL = "https://books.example.com/"
-	if got := kosyncServerURL(httptest.NewRequest("GET", "http://books.lan/", nil)); got != "https://books.example.com"+kosyncPrefix {
+	if got := kosyncServerURL(httptest.NewRequest("GET", "http://books.lan/", nil)); got != "https://books.example.com"+kosync.Prefix {
 		t.Errorf("-public-url: %q", got)
 	}
 }

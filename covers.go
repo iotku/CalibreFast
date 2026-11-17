@@ -1,11 +1,8 @@
 package main
 
 import (
-	"bytes"
 	"context"
 	"errors"
-	"image"
-	"image/jpeg"
 	"io/fs"
 	"log"
 	"net/http"
@@ -18,7 +15,7 @@ import (
 	"sync"
 	"time"
 
-	"golang.org/x/image/draw"
+	"github.com/iotku/CalibreFast/pkg/imageutil"
 )
 
 var uuidPathIndex sync.Map // map[string]string uuid -> relative path to book dir
@@ -262,33 +259,11 @@ func readCachedThumb(uuid string) ([]byte, bool) {
 	return data, err == nil
 }
 
-// makeThumb returns a thumbnail of the cover image, never larger than the
-// original: covers already at or below thumbWidth, or whose thumbnail would
-// be more bytes than the original, are returned unchanged. abort is checked
-// between decoding, scaling and encoding; its error stops the work.
+// makeThumb returns a thumbnail of the cover image (imageutil.Thumb at
+// thumbWidth and thumbQuality). abort is checked between decoding, scaling
+// and encoding; its error stops the work.
 func makeThumb(orig []byte, abort func() error) ([]byte, error) {
-	img, _, err := image.Decode(bytes.NewReader(orig))
-	if err != nil {
-		return nil, err
-	}
-	if img.Bounds().Dx() <= thumbWidth {
-		return orig, nil
-	}
-	if err := abort(); err != nil {
-		return nil, err
-	}
-	small := resizeToWidth(img, thumbWidth)
-	if err := abort(); err != nil {
-		return nil, err
-	}
-	var buf bytes.Buffer
-	if err := jpeg.Encode(&buf, small, &jpeg.Options{Quality: thumbQuality}); err != nil {
-		return nil, err
-	}
-	if buf.Len() >= len(orig) {
-		return orig, nil
-	}
-	return buf.Bytes(), nil
+	return imageutil.Thumb(orig, thumbWidth, thumbQuality, abort)
 }
 
 func writeThumb(w http.ResponseWriter, data []byte, cacheHit bool) {
@@ -308,26 +283,6 @@ func writeThumb(w http.ResponseWriter, data []byte, cacheHit bool) {
 func noThumb(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Cache-Control", "public, max-age=86400")
 	http.NotFound(w, r)
-}
-
-func resizeToWidth(img image.Image, width int) image.Image {
-	bounds := img.Bounds()
-
-	scale := float64(width) / float64(bounds.Dx())
-	height := max(1, int(float64(bounds.Dy())*scale+0.5))
-
-	dst := image.NewRGBA(image.Rect(0, 0, width, height))
-
-	draw.CatmullRom.Scale(
-		dst,
-		dst.Bounds(),
-		img,
-		bounds,
-		draw.Over,
-		nil,
-	)
-
-	return dst
 }
 
 // coverChanged records a new cover.jpg in metadata.db, as Calibre does: the

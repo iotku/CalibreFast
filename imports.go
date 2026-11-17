@@ -33,6 +33,8 @@ import (
 
 	"github.com/fsnotify/fsnotify"
 	"github.com/google/uuid"
+	"github.com/iotku/CalibreFast/pkg/isbn"
+	"github.com/iotku/CalibreFast/pkg/opf"
 )
 
 var (
@@ -302,13 +304,13 @@ func (b *importInbox) approve(id string, meta OPFMetadata, override bool) (bookU
 	}
 	// The editor doesn't show library identifiers (an EPUB's own urn:uuid:),
 	// so they aren't in what it sent: the files' stay, as on upload.
-	libraryIDs, _ := splitLibraryIdentifiers(it.Merged.Identifiers)
-	_, edited := splitLibraryIdentifiers(meta.Identifiers)
+	libraryIDs, _ := opf.SplitLibraryIdentifiers(it.Merged.Identifiers)
+	_, edited := opf.SplitLibraryIdentifiers(meta.Identifiers)
 	book := &UploadedBookMeta{OPFMetadata: meta}
 	book.Identifiers = append(slices.Clone(libraryIDs), edited...)
 	book.Meta = it.Merged.Meta // series, as the files had it…
 	if meta.SeriesSet {
-		book.syncSeriesMeta() // …or as the editor sent it
+		book.SyncSeriesMeta() // …or as the editor sent it
 	}
 
 	bookUUID, bookPath, err := addBookToLibrary(book, entries)
@@ -848,8 +850,8 @@ func importSources(it *pendingImport) []UploadedBookMeta {
 	}
 	noDate := normalizeDateOnly(normalizeDate(""))
 	for i := range out {
-		out[i].fillSeries() // queued before the editor showed series
-		_, out[i].Identifiers = splitLibraryIdentifiers(out[i].Identifiers)
+		out[i].FillSeries() // queued before the editor showed series
+		_, out[i].Identifiers = opf.SplitLibraryIdentifiers(out[i].Identifiers)
 		if out[i].Date = normalizeDateOnly(out[i].Date); out[i].Date == noDate {
 			out[i].Date = ""
 		}
@@ -886,7 +888,7 @@ func importApplyHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	meta := metadataFromRequest(req)
-	if _, _, err := cleanSeries(meta.Series, meta.SeriesIndex); err != nil {
+	if _, _, err := opf.CleanSeries(meta.Series, meta.SeriesIndex); err != nil {
 		http.Error(w, err.Error(), http.StatusBadRequest)
 		return
 	}
@@ -935,9 +937,9 @@ func importISBNsHandler(w http.ResponseWriter, r *http.Request) {
 	if it == nil {
 		return
 	}
-	var pdf *pdfISBNSources
+	var pdf *isbn.PDFSources
 	if r.Method == http.MethodPost {
-		pdf = &pdfISBNSources{}
+		pdf = &isbn.PDFSources{}
 		if err := json.NewDecoder(http.MaxBytesReader(w, r.Body, 8<<20)).Decode(pdf); err != nil {
 			http.Error(w, "invalid JSON: "+err.Error(), http.StatusBadRequest)
 			return
@@ -947,7 +949,7 @@ func importISBNsHandler(w http.ResponseWriter, r *http.Request) {
 	for _, f := range it.Files {
 		names = append(names, f.Name)
 	}
-	writeJSON(w, http.StatusOK, findBookISBNs(imports.itemDir(it.ID), names, pdf))
+	writeJSON(w, http.StatusOK, isbn.FindInBook(imports.itemDir(it.ID), names, pdf))
 }
 
 func importFormatsHandler(w http.ResponseWriter, r *http.Request) {
