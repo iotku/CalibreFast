@@ -6,6 +6,7 @@ import (
 	"errors"
 	"fmt"
 	"log"
+	"math/rand/v2"
 	"net/http"
 	"net/url"
 	"sort"
@@ -35,14 +36,17 @@ type category struct {
 	// ShowSingles: the aggregate page lists values with a single book too
 	// (otherwise only the search box finds them).
 	ShowSingles bool
+	// SortCol: Table's column to order A–Z by ("Tolkien, J. R. R."), or ""
+	// for NameCol.
+	SortCol string
 }
 
 var categories = []*category{
-	{"author", "authors", "author", "Authors", "author", "authors", "name", "books_authors_link", "author", false},
-	{"publisher", "publishers", "publisher", "Publishers", "publisher", "publishers", "name", "books_publishers_link", "publisher", false},
-	{"tag", "tags", "tag", "Tags", "tag", "tags", "name", "books_tags_link", "tag", false},
-	{"language", "languages", "lang", "Languages", "language", "languages", "lang_code", "books_languages_link", "lang_code", true},
-	{"series", "series", "series", "Series", "series", "series", "name", "books_series_link", "series", false},
+	{"author", "authors", "author", "Authors", "author", "authors", "name", "books_authors_link", "author", false, "sort"},
+	{"publisher", "publishers", "publisher", "Publishers", "publisher", "publishers", "name", "books_publishers_link", "publisher", false, "sort"},
+	{"tag", "tags", "tag", "Tags", "tag", "tags", "name", "books_tags_link", "tag", false, ""},
+	{"language", "languages", "lang", "Languages", "language", "languages", "lang_code", "books_languages_link", "lang_code", true, ""},
+	{"series", "series", "series", "Series", "series", "series", "name", "books_series_link", "series", false, "sort"},
 }
 
 // bookOrder: how a filtered page lists its books. A series reads in order:
@@ -77,18 +81,19 @@ type AggregateItem struct {
 	Slug    string   `json:"slug"`
 	Display string   `json:"display,omitempty"` // human label when it differs from Name (languages)
 	Members []string `json:"members,omitempty"` // set when Name is a group
+	Sort    string   `json:"-"`                 // A–Z key when it isn't the label: an author's "Surname, First"
 }
 
 // AggregateDisplayItem is used by the server-rendered aggregate template.
 type AggregateDisplayItem struct {
-	Name     string // label shown
-	Sub      string // raw value shown small when Name is a display name, e.g. "eng"
-	Href     string // path-escaped link, e.g. "/author/Terry%20Pratchett"
-	Count    int
-	Grouped  bool
-	Members  string // "en, eng, en-US" when grouped
-	FontSize string // e.g. "14.5"
-	Opacity  string // e.g. "0.60"
+	Name    string // label shown
+	Sub     string // raw value shown small when Name is a display name, e.g. "eng"
+	Href    string // path-escaped link, e.g. "/author/Terry%20Pratchett"
+	Count   int
+	Grouped bool
+	Members string // "en, eng, en-US" when grouped
+	Tier    int    // 1–5, the cloud's text size (aggregateTiers)
+	Sort    string // A–Z key, "" for Name
 }
 
 // AggregatePageData is passed to aggregate.html for server-side rendering.
@@ -100,6 +105,8 @@ type AggregatePageData struct {
 	DataURL  string // every entry as JSON (/api/<plural>), for the search box
 	Items    []AggregateDisplayItem
 	Featured []FeaturedCard
+	Discover []AggregateDisplayItem // a random few, single-book ones too
+	Tiers    string                 // tier thresholds, "3,5,9,20", for the search box's results
 }
 
 // FilteredPageData is passed to filtered.html.
@@ -146,7 +153,7 @@ var (
 	// search box's /api/<plural>?v= URL, so a browser never searches a
 	// stale copy.
 	aggregateGen atomic.Uint64
-	// aggregateDisplayCache: plural ("authors") -> []AggregateDisplayItem
+	// aggregateDisplayCache: plural ("authors") -> aggregateDisplay
 	aggregateDisplayCache sync.Map
 	// aggregateJSONCache: plural -> pre-serialised []AggregateItem
 	aggregateJSONCache sync.Map
@@ -222,13 +229,17 @@ func countBooks(c *category, values []string) int {
 
 // queryRawItems lists every value in the category with its book count.
 func queryRawItems(c *category) []AggregateItem {
+	sortExpr := "''"
+	if c.SortCol != "" {
+		sortExpr = "COALESCE(t." + c.SortCol + ", '')"
+	}
 	query := fmt.Sprintf(`
-		SELECT t.%s, COUNT(x.book) AS count
+		SELECT t.%s, %s, COUNT(x.book) AS count
 		FROM %s t
 		JOIN %s x ON x.%s = t.id
 		GROUP BY t.id
 		ORDER BY count DESC`,
-		c.NameCol, c.Table, c.LinkTable, c.LinkCol)
+		c.NameCol, sortExpr, c.Table, c.LinkTable, c.LinkCol)
 
 	rows, err := calibreDB.Query(query)
 	if err != nil {
@@ -242,10 +253,13 @@ func queryRawItems(c *category) []AggregateItem {
 	items := make([]AggregateItem, 0)
 	for rows.Next() {
 		var item AggregateItem
-		if err := rows.Scan(&item.Name, &item.Count); err != nil {
+		if err := rows.Scan(&item.Name, &item.Sort, &item.Count); err != nil {
 			continue
 		}
 		item.Slug = item.Name
+		if item.Sort == item.Name {
+			item.Sort = ""
+		}
 		if c.Key == "language" {
 			if name, ok := langcodes.DisplayName(item.Name); ok {
 				item.Display = name
@@ -296,50 +310,126 @@ func queryAggregateItems(c *category) []AggregateItem {
 	return items
 }
 
-func computeAggregateDisplay(c *category, items []AggregateItem) []AggregateDisplayItem {
-	if len(items) == 0 {
-		return nil
-	}
-	maxCount := items[0].Count // sorted descending
-	if maxCount < 1 {
-		maxCount = 1
-	}
-	display := make([]AggregateDisplayItem, 0, len(items))
-	for _, item := range items {
-		if item.Count < 2 && !c.ShowSingles {
-			continue // found by the search box
-		}
-		ratio := float64(item.Count) / float64(maxCount)
-		label := item.Name
-		if item.Display != "" {
-			label = item.Display
-		}
-		sub := ""
-		if label != item.Name {
-			sub = item.Name
-		}
-		display = append(display, AggregateDisplayItem{
-			Name:     label,
-			Sub:      sub,
-			Href:     c.href(item.Name),
-			Count:    item.Count,
-			Grouped:  len(item.Members) > 0,
-			Members:  strings.Join(item.Members, ", "),
-			FontSize: fmt.Sprintf("%.1f", 12+ratio*24),
-			Opacity:  fmt.Sprintf("%.2f", 0.4+ratio*0.6),
-		})
-	}
-	return display
+// aggregateDisplay is what the aggregate page shows of a category, cached.
+type aggregateDisplay struct {
+	Items []AggregateDisplayItem // the cloud: values with more than one book (or all)
+	All   []AggregateItem        // every value, for the Discover sample
+	Tiers [4]int                 // minimum counts of tiers 2–5
 }
 
-func getAggregateDisplay(c *category) []AggregateDisplayItem {
+// aggregateTiers splits counts (sorted, largest first) into five text
+// sizes by rank, not by ratio to the largest: with a linear scale one
+// huge entry shrinks everything else to the same small size. Tier 5 is
+// about the top 1%, 4 down to 5%, 3 down to 15%, 2 down to 40%, 1 the
+// rest. Equal counts share a tier, and each tier needs more books than
+// the one below, so a list of all-equal counts is all tier 1.
+func aggregateTiers(counts []int) (t [4]int) {
+	n := len(counts)
+	if n == 0 {
+		return [4]int{2, 3, 4, 5}
+	}
+	at := func(frac float64) int { return counts[min(n-1, int(frac*float64(n)))] }
+	t = [4]int{at(0.40), at(0.15), at(0.05), at(0.01)}
+	lowest := counts[n-1]
+	if t[0] <= lowest {
+		t[0] = lowest + 1
+	}
+	for i := 1; i < len(t); i++ {
+		if t[i] <= t[i-1] {
+			t[i] = t[i-1] + 1
+		}
+	}
+	return t
+}
+
+// tierOf is count's tier, 1–5, under thresholds t.
+func tierOf(t [4]int, count int) int {
+	tier := 1
+	for _, lo := range t {
+		if count >= lo {
+			tier++
+		}
+	}
+	return tier
+}
+
+func displayItem(c *category, item AggregateItem, tiers [4]int) AggregateDisplayItem {
+	label := item.Name
+	if item.Display != "" {
+		label = item.Display
+	}
+	sub := ""
+	if label != item.Name {
+		sub = item.Name
+	}
+	return AggregateDisplayItem{
+		Name:    label,
+		Sub:     sub,
+		Href:    c.href(item.Name),
+		Count:   item.Count,
+		Grouped: len(item.Members) > 0,
+		Members: strings.Join(item.Members, ", "),
+		Tier:    tierOf(tiers, item.Count),
+		Sort:    item.Sort,
+	}
+}
+
+func computeAggregateDisplay(c *category, items []AggregateItem) aggregateDisplay {
+	shown := items
+	if !c.ShowSingles {
+		shown = make([]AggregateItem, 0, len(items))
+		for _, item := range items {
+			if item.Count >= 2 { // the rest: found by the search box and Discover
+				shown = append(shown, item)
+			}
+		}
+	}
+	counts := make([]int, len(shown))
+	for i, item := range shown {
+		counts[i] = item.Count // sorted descending, as items is
+	}
+	d := aggregateDisplay{All: items, Tiers: aggregateTiers(counts)}
+	d.Items = make([]AggregateDisplayItem, len(shown))
+	for i, item := range shown {
+		d.Items[i] = displayItem(c, item, d.Tiers)
+	}
+	return d
+}
+
+func getAggregateData(c *category) aggregateDisplay {
 	if val, ok := aggregateDisplayCache.Load(c.Plural); ok {
-		return val.([]AggregateDisplayItem)
+		return val.(aggregateDisplay)
 	}
 	refreshAggregateCache(c)
 	val, _ := aggregateDisplayCache.Load(c.Plural)
-	items, _ := val.([]AggregateDisplayItem)
-	return items
+	d, _ := val.(aggregateDisplay)
+	return d
+}
+
+func getAggregateDisplay(c *category) []AggregateDisplayItem {
+	return getAggregateData(c).Items
+}
+
+// discoverCount: how many entries the Discover row shows. It shows only
+// when there are more than discoverMin values: below that the cloud has
+// room for all of them anyway.
+const (
+	discoverCount = 12
+	discoverMin   = 3 * discoverCount
+)
+
+// discoverSample picks n entries at random from every value, single-book
+// ones too: the long tail outnumbers the rest, so most are ones the cloud
+// shows small or not at all.
+func discoverSample(c *category, d aggregateDisplay, n int) []AggregateDisplayItem {
+	if len(d.All) <= discoverMin {
+		return nil
+	}
+	out := make([]AggregateDisplayItem, 0, n)
+	for _, i := range rand.Perm(len(d.All))[:n] {
+		out = append(out, displayItem(c, d.All[i], d.Tiers))
+	}
+	return out
 }
 
 // getFilteredTotal returns the book count for a resolved entity, cached.
@@ -525,14 +615,21 @@ func filteredPageHandler(c *category) http.HandlerFunc {
 // aggregatePageHandler serves the server-rendered tag cloud.
 func aggregatePageHandler(c *category) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
+		d := getAggregateData(c)
+		tiers := make([]string, len(d.Tiers))
+		for i, t := range d.Tiers {
+			tiers[i] = strconv.Itoa(t)
+		}
 		data := AggregatePageData{
 			Title:    c.Title,
 			Active:   c.Plural,
 			Label:    c.Label,
 			Prefix:   "/" + c.URLPrefix + "/",
 			DataURL:  fmt.Sprintf("/api/%s?v=%d", c.Plural, aggregateGen.Load()),
-			Items:    getAggregateDisplay(c),
+			Items:    d.Items,
 			Featured: featuredCards(c),
+			Discover: discoverSample(c, d, discoverCount),
+			Tiers:    strings.Join(tiers, ","),
 		}
 		w.Header().Set("Cache-Control", "no-cache")
 		if err := templates.ExecuteTemplate(w, "aggregate.html", data); err != nil {
