@@ -104,8 +104,8 @@ export function escapeHtml(str: string): string {
 
 /** URL of a book's grid thumbnail. */
 export function coverUrl(book: Pick<Book, "uuid" | "last_modified" | "series_card">): string {
-    const uuid = book.series_card?.cover ?? book.uuid; // a series: its first book's
-    return `/cover-thumb/${encodeURIComponent(uuid)}?t=${encodeURIComponent(book.last_modified)}`;
+    const coverOf = book.series_card?.cover ?? book.uuid; // a series: its first book's
+    return `/cover-thumb/${encodeURIComponent(coverOf)}?t=${encodeURIComponent(book.last_modified)}`;
 }
 
 /** "Series · 5 books", a series card's banner and its Arrange row's line. */
