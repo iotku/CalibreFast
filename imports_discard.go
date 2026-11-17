@@ -21,6 +21,7 @@ import (
 	"os"
 	"path/filepath"
 	"slices"
+	"strings"
 	"time"
 
 	"github.com/google/uuid"
@@ -42,57 +43,106 @@ func importDiscardExistingHandler(w http.ResponseWriter, r *http.Request) {
 		if it.Into != "" {
 			continue // new files for a book: reviewed against it
 		}
-		check, err := findDuplicates(calibreDB, baseDir, it.Merged.Title, it.Merged.Creators, imports.dupFiles(it), "")
-		if err != nil {
-			res.Errors = append(res.Errors, fmt.Sprintf("%q: %v", it.Merged.Title, err))
-			continue
-		}
-		same := map[string]bool{}
-		var holders []string // the library books holding them
-		for _, d := range check.Books {
-			for _, f := range d.SameFiles {
-				same[f] = true
-			}
-			if len(d.SameFiles) > 0 && !slices.Contains(holders, d.UUID) {
-				holders = append(holders, d.UUID)
-			}
-		}
-		if len(same) == 0 {
-			continue
-		}
-		if len(same) == len(it.Files) {
-			if err := imports.discard(it.ID); err != nil {
-				if !errors.Is(err, fs.ErrNotExist) {
-					res.Errors = append(res.Errors, fmt.Sprintf("%q: %v", it.Merged.Title, err))
-				}
-				continue
-			}
-			logEdit(by, "discard import", logKindImport, it.ID, it.Merged.Title, nil, nil)
-			res.Discarded++
-			res.Files += len(it.Files)
-			continue
-		}
-		into := ""
-		if len(holders) == 1 {
-			into = holders[0]
-		}
-		off, err := imports.splitOff(it.ID, same, into)
-		if err != nil {
+		out, err := discardIdentical(it, it.Merged.Title, it.Merged.Creators, by)
+		switch {
+		case err != nil:
 			if !errors.Is(err, fs.ErrNotExist) {
 				res.Errors = append(res.Errors, fmt.Sprintf("%q: %v", it.Merged.Title, err))
 			}
-			continue
+		case out.Kept != nil:
+			res.Split++
+		case out.Files > 0:
+			res.Discarded++
 		}
-		if err := imports.discard(off.ID); err != nil {
-			res.Errors = append(res.Errors, fmt.Sprintf("%q: %v", it.Merged.Title, err))
-			continue
-		}
-		logEdit(by, "discard import", logKindImport, off.ID, off.Merged.Title+" ("+fileNames(off.Files)+")", nil, nil)
-		res.Split++
-		res.Files += len(off.Files)
+		res.Files += out.Files
 	}
 	if res.Discarded+res.Split > 0 {
 		log.Printf("imports: %d identical files discarded by %s", res.Files, by.Username)
+	}
+	writeJSON(w, http.StatusOK, res)
+}
+
+// identicalDiscarded is what discardIdentical did with one waiting book.
+type identicalDiscarded struct {
+	Files int            // discarded: none if it had no identical file
+	Kept  *pendingImport // its other files, still waiting; nil if it went whole
+}
+
+// discardIdentical discards waiting book it's files that the library holds
+// byte for byte (looked for among books titled title, by authors): it
+// whole, or only those, split off, with the rest left as new files for the
+// one library book that holds them (if one does).
+func discardIdentical(it *pendingImport, title string, authors []string, by *User) (identicalDiscarded, error) {
+	check, err := findDuplicates(calibreDB, baseDir, title, authors, imports.dupFiles(it), "")
+	if err != nil {
+		return identicalDiscarded{}, err
+	}
+	same := map[string]bool{}
+	var holders []string // the library books holding them
+	for _, d := range check.Books {
+		for _, f := range d.SameFiles {
+			same[f] = true
+		}
+		if len(d.SameFiles) > 0 && !slices.Contains(holders, d.UUID) {
+			holders = append(holders, d.UUID)
+		}
+	}
+	if len(same) == 0 {
+		return identicalDiscarded{}, nil
+	}
+	if len(same) == len(it.Files) {
+		if err := imports.discard(it.ID); err != nil {
+			return identicalDiscarded{}, err
+		}
+		logEdit(by, "discard import", logKindImport, it.ID, it.Merged.Title, nil, nil)
+		return identicalDiscarded{Files: len(it.Files)}, nil
+	}
+	into := ""
+	if len(holders) == 1 {
+		into = holders[0]
+	}
+	off, err := imports.splitOff(it.ID, same, into)
+	if err != nil {
+		return identicalDiscarded{}, err
+	}
+	if err := imports.discard(off.ID); err != nil {
+		return identicalDiscarded{}, err
+	}
+	logEdit(by, "discard import", logKindImport, off.ID, off.Merged.Title+" ("+fileNames(off.Files)+")", nil, nil)
+	return identicalDiscarded{Files: len(off.Files), Kept: imports.get(it.ID)}, nil
+}
+
+// importDiscardIdenticalHandler is POST /import/{id}/discard-identical:
+// discardIdentical for one book, from its review page, with the title and
+// authors the editor has (the check found the identical file by them).
+// The answer says where its other files are now reviewed.
+func importDiscardIdenticalHandler(w http.ResponseWriter, r *http.Request) {
+	it := importFromRequest(w, r)
+	if it == nil {
+		return
+	}
+	var req struct {
+		Title    string `json:"title"`
+		Creators string `json:"creators"`
+	}
+	_ = json.NewDecoder(http.MaxBytesReader(w, r.Body, 64<<10)).Decode(&req)
+	title, authors := it.Merged.Title, it.Merged.Creators
+	if strings.TrimSpace(req.Title) != "" {
+		title, authors = req.Title, parseCreatorsString(req.Creators)
+	}
+	out, err := discardIdentical(it, title, authors, currentUser(r))
+	if err != nil {
+		http.Error(w, "Couldn't discard the files: "+err.Error(), http.StatusInternalServerError)
+		return
+	}
+	res := map[string]any{"discarded": out.Files}
+	switch {
+	case out.Kept != nil && out.Kept.Into != "":
+		res["url"] = addFormatPath(out.Kept)
+	case out.Kept != nil:
+		res["url"] = "/import/" + out.Kept.ID
+	default:
+		res["url"] = "/import"
 	}
 	writeJSON(w, http.StatusOK, res)
 }

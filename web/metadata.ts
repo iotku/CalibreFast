@@ -1206,6 +1206,29 @@ export async function mountMetadataEditor(book: BookTarget, form: HTMLFormElemen
       overrideNext = true;
       form.requestSubmit();
     });
+    maybeId("duplicate-split")?.addEventListener("click", async (e) => {
+      const btn = e.currentTarget as HTMLButtonElement;
+      const values = collectValues(form);
+      btn.disabled = true;
+      try {
+        const res = await fetch(`/import/${encodeURIComponent(form.dataset["import"] ?? "")}/discard-identical`, {
+          method: "POST",
+          headers: { "content-type": "application/json" },
+          body: JSON.stringify({ title: values.title ?? "", creators: values.creators ?? "" }),
+        });
+        if (!res.ok) throw new Error((await res.text()).trim() || `HTTP ${res.status}`);
+        const { url } = (await res.json()) as { url: string };
+        added = true; // nothing unsaved to warn about: these files are gone or elsewhere
+        location.assign(url.startsWith("/") && !url.startsWith("//") ? url : "/import");
+      } catch (err) {
+        btn.disabled = false;
+        dupDialog?.close();
+        if (statusEl) {
+          statusEl.className = "edit-status error";
+          statusEl.textContent = `✕ ${errorMessage(err)}`;
+        }
+      }
+    });
     maybeId("duplicate-discard")?.addEventListener("click", () => {
       dupDialog?.close();
       maybeId("btn-discard")?.click(); // asks first
@@ -1246,15 +1269,34 @@ export async function mountMetadataEditor(book: BookTarget, form: HTMLFormElemen
         const files = [...new Set(same.flatMap((b) => b.same_files ?? []))].join(", ");
         const where = same.map((b) => `“${b.title}”`).join(", ");
         intro.textContent = blocked
-          ? `${files || "One of this book's files"} is byte for byte the same as a file of ${where}. A file the library already has can't be added again, whatever the metadata says. Discard it from the queue; any other formats of it can be added to that book from its page.`
+          ? `${files || "One of this book's files"} is byte for byte the same as a file of ${where}. A file the library already has can't be added again, whatever the metadata says.`
           : "";
+      }
+      // Its other formats, which the library hasn't got: added to the book
+      // that has the rest, the identical ones discarded.
+      const identical = new Set(same.flatMap((b) => b.same_files ?? []));
+      const files = [...(maybeId("duplicate-files")?.querySelectorAll<HTMLElement>("li") ?? [])]
+        .map((li) => ({ name: li.dataset["name"] ?? "", format: (li.dataset["format"] ?? "").toUpperCase() }));
+      const rest = files.filter((f) => !identical.has(f.name));
+      const holders = [...new Map(same.map((b) => [b.uuid, b])).values()];
+      const split = maybeId("duplicate-split", HTMLButtonElement);
+      if (split) {
+        split.hidden = !blocked || !rest.length || !form.dataset["import"];
+        const gone = files.filter((f) => identical.has(f.name)).map((f) => f.format).join(", ");
+        const kept = rest.map((f) => f.format).join(", ");
+        split.textContent = holders.length === 1
+          ? `Discard ${gone}, add ${kept} to “${holders[0]!.title}”`
+          : `Discard ${gone}, keep ${kept}`;
       }
       const add = maybeId("duplicate-add");
       const discard = maybeId("duplicate-discard");
       if (add) add.hidden = blocked;
-      if (discard) discard.hidden = !blocked || !maybeId("btn-discard");
+      if (discard) {
+        discard.hidden = !blocked || !maybeId("btn-discard");
+        discard.textContent = rest.length ? "Discard all" : "Discard from queue";
+      }
       if (!dupDialog.open) dupDialog.showModal();
-      (blocked ? discard : add)?.focus();
+      (blocked ? (split && !split.hidden ? split : discard) : add)?.focus();
     };
 
     form.addEventListener("submit", async (e) => {
