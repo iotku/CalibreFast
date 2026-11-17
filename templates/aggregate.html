@@ -77,6 +77,5 @@
 </html>
 {{/* One entry of the cloud or Discover (AggregateDisplayItem as .E); web/aggregate.ts builds the same. */}}
 {{ define "agg-entry" }}{{ with .E -}}
-<a class="{{ $.Class }}{{ if .Grouped }} agg-group{{ end }}" href="{{ .Href }}" data-count="{{ .Count }}"{{ if .Sort }} data-sort="{{ .Sort }}"{{ end }}
-   title="{{ if .Grouped }}Group: {{ .Members }} · {{ end }}{{ count .Count "book" "books" }}">{{ .Name }}{{ if .Sub }} <span class="agg-sub">{{ .Sub }}</span>{{ end }}<span class="agg-count">{{ .Count }}</span></a>
+<a class="{{ $.Class }}{{ if .Grouped }} agg-group{{ end }}" href="{{ .Href }}" data-count="{{ .Count }}"{{ if .Sort }} data-sort="{{ .Sort }}"{{ end }}>{{ .Name }}{{ if .Sub }} <span class="agg-sub">{{ .Sub }}</span>{{ end }}<span class="agg-count">{{ .Count }}</span></a>
 {{- end }}{{ end }}
