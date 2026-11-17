@@ -8,8 +8,11 @@ package main
 // "Next in series" (recommend.go) depends on both being right.
 
 import (
+	"cmp"
 	"database/sql"
+	"slices"
 	"strconv"
+	"strings"
 )
 
 // setBookSeries replaces a book's series in metadata.db: its link and
@@ -48,4 +51,73 @@ func librarySeriesFields(uuid string) (name, index string) {
 		return n, strconv.FormatFloat(i, 'f', -1, 64)
 	}
 	return "", ""
+}
+
+// The order a series reads in, everywhere it's listed (its page, a pinned
+// series on Home, On Deck, Next in series): by number; books with the same
+// number (a series numbered all 1, or not numbered at all) oldest
+// publication first, an unknown date after the known ones; then by title
+// as sorted. seriesOrderSQL is the same for metadata.db (alias b).
+const seriesOrderSQL = `b.series_index, (b.pubdate IS NULL OR substr(b.pubdate, 1, 10) < '0102'), substr(b.pubdate, 1, 10), b.sort, b.id`
+
+// seriesDate: a pubdate's day ("2005-06-01"), "" when unknown (Calibre's
+// "undefined" date is in the year 101).
+func seriesDate(pubdate string) string {
+	if len(pubdate) < 10 || pubdate < "0102" {
+		return ""
+	}
+	return pubdate[:10]
+}
+
+// seriesCompare orders two books of a series (see seriesOrderSQL).
+func seriesCompare(a, b *catalogBook) int {
+	if c := cmp.Compare(a.SeriesIndex, b.SeriesIndex); c != 0 {
+		return c
+	}
+	da, db := seriesDate(a.PubDate), seriesDate(b.PubDate)
+	if (da == "") != (db == "") {
+		if da == "" {
+			return 1
+		}
+		return -1
+	}
+	if c := strings.Compare(da, db); c != 0 {
+		return c
+	}
+	if c := strings.Compare(a.Sort, b.Sort); c != 0 {
+		return c
+	}
+	return cmp.Compare(a.ID, b.ID)
+}
+
+// seriesLess: whether a comes before b in their series.
+func seriesLess(a, b *catalogBook) bool { return seriesCompare(a, b) < 0 }
+
+// sortSeries puts slots of c in series order.
+func sortSeries(c *catalog, slots []int32) {
+	slices.SortStableFunc(slots, func(a, b int32) int { return seriesCompare(&c.books[a], &c.books[b]) })
+}
+
+// seriesEntity: a series as browsed (its group's name, when it's in one).
+func seriesEntity(name string) string {
+	n, _, _ := groups.resolve("series", name)
+	return n
+}
+
+// seriesBooks: the books of a series as browsed (a group: every member's),
+// in series order, from the catalog.
+func seriesBooks(ix *recIndex, name string) []int32 {
+	_, members, _ := groups.resolve("series", name)
+	want := map[string]bool{}
+	for _, m := range members {
+		want[strings.ToLower(m)] = true
+	}
+	var slots []int32
+	for id, n := range ix.cat.seriesNames {
+		if want[strings.ToLower(n)] {
+			slots = append(slots, ix.series[id]...)
+		}
+	}
+	sortSeries(ix.cat, slots)
+	return slots
 }

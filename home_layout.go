@@ -4,7 +4,8 @@ package main
 //
 //   - PUT /api/me/home-layout {"order": [...], "hidden": [...]}: the order
 //     of the page's rows as the user arranged them ("k:shuffle" a section,
-//     "s:7" a pinned shelf, "t:Space Opera" a pinned tag), and the sections
+//     "s:7" a pinned shelf, "t:Space Opera" a pinned tag, "r:Dune" a pinned
+//     series), and the sections
 //     they turned off. The page merges it with what's there now (a row
 //     pinned since goes beside the other pins; a section missing from the
 //     order keeps its default place), so it's stored as given.
@@ -25,9 +26,9 @@ import (
 
 // homeSections: the sections a user can turn off (Continue reading
 // can't be). Keep in step with web/discover.ts.
-var homeSections = []string{"greeting", "wanted", "recommended", "shuffle", "latest", "tags"}
+var homeSections = []string{"greeting", "ondeck", "wanted", "recommended", "shuffle", "latest", "tags"}
 
-const maxLayoutID = 300 // bytes: "t:" and a tag name
+const maxLayoutID = 300 // bytes: "t:" and a tag name (or "r:" and a series')
 
 type homeLayout struct {
 	Order  []string `json:"order"`
@@ -55,7 +56,7 @@ func userHomeLayout(u *User) (homeLayout, error) {
 	return l, nil
 }
 
-// validLayout: ids that name a row ("k:", "s:" or "t:" and something),
+// validLayout: ids that name a row ("k:", "s:", "t:" or "r:" and something),
 // without repeats; hidden only sections that can be turned off.
 func validLayout(l homeLayout) bool {
 	if len(l.Order) > maxOrderIDs || len(l.Hidden) > len(homeSections) {
@@ -64,7 +65,7 @@ func validLayout(l homeLayout) bool {
 	seen := map[string]bool{}
 	for _, id := range l.Order {
 		k := strings.ToLower(id)
-		if seen[k] || len(id) > maxLayoutID || len(id) < 3 || !slices.Contains([]string{"k:", "s:", "t:"}, id[:2]) {
+		if seen[k] || len(id) > maxLayoutID || len(id) < 3 || !slices.Contains([]string{"k:", "s:", "t:", "r:"}, id[:2]) {
 			return false
 		}
 		seen[k] = true

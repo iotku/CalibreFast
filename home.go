@@ -6,6 +6,8 @@ package main
 //   - reading: the books being read, most recently active first (the newer
 //     of the status change and the last position, from any device);
 //   - wanted: want to read, in its page's order (newest first unless arranged);
+//   - on_deck: the next book of each series the user finished one of
+//     (series_pins.go);
 //   - the page's layout and hidden tags (home_layout.go);
 // each capped, with the full counts for "See all". Book details come from
 // the catalog: nothing is read from the library.
@@ -30,6 +32,7 @@ type homeAnswer struct {
 	ReadingCount int          `json:"reading_count"`
 	Wanted       []Book       `json:"wanted"`
 	WantedCount  int          `json:"wanted_count"`
+	OnDeck       []Book       `json:"on_deck"`
 	// The shelf rows: pinned ones, and featured ones not unpinned
 	// (shelf_pins.go).
 	Shelves []homeShelf `json:"shelves"`
@@ -78,6 +81,10 @@ func homeHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	if ans.Wanted, err = booksByUUIDs(wanted[:min(len(wanted), homeRowMax)]); err != nil {
+		http.Error(w, "query failed", http.StatusInternalServerError)
+		return
+	}
+	if ans.OnDeck, err = onDeck(currentUser(r), marks, active); err != nil {
 		http.Error(w, "query failed", http.StatusInternalServerError)
 		return
 	}
