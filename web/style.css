@@ -4088,6 +4088,32 @@ label.group-row span {
     color: inherit;
 }
 
+.import-progress {
+    margin: 12px 0;
+}
+
+.import-progress progress {
+    width: 100%;
+    height: 10px;
+    accent-color: var(--accent, #c8a96e);
+}
+
+.import-progress-row {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 12px;
+    margin-top: 6px;
+    font-size: 0.85rem;
+}
+
+.import-progress-row span {
+    min-width: 0;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
 .import-info .duplicate-note {
     margin-top: 6px;
     font-size: 0.85rem;

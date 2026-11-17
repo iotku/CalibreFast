@@ -7,7 +7,7 @@
 import { api, byId, el, errorMessage, maybeId, statusLine } from "./dom.js";
 import { pendingImport } from "./book-target.js";
 import { epubPages, formatBytes, pdfPages, type CoverChoice } from "./cover-sources.js";
-import type { AcceptAllResult, DiscardExistingResult, DuplicateCheck, ImportQueue, ImportSummary } from "./types.js";
+import type { DiscardExistingResult, DuplicateCheck, ImportQueue, ImportSummary } from "./types.js";
 
 const POLL_MS = 5000;
 
@@ -144,9 +144,6 @@ discardExisting.addEventListener("click", async () => {
     }
 });
 
-// The last "couldn't load" message shown, cleared by the next load that works
-// (the server was only restarting, say), unless something else was said since.
-let loadError = "";
 /** The first cover offered by a book's files: the EPUB's (its own cover, else its first page), else the PDF's first page. */
 async function defaultCover(item: ImportSummary): Promise<boolean> {
     const book = pendingImport(item.id);
@@ -168,33 +165,85 @@ async function defaultCover(item: ImportSummary): Promise<boolean> {
     return false;
 }
 
+/** Library pages are rewritten after this many books, and at the end. */
+const REFRESH_EVERY = 25;
+const progress = byId("imports-progress");
+const progressBar = byId("imports-progress-bar", HTMLProgressElement);
+const progressText = byId("imports-progress-text");
+const progressStop = byId("imports-progress-stop", HTMLButtonElement);
+let running = false;
+let stopping = false;
+progressStop.addEventListener("click", () => {
+    stopping = true;
+    progressStop.disabled = true;
+    progressStop.textContent = "Stopping…";
+});
+window.addEventListener("beforeunload", (e) => {
+    if (running) e.preventDefault(); // leaving stops it part way
+});
+
 acceptAll?.addEventListener("click", async () => {
     const items = (queue?.items ?? []).filter(addable);
-    if (!items.length) return;
+    if (!items.length || running) return;
     const waiting = queue?.items.length ?? 0;
     if (!confirm(`Add ${items.length} book${items.length === 1 ? "" : "s"} to the library with the metadata their files offer, without review?${waiting > items.length ? `\n\n${waiting - items.length} other${waiting - items.length === 1 ? "" : "s"} (maybe already in the library, or new files for a library book) stay here for review.` : ""}`)) return;
+    running = true;
+    stopping = false;
     acceptAll.disabled = discardExisting.disabled = true;
+    progressStop.disabled = false;
+    progressStop.textContent = "Stop";
+    progressBar.max = items.length;
+    progressBar.value = 0;
+    progress.hidden = false;
+    byId("imports-status").hidden = true;
+    notAdded.clear();
+    let added = 0;
+    let sinceRefresh = 0;
+    const plural = (n: number): string => `${n} book${n === 1 ? "" : "s"}`;
+    const counts = (): string => `${plural(added)} added${notAdded.size ? `, ${notAdded.size} left for review` : ""}`;
     try {
-        // Covers first, while each book is still here: the browser renders
-        // what the server can't (a PDF page of text, an EPUB's first page).
-        const bare = items.filter((it) => !it.has_cover);
-        for (const [i, it] of bare.entries()) {
-            say(`Finding covers: ${i + 1} of ${bare.length}…`);
-            await defaultCover(it);
+        for (const [i, it] of items.entries()) {
+            if (stopping) break;
+            const step = `${i + 1} of ${items.length} · ${counts()} · `;
+            if (!it.has_cover) {
+                progressText.textContent = `${step}Finding a cover for “${it.title}”…`;
+                // The browser renders what the server can't (a PDF page of text, an EPUB's first page).
+                await defaultCover(it);
+            }
+            progressText.textContent = `${step}Adding “${it.title}”…`;
+            try {
+                const res = await api<{ uuid: string; reason: string }>("POST", `/import/${encodeURIComponent(it.id)}/accept`);
+                if (res.uuid) {
+                    added++;
+                    if (++sinceRefresh >= REFRESH_EVERY) {
+                        sinceRefresh = 0;
+                        await api("POST", "/api/imports/accept-done");
+                    }
+                } else if (res.reason) {
+                    notAdded.set(it.id, res.reason);
+                }
+            } catch (err) {
+                notAdded.set(it.id, errorMessage(err)); // on to the next one
+            }
+            progressBar.value = i + 1;
         }
-        say(`Adding ${items.length} book${items.length === 1 ? "" : "s"} to the library…`);
-        const res = await api<AcceptAllResult>("POST", "/api/imports/accept-all");
-        notAdded.clear();
-        for (const l of res.left) notAdded.set(l.id, l.reason);
-        say(`Added ${res.added} book${res.added === 1 ? "" : "s"} to the library.${res.left.length ? ` ${res.left.length} left here for review: see each one's reason.` : ""}`);
-        await refresh();
+        progressText.textContent = `${counts()} · showing them in the library…`;
+        if (added) await api("POST", "/api/imports/accept-done");
+        const stopped = stopping ? "Stopped. " : "";
+        say(`${stopped}Added ${plural(added)} to the library.${notAdded.size ? ` ${notAdded.size} left here for review: each says why.` : ""}`);
     } catch (err) {
         say(errorMessage(err), true);
     } finally {
+        running = false;
+        progress.hidden = true;
         acceptAll.disabled = discardExisting.disabled = false;
+        await refresh();
     }
 });
 
+// The last "couldn't load" message shown, cleared by the next load that works
+// (the server was only restarting, say), unless something else was said since.
+let loadError = "";
 async function refresh(): Promise<void> {
     const status = byId("imports-status");
     try {

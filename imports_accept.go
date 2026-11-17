@@ -22,40 +22,30 @@ import (
 	"github.com/iotku/CalibreFast/pkg/opf"
 )
 
-// acceptAllResult is POST /api/imports/accept-all (TS: AcceptAllResult).
-type acceptAllResult struct {
-	Added int           `json:"added"`
-	Left  []acceptedNot `json:"left"` // still waiting, and why
+// importAcceptHandler is POST /import/{id}/accept: one book of a mass
+// import, which the page sends one at a time to show its progress. The
+// library's pages aren't rewritten for each (hundreds may follow): the
+// page asks for that every so often, and at the end (importAcceptDoneHandler).
+// reason says why it's still waiting ("" once added).
+func importAcceptHandler(w http.ResponseWriter, r *http.Request) {
+	it := importFromRequest(w, r)
+	if it == nil {
+		return
+	}
+	uuid, reason := acceptImport(it, currentUser(r))
+	if uuid != "" {
+		catalogChanged(uuid)
+		log.Printf("imports: %q mass-imported by %s", it.Merged.Title, currentUser(r).Username)
+	}
+	writeJSON(w, http.StatusOK, map[string]string{"uuid": uuid, "reason": reason})
 }
 
-type acceptedNot struct {
-	ID     string `json:"id"`
-	Title  string `json:"title"`
-	Reason string `json:"reason"`
-}
-
-func importAcceptAllHandler(w http.ResponseWriter, r *http.Request) {
-	by := currentUser(r)
-	res := acceptAllResult{Left: []acceptedNot{}}
-	var added []string
-	for _, it := range imports.list() {
-		uuid, reason := acceptImport(it, by)
-		if reason != "" {
-			res.Left = append(res.Left, acceptedNot{it.ID, it.Merged.Title, reason})
-			continue
-		}
-		if uuid != "" {
-			added = append(added, uuid)
-		}
-	}
-	res.Added = len(added)
-	if len(added) > 0 {
-		catalogChanged(added...)
-		refreshLibraryPages()
-		refreshAllCaches()
-		log.Printf("imports: %d books mass-imported by %s", len(added), by.Username)
-	}
-	writeJSON(w, http.StatusOK, res)
+// importAcceptDoneHandler is POST /api/imports/accept-done: the books
+// mass-imported so far show on the library's pages.
+func importAcceptDoneHandler(w http.ResponseWriter, r *http.Request) {
+	refreshLibraryPages()
+	refreshAllCaches()
+	w.WriteHeader(http.StatusNoContent)
 }
 
 // acceptImport adds one waiting book as its files describe it. reason says

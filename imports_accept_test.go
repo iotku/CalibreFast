@@ -29,20 +29,29 @@ func TestAcceptAllImports(t *testing.T) {
 		t.Fatalf("%d waiting", w.inbox.count())
 	}
 
-	post := func(u *User) *httptest.ResponseRecorder {
+	accept := func(u *User, id string) (int, map[string]string) {
 		rec := httptest.NewRecorder()
-		req := httptest.NewRequest("POST", "/api/imports/accept-all", nil)
-		requireWrites(importAcceptAllHandler)(rec, req.WithContext(withUserCtx(req, u)))
-		return rec
+		req := httptest.NewRequest("POST", "/import/"+id+"/accept", nil)
+		req.SetPathValue("id", id)
+		requireWrites(importAcceptHandler)(rec, req.WithContext(withUserCtx(req, u)))
+		var out map[string]string
+		json.Unmarshal(rec.Body.Bytes(), &out)
+		return rec.Code, out
 	}
-	if c := post(editor).Code; c != http.StatusNotFound {
+	items := w.inbox.list()
+	if c, _ := accept(editor, items[0].ID); c != http.StatusNotFound {
 		t.Errorf("an editor mass imported: %d", c)
 	}
-	rec := post(admin)
-	var res acceptAllResult
-	json.Unmarshal(rec.Body.Bytes(), &res)
-	if rec.Code != http.StatusOK || res.Added != 2 || len(res.Left) != 0 {
-		t.Fatalf("%d %s", rec.Code, rec.Body)
+	for _, it := range items {
+		if c, out := accept(admin, it.ID); c != http.StatusOK || out["uuid"] == "" || out["reason"] != "" {
+			t.Fatalf("accept %q: %d %v", it.Merged.Title, c, out)
+		}
+	}
+	rec := httptest.NewRecorder()
+	req := httptest.NewRequest("POST", "/api/imports/accept-done", nil)
+	requireWrites(importAcceptDoneHandler)(rec, req.WithContext(withUserCtx(req, admin)))
+	if rec.Code != http.StatusNoContent {
+		t.Errorf("done: %d", rec.Code)
 	}
 	var books int
 	db.QueryRow(`SELECT COUNT(*) FROM books`).Scan(&books)
@@ -55,10 +64,8 @@ func TestAcceptAllImports(t *testing.T) {
 	writeTestFile(t, filepath.Join(dir, "three", "Again.epub"), epub)
 	w.scan()
 	w.scan()
-	rec = post(admin)
-	res = acceptAllResult{}
-	json.Unmarshal(rec.Body.Bytes(), &res)
-	if res.Added != 0 || len(res.Left) != 1 || res.Left[0].Reason == "" || w.inbox.count() != 1 {
-		t.Fatalf("duplicate: %s", rec.Body)
+	again := w.inbox.list()[0]
+	if c, out := accept(admin, again.ID); c != http.StatusOK || out["uuid"] != "" || out["reason"] == "" || w.inbox.count() != 1 {
+		t.Fatalf("duplicate: %d %v", c, out)
 	}
 }

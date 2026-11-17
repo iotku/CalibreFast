@@ -23,6 +23,13 @@
         </div>
         <p id="imports-folder" class="auth-muted"></p>
         <p id="imports-problem" class="auth-error" hidden></p>
+        <div id="imports-progress" class="import-progress" hidden>
+            <progress id="imports-progress-bar" max="1" value="0"></progress>
+            <div class="import-progress-row">
+                <span id="imports-progress-text" class="auth-muted" aria-live="polite"></span>
+                <button type="button" id="imports-progress-stop" class="btn-standard">Stop</button>
+            </div>
+        </div>
         <p id="imports-status" class="auth-notice" role="status" hidden></p>
         <ul id="imports-list" class="import-list" hidden></ul>
         <p id="imports-empty" class="auth-muted" hidden>
