@@ -14,7 +14,6 @@ import (
 	"os"
 	"path/filepath"
 	"regexp"
-	"strconv"
 	"strings"
 	"sync"
 	"time"
@@ -184,6 +183,9 @@ type formatEntry struct { // TODO: I don't really like this hanging around rando
 	Filename string
 	Size     int64
 	TempPath string
+	// Stem: the file's data.name in metadata.db, when it isn't the book's
+	// usual bookFileStem (addBookToLibrary).
+	Stem string
 }
 
 func upsertAuthor(tx *sql.Tx, name string) (int64, error) {
@@ -486,99 +488,24 @@ func saveUploadTemp(fh *multipart.FileHeader, ext string) (path string, size int
 	return tmp.Name(), size, nil
 }
 
-// addBookToLibrary adds a book to metadata.db, writes its metadata.opf and
-// moves its files (each entry's TempPath) into the library; the entries then
-// name the files as they are there. If any step fails, nothing of the book is
-// left in the library and its files are back where they were.
-func addBookToLibrary(meta *UploadedBookMeta, entries []formatEntry) (bookUUID, bookPath string, err error) {
-	if len(entries) == 0 {
-		return "", "", errors.New("no book files")
-	}
-	bookID, bookUUID, bookPath, err := insertBookIntoCalibreDB(calibreDB, meta, entries)
-	if err != nil {
-		return "", "", fmt.Errorf("failed to insert into database: %w", err)
-	}
-
-	destDir := filepath.Join(baseDir, bookPath) // NOTE: bookPath is sanitized in insertBookIntoCalibreDB
-	opfPath := filepath.Join(destDir, "metadata.opf")
-	type move struct{ from, to string }
-	var moved []move
-	undo := func() {
-		for _, m := range moved {
-			logErr(moveFile(m.to, m.from), "couldn't move "+m.to+" back")
-		}
-		os.Remove(opfPath)
-		os.Remove(destDir) // only if nothing else is in it
-		logErr(deleteBookFromCalibreDB(calibreDB, bookID), "couldn't delete book "+strconv.FormatInt(bookID, 10)+" from calibreDB")
-	}
-
-	if err := os.MkdirAll(destDir, 0o755); err != nil {
-		undo()
-		return "", "", fmt.Errorf("failed to create book directory: %w", err)
-	}
-
-	bookOPF := &OPF{
-		Metadata: OPFMetadata{ // TODO: Can we get things to a state where we can just pass in `merged` directly?
-			Title:       meta.Title,
-			Description: meta.Description,
-			Publisher:   meta.Publisher,
-			Date:        meta.Date,
-			Languages:   meta.Languages,
-			Identifiers: meta.Identifiers,
-			Subjects:    meta.Subjects,
-			Creators:    meta.Creators,
-			Meta:        meta.Meta,
-		},
-	}
-	if err := opf.Write(bookOPF, opfPath, bookUUID); err != nil {
-		undo()
-		return "", "", fmt.Errorf("failed to write metadata.opf: %w", err)
-	}
-
-	// Each file is named as its data.name row says (insertBookIntoCalibreDB),
-	// or Calibre can't find it.
-	baseName := bookFileStem(meta.Title)
-	for i := range entries {
-		dest := filepath.Join(destDir, baseName+"."+entries[i].Ext)
-		if _, err := os.Stat(dest); err == nil {
-			// Avoid overwriting an existing file; data.name follows the new name.
-			stem := baseName + "_" + strconv.FormatInt(time.Now().UnixNano(), 36)
-			if _, err := calibreDB.Exec(`UPDATE data SET name = ? WHERE book = ? AND format = ?`, stem, bookID, strings.ToUpper(entries[i].Ext)); err != nil {
-				undo()
-				return "", "", fmt.Errorf("failed to rename %s in the database: %w", entries[i].Filename, err)
-			}
-			dest = filepath.Join(destDir, stem+"."+entries[i].Ext)
-		}
-		if err := moveFile(entries[i].TempPath, dest); err != nil {
-			undo()
-			return "", "", fmt.Errorf("failed to move %s into the library: %w", entries[i].Filename, err)
-		}
-		moved = append(moved, move{entries[i].TempPath, dest})
-	}
-	for i, m := range moved {
-		entries[i].Filename = filepath.Base(m.to)
-		entries[i].TempPath = ""
-	}
-
-	uuidPathIndex.Store(bookUUID, bookPath)
-	formatCache.Delete(bookUUID)
-	// A placeholder for this book (placeholders.go) has served its turn.
-	added := meta.OPFMetadata
-	if added.Series == "" {
-		added.FillSeries()
-	}
-	resolvePlaceholders(&added)
-	return bookUUID, bookPath, nil
-}
+// addBookToLibrary is in add_journal.go.
 
 // moveFile renames src to dst, copying when they are on different
-// filesystems. If it fails, src is still there and dst is not.
+// filesystems. If it fails, src is still there and dst is not. A copy is
+// written beside dst under a ".partial" name and renamed into place once
+// whole, so even if the process dies part way through, dst is either
+// absent or complete (and then src may be too, until it's removed).
 func moveFile(src, dst string) error {
 	if err := os.Rename(src, dst); err == nil {
 		return nil
 	}
-	if err := copyFile(src, dst); err != nil {
-		os.Remove(dst)
+	tmp := dst + partialSuffix
+	if err := copyFileSync(src, tmp); err != nil {
+		os.Remove(tmp)
+		return err
+	}
+	if err := os.Rename(tmp, dst); err != nil {
+		os.Remove(tmp)
 		return err
 	}
 	if err := os.Remove(src); err != nil {
@@ -588,7 +515,15 @@ func moveFile(src, dst string) error {
 	return nil
 }
 
-func copyFile(src, dst string) error {
+// partialSuffix marks a copy moveFile hasn't finished.
+const partialSuffix = ".partial"
+
+func copyFile(src, dst string) error { return copyFileWith(src, dst, false) }
+
+// copyFileSync is copyFile, flushed to disk before it returns.
+func copyFileSync(src, dst string) error { return copyFileWith(src, dst, true) }
+
+func copyFileWith(src, dst string, sync bool) error {
 	in, err := os.Open(src)
 	if err != nil {
 		return err
@@ -599,6 +534,9 @@ func copyFile(src, dst string) error {
 		return err
 	}
 	_, err = io.Copy(out, in)
+	if err == nil && sync {
+		err = out.Sync()
+	}
 	if cErr := out.Close(); err == nil {
 		err = cErr
 	}

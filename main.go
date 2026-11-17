@@ -388,6 +388,11 @@ func main() {
 		log.Fatal("metadata.db not found at: ", dbPath)
 	}
 	initCalibreDB()
+	if allowWrites {
+		// Before anything reads the library or the import queue: a book the
+		// server was adding when it stopped is finished or undone.
+		recoverInterruptedAdds()
+	}
 	// Before the catalog is read: what it's read from is the state that
 	// counts as unchanged (catalog_snapshot.go).
 	if err := trackLibraryChanges(); err != nil {
