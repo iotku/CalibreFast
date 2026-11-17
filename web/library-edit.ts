@@ -6,7 +6,7 @@
 // Only the rows on screen are in the DOM: every row is ROW_H tall, so row
 // i sits at i × ROW_H in a body as tall as all of them.
 //
-// The filters, sort and duplicate mode are kept in the URL (replaceState),
+// The filters, sort, duplicate mode and tag check are kept in the URL (replaceState),
 // so coming back (with Back) finds the same view.
 
 import { api, byId, closeOnBackdropClick, el, errorMessage, modalOpen } from "./dom.js";
@@ -179,6 +179,15 @@ interface TableData {
     not_duplicates: NotDuplicateSet[];
 }
 let onlySelected = false;
+/** Tag checks: "", "unique" (a tag no other book has), "semicolon" (a tag with ;) or "long". */
+type TagCheck = "" | "unique" | "semicolon" | "long";
+const TAG_CHECKS: TagCheck[] = ["", "unique", "semicolon", "long"];
+let tagCheck: TagCheck = "";
+const TAG_LEN_DEFAULT = 40;
+/** "long": tags longer than this many characters. */
+let tagLen = TAG_LEN_DEFAULT;
+/** The tag separator "Split tags on ;" splits on (Go: bulkEdit.SplitTags). */
+const SPLIT_SEP = ";";
 let sortKey: ColKey = "title";
 let sortDesc = false;
 
@@ -192,6 +201,10 @@ const emptyEl = byId("lt-empty");
 const searchInput = byId("lt-search", HTMLInputElement);
 const dupSelect = byId("lt-dupes", HTMLSelectElement);
 const onlySelectedBox = byId("lt-only-selected", HTMLInputElement);
+const tagCheckSelect = byId("lt-tagcheck", HTMLSelectElement);
+const tagLenInput = byId("lt-taglen", HTMLInputElement);
+const tagLenWrap = byId("lt-taglen-wrap");
+const splitBtn = byId("lt-split", HTMLButtonElement);
 const bar = byId("lt-bar");
 const selectedEl = byId("lt-selected");
 const mergeBtn = byId("lt-merge", HTMLButtonElement);
@@ -356,9 +369,11 @@ function applyFilters(): void {
         groups = new Set([...members].filter(([, us]) => us.length > 1 && !marked(us)).map(([key]) => key));
     }
 
+    const tagTest = tagCheckTest();
     shown = rows.filter((r) => {
         if (onlySelected && !selected.has(r.b.uuid)) return false;
         if (groups && !groups.has(r.dupKey)) return false;
+        if (tagTest && !r.b.tags.some(tagTest)) return false;
         for (const w of words) if (!r.all.includes(w)) return false;
         for (const [c, t] of tests) if (!t(r.hay[c.key], r.items[c.key])) return false;
         for (const c of blankCols) if (!c.blank(r.b)) return false;
@@ -378,6 +393,25 @@ function applyFilters(): void {
             r.group = g;
         });
     }
+}
+
+/** The test a tag must pass for its book to show, under the tag check; null: no check. */
+function tagCheckTest(): ((tag: string) => boolean) | null {
+    switch (tagCheck) {
+        case "unique": {
+            // How many books have each tag, in any case.
+            const books = new Map<string, number>();
+            for (const r of rows) {
+                for (const t of new Set(r.b.tags.map((t) => t.toLowerCase()))) books.set(t, (books.get(t) ?? 0) + 1);
+            }
+            return (t) => books.get(t.toLowerCase()) === 1;
+        }
+        case "semicolon":
+            return (t) => t.includes(SPLIT_SEP);
+        case "long":
+            return (t) => [...t].length > tagLen;
+    }
+    return null;
 }
 
 let refreshTimer = 0;
@@ -585,6 +619,7 @@ function selectionChanged(): void {
     bar.hidden = k === 0;
     selectedEl.textContent = `${plural(k, "book")} selected`;
     mergeBtn.disabled = k < 2 || k > MERGE_MAX;
+    splitBtn.hidden = !rows.some((r) => selected.has(r.b.uuid) && r.b.tags.some((t) => t.includes(SPLIT_SEP)));
     mergeBtn.title = k > MERGE_MAX ? `At most ${MERGE_MAX} books at a time` : "Make the selected books one book, with every format";
     const shownSelected = shown.reduce((t, r) => t + (selected.has(r.b.uuid) ? 1 : 0), 0);
     allBox.checked = shown.length > 0 && shownSelected === shown.length;
@@ -1008,6 +1043,40 @@ dupSelect.addEventListener("change", () => {
     dupMode = dupSelect.value;
     refresh();
 });
+function tagCheckChanged(): void {
+    tagCheckSelect.value = tagCheck;
+    tagLenWrap.hidden = tagCheck !== "long";
+    tagLenInput.value = String(tagLen);
+}
+tagCheckSelect.addEventListener("change", () => {
+    tagCheck = tagCheckSelect.value as TagCheck;
+    tagCheckChanged();
+    refresh();
+});
+tagLenInput.addEventListener("input", () => {
+    const v = Math.floor(Number(tagLenInput.value));
+    if (!Number.isFinite(v) || v < 1) return;
+    tagLen = v;
+    scheduleRefresh();
+});
+splitBtn.addEventListener("click", async () => {
+    const uuids = selectedBooks()
+        .filter((b) => b.tags.some((t) => t.includes(SPLIT_SEP)))
+        .map((b) => b.uuid);
+    if (!uuids.length) return;
+    splitBtn.disabled = true;
+    say(`Splitting the tags of ${plural(uuids.length, "book")}…`);
+    try {
+        const res = await sendEdit(uuids, { split_tags: SPLIT_SEP });
+        say(resultText(res), res.failed.length ? "error" : "ok");
+        fillDatalists();
+        refresh();
+    } catch (err) {
+        say(`Couldn't split the tags: ${errorMessage(err)}`, "error");
+    } finally {
+        splitBtn.disabled = false;
+    }
+});
 onlySelectedBox.addEventListener("change", () => {
     onlySelected = onlySelectedBox.checked;
     refresh();
@@ -1021,6 +1090,9 @@ byId("lt-clear").addEventListener("click", () => {
     blankOnly.clear();
     search = searchInput.value = "";
     dupMode = dupSelect.value = "";
+    tagCheck = "";
+    tagLen = TAG_LEN_DEFAULT;
+    tagCheckChanged();
     onlySelected = onlySelectedBox.checked = false;
     refresh();
 });
@@ -1039,6 +1111,8 @@ function saveView(): void {
     const q = new URLSearchParams();
     if (search) q.set("q", search);
     if (dupMode) q.set("dupes", dupMode);
+    if (tagCheck) q.set("tagcheck", tagCheck);
+    if (tagCheck === "long" && tagLen !== TAG_LEN_DEFAULT) q.set("taglen", String(tagLen));
     if (sortKey !== "title" || sortDesc) q.set("sort", `${sortDesc ? "-" : ""}${sortKey}`);
     for (const c of COLUMNS) if (filters[c.key]?.trim()) q.set(`f.${c.key}`, filters[c.key]!);
     for (const c of COLUMNS) if (blankOnly.has(c.key)) q.set(`blank.${c.key}`, "1");
@@ -1051,6 +1125,11 @@ function loadView(): void {
     search = searchInput.value = q.get("q") ?? "";
     dupMode = q.get("dupes") ?? "";
     dupSelect.value = dupMode;
+    const check = (q.get("tagcheck") ?? "") as TagCheck;
+    tagCheck = TAG_CHECKS.includes(check) ? check : "";
+    const len = Math.floor(Number(q.get("taglen") ?? TAG_LEN_DEFAULT));
+    tagLen = Number.isFinite(len) && len >= 1 ? len : TAG_LEN_DEFAULT;
+    tagCheckChanged();
     const sort = q.get("sort") ?? "";
     const key = sort.replace(/^-/, "") as ColKey;
     if (COLUMNS.some((c) => c.key === key)) [sortKey, sortDesc] = [key, sort.startsWith("-")];

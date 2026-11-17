@@ -27,6 +27,18 @@
                 <option value="marked">Marked not duplicates</option>
             </select>
         </label>
+        <label class="lt-tool" title="Show only books with a tag that may need fixing">
+            Tag checks
+            <select id="lt-tagcheck">
+                <option value="">Off</option>
+                <option value="unique">Unique tags</option>
+                <option value="semicolon">Tags containing ;</option>
+                <option value="long">Tags longer than…</option>
+            </select>
+        </label>
+        <label class="lt-tool" id="lt-taglen-wrap" hidden>
+            <input type="number" id="lt-taglen" class="lt-taglen" min="1" step="1" value="40" aria-label="Characters"> characters
+        </label>
         <label class="lt-tool"><input type="checkbox" id="lt-only-selected"> Only selected</label>
         <button type="button" id="lt-clear" class="btn-action">Clear filters</button>
         <span id="lt-count" class="lt-count" role="status">Loading the library…</span>
@@ -70,6 +82,7 @@
         <button type="button" id="lt-select-shown" class="btn-action">Select all shown</button>
         <button type="button" id="lt-select-none" class="btn-action">Clear</button>
         <button type="button" id="lt-edit" class="btn-action">Edit…</button>
+        <button type="button" id="lt-split" class="btn-action" title="Make each tag with a ; in it the tags it lists">Split tags on ;</button>
         <button type="button" id="lt-merge" class="btn-action" title="Make the selected books one book, with every format">Merge…</button>
         <button type="button" id="lt-remove" class="btn-action btn-danger">Remove…</button>
     </span>

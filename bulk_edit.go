@@ -231,6 +231,9 @@ type bulkEdit struct {
 	Tags       *string  `json:"tags,omitempty"` // "a, b": the book's tags become these
 	AddTags    []string `json:"add_tags,omitempty"`
 	RemoveTags []string `json:"remove_tags,omitempty"` // any case
+	// SplitTags: each tag holding this separator (";") becomes its parts,
+	// trimmed, leaving out empty ones and any the book already has.
+	SplitTags string `json:"split_tags,omitempty"`
 
 	Languages       *string  `json:"languages,omitempty"` // "eng, fra"
 	AddLanguages    []string `json:"add_languages,omitempty"`
@@ -240,7 +243,7 @@ type bulkEdit struct {
 func (e *bulkEdit) empty() bool {
 	return e.Title == nil && e.Authors == nil && e.Publisher == nil && e.Date == nil &&
 		e.Series == nil && e.SeriesIndex == nil &&
-		e.Tags == nil && len(e.AddTags) == 0 && len(e.RemoveTags) == 0 &&
+		e.Tags == nil && len(e.AddTags) == 0 && len(e.RemoveTags) == 0 && e.SplitTags == "" &&
 		e.Languages == nil && len(e.AddLanguages) == 0 && len(e.RemoveLanguages) == 0
 }
 
@@ -303,6 +306,9 @@ func (e *bulkEdit) apply(m *OPFMetadata) bool {
 	if len(e.AddTags) > 0 {
 		m.Subjects = append(slices.Clone(m.Subjects), e.AddTags...)
 	}
+	if e.SplitTags != "" {
+		m.Subjects = splitTags(m.Subjects, e.SplitTags)
+	}
 	m.Subjects = opf.UniqueTags(m.Subjects)
 
 	if e.Languages != nil {
@@ -340,6 +346,33 @@ func (e *bulkEdit) apply(m *OPFMetadata) bool {
 
 	after, _ := json.Marshal(m)
 	return string(before) != string(after)
+}
+
+// splitTags replaces each tag holding sep with its parts, trimmed and not
+// empty, in its place. A part the book already has (in any case), as a tag
+// of its own or an earlier part, is left out.
+func splitTags(tags []string, sep string) []string {
+	have := map[string]bool{}
+	for _, t := range tags {
+		if !strings.Contains(t, sep) {
+			have[strings.ToLower(strings.TrimSpace(t))] = true
+		}
+	}
+	out := make([]string, 0, len(tags))
+	for _, t := range tags {
+		if !strings.Contains(t, sep) {
+			out = append(out, t)
+			continue
+		}
+		for _, p := range strings.Split(t, sep) {
+			p = strings.TrimSpace(p)
+			if k := strings.ToLower(p); p != "" && !have[k] {
+				have[k] = true
+				out = append(out, p)
+			}
+		}
+	}
+	return out
 }
 
 // bookEditMetadata is a book's metadata as the editor starts from it: its

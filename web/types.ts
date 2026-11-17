@@ -277,6 +277,8 @@ export interface BulkEdit {
     tags?: string;
     add_tags?: string[];
     remove_tags?: string[];
+    /** Each tag holding this separator (";") becomes its trimmed parts, without ones the book has. */
+    split_tags?: string;
     languages?: string;
     add_languages?: string[];
     remove_languages?: string[];
