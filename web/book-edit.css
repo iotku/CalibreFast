@@ -2209,3 +2209,10 @@ input[type="date"].meta-input::-webkit-calendar-picker-indicator:hover {
 .duplicate-dialog .compare-footer [hidden] {
     display: none;
 }
+
+.dup-edit {
+    margin-left: 8px;
+    padding: 4px 10px;
+    font-size: 0.8rem;
+    text-decoration: none;
+}

@@ -32,14 +32,20 @@ export interface BookTarget {
     revertCover: string;
     /** GET: whether there is a cover, and one to revert to. */
     coverStatus: string;
+    /** A waiting book whose metadata is offered as sources too (Go: GetOptionsForBook's ?import=). */
+    importSource?: string;
 }
 
-export function libraryBook(uuid: string): BookTarget {
+/** localStorage key for the import review's edits, offered in a library book's editor. */
+export const importEditsKey = (importId: string): string => `cf-import-edits:${importId}`;
+
+export function libraryBook(uuid: string, importSource?: string | null): BookTarget {
     const id = encodeURIComponent(uuid);
     return {
         id: uuid,
         pending: false,
-        metadata: `/metadata/${id}`,
+        ...(importSource ? { importSource } : {}),
+        metadata: `/metadata/${id}${importSource ? `?import=${encodeURIComponent(importSource)}` : ""}`,
         apply: `/metadata/${id}/apply`,
         isbns: `/metadata/${id}/isbns`,
         formats: `/formats/${id}`,

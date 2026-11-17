@@ -1,7 +1,7 @@
 import { createChipInput, parseList, uniqueItems, type ChipInput } from "./chips.js";
 import { attachSuggest } from "./suggest.js";
 import { languageChipLabel, languageKey, languageName, loadLanguageCodes, preferredLanguageCode } from "./languages.js";
-import type { BookTarget } from "./book-target.js";
+import { importEditsKey, type BookTarget } from "./book-target.js";
 import { createDescriptionEditor } from "./description.js";
 import { closeOnBackdropClick, el as tag, errorMessage, maybeId } from "./dom.js";
 import { isbnDigits, mountIsbnTools } from "./isbn-tools.js";
@@ -162,7 +162,29 @@ function dropOldLookup(buttons: HTMLButtonElement[], meta: MetaSource): void {
 export async function fetchMetas(book: BookTarget): Promise<MetaSource[]> {
   const res = await fetch(book.metadata, { credentials: "same-origin" });
   if (!res.ok) throw new Error(`Failed to load metadata: HTTP ${res.status}`);
-  return (await res.json()) as MetaSource[];
+  const metas = (await res.json()) as MetaSource[];
+  // The import review's form as it was, when it differs from what its files say.
+  if (book.importSource) {
+    try {
+      const raw = localStorage.getItem(importEditsKey(book.importSource));
+      const edited = raw ? (JSON.parse(raw) as MetaSource) : null;
+      const files = metas.find((m) => m.Format === "import");
+      if (edited && (!files || computeChanges(files, metaValues(edited)).length)) metas.push({ ...edited, Format: "import (edited)", FileName: "" });
+    } catch {
+      /* storage blocked: the files' metadata is still offered */
+    }
+  }
+  return metas;
+}
+
+/** A source as the form's values, for comparing. */
+function metaValues(m: MetaSource): FormValues {
+  const v: FormValues = {};
+  for (const { key, kind } of FIELDS) {
+    if (kind === "identifiers") v.identifiers = (m.Identifiers ?? []).map((i) => ({ scheme: i.Scheme, value: i.Value, id: i.ID ?? "" }));
+    else v[key as TextKey] = fieldValue(m, key, kind);
+  }
+  return v;
 }
 
 /**
@@ -792,7 +814,9 @@ function duplicateComparison(b: DuplicateBook, lib: MetaSource, adding: MetaSour
   const row = (label: string, a: string, c: string): void => {
     if (!a && !c) return;
     const differ = a.trim().toLowerCase() !== c.trim().toLowerCase();
-    body.append(tag("tr", { className: differ ? "dup-differ" : "" }, tag("th", { scope: "row" }, label), tag("td", {}, a || "—"), tag("td", {}, c || "—")));
+    const tr = tag("tr", { className: differ ? "dup-differ" : "" }, tag("th", { scope: "row" }, label), tag("td", {}, a || "—"), tag("td", {}, c || "—"));
+    tr.dataset["field"] = label;
+    body.append(tr);
   };
   for (const { key, kind } of FIELDS) {
     if (key === "series_index") continue;
@@ -1257,9 +1281,32 @@ export async function mountMetadataEditor(book: BookTarget, form: HTMLFormElemen
           Languages: null, Subjects: null, Identifiers: null };
         return duplicateComparison(b, lib, adding, formats, cover);
       }));
-      maybeId("duplicate-body")?.replaceChildren(...sections);
       const same = check.books.filter((b) => b.same_file);
       const blocked = same.length > 0;
+      // The library's book says something else than this one: offer to
+      // correct it there, with this one's metadata to pick from.
+      const importId = form.dataset["import"];
+      if (blocked && importId) {
+        check.books.forEach((b, i) => {
+          const section = sections[i];
+          if (!b.same_file || !section?.querySelector('tr.dup-differ:not([data-field="Formats"])')) return;
+          const edit = tag("a", {
+            className: "btn-standard dup-edit",
+            href: `/book/edit/${encodeURIComponent(b.uuid)}?import=${encodeURIComponent(importId)}`,
+            target: "_blank",
+            title: "Open the library book's metadata editor, with this book's metadata offered as sources",
+          }, `Edit “${b.title}”'s metadata`);
+          edit.addEventListener("click", () => {
+            try {
+              localStorage.setItem(importEditsKey(importId), JSON.stringify(adding));
+            } catch {
+              /* storage blocked: its files' metadata is still offered */
+            }
+          });
+          section.querySelector(".dup-why")?.append(" ", edit);
+        });
+      }
+      maybeId("duplicate-body")?.replaceChildren(...sections);
       const many = check.books.length === 1 ? "" : ` (${check.books.length} books)`;
       const title = maybeId("duplicate-title");
       if (title) title.textContent = blocked ? "Already in the library" : `Possibly already in the library${many}`;
