@@ -50,7 +50,7 @@ Reference for how CalibreFast behaves, for people and AI tools working on the co
 
 ## Authors, publishers, tags and languages
 
-- **Overview pages** (`/authors`, `/publishers`, `/tags`, `/languages`, `/series`) show a tag cloud sized by book count.
+- **Overview pages** (`/authors`, `/publishers`, `/tags`, `/languages`, `/series`) show a tag cloud sized by book count. Their search box finds every value, single-book ones too, and is fuzzy: besides names that start with or contain what you type, it tolerates typos (`shakspeare`, `hemmingway`), takes words in any order (`doyle conan`) and matches initials (`gkc` → G. K. Chesterton), ignoring case and accents.
 - **Filtered views** (`/author/…`, `/publisher/…`, `/tag/…`, `/lang/…`, `/series/…`) use the same grid as the main library. A series lists its books in series order.
 
 ### Groups
