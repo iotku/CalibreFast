@@ -347,6 +347,7 @@ func uploadHandler(w http.ResponseWriter, r *http.Request) {
 	for _, res := range results {
 		if res.UUID != "" && res.Error == "" && res.Duplicate == nil {
 			catalogChanged(res.UUID)
+			logBookEdit(currentUser(r), "upload", res.UUID, nil)
 		}
 	}
 

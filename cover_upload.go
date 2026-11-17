@@ -41,6 +41,7 @@ func uploadCoverHandler(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, err.Error(), http.StatusBadRequest)
 		return
 	}
+	defer coverSnapper(currentUser(r), "cover", uuid, bookTitle(uuid))()
 	hasBackup, err := saveCoverJPEG(filepath.Join(baseDir, bookPath), data)
 	if err != nil {
 		http.Error(w, err.Error(), http.StatusInternalServerError)
@@ -244,6 +245,7 @@ func revertCoverHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	defer coverSnapper(currentUser(r), "revert cover", uuid, bookTitle(uuid))()
 	if err := revertCoverIn(filepath.Join(baseDir, bookPath)); err != nil {
 		status := http.StatusInternalServerError
 		if errors.Is(err, errNoCoverBackup) {

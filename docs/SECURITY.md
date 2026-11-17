@@ -8,9 +8,15 @@ CalibreFast has accounts, but it's a personal project: the authentication code i
 |---|---|---|---|---|---|
 | **Anonymous visitor** | Only with `-public` | Only with `-public-read` | No | **Never** | No |
 | **Signed-in user** | Yes | Yes | Yes (their own; progress also from KOReader with a sync key) | **Never** | No |
+| **Editor** | Yes | Yes | Yes (their own) | Books and placeholders only, with `-allow-writes`: add, edit, merge, remove. Every change is logged and an admin can undo it | No |
 | **Admin** | Yes | Yes | Yes (their own) | Only with `-allow-writes` (removed books go to the Recycling Bin, which only the server can empty) | Yes |
 
-- Library changes always need **both** an admin session **and** a server started with `-allow-writes`. Without the flag, nobody (not even admins) can modify `metadata.db` or the library folder: the server opens `metadata.db` read-only (SQLite's `mode=ro`), so even a bug that tried to write would be refused, and it works on a library that's read-only on disk. Trying CalibreFast on your library without `-allow-writes` can't change it. Anyone but an admin gets the same 404 as a path that doesn't exist, on the editing routes and the admin pages and APIs alike, so they don't show up to someone probing the server. Unknown paths are 404s too rather than the library page.
+- Library changes always need **both** an editor's or admin's session **and** a server started with `-allow-writes`. Without the flag, nobody (not even admins) can modify `metadata.db` or the library folder: the server opens `metadata.db` read-only (SQLite's `mode=ro`), so even a bug that tried to write would be refused, and it works on a library that's read-only on disk. Trying CalibreFast on your library without `-allow-writes` can't change it. Anyone who may not use a route gets the same 404 as a path that doesn't exist (readers on the editing routes, editors and readers on the admin pages and APIs), so they don't show up to someone probing the server. Unknown paths are 404s too rather than the library page.
+- **Editors** can upload books, edit metadata and covers, merge books, add and remove files, remove books, review the import queue, and add, edit and remove placeholders. They can't manage users, sign-in links, groups, featured entries, home page tags or library repairs, and nothing they do destroys anything:
+  - every change is a row in the edit log (`edit_log` in `calibrefast.db`): who, when, and what it replaced (a book's metadata before and after, a copy of a replaced cover under `-datadir/edit-log/covers`, a placeholder as it was);
+  - removed books and files go to the Recycling Bin; placeholders are only marked removed; a book discarded from the import queue is moved to `-datadir/imports-discarded`; none of these can be emptied from the web;
+  - an admin sees every change at **Activity** (`/admin/activity`) and can undo one, or all of one user's since a moment. An undo is skipped where someone else has changed the same thing since, and is itself logged (and undoable).
+  - So a stolen editor session can be cleaned up: disable the account (which signs it out), then undo its changes since it was taken.
 - Personal data (favorites, reading status, progress, bookmarks, highlights and notes, personal shelves) is visible only to its owner. Global shelves are visible to everyone who can browse.
 
 ### Modes
@@ -98,15 +104,16 @@ Changes made to the library outside CalibreFast (in Calibre, `calibre-server` or
 - **`-datadir`** (default `./data`) holds `calibrefast.db`: accounts, sessions, sync key hashes, favorites, progress (including KOReader devices' positions and names), bookmarks, highlights and notes, and shelves. It also caches the fingerprints KOReader uses for library files.
   - The directory is created `0700` and the database file is `0600`, because it holds password hashes and session tokens.
   - **Keep it out of version control** (`/data/` is in `.gitignore`) and back it up separately from the library.
-- **`-datadir/imports`** holds books from the watch folder (`-watch-dir`) until an admin adds or discards them: the book files themselves, moved out of the watch folder. Only admins on a server with `-allow-writes` can list, download, add or discard them.
+- **`-datadir/imports`** holds books from the watch folder (`-watch-dir`) until an editor or admin adds or discards them: the book files themselves, moved out of the watch folder. Only editors and admins on a server with `-allow-writes` can list, download, add or discard them. A discarded book's folder is moved to `-datadir/imports-discarded`, never deleted; clear it on the server.
+- **`-datadir/edit-log/covers`** holds a copy of every book cover an edit replaced, for undoing it. Clear old ones on the server if it grows.
   - The watcher runs with the server's own file permissions and **moves** files, so point `-watch-dir` at a folder meant for it. The server refuses one that overlaps the library or `-datadir`.
   - Waiting files are untrusted like any other book: they are only parsed for metadata, and shown to the admin reviewing them.
 - **The Recycling Bin** (`-recycle-bin`, default `-datadir/recycle-bin`, created `0700`) holds removed books' folders, a copy of `metadata.db` from before each removal, and readers' bookmarks, highlights, notes and progress for those books (`reader-data.json`, private data like `calibrefast.db`). The web can add to it (removing books) and take books out of it (restoring them), but never delete it: there's no endpoint for that. Emptying it is `-empty-recycle-bin` or deleting folders on the server.
-  - So a stolen admin session can remove books but not destroy them; restore them from the page, or roll back by hand ([FEATURES.md](FEATURES.md#removing-books-and-the-recycling-bin)).
+  - So a stolen admin or editor session can remove books but not destroy them; restore them from the page, or roll back by hand ([FEATURES.md](FEATURES.md#removing-books-and-the-recycling-bin)).
   - Each removal copies `metadata.db`. Someone removing and restoring books over and over could fill the disk, so keep an eye on its size, and empty old batches.
   - Put it somewhere admins of the server's host would notice, and include it in backups.
 - **`calibrefast-groups.json`** in the library folder holds groups. It's the only file CalibreFast adds to a library.
-- **Read-only caches:** `./pages` and `-cachedir` (cover thumbnails). Nothing else is written unless an admin edits with `-allow-writes`.
+- **Read-only caches:** `./pages` and `-cachedir` (cover thumbnails). Nothing else is written unless an editor or admin edits with `-allow-writes`.
 
 ## Recommendations
 

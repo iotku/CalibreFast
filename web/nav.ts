@@ -156,6 +156,7 @@ function init(bar: HTMLElement): void {
         username: string | null;
         isAdmin: boolean;
         canEdit: boolean;
+        canAdmin: boolean;
         /** Books waiting in the import queue; null when there is no queue to show. */
         imports?: number | null;
     }
@@ -244,8 +245,9 @@ function init(bar: HTMLElement): void {
             ...(st.canEdit ? [mark(el("a", { href: "/library/edit", textContent: "Bulk edit" }), "library-edit")] : []),
             ...(st.canEdit ? [mark(el("a", { href: "/recycle-bin", textContent: "Recycling Bin" }), "recycle-bin")] : []),
             ...(st.canEdit ? [mark(el("a", { href: "/missing", textContent: "Missing books" }), "missing")] : []),
-            ...(st.canEdit ? [mark(el("a", { href: "/admin/repairs", textContent: "Library repairs" }), "library-repairs")] : []),
+            ...(st.canAdmin ? [mark(el("a", { href: "/admin/repairs", textContent: "Library repairs" }), "library-repairs")] : []),
             ...(st.isAdmin ? [el("a", { href: "/admin/users", textContent: "Manage users" })] : []),
+            ...(st.isAdmin ? [el("a", { href: "/admin/activity", textContent: "Activity" })] : []),
             ...(st.isAdmin ? [mark(el("a", { href: "/admin/discover", textContent: "Home page tags" }), "admin-discover")] : []),
             ...(guestBooks ? [el("a", { href: "/account/import", textContent: "Reading on this device" })] : []),
             el("a", { href: "/account", textContent: "Account" }),
@@ -293,6 +295,7 @@ function init(bar: HTMLElement): void {
                 username: u?.username ?? null,
                 isAdmin: !!u?.is_admin,
                 canEdit: !!body.can_edit_library,
+                canAdmin: !!body.can_admin_library,
                 imports: body.pending_imports ?? null,
             };
             const json = JSON.stringify(st);

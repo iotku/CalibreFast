@@ -52,8 +52,12 @@ type User struct {
 	ID       int64  `json:"id"`
 	Username string `json:"username"`
 	IsAdmin  bool   `json:"is_admin"`
-	Disabled bool   `json:"disabled"`
-	HasPass  bool   `json:"has_password"`
+	// IsEditor: may edit the library (when the server allows writes), but
+	// only in ways an admin can undo (editlog.go): no users, no settings,
+	// nothing destroyed for good. An admin can do all an editor can.
+	IsEditor bool `json:"is_editor"`
+	Disabled bool `json:"disabled"`
+	HasPass  bool `json:"has_password"`
 }
 
 var (
@@ -82,14 +86,14 @@ func hashPassword(pw string) (string, error) {
 func scanUser(row interface{ Scan(...any) error }) (*User, error) {
 	var u User
 	var hash sql.NullString
-	if err := row.Scan(&u.ID, &u.Username, &hash, &u.IsAdmin, &u.Disabled); err != nil {
+	if err := row.Scan(&u.ID, &u.Username, &hash, &u.IsAdmin, &u.IsEditor, &u.Disabled); err != nil {
 		return nil, err
 	}
 	u.HasPass = hash.Valid && hash.String != ""
 	return &u, nil
 }
 
-const userCols = `id, username, password_hash, is_admin, disabled`
+const userCols = `id, username, password_hash, is_admin, is_editor, disabled`
 
 func getUserByID(id int64) (*User, error) {
 	return scanUser(appDB.QueryRow(`SELECT `+userCols+` FROM users WHERE id = ?`, id))
@@ -153,7 +157,7 @@ func authenticate(username, password string) (*User, error) {
 	var u User
 	var hash sql.NullString
 	err := appDB.QueryRow(`SELECT `+userCols+` FROM users WHERE username = ?`, strings.TrimSpace(username)).
-		Scan(&u.ID, &u.Username, &hash, &u.IsAdmin, &u.Disabled)
+		Scan(&u.ID, &u.Username, &hash, &u.IsAdmin, &u.IsEditor, &u.Disabled)
 	if err != nil || !hash.Valid || hash.String == "" {
 		_ = bcrypt.CompareHashAndPassword(dummyHash, []byte(password))
 		return nil, errBadCredentials
@@ -230,7 +234,7 @@ func userFromSession(r *http.Request) *User {
 		return nil
 	}
 	u, err := scanUser(appDB.QueryRow(`
-		SELECT u.id, u.username, u.password_hash, u.is_admin, u.disabled
+		SELECT u.id, u.username, u.password_hash, u.is_admin, u.is_editor, u.disabled
 		FROM sessions s JOIN users u ON u.id = s.user_id
 		WHERE s.token_hash = ? AND s.expires_at > ?`, hashToken(c.Value), nowUnix()))
 	if err != nil || u.Disabled {
@@ -262,9 +266,19 @@ func isAdmin(r *http.Request) bool {
 	return u != nil && u.IsAdmin
 }
 
-// canEditLibrary: library changes need BOTH an admin session and a server
-// started with -allow-writes (kept as a server-wide kill switch).
+// isEditor: the user may edit the library's books (an editor or an admin).
+func isEditor(u *User) bool { return u != nil && (u.IsAdmin || u.IsEditor) }
+
+// canEditLibrary: editing books needs BOTH an editor's (or admin's)
+// session and a server started with -allow-writes (kept as a server-wide
+// kill switch).
 func canEditLibrary(r *http.Request) bool {
+	return allowWrites && isEditor(currentUser(r))
+}
+
+// canAdminLibrary: the library changes only admins make (groups, featured
+// entries, repairs), on a server with -allow-writes.
+func canAdminLibrary(r *http.Request) bool {
 	return allowWrites && isAdmin(r)
 }
 
@@ -353,6 +367,25 @@ func requireAdminUser(h http.HandlerFunc) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		if !isAdmin(r) {
 			http.NotFound(w, r)
+			return
+		}
+		h(w, r)
+	}
+}
+
+// requireEditor guards the book-editing routes an editor may use: adding,
+// editing, merging and removing books and placeholders, all of it logged
+// and undoable (editlog.go). Like requireWrites (admins only), anyone else
+// gets the same 404 as an unknown path, and nobody gets through without
+// -allow-writes.
+func requireEditor(h http.HandlerFunc) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		if !isEditor(currentUser(r)) {
+			http.NotFound(w, r)
+			return
+		}
+		if !allowWrites {
+			http.Error(w, readOnlyMessage, http.StatusForbidden)
 			return
 		}
 		h(w, r)
@@ -576,7 +609,7 @@ func meHandler(w http.ResponseWriter, r *http.Request) {
 		_ = json.NewEncoder(w).Encode(map[string]any{"user": nil, "registration": allowRegistrations})
 		return
 	}
-	me := map[string]any{"user": u, "can_edit_library": canEditLibrary(r)}
+	me := map[string]any{"user": u, "can_edit_library": canEditLibrary(r), "can_admin_library": canAdminLibrary(r)}
 	// Books from the watch folder waiting for review (imports.go).
 	if n := imports.count(); canEditLibrary(r) && (n > 0 || watching()) {
 		me["pending_imports"] = n
@@ -620,6 +653,7 @@ func adminCreateUser(w http.ResponseWriter, r *http.Request) {
 		Username string `json:"username"`
 		Password string `json:"password"`
 		Admin    bool   `json:"is_admin"`
+		Editor   bool   `json:"is_editor"`
 	}
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
 		http.Error(w, "invalid JSON", http.StatusBadRequest)
@@ -630,7 +664,11 @@ func adminCreateUser(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, err.Error(), http.StatusBadRequest)
 		return
 	}
-	log.Printf("admin %s created user %s (admin=%v)", currentUser(r).Username, u.Username, u.IsAdmin)
+	if req.Editor {
+		_, _ = appDB.Exec(`UPDATE users SET is_editor = 1 WHERE id = ?`, u.ID)
+		u.IsEditor = true
+	}
+	log.Printf("admin %s created user %s (admin=%v, editor=%v)", currentUser(r).Username, u.Username, u.IsAdmin, u.IsEditor)
 	writeJSON(w, http.StatusCreated, u)
 }
 
@@ -641,6 +679,7 @@ func adminUpdateUser(w http.ResponseWriter, r *http.Request) {
 	}
 	var req struct {
 		Admin    *bool   `json:"is_admin"`
+		Editor   *bool   `json:"is_editor"`
 		Disabled *bool   `json:"disabled"`
 		Password *string `json:"password"`
 	}
@@ -661,6 +700,9 @@ func adminUpdateUser(w http.ResponseWriter, r *http.Request) {
 	}
 	if req.Admin != nil {
 		_, _ = appDB.Exec(`UPDATE users SET is_admin = ? WHERE id = ?`, *req.Admin, id)
+	}
+	if req.Editor != nil {
+		_, _ = appDB.Exec(`UPDATE users SET is_editor = ? WHERE id = ?`, *req.Editor, id)
 	}
 	if req.Disabled != nil {
 		_, _ = appDB.Exec(`UPDATE users SET disabled = ? WHERE id = ?`, *req.Disabled, id)

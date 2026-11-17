@@ -1101,11 +1101,11 @@ func parseAge(s string) (time.Duration, error) {
 // ---------------------------------------------------------------------------
 
 func registerRecycleRoutes() {
-	http.HandleFunc("GET /recycle-bin", requireWrites(recycleBinPage))
-	http.HandleFunc("GET /api/recycle-bin", requireWrites(recycleBinHandler))
-	http.HandleFunc("POST /api/recycle-bin/{batch}/restore", requireWrites(recycleRestoreHandler))
-	http.HandleFunc("POST /api/library/delete", requireWrites(recycleDeleteHandler))
-	http.HandleFunc("POST /api/library/books/{uuid}/formats/{format}/remove", requireWrites(recycleFormatHandler))
+	http.HandleFunc("GET /recycle-bin", requireEditor(recycleBinPage))
+	http.HandleFunc("GET /api/recycle-bin", requireEditor(recycleBinHandler))
+	http.HandleFunc("POST /api/recycle-bin/{batch}/restore", requireEditor(recycleRestoreHandler))
+	http.HandleFunc("POST /api/library/delete", requireEditor(recycleDeleteHandler))
+	http.HandleFunc("POST /api/library/books/{uuid}/formats/{format}/remove", requireEditor(recycleFormatHandler))
 }
 
 func recycleBinPage(w http.ResponseWriter, r *http.Request) {
@@ -1212,6 +1212,7 @@ func recycleDeleteHandler(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, err.Error(), http.StatusInternalServerError)
 		return
 	}
+	logEdit(currentUser(r), "remove", logKindRecycle, batch.ID, batch.summary(), nil, nil)
 	w.Header().Set("Content-Type", "application/json")
 	logErr(json.NewEncoder(w).Encode(batch), "encode removal")
 }
@@ -1233,6 +1234,7 @@ func recycleRestoreHandler(w http.ResponseWriter, r *http.Request) {
 	if results == nil {
 		results = []restoreResult{}
 	}
+	logRestore(currentUser(r), "restore", r.PathValue("batch"), results)
 	w.Header().Set("Content-Type", "application/json")
 	logErr(json.NewEncoder(w).Encode(map[string]any{"results": results}), "encode restore")
 }

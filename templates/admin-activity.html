@@ -1,0 +1,59 @@
+<!doctype html>
+<html lang="en">
+<head>
+    <meta charset="utf-8">
+    {{ robotsMeta }}
+    <title>Activity — {{ .Title }}</title>
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <link rel="stylesheet" href="{{ asset "style.css" }}">
+</head>
+<body class="auth-body">
+{{ $tb := topbar "Title" "Activity" }}
+{{ template "topbar-start" $tb }}
+{{ template "topbar-end" $tb }}
+<main class="auth-main auth-wide">
+    <section class="auth-card">
+        <h1>Activity</h1>
+        <p class="auth-muted">Changes made to the library from the web, newest first. Undoing one puts back what it replaced, unless someone else has changed the same thing since; nothing is deleted for good (books go to the <a href="/recycle-bin">Recycling Bin</a>), and the undo is listed here too.</p>
+        <form class="activity-filter" method="get" action="/admin/activity">
+            <label>Show
+                <select name="user" onchange="this.form.submit()">
+                    <option value="">everyone</option>
+                    {{ range .Users }}<option value="{{ .ID }}"{{ if eq .ID $.User }} selected{{ end }}>{{ .Username }}{{ if .IsAdmin }} (admin){{ else if .IsEditor }} (editor){{ end }}</option>{{ end }}
+                </select>
+            </label>
+            <noscript><button type="submit" class="btn-standard">Show</button></noscript>
+        </form>
+        {{ if .User }}
+        <form id="undo-since" class="activity-filter" data-user="{{ .User }}">
+            <label>Undo all of this user's changes since
+                <input name="since" type="datetime-local" required>
+            </label>
+            <button type="submit" class="btn-standard">Undo…</button>
+        </form>
+        {{ end }}
+        <p id="activity-status" class="auth-notice" role="status" hidden></p>
+        <ul id="activity-results" class="link-list" hidden></ul>
+        <div class="activity-scroll">
+        <table id="activity-table" class="admin-users">
+            <thead><tr><th>When</th><th>Who</th><th>What</th><th>Of</th><th></th></tr></thead>
+            <tbody>
+            {{ range .Entries }}
+            <tr data-id="{{ .ID }}"{{ if .Reverted }} class="is-reverted"{{ end }}>
+                <td>{{ .When }}</td>
+                <td>{{ if .UserID }}<a href="/admin/activity?user={{ .UserID }}">{{ .Username }}</a>{{ else }}{{ .Username }}{{ end }}</td>
+                <td>{{ .Action }}</td>
+                <td>{{ with .Link }}<a href="{{ . }}">{{ end }}{{ or .Title .Target }}{{ if .Link }}</a>{{ end }}</td>
+                <td class="admin-actions">{{ if .Reverted }}<span class="auth-muted">Undone by {{ .RevertedBy }}</span>{{ else }}<button type="button" class="btn-standard" data-undo="{{ .ID }}">Undo</button>{{ end }}</td>
+            </tr>
+            {{ else }}
+            <tr><td colspan="5" class="auth-muted">Nothing yet.</td></tr>
+            {{ end }}
+            </tbody>
+        </table>
+        </div>
+    </section>
+</main>
+<script type="module" src="{{ asset "admin-activity.js" }}"></script>
+</body>
+</html>

@@ -66,12 +66,16 @@ func csrfProtect(h http.Handler) http.Handler {
 	return p.Handler(h)
 }
 
+const readOnlyMessage = "This library is read-only. Restart the server with -allow-writes to enable editing, uploads and grouping."
+
 // requireWrites refuses a handler unless the server was started with
 // -allow-writes. Enforced server-side; hiding the UI is only cosmetic.
 //
 // Library changes need BOTH: the server started with -allow-writes (a
 // server-wide kill switch) AND a signed-in admin. Anonymous visitors and
 // regular users can never modify metadata.db or files in the library.
+// These are the changes only admins make; editors get requireEditor's
+// routes (auth.go), whose changes an admin can undo (editlog.go).
 func requireWrites(h http.HandlerFunc) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		// Anyone but an admin gets the same 404 as an unknown path, so the
@@ -81,7 +85,7 @@ func requireWrites(h http.HandlerFunc) http.HandlerFunc {
 			return
 		}
 		if !allowWrites {
-			http.Error(w, "This library is read-only. Restart the server with -allow-writes to enable editing, uploads and grouping.", http.StatusForbidden)
+			http.Error(w, readOnlyMessage, http.StatusForbidden)
 			return
 		}
 		h(w, r)
@@ -632,19 +636,17 @@ func serveLibraryHTTP() {
 	// Downloads
 	http.HandleFunc("/download/", requireReader(downloadHandler))
 
-	// Uploads
-	http.HandleFunc("/upload", requireWrites(uploadHandler))
-
-	// Cover upload and management
-	http.HandleFunc("/upload-cover/{uuid}", requireWrites(uploadCoverHandler))
-	http.HandleFunc("/cover-status/{uuid}", coverStatusHandler)
-	http.HandleFunc("/revert-cover/{uuid}", requireWrites(revertCoverHandler))
+	// Uploads, covers and the metadata editor (editors and admins)
+	registerBookEditRoutes()
 
 	// The watch folder's import queue (imports.go)
 	registerImportRoutes()
 
 	// Removing books, and the Recycling Bin (recycle.go)
 	registerRecycleRoutes()
+
+	// What was changed, by whom, and undoing it (editlog.go)
+	registerEditLogRoutes()
 
 	// Merging books, and the bulk metadata editor (merge.go, bulk_edit.go)
 	registerMergeRoutes()
@@ -654,8 +656,51 @@ func serveLibraryHTTP() {
 	registerLibraryRepairRoutes()
 	registerNotDuplicateRoutes()
 
+	// Book Display
+	http.HandleFunc("/book/get/", bookHandler)
+
+	http.HandleFunc("/search", func(w http.ResponseWriter, r *http.Request) {
+		q := strings.TrimSpace(r.URL.Query().Get("q"))
+		data := SearchPageData{Title: SiteTitle, Query: q}
+		if q != "" {
+			data.TotalBooks = searchCount(q)
+		}
+		err := templates.ExecuteTemplate(w, "search.html", data)
+		if err != nil {
+			http.Error(w, err.Error(), 500)
+		}
+	})
+
+	http.HandleFunc("/api/search", searchHandler)
+
+	http.HandleFunc("/read", requireReader(readerPage("reader.html", true)))
+	http.HandleFunc("/read-pdf", requireReader(readerPage("reader-pdf.html", false)))
+
+	http.HandleFunc("/view/", requireReader(viewHandler))
+
+	// authors/publishers/tags/languages: aggregate pages, filtered pages,
+	// JSON APIs and the group editor API
+	registerCategoryRoutes()
+	registerWorkerRoutes() // offline reading (sw.go)
+
+	log.Println("Listening on :" + hostPort)
+	registerAuthRoutes()
+	log.Fatal(http.ListenAndServe(":"+hostPort, robotsHeader(csrfProtect(withAuth(http.DefaultServeMux)))))
+}
+
+// registerBookEditRoutes: uploads, covers, the metadata editor and
+// lookups, for editors and admins (requireEditor).
+func registerBookEditRoutes() {
+	// Uploads
+	http.HandleFunc("/upload", requireEditor(uploadHandler))
+
+	// Cover upload and management
+	http.HandleFunc("/upload-cover/{uuid}", requireEditor(uploadCoverHandler))
+	http.HandleFunc("/cover-status/{uuid}", coverStatusHandler)
+	http.HandleFunc("/revert-cover/{uuid}", requireEditor(revertCoverHandler))
+
 	// Individual Book metadata editor
-	http.HandleFunc("/book/edit/{uuid}", requireWrites(func(w http.ResponseWriter, r *http.Request) {
+	http.HandleFunc("/book/edit/{uuid}", requireEditor(func(w http.ResponseWriter, r *http.Request) {
 		uuid := r.PathValue("uuid")
 		if uuid == "" {
 			http.Error(w, "Missing UUID", http.StatusBadRequest)
@@ -721,46 +766,15 @@ func serveLibraryHTTP() {
 	http.HandleFunc("/metadata/{uuid}", GetOptionsForBook)
 
 	// Apply updated metadata to a book
-	http.HandleFunc("/metadata/{uuid}/apply", requireWrites(applyMetadataHandler))
+	http.HandleFunc("/metadata/{uuid}/apply", requireEditor(applyMetadataHandler))
 
 	// ISBNs found in the book's own files (isbn.go)
-	http.HandleFunc("/metadata/{uuid}/isbns", requireWrites(isbnCandidatesHandler))
+	http.HandleFunc("/metadata/{uuid}/isbns", requireEditor(isbnCandidatesHandler))
 
 	// Metadata from Open Library and Google Books, and Open Library covers
 	// (lookup.go)
-	http.HandleFunc("GET /metadata/lookup", requireWrites(requireLookups(lookupHandler)))
-	http.HandleFunc("GET /metadata/lookup/cover", requireWrites(requireLookups(lookupCoverHandler)))
-
-	// Book Display
-	http.HandleFunc("/book/get/", bookHandler)
-
-	http.HandleFunc("/search", func(w http.ResponseWriter, r *http.Request) {
-		q := strings.TrimSpace(r.URL.Query().Get("q"))
-		data := SearchPageData{Title: SiteTitle, Query: q}
-		if q != "" {
-			data.TotalBooks = searchCount(q)
-		}
-		err := templates.ExecuteTemplate(w, "search.html", data)
-		if err != nil {
-			http.Error(w, err.Error(), 500)
-		}
-	})
-
-	http.HandleFunc("/api/search", searchHandler)
-
-	http.HandleFunc("/read", requireReader(readerPage("reader.html", true)))
-	http.HandleFunc("/read-pdf", requireReader(readerPage("reader-pdf.html", false)))
-
-	http.HandleFunc("/view/", requireReader(viewHandler))
-
-	// authors/publishers/tags/languages: aggregate pages, filtered pages,
-	// JSON APIs and the group editor API
-	registerCategoryRoutes()
-	registerWorkerRoutes() // offline reading (sw.go)
-
-	log.Println("Listening on :" + hostPort)
-	registerAuthRoutes()
-	log.Fatal(http.ListenAndServe(":"+hostPort, robotsHeader(csrfProtect(withAuth(http.DefaultServeMux)))))
+	http.HandleFunc("GET /metadata/lookup", requireEditor(requireLookups(lookupHandler)))
+	http.HandleFunc("GET /metadata/lookup/cover", requireEditor(requireLookups(lookupCoverHandler)))
 }
 
 func logErr(err error, why string) {
@@ -1022,11 +1036,15 @@ func applyMetadataHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	before := snapBook(uuid)
 	bookPath, err := updateBookInCalibreDB(calibreDB, baseDir, uuid, &meta)
 	if err != nil {
 		log.Println("apply metadata error:", err)
 		http.Error(w, "Failed to update metadata: "+err.Error(), http.StatusInternalServerError)
 		return
+	}
+	if before != nil {
+		logBookEdit(currentUser(r), "edit", uuid, before)
 	}
 
 	// Update cached format options if present

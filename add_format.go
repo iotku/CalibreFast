@@ -43,10 +43,10 @@ func addFormatPath(it *pendingImport) string {
 }
 
 func registerAddFormatRoutes() {
-	http.HandleFunc("POST /book/add-format/{uuid}", requireWrites(addFormatUploadHandler))
-	http.HandleFunc("GET /book/add-format/{uuid}/{id}", requireWrites(addFormatPage))
-	http.HandleFunc("GET /book/add-format/{uuid}/{id}/metadata", requireWrites(addFormatMetadataHandler))
-	http.HandleFunc("POST /book/add-format/{uuid}/{id}/apply", requireWrites(addFormatApplyHandler))
+	http.HandleFunc("POST /book/add-format/{uuid}", requireEditor(addFormatUploadHandler))
+	http.HandleFunc("GET /book/add-format/{uuid}/{id}", requireEditor(addFormatPage))
+	http.HandleFunc("GET /book/add-format/{uuid}/{id}/metadata", requireEditor(addFormatMetadataHandler))
+	http.HandleFunc("POST /book/add-format/{uuid}/{id}/apply", requireEditor(addFormatApplyHandler))
 }
 
 // incomingMergeBook is the new files waiting in the queue, as a merge's
@@ -263,7 +263,12 @@ func addFormatApplyHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	before := snapBook(u)
+	coverDone := coverSnapper(currentUser(r), "add format", u, bookTitle(u))
 	res, err := addFormats(u, it, &req, currentUser(r).Username)
+	if res != nil {
+		logMerge(currentUser(r), "add format", res, before, coverDone)
+	}
 	if res == nil {
 		imports.put(it)
 		status := http.StatusInternalServerError

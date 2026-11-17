@@ -14,13 +14,15 @@
 <main class="auth-main auth-wide">
     <section class="auth-card">
         <h1>Users</h1>
+        <p class="auth-muted">Editors and admins change the library only when the server runs with <code>-allow-writes</code>. See and undo changes on <a href="/admin/activity">Activity</a>.</p>
         <p id="admin-status" class="auth-notice" role="status" hidden></p>
         <table id="users-table" class="admin-users">
-            <thead><tr><th>User</th><th>Admin</th><th>Disabled</th><th></th></tr></thead>
+            <thead><tr><th>User</th><th title="Can edit books; every change can be undone from Activity">Editor</th><th>Admin</th><th>Disabled</th><th></th></tr></thead>
             <tbody>
             {{ range .Users }}
             <tr data-id="{{ .ID }}" data-username="{{ .Username }}">
                 <td>{{ .Username }}{{ if eq .ID $.Me.ID }} <span class="auth-muted">(you)</span>{{ end }}{{ if not .HasPass }} <span class="auth-muted">(no password)</span>{{ end }}</td>
+                <td><input type="checkbox" data-field="is_editor" {{ if .IsEditor }}checked{{ end }} aria-label="Editor"></td>
                 <td><input type="checkbox" data-field="is_admin" {{ if .IsAdmin }}checked{{ end }} aria-label="Admin"></td>
                 <td><input type="checkbox" data-field="disabled" {{ if .Disabled }}checked{{ end }} aria-label="Disabled"></td>
                 <td class="admin-actions">
@@ -64,7 +66,8 @@
         <form id="add-user" class="auth-form">
             <label>Username <input name="username" type="text" pattern="[A-Za-z0-9._\-]{3,32}" required></label>
             <label>Password <input name="password" type="password" autocomplete="new-password" minlength="10" required></label>
-            <label class="auth-check"><input name="is_admin" type="checkbox"> Admin (can edit the library when the server allows writes)</label>
+            <label class="auth-check"><input name="is_editor" type="checkbox"> Editor (can add, edit, merge and remove books; an admin can undo it all from <a href="/admin/activity">Activity</a>)</label>
+            <label class="auth-check"><input name="is_admin" type="checkbox"> Admin (everything, users and settings too)</label>
             <button type="submit" class="btn-standard">Add user</button>
         </form>
     </section>

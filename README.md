@@ -4,7 +4,7 @@ A fast, minimal web frontend for your [Calibre](https://calibre-ebook.com/) libr
 
 > ⚠️ **Experimental.** CalibreFast is not feature complete and comes with no security guarantees. **Do not expose it to the public internet**. It is intended for personal use on a trusted local network (e.g. private wireguard/tailscale network).
 >
-> 🔒 **Accounts are new and haven't been independently reviewed.** Only admins can change the library, and only when the server is started with `-allow-writes`. Read [SECURITY.md](docs/SECURITY.md) before exposing CalibreFast beyond your own machine.
+> 🔒 **Accounts are new and haven't been independently reviewed.** Only admins and editors can change the library (an admin can undo anything an editor does), and only when the server is started with `-allow-writes`. Read [SECURITY.md](docs/SECURITY.md) before exposing CalibreFast beyond your own machine.
 
 ![Search Screenshot](docs/images/image-3.png)
 
@@ -38,7 +38,7 @@ CalibreFast reads directly from your Calibre `metadata.db` and serves your libra
 - **KOReader sync:** use CalibreFast as KOReader's progress sync server, so positions follow you between your Kobo, Kindle or phone and the web readers.
 - **Bookshelves:** your own private shelves, plus global shelves that admins curate for everyone.
 
-Everything needs an account unless you open the catalog with `-public` (or reading too, with `-public-read`). Editing metadata, uploads and creating groups need an admin account and the `-allow-writes` flag.
+Everything needs an account unless you open the catalog with `-public` (or reading too, with `-public-read`). Editing metadata and uploads need an editor or admin account, creating groups an admin account, and both the `-allow-writes` flag.
 
 See [docs/FEATURES.md](docs/FEATURES.md) for the details.
 
@@ -82,7 +82,7 @@ Then open [http://localhost:8080](http://localhost:8080) and sign in. Add more u
 | `-cachedir` | Where to store cover thumbnails (default: the current directory) |
 | `-port` | Port to listen on (default `8080`) |
 | `-datadir` | Where CalibreFast keeps its own database: accounts, favorites, progress, shelves (default `./data`) |
-| `-allow-writes` | Let **admins** edit metadata, upload, change covers, manage groups and remove books (to the Recycling Bin). Off by default: without it the library's `metadata.db` is opened read-only, so the server can't change your library. |
+| `-allow-writes` | Let **admins** (and **editors**, for books) edit metadata, upload, change covers, manage groups and remove books (to the Recycling Bin). Off by default: without it the library's `metadata.db` is opened read-only, so the server can't change your library. |
 | `-watch-dir` | A folder to watch for new books. The system reports changes to it (checked every 30 seconds where it can't). Books are moved out of it into a review queue (`/import`) and only join the library when an admin adds them. Needs `-allow-writes`; must not be inside the library or `-datadir`. |
 | `-watch-dir-force-polling` | Check `-watch-dir` every 30 seconds instead of waiting for the system to report changes. For folders on network or container mounts (NFS, SMB, some bind mounts) where new books aren't noticed. |
 | `-public` | Let anyone browse the catalog without signing in. **By default the whole library is private:** nothing (not even covers or book IDs) is shown until you sign in. |

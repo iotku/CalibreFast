@@ -134,13 +134,20 @@ func execErr(_ sql.Result, err error) error { return err }
 // new batch, with readers' places, bookmarks and highlights in it. A book's
 // last file can't be removed this way: that's removing the book.
 func recycleFormat(uuid, format, by string) (*recycleBatch, error) {
+	return recycleFormatFile(uuid, format, by, false)
+}
+
+// recycleFormatFile is recycleFormat; replacing says another file is about
+// to take its place (undoing a merge puts back the one the merge replaced,
+// editlog.go), so it may be the book's last, and it is noted as replaced.
+func recycleFormatFile(uuid, format, by string, replacing bool) (*recycleBatch, error) {
 	bulkMu.Lock()
 	defer bulkMu.Unlock()
 	recycleMu.Lock()
 	defer recycleMu.Unlock()
 
 	format = strings.ToLower(format)
-	f := recycledFormat{UUID: uuid, Format: strings.ToUpper(format)}
+	f := recycledFormat{UUID: uuid, Format: strings.ToUpper(format), Replaced: replacing}
 	var id int64
 	var path string
 	err := calibreDB.QueryRow(`SELECT b.id, b.title, `+bookAuthorsSQL+`, b.path FROM books b WHERE b.uuid = ?`, uuid).
@@ -171,7 +178,7 @@ func recycleFormat(uuid, format, by string) (*recycleBatch, error) {
 	switch {
 	case rows == 0:
 		return nil, errNoSuchFormat
-	case len(others) == 0:
+	case len(others) == 0 && !replacing:
 		return nil, errLastFormat
 	case len(matches) > 1:
 		return nil, fmt.Errorf("the book's folder has %d %s files: remove the one you don't want on the server", len(matches), f.Format)
@@ -304,5 +311,6 @@ func recycleFormatHandler(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, err.Error(), http.StatusInternalServerError)
 		return
 	}
+	logEdit(currentUser(r), "remove "+strings.ToUpper(format), logKindRecycle, batch.ID, batch.summary(), nil, nil)
 	writeJSON(w, http.StatusOK, batch)
 }
