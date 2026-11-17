@@ -12,7 +12,11 @@
  *     /api/me/home), which they can unpin and reorder; for a signed-out
  *     visitor, the featured ones (pages/discover/featured.json). A pinned
  *     tag's row starts somewhere new on each load and walks its tag with
- *     Shuffle and Previous, like the "More in" rows.
+ *     Shuffle and Previous, like the "More in" rows. A pinned series shows
+ *     its books in order, without the ones the user finished unless they
+ *     turn on the row's Show finished.
+ *   - On deck (signed in): the next book of each series the user finished
+ *     one of, from /api/me/home; a card's ✕ takes it off for good.
  *   - Recommended for you (signed in): from /api/me/home, next in series
  *     first, each with what it follows or is like. It stays the same until
  *     the user asks for more (Refresh: the next page of their list, from
@@ -108,6 +112,8 @@ const PIN_PATH = '<path d="M12 17v5"/><path d="M9 10.8V4h6v6.8a2 2 0 0 0 1.1 1.8
 const PIN_ICON = svg(PIN_PATH);
 const PINNED_ICON = svg(PIN_PATH, "currentColor");
 const TAG_ICON = svg('<path d="M20.6 13.4l-7.2 7.2a2 2 0 0 1-2.8 0L2 12V2h10l8.6 8.6a2 2 0 0 1 0 2.8z"/><circle cx="7" cy="7" r="1.5"/>');
+const SERIES_ICON = svg('<path d="M4 4h4v16H4zM10 4h4v16h-4zM15 5l3.5-1 3 15-3.5 1z"/>');
+const CHECK_ICON = `<svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M5 12l5 5 9-10"/></svg>`;
 const SHELVES_ICON = svg('<path d="M5 4v16M10 4v16M14.5 5l4 15M3 20h18"/>');
 const X_ICON = `<svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" aria-hidden="true"><path d="M6 6l12 12M18 6L6 18"/></svg>`;
 const BACK_ICON = `<svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M9 14L4 9l5-5"/><path d="M4 9h11a5 5 0 0 1 0 10h-3"/></svg>`;
@@ -404,6 +410,7 @@ interface HomeAnswer {
     reading_count: number;
     wanted: Book[];
     wanted_count: number;
+    on_deck?: Book[];
     shelves?: HomeShelf[];
     recommended?: RecBook[];
     tags?: string[];
@@ -420,7 +427,7 @@ interface RecBook {
 
 /** A shelf row (Go: homeShelf). */
 interface HomeShelf {
-    kind?: "shelf" | "tag"; // a tag the user pinned: no id
+    kind?: "shelf" | "tag" | "series"; // a tag or series the user pinned: no id
     id?: number;
     name: string;
     href: string;
@@ -430,6 +437,8 @@ interface HomeShelf {
     books: Book[];
     start?: number; // a tag's: where its strip starts, and the next one
     next?: number;
+    show_finished?: boolean; // a series': whether it shows the finished books
+    finished?: number; // and how many the user finished
 }
 
 function repaintMarks(only?: string): void {
@@ -463,7 +472,8 @@ function showHome(h: HomeAnswer): void {
     byId("row-reading-device").hidden = true;
     fillRow("row-reading", h.reading, { hint: true, all: h.reading_count > 0 });
     fillRow("row-wanted", h.wanted, { hint: true, all: h.wanted_count > 0 });
-    for (const id of ["row-wanted", "row-recommended"]) byId(id).classList.remove("row-na");
+    showOnDeck(h.on_deck ?? []);
+    for (const id of ACCOUNT_ROWS) byId(id).classList.remove("row-na");
     if (!editing) {
         layout = cleanLayout(h.layout);
         hiddenTags = cleanTags(h.hidden_tags);
@@ -516,7 +526,7 @@ async function showGuest(): Promise<void> {
     // has since said otherwise: its rows stand.
     if (serverSignedIn) return;
     // Rows only an account has: not shown, nor offered when editing.
-    for (const id of ["row-wanted", "row-recommended"]) {
+    for (const id of ACCOUNT_ROWS) {
         byId(id).hidden = true;
         byId(id).classList.add("row-na");
     }
@@ -650,6 +660,7 @@ function showShelves(shelves: HomeShelf[], own: boolean): void {
     const slot = byId("row-recommended"); // for now: applyLayout puts them in place
     shelves.forEach((s, i) => {
         const tag = s.kind === "tag";
+        const series = s.kind === "series";
         let walker: TagWalker | undefined;
         if (tag) {
             const key = s.name.toLowerCase();
@@ -667,33 +678,41 @@ function showShelves(shelves: HomeShelf[], own: boolean): void {
             walker.row.count = s.count;
             s = { ...s, books: walker.books };
         }
-        if (!s.books.length) return;
+        // A series stays when the user has finished it all: its Show finished.
+        if (!s.books.length && !(series && own)) return;
         const section = document.createElement("section");
         section.className = "row home-row pin-row";
-        // "s:7" a shelf, "t:Space Opera" a tag (the order sent back says which).
-        const id = tag ? `t:${s.name}` : `s:${s.id}`;
+        // "s:7" a shelf, "t:Space Opera" a tag, "r:Dune" a series (the order
+        // sent back says which).
+        const id = tag ? `t:${s.name}` : series ? `r:${s.name}` : `s:${s.id}`;
         section.dataset["id"] = id;
         section.dataset["name"] = s.name;
         section.setAttribute("aria-labelledby", `pin-${i}-title`);
         pinOrder.push(id);
         const name = escapeHtml(s.name);
-        const icon = !tag
-            ? `<a class="row-icon" href="/shelves" title="Shelves" aria-label="All shelves">${SHELVES_ICON}</a>`
-            : own
-              ? `<button type="button" class="row-icon" data-act="unpin" aria-pressed="true" title="Pinned: unpin" aria-label="Unpin ${name} from home">${PINNED_ICON}</button>`
-              : `<a class="row-icon" href="/tags" title="Tags" aria-label="All tags">${TAG_ICON}</a>`;
+        const icon =
+            !tag && !series
+                ? `<a class="row-icon" href="/shelves" title="Shelves" aria-label="All shelves">${SHELVES_ICON}</a>`
+                : own
+                  ? `<button type="button" class="row-icon" data-act="unpin" aria-pressed="true" title="Pinned: unpin" aria-label="Unpin ${name} from home">${PINNED_ICON}</button>`
+                  : series
+                    ? `<a class="row-icon" href="/series" title="Series" aria-label="All series">${SERIES_ICON}</a>`
+                    : `<a class="row-icon" href="/tags" title="Tags" aria-label="All tags">${TAG_ICON}</a>`;
+        const sub = tag ? '<span class="row-sub"> tag</span>' : series ? '<span class="row-sub"> series</span>' : "";
         section.innerHTML = `
             <header class="row-head">
-                <h2 id="pin-${i}-title">${icon}<a class="row-title-link" href="${escapeHtml(s.href)}">${name}</a>${tag ? '<span class="row-sub"> tag</span>' : ""}</h2>
+                <h2 id="pin-${i}-title">${icon}<a class="row-title-link" href="${escapeHtml(s.href)}">${name}</a>${sub}</h2>
                 <div class="row-tools">
                     ${tag ? tagStepButtons(name, s.count <= PIN_STRIP) : ""}
+                    ${series && own && (s.finished ?? 0) > 0 ? finishedToggle(name, !!s.show_finished, s.finished ?? 0) : ""}
                     ${seeAll(s.href)}
                     ${own ? `<button type="button" class="row-btn row-x" data-act="unpin" title="Remove from home" aria-label="Remove ${name} from home">${X_ICON}</button>` : ""}
                 </div>
             </header>
+            ${series ? '<p class="row-hint" hidden>You’ve finished every book in this series.</p>' : ""}
             <div class="row-books"></div>`;
         slot.before(section);
-        fillRow(section, s.books, { all: true });
+        fillRow(section, s.books, { all: true, hint: series });
         if (walker) {
             tagWalkers.set(section, walker);
             updateTagButtons(section, walker);
@@ -714,9 +733,11 @@ interface Layout {
 }
 
 /** The rows' order by default; "pins" stands for the pinned rows. */
-const DEFAULT_ORDER = ["k:reading", "k:wanted", "pins", "k:recommended", "k:shuffle", "k:latest", "k:tags"];
+const DEFAULT_ORDER = ["k:reading", "k:ondeck", "k:wanted", "pins", "k:recommended", "k:shuffle", "k:latest", "k:tags"];
 /** Sections that can be turned off (Go: homeSections). */
-const TOGGLEABLE = ["greeting", "wanted", "recommended", "shuffle", "latest", "tags"];
+const TOGGLEABLE = ["greeting", "ondeck", "wanted", "recommended", "shuffle", "latest", "tags"];
+/** Rows only a signed-in user has. */
+const ACCOUNT_ROWS = ["row-ondeck", "row-wanted", "row-recommended"];
 
 let layout: Layout = { order: [], hidden: [] };
 /** Tags the user wants no "More in" rows for. */
@@ -894,9 +915,11 @@ function setEditing(on: boolean): void {
                 saveLayout();
                 if (!isOwn()) return;
                 // The pins' own order too, as before (featured shelves keep their place).
-                pinOrder = layout.order.filter((id) => /^[st]:/.test(id));
+                pinOrder = layout.order.filter((id) => /^[str]:/.test(id));
                 void api("PUT", "/api/me/pins", {
-                    rows: pinOrder.map((id) => (id.startsWith("t:") ? { tag: id.slice(2) } : { shelf: Number(id.slice(2)) })),
+                    rows: pinOrder.map((id) =>
+                        id.startsWith("t:") ? { tag: id.slice(2) } : id.startsWith("r:") ? { series: id.slice(2) } : { shelf: Number(id.slice(2)) },
+                    ),
                 }).catch(() => {});
             },
         });
@@ -920,6 +943,52 @@ function setEditing(on: boolean): void {
 let affinityTags: string[] = [];
 
 const HIDE_ICON = `<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M6 6l12 12M18 6L6 18" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round"/></svg>`;
+
+/** A pinned series' Show finished (name: escaped). */
+function finishedToggle(name: string, on: boolean, n: number): string {
+    return `<button type="button" class="row-btn" data-act="series-finished" aria-pressed="${on}" title="Show the ${n} you’ve finished" aria-label="Show the books of ${name} you’ve finished">
+                    ${CHECK_ICON}
+                    <span>Show finished</span>
+                </button>`;
+}
+
+/** On deck: the next book of the series the user is reading through, each with ✕. */
+function showOnDeck(books: Book[]): void {
+    const section = byId("row-ondeck");
+    fillRow(section, books, { hint: true });
+    books.forEach((b, i) => {
+        const card = section.querySelectorAll<HTMLElement>(".row-books > .book")[i];
+        if (!card) return;
+        const x = document.createElement("button");
+        x.type = "button";
+        x.className = "cover-action rec-hide";
+        x.dataset["act"] = "deck-hide";
+        x.title = "Remove from On deck";
+        x.setAttribute("aria-label", `Remove ${b.title || "this book"} from On deck`);
+        x.innerHTML = HIDE_ICON;
+        card.append(x);
+    });
+}
+
+function setupOnDeck(): void {
+    const section = byId("row-ondeck");
+    section.addEventListener("click", (e) => {
+        const btn = e.target instanceof Element ? e.target.closest<HTMLButtonElement>('[data-act="deck-hide"]') : null;
+        const card = btn?.closest<HTMLElement>(".book");
+        const uuid = card?.dataset["uuid"];
+        if (!btn || !card || !uuid) return;
+        e.preventDefault();
+        // Off the row at once; for good on the server.
+        card.remove();
+        const h = cachedHome();
+        if (h) {
+            h.on_deck = (h.on_deck ?? []).filter((b) => b.uuid !== uuid);
+            store.set(HOME_KEY, JSON.stringify(h));
+        }
+        if (!section.querySelector(".row-books > .book")) fillRow(section, [], { hint: true });
+        void api("DELETE", `/api/me/on-deck/${encodeURIComponent(uuid)}`).catch(() => void refreshHome());
+    });
+}
 
 /** Recommended for you, each card saying why, with Not interested. */
 function showRecommended(recs: RecBook[]): void {
@@ -1019,10 +1088,26 @@ function setupShelves(): void {
             pinnedTags.delete(id.slice(2).toLowerCase());
             updateTagRows(true);
         }
-        const path = id.startsWith("t:") ? `/api/me/tag-pins/${encodeURIComponent(id.slice(2))}` : `/api/me/pins/${id.slice(2)}`;
+        const path = id.startsWith("t:")
+            ? `/api/me/tag-pins/${encodeURIComponent(id.slice(2))}`
+            : id.startsWith("r:")
+              ? `/api/me/series-pins/${encodeURIComponent(id.slice(2))}`
+              : `/api/me/pins/${id.slice(2)}`;
         void api("DELETE", path)
             .catch(() => {})
             .then(() => refreshHome());
+    });
+    // A pinned series' Show finished.
+    list.addEventListener("click", (e) => {
+        const btn = e.target instanceof Element ? e.target.closest<HTMLButtonElement>('[data-act="series-finished"]') : null;
+        const row = btn?.closest<HTMLElement>(".pin-row");
+        if (!btn || !row || btn.disabled) return;
+        const on = btn.getAttribute("aria-pressed") !== "true";
+        btn.disabled = true;
+        void api("PATCH", `/api/me/series-pins/${encodeURIComponent(row.dataset["name"] ?? "")}`, { show_finished: on })
+            .catch(() => {})
+            .then(() => refreshHome())
+            .finally(() => (btn.disabled = false));
     });
     byId("hidden-tags").addEventListener("click", (e) => {
         const btn = e.target instanceof Element ? e.target.closest<HTMLButtonElement>('[data-act="unhide-tag"]') : null;
@@ -1439,6 +1524,7 @@ setupGreeting();
 setupShelves();
 setupTagSteps();
 setupRecommended();
+setupOnDeck();
 if (!cachedHome() && signedIn() !== true) ({ layout, hiddenTags } = guestLayout());
 applyLayout(); // the sections in place before they fill
 const homeIn = setupHome();

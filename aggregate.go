@@ -41,10 +41,11 @@ var categories = []*category{
 	{"series", "series", "series", "Series", "series", "series", "name", "books_series_link", "series"},
 }
 
-// bookOrder: how a filtered page lists its books. A series reads in order.
+// bookOrder: how a filtered page lists its books. A series reads in order:
+// as seriesCompare (series.go) has it.
 func (c *category) bookOrder() string {
 	if c.Key == "series" {
-		return "b.series_index, b.sort"
+		return seriesOrderSQL
 	}
 	return "b.sort"
 }
@@ -443,10 +444,15 @@ func filteredPageHandler(c *category) http.HandlerFunc {
 		if groups.readOnly != nil {
 			data.GroupsError = groups.readOnly.Error()
 		}
-		// A tag can be pinned to the user's home page (shelf_pins.go).
+		// A tag can be pinned to the user's home page (shelf_pins.go), and
+		// so can a series (series_pins.go).
 		if u := currentUser(r); u != nil && c.Key == "tag" && data.TotalBooks > 0 {
 			w.Header().Set("Cache-Control", "private, no-store")
 			data.Extra = map[string]any{"TagPin": name, "Pinned": tagPinnedFor(u, name)}
+		}
+		if u := currentUser(r); u != nil && c.Key == "series" && data.TotalBooks > 0 {
+			w.Header().Set("Cache-Control", "private, no-store")
+			data.Extra = map[string]any{"SeriesPin": name, "Pinned": seriesPinnedFor(u, name)}
 		}
 		logErr(templates.ExecuteTemplate(w, "filtered.html", data), "failed to execute filtered template")
 	}
