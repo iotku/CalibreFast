@@ -6,6 +6,7 @@
     <title>{{ .Title }}</title>
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <link rel="stylesheet" href="{{ asset "style.css" }}">
+    {{ if .Writable }}<link rel="stylesheet" href="{{ asset "placeholder.css" }}">{{ end }}
 </head>
 <body class="auth-body">
 {{ $tb := topbar "Active" "missing" "Title" (or .Meta.Title "New placeholder") }}
@@ -40,19 +41,17 @@
         {{ if .New }}<p class="auth-muted">A book that isn't in the library yet. It shows on its series', authors' and publisher's pages, and in On deck, until its files are added. Nothing is written to the Calibre library.</p>{{ end }}
         <form id="ph-form" class="auth-form" data-uuid="{{ .UUID }}">
             <label>Title <input type="text" name="title" value="{{ .Meta.Title }}" required></label>
-            <label>Authors <input type="text" name="creators" value="{{ .Authors }}" placeholder="Name &amp; Another Name"></label>
+            <label>Authors <input type="text" name="creators" value="{{ .Authors }}" placeholder="Name &amp; Another Name" autocomplete="off"></label>
             <div class="ph-row">
-                <label class="ph-grow">Series <input type="text" name="series" value="{{ .Meta.Series }}"></label>
+                <label class="ph-grow">Series <input type="text" name="series" value="{{ .Meta.Series }}" autocomplete="off"></label>
                 <label class="ph-num">Number <input type="text" name="series_index" value="{{ .Index }}" inputmode="decimal" placeholder="1"></label>
             </div>
             <div class="ph-row">
-                <label class="ph-grow">Publisher <input type="text" name="publisher" value="{{ .Meta.Publisher }}"></label>
-                <label class="ph-num">Published <input type="text" name="date" value="{{ .Meta.Date }}" placeholder="YYYY-MM-DD"></label>
+                <label class="ph-grow">Publisher <input type="text" name="publisher" value="{{ .Meta.Publisher }}" autocomplete="off"></label>
+                <label class="ph-num">Published <input type="date" name="date" value="{{ .Meta.Date }}"></label>
             </div>
-            <div class="ph-row">
-                <label class="ph-grow">Tags <input type="text" name="subjects" value="{{ .Tags }}" placeholder="comma, separated"></label>
-                <label class="ph-num">ISBN <input type="text" name="isbn" value="{{ .ISBN }}"></label>
-            </div>
+            <label>ISBN <input type="text" name="isbn" value="{{ .ISBN }}" autocomplete="off" inputmode="numeric"></label>
+            <div class="ph-field">Tags <input type="text" name="subjects" value="{{ .Tags }}"></div>
             <label>Description <textarea name="description" rows="5">{{ .Meta.Description }}</textarea></label>
             <p id="ph-status" class="auth-notice" role="status" hidden></p>
             <div class="ph-actions">
