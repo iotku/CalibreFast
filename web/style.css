@@ -1991,6 +1991,96 @@ body.book-standalone {
     display: flex;
 }
 
+/* A book that's still loading: shown once it arrives, or after 100 ms
+   with the throbber (modal.ts). */
+.modal-overlay.pending {
+    visibility: hidden;
+}
+
+/* Previous / next book (modal.ts): in the margins beside the popup; on
+   phones, where it fills the screen, in the bottom corners. */
+.modal-nav {
+    position: fixed;
+    top: 50%;
+    transform: translateY(-50%);
+    z-index: 1001;
+    width: 44px;
+    height: 44px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    padding: 0;
+    color: var(--text-primary);
+    background: rgba(30, 30, 30, 0.65);
+    border: 1px solid var(--border-light);
+    border-radius: var(--radius-round);
+    cursor: pointer;
+    transition:
+        background var(--transition-fast),
+        color var(--transition-fast);
+}
+
+.modal-nav[hidden] {
+    display: none;
+}
+
+.modal-nav:hover {
+    background: rgba(60, 60, 60, 0.9);
+    color: #fff;
+}
+
+.modal-nav-prev {
+    left: max(0.5rem, calc((100vw - min(1080px, 90vw)) / 2 - 3.5rem));
+}
+
+.modal-nav-next {
+    right: max(0.5rem, calc((100vw - min(1080px, 90vw)) / 2 - 3.5rem));
+}
+
+/* Narrow screens: modal.ts puts the arrows beside the cover. The cover's
+   column gives up room for them on both sides, so the controls above and
+   the buttons below still line up with the cover's edges. */
+.book-page-side:has(> .book-page-cover > .modal-nav) {
+    --nav-width: 40px;
+    --nav-room: calc(var(--nav-width) + 0.85rem);
+    padding-inline: var(--nav-room);
+    max-width: calc(320px + 2 * var(--nav-room));
+    box-sizing: border-box;
+}
+
+.book-page-cover:has(> .modal-nav) {
+    position: relative;
+}
+
+.book-page-cover > .modal-nav {
+    position: absolute;
+    top: 50%;
+    bottom: auto;
+    transform: translateY(-50%);
+    z-index: 1;
+    width: var(--nav-width);
+    height: min(70%, 16rem);
+    min-height: 88px;
+    border-radius: 999px;
+}
+
+.book-page-cover > .modal-nav-prev {
+    left: calc(-1 * var(--nav-room));
+    right: auto;
+}
+
+.book-page-cover > .modal-nav-next {
+    right: calc(-1 * var(--nav-room));
+    left: auto;
+}
+
+.modal-loading {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    min-height: 16rem;
+}
+
 .modal-content {
     background-color: var(--bg-modal);
     backdrop-filter: blur(14px);
@@ -2066,6 +2156,23 @@ body.book-standalone {
         padding-bottom: max(2rem, calc(1.5rem + env(safe-area-inset-bottom)));
         padding-left: max(1rem, calc(0.75rem + env(safe-area-inset-left)));
         padding-right: max(1rem, calc(0.75rem + env(safe-area-inset-right)));
+    }
+
+    .modal-nav {
+        top: auto;
+        transform: none;
+        bottom: max(0.75rem, env(safe-area-inset-bottom));
+        background: rgba(20, 20, 20, 0.85);
+        border: 1px solid var(--border-medium);
+        box-shadow: var(--shadow-small);
+    }
+
+    .modal-nav-prev {
+        left: max(0.75rem, env(safe-area-inset-left));
+    }
+
+    .modal-nav-next {
+        right: max(0.75rem, env(safe-area-inset-right));
     }
 
     #modal-close {

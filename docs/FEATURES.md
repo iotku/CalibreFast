@@ -41,7 +41,7 @@ Reference for how CalibreFast behaves, for people and AI tools working on the co
 
 ## Book details
 
-- **Popup.** Clicking a book opens a details popup (full-screen on phones) with a shareable `#book/<uuid>` URL. There's also a permalink page at `/book/get/<uuid>`. Details are preloaded on hover.
+- **Popup.** Clicking a book opens a details popup (full-screen on phones) with a shareable `#book/<uuid>` URL. There's also a permalink page at `/book/get/<uuid>`. Details are preloaded on hover. The ← and → keys, the arrow buttons (beside the popup; on phones, tall ones either side of the cover) and swiping sideways step to the book before or after it in its grid or row (the grid scrolls along, and the books either side are fetched ahead). A book that takes longer than 100 ms shows a throbber; a quicker one shows with no loading state.
 - **Actions.** Read and download buttons sit under the cover, for every format on disk (EPUB, PDF, MOBI, AZW3, DJVU).
 - **Links.** Authors, publisher, tags and languages link to their filtered views. A book in a series says so (*Book 2 in Dune*), linking to the series.
 - **Language names.** Codes are shown by name, covering about 120 languages and all their common 2/3-letter codes. Examples: `eng`/`en` → English, `pt-BR` → Portuguese (BR). A group name, if you've set one, takes precedence. Books with several languages show all of them.
