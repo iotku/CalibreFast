@@ -6,3 +6,15 @@ testout.opf
 /data/
 /covers/
 /TestData/Library/
+
+# macOS
+.DS_Store
+._*
+.AppleDouble
+.LSOverride
+.Spotlight-V100
+.Trashes
+.fseventsd
+.TemporaryItems
+.DocumentRevisions-V100
+Icon\r
