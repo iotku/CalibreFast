@@ -12,7 +12,8 @@ interface Saved {
     url: string;
 }
 
-const say = statusLine("ph-status");
+const say = statusLine("ph-status"); // the details form
+const sayView = statusLine("ph-view-status"); // cover and formats
 const form = byId("ph-form", HTMLFormElement);
 const id = form.dataset["uuid"] ?? "";
 const base = `/api/placeholders/${encodeURIComponent(id)}`;
@@ -90,15 +91,15 @@ coverFile?.addEventListener("change", () => {
     if (!file) return;
     const fd = new FormData();
     fd.append("image", file);
-    say("Saving the picture…");
+    sayView("Saving the picture…");
     send("POST", `${base}/cover`, fd)
         .then(() => location.reload())
-        .catch((err: unknown) => say(errorMessage(err), true));
+        .catch((err: unknown) => sayView(errorMessage(err), true));
 });
 maybeId("ph-cover-remove")?.addEventListener("click", () => {
     api("DELETE", `${base}/cover`)
         .then(() => location.reload())
-        .catch((err: unknown) => say(errorMessage(err), true));
+        .catch((err: unknown) => sayView(errorMessage(err), true));
 });
 
 const files = maybeId("ph-files", HTMLInputElement);
@@ -108,8 +109,8 @@ files?.addEventListener("change", () => {
     if (!list?.length) return;
     const fd = new FormData();
     for (const file of list) fd.append("files", file);
-    say(`Uploading ${list.length === 1 ? "the file" : `${list.length} files`}…`);
+    sayView(`Uploading ${list.length === 1 ? "the file" : `${list.length} files`}…`);
     send<{ url: string }>("POST", `${base}/files`, fd)
         .then((res) => go(res.url))
-        .catch((err: unknown) => say(errorMessage(err), true));
+        .catch((err: unknown) => sayView(errorMessage(err), true));
 });

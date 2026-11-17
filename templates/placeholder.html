@@ -32,6 +32,16 @@
             </dl>
             {{ if .Meta.Description }}<p class="placeholder-desc">{{ .Meta.Description }}</p>{{ end }}
             <p class="auth-muted">This book isn't in the library yet.</p>
+            {{ if .Writable }}
+            <div class="ph-actions ph-actions-start">
+                <button type="button" id="ph-files-pick" class="btn-standard btn-primary">Add Formats</button>
+                <button type="button" id="ph-cover-pick" class="btn-standard">{{ if .CoverURL }}Change Cover{{ else }}Add Cover{{ end }}</button>
+                {{ if .CoverURL }}<button type="button" id="ph-cover-remove" class="btn-standard btn-danger">Remove Cover</button>{{ end }}
+                <input id="ph-files" type="file" multiple accept=".epub,.pdf,.mobi,.azw3,.djvu" hidden>
+                <input id="ph-cover-file" type="file" accept="image/*,.svg" hidden>
+            </div>
+            <p id="ph-view-status" class="auth-notice" role="status" hidden></p>
+            {{ end }}
         </div>
     </section>
     {{ end }}
@@ -60,25 +70,6 @@
             </div>
         </form>
     </section>
-    {{ if not .New }}
-    <section class="auth-card">
-        <h2>Cover</h2>
-        <p class="auth-muted">A picture or SVG, kept in CalibreFast's data folder. It becomes the book's cover when its files are added, unless they have one.</p>
-        <div class="ph-actions ph-actions-start">
-            <button type="button" id="ph-cover-pick" class="btn-standard">Choose a picture…</button>
-            {{ if .CoverURL }}<button type="button" id="ph-cover-remove" class="btn-standard btn-danger">Remove</button>{{ end }}
-            <input id="ph-cover-file" type="file" accept="image/*,.svg" hidden>
-        </div>
-    </section>
-    <section class="auth-card">
-        <h2>Add the book</h2>
-        <p class="auth-muted">Got the book? Its files go to the import queue with these details filled in. Once it's added, this placeholder is gone.</p>
-        <div class="ph-actions ph-actions-start">
-            <button type="button" id="ph-files-pick" class="btn-standard btn-primary">Add files…</button>
-            <input id="ph-files" type="file" multiple accept=".epub,.pdf,.mobi,.azw3,.djvu" hidden>
-        </div>
-    </section>
-    {{ end }}
     {{ end }}
 </main>
 {{ if .Writable }}<script type="module" src="{{ asset "placeholder.js" }}"></script>{{ end }}
