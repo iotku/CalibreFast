@@ -307,6 +307,24 @@ var migrations = []string{
 		PRIMARY KEY (category, name)
 	);
 	`,
+	// 18: series on a user's home page (series_pins.go), ordered together
+	// with their pinned shelves and tags (one position space); and On Deck
+	// cards the user dismissed.
+	`
+	CREATE TABLE series_pins (
+		user_id       INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+		name          TEXT    NOT NULL COLLATE NOCASE, -- the series as browsed (after groups)
+		position      INTEGER NOT NULL,
+		show_finished INTEGER NOT NULL DEFAULT 0,
+		PRIMARY KEY (user_id, name)
+	);
+	CREATE TABLE on_deck_dismissed (
+		user_id    INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+		book_uuid  TEXT    NOT NULL,
+		created_at INTEGER NOT NULL,
+		PRIMARY KEY (user_id, book_uuid)
+	);
+	`,
 }
 
 // openAppDB opens (creating if needed) and migrates the app database.

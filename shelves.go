@@ -407,5 +407,6 @@ func registerShelfRoutes() {
 	http.HandleFunc("DELETE /api/shelves/{id}/books/{uuid}", requireUser(shelfRemoveBookHandler))
 	registerShelfSeriesRoutes()
 	registerShelfPinRoutes()
+	registerSeriesPinRoutes()
 	registerListOrderRoutes()
 }

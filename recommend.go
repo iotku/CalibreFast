@@ -128,9 +128,7 @@ func currentRecIndex() *recIndex {
 		}
 	}
 	for _, slots := range ix.series {
-		slices.SortStableFunc(slots, func(a, b int32) int {
-			return cmp.Compare(c.books[a].SeriesIndex, c.books[b].SeriesIndex)
-		})
+		sortSeries(c, slots) // series.go
 	}
 	recIndexNow.Store(ix)
 	return ix
@@ -261,7 +259,7 @@ func rankRecs(m readingMarks, hide map[string]bool, rng *rand.Rand) (l recList, 
 			continue
 		}
 		at := c.byUUID[s.b.UUID]
-		if f, ok := furthest[s.b.Series]; !ok || c.books[at].SeriesIndex > c.books[f].SeriesIndex {
+		if f, ok := furthest[s.b.Series]; !ok || seriesLess(&c.books[f], &c.books[at]) {
 			furthest[s.b.Series] = at
 		}
 	}
@@ -269,7 +267,7 @@ func rankRecs(m readingMarks, hide map[string]bool, rng *rand.Rand) (l recList, 
 	for series, f := range furthest {
 		for _, slot := range ix.series[series] {
 			b := &c.books[slot]
-			if b.SeriesIndex > c.books[f].SeriesIndex && !progress[b.UUID] {
+			if seriesLess(&c.books[f], b) && !progress[b.UUID] {
 				nexts = append(nexts, seriesNext{slot, c.books[f].Title})
 				break
 			}

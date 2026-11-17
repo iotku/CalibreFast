@@ -137,7 +137,7 @@ func userRecommend(u *User, marks readingMarks) (recs []recBook, tags []string, 
 	if err != nil {
 		return nil, nil, err
 	}
-	hide, err := notInterested(u)
+	hide, err := recHide(u, marks) // series_pins.go: not interested, and On Deck
 	if err != nil {
 		return nil, nil, err
 	}
@@ -172,7 +172,7 @@ func recNextHandler(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "query failed", http.StatusInternalServerError)
 		return
 	}
-	hide, err := notInterested(u)
+	hide, err := recHide(u, marks)
 	if err != nil {
 		http.Error(w, "query failed", http.StatusInternalServerError)
 		return

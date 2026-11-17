@@ -45,10 +45,11 @@ var categories = []*category{
 	{"series", "series", "series", "Series", "series", "series", "name", "books_series_link", "series", false},
 }
 
-// bookOrder: how a filtered page lists its books. A series reads in order.
+// bookOrder: how a filtered page lists its books. A series reads in order:
+// as seriesCompare (series.go) has it.
 func (c *category) bookOrder() string {
 	if c.Key == "series" {
-		return "b.series_index, b.sort"
+		return seriesOrderSQL
 	}
 	return "b.sort"
 }
@@ -468,17 +469,21 @@ func filteredPageHandler(c *category) http.HandlerFunc {
 		if groups.readOnly != nil {
 			data.GroupsError = groups.readOnly.Error()
 		}
-		// A tag can be pinned to the user's home page (shelf_pins.go).
+		// A tag can be pinned to the user's home page (shelf_pins.go), and
+		// so can a series (series_pins.go).
 		if u := currentUser(r); u != nil && c.Key == "tag" && data.TotalBooks > 0 {
 			w.Header().Set("Cache-Control", "private, no-store")
 			data.Extra = map[string]any{"TagPin": name, "Pinned": tagPinnedFor(u, name)}
 		}
-		// A series can go on a shelf, whole (shelf_series.go).
+		// A series can be pinned to home (series_pins.go) and go on a shelf,
+		// whole (shelf_series.go).
 		if u := currentUser(r); u != nil && c.Key == "series" && data.TotalBooks > 0 {
 			w.Header().Set("Cache-Control", "private, no-store")
 			if data.Extra == nil {
 				data.Extra = map[string]any{}
 			}
+			data.Extra["SeriesPin"] = name
+			data.Extra["Pinned"] = seriesPinnedFor(u, name)
 			data.Extra["SeriesShelf"] = name
 			data.Extra["SeriesShelves"] = seriesShelfMarks(u, name)
 		}
