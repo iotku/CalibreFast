@@ -839,6 +839,22 @@ func GetOptionsForBook(w http.ResponseWriter, r *http.Request) {
 		metas = append(metas, cached...)
 	}
 
+	// ?import=<id>: a waiting book whose file this book already has, byte
+	// for byte (the import review's "Already in the library"): what it
+	// says is offered as sources too, to correct this book with. Editors only.
+	if id := r.URL.Query().Get("import"); id != "" && isSafeUUIDComponent(id) && isEditor(currentUser(r)) && imports != nil {
+		if it := imports.get(id); it != nil {
+			merged := it.Merged
+			merged.Format, merged.FileName = "import", ""
+			metas = append(metas, &merged)
+			for _, src := range it.Sources {
+				m := *src
+				m.Format = "import " + m.Format
+				metas = append(metas, &m)
+			}
+		}
+	}
+
 	if len(metas) == 0 {
 		http.Error(w, "No metadata found for this UUID", http.StatusNotFound)
 		return

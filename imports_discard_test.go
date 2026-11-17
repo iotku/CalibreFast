@@ -45,6 +45,35 @@ func TestDiscardExistingFiles(t *testing.T) {
 	}
 	t.Cleanup(func() { uuidPathIndex.Delete(book); bookMetadataCache.Delete(book) })
 
+	// The library book's editor offers a waiting copy's metadata, to editors.
+	waiting := add(map[string][]byte{"S.epub": epub})
+	formats := func(u *User) []string {
+		t.Helper()
+		rec := httptest.NewRecorder()
+		req := httptest.NewRequest("GET", "/metadata/"+book+"?import="+waiting.ID, nil)
+		req.SetPathValue("uuid", book)
+		if u != nil {
+			req = req.WithContext(withUserCtx(req, u))
+		}
+		GetOptionsForBook(rec, req)
+		var metas []UploadedBookMeta
+		json.Unmarshal(rec.Body.Bytes(), &metas)
+		var out []string
+		for _, m := range metas {
+			out = append(out, m.Format)
+		}
+		return out
+	}
+	if got := formats(admin); !slices.Contains(got, "import") || !slices.Contains(got, "import epub") {
+		t.Errorf("editor's sources %q: want the waiting book's", got)
+	}
+	if got := formats(nil); slices.Contains(got, "import") {
+		t.Errorf("anonymous sources %q include the waiting book's", got)
+	}
+	if err := w.inbox.discard(waiting.ID); err != nil {
+		t.Fatal(err)
+	}
+
 	whole := add(map[string][]byte{"B.epub": epub, "B.pdf": pdf})            // both in the library
 	mixed := add(map[string][]byte{"C.epub": epub, "C.mobi": []byte("new")}) // only the EPUB
 	other := add(map[string][]byte{"D.pdf": []byte("%PDF-1.4 another")})     // nothing

@@ -525,7 +525,7 @@ import { mountMetadataEditor } from {{ asset "metadata.js" }};
                         uuids: form.dataset.merge.split(","),
                         ...mergeChoices(),
                     }))
-                  : libraryBook(form.dataset.uuid);
+                  : libraryBook(form.dataset.uuid, new URLSearchParams(location.search).get("import"));
             if (mergePanel) {
                 // No cover of the kept book's: the first book's that has one.
                 if (!mergePanel.querySelector('[name="merge-cover"]:checked')) {
