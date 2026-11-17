@@ -166,11 +166,24 @@ export interface DuplicateBook {
     same_file: boolean;
     /** It has one of the ISBNs asked about (new files for a book). */
     same_isbn?: boolean;
+    /** Which of the checked book's files (by name) are identical to one of its. */
+    same_files?: string[];
 }
 
 /** Library books a book may duplicate (Go: duplicateCheck). */
 export interface DuplicateCheck {
     books: DuplicateBook[];
+}
+
+/** POST /api/imports/discard-existing (Go: discardExistingResult). */
+export interface DiscardExistingResult {
+    /** Books discarded whole. */
+    discarded: number;
+    /** Books that lost only some of their files. */
+    split: number;
+    /** Files discarded, in all. */
+    files: number;
+    errors?: string[];
 }
 
 /** A book waiting in the import queue (Go: importSummary). */

@@ -41,6 +41,9 @@ type duplicateBook struct {
 	SameAuthors bool `json:"same_authors"`
 	SameFile    bool `json:"same_file"`
 	SameISBN    bool `json:"same_isbn,omitempty"`
+	// SameFiles: which of the checked book's files (by base name) are
+	// identical to one of this book's.
+	SameFiles []string `json:"same_files,omitempty"`
 }
 
 // duplicateCheck is what findDuplicates found (TS: DuplicateCheck).
@@ -178,9 +181,10 @@ func findDuplicatesISBN(db *sql.DB, libDir, title string, authors []string, file
 			return nil, err
 		}
 		d := duplicateBook{UUID: c.uuid, Title: c.title, Authors: names, SameAuthors: c.sameTitle && sameNames(names, authors), SameISBN: c.sameISBN}
-		if d.SameFile, err = holdsSameFile(db, libDir, c.id, c.path, files); err != nil {
+		if d.SameFiles, err = sameFiles(db, libDir, c.id, c.path, files); err != nil {
 			return nil, err
 		}
+		d.SameFile = len(d.SameFiles) > 0
 		if d.SameAuthors || d.SameFile || d.SameISBN {
 			check.Books = append(check.Books, d)
 		}
@@ -232,43 +236,45 @@ func bookAuthorNames(db *sql.DB, bookID int64) ([]string, error) {
 	return names, rows.Err()
 }
 
-// holdsSameFile reports whether the library book holds a file identical to
-// one of files. Only files of the same format and size are hashed.
-func holdsSameFile(db *sql.DB, libDir string, bookID int64, bookPath string, files []dupFile) (bool, error) {
+// sameFiles is which of files (by base name) the library book holds an
+// identical copy of. Only files of the same format and size are hashed.
+func sameFiles(db *sql.DB, libDir string, bookID int64, bookPath string, files []dupFile) ([]string, error) {
 	if len(files) == 0 {
-		return false, nil
+		return nil, nil
 	}
 	lib, err := bookFiles(db, libDir, bookID, bookPath)
 	if err != nil {
-		return false, err
+		return nil, err
 	}
-	for _, l := range lib {
-		li, err := os.Stat(l.Path)
+	var out []string
+	for _, f := range files {
+		fi, err := os.Stat(f.Path)
 		if err != nil {
 			continue
 		}
-		for _, f := range files {
+		for _, l := range lib {
 			if f.Format != l.Format {
 				continue
 			}
-			fi, err := os.Stat(f.Path)
+			li, err := os.Stat(l.Path)
 			if err != nil || fi.Size() != li.Size() {
 				continue
 			}
 			a, err := filehash.SHA256(f.Path, fi)
 			if err != nil {
-				return false, err
+				return nil, err
 			}
 			b, err := filehash.SHA256(l.Path, li)
 			if err != nil {
-				return false, err
+				return nil, err
 			}
 			if a == b {
-				return true, nil
+				out = append(out, filepath.Base(f.Path))
+				break
 			}
 		}
 	}
-	return false, nil
+	return out, nil
 }
 
 // bookFiles is a library book's files, one per format in metadata.db. A
