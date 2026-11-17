@@ -18,6 +18,8 @@ import (
 	"log"
 	"net/http"
 	"strings"
+	"sync"
+	"time"
 
 	"github.com/iotku/CalibreFast/pkg/opf"
 )
@@ -35,6 +37,7 @@ func importAcceptHandler(w http.ResponseWriter, r *http.Request) {
 	uuid, reason := acceptImport(it, currentUser(r))
 	if uuid != "" {
 		catalogChanged(uuid)
+		scheduleAcceptRefresh()
 		log.Printf("imports: %q mass-imported by %s", it.Merged.Title, currentUser(r).Username)
 	}
 	writeJSON(w, http.StatusOK, map[string]string{"uuid": uuid, "reason": reason})
@@ -43,9 +46,41 @@ func importAcceptHandler(w http.ResponseWriter, r *http.Request) {
 // importAcceptDoneHandler is POST /api/imports/accept-done: the books
 // mass-imported so far show on the library's pages.
 func importAcceptDoneHandler(w http.ResponseWriter, r *http.Request) {
+	acceptRefreshNow()
+	w.WriteHeader(http.StatusNoContent)
+}
+
+// acceptRefreshDelay: the library's pages are rewritten this long after
+// the last mass-imported book, unless the page asked first. A page closed
+// part way through a run never asks.
+var acceptRefreshDelay = 10 * time.Second
+
+var acceptRefresh struct {
+	sync.Mutex
+	timer *time.Timer
+}
+
+// scheduleAcceptRefresh (re)starts the wait for the rewrite: a run keeps
+// putting it off, the page's own requests rewrite them meanwhile.
+func scheduleAcceptRefresh() {
+	acceptRefresh.Lock()
+	defer acceptRefresh.Unlock()
+	if acceptRefresh.timer != nil {
+		acceptRefresh.timer.Stop()
+	}
+	acceptRefresh.timer = time.AfterFunc(acceptRefreshDelay, acceptRefreshNow)
+}
+
+// acceptRefreshNow rewrites the library's pages for the books added so far.
+func acceptRefreshNow() {
+	acceptRefresh.Lock()
+	if acceptRefresh.timer != nil {
+		acceptRefresh.timer.Stop()
+		acceptRefresh.timer = nil
+	}
+	acceptRefresh.Unlock()
 	refreshLibraryPages()
 	refreshAllCaches()
-	w.WriteHeader(http.StatusNoContent)
 }
 
 // acceptImport adds one waiting book as its files describe it. reason says

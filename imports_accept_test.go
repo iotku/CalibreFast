@@ -6,6 +6,7 @@ import (
 	"net/http/httptest"
 	"path/filepath"
 	"testing"
+	"time"
 )
 
 func TestAcceptAllImports(t *testing.T) {
@@ -38,6 +39,11 @@ func TestAcceptAllImports(t *testing.T) {
 		json.Unmarshal(rec.Body.Bytes(), &out)
 		return rec.Code, out
 	}
+	// Pages are rewritten without being asked, after the last book: the
+	// page may have gone.
+	origDelay := acceptRefreshDelay
+	acceptRefreshDelay = time.Hour
+	t.Cleanup(func() { acceptRefreshDelay = origDelay })
 	items := w.inbox.list()
 	if c, _ := accept(editor, items[0].ID); c != http.StatusNotFound {
 		t.Errorf("an editor mass imported: %d", c)
@@ -47,11 +53,23 @@ func TestAcceptAllImports(t *testing.T) {
 			t.Fatalf("accept %q: %d %v", it.Merged.Title, c, out)
 		}
 	}
+	acceptRefresh.Lock()
+	scheduled := acceptRefresh.timer != nil
+	acceptRefresh.Unlock()
+	if !scheduled {
+		t.Error("no rewrite of the library's pages scheduled after a book was added")
+	}
 	rec := httptest.NewRecorder()
 	req := httptest.NewRequest("POST", "/api/imports/accept-done", nil)
 	requireWrites(importAcceptDoneHandler)(rec, req.WithContext(withUserCtx(req, admin)))
 	if rec.Code != http.StatusNoContent {
 		t.Errorf("done: %d", rec.Code)
+	}
+	acceptRefresh.Lock()
+	scheduled = acceptRefresh.timer != nil
+	acceptRefresh.Unlock()
+	if scheduled {
+		t.Error("the page asked for the rewrite, and it's still scheduled")
 	}
 	var books int
 	db.QueryRow(`SELECT COUNT(*) FROM books`).Scan(&books)
