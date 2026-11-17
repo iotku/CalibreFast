@@ -508,6 +508,7 @@ var templates = template.Must(
 		"robotsMeta":   robotsMeta,
 		"count":        countLabel,
 		"dict":         templateDict,
+		"alias":        groupAlias,
 	}).ParseGlob("templates/*.html"),
 )
 

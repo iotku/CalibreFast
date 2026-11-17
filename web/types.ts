@@ -311,3 +311,35 @@ export interface RepairCheck {
     /** Books with no data rows whose folders hold book files. */
     unlisted: { uuid: string; title: string; formats: string[]; ambiguous: string[] }[];
 }
+
+/** An entry of /api/<plural>: a value, or a group of values (Go: AggregateItem in aggregate.go). */
+export interface AggregateEntry {
+    name: string;
+    count: number;
+    slug: string;
+    /** Human label when it differs from name (languages). */
+    display?: string;
+    /** Set when name is a group. */
+    members?: string[];
+}
+
+/** PUT /api/groups/{cat}/{value} (Go: groupEdit in aggregate.go), as the "data" field when a picture is sent. */
+export interface GroupEdit {
+    name?: string;
+    /** Absent: the grouping is left as it is. Empty: the group is dissolved. */
+    members?: string[];
+    /** Absent: left as it is. */
+    description?: string;
+    removeImage?: boolean;
+}
+
+/** PUT /api/groups/{cat}/{value} response (Go: groupPutHandler). */
+export interface GroupSaved {
+    url: string;
+}
+
+/** PUT/DELETE /api/aggregates/{cat}/featured/{value} (Go: featuredHandler). */
+export interface FeaturedResponse {
+    featured: boolean;
+    name: string;
+}
