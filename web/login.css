@@ -1,0 +1,163 @@
+/* The sign-in page's own stylesheet (templates/login.html).
+
+   Someone without an account gets only this, never style.css: the full
+   stylesheet names every part of the app (readers, shelves, admin pages,
+   editors) and would describe it to anyone who can reach /login. So this
+   file holds just what the sign-in and registration forms use, copied from
+   style.css (tokens, base, buttons, inputs, the "Accounts" section); keep
+   the two looking the same when either changes. */
+
+:root {
+    --page-padding: clamp(12px, 1.5vw, 32px);
+
+    --bg-primary: #111;
+    --bg-surface: #222;
+    --bg-elevated: #252525;
+    --text-primary: #eee;
+    --text-muted: #888;
+    --border-medium: rgba(255, 255, 255, 0.15);
+
+    --font-family: sans-serif;
+    --font-size-ui: 16px;
+    --transition-fast: 0.15s ease;
+    --radius-small: 4px;
+    --radius-medium: 8px;
+    --touch-target: 44px;
+    --input-padding: 0 12px;
+}
+
+body {
+    margin: 0;
+    padding: var(--page-padding);
+    font-family: var(--font-family);
+    background: var(--bg-primary);
+    color: var(--text-primary);
+}
+
+h1 {
+    margin-bottom: 24px;
+}
+
+button,
+a.btn-standard {
+    cursor: pointer;
+    border: 1px solid var(--border-medium);
+    background: var(--bg-surface);
+    color: var(--text-primary);
+    transition:
+        border-color var(--transition-fast),
+        background var(--transition-fast);
+    font-family: var(--font-family);
+}
+
+button:hover,
+a.btn-standard:hover {
+    background: var(--bg-elevated);
+}
+
+.btn-standard {
+    height: var(--touch-target);
+    padding: var(--input-padding);
+}
+
+input[type="text"],
+input[type="password"] {
+    height: var(--touch-target);
+    font-size: var(--font-size-ui);
+    padding: var(--input-padding);
+    border: 1px solid var(--border-medium);
+    background: var(--bg-surface);
+    color: var(--text-primary);
+    font-family: var(--font-family);
+    border-radius: var(--radius-small);
+}
+
+.auth-body {
+    min-height: 100vh;
+}
+
+.auth-main {
+    display: flex;
+    flex-direction: column;
+    gap: 1.25rem;
+    width: min(440px, calc(100vw - 32px));
+    margin: max(2rem, 12vh) auto 3rem;
+}
+
+.auth-card {
+    padding: 1.5rem;
+    background: var(--bg-surface);
+    border: 1px solid var(--border-medium);
+    border-radius: var(--radius-medium);
+}
+
+.auth-card h1,
+.auth-card h2 {
+    margin: 0 0 1rem;
+}
+
+.auth-card h1 { font-size: 1.4rem; }
+.auth-card h2 { font-size: 1.1rem; }
+
+.auth-form {
+    display: flex;
+    flex-direction: column;
+    gap: 0.85rem;
+}
+
+.auth-form label {
+    display: flex;
+    flex-direction: column;
+    gap: 0.35rem;
+    font-size: 0.85rem;
+    color: var(--text-muted);
+}
+
+.auth-form input[type="text"],
+.auth-form input[type="password"] {
+    width: 100%;
+    box-sizing: border-box;
+}
+
+.auth-primary,
+.auth-provider {
+    width: 100%;
+    box-sizing: border-box;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    text-decoration: none;
+    color: inherit;
+}
+
+.auth-providers {
+    display: flex;
+    flex-direction: column;
+    gap: 0.6rem;
+}
+
+.auth-divider {
+    display: flex;
+    align-items: center;
+    gap: 0.75rem;
+    margin: 1rem 0;
+    color: var(--text-muted);
+    font-size: 0.8rem;
+}
+
+.auth-divider::before,
+.auth-divider::after {
+    content: "";
+    flex: 1;
+    border-top: 1px solid var(--border-medium);
+}
+
+.auth-error {
+    margin: 0 0 1rem;
+    padding: 0.6rem 0.8rem;
+    border-radius: var(--radius-small);
+    font-size: 0.9rem;
+    color: #f0b3b3;
+    background: rgba(186, 90, 90, 0.15);
+    border: 1px solid rgba(186, 90, 90, 0.4);
+}

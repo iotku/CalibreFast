@@ -6,6 +6,8 @@ import (
 	"net/http/cookiejar"
 	"net/http/httptest"
 	"net/url"
+	"os"
+	"regexp"
 	"strings"
 	"testing"
 	"time"
@@ -261,6 +263,33 @@ func TestLoginPageRevealsNothing(t *testing.T) {
 	for _, leak := range []string{"Secret Stacks", "CalibreFast", `href="/"`, "/authors", "/search", "<script", "tb-nav", "user-nav"} {
 		if strings.Contains(body, leak) {
 			t.Errorf("sign-in page contains %q", leak)
+		}
+	}
+	// Nor the app's stylesheet, which names every feature: only its own.
+	if want, _ := assetURL("login.css"); !strings.Contains(body, want) {
+		t.Errorf("sign-in page doesn't link %s", want)
+	}
+	if full, _ := assetURL("style.css"); strings.Contains(body, full) {
+		t.Errorf("sign-in page links the app stylesheet %s", full)
+	}
+}
+
+// login.css styles the sign-in page and nothing else: every class it names
+// is one login.html uses, so it can't grow a description of the rest of the
+// app.
+func TestLoginCSSOnlyNamesLoginClasses(t *testing.T) {
+	css, err := os.ReadFile("web/login.css")
+	if err != nil {
+		t.Fatal(err)
+	}
+	page, err := os.ReadFile("templates/login.html")
+	if err != nil {
+		t.Fatal(err)
+	}
+	css = regexp.MustCompile(`(?s)/\*.*?\*/`).ReplaceAll(css, nil)
+	for _, m := range regexp.MustCompile(`\.([a-zA-Z][\w-]*)`).FindAllSubmatch(css, -1) {
+		if c := string(m[1]); !regexp.MustCompile(`class="[^"]*\b` + regexp.QuoteMeta(c) + `\b`).Match(page) {
+			t.Errorf("login.css names .%s, which login.html doesn't use", c)
 		}
 	}
 }
