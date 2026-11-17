@@ -116,7 +116,7 @@ type FilteredPageData struct {
 	Members     []string
 	Grouped     bool
 	GroupsError string // non-empty when grouping is read-only
-	Writable    bool   // server started with -allow-writes (shows the group editor)
+	Writable    bool   // an admin, with -allow-writes (shows the group editor)
 	Featured    bool   // on the aggregate page's Featured list
 	Description string // the entry's description (aggregate_meta)
 	ImageURL    string // the entry's picture, "" for none
@@ -474,7 +474,7 @@ func filteredPageHandler(c *category) http.HandlerFunc {
 			Grouped:     grouped,
 			PageURL:     c.href(value) + "?api=1",
 			TotalBooks:  getFilteredTotal(c, name, members),
-			Writable:    canEditLibrary(r),
+			Writable:    canAdminLibrary(r), // groups and featured entries: admins
 		}
 		inLibrary := data.TotalBooks
 		data.Missing = len(placeholdersFor(c, members))
@@ -482,7 +482,7 @@ func filteredPageHandler(c *category) http.HandlerFunc {
 		if data.Missing > 0 {
 			w.Header().Set("Cache-Control", "no-cache")
 		}
-		if data.Writable && (c.Key == "series" || c.Key == "author") {
+		if canEditLibrary(r) && (c.Key == "series" || c.Key == "author") {
 			q := url.Values{}
 			if c.Key == "series" {
 				q.Set("series", name)

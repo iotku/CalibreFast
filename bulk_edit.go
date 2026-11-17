@@ -35,9 +35,9 @@ const bulkMaxBooks = 50000
 var bulkMu sync.Mutex
 
 func registerBulkEditRoutes() {
-	http.HandleFunc("GET /library/edit", requireWrites(bulkEditPage))
-	http.HandleFunc("GET /api/library/table", requireWrites(libraryTableHandler))
-	http.HandleFunc("POST /api/library/bulk", requireWrites(bulkEditHandler))
+	http.HandleFunc("GET /library/edit", requireEditor(bulkEditPage))
+	http.HandleFunc("GET /api/library/table", requireEditor(libraryTableHandler))
+	http.HandleFunc("POST /api/library/bulk", requireEditor(bulkEditHandler))
 	http.HandleFunc("POST /api/library/repair-formats", requireWrites(repairFormatsHandler))
 }
 
@@ -85,7 +85,9 @@ func repairFormatsHandler(w http.ResponseWriter, r *http.Request) {
 
 func bulkEditPage(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Cache-Control", "no-store")
-	logErr(templates.ExecuteTemplate(w, "library-edit.html", PageData{Title: SiteTitle}), "render library-edit")
+	logErr(templates.ExecuteTemplate(w, "library-edit.html", map[string]any{
+		"Title": SiteTitle, "CanRepair": canAdminLibrary(r), // repair-formats is an admin's
+	}), "render library-edit")
 }
 
 // tableBook is one row of the bulk editor (TS: TableBook in web/types.ts).
@@ -420,6 +422,12 @@ type bulkResult struct {
 
 // bulkEditBooks makes the edit to each book.
 func bulkEditBooks(uuids []string, edit *bulkEdit) bulkResult {
+	return bulkEditBooksAs(uuids, edit, nil)
+}
+
+// bulkEditBooksAs is bulkEditBooks by a user, each change logged
+// (editlog.go).
+func bulkEditBooksAs(uuids []string, edit *bulkEdit, by *User) bulkResult {
 	bulkMu.Lock()
 	defer bulkMu.Unlock()
 	res := bulkResult{Failed: []bulkFailure{}, Books: []tableBook{}}
@@ -430,6 +438,7 @@ func bulkEditBooks(uuids []string, edit *bulkEdit) bulkResult {
 			res.Failed = append(res.Failed, bulkFailure{u, err.Error()})
 			continue
 		}
+		before := snapBook(u)
 		if !edit.apply(m) {
 			res.Unchanged++
 			continue
@@ -440,6 +449,9 @@ func bulkEditBooks(uuids []string, edit *bulkEdit) bulkResult {
 			continue
 		}
 		bookMetadataCache.Delete(u)
+		if before != nil {
+			logBookEdit(by, "bulk edit", u, before)
+		}
 		changed = append(changed, u)
 	}
 	res.Changed = len(changed)
@@ -501,7 +513,7 @@ func bulkEditHandler(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 	}
-	res := bulkEditBooks(uniqueStrings(req.UUIDs), &req.Edit)
+	res := bulkEditBooksAs(uniqueStrings(req.UUIDs), &req.Edit, currentUser(r))
 	if res.Changed > 0 {
 		log.Printf("bulk edit: %s changed %d book(s) (%d unchanged, %d failed)", currentUser(r).Username, res.Changed, res.Unchanged, len(res.Failed))
 	}

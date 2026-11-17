@@ -24,8 +24,8 @@ type notDuplicateSet struct {
 }
 
 func registerNotDuplicateRoutes() {
-	http.HandleFunc("POST /api/library/not-duplicates", requireWrites(markNotDuplicatesHandler))
-	http.HandleFunc("DELETE /api/library/not-duplicates/{id}", requireWrites(unmarkNotDuplicatesHandler))
+	http.HandleFunc("POST /api/library/not-duplicates", requireEditor(markNotDuplicatesHandler))
+	http.HandleFunc("DELETE /api/library/not-duplicates/{id}", requireEditor(unmarkNotDuplicatesHandler))
 }
 
 // notDuplicateSets reads every set.
@@ -97,8 +97,10 @@ func markNotDuplicatesHandler(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, err.Error(), http.StatusInternalServerError)
 		return
 	}
+	set := notDuplicateSet{ID: id, UUIDs: uniqueStrings(uuids)}
+	logEdit(currentUser(r), "mark not duplicates", logKindNotDup, strconv.FormatInt(id, 10), bookTitle(set.UUIDs[0]), nil, set)
 	w.Header().Set("Content-Type", "application/json")
-	logErr(json.NewEncoder(w).Encode(notDuplicateSet{ID: id, UUIDs: uniqueStrings(uuids)}), "encode not duplicates")
+	logErr(json.NewEncoder(w).Encode(set), "encode not duplicates")
 }
 
 func unmarkNotDuplicatesHandler(w http.ResponseWriter, r *http.Request) {
@@ -106,6 +108,14 @@ func unmarkNotDuplicatesHandler(w http.ResponseWriter, r *http.Request) {
 	if err != nil {
 		http.Error(w, "bad id", http.StatusBadRequest)
 		return
+	}
+	var set *notDuplicateSet
+	if sets, err := notDuplicateSets(); err == nil {
+		for _, s := range sets {
+			if s.ID == id {
+				set = &s
+			}
+		}
 	}
 	res, err := appDB.Exec(`DELETE FROM not_duplicate_sets WHERE id = ?`, id)
 	if err != nil {
@@ -115,6 +125,9 @@ func unmarkNotDuplicatesHandler(w http.ResponseWriter, r *http.Request) {
 	if n, _ := res.RowsAffected(); n == 0 {
 		http.Error(w, "no such marking", http.StatusNotFound)
 		return
+	}
+	if set != nil && len(set.UUIDs) > 0 {
+		logEdit(currentUser(r), "unmark not duplicates", logKindNotDup, r.PathValue("id"), bookTitle(set.UUIDs[0]), set, nil)
 	}
 	w.WriteHeader(http.StatusNoContent)
 }

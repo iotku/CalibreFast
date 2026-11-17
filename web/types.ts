@@ -50,6 +50,7 @@ export interface User {
     id: number;
     username: string;
     is_admin: boolean;
+    is_editor: boolean;
     disabled: boolean;
     has_password: boolean;
 }
@@ -58,6 +59,7 @@ export interface User {
 export interface MeResponse {
     user: User | null;
     can_edit_library?: boolean;
+    can_admin_library?: boolean;
     registration?: boolean;
     /**
      * Books from the watch folder waiting for review. Only sent to those who

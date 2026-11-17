@@ -79,9 +79,9 @@ func syncKeyUser(username, authKey string) *User {
 	var u User
 	var hash sql.NullString
 	stored := kosync.DummyKeyHash
-	err := appDB.QueryRow(`SELECT u.id, u.username, u.password_hash, u.is_admin, u.disabled, k.key_hash
+	err := appDB.QueryRow(`SELECT u.id, u.username, u.password_hash, u.is_admin, u.is_editor, u.disabled, k.key_hash
 		FROM users u JOIN sync_keys k ON k.user_id = u.id WHERE u.username = ?`, username).
-		Scan(&u.ID, &u.Username, &hash, &u.IsAdmin, &u.Disabled, &stored)
+		Scan(&u.ID, &u.Username, &hash, &u.IsAdmin, &u.IsEditor, &u.Disabled, &stored)
 	match := subtle.ConstantTimeCompare([]byte(kosync.KeyHash(authKey)), []byte(stored)) == 1
 	if err != nil || !match || u.Disabled || username == "" || authKey == "" {
 		return nil

@@ -106,7 +106,7 @@ func allPlaceholders() []*placeholder {
 	if appDB == nil {
 		return nil
 	}
-	rows, err := appDB.Query(`SELECT uuid, meta, cover, source, created_at, updated_at FROM placeholders`)
+	rows, err := appDB.Query(`SELECT uuid, meta, cover, source, created_at, updated_at FROM placeholders WHERE deleted_at IS NULL`)
 	if err != nil {
 		log.Println("placeholders:", err)
 		return nil
@@ -204,27 +204,31 @@ func savePlaceholder(p *placeholder, by *User) error {
 	return err
 }
 
-// deletePlaceholder removes one, and its cover if nothing else uses it.
+// deletePlaceholder removes one. It is only marked removed (deleted_at),
+// cover and all, so the removal can be undone (editlog.go).
 func deletePlaceholder(id string) error {
 	p := placeholderByUUID(id)
 	if p == nil {
 		return sql.ErrNoRows
 	}
-	if _, err := appDB.Exec(`DELETE FROM placeholders WHERE uuid = ?`, id); err != nil {
+	if _, err := appDB.Exec(`UPDATE placeholders SET deleted_at = ? WHERE uuid = ?`, nowUnix(), id); err != nil {
 		return err
 	}
 	placeholdersChanged()
 	gapsPlaceholderChanged(p.Meta.Series)
-	removeUnusedPlaceholderCover(p.Cover)
 	return nil
 }
 
+// removeUnusedPlaceholderCover deletes a cover no placeholder uses, removed
+// ones included, and the edit log doesn't name (an undo may want it back).
 func removeUnusedPlaceholderCover(name string) {
 	if name == "" || !aggregateImageRe.MatchString(name) {
 		return
 	}
 	var n int
-	if err := appDB.QueryRow(`SELECT COUNT(*) FROM placeholders WHERE cover = ?`, name).Scan(&n); err != nil || n > 0 {
+	if err := appDB.QueryRow(`SELECT (SELECT COUNT(*) FROM placeholders WHERE cover = ?) +
+		(SELECT COUNT(*) FROM edit_log WHERE kind = 'placeholder' AND (instr(before, ?) > 0 OR instr(after, ?) > 0))`,
+		name, name, name).Scan(&n); err != nil || n > 0 {
 		return
 	}
 	if err := os.Remove(filepath.Join(dataDir, placeholderCoversDir, name)); err != nil && !os.IsNotExist(err) {
@@ -592,6 +596,7 @@ func placeholderCreateHandler(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "could not save", http.StatusInternalServerError)
 		return
 	}
+	logEdit(currentUser(r), "add placeholder", logKindPlaceholder, p.UUID, p.Meta.Title, nil, snapPlaceholder(p))
 	writeJSON(w, http.StatusOK, map[string]string{"uuid": p.UUID, "url": p.href()})
 }
 
@@ -616,17 +621,20 @@ func placeholderUpdateHandler(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, err.Error(), http.StatusBadRequest)
 		return
 	}
+	before := snapPlaceholder(p)
 	p.Meta = m
 	if err := savePlaceholder(p, nil); err != nil {
 		log.Println("placeholder:", err)
 		http.Error(w, "could not save", http.StatusInternalServerError)
 		return
 	}
+	logEdit(currentUser(r), "edit placeholder", logKindPlaceholder, p.UUID, p.Meta.Title, before, snapPlaceholder(p))
 	writeJSON(w, http.StatusOK, map[string]string{"uuid": p.UUID, "url": p.href()})
 }
 
 // DELETE /api/placeholders/{uuid}
 func placeholderDeleteHandler(w http.ResponseWriter, r *http.Request) {
+	p := placeholderByUUID(r.PathValue("uuid"))
 	if err := deletePlaceholder(r.PathValue("uuid")); errors.Is(err, sql.ErrNoRows) {
 		http.Error(w, "no such placeholder", http.StatusNotFound)
 		return
@@ -635,6 +643,7 @@ func placeholderDeleteHandler(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "could not delete", http.StatusInternalServerError)
 		return
 	}
+	logEdit(currentUser(r), "remove placeholder", logKindPlaceholder, p.UUID, p.Meta.Title, snapPlaceholder(p), nil)
 	w.WriteHeader(http.StatusNoContent)
 }
 
@@ -646,6 +655,7 @@ func placeholderCoverHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	old := p.Cover
+	before := snapPlaceholder(p)
 	if r.Method == http.MethodDelete {
 		p.Cover = ""
 	} else {
@@ -676,6 +686,7 @@ func placeholderCoverHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	if old != p.Cover {
+		logEdit(currentUser(r), "placeholder cover", logKindPlaceholder, p.UUID, p.Meta.Title, before, snapPlaceholder(p))
 		removeUnusedPlaceholderCover(old)
 	}
 	writeJSON(w, http.StatusOK, map[string]string{"cover": p.coverURL()})
@@ -785,16 +796,16 @@ func withPlaceholder(m OPFMetadata, p *placeholder) OPFMetadata {
 }
 
 func registerPlaceholderRoutes() {
-	http.HandleFunc("GET /missing", requireWrites(missingPageHandler))
-	http.HandleFunc("GET /missing/new", requireWrites(newPlaceholderPageHandler))
+	http.HandleFunc("GET /missing", requireEditor(missingPageHandler))
+	http.HandleFunc("GET /missing/new", requireEditor(newPlaceholderPageHandler))
 	http.HandleFunc("GET /missing/{uuid}", placeholderPageHandler)
 	http.HandleFunc("GET /"+placeholderCoversDir+"/{file}", func(w http.ResponseWriter, r *http.Request) {
 		serveHashedImage(w, r, placeholderCoversDir)
 	})
-	http.HandleFunc("POST /api/placeholders", requireWrites(placeholderCreateHandler))
-	http.HandleFunc("PUT /api/placeholders/{uuid}", requireWrites(placeholderUpdateHandler))
-	http.HandleFunc("DELETE /api/placeholders/{uuid}", requireWrites(placeholderDeleteHandler))
-	http.HandleFunc("POST /api/placeholders/{uuid}/cover", requireWrites(placeholderCoverHandler))
-	http.HandleFunc("DELETE /api/placeholders/{uuid}/cover", requireWrites(placeholderCoverHandler))
-	http.HandleFunc("POST /api/placeholders/{uuid}/files", requireWrites(placeholderFilesHandler))
+	http.HandleFunc("POST /api/placeholders", requireEditor(placeholderCreateHandler))
+	http.HandleFunc("PUT /api/placeholders/{uuid}", requireEditor(placeholderUpdateHandler))
+	http.HandleFunc("DELETE /api/placeholders/{uuid}", requireEditor(placeholderDeleteHandler))
+	http.HandleFunc("POST /api/placeholders/{uuid}/cover", requireEditor(placeholderCoverHandler))
+	http.HandleFunc("DELETE /api/placeholders/{uuid}/cover", requireEditor(placeholderCoverHandler))
+	http.HandleFunc("POST /api/placeholders/{uuid}/files", requireEditor(placeholderFilesHandler))
 }

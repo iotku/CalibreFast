@@ -340,6 +340,31 @@ var migrations = []string{
 		updated_at INTEGER NOT NULL
 	);
 	`,
+	// 20: editors (auth.go: they edit the library, an admin can undo it),
+	// the log of library changes that makes that possible (editlog.go), and
+	// placeholders removed but kept (deleted_at), so a removal can be undone.
+	// kind says how an entry is undone; before/after are JSON, NULL where
+	// the thing didn't exist (a new book, a removed placeholder).
+	`
+	ALTER TABLE users ADD COLUMN is_editor INTEGER NOT NULL DEFAULT 0;
+	ALTER TABLE placeholders ADD COLUMN deleted_at INTEGER;
+	CREATE TABLE edit_log (
+		id          INTEGER PRIMARY KEY,
+		user_id     INTEGER REFERENCES users(id) ON DELETE SET NULL,
+		username    TEXT    NOT NULL,              -- kept when the account is deleted
+		at          INTEGER NOT NULL,              -- unix seconds
+		action      TEXT    NOT NULL,              -- for people: "edit", "merge", "remove", …
+		kind        TEXT    NOT NULL,              -- how it's undone: book | cover | placeholder | recycle | restore | not-dup | import | revert
+		target      TEXT    NOT NULL DEFAULT '',   -- book or placeholder uuid, batch id, …
+		title       TEXT    NOT NULL DEFAULT '',
+		before      TEXT,
+		after       TEXT,
+		reverted_at INTEGER,
+		reverted_by TEXT
+	);
+	CREATE INDEX edit_log_user ON edit_log(user_id, at);
+	CREATE INDEX edit_log_target ON edit_log(kind, target);
+	`,
 }
 
 // openAppDB opens (creating if needed) and migrates the app database.

@@ -291,13 +291,19 @@ func (b *importInbox) stageForPlaceholder(paths []string, p *placeholder) (*pend
 	return it, nil
 }
 
-// discard deletes a waiting book and its files.
+// discard takes a waiting book out of the queue, to discardedDir.
 func (b *importInbox) discard(id string) error {
 	it := b.take(id)
 	if it == nil {
 		return fs.ErrNotExist
 	}
-	if err := os.RemoveAll(b.itemDir(id)); err != nil {
+	// Kept, not deleted: it may be someone's only copy, and the discard can
+	// be undone (editlog.go). Nothing on the web empties the folder.
+	if err := os.MkdirAll(b.discardedDir(), 0o700); err != nil {
+		b.put(it)
+		return err
+	}
+	if err := moveDir(b.itemDir(id), filepath.Join(b.discardedDir(), id)); err != nil {
 		b.put(it)
 		return err
 	}
@@ -779,19 +785,19 @@ type importQueue struct {
 }
 
 func registerImportRoutes() {
-	http.HandleFunc("GET /import", requireWrites(importQueuePage))
-	http.HandleFunc("GET /api/imports", requireWrites(importQueueHandler))
-	http.HandleFunc("GET /import/{id}", requireWrites(importReviewPage))
-	http.HandleFunc("GET /import/{id}/metadata", requireWrites(importMetadataHandler))
-	http.HandleFunc("POST /import/{id}/apply", requireWrites(importApplyHandler))
-	http.HandleFunc("POST /import/{id}/discard", requireWrites(importDiscardHandler))
-	http.HandleFunc("/import/{id}/isbns", requireWrites(importISBNsHandler))
-	http.HandleFunc("GET /import/{id}/formats", requireWrites(importFormatsHandler))
-	http.HandleFunc("GET /import/{id}/file/{format}", requireWrites(importFileHandler))
-	http.HandleFunc("GET /import/{id}/cover", requireWrites(importCoverHandler))
-	http.HandleFunc("POST /import/{id}/cover", requireWrites(importSaveCoverHandler))
-	http.HandleFunc("GET /import/{id}/cover/status", requireWrites(importCoverStatusHandler))
-	http.HandleFunc("POST /import/{id}/cover/revert", requireWrites(importRevertCoverHandler))
+	http.HandleFunc("GET /import", requireEditor(importQueuePage))
+	http.HandleFunc("GET /api/imports", requireEditor(importQueueHandler))
+	http.HandleFunc("GET /import/{id}", requireEditor(importReviewPage))
+	http.HandleFunc("GET /import/{id}/metadata", requireEditor(importMetadataHandler))
+	http.HandleFunc("POST /import/{id}/apply", requireEditor(importApplyHandler))
+	http.HandleFunc("POST /import/{id}/discard", requireEditor(importDiscardHandler))
+	http.HandleFunc("/import/{id}/isbns", requireEditor(importISBNsHandler))
+	http.HandleFunc("GET /import/{id}/formats", requireEditor(importFormatsHandler))
+	http.HandleFunc("GET /import/{id}/file/{format}", requireEditor(importFileHandler))
+	http.HandleFunc("GET /import/{id}/cover", requireEditor(importCoverHandler))
+	http.HandleFunc("POST /import/{id}/cover", requireEditor(importSaveCoverHandler))
+	http.HandleFunc("GET /import/{id}/cover/status", requireEditor(importCoverStatusHandler))
+	http.HandleFunc("POST /import/{id}/cover/revert", requireEditor(importRevertCoverHandler))
 }
 
 // importFromRequest is the waiting book a request names, or nil after
@@ -938,9 +944,13 @@ func importApplyHandler(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "Couldn't add the book to the library: "+err.Error(), http.StatusInternalServerError)
 		return
 	}
+	logBookEdit(currentUser(r), "import", bookUUID, nil)
 	if it.Placeholder != "" {
+		p := placeholderByUUID(it.Placeholder)
 		if err := deletePlaceholder(it.Placeholder); err != nil && !errors.Is(err, sql.ErrNoRows) {
 			log.Printf("imports: placeholder %s: %v", it.Placeholder, err)
+		} else if p != nil {
+			logEdit(currentUser(r), "placeholder added", logKindPlaceholder, p.UUID, p.Meta.Title, snapPlaceholder(p), nil)
 		}
 	}
 	catalogChanged(bookUUID)
@@ -959,6 +969,7 @@ func importDiscardHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	log.Printf("imports: %q discarded by %s", it.Merged.Title, currentUser(r).Username)
+	logEdit(currentUser(r), "discard import", logKindImport, it.ID, it.Merged.Title, nil, nil)
 	writeJSON(w, http.StatusOK, map[string]any{"success": true})
 }
 

@@ -66,6 +66,7 @@ byId("add-user", HTMLFormElement).addEventListener("submit", async (e) => {
             username: field(f, "username").value,
             password: field(f, "password").value,
             is_admin: field(f, "is_admin").checked,
+            is_editor: field(f, "is_editor").checked,
         });
         location.reload();
     } catch (err) {

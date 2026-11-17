@@ -367,9 +367,9 @@ func mergeIDs(r *http.Request) (ids []string, keep string) {
 }
 
 func registerMergeRoutes() {
-	http.HandleFunc("GET /book/merge", requireWrites(mergePage))
-	http.HandleFunc("GET /merge/metadata", requireWrites(mergeMetadataHandler))
-	http.HandleFunc("POST /merge/apply", requireWrites(mergeApplyHandler))
+	http.HandleFunc("GET /book/merge", requireEditor(mergePage))
+	http.HandleFunc("GET /merge/metadata", requireEditor(mergeMetadataHandler))
+	http.HandleFunc("POST /merge/apply", requireEditor(mergeApplyHandler))
 }
 
 func mergePage(w http.ResponseWriter, r *http.Request) {
@@ -860,7 +860,13 @@ func mergeApplyHandler(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "the book to keep must be one of the books merged", http.StatusBadRequest)
 		return
 	}
-	res, err := mergeBooks(&req, currentUser(r).Username)
+	u := currentUser(r)
+	before := snapBook(req.Keep)
+	coverDone := coverSnapper(u, "merge", req.Keep, bookTitle(req.Keep))
+	res, err := mergeBooks(&req, u.Username)
+	if res != nil {
+		logMerge(u, "merge", res, before, coverDone)
+	}
 	if res == nil {
 		status := http.StatusInternalServerError
 		if errors.Is(err, errNoSuchBook) {

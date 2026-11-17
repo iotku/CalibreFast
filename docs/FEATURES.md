@@ -285,6 +285,8 @@ Admins on a server with `-allow-writes` can remove books from the library. Nothi
 ## Accounts, favorites, progress and shelves
 
 - **Accounts:** password, or GitHub/Google sign-in. Admins manage users at `/admin/users`. See [SECURITY.md](SECURITY.md) for who can do what.
+- **Editors** (the **Editor** box on `/admin/users`) edit the library as admins do (upload, metadata, covers, merging, files, removing books, the import queue, placeholders) but can't manage users or the server's settings (groups, featured entries, home page tags, library repairs).
+- **Activity** (`/admin/activity`, admins): every change made to the library from the web, newest first, by whom, filtered by user. **Undo** puts back what one change replaced; with a user chosen, **Undo all of this user's changes since…** undoes theirs from a moment on, newest first. A change someone else has changed again since is left alone and listed as such. Undoing removes nothing for good either: books it takes out go to the Recycling Bin, and the undo is listed and can be undone. A merge's undo brings back the merged-away books and the files the merge replaced (the files it copied into the kept book stay there).
 - **One-time links** (`/l/<token>`), created on `/admin/users`:
   - a **sign-in link** for an existing user
   - an **invite** to create an account, optionally as an admin, even with registration closed
