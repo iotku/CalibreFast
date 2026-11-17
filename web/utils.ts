@@ -103,8 +103,40 @@ export function escapeHtml(str: string): string {
 }
 
 /** URL of a book's grid thumbnail. */
-export function coverUrl(book: Pick<Book, "uuid" | "last_modified">): string {
-    return `/cover-thumb/${encodeURIComponent(book.uuid)}?t=${encodeURIComponent(book.last_modified)}`;
+export function coverUrl(book: Pick<Book, "uuid" | "last_modified" | "series_card">): string {
+    const uuid = book.series_card?.cover ?? book.uuid; // a series: its first book's
+    return `/cover-thumb/${encodeURIComponent(uuid)}?t=${encodeURIComponent(book.last_modified)}`;
+}
+
+/** "Series · 5 books", a series card's banner and its Arrange row's line. */
+export function seriesLabel(count: number): string {
+    return `Series · ${count} ${count === 1 ? "book" : "books"}`;
+}
+
+/**
+ * A shelf's whole series (Book.series_card): the first book's cover under
+ * a "Series · N books" banner, stacked, linking to the series page. No
+ * data-uuid, so the reading marks, cover buttons, selection and the popup's
+ * next/previous all pass it by.
+ */
+function renderSeriesCard(book: Book, s: NonNullable<Book["series_card"]>, coverReady: boolean): string {
+    const name = escapeHtml(s.name || book.title);
+    const author = escapeHtml(book.authors || "");
+    const cover = escapeHtml(coverUrl(book));
+    const img = coverReady
+        ? `<img class="book-cover loaded" src="${cover}" alt="" />`
+        : `<img class="book-cover" data-src="${cover}" alt="" fetchpriority="low" />`;
+    const label = escapeHtml(seriesLabel(s.count));
+    return `<div class="book series-card" data-series="${name}">
+    <a href="${escapeHtml(s.href)}" class="book-link series-link" aria-label="${name}, ${label}">
+        <div class="cover-wrapper" style="--cover-hue:${coverHue(book)}">${img}<span class="series-banner" aria-hidden="true">${label}</span></div>
+    </a>
+    <div class="book-info">
+        <h2>${name}</h2>
+        <div class="book-author">${author}</div>
+        <div class="formats"></div>
+    </div>
+</div>`;
 }
 
 /**
@@ -118,6 +150,7 @@ export function coverUrl(book: Pick<Book, "uuid" | "last_modified">): string {
  * without the fade-in.
  */
 export function renderBookCard(book: Book, coverReady = false): string {
+    if (book.series_card) return renderSeriesCard(book, book.series_card, coverReady);
     const title = escapeHtml(book.title || "Untitled");
     const author = escapeHtml(book.authors || "Unknown Author");
     const uuid = escapeHtml(book.uuid);

@@ -31,19 +31,23 @@ func bookExists(uuid string) bool {
 
 // booksByUUIDs returns grid entries for uuids, in the same order. Books no
 // longer in the library are skipped. From the catalog; only books it doesn't
-// have yet (added a moment ago) are read from metadata.db.
+// have yet (added a moment ago) are read from metadata.db. A shelf's series
+// keys are series cards (shelf_series.go).
 func booksByUUIDs(uuids []string) ([]Book, error) {
 	out := make([]Book, 0, len(uuids))
 	if len(uuids) == 0 {
 		return out, nil
 	}
 	cat := currentCatalog()
-	var missing []string
+	var missing, seriesKeys []string
 	for _, u := range uuids {
-		if _, ok := cat.lookup(u); !ok {
+		if _, ok := shelfSeriesName(u); ok {
+			seriesKeys = append(seriesKeys, u)
+		} else if _, ok := cat.lookup(u); !ok {
 			missing = append(missing, u)
 		}
 	}
+	series := seriesEntries(cat, seriesKeys)
 	byUUID := map[string]Book{}
 	if len(missing) > 0 {
 		var err error
@@ -52,7 +56,9 @@ func booksByUUIDs(uuids []string) ([]Book, error) {
 		}
 	}
 	for _, u := range uuids {
-		if b, ok := cat.lookup(u); ok {
+		if b, ok := series[u]; ok {
+			out = append(out, b)
+		} else if b, ok := cat.lookup(u); ok {
 			out = append(out, b.Book)
 		} else if b, ok := byUUID[u]; ok {
 			out = append(out, b)
@@ -358,6 +364,11 @@ type BookUserActionsData struct {
 	Progress     string // where the user is, e.g. "Page 5 of 25 · synced 2 minutes ago" (bookprogress.go)
 	Shelves      []shelfMark
 	OnShelves    int
+	// The book's series (as browsed), and the shelves its whole series can
+	// go on (shelf_series.go).
+	Series          string
+	SeriesShelves   []shelfMark
+	SeriesOnShelves int
 }
 
 // bookUserActionsHandler: GET /book/me/{uuid} — the favorite / status /
@@ -379,6 +390,15 @@ func bookUserActionsHandler(w http.ResponseWriter, r *http.Request) {
 		for _, s := range data.Shelves {
 			if s.Has {
 				data.OnShelves++
+			}
+		}
+		if name, _, ok := librarySeries(uuid); ok {
+			data.Series, _, _ = groups.resolve("series", name)
+			data.SeriesShelves = seriesShelfMarks(u, data.Series)
+			for _, s := range data.SeriesShelves {
+				if s.Has {
+					data.SeriesOnShelves++
+				}
 			}
 		}
 	}

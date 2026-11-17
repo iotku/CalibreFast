@@ -28,8 +28,10 @@ type Shelf struct {
 	Name        string `json:"name"`
 	Description string `json:"description"`
 	Global      bool   `json:"global"`
-	Count       int    `json:"count"`
-	CanEdit     bool   `json:"can_edit"`
+	Count       int    `json:"count"` // entries: books and whole series
+	// Series: how many of the entries are whole series (shelf_series.go).
+	Series  int  `json:"series"`
+	CanEdit bool `json:"can_edit"`
 	// Featured: a global shelf an admin put on everyone's Discover page.
 	Featured bool `json:"featured"`
 	// Pinned: on the current user's Discover page (featured ones are,
@@ -49,11 +51,17 @@ type shelfMark struct {
 
 var errShelfNotFound = errors.New("no such shelf")
 
+// shelfSeriesCount: SQL for a shelf's (s) whole-series entries.
+const shelfSeriesCount = `(SELECT COUNT(*) FROM shelf_books b WHERE b.shelf_id = s.id AND b.book_uuid LIKE '` + seriesKeyPrefix + `%')`
+
+// BookCount: the entries that are single books (for "N books · M series").
+func (s Shelf) BookCount() int { return s.Count - s.Series }
+
 func getShelf(id int64) (*Shelf, error) {
 	var s Shelf
 	err := appDB.QueryRow(`SELECT s.id, s.name, s.description, s.owner_id, s.featured_pos IS NOT NULL,
-			(SELECT COUNT(*) FROM shelf_books b WHERE b.shelf_id = s.id)
-		FROM shelves s WHERE s.id = ?`, id).Scan(&s.ID, &s.Name, &s.Description, &s.ownerID, &s.Featured, &s.Count)
+			(SELECT COUNT(*) FROM shelf_books b WHERE b.shelf_id = s.id), `+shelfSeriesCount+`
+		FROM shelves s WHERE s.id = ?`, id).Scan(&s.ID, &s.Name, &s.Description, &s.ownerID, &s.Featured, &s.Count, &s.Series)
 	if errors.Is(err, sql.ErrNoRows) {
 		return nil, errShelfNotFound
 	}
@@ -91,7 +99,7 @@ func listShelves(u *User) (mine, global []Shelf, err error) {
 	}
 	rows, err := appDB.Query(`SELECT s.id, s.name, s.description, s.owner_id, s.featured_pos IS NOT NULL,
 			COALESCE(p.pinned, s.featured_pos IS NOT NULL),
-			(SELECT COUNT(*) FROM shelf_books b WHERE b.shelf_id = s.id)
+			(SELECT COUNT(*) FROM shelf_books b WHERE b.shelf_id = s.id), `+shelfSeriesCount+`
 		FROM shelves s LEFT JOIN shelf_pins p ON p.shelf_id = s.id AND p.user_id = ?1
 		WHERE s.owner_id IS NULL OR s.owner_id = ?1
 		ORDER BY s.position IS NULL, s.position, s.featured_pos IS NULL, s.featured_pos, s.name COLLATE NOCASE`, uid)
@@ -102,7 +110,7 @@ func listShelves(u *User) (mine, global []Shelf, err error) {
 	mine, global = []Shelf{}, []Shelf{}
 	for rows.Next() {
 		var s Shelf
-		if err := rows.Scan(&s.ID, &s.Name, &s.Description, &s.ownerID, &s.Featured, &s.Pinned, &s.Count); err != nil {
+		if err := rows.Scan(&s.ID, &s.Name, &s.Description, &s.ownerID, &s.Featured, &s.Pinned, &s.Count, &s.Series); err != nil {
 			return nil, nil, err
 		}
 		s.Pinned = s.Pinned && u != nil
@@ -379,7 +387,7 @@ func shelfPageHandler(w http.ResponseWriter, r *http.Request) {
 	}
 	serveUUIDList(w, r, uuidList{
 		Title: s.Name, Sub: sub, BaseURL: "/shelf/" + itoa(s.ID),
-		EmptyText: "This shelf is empty. Add books from a book's Shelves menu.",
+		EmptyText: "This shelf is empty. Add books from a book's Shelves menu, or a whole series from its page.",
 		Extra:     extra,
 		Count:     countQuery(`SELECT COUNT(*) FROM shelf_books WHERE shelf_id = ?`, s.ID),
 		Page: func(limit, offset int) ([]string, error) {
@@ -397,6 +405,7 @@ func registerShelfRoutes() {
 	http.HandleFunc("DELETE /api/shelves/{id}", requireUser(shelfDeleteHandler))
 	http.HandleFunc("PUT /api/shelves/{id}/books/{uuid}", requireUser(shelfAddBookHandler))
 	http.HandleFunc("DELETE /api/shelves/{id}/books/{uuid}", requireUser(shelfRemoveBookHandler))
+	registerShelfSeriesRoutes()
 	registerShelfPinRoutes()
 	registerListOrderRoutes()
 }

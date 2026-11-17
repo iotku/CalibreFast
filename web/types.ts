@@ -13,6 +13,23 @@ export interface Book {
     pubdate: string;
     path: string;
     last_modified: string;
+    /**
+     * A shelf's whole-series entry (Go: seriesCard in shelf_series.go): its
+     * uuid is the "series:<name>" key, its title the series, and its cover,
+     * path, authors and dates are the first book's.
+     */
+    series_card?: SeriesCard;
+}
+
+/** A series on a shelf, shown as one card (Go: seriesCard). */
+export interface SeriesCard {
+    name: string;
+    /** Books in the series. */
+    count: number;
+    /** The first book's uuid: the card's cover. */
+    cover: string;
+    /** The series page. */
+    href: string;
 }
 
 /** Signed-in user (Go: User in auth.go). */

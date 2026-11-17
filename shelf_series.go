@@ -1,0 +1,214 @@
+package main
+
+// A whole series on a shelf. It's a shelf_books row like a book's, whose
+// book_uuid is the key "series:<name>" (the series as browsed: its group's
+// name if it's grouped), so it has a place among the shelf's books and is
+// arranged with them (list_order.go) without anything new in the schema.
+//
+// Shown as one card: the first book's cover with a "Series · N books"
+// banner, linking to the series page. The books are the series' books as
+// the library has them now; a series with none left (renamed, or its books
+// removed) is skipped like a removed book.
+//
+//   - PUT    /api/shelves/{id}/series/{name...}
+//   - DELETE /api/shelves/{id}/series/{name...}
+//
+// Nothing that works on real books (merges, redirects, the Recycling Bin,
+// the readers) ever matches a key: they look rows up by book uuids, and a
+// key is never one.
+
+import (
+	"cmp"
+	"net/http"
+	"slices"
+	"strings"
+)
+
+const (
+	seriesKeyPrefix = "series:"
+	maxShelfKey     = 1024 // longest book_uuid a shelf takes (a series' key)
+)
+
+// seriesCard: what a series entry adds to its grid entry (Book.SeriesCard).
+type seriesCard struct {
+	Name  string `json:"name"`
+	Count int    `json:"count"` // books in the series
+	Cover string `json:"cover"` // the first book's uuid: the card's cover
+	Href  string `json:"href"`  // the series page
+}
+
+func seriesShelfKey(name string) string { return seriesKeyPrefix + name }
+
+// shelfSeriesName: the series a shelf entry's key names, if it's one.
+func shelfSeriesName(key string) (string, bool) { return strings.CutPrefix(key, seriesKeyPrefix) }
+
+// seriesReadingOrder: series index, then the oldest published, then title.
+// TODO: dedupe with seriesLess (workstream E1) once both are merged.
+func seriesReadingOrder(a, b catalogBook) int {
+	if c := cmp.Compare(a.SeriesIndex, b.SeriesIndex); c != 0 {
+		return c
+	}
+	if c := strings.Compare(a.PubDate, b.PubDate); c != 0 {
+		return c
+	}
+	if c := strings.Compare(strings.ToLower(a.Title), strings.ToLower(b.Title)); c != 0 {
+		return c
+	}
+	return cmp.Compare(a.ID, b.ID)
+}
+
+// seriesEntries: grid entries for the series keys among keys, by key, in one
+// pass of the catalog. Keys of series with no books are left out.
+func seriesEntries(c *catalog, keys []string) map[string]Book {
+	type want struct {
+		name    string // as browsed (a group's name), or as the library spells it
+		grouped bool
+		books   []catalogBook
+	}
+	wants := map[string]*want{}      // key -> its series
+	byMember := map[string][]*want{} // lower-cased series name -> who wants it
+	for _, k := range keys {
+		value, ok := shelfSeriesName(k)
+		if !ok || value == "" || wants[k] != nil {
+			continue
+		}
+		name, members, grouped := groups.resolve("series", value)
+		w := &want{name: name, grouped: grouped}
+		wants[k] = w
+		for _, m := range members {
+			byMember[strings.ToLower(m)] = append(byMember[strings.ToLower(m)], w)
+		}
+	}
+	if len(wants) == 0 {
+		return nil
+	}
+	ids := map[int32][]*want{}
+	for id, n := range c.seriesNames {
+		if ws := byMember[strings.ToLower(n)]; ws != nil {
+			ids[id] = ws
+			for _, w := range ws {
+				if !w.grouped {
+					w.name = n
+				}
+			}
+		}
+	}
+	for _, b := range c.books {
+		if b.Series == 0 || b.Removed {
+			continue
+		}
+		for _, w := range ids[b.Series] {
+			w.books = append(w.books, b)
+		}
+	}
+	out := make(map[string]Book, len(wants))
+	for k, w := range wants {
+		if len(w.books) == 0 {
+			continue
+		}
+		first := slices.MinFunc(w.books, seriesReadingOrder)
+		out[k] = Book{
+			UUID: k, Title: w.name, Authors: first.Authors,
+			PubDate: first.PubDate, Path: first.Path, LastModified: first.LastModified,
+			SeriesCard: &seriesCard{Name: w.name, Count: len(w.books), Cover: first.UUID, Href: categoryByKey("series").href(w.name)},
+		}
+	}
+	return out
+}
+
+// seriesEntry: the grid entry for one series as browsed, if it has books.
+func seriesEntry(name string) (Book, bool) {
+	k := seriesShelfKey(name)
+	b, ok := seriesEntries(currentCatalog(), []string{k})[k]
+	return b, ok
+}
+
+// shelfEntryLookup finds shelf entries, books and series, in the catalog
+// only (as the home page's rows do): series keys are worked out at once.
+func shelfEntryLookup(c *catalog, keys []string) func(string) (Book, bool) {
+	series := seriesEntries(c, keys)
+	return func(k string) (Book, bool) {
+		if b, ok := series[k]; ok {
+			return b, true
+		}
+		if b, ok := c.lookup(k); ok {
+			return b.Book, true
+		}
+		return Book{}, false
+	}
+}
+
+// seriesShelfMarks: the shelves u can put this series on, and whether it's
+// on each (the series page's and book popup's "Series on shelves").
+func seriesShelfMarks(u *User, name string) []shelfMark {
+	out := []shelfMark{}
+	for _, m := range shelfMarks(u, seriesShelfKey(name)) {
+		if m.CanEdit {
+			out = append(out, m)
+		}
+	}
+	return out
+}
+
+// shelfSeriesKeyFor: the key for the series named in the path, after
+// checking it's in the library (404 if not), as browsed.
+func shelfSeriesKeyFor(w http.ResponseWriter, r *http.Request) (string, bool) {
+	b, ok := seriesEntry(r.PathValue("name"))
+	if !ok {
+		http.Error(w, "no such series", http.StatusNotFound)
+		return "", false
+	}
+	key := seriesShelfKey(b.SeriesCard.Name)
+	if len(key) > maxShelfKey {
+		http.Error(w, "series name too long", http.StatusBadRequest)
+		return "", false
+	}
+	return key, true
+}
+
+func shelfAddSeriesHandler(w http.ResponseWriter, r *http.Request) {
+	s, ok := shelfForEdit(w, r)
+	if !ok {
+		return
+	}
+	key, ok := shelfSeriesKeyFor(w, r)
+	if !ok {
+		return
+	}
+	if s.Count >= maxBooksPerShelf {
+		http.Error(w, "this shelf is full", http.StatusConflict)
+		return
+	}
+	if _, err := appDB.Exec(`INSERT OR IGNORE INTO shelf_books (shelf_id, book_uuid, added_at) VALUES (?, ?, ?)`, s.ID, key, nowUnix()); err != nil {
+		http.Error(w, "could not add", http.StatusInternalServerError)
+		return
+	}
+	_, _ = appDB.Exec(`UPDATE shelves SET updated_at = ? WHERE id = ?`, nowUnix(), s.ID)
+	shelfChanged(s)
+	w.WriteHeader(http.StatusNoContent)
+}
+
+// shelfRemoveSeriesHandler takes the key as given too, so a series that's
+// gone from the library can still be taken off.
+func shelfRemoveSeriesHandler(w http.ResponseWriter, r *http.Request) {
+	s, ok := shelfForEdit(w, r)
+	if !ok {
+		return
+	}
+	keys := []any{seriesShelfKey(r.PathValue("name"))}
+	if b, ok := seriesEntry(r.PathValue("name")); ok {
+		keys = append(keys, seriesShelfKey(b.SeriesCard.Name))
+	}
+	if _, err := appDB.Exec(`DELETE FROM shelf_books WHERE shelf_id = ? AND book_uuid IN (`+placeholders(len(keys))+`)`,
+		append([]any{s.ID}, keys...)...); err != nil {
+		http.Error(w, "could not remove", http.StatusInternalServerError)
+		return
+	}
+	shelfChanged(s)
+	w.WriteHeader(http.StatusNoContent)
+}
+
+func registerShelfSeriesRoutes() {
+	http.HandleFunc("PUT /api/shelves/{id}/series/{name...}", requireUser(shelfAddSeriesHandler))
+	http.HandleFunc("DELETE /api/shelves/{id}/series/{name...}", requireUser(shelfRemoveSeriesHandler))
+}
