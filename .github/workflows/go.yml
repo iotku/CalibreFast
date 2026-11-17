@@ -22,7 +22,9 @@ jobs:
     - name: Set up Go
       uses: actions/setup-go@v4
       with:
-        go-version: '1.26.0'
+        # tools/go.mod (tsgo, jsbuild for go generate) needs the newest Go of
+        # the two modules.
+        go-version-file: tools/go.mod
 
     - name: Generate (type-check TypeScript, rebuild static/dist)
       run: go generate ./...
