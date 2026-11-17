@@ -1,8 +1,11 @@
 // A placeholder book's editor (templates/placeholder.html, placeholders.go):
 // its details, its cover, deleting it, and sending its files to the import
-// queue. Admins only.
+// queue. Admins only. Tags are chips and authors, series, publisher and tags
+// are completed from the library, as in the metadata editor (metadata.ts).
 
+import { createChipInput } from "./chips.js";
 import { api, byId, errorMessage, maybeId, statusLine } from "./dom.js";
+import { attachSuggest } from "./suggest.js";
 
 interface Saved {
     uuid: string;
@@ -27,8 +30,28 @@ async function send<T>(method: string, url: string, body: FormData): Promise<T> 
     return (await res.json()) as T;
 }
 
+const input = (name: string): HTMLInputElement | null => form.querySelector<HTMLInputElement>(`input[name="${name}"]`);
+const creators = input("creators");
+if (creators) attachSuggest(creators, { category: "author", multi: true, separators: "&" });
+const series = input("series");
+if (series) attachSuggest(series, { category: "series" });
+const publisher = input("publisher");
+if (publisher) attachSuggest(publisher, { category: "publisher" });
+const subjects = input("subjects");
+const tags = subjects ? createChipInput(subjects, { placeholder: "Add tags (comma separated)…" }) : null;
+// The chips take the field's starting value from an input event (chips.ts).
+subjects?.dispatchEvent(new Event("input"));
+if (tags)
+    attachSuggest(tags.textInput, {
+        category: "tag",
+        multi: true,
+        exclude: tags.activeValues,
+        onPick: () => tags.commitPending(), // picking a suggestion adds it
+    });
+
 form.addEventListener("submit", (e) => {
     e.preventDefault();
+    tags?.commitPending(); // what's half typed counts
     const f = new FormData(form);
     const field = (k: string): string => String(f.get(k) ?? "");
     const body = {
