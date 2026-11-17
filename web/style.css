@@ -2860,6 +2860,61 @@ body.book-standalone {
     }
 }
 
+/* A page's actions (filtered.html): inline, unless a narrow bar has three or
+   more, which fold behind ⋯ into a list with their labels (they'd push the
+   pager and user menu off a narrow bar). */
+.tb-actions,
+.tb-actions-menu {
+    display: contents;
+}
+
+.site-bar .tb-actions-btn {
+    display: none;
+}
+
+@media (max-width: 1024px) {
+    .tb-actions:has(.tb-actions-menu > :nth-child(3)) {
+        display: block;
+        position: relative;
+        flex: none;
+    }
+
+    .site-bar .tb-actions:has(.tb-actions-menu > :nth-child(3)) .tb-actions-btn {
+        display: inline-flex;
+    }
+
+    .tb-actions:has(.tb-actions-menu > :nth-child(3)) .tb-actions-menu {
+        display: none;
+        position: fixed;
+        top: calc(var(--topbar-total) + 8px);
+        left: 16px;
+        z-index: 1000;
+        flex-direction: column;
+        gap: 6px;
+        width: min(240px, calc(100vw - 32px));
+        box-sizing: border-box;
+        padding: 8px;
+        background: var(--bg-secondary); /* solid: a blur can't nest in the bar's */
+        border: 1px solid var(--border-medium);
+        border-radius: var(--radius-medium);
+        box-shadow: 0 12px 32px rgba(0, 0, 0, 0.5);
+    }
+
+    .tb-actions.open:has(.tb-actions-menu > :nth-child(3)) .tb-actions-menu {
+        display: flex;
+    }
+
+    .site-bar .tb-actions:has(.tb-actions-menu > :nth-child(3)) .btn-group-toggle {
+        width: 100%;
+        padding: 0 10px;
+        justify-content: flex-start;
+    }
+
+    .site-bar .tb-actions:has(.tb-actions-menu > :nth-child(3)) .btn-group-toggle .tb-label {
+        display: inline;
+    }
+}
+
 .btn-group-toggle:hover,
 .btn-group-toggle[aria-expanded="true"],
 .btn-group-toggle[aria-pressed="true"] {

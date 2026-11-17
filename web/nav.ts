@@ -132,6 +132,11 @@ function init(bar: HTMLElement): void {
     });
     bar.querySelector(".tb-search-close")?.addEventListener("click", () => closeAll());
 
+    // A page's actions folded behind ⋯ on phones (filtered.html); picking
+    // one closes the list, as any click does.
+    const actions = bar.querySelector<HTMLElement>(".tb-actions");
+    register(bar.querySelector(".tb-actions-btn"), (open) => actions?.classList.toggle("open", open));
+
     // ---- user part ----------------------------------------------------------
     //
     // The last answer from /api/me is kept in localStorage, and the user part
