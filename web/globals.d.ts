@@ -4,7 +4,12 @@
 // ---- htmx (global, loaded by <script> on library pages) --------------------
 interface HtmxApi {
     /** source: the element the request is for (its hx-preload response is used). */
-    ajax(method: string, url: string, options: { target: string; swap?: string; source?: Element }): Promise<void>;
+    /** fetch: answers the request instead of the network (it's copied onto the request's context). */
+    ajax(
+        method: string,
+        url: string,
+        options: { target: string; swap?: string; source?: Element; fetch?: () => Promise<Response> },
+    ): Promise<void>;
     process(element: Element): void;
 }
 declare const htmx: HtmxApi | undefined;

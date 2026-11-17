@@ -15,6 +15,7 @@ const TITLE_SEP = " – ";
 let modalInitialized = false;
 let openedViaNav = false; // true if there's an entry to go back to (click or back/forward)
 let shownUuid: string | null = null; // book in the open modal
+let shownCard: HTMLElement | null = null; // its card (.book) on the page, for the books either side
 
 function modalEl(): HTMLElement | null {
     return document.getElementById(MODAL_ID);
@@ -30,8 +31,10 @@ function setBody(html: string): void {
     if (body) body.innerHTML = html;
 }
 
-/** htmx error events carry the element the request was for. */
-type HtmxErrorEvent = CustomEvent<{ target?: Element | null }>;
+/** htmx 4's request events carry the request's context. */
+type HtmxCtxEvent = CustomEvent<{
+    ctx?: { target?: Element | null; status?: string; request?: { action?: string }; response?: { status: number } };
+}>;
 
 /* ------------------------------------------------------------------ */
 /* Tab title                                                           */
@@ -74,7 +77,13 @@ function hashUuid(): string | null {
 /* Busy: grid covers pause while the modal loads                       */
 /* ------------------------------------------------------------------ */
 
-const LOADING_HTML = '<p class="modal-loading">Loading...</p>';
+const LOADING_HTML =
+    '<div class="modal-loading" role="status" aria-label="Loading"><span class="throbber" aria-hidden="true">' +
+    '<span class="throbber-dot"></span><span class="throbber-dot"></span><span class="throbber-dot"></span></span></div>';
+/** A book that arrives sooner shows without a loading state in between. */
+const LOADING_DELAY_MS = 100;
+let loadingUrl: string | null = null; // the book request whose answer the modal waits for
+let loadingTimer: ReturnType<typeof setTimeout> | undefined;
 /** The longest the grid waits for the modal; it then loads covers anyway. */
 const BUSY_MAX_MS = 6000;
 let busy = false;
@@ -99,10 +108,11 @@ function setBusy(b: boolean): void {
  */
 function checkIdle(): void {
     const body = bodyEl();
-    if (!busy || !body || body.querySelector(".modal-loading")) return;
+    if (!busy || !body || loadingUrl !== null) return;
     const pending = [...body.querySelectorAll<HTMLImageElement>(".cover-stack img")].filter((img) => !img.complete);
     if (pending.length === 0) {
         setBusy(false);
+        prefetchNeighbours();
         return;
     }
     for (const img of pending) {
@@ -111,45 +121,270 @@ function checkIdle(): void {
     }
 }
 
+/**
+ * Open the modal for a book that's loading. A new modal stays invisible
+ * (.pending) and a switch from another book keeps that book showing, until
+ * the new one arrives or LOADING_DELAY_MS passes, when the throbber shows.
+ */
 function showModal(): void {
-    setBody(LOADING_HTML);
     setBusy(true);
+    clearTimeout(loadingTimer);
+    loadingTimer = setTimeout(() => {
+        modalEl()?.classList.remove("pending");
+        if (loadingUrl !== null) setBody(LOADING_HTML);
+    }, LOADING_DELAY_MS);
+    bodyEl()?.setAttribute("aria-busy", "true");
+    if (isModalOpen()) return;
+    setBody("");
     // Hiding the scrollbar would widen the page: keep its space if there was one.
     const root = document.documentElement;
     root.classList.toggle("keep-gutter", root.scrollHeight > root.clientHeight);
     document.body.classList.add("no-scroll");
-    modalEl()?.classList.add("open");
+    modalEl()?.classList.add("open", "pending");
+}
+
+/** The book (or its error) is in the modal: show it, and get the books either side ready. */
+function doneLoading(): void {
+    if (loadingUrl === null) return;
+    loadingUrl = null;
+    clearTimeout(loadingTimer);
+    modalEl()?.classList.remove("pending");
+    bodyEl()?.removeAttribute("aria-busy");
+    const content = modalEl()?.querySelector(".modal-content");
+    if (content) content.scrollTop = 0;
+    updateNavButtons();
+    checkIdle();
 }
 
 function hideModal(): void {
     document.body.classList.remove("no-scroll");
     document.documentElement.classList.remove("keep-gutter");
-    modalEl()?.classList.remove("open");
+    modalEl()?.classList.remove("open", "pending");
     const body = bodyEl();
-    if (body) body.innerHTML = "";
+    if (body) {
+        body.innerHTML = "";
+        body.removeAttribute("aria-busy");
+    }
     document.title = BASE_TITLE; // every close path ends here
     shownUuid = null;
+    shownCard = null;
+    loadingUrl = null;
+    clearTimeout(loadingTimer);
     setBusy(false);
     // The URL no longer has #book/: the grid may write its page now (app-htmx.ts).
     document.dispatchEvent(new Event("cf:modal-closed"));
 }
 
+const bookUrl = (uuid: string): string => `/book/get/${encodeURIComponent(uuid)}`;
+
+/** Path and query of a request URL, as htmx may have resolved it. */
+function samePath(a: string, b: string): boolean {
+    const p = (u: string) => {
+        const url = new URL(u, location.href);
+        return url.pathname + url.search;
+    };
+    return p(a) === p(b);
+}
+
 export function loadBook(uuid: string): void {
+    const card = cardFor(uuid);
     shownUuid = uuid;
-    showModal();
+    shownCard = card;
     if (typeof htmx === "undefined") {
+        showModal();
         setBody("htmx not loaded.");
         return;
     }
+    const url = bookUrl(uuid);
+    loadingUrl = url;
+    showModal();
     prefetchControls(uuid); // in parallel with the book, not after it
-    // The book's card (if on the page) as the source: htmx then uses the
-    // card's hx-preload response, even one still in flight.
-    const card = document.querySelector<HTMLElement>(`.book-link[href="${HASH_PREFIX}${CSS.escape(uuid)}"]`);
-    htmx.ajax("GET", `/book/get/${encodeURIComponent(uuid)}`, {
-        source: card ?? undefined,
+    const hit = takePrefetch(uuid);
+    // Otherwise the book's card (if on the page) as the source: htmx then
+    // uses the card's hx-preload response, even one still in flight.
+    htmx.ajax("GET", url, {
+        source: hit ? bodyEl() ?? undefined : card?.querySelector(".book-link") ?? undefined,
         target: "#" + BODY_ID,
         swap: "innerHTML",
+        ...(hit ? { fetch: () => hit } : {}),
+    }).catch(() => {
+        if (loadingUrl === url) {
+            setBody("Failed to load book.");
+            doneLoading();
+        }
     });
+}
+
+/* ------------------------------------------------------------------ */
+/* The books either side: arrow keys, and their prefetch               */
+/* ------------------------------------------------------------------ */
+
+/** How long a prefetched book is used: like the controls' (user.ts). */
+const BOOK_PREFETCH_TTL_MS = 30_000;
+const prefetched = new Map<string, { res: Promise<Response>; expires: number }>();
+
+/** The book's card: the one it was opened from, else the first on the page. */
+function cardFor(uuid: string): HTMLElement | null {
+    if (shownCard?.isConnected && shownCard.dataset["uuid"] === uuid) return shownCard;
+    return document.querySelector<HTMLElement>(`.book[data-uuid="${CSS.escape(uuid)}"]`);
+}
+
+/**
+ * The book card next to the shown one (dir 1) or before it (-1), in its
+ * grid or row. Null at the end, or when the next card is still a
+ * skeleton (its page hasn't arrived).
+ */
+function neighbour(dir: 1 | -1): HTMLElement | null {
+    const card = shownUuid ? cardFor(shownUuid) : null;
+    for (let el = card ? sibling(card, dir) : null; el; el = sibling(el, dir)) {
+        if (!el.classList.contains("book")) continue; // e.g. the grid's spacers
+        return el.dataset["uuid"] ? el : null;
+    }
+    return null;
+}
+
+const sibling = (el: Element, dir: 1 | -1): HTMLElement | null =>
+    (dir > 0 ? el.nextElementSibling : el.previousElementSibling) as HTMLElement | null;
+
+/** Fetch a book's popup ahead of time, with its cover images. */
+function prefetchBook(uuid: string): void {
+    const now = Date.now();
+    for (const [k, v] of prefetched) if (v.expires <= now) prefetched.delete(k);
+    if (prefetched.has(uuid)) return;
+    const res = fetch(bookUrl(uuid), {
+        headers: { "HX-Request": "true", "HX-Request-Type": "partial" },
+        credentials: "same-origin",
+    }).then((r) => {
+        if (!r.ok) throw new Error(`${r.status}`);
+        return r;
+    });
+    prefetched.set(uuid, { res, expires: now + BOOK_PREFETCH_TTL_MS });
+    res.then((r) => r.clone().text())
+        .then(preloadCovers)
+        .catch(() => prefetched.delete(uuid));
+}
+
+/** The prefetched answer for a book, if fresh (each use gets its own copy). */
+function takePrefetch(uuid: string): Promise<Response> | null {
+    const hit = prefetched.get(uuid);
+    if (!hit || hit.expires <= Date.now()) return null;
+    return hit.res.then((r) => r.clone());
+}
+
+/** Have the browser fetch the popup's cover images (thumbnail and full cover). */
+function preloadCovers(html: string): void {
+    const doc = new DOMParser().parseFromString(html, "text/html"); // inert: nothing loads or runs
+    for (const img of doc.querySelectorAll<HTMLImageElement>(".cover-stack img")) {
+        const src = img.getAttribute("src");
+        if (!src) continue;
+        const pre = new Image();
+        pre.fetchPriority = "low";
+        pre.src = src;
+    }
+}
+
+/** Once the shown book has settled, get the ones either side ready. */
+function prefetchNeighbours(): void {
+    for (const dir of [1, -1] as const) {
+        const uuid = neighbour(dir)?.dataset["uuid"];
+        if (!uuid) continue;
+        prefetchBook(uuid);
+        prefetchControls(uuid);
+    }
+}
+
+/* On-screen arrows and swipes: the same steps as the arrow keys. */
+
+const NAV_HTML = (dir: "prev" | "next") =>
+    `<button type="button" class="modal-nav modal-nav-${dir}" data-step="${dir === "next" ? 1 : -1}" ` +
+    `aria-label="${dir === "next" ? "Next book" : "Previous book"}" hidden>` +
+    `<svg viewBox="0 0 24 24" width="22" height="22" fill="none" stroke="currentColor" stroke-width="2.2" ` +
+    `stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="${dir === "next" ? "m9 6 6 6-6 6" : "m15 6-6 6 6 6"}"/></svg></button>`;
+
+let navButtons: HTMLButtonElement[] = [];
+
+/**
+ * Narrow screens (the popup fills the screen) have the arrows beside the
+ * cover, in the book's own markup; the next book's markup replaces them,
+ * so they're put back each time. Elsewhere they're in the margins beside
+ * the popup. A short landscape screen lays the book out in columns, with
+ * no room beside the cover.
+ */
+const narrow = matchMedia("(max-width: 768px)");
+const shortLandscape = matchMedia("(max-height: 520px) and (orientation: landscape)");
+
+/** Put the arrows where they go, and show each only when there's a book that way. */
+function updateNavButtons(): void {
+    const cover = narrow.matches && !shortLandscape.matches ? bodyEl()?.querySelector(".book-page-cover") : null;
+    const home = cover ?? modalEl();
+    for (const btn of navButtons) {
+        if (home && btn.parentElement !== home) home.append(btn);
+        btn.hidden = !neighbour(btn.dataset["step"] === "1" ? 1 : -1);
+    }
+}
+
+/** A swipe: at least this far sideways, mostly sideways, and quick. */
+const SWIPE_MIN_PX = 60;
+const SWIPE_MAX_MS = 600;
+
+/** Whether the touch began on something that scrolls sideways itself (a wide table in a description). */
+function scrollsSideways(el: Element | null, stop: Element): boolean {
+    for (; el && el !== stop; el = el.parentElement) {
+        if (el.scrollWidth > el.clientWidth && /auto|scroll/.test(getComputedStyle(el).overflowX)) return true;
+    }
+    return false;
+}
+
+function setupSwipe(content: HTMLElement): void {
+    let start: { x: number; y: number; t: number } | null = null;
+    content.addEventListener(
+        "touchstart",
+        (e) => {
+            const t = e.touches[0];
+            const target = e.target instanceof Element ? e.target : null;
+            start =
+                e.touches.length === 1 && t && !scrollsSideways(target, content) && !target?.closest("input, textarea, select")
+                    ? { x: t.clientX, y: t.clientY, t: e.timeStamp }
+                    : null; // a pinch, or something with its own sideways scroll
+        },
+        { passive: true },
+    );
+    content.addEventListener(
+        "touchend",
+        (e) => {
+            const t = e.changedTouches[0];
+            const s = start;
+            start = null;
+            if (!s || !t || e.touches.length) return;
+            const dx = t.clientX - s.x;
+            const dy = t.clientY - s.y;
+            if (Math.abs(dx) < SWIPE_MIN_PX || Math.abs(dx) < 2 * Math.abs(dy) || e.timeStamp - s.t > SWIPE_MAX_MS) return;
+            if (!document.getSelection()?.isCollapsed) return; // selecting text
+            step(dx < 0 ? 1 : -1); // swipe left: the next book
+        },
+        { passive: true },
+    );
+    content.addEventListener("touchcancel", () => (start = null), { passive: true });
+}
+
+/** Show the next or previous book, in place of this one in history. */
+function step(dir: 1 | -1): void {
+    const card = neighbour(dir);
+    const uuid = card?.dataset["uuid"];
+    if (!card || !uuid) return;
+    revealCard(card);
+    // No hashchange or popstate: those mean back/forward to the listeners above.
+    history.replaceState(history.state, "", location.pathname + location.search + HASH_PREFIX + encodeURIComponent(uuid));
+    shownCard = card;
+    loadBook(uuid);
+}
+
+/** Scroll the page (and a card row) so the card is on screen: there when the modal closes. */
+function revealCard(card: HTMLElement): void {
+    card.scrollIntoView({ block: "nearest", inline: "nearest", behavior: "instant" });
+    const top = card.getBoundingClientRect().top;
+    const bar = document.querySelector<HTMLElement>(".top-bar")?.offsetHeight ?? 0;
+    if (top < bar) window.scrollBy({ top: top - bar - 8, behavior: "instant" });
 }
 
 /**
@@ -217,26 +452,49 @@ export function setupModal(): void {
     const body = bodyEl();
     if (body) new MutationObserver(checkIdle).observe(body, { childList: true, subtree: true });
 
-    // Close: X button or backdrop click
+    // Close: X button or backdrop click. Previous/next: the arrows.
     const modal = modalEl();
+    modal?.insertAdjacentHTML("beforeend", NAV_HTML("prev") + NAV_HTML("next"));
+    navButtons = [...(modal?.querySelectorAll<HTMLButtonElement>(".modal-nav") ?? [])];
+    for (const mq of [narrow, shortLandscape]) mq.addEventListener("change", updateNavButtons);
     modal?.addEventListener("click", (e) => {
+        const nav = e.target instanceof Element ? e.target.closest<HTMLElement>(".modal-nav") : null;
+        if (nav) {
+            step(nav.dataset["step"] === "1" ? 1 : -1);
+            return;
+        }
         if (e.target === modal || (e.target instanceof Element && e.target.closest(CLOSE_SELECTOR))) {
             e.preventDefault();
             closeModal();
         }
     });
+    const content = modal?.querySelector<HTMLElement>(".modal-content");
+    if (content) setupSwipe(content);
 
-    // Close: Escape
+    // Close: Escape. Left and right: the books either side.
     document.addEventListener("keydown", (e) => {
         if (e.key === "Escape") closeModal();
+        if ((e.key !== "ArrowLeft" && e.key !== "ArrowRight") || !isModalOpen()) return;
+        if (e.defaultPrevented || e.ctrlKey || e.metaKey || e.altKey || e.shiftKey) return;
+        if (e.target instanceof Element && e.target.closest("input, textarea, select, [contenteditable]")) return;
+        e.preventDefault();
+        step(e.key === "ArrowRight" ? 1 : -1);
     });
 
-    // Failed fetch
-    for (const type of ["htmx:responseError", "htmx:sendError"]) {
-        document.body.addEventListener(type, (e) => {
-            if ((e as HtmxErrorEvent).detail?.target?.id === BODY_ID) setBody("Failed to load book.");
-        });
-    }
+    // Only the book last asked for goes in: an earlier one still in flight
+    // (a quick run of arrow presses) is dropped.
+    document.addEventListener("htmx:before:swap", (e) => {
+        const ctx = (e as HtmxCtxEvent).detail?.ctx;
+        if (!ctx || ctx.target !== bodyEl()) return;
+        if (loadingUrl === null || !samePath(ctx.request?.action ?? "", loadingUrl)) e.preventDefault();
+    });
+    document.addEventListener("htmx:finally:request", (e) => {
+        const ctx = (e as HtmxCtxEvent).detail?.ctx;
+        if (!ctx || ctx.target !== bodyEl() || loadingUrl === null) return;
+        if (!samePath(ctx.request?.action ?? "", loadingUrl)) return;
+        if (ctx.status !== "swapped" || (ctx.response?.status ?? 0) >= 400) setBody("Failed to load book.");
+        doneLoading();
+    });
 
     // Deep link on initial load
     if (hashUuid()) {
