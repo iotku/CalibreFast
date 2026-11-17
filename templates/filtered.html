@@ -35,7 +35,14 @@
             <span class="tb-label">{{ if $.Extra.Pinned }}On home{{ else }}Pin to home{{ end }}</span>
         </button>
 {{ end }}{{ end }}
-{{ if .Writable }}
+{{ if .Writable }}{{ if .Category }}
+        <button type="button" id="feature-toggle" class="btn-group-toggle" aria-pressed="{{ .Featured }}"
+                data-category="{{ .Category }}" data-key="{{ .Key }}"
+                title="Show this {{ .Label }} at the top of the {{ .Label }} list, for everyone">
+            <svg class="tb-group-icon" viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2" stroke-linejoin="round" aria-hidden="true"><path d="M12 3l2.8 5.7 6.2.9-4.5 4.4 1.1 6.2L12 17.3 6.4 20.2l1.1-6.2L3 9.6l6.2-.9z"/></svg>
+            <span class="tb-label">{{ if .Featured }}Featured{{ else }}Feature{{ end }}</span>
+        </button>
+{{ end }}
         <button type="button" id="group-toggle" class="btn-group-toggle" aria-expanded="false" aria-controls="group-panel"
                 title="Choose which {{ .Label }} values this page includes" aria-label="Group {{ .Label }} values">
             <svg class="tb-group-icon" viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2" stroke-linejoin="round" aria-hidden="true"><path d="M12 3l9 5-9 5-9-5zM3 13l9 5 9-5"/></svg>
@@ -53,35 +60,63 @@
 {{ template "topbar-end" $tb }}
 {{ if .Writable }}
 <section id="group-panel" class="group-panel" hidden
-         data-category="{{ .Category }}" data-key="{{ .Key }}" data-name="{{ .SuggestName }}" data-label="{{ .Label }}">
-    <p class="group-hint">Books whose {{ .Label }} is any of these values are shown here.
-        A value can belong to one group; adding it here moves it from any other.
-        Books themselves are never changed.</p>
+         data-category="{{ .Category }}" data-key="{{ .Key }}" data-name="{{ .SuggestName }}" data-label="{{ .Label }}"
+         data-image="{{ .ImageURL }}">
+    {{/* What it is first, then the buttons: the member list below can be
+         long, and scrolls on its own (web/groups.ts). */}}
+    <div class="group-head">
+        <div class="group-meta">
+            <div class="group-image">
+                <button type="button" id="group-image-pick" class="group-image-pick" title="Choose a picture">
+                    <img id="group-image-preview" alt=""{{ if .ImageURL }} src="{{ .ImageURL }}"{{ else }} hidden{{ end }}>
+                    <canvas id="group-image-canvas" hidden></canvas>
+                    <span id="group-image-empty"{{ if .ImageURL }} hidden{{ end }}>Add picture</span>
+                </button>
+                <button type="button" id="group-image-remove" class="group-image-remove"{{ if not .ImageURL }} hidden{{ end }}>Remove</button>
+                <input id="group-image-file" type="file" accept="image/*" hidden>
+            </div>
+            <div class="group-fields">
+                <label class="group-field">
+                    <span>Display name</span>
+                    <input id="group-name" class="input-search" type="text" value="{{ .SuggestName }}"
+                           autocomplete="off" spellcheck="false" data-1p-ignore data-lpignore="true" data-form-type="other" />
+                </label>
+                <label class="group-field">
+                    <span>Description</span>
+                    <textarea id="group-description" class="input-search" rows="3" maxlength="10000">{{ .Description }}</textarea>
+                </label>
+            </div>
+        </div>
+        {{ if .GroupsError }}<p class="group-error">{{ .GroupsError }}</p>{{ end }}
+        <p id="group-status" class="group-status" role="status"></p>
+        <div class="group-row group-actions">
+            <button type="button" id="group-cancel" class="btn-standard">Cancel</button>
+            <button type="button" id="group-save" class="btn-standard btn-primary">Save</button>
+        </div>
+        <p class="group-hint">Books whose {{ .Label }} is any of these values are shown here.
+            A value can belong to one group; adding it here moves it from any other.
+            Books themselves are never changed.</p>
+        <div class="group-row group-add-row">
+            <!-- Suggestions come only from the library (custom list, not a
+                 datalist, so browsers can't mix in saved form history). -->
+            <input id="group-add" class="input-search" type="text" placeholder="Add a {{ .Label }}…"
+                   role="combobox" aria-autocomplete="list" aria-expanded="false" aria-controls="group-suggest"
+                   autocomplete="off" autocorrect="off" autocapitalize="off" spellcheck="false"
+                   data-1p-ignore data-lpignore="true" data-form-type="other"{{ if .GroupsError }} disabled{{ end }} />
+            <ul id="group-suggest" class="group-suggest" role="listbox" hidden></ul>
+            <button type="button" id="group-add-btn" class="btn-standard"{{ if .GroupsError }} disabled{{ end }}>Add</button>
+        </div>
+    </div>
     <ul class="group-members">
         {{ range .Members }}<li data-member="{{ . }}"></li>{{ end }}
     </ul>
-    <div class="group-row group-add-row">
-        <!-- Suggestions come only from the library (custom list, not a
-             datalist, so browsers can't mix in saved form history). -->
-        <input id="group-add" class="input-search" type="text" placeholder="Add a {{ .Label }}…"
-               role="combobox" aria-autocomplete="list" aria-expanded="false" aria-controls="group-suggest"
-               autocomplete="off" autocorrect="off" autocapitalize="off" spellcheck="false"
-               data-1p-ignore data-lpignore="true" data-form-type="other" />
-        <ul id="group-suggest" class="group-suggest" role="listbox" hidden></ul>
-        <button type="button" id="group-add-btn" class="btn-standard">Add</button>
-    </div>
-    <label class="group-row">
-        <span>Display name</span>
-        <input id="group-name" class="input-search" type="text" value="{{ .SuggestName }}"
-               autocomplete="off" spellcheck="false" data-1p-ignore data-lpignore="true" data-form-type="other" />
-    </label>
-    {{ if .GroupsError }}<p class="group-error">{{ .GroupsError }}</p>{{ end }}
-    <p id="group-status" class="group-status" role="status"></p>
-    <div class="group-row group-actions">
-        <button type="button" id="group-cancel" class="btn-standard">Cancel</button>
-        <button type="button" id="group-save" class="btn-standard btn-primary" {{ if .GroupsError }}disabled{{ end }}>Save grouping</button>
-    </div>
 </section>
+{{ end }}
+{{ if or .Description .ImageURL }}
+<header class="agg-header">
+    {{ if .ImageURL }}<img class="agg-header-img" src="{{ .ImageURL }}" alt="">{{ end }}
+    {{ if .Description }}<p class="agg-header-desc">{{ .Description }}</p>{{ end }}
+</header>
 {{ end }}
 <div id="books" data-page-url="{{ .PageURL }}&page={n}" data-page-size="{{ booksPerPage }}" data-total-books="{{ .TotalBooks }}"{{ if .EmptyText }} data-empty-text="{{ .EmptyText }}"{{ end }}></div>
 <p id="status" class="status-message"></p>
