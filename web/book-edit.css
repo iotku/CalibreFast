@@ -2184,3 +2184,28 @@ input[type="date"].meta-input::-webkit-calendar-picker-indicator:hover {
         width: 5.5rem;
     }
 }
+
+/* Add to library can't work: the library has one of the book's files (metadata.ts) */
+.btn-primary.btn-blocked {
+    background: #b55a5a;
+    color: #fff;
+}
+
+.btn-primary.btn-blocked:hover:not(:disabled) {
+    background: #c56a6a;
+}
+
+.duplicate-intro {
+    margin: 12px 18px 0;
+    padding: 10px 12px;
+    font-size: 0.9rem;
+    color: #e59999;
+    background: var(--error-bg);
+    border: 1px solid rgba(186, 122, 122, 0.4);
+    border-radius: var(--radius);
+}
+
+.duplicate-intro[hidden],
+.duplicate-dialog .compare-footer [hidden] {
+    display: none;
+}

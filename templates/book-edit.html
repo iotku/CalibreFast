@@ -379,7 +379,7 @@
 
                 <div class="edit-actions">
                     <div class="action-buttons">
-                        <button type="submit" id="btn-save" class="btn-primary">{{ if and .Merge .Merge.Incoming }}Add files{{ else if .Merge }}Merge {{ len .Merge.Books }} books{{ else if .Import }}Add to library{{ else }}Apply Changes{{ end }}</button>
+                        <button type="submit" id="btn-save" class="btn-primary{{ if and .Import .Duplicates.SameFile }} btn-blocked{{ end }}">{{ if and .Merge .Merge.Incoming }}Add files{{ else if .Merge }}Merge {{ len .Merge.Books }} books{{ else if .Import }}Add to library{{ else }}Apply Changes{{ end }}</button>
                         <button type="button" id="btn-compare" class="btn-secondary">
                             Compare changes
                         </button>
@@ -419,10 +419,12 @@
                     <h2 id="duplicate-title">Possibly already in the library</h2>
                     <form method="dialog"><button class="compare-close" aria-label="Close">✕</button></form>
                 </header>
+                <p id="duplicate-intro" class="duplicate-intro" hidden></p>
                 <div id="duplicate-body"></div>
                 <footer class="compare-footer">
                     <form method="dialog"><button class="btn-secondary">Cancel</button></form>
                     <button type="button" id="duplicate-add" class="btn-primary">Add anyway</button>
+                    <button type="button" id="duplicate-discard" class="btn-primary btn-blocked" hidden>Discard from queue</button>
                 </footer>
             </dialog>
             {{ end }}

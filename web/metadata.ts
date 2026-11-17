@@ -778,7 +778,9 @@ function plainText(html: string, max = 280): string {
 
 /** One library book beside the book being added, field by field; rows that differ are marked. */
 function duplicateComparison(b: DuplicateBook, lib: MetaSource, adding: MetaSource, formats: string[], cover: string): HTMLElement {
-  const why = b.same_authors ? "same title & authors" : b.same_isbn ? "same ISBN" : b.same_file ? "identical file" : "";
+  const why = b.same_file
+    ? `identical file${b.same_files?.length ? `: ${b.same_files.join(", ")}` : ""}`
+    : b.same_authors ? "same title & authors" : b.same_isbn ? "same ISBN" : "";
   const coverCell = (src: string, label: string): HTMLElement =>
     tag("td", { className: "dup-cover-cell" }, src
       ? tag("img", { className: "dup-cover", src, alt: `Cover: ${label}`, loading: "lazy" })
@@ -798,6 +800,7 @@ function duplicateComparison(b: DuplicateBook, lib: MetaSource, adding: MetaSour
       if (key === "description") return plainText(fieldValue(m, key, kind));
       if (key === "series") return m.Series ? `${m.Series}${m.SeriesIndex ? ` #${m.SeriesIndex}` : ""}` : "";
       if (key === "languages") return metaList(m, key).map(languageName).join(", ");
+      if (key === "identifiers") return (m.Identifiers ?? []).map((i) => (i.Scheme ? `${i.Scheme}: ${i.Value}` : i.Value)).join(", ");
       return fieldValue(m, key, kind);
     };
     row(FIELD_LABELS[key], v(lib), v(adding));
@@ -1180,13 +1183,15 @@ export async function mountMetadataEditor(book: BookTarget, form: HTMLFormElemen
         return;
       }
       statusEl.textContent = err.sameFile
-        ? `✕ Not added: the library already has this file (${names}). Discard it from the queue instead.`
+        ? `✕ Not added: the library already has this file (${names}). Discard it from the queue instead. `
         : `⚠ Not added: possibly already in the library as ${names}. `;
-      if (err.sameFile || !dupDialog) return;
+      // Adding it again can't work: the button says so.
+      if (err.sameFile) saveBtn?.classList.add("btn-blocked");
+      if (!dupDialog) return;
       const again = document.createElement("button");
       again.type = "button";
       again.className = "btn-standard btn-override";
-      again.textContent = "Compare…";
+      again.textContent = err.sameFile ? "Why?" : "Compare…";
       again.addEventListener("click", () => void openDuplicate(err.check));
       statusEl.append(again);
       void openDuplicate(err.check);
@@ -1200,6 +1205,10 @@ export async function mountMetadataEditor(book: BookTarget, form: HTMLFormElemen
       dupDialog?.close();
       overrideNext = true;
       form.requestSubmit();
+    });
+    maybeId("duplicate-discard")?.addEventListener("click", () => {
+      dupDialog?.close();
+      maybeId("btn-discard")?.click(); // asks first
     });
     const openDuplicate = async (check: DuplicateCheck): Promise<void> => {
       if (!dupDialog) return;
@@ -1226,10 +1235,26 @@ export async function mountMetadataEditor(book: BookTarget, form: HTMLFormElemen
         return duplicateComparison(b, lib, adding, formats, cover);
       }));
       maybeId("duplicate-body")?.replaceChildren(...sections);
+      const same = check.books.filter((b) => b.same_file);
+      const blocked = same.length > 0;
+      const many = check.books.length === 1 ? "" : ` (${check.books.length} books)`;
       const title = maybeId("duplicate-title");
-      if (title) title.textContent = check.books.length === 1 ? "Possibly already in the library" : `Possibly already in the library (${check.books.length} books)`;
+      if (title) title.textContent = blocked ? "Already in the library" : `Possibly already in the library${many}`;
+      const intro = maybeId("duplicate-intro");
+      if (intro) {
+        intro.hidden = !blocked;
+        const files = [...new Set(same.flatMap((b) => b.same_files ?? []))].join(", ");
+        const where = same.map((b) => `“${b.title}”`).join(", ");
+        intro.textContent = blocked
+          ? `${files || "One of this book's files"} is byte for byte the same as a file of ${where}. A file the library already has can't be added again, whatever the metadata says. Discard it from the queue; any other formats of it can be added to that book from its page.`
+          : "";
+      }
+      const add = maybeId("duplicate-add");
+      const discard = maybeId("duplicate-discard");
+      if (add) add.hidden = blocked;
+      if (discard) discard.hidden = !blocked || !maybeId("btn-discard");
       if (!dupDialog.open) dupDialog.showModal();
-      maybeId("duplicate-add")?.focus();
+      (blocked ? discard : add)?.focus();
     };
 
     form.addEventListener("submit", async (e) => {
