@@ -6,7 +6,7 @@
  * login can resume:
  *   - position: last-writer-wins on updatedAt (ms); the newer of local and
  *     server is used when a book opens; failed pushes are retried when the
- *     connection comes back and when the page is hidden.
+ *     server can be reached again (server-watch.ts) and when the page is hidden.
  *   - bookmarks: ids are generated here, so copies made offline merge; local
  *     deletions are queued until the server confirms them.
  */
@@ -14,6 +14,7 @@
 import { api, random } from "./dom.js";
 import { lastKnownUser, localKey, type Owner } from "./local-keys.js";
 import { noteLocalReading } from "./local-reading.js";
+import { isUnreachable, onServerBack, serverDown } from "./server-watch.js";
 import type { MeResponse } from "./types.js";
 
 export type BookFormat = "epub" | "pdf";
@@ -92,6 +93,7 @@ export async function createReadingSync(
         if (r.ok) user = ((await r.json()) as MeResponse).user?.username ?? null;
     } catch {
         user = lastKnownUser();
+        serverDown();
     }
     const signedIn = user !== null;
     const progressKey = localKey(user, `progress-${uuid}-${format}`);
@@ -120,7 +122,8 @@ export async function createReadingSync(
                 LS.set(progressKey, local);
             }
             onStatus("Saved");
-        } catch {
+        } catch (e) {
+            if (isUnreachable(e)) serverDown();
             onStatus("Offline — saved on this device");
         }
     }
@@ -139,7 +142,8 @@ export async function createReadingSync(
             } else if (local?.pending) {
                 void push(); // local is newer and never reached the server
             }
-        } catch {
+        } catch (e) {
+            if (isUnreachable(e)) serverDown();
             onStatus("Offline — saved on this device");
         }
         return local;
@@ -175,7 +179,8 @@ export async function createReadingSync(
             try {
                 await api("DELETE", `/api/me/bookmarks/${uuid}/${encodeURIComponent(id)}`);
                 deleted = deleted.filter((d) => d !== id);
-            } catch {
+            } catch (e) {
+                if (isUnreachable(e)) serverDown();
                 break;
             }
         }
@@ -183,7 +188,8 @@ export async function createReadingSync(
             try {
                 await api("PUT", `/api/me/bookmarks/${uuid}/${encodeURIComponent(b.id)}`, b);
                 b.synced = true;
-            } catch {
+            } catch (e) {
+                if (isUnreachable(e)) serverDown();
                 break;
             }
         }
@@ -201,8 +207,8 @@ export async function createReadingSync(
                     .filter((b) => !deleted.includes(b.id))
                     .sort((a, b) => a.created_at - b.created_at);
                 saveLocal();
-            } catch {
-                /* offline: use the local copy */
+            } catch (e) {
+                if (isUnreachable(e)) serverDown(); // offline: use the local copy
             }
         }
         return bookmarks.filter((b) => b.format === format);
@@ -231,9 +237,12 @@ export async function createReadingSync(
         void flushBookmarks();
     }
 
-    // Retry anything pending when we come back online / leave the page.
-    window.addEventListener("online", () => {
-        void push();
+    // Retry anything pending when the server can be reached again (the
+    // device's network coming back, or the server itself) / leave the page.
+    onServerBack(() => {
+        if (!signedIn) return;
+        if (local?.pending) void push();
+        else onStatus("Synced");
         void flushBookmarks();
     });
     document.addEventListener("visibilitychange", () => {
