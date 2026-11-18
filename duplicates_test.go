@@ -4,11 +4,14 @@ import (
 	"archive/zip"
 	"bytes"
 	"database/sql"
+	"encoding/json"
 	"errors"
 	"mime/multipart"
+	"net/http/httptest"
 	"path/filepath"
 	"strings"
 	"testing"
+	"time"
 )
 
 // titledEPUB is an EPUB with this title and author; extra (any metadata)
@@ -251,4 +254,44 @@ func TestAddedFilesAreWhereCalibreLooks(t *testing.T) {
 	}
 
 	calibreFindsFiles(t, db)
+}
+
+// The queue's list doesn't wait for duplicate checks: it says which books
+// are still being checked, and a later poll has the result.
+func TestImportQueueChecksDuplicatesInTheBackground(t *testing.T) {
+	withTestLibrary(t)
+	uploadFiles(t, "Dune.epub", titledEPUB(t, "Dune", "Frank Herbert", "first"), false)
+	w, dir := newTestWatcher(t)
+	writeTestFile(t, filepath.Join(dir, "Dune 2nd.epub"), titledEPUB(t, "Dune", "Frank Herbert", "second"))
+	w.scan()
+	w.scan()
+	origImports := imports
+	imports = w.inbox
+	t.Cleanup(func() { imports = origImports })
+
+	list := func() importSummary {
+		t.Helper()
+		rec := httptest.NewRecorder()
+		importQueueHandler(rec, httptest.NewRequest("GET", "/api/imports", nil))
+		var q importQueue
+		if err := json.Unmarshal(rec.Body.Bytes(), &q); err != nil || len(q.Items) != 1 {
+			t.Fatalf("queue: %s", rec.Body)
+		}
+		return q.Items[0]
+	}
+	if s := list(); !s.Checking || s.Duplicate != nil {
+		t.Fatalf("first list: checking %v, duplicate %+v", s.Checking, s.Duplicate)
+	}
+	it := w.inbox.list()[0]
+	for deadline := time.Now().Add(10 * time.Second); ; time.Sleep(10 * time.Millisecond) {
+		if _, ok := w.inbox.cachedDuplicates(it); ok {
+			break
+		}
+		if time.Now().After(deadline) {
+			t.Fatal("the background check never finished")
+		}
+	}
+	if s := list(); s.Checking || !s.Duplicate.found() {
+		t.Errorf("after the check: checking %v, duplicate %+v", s.Checking, s.Duplicate)
+	}
 }
