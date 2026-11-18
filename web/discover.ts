@@ -136,22 +136,32 @@ function tagStepButtons(name: string, hidden: boolean): string {
 /* Page files                                                          */
 /* ------------------------------------------------------------------ */
 
-const pageFiles = new Map<string, Promise<Book[]>>();
+const pageFiles = new Map<string, Promise<Book[] | null>>();
 
 /** A page file's books ([] when it can't be had). */
-function pageFile(dir: string, n: number): Promise<Book[]> {
+async function pageFile(dir: string, n: number): Promise<Book[]> {
+    return (await pageFileOrNull(dir, n)) ?? [];
+}
+
+/** A page file's books, or null when it can't be had (offline, an error). */
+function pageFileOrNull(dir: string, n: number): Promise<Book[] | null> {
     return booksFile(`${dir}page${n}.json?v=${encodeURIComponent(version)}`);
 }
 
-/** A file of books, fetched once ([] when it can't be had). */
-function booksFile(url: string): Promise<Book[]> {
+/**
+ * A file of books, fetched once; null when it can't be had. A failure isn't
+ * kept, so a later try (back online) fetches it again.
+ */
+function booksFile(url: string): Promise<Book[] | null> {
     let p = pageFiles.get(url);
     if (!p) {
         p = fetch(url, { credentials: "same-origin" })
-            .then((r) => (r.ok ? (r.json() as Promise<Book[] | null>) : null))
-            .then((b) => b ?? [])
-            .catch(() => []);
+            .then((r) => (r.ok ? (r.json() as Promise<Book[] | null>).then((b) => b ?? []) : null))
+            .catch(() => null);
         pageFiles.set(url, p);
+        void p.then((b) => {
+            if (b === null && pageFiles.get(url) === p) pageFiles.delete(url);
+        });
     }
     return p;
 }
@@ -223,20 +233,31 @@ let shuffle: ShuffleState = { version, starts: [], next: 0 };
  * STRIP books of the random order from start, skipping finished ones and
  * wrapping at the end; and where the strip after it starts.
  */
-async function stripFrom(start: number): Promise<{ books: Book[]; end: number }> {
+async function stripFrom(start: number): Promise<{ books: Book[]; end: number; failed: boolean }> {
     const books: Book[] = [];
     let i = start;
+    const pages = new Set<number>();
     for (let scanned = 0; books.length < STRIP && scanned < shuffleTotal; scanned++) {
         const page = Math.floor(i / pageSize) + 1;
-        const book = (await pageFile("/pages/shuffle/", page))[i - (page - 1) * pageSize];
+        // A strip spans a page or two; finished books can stretch it, but
+        // never let one walk the whole order fetching every page.
+        if (!pages.has(page) && pages.size >= STRIP_MAX_PAGES) break;
+        pages.add(page);
+        const list = await pageFileOrNull("/pages/shuffle/", page);
+        // Can't be had (offline): stop here rather than going on to try
+        // every other page; the strip resumes from this spot next time.
+        if (list === null) return { books, end: i, failed: true };
+        const book = list[i - (page - 1) * pageSize];
         if (book && !marks.finished.has(book.uuid)) books.push(book);
         i = (i + 1) % shuffleTotal;
     }
     // Went all the way round (a library smaller than a strip): start the
     // next one further on anyway, so it isn't the same books in the same order.
     if (i === start) i = (start + Math.max(1, Math.floor(books.length / 2))) % shuffleTotal;
-    return { books, end: i };
+    return { books, end: i, failed: false };
 }
+
+const STRIP_MAX_PAGES = 3; // page files one strip may fetch
 
 let shuffling = false; // a strip is being fetched: ignore more clicks
 
@@ -244,7 +265,9 @@ let shuffling = false; // a strip is being fetched: ignore more clicks
 async function showStrip(start: number, push: boolean): Promise<void> {
     shuffling = true;
     try {
-        const { books, end } = await stripFrom(start);
+        const { books, end, failed } = await stripFrom(start);
+        // Offline: leave what's shown and where we are alone.
+        if (failed) return;
         if (push) shuffle.starts = [...shuffle.starts, start].slice(-SHUFFLE_HISTORY);
         shuffle.next = end;
         store.set(CURSOR_KEY, JSON.stringify(shuffle));
@@ -262,8 +285,9 @@ async function preloadAhead(): Promise<void> {
     if (!shuffleTotal || shuffling) return;
     let at = shuffle.next;
     for (let k = 0; k < PRELOAD_STRIPS; k++) {
-        const { books, end } = await stripFrom(at);
+        const { books, end, failed } = await stripFrom(at);
         for (const b of books) preloadCover(coverUrl(b));
+        if (failed) return;
         at = end;
     }
 }
