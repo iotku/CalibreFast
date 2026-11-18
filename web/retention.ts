@@ -38,6 +38,7 @@ import {
     currentUser,
     deleteBook,
     getBook,
+    getPartial,
     listBooks,
     listPartials,
     offlinePref,
@@ -279,8 +280,11 @@ const mb = (n: number): string => `${(n / 1048576).toFixed(1)} MB`;
 
 /** Keep a file, making room for it first (a reader's copy, a download). */
 export async function storeBook(book: CachedBook): Promise<void> {
-    const had = await getBook(book.uuid, book.format ?? "epub").catch(() => null);
-    await makeRoom(book.size - (had?.size ?? 0), book.uuid);
+    const format = book.format ?? "epub";
+    const had = await getBook(book.uuid, format).catch(() => null);
+    // A download finishing: its partial (counted in usage) becomes this book, so don't count it twice.
+    const part = await getPartial(book.uuid, format).catch(() => null);
+    await makeRoom(book.size - (had?.size ?? 0) - (part?.got ?? 0), book.uuid);
     try {
         await putBook(book);
     } catch (err) {

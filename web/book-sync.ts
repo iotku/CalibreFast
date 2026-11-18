@@ -24,6 +24,7 @@ import {
     getBookFiles,
     getPartial,
     listBooks,
+    listPartials,
     offlinePref,
     putPartial,
     updateBook,
@@ -92,6 +93,16 @@ export async function downloadForOffline(
     authors: string,
     opts: DownloadOptions = {},
 ): Promise<DownloadResult> {
+    if (opts.auto) return download(uuid, format, title, authors, opts); // the queue clears what it reported (runJobs)
+    // Asked for (a pinned book): shown in the top bar while it goes, cleared after, however it ends.
+    try {
+        return await download(uuid, format, title, authors, opts);
+    } finally {
+        writeSync(currentUser(), { active: null });
+    }
+}
+
+async function download(uuid: string, format: KeptFormat, title: string, authors: string, opts: DownloadOptions): Promise<DownloadResult> {
     const user = currentUser();
     const part = await getPartial(uuid, format).catch(() => null);
     // Only with a validator: the rest of the same file, or (200) the whole new one.
@@ -349,6 +360,16 @@ async function runSync({ marks, force = false }: SyncOptions): Promise<void> {
         }
         if (offlinePref(b.uuid) === "never") continue;
         jobs.push({ uuid: b.uuid, title: b.title, authors: b.authors, formats: formatsFor(b.uuid), status: "wanted", savedAt: b.saved_at });
+    }
+
+    // Downloads cut off for books no longer wanted here (out of Reading or
+    // Saved, a smaller count, never) would hold their space for good: drop
+    // them. A pinned book's (offline-control.ts) goes on next time it's pinned.
+    // Only when both lists are known (offline, the Saved list may not be).
+    const listsKnown = saved !== null && (!prefs.keepReadingN || readingSnapshot() !== null);
+    const wanted = new Set(jobs.map((j) => j.uuid));
+    for (const p of listsKnown ? await listPartials().catch(() => []) : []) {
+        if (!wanted.has(p.uuid) && offlinePref(p.uuid) !== "keep") await deletePartial(p.uuid, p.format).catch(() => {});
     }
 
     // Tidy up first (it may free room), only with statuses fresh from the
