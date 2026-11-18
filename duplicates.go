@@ -17,7 +17,6 @@ import (
 	"path/filepath"
 	"strconv"
 	"strings"
-	"time"
 
 	"github.com/iotku/CalibreFast/pkg/filehash"
 	"github.com/iotku/CalibreFast/pkg/isbn"
@@ -366,16 +365,15 @@ func libraryBookDuplicates(db *sql.DB, libDir, uuid string) (*duplicateCheck, er
 	return findDuplicates(db, libDir, title, authors, files, uuid)
 }
 
-// importDuplicates is findDuplicates for a waiting book as its files say it
-// is, kept for a while: the queue's list asks every few seconds.
+// duplicates is findDuplicates for a waiting book as its files say it is.
+// A result is kept until the library changes (a new catalog): the check
+// reads metadata.db and may hash files, too slow to repeat for every book in
+// the queue on every poll.
 func (b *importInbox) duplicates(it *pendingImport) *duplicateCheck {
-	const keep = 30 * time.Second
-	b.dupMu.Lock()
-	c, ok := b.dups[it.ID]
-	b.dupMu.Unlock()
-	if ok && time.Since(c.at) < keep {
-		return c.check
+	if c, ok := b.cachedDuplicates(it); ok {
+		return c
 	}
+	cat := libraryCatalog.Load()
 	check, err := findDuplicates(calibreDB, baseDir, it.Merged.Title, it.Merged.Creators, b.dupFiles(it), "")
 	if err != nil {
 		logErr(err, "imports: duplicate check for "+it.ID)
@@ -385,14 +383,61 @@ func (b *importInbox) duplicates(it *pendingImport) *duplicateCheck {
 	if b.dups == nil {
 		b.dups = map[string]cachedDuplicates{}
 	}
-	b.dups[it.ID] = cachedDuplicates{check, time.Now()}
+	b.dups[it.ID] = cachedDuplicates{check, cat}
 	b.dupMu.Unlock()
 	return check
 }
 
+// cachedDuplicates is duplicates without checking: ok is false when there's
+// no result for the library as it is now.
+func (b *importInbox) cachedDuplicates(it *pendingImport) (*duplicateCheck, bool) {
+	b.dupMu.Lock()
+	defer b.dupMu.Unlock()
+	c, ok := b.dups[it.ID]
+	if !ok || c.catalog != libraryCatalog.Load() {
+		return nil, false
+	}
+	return c.check, true
+}
+
+// checkDuplicatesSoon has the waiting books without an up-to-date duplicate
+// check checked in the background, one at a time, so the queue's list can
+// answer at once and show each result on a later poll. Calls while a run is
+// going on leave it to that run, which looks again before it stops.
+func (b *importInbox) checkDuplicatesSoon() {
+	b.dupMu.Lock()
+	if b.dupRunning {
+		b.dupAgain = true
+		b.dupMu.Unlock()
+		return
+	}
+	b.dupRunning = true
+	b.dupMu.Unlock()
+	go func() {
+		for {
+			for _, it := range b.list() {
+				if it.Into != "" {
+					continue // reviewed against its library book, not checked
+				}
+				if _, ok := b.cachedDuplicates(it); !ok && b.get(it.ID) != nil {
+					b.duplicates(it)
+				}
+			}
+			b.dupMu.Lock()
+			if !b.dupAgain {
+				b.dupRunning = false
+				b.dupMu.Unlock()
+				return
+			}
+			b.dupAgain = false
+			b.dupMu.Unlock()
+		}
+	}()
+}
+
 type cachedDuplicates struct {
-	check *duplicateCheck
-	at    time.Time
+	check   *duplicateCheck
+	catalog *catalog // the library it was checked against (nil before the first build)
 }
 
 func (b *importInbox) dupFiles(it *pendingImport) []dupFile {

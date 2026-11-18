@@ -21,8 +21,8 @@ const acceptAll = maybeId("imports-accept-all", HTMLButtonElement); // admins on
 /** Why the last mass import left a book waiting, by id. */
 const notAdded = new Map<string, string>();
 let queue: ImportQueue | null = null;
-/** A mass import can add it: not new files for a book, not maybe in the library already. */
-const addable = (it: ImportSummary): boolean => !it.into && !it.duplicate?.books.length;
+/** A mass import can add it: not new files for a book, checked, and not maybe in the library already. */
+const addable = (it: ImportSummary): boolean => !it.into && !it.checking && !it.duplicate?.books.length;
 
 /** The waiting book's files the library already holds, byte for byte. */
 function identicalFiles(item: ImportSummary): Set<string> {
@@ -86,6 +86,7 @@ function row(item: ImportSummary): HTMLLIElement {
                 ? [el("div", { className: "duplicate-note" }, "New file for ", el("a", { href: `/book/get/${encodeURIComponent(item.into)}` }, `“${item.into_title || "a library book"}”`), ": review it to add it to that book.")]
                 : []),
             ...(item.duplicate?.books.length ? [duplicateNote(item, item.duplicate)] : []),
+            ...(item.checking ? [el("div", { className: "auth-muted" }, "Checking whether it's already in the library…")] : []),
             // Why the mass import left it, unless the row already says (new files for a book, a duplicate).
             ...(notAdded.has(item.id) && !item.into && !item.duplicate?.books.length ? [el("div", { className: "import-duplicate import-duplicate-same" }, `Not mass imported: ${notAdded.get(item.id)}`)] : []),
         ),
@@ -186,7 +187,7 @@ acceptAll?.addEventListener("click", async () => {
     const items = (queue?.items ?? []).filter(addable);
     if (!items.length || running) return;
     const waiting = queue?.items.length ?? 0;
-    if (!confirm(`Add ${items.length} book${items.length === 1 ? "" : "s"} to the library with the metadata their files offer, without review?${waiting > items.length ? `\n\n${waiting - items.length} other${waiting - items.length === 1 ? "" : "s"} (maybe already in the library, or new files for a library book) stay here for review.` : ""}`)) return;
+    if (!confirm(`Add ${items.length} book${items.length === 1 ? "" : "s"} to the library with the metadata their files offer, without review?${waiting > items.length ? `\n\n${waiting - items.length} other${waiting - items.length === 1 ? "" : "s"} (maybe already in the library, new files for a library book, or not checked yet) stay here for review.` : ""}`)) return;
     running = true;
     stopping = false;
     acceptAll.disabled = discardExisting.disabled = true;

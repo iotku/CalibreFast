@@ -200,6 +200,8 @@ export interface ImportSummary {
     has_cover: boolean;
     /** Library books it may duplicate; absent for none. */
     duplicate?: DuplicateCheck;
+    /** Not checked for duplicates yet (it runs in the background): a later poll has the result. */
+    checking?: boolean;
     /** New files for this library book (Go: add_format.go), reviewed at link. */
     into?: string;
     into_title?: string;

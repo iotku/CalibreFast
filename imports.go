@@ -98,8 +98,10 @@ type importInbox struct {
 	mu    sync.Mutex
 	items map[string]*pendingImport
 
-	dupMu sync.Mutex
-	dups  map[string]cachedDuplicates // duplicates, by id
+	dupMu      sync.Mutex
+	dups       map[string]cachedDuplicates // duplicates, by id
+	dupRunning bool                        // checkDuplicatesSoon is at work
+	dupAgain   bool                        // and should look again when done
 }
 
 // openInbox opens (creating if needed) the queue in dir and loads the books
@@ -756,6 +758,9 @@ type importSummary struct {
 	HasCover bool         `json:"has_cover"`
 	// Books in the library it may duplicate (duplicates.go); nil for none.
 	Duplicate *duplicateCheck `json:"duplicate,omitempty"`
+	// Not checked for duplicates yet: that runs in the background, and a
+	// later poll has the result.
+	Checking bool `json:"checking,omitempty"`
 	// Into: new files for this library book (add_format.go), reviewed at Link.
 	Into      string `json:"into,omitempty"`
 	IntoTitle string `json:"into_title,omitempty"`
@@ -821,6 +826,7 @@ func importQueueHandler(w http.ResponseWriter, r *http.Request) {
 		q.Folder = watcher.dir
 		q.Settling, q.Problem, q.Polling = watcher.status()
 	}
+	checking := false
 	for _, it := range imports.list() {
 		hasCover, _ := coverFilesIn(imports.itemDir(it.ID))
 		s := importSummary{
@@ -832,10 +838,16 @@ func importQueueHandler(w http.ResponseWriter, r *http.Request) {
 			if b, ok := currentCatalog().lookup(it.Into); ok {
 				s.IntoTitle = b.Title
 			}
-		} else if dup := imports.duplicates(it); dup.found() {
+		} else if dup, ok := imports.cachedDuplicates(it); !ok {
+			s.Checking = true
+			checking = true
+		} else if dup.found() {
 			s.Duplicate = dup
 		}
 		q.Items = append(q.Items, s)
+	}
+	if checking {
+		imports.checkDuplicatesSoon()
 	}
 	writeJSON(w, http.StatusOK, q)
 }
