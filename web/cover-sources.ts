@@ -4,7 +4,9 @@
 // page's strip (cover-picker.ts) and the editor's dialog (cover-dialog.ts).
 
 import type { BookTarget } from "./book-target.js";
-import { EPUBJS_URL, JSZIP_URL, openPdf } from "./vendor.js";
+import { openEpub } from "./epub-open.js";
+import { canInflate, mediaType, openBuffer } from "./epub-source.js";
+import { EPUBJS_URL, openPdf } from "./vendor.js";
 import { setVendorScriptSrc } from "./trusted.js";
 
 /** Response of /upload-cover, /revert-cover and /cover-status. */
@@ -194,13 +196,19 @@ function loadScript(src: string): Promise<void> {
  * image, or its text drawn as a page. The same picture is offered once.
  */
 export async function* epubPages(target: BookTarget): AsyncGenerator<CoverChoice> {
-    // JSZip first: epub.js opens the whole .epub from memory with it.
-    if (!("JSZip" in window)) await loadScript(JSZIP_URL);
+    if (!canInflate) return; // no DecompressionStream to unzip it with
     if (typeof window.ePub === "undefined") await loadScript(EPUBJS_URL);
     const res = await fetch(target.file("epub"), { credentials: "same-origin" });
     if (!res.ok) throw new Error(`HTTP ${res.status}`);
-    const book = ePub(await res.arrayBuffer());
+    // Read as the reader does (epub-open.ts): epub.js gets each file through
+    // a requestMethod that parses it with parseInert, never a plain string
+    // to DOMParser (refused under Trusted Types outside the reader).
+    const source = openBuffer(new Uint8Array(await res.arrayBuffer()), "");
+    const { book, pathOf } = openEpub(source, "cover-sources");
     await book.ready;
+    /** A file in the book as a blob: URL (the choice's src, so kept); null if it isn't in the book. */
+    const fileUrl = async (path: string): Promise<string | null> =>
+        path && source.has(path) ? URL.createObjectURL(new Blob([(await source.read(path)) as BlobPart], { type: mediaType(path) })) : null;
 
     const seen = new Set<string>();
     const fresh = (c: CoverChoice | null): c is CoverChoice => {
@@ -212,7 +220,8 @@ export async function* epubPages(target: BookTarget): AsyncGenerator<CoverChoice
     };
 
     try {
-        const coverUrl = await book.coverUrl();
+        const coverHref = await book.coverUrl();
+        const coverUrl = coverHref ? await fileUrl(pathOf(coverHref)) : null;
         const cover = coverUrl ? await imageChoice(target, coverUrl, "EPUB cover") : null;
         if (fresh(cover)) yield cover;
     } catch {
@@ -231,8 +240,9 @@ export async function* epubPages(target: BookTarget): AsyncGenerator<CoverChoice
             if (rawSrc) {
                 // Resolve against the section's path inside the book; external
                 // and data: URLs are left alone.
-                const resolved = new URL(rawSrc, `epub:${section.url}`);
-                const url = resolved.protocol === "epub:" ? await book.archive.createUrl(resolved.pathname, { base64: false }) : rawSrc;
+                const resolved = new URL(rawSrc, `epub:/${pathOf(section.url ?? "")}`);
+                const url = resolved.protocol === "epub:" ? await fileUrl(safeDecode(resolved.pathname.slice(1))) : rawSrc;
+                if (!url) continue;
                 const c = await imageChoice(target, url, label);
                 if (fresh(c)) yield c;
                 continue;
@@ -246,6 +256,14 @@ export async function* epubPages(target: BookTarget): AsyncGenerator<CoverChoice
         } catch (err: unknown) {
             console.warn("Could not load EPUB section", i, err);
         }
+    }
+}
+
+function safeDecode(s: string): string {
+    try {
+        return decodeURIComponent(s);
+    } catch {
+        return s;
     }
 }
 
