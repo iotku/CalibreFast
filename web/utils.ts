@@ -91,15 +91,14 @@ function wrapText(ctx: CanvasRenderingContext2D, text: string, x: number, y: num
     ctx.fillText(line, x, y);
 }
 
+const HTML_ESCAPES: Record<string, string> = { "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" };
+
 /**
- * Escape HTML special characters
- * @param str - String to escape
- * @returns Escaped string
+ * Escape a string for HTML text or a quoted attribute value. Quotes are
+ * escaped too: a name with " in it mustn't end an attribute early.
  */
 export function escapeHtml(str: string): string {
-    const div = document.createElement("div");
-    div.textContent = str;
-    return div.innerHTML;
+    return str.replace(/[&<>"']/g, (c) => HTML_ESCAPES[c]!);
 }
 
 /** URL of a book's grid thumbnail. */
