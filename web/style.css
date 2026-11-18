@@ -5376,3 +5376,49 @@ body.selecting .book.selected .cover-wrapper {
 .prefs-main .import-actions {
     margin-top: var(--gap-large);
 }
+
+/* The top bar's sync button (web/nav.ts): a ring shows a download's
+   progress, a dot that something waits (unsent changes, paused books). */
+.tb-sync-btn {
+    position: relative;
+}
+.tb-sync-ring {
+    position: absolute;
+    inset: 3px;
+    width: calc(100% - 6px);
+    height: calc(100% - 6px);
+    transform: rotate(-90deg);
+    pointer-events: none;
+}
+.tb-sync-ring circle {
+    fill: none;
+    stroke: var(--status-reading);
+    stroke-width: 2.5;
+    stroke-linecap: round;
+    transition: stroke-dasharray var(--transition-normal);
+}
+.tb-sync-btn:not(.is-busy) .tb-sync-ring {
+    display: none;
+}
+.tb-sync-btn.is-busy > svg:first-child {
+    color: var(--status-reading);
+}
+.tb-sync-btn.has-note::after {
+    content: "";
+    position: absolute;
+    top: 6px;
+    right: 6px;
+    width: 7px;
+    height: 7px;
+    border-radius: 50%;
+    background: var(--status-reading);
+}
+.tb-sync-panel {
+    width: min(300px, calc(100vw - 32px));
+}
+.tb-sync-line {
+    margin: 4px 8px 8px;
+    font-size: 0.85rem;
+    line-height: 1.4;
+    color: var(--text-secondary);
+}

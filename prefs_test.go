@@ -107,7 +107,7 @@ func TestNewAccountCookie(t *testing.T) {
 	}
 }
 
-// The Saved list for downloading ahead of time: the user's own, newest first.
+// The Saved list for downloading ahead of time: the user's own, oldest first.
 func TestSavedBooks(t *testing.T) {
 	u, books := setupLibraryAndUser(t, 3)
 	other, err := createUser("other", "a long enough password", false)
@@ -137,15 +137,15 @@ func TestSavedBooks(t *testing.T) {
 	if err := json.Unmarshal(rec.Body.Bytes(), &got); err != nil {
 		t.Fatal(err)
 	}
-	if len(got) != 2 || got[0].UUID != books[2] || got[1].UUID != books[0] {
-		t.Fatalf("got %+v, want %s then %s", got, books[2], books[0])
+	if len(got) != 2 || got[0].UUID != books[0] || got[1].UUID != books[2] {
+		t.Fatalf("got %+v, want %s then %s", got, books[0], books[2])
 	}
-	if got[0].SavedAt != 1002*1000 || got[0].Title == "" {
+	if got[0].SavedAt != 1000*1000 || got[0].Title == "" {
 		t.Errorf("first: %+v", got[0])
 	}
-	// Only the newest N, and unchanged lists aren't sent again.
+	// Only the oldest N, and unchanged lists aren't sent again.
 	rec = call(t, mux, u, "GET", "/api/me/saved-books?limit=1", "")
-	if err := json.Unmarshal(rec.Body.Bytes(), &got); err != nil || len(got) != 1 || got[0].UUID != books[2] {
+	if err := json.Unmarshal(rec.Body.Bytes(), &got); err != nil || len(got) != 1 || got[0].UUID != books[0] {
 		t.Fatalf("limit=1: %s", rec.Body)
 	}
 	tag := rec.Header().Get("ETag")
@@ -156,12 +156,20 @@ func TestSavedBooks(t *testing.T) {
 	if rec.Code != http.StatusNotModified || rec.Body.Len() != 0 {
 		t.Errorf("same tag: %d %q, want an empty 304", rec.Code, rec.Body)
 	}
-	if err := setStatus(u.ID, books[1], "wanted", "manual"); err != nil { // newest Saved now
+	if err := setStatus(u.ID, books[1], "wanted", "manual"); err != nil { // saved now: the newest, not among the oldest 1
 		t.Fatal(err)
 	}
 	rec = httptest.NewRecorder()
 	mux.ServeHTTP(rec, asUser(req, u))
-	if rec.Code != http.StatusOK || !strings.Contains(rec.Body.String(), books[1]) {
+	if rec.Code != http.StatusNotModified {
+		t.Errorf("a newer book saved: %d, want 304 (the oldest 1 is unchanged)", rec.Code)
+	}
+	if err := setStatus(u.ID, books[0], "reading", "manual"); err != nil { // the oldest leaves Saved
+		t.Fatal(err)
+	}
+	rec = httptest.NewRecorder()
+	mux.ServeHTTP(rec, asUser(req, u))
+	if rec.Code != http.StatusOK || !strings.Contains(rec.Body.String(), books[2]) {
 		t.Errorf("after a change: %d %s", rec.Code, rec.Body)
 	}
 	for _, q := range []string{"", "?limit=0", "?limit=501", "?limit=x"} {

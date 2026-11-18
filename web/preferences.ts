@@ -24,7 +24,9 @@ import {
     type FormatPref,
 } from "./prefs.js";
 import { cachedMarks, fetchMarks, statusOf, type Marks } from "./reading.js";
-import { makeRoom, prefetchSaved, requestPersist, storageLimit, sweepFresh } from "./retention.js";
+import { syncBooks } from "./book-sync.js";
+import { makeRoom, requestPersist, storageLimit } from "./retention.js";
+import { onSyncChange, readSync } from "./sync-state.js";
 
 const MB = 1 << 20;
 
@@ -94,12 +96,9 @@ function showDevice(): void {
 
 async function applied(key: keyof DevicePrefs): Promise<void> {
     if (!navigator.onLine) return; // offline, a kept book may be the only way to read it: tidy up later
-    if (key === "prefetchSavedN") {
-        await prefetchSaved(true, (p) => {
-            deviceStatus.textContent = p.done ? "Saved books are up to date on this device." : `Downloading “${p.title}”… ${Math.round(p.fraction * 100)}%`;
-        });
-    } else if (key === "maxBytes") await makeRoom(0);
-    else await sweepFresh();
+    if (key === "maxBytes") await makeRoom(0);
+    // What to keep changed: tidy with fresh statuses, and download what's now wanted (book-sync.ts).
+    else await syncBooks({ force: true });
     const fresh = user ? await fetchMarks() : null;
     if (fresh) marks = fresh;
 }
@@ -294,6 +293,17 @@ removeAll.addEventListener("click", () => {
     });
 });
 window.addEventListener("cf:offline-changed", () => void render());
+
+// Downloads in progress (the top bar's sync button shows them too).
+function showDownloads(): void {
+    const s = readSync(user);
+    const a = s.active;
+    if (a && Date.now() - a.at < 10_000) {
+        const pct = a.total ? ` ${Math.round((a.got / a.total) * 100)}%` : "";
+        deviceStatus.textContent = `Downloading “${a.title}”…${pct}${s.waiting ? `, ${s.waiting} more waiting` : ""}`;
+    } else if (s.paused && s.waiting) deviceStatus.textContent = `Downloads paused: ${s.waiting} book${s.waiting === 1 ? "" : "s"} waiting.`;
+}
+onSyncChange(user, showDownloads);
 
 /* ------------------------------------------------------------------ */
 /* Start                                                              */

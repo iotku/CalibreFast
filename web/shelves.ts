@@ -1,6 +1,7 @@
 // Bookshelves page: create, rename, describe and delete shelves; pin them
 // to the home page, feature global ones (admins), and order your own
 // shelves and the featured ones (web/reorder.ts).
+import { startBookSync } from "./book-sync.js";
 import { api, errorMessage, statusLine } from "./dom.js";
 import { makeReorderable } from "./reorder.js";
 
@@ -84,3 +85,6 @@ for (const list of document.querySelectorAll<HTMLElement>(".shelf-order")) {
         },
     });
 }
+
+// A library page: books for offline reading that this device is missing (book-sync.ts).
+startBookSync();
