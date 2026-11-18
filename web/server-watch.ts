@@ -10,8 +10,9 @@
  * answers.
  */
 
-const FIRST_DELAY = 5_000;
-const MAX_DELAY = 60_000;
+// Asked often: what waits to be sent goes as soon as the server is back.
+const FIRST_DELAY = 3_000;
+const MAX_DELAY = 15_000;
 
 let down = false;
 let delay = FIRST_DELAY;

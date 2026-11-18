@@ -8,6 +8,7 @@
  */
 import { keepOnlyUser, registerWorker } from "./book-cache.js";
 import { settleAccountPrefs } from "./account-prefs.js";
+import { startSendingPending } from "./send-pending.js";
 import { onSyncChange, readSync, STALE_MS, unsentBooks, writeSync } from "./sync-state.js";
 import { forgetOfflineReading, refreshOfflineReading } from "./offline-books.js";
 import { el, withPageScheme } from "./dom.js";
@@ -490,6 +491,8 @@ function init(bar: HTMLElement): void {
                 const onReading = location.pathname === "/me/reading";
                 // The account's preferences (prefs.ts), or the guest's for an account just made here.
                 void settleAccountPrefs(st.username, body.prefs);
+                // Reading changes made where the server couldn't be reached: sent now, not when the book is next opened.
+                startSendingPending(st.username);
                 whenIdle(() => void refreshOfflineReading(onReading).catch(() => {}));
             } else if (ok) void forgetOfflineReading();
             if (json !== shown) render(st);
