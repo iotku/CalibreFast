@@ -1720,6 +1720,9 @@ body.book-standalone {
 
 .cover-stack > img {
     grid-area: 1 / 1;
+    /* cover.jpg's shape, not the thumbnail's (rounded when it was made):
+       the cover keeps its height as the thumbnail, then the full cover, loads */
+    aspect-ratio: var(--cover-ratio, auto);
 }
 
 /* Placeholder cover, as on the book's library card (colour, title, author):
@@ -1733,7 +1736,7 @@ body.book-standalone {
     box-sizing: border-box;
     width: 100%;
     max-width: 280px;
-    aspect-ratio: 2 / 3;
+    aspect-ratio: var(--cover-ratio, 2 / 3); /* the cover's own shape when known (book.html) */
     padding: 18px;
     overflow: hidden;
     border-radius: var(--radius-large);
@@ -2081,6 +2084,11 @@ body.book-standalone {
     display: none;
 }
 
+/* The book that way is still loading (modal.ts): a tap waits for it. */
+.modal-nav.waiting {
+    opacity: 0.5;
+}
+
 .modal-nav:hover {
     background: rgba(60, 60, 60, 0.9);
     color: #fff;
@@ -2096,8 +2104,10 @@ body.book-standalone {
 
 /* Narrow screens: modal.ts puts the arrows beside the cover. The cover's
    column gives up room for them on both sides, so the controls above and
-   the buttons below still line up with the cover's edges. */
-.book-page-side:has(> .book-page-cover > .modal-nav) {
+   the buttons below still line up with the cover's edges. Keyed on the
+   modal (.nav-by-cover), not on the arrows being there: the next book's
+   markup comes without them, and must not lay out wider first. */
+#book-modal.nav-by-cover .book-page-side {
     --nav-width: 40px;
     --nav-room: calc(var(--nav-width) + 0.85rem);
     padding-inline: var(--nav-room);
@@ -2105,7 +2115,7 @@ body.book-standalone {
     box-sizing: border-box;
 }
 
-.book-page-cover:has(> .modal-nav) {
+#book-modal.nav-by-cover .book-page-cover {
     position: relative;
 }
 
@@ -2129,6 +2139,39 @@ body.book-standalone {
 .book-page-cover > .modal-nav-next {
     right: calc(-1 * var(--nav-room));
     left: auto;
+}
+
+/* Changing books: the current one stays, dimmed, until the next arrives
+   (modal.ts), so nothing jumps and the arrows stay under the finger. */
+#modal-body > .book-page {
+    transition: opacity 0.15s ease;
+}
+
+#book-modal.switching #modal-body > .book-page {
+    opacity: 0.45;
+}
+
+.modal-switching {
+    position: fixed;
+    top: max(1rem, env(safe-area-inset-top));
+    left: 50%;
+    transform: translateX(-50%);
+    z-index: 1002;
+    padding: 8px 12px;
+    border-radius: 999px;
+    background: rgba(20, 20, 20, 0.85);
+    border: 1px solid var(--border-medium);
+    box-shadow: var(--shadow-small);
+}
+
+.modal-switching[hidden] {
+    display: none;
+}
+
+@media (prefers-reduced-motion: reduce) {
+    #modal-body > .book-page {
+        transition: none;
+    }
 }
 
 .modal-loading {
