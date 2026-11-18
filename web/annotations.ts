@@ -10,6 +10,7 @@
 
 import { api, random } from "./dom.js";
 import { localKey, type Owner } from "./local-keys.js";
+import { isUnreachable, onServerBack, serverDown } from "./server-watch.js";
 import type { BookFormat } from "./reading-sync.js";
 
 /** Colours the readers offer, by KOReader's names for them. */
@@ -105,7 +106,10 @@ export function createAnnotationStore(uuid: string, format: BookFormat, owner: O
                 } catch (e) {
                     const status = (e as { status?: number }).status;
                     if (status === 400 || status === 404 || status === 409) a.synced = true; // refused for good: don't retry forever
-                    else break; // offline or the server is down: try again later
+                    else {
+                        if (isUnreachable(e)) serverDown();
+                        break; // offline or the server is down: try again later
+                    }
                 }
             }
             // A delete the server knows about needs no copy here.
@@ -136,8 +140,8 @@ export function createAnnotationStore(uuid: string, format: BookFormat, owner: O
                 for (const local of mine.values()) if (!local.synced) merged.push(local);
                 all = merged.sort((a, b) => a.created_at - b.created_at);
                 save();
-            } catch {
-                /* offline: the local copy */
+            } catch (e) {
+                if (isUnreachable(e)) serverDown(); // offline: the local copy
             }
         }
         onChange();
@@ -149,7 +153,9 @@ export function createAnnotationStore(uuid: string, format: BookFormat, owner: O
         void flush().then(onChange);
     };
 
-    window.addEventListener("online", () => void flush());
+    // The server back (server-watch.ts): send what waited, and take what
+    // other devices did meanwhile.
+    onServerBack(() => void load());
 
     return {
         load,
