@@ -53,7 +53,9 @@
         <div class="book-page-side">
             <div class="book-page-cover">
                 {{ if $readLink }}
-                <a href="{{ $readLink }}" class="cover-link" title="Read book" aria-label="Read book">
+                <!-- web/read-link.ts points it at the format last read, for a book with both. -->
+                <a href="{{ $readLink }}" class="cover-link" title="Read book" aria-label="Read book"
+                    data-uuid="{{ .UUID }}" data-formats="{{ range $i, $f := .Formats }}{{ if $i }} {{ end }}{{ $f }}{{ end }}">
                     {{ template "book-cover-stack" . }}
                     <span class="cover-read-hint">
                         <svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2"
@@ -103,11 +105,12 @@
                 </a>
                 {{ end }}{{ end }}
             </div>
-            {{ range .Formats }}{{ if eq . "epub" }}
+            {{ if $readLink }}
             <!-- Kept on this device for reading offline, and whether to keep it
                  (web/offline-control.ts fills it in; it stays hidden where the
                  browser can't keep books: not HTTPS or localhost). -->
             <div class="book-offline" data-uuid="{{ $.UUID }}" data-title="{{ $.Title }}"
+                data-formats="{{ range $i, $f := $.Formats }}{{ if $i }} {{ end }}{{ $f }}{{ end }}"
                 data-authors="{{ range $i, $a := $.Authors }}{{ if $i }}, {{ end }}{{ $a }}{{ end }}" hidden>
                 <span class="book-offline-state" role="status"></span>
                 <select class="book-offline-pref" aria-label="Keep this book on this device">
@@ -116,7 +119,7 @@
                     <option value="never">Don't keep on this device</option>
                 </select>
             </div>
-            {{ end }}{{ end }}
+            {{ end }}
             <!-- Per-user controls (/book/me/<uuid>), loaded by user.ts. The
                  column's CSS puts Favorite and the reading status above the
                  cover (the throbber holds their place, so nothing moves when

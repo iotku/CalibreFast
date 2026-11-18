@@ -1,7 +1,8 @@
 /**
- * Whole .epub files kept in the browser (IndexedDB "cf-books"), so a book
- * read before opens at once, without a download, and reads with no server
- * at all (with the service worker, sw.ts).
+ * Whole book files kept in the browser (IndexedDB "cf-books": .epub files in
+ * "books", .pdf files in "pdfs"), so a book read before opens at once,
+ * without a download, and reads with no server at all (with the service
+ * worker, sw.ts). A book with both formats may have either or both kept.
  *
  * A book stays until it hasn't been opened for a week, or its status goes
  * back to "not started". Each copy belongs to the user who read it: another
@@ -16,11 +17,23 @@
 import { scriptUrl } from "./trusted.js";
 
 const DB = "cf-books";
-const STORE = "books";
+/** The kept files of each format, keyed by the book's uuid. */
+const STORES = { epub: "books", pdf: "pdfs" } as const;
 const MAX_AGE_MS = 7 * 24 * 3600 * 1000;
+
+/** The formats the readers open, and so the ones kept. */
+export type KeptFormat = keyof typeof STORES;
+export const KEPT_FORMATS = Object.keys(STORES) as KeptFormat[];
+
+/** The reader for a book's format. */
+export function readerUrl(uuid: string, format: KeptFormat): string {
+    return `${format === "pdf" ? "/read-pdf" : "/read"}?uuid=${encodeURIComponent(uuid)}`;
+}
 
 export interface CachedBook {
     uuid: string;
+    /** Which file this is (records from before PDFs were kept have none: EPUB). */
+    format?: KeptFormat;
     /** Username, or null for an anonymous reader (-public-read). */
     user: string | null;
     bytes: Blob;
@@ -28,7 +41,7 @@ export interface CachedBook {
     size: number;
     title: string;
     authors: string;
-    /** epub.js locations (page numbers), once generated. */
+    /** epub.js locations (page numbers), once generated (EPUB only). */
     locations?: string;
     lastOpened: number;
     /** The last status seen for the book, other than "not started". */
@@ -36,22 +49,50 @@ export interface CachedBook {
 }
 
 let dbPromise: Promise<IDBDatabase> | null = null;
+/** The upgrade waits for a page of an older build to let go of the database. */
+let blocked = false;
 
 function db(): Promise<IDBDatabase> {
+    // Until then every request would queue behind it: do without a cache
+    // (the readers read from the server) instead of waiting.
+    if (blocked) return Promise.reject(new Error("the book cache is in use by an older page"));
     dbPromise ??= new Promise((resolve, reject) => {
-        const req = indexedDB.open(DB, 1);
-        req.onupgradeneeded = () => req.result.createObjectStore(STORE, { keyPath: "uuid" });
-        req.onsuccess = () => resolve(req.result);
-        req.onerror = () => reject(req.error);
+        const req = indexedDB.open(DB, 2);
+        req.onupgradeneeded = () => {
+            // Version 1 had only "books" (EPUBs); 2 adds "pdfs".
+            for (const name of Object.values(STORES)) {
+                if (!req.result.objectStoreNames.contains(name)) req.result.createObjectStore(name, { keyPath: "uuid" });
+            }
+        };
+        req.onsuccess = () => {
+            const d = req.result;
+            // A newer build in another tab needs to upgrade it: let go.
+            d.onversionchange = () => {
+                d.close();
+                dbPromise = null;
+            };
+            blocked = false;
+            dbPromise = Promise.resolve(d); // also after giving up on it while blocked
+            resolve(d);
+        };
+        req.onerror = () => {
+            blocked = false;
+            dbPromise = null;
+            reject(req.error);
+        };
+        req.onblocked = () => {
+            blocked = true;
+            reject(new Error("the book cache is in use by an older page"));
+        };
     });
     return dbPromise;
 }
 
-async function tx<T>(mode: IDBTransactionMode, run: (s: IDBObjectStore) => IDBRequest<T> | void): Promise<T | undefined> {
+async function tx<T>(format: KeptFormat, mode: IDBTransactionMode, run: (s: IDBObjectStore) => IDBRequest<T> | void): Promise<T | undefined> {
     const d = await db();
     return new Promise((resolve, reject) => {
-        const t = d.transaction(STORE, mode);
-        const req = run(t.objectStore(STORE));
+        const t = d.transaction(STORES[format], mode);
+        const req = run(t.objectStore(STORES[format]));
         t.oncomplete = () => resolve(req ? req.result : undefined);
         t.onerror = () => reject(t.error);
         t.onabort = () => reject(t.error);
@@ -68,20 +109,33 @@ export function currentUser(): string | null {
     }
 }
 
-export async function getBook(uuid: string): Promise<CachedBook | null> {
-    const b = await tx<CachedBook>("readonly", (s) => s.get(uuid));
-    return b && b.user === currentUser() ? b : null;
+/** All records of one format, whoever they belong to, with their format set. */
+async function allOf(format: KeptFormat): Promise<CachedBook[]> {
+    return ((await tx<CachedBook[]>(format, "readonly", (s) => s.getAll())) ?? []).map((b) => ({ ...b, format }));
+}
+
+/** This user's kept file of a book in a format. */
+export async function getBook(uuid: string, format: KeptFormat = "epub"): Promise<CachedBook | null> {
+    const b = await tx<CachedBook>(format, "readonly", (s) => s.get(uuid));
+    return b && b.user === currentUser() ? { ...b, format } : null;
+}
+
+/** This user's kept files of a book, in every format. */
+export async function getBookFiles(uuid: string): Promise<CachedBook[]> {
+    const found = await Promise.all(KEPT_FORMATS.map((f) => getBook(uuid, f)));
+    return found.filter((b): b is CachedBook => b !== null);
 }
 
 export async function putBook(book: CachedBook): Promise<void> {
-    await tx("readwrite", (s) => s.put(book));
+    const format = book.format ?? "epub";
+    await tx(format, "readwrite", (s) => s.put({ ...book, format }));
     changed(book.uuid);
 }
 
-/** Change some fields of a cached book. */
-export async function updateBook(uuid: string, change: Partial<CachedBook>): Promise<void> {
-    const b = await tx<CachedBook>("readonly", (s) => s.get(uuid));
-    if (b) await putBook({ ...b, ...change });
+/** Change some fields of a cached book's file. */
+export async function updateBook(uuid: string, format: KeptFormat, change: Partial<CachedBook>): Promise<void> {
+    const b = await tx<CachedBook>(format, "readonly", (s) => s.get(uuid));
+    if (b) await putBook({ ...b, ...change, format });
 }
 
 /* ------------------------------------------------------------------ */
@@ -113,8 +167,8 @@ function changed(uuid: string): void {
 }
 
 /**
- * Set a book's preference. "never" drops a kept copy; "keep" doesn't fetch
- * one by itself (downloadForOffline does).
+ * Set a book's preference (for all its formats). "never" drops kept copies;
+ * "keep" doesn't fetch one by itself (downloadForOffline does).
  */
 export async function setOfflinePref(uuid: string, pref: OfflinePref): Promise<void> {
     const prefs = readPrefs();
@@ -132,11 +186,17 @@ export async function setOfflinePref(uuid: string, pref: OfflinePref): Promise<v
 }
 
 /**
- * Download a book's EPUB and keep it, without opening it (for "keep").
+ * Download a book's file and keep it, without opening it (for "keep").
  * onProgress gets the fraction done (0..1) when the size is known.
  */
-export async function downloadForOffline(uuid: string, title: string, authors: string, onProgress?: (f: number) => void): Promise<void> {
-    const res = await fetch(`/download/${encodeURIComponent(uuid)}/epub`, { credentials: "same-origin" });
+export async function downloadForOffline(
+    uuid: string,
+    format: KeptFormat,
+    title: string,
+    authors: string,
+    onProgress?: (f: number) => void,
+): Promise<void> {
+    const res = await fetch(`/download/${encodeURIComponent(uuid)}/${format}`, { credentials: "same-origin" });
     if (!res.ok || !res.body) throw new Error(`HTTP ${res.status}`);
     const total = Number(res.headers.get("content-length")) || 0;
     const chunks: Uint8Array[] = [];
@@ -149,11 +209,12 @@ export async function downloadForOffline(uuid: string, title: string, authors: s
         got += value.length;
         if (total) onProgress?.(got / total);
     }
-    const had = await getBook(uuid);
+    const had = await getBook(uuid, format);
     await putBook({
         uuid,
+        format,
         user: currentUser(),
-        bytes: new Blob(chunks as BlobPart[], { type: "application/epub+zip" }),
+        bytes: new Blob(chunks as BlobPart[], { type: format === "pdf" ? "application/pdf" : "application/epub+zip" }),
         lastModified: res.headers.get("last-modified") ?? "",
         size: got,
         title,
@@ -170,23 +231,30 @@ export async function keptUuids(): Promise<Set<string>> {
     return new Set((await listBooks()).map((b) => b.uuid));
 }
 
-/** Every cached book (for the offline page). */
+/** Every cached file, each format of a book on its own (for the offline page). */
 export async function listBooks(): Promise<CachedBook[]> {
-    return ((await tx<CachedBook[]>("readonly", (s) => s.getAll())) ?? []).filter((b) => b.user === currentUser());
+    const all = (await Promise.all(KEPT_FORMATS.map(allOf))).flat();
+    return all.filter((b) => b.user === currentUser());
 }
 
-export async function deleteBook(uuid: string): Promise<void> {
-    await tx("readwrite", (s) => s.delete(uuid));
-    tellWorker({ type: "evict", uuid });
+/** Drop a book's kept file in a format, or in every format. */
+export async function deleteBook(uuid: string, format?: KeptFormat): Promise<void> {
+    for (const f of format ? [format] : KEPT_FORMATS) {
+        await tx(f, "readwrite", (s) => s.delete(uuid));
+        tellWorker({ type: "evict", uuid, format: f });
+    }
     changed(uuid);
 }
 
 /** Remove copies that belong to anyone but this user (sign-out, another user). */
 export async function keepOnlyUser(user: string | null): Promise<void> {
-    const all = (await tx<CachedBook[]>("readonly", (s) => s.getAll())) ?? [];
-    const others = all.filter((b) => b.user !== user);
-    for (const b of others) await tx("readwrite", (s) => s.delete(b.uuid));
-    if (others.length) tellWorker({ type: "clear-books" });
+    let dropped = 0;
+    for (const format of KEPT_FORMATS) {
+        const others = (await allOf(format)).filter((b) => b.user !== user);
+        for (const b of others) await tx(format, "readwrite", (s) => s.delete(b.uuid));
+        dropped += others.length;
+    }
+    if (dropped) tellWorker({ type: "clear-books" });
 }
 
 /**
@@ -203,18 +271,18 @@ export async function sweep(statusOf?: (uuid: string) => string, keep?: string):
     for (const b of await listBooks()) {
         if (b.uuid === keep || offlinePref(b.uuid) === "keep") continue;
         if (now - b.lastOpened > MAX_AGE_MS) {
-            await deleteBook(b.uuid);
+            await deleteBook(b.uuid, b.format);
             continue;
         }
         if (!statusOf) continue;
         const status = statusOf(b.uuid);
-        if (status && status !== b.statusSeen) await updateBook(b.uuid, { statusSeen: status });
-        else if (!status && b.statusSeen) await deleteBook(b.uuid);
+        if (status && status !== b.statusSeen) await updateBook(b.uuid, b.format ?? "epub", { statusSeen: status });
+        else if (!status && b.statusSeen) await deleteBook(b.uuid, b.format);
     }
 }
 
 /** Tell the service worker (sw.ts) to drop cached reader pages. */
-function tellWorker(msg: { type: "evict"; uuid: string } | { type: "clear-books" }): void {
+function tellWorker(msg: { type: "evict"; uuid: string; format: KeptFormat } | { type: "clear-books" }): void {
     try {
         navigator.serviceWorker?.controller?.postMessage(msg);
     } catch {

@@ -1,10 +1,13 @@
 import { colorValue, setupAnnotationUI } from "./annotation-ui.js";
+import { currentUser, getBook, offlinePref, putBook, registerWorker, sweep, updateBook, type CachedBook } from "./book-cache.js";
 import { createAnnotationStore, parsePdfAnchor, type Annotation, type PdfAnchor } from "./annotations.js";
 import { byId, el, maybeId, modalOpen } from "./dom.js";
 import { setupPdfGestures } from "./pdf-gestures.js";
 import { setupLoupe } from "./pdf-loupe.js";
 import { ACTUAL_SIZE, createPdfView, type PdfView, type ViewLayout } from "./pdf-view.js";
 import { syncGuestBook } from "./guest-sync.js";
+import { noteFormatOpened } from "./last-format.js";
+import { keepCover } from "./offline-books.js";
 import { offerSignIn, setupChrome } from "./reader-chrome.js";
 import { keepsHistory, leaveReader, previewSync, readerBook, type ReaderBook } from "./reader-preview.js";
 import { getSettings, onSettingsChange, setSettings, type ReaderSettings } from "./reader-settings.js";
@@ -38,6 +41,7 @@ chrome.setScrubbable(false);
 const sync = preview
     ? previewSync(chrome.setStatus)
     : await createReadingSync(uuid, "pdf", { legacyKey: `pdf-page-${uuid}`, onStatus: chrome.setStatus });
+if (!preview) noteFormatOpened(sync.user, uuid, "pdf"); // the book's cover opens this format next time (last-format.ts)
 // Just signed in from this page: what was read here signed out goes to the
 // account first, so the place below is the synced one.
 if (sync.signedIn && !preview) await syncGuestBook(uuid, chrome.setStatus);
@@ -404,11 +408,91 @@ async function renderToc(pdf: PdfJS.Document): Promise<void> {
 }
 
 // ---- open -----------------------------------------------------------------------
+// Opening a PDF, as the EPUB reader does (reader.ts):
+//   - a copy kept in this browser (book-cache.ts) opens at once, offline too;
+//   - otherwise pdf.js reads what the first pages need from the server (HTTP
+//     ranges) and fetches the rest in the background; once all of it is
+//     here, it's kept for next time and for reading offline.
+// A preview neither uses nor keeps a copy in this browser.
+
+if (!preview) registerWorker();
+const downloadUrl = target.file("pdf");
+
+/** Keep the whole file in this browser, with a title and authors for the offline page. */
+async function keepCopy(pdf: PdfJS.Document | null, bytes: Uint8Array, lastModified: string, had: CachedBook | null): Promise<void> {
+    if (preview || offlinePref(uuid) === "never") return; // set on the book's page (offline-control.ts)
+    const info = pdf ? (await pdf.getMetadata().catch(() => null))?.info : undefined;
+    const text = (v: unknown): string => (typeof v === "string" ? v.trim() : "");
+    await putBook({
+        uuid,
+        format: "pdf",
+        user: currentUser(),
+        bytes: new Blob([bytes as BlobPart], { type: "application/pdf" }),
+        lastModified,
+        size: bytes.length,
+        title: byId("book-title").textContent?.trim() || text(info?.Title) || document.title,
+        authors: text(info?.Author) || had?.authors || "",
+        lastOpened: Date.now(),
+        statusSeen: had?.statusSeen,
+    });
+    void keepCover(uuid).catch(() => {}); // for the offline Reading page (offline-books.ts)
+}
+
+/** The whole file, from the server. */
+async function download(): Promise<{ bytes: Uint8Array; lastModified: string }> {
+    const res = await fetch(downloadUrl, { credentials: "same-origin" });
+    if (!res.ok) throw new Error(`HTTP ${res.status}`);
+    return { bytes: new Uint8Array(await res.arrayBuffer()), lastModified: res.headers.get("last-modified") ?? "" };
+}
+
+/** Read from the server: once pdf.js has all of it, keep that (no second download). */
+async function keepWhenLoaded(pdf: PdfJS.Document, head: Promise<Response | null>): Promise<void> {
+    await pdf.getDownloadInfo();
+    const res = await head;
+    const bytes = await pdf.getData();
+    // The file changed while it was loading: the next visit keeps the new one.
+    const length = Number(res?.headers.get("content-length")) || 0;
+    if (length && length !== bytes.length) return;
+    await keepCopy(pdf, bytes, res?.ok ? (res.headers.get("last-modified") ?? "") : "", null);
+}
+
+/** The copy kept here may be out of date: check, and fetch the new one for next time. */
+async function revalidate(cached: CachedBook): Promise<void> {
+    const res = await fetch(downloadUrl, { method: "HEAD", credentials: "same-origin" });
+    if (res.ok) void sweep(undefined, uuid).catch(() => {}); // online: tidy up other kept books
+    const lm = res.headers.get("last-modified") ?? "";
+    if (!res.ok || !lm || lm === cached.lastModified) return;
+    const { bytes, lastModified } = await download();
+    await keepCopy(null, bytes, lastModified, cached);
+    chrome.toast("A newer copy of this book was downloaded. Reopen it to see it.");
+}
+
+async function openBook(): Promise<PdfJS.Document> {
+    const cached = preview ? null : await getBook(uuid, "pdf").catch(() => null);
+    if (cached) {
+        try {
+            const pdf = await openPdf(new Uint8Array(await cached.bytes.arrayBuffer()));
+            void updateBook(uuid, "pdf", { lastOpened: Date.now() }).catch(() => {});
+            void revalidate(cached).catch(() => {}); // offline
+            return pdf;
+        } catch (err) {
+            console.warn("the copy kept here didn't open, reading it from the server:", err);
+        }
+    }
+    // Its Last-Modified, for checking a kept copy later (pdf.js doesn't say).
+    const head = preview ? Promise.resolve(null) : fetch(downloadUrl, { method: "HEAD", credentials: "same-origin" }).catch(() => null);
+    const pdf = await openPdf(downloadUrl);
+    if (!preview) {
+        void sweep(undefined, uuid).catch(() => {}); // the server answered: tidy up other kept books
+        void keepWhenLoaded(pdf, head).catch((err: unknown) => console.warn("keeping the PDF on this device failed:", err));
+    }
+    return pdf;
+}
 
 async function init(): Promise<void> {
     let pdf: PdfJS.Document;
     try {
-        pdf = await openPdf(target.file("pdf"));
+        pdf = await openBook();
     } catch (err) {
         container.className = "reader-message";
         container.textContent = "Couldn't load this PDF.";

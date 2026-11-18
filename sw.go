@@ -3,7 +3,7 @@ package main
 // The service worker (web/sw.ts), the offline page it shows, and the web
 // app manifest. Together they make CalibreFast an app that can be installed
 // ("Install app" / "Add to Home screen" in Chrome on Android) and that reads
-// EPUBs kept in the browser with no server; see web/book-cache.ts and
+// EPUBs and PDFs kept in the browser with no server; see web/book-cache.ts and
 // web/offline.ts.
 
 import (
@@ -15,11 +15,15 @@ import (
 	"sync"
 )
 
-// readerVendor are the libraries the EPUB reader loads (templates/reader.html),
-// kept by the service worker with our own scripts.
+// readerVendor are the libraries the readers load (templates/reader.html,
+// web/vendor.ts for pdf.js), kept by the service worker with our own scripts.
+// The files pdf.js fetches only when a PDF needs them (fonts, decoders) are
+// kept as they're fetched instead (web/sw.ts).
 var readerVendor = []string{
 	"/static/vendor/jszip@3.10.2/dist/jszip.min.js",
 	"/static/vendor/epubjs@0.3.93/dist/epub.min.js",
+	"/static/vendor/pdfjs-dist@5.7.284/build/pdf.min.mjs",
+	"/static/vendor/pdfjs-dist@5.7.284/build/pdf.worker.min.mjs",
 }
 
 var workerScript = sync.OnceValues(func() ([]byte, error) {
