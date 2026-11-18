@@ -1,6 +1,7 @@
 import { colorValue, setupAnnotationUI } from "./annotation-ui.js";
 import { currentUser, getBook, registerWorker, updateBook, type CachedBook } from "./book-cache.js";
 import { shouldKeep, storeBook, sweep } from "./retention.js";
+import { holdBackgroundDownloads } from "./page-busy.js";
 import { createAnnotationStore, parsePdfAnchor, type Annotation, type PdfAnchor } from "./annotations.js";
 import { byId, el, maybeId, modalOpen } from "./dom.js";
 import { setupPdfGestures } from "./pdf-gestures.js";
@@ -474,10 +475,13 @@ async function revalidate(cached: CachedBook): Promise<void> {
 }
 
 async function openBook(): Promise<PdfJS.Document> {
+    // Background book downloads in other tabs wait while this book loads (page-busy.ts).
+    const release = preview ? (): void => {} : holdBackgroundDownloads();
     const cached = preview ? null : await getBook(uuid, "pdf").catch(() => null);
     if (cached) {
         try {
             const pdf = await openPdf(new Uint8Array(await cached.bytes.arrayBuffer()));
+            release();
             void updateBook(uuid, "pdf", { lastOpened: Date.now() }).catch(() => {});
             void revalidate(cached).catch(() => {}); // offline
             return pdf;
@@ -487,7 +491,11 @@ async function openBook(): Promise<PdfJS.Document> {
     }
     // Its Last-Modified, for checking a kept copy later (pdf.js doesn't say).
     const head = preview ? Promise.resolve(null) : fetch(downloadUrl, { method: "HEAD", credentials: "same-origin" }).catch(() => null);
-    const pdf = await openPdf(downloadUrl);
+    const pdf = await openPdf(downloadUrl).catch((err: unknown) => {
+        release();
+        throw err;
+    });
+    void pdf.getDownloadInfo().finally(release); // all of it here
     if (!preview) {
         void sweep(undefined, uuid).catch(() => {}); // the server answered: tidy up other kept books
         void keepWhenLoaded(pdf, head).catch((err: unknown) => console.warn("keeping the PDF on this device failed:", err));

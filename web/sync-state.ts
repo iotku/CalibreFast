@@ -20,6 +20,8 @@ export interface SyncState {
     active?: { title: string; got: number; total: number; at: number } | null;
     /** Books waiting to be downloaded after the active one. */
     waiting?: number;
+    /** Waiting for pages to finish loading what's on screen (page-busy.ts). */
+    held?: boolean;
 }
 
 /** A download not reported for this long was cut off (its page closed). */

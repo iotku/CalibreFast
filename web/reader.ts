@@ -2,6 +2,7 @@ import { colorValue, setupAnnotationUI } from "./annotation-ui.js";
 import { createAnnotationStore, type Annotation } from "./annotations.js";
 import { currentUser, getBook, registerWorker, updateBook, type CachedBook } from "./book-cache.js";
 import { shouldKeep, storeBook, sweep } from "./retention.js";
+import { holdBackgroundDownloads } from "./page-busy.js";
 import { keepCover } from "./offline-books.js";
 import { byId, el, errorMessage, maybeId, modalOpen } from "./dom.js";
 import { openEpub } from "./epub-open.js";
@@ -47,6 +48,8 @@ chrome.setScrubbable(false);
  */
 allowEpubChapters(); // epub.js sets each chapter as its sandboxed iframe's srcdoc
 if (!preview) registerWorker();
+// Background book downloads in other tabs wait while this book loads (page-busy.ts).
+const releaseDownloads = preview ? (): void => {} : holdBackgroundDownloads();
 const downloadUrl = target.file("epub");
 /** Below this the whole file is fetched at once: it usually beats the ranges. */
 const SMALL_BOOK = 3 << 20;
@@ -685,6 +688,7 @@ try {
 
 // Larger books read in parts: the rest comes once the first page is up.
 fetchRest();
+void wholeDone.finally(releaseDownloads);
 
 // Page numbers need every chapter: from the copy kept here, or generated
 // once the whole book has arrived (then kept with it).

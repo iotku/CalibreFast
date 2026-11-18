@@ -21,6 +21,7 @@ import {
     currentUser,
     deletePartial,
     getBook,
+    getBookFiles,
     getPartial,
     listBooks,
     offlinePref,
@@ -43,9 +44,11 @@ import {
     writeSavedList,
     type SavedBook,
 } from "./retention.js";
+import { pageBusy, quietFetch, untilQuiet, watchPage } from "./page-busy.js";
 import { onSyncChange, readSync, writeSync } from "./sync-state.js";
 
-export type DownloadResult = "ok" | "missing" | "too-big" | "no-room" | "paused";
+/** "yielded": stopped for the page's own loading (page-busy.ts); goes on from there. */
+export type DownloadResult = "ok" | "missing" | "too-big" | "no-room" | "paused" | "yielded";
 
 export interface DownloadOptions {
     onProgress?: (fraction: number) => void;
@@ -59,6 +62,13 @@ export interface DownloadOptions {
 
 /** What arrived is saved this often (bytes), to go on from there if cut off. */
 const SAVE_EVERY = 1 << 20;
+/**
+ * A page busy loading (covers, a popup): the download stops reading, and
+ * the connection soon stops sending. Still busy after this long, it's cut
+ * off (what arrived is kept) to free the connection, and goes on later.
+ */
+const HOLD_MS = 3000;
+const sleep = (ms: number): Promise<void> => new Promise((r) => setTimeout(r, ms));
 /** The top bar is told of progress at most this often. */
 const REPORT_MS = 500;
 
@@ -86,10 +96,12 @@ export async function downloadForOffline(
     const part = await getPartial(uuid, format).catch(() => null);
     // Only with a validator: the rest of the same file, or (200) the whole new one.
     const resume = part?.lastModified ? part : null;
-    const res = await fetch(`/download/${encodeURIComponent(uuid)}/${format}`, {
+    // Low priority, and not counted as the page's own loading (page-busy.ts).
+    const res = await quietFetch(`/download/${encodeURIComponent(uuid)}/${format}`, {
         credentials: "same-origin",
         headers: resume ? { range: `bytes=${resume.got}-`, "if-range": resume.lastModified } : {},
-    });
+        ...(opts.auto ? { priority: "low" } : {}),
+    } as RequestInit);
     if (res.status === 404) return "missing";
     if (res.status === 416 && resume) {
         await deletePartial(uuid, format); // what was kept doesn't fit the file any more: from the start next time
@@ -122,12 +134,22 @@ export async function downloadForOffline(
     let pending: Uint8Array[] = [];
     let pendingBytes = 0;
     const reader = res.body.getReader();
+    const stop = async (why: "paused" | "yielded"): Promise<DownloadResult> => {
+        await reader.cancel().catch(() => {});
+        kept = new Blob([kept, ...(pending as BlobPart[])]);
+        pending = [];
+        await savePart();
+        return why;
+    };
     for (;;) {
-        if (opts.auto && paused()) {
-            await reader.cancel().catch(() => {});
-            kept = new Blob([kept, ...(pending as BlobPart[])]);
-            await savePart();
-            return "paused";
+        if (opts.auto && paused()) return stop("paused");
+        // The page is loading what the reader waits for: hold off, and if it
+        // goes on, let go of the connection.
+        if (opts.auto && pageBusy()) {
+            const since = Date.now();
+            while (pageBusy() && !paused() && Date.now() - since < HOLD_MS) await sleep(200);
+            if (paused()) return stop("paused");
+            if (pageBusy()) return stop("yielded");
         }
         const { done, value } = await reader.read();
         if (done) break;
@@ -203,7 +225,7 @@ async function savedToFetch(user: string, n: number, force: boolean): Promise<Sa
     }
     if (!force && last?.limit === n && Date.now() - last.at < SAVED_REFRESH_MS) return last.books;
     const tag = last?.limit === n ? last.tag : undefined;
-    const res = await fetch(`/api/me/saved-books?limit=${n}`, {
+    const res = await quietFetch(`/api/me/saved-books?limit=${n}`, {
         credentials: "same-origin",
         headers: { accept: "application/json", ...(tag ? { "if-none-match": tag } : {}) },
     }).catch(() => null);
@@ -225,23 +247,36 @@ async function runJobs(user: string, jobs: Job[]): Promise<void> {
             if (paused() || currentUser() !== user) break;
             left--;
             if (savedStopped && job.status === "wanted") continue;
+            // Another tab may have got it while this one waited for its turn.
+            if ((await getBookFiles(job.uuid).catch(() => [])).length) continue;
             writeSync(user, { waiting: left });
-            report(job.title, 0, 0, true);
             let result: DownloadResult | "failed" = "missing";
-            for (const f of job.formats) {
-                try {
-                    result = await downloadForOffline(job.uuid, f, job.title, job.authors, {
-                        auto: true,
-                        noEvict: job.status === "wanted",
-                        savedAt: job.savedAt,
-                        statusSeen: job.status,
-                    });
-                } catch (err) {
-                    console.warn(`book-sync: downloading "${job.title}" failed; it's tried again on a later page:`, err);
-                    result = "failed";
+            // Waits for quiet pages first, and again each time it gives way to one.
+            for (let tries = 0; tries < 50; tries++) {
+                if (pageBusy()) writeSync(user, { held: true, active: null, waiting: left + 1 }); // this one too
+                await untilQuiet(paused);
+                writeSync(user, { held: false, waiting: left });
+                if (paused()) {
+                    result = "paused";
                     break;
                 }
-                if (result !== "missing") break;
+                report(job.title, 0, 0, true);
+                for (const f of job.formats) {
+                    try {
+                        result = await downloadForOffline(job.uuid, f, job.title, job.authors, {
+                            auto: true,
+                            noEvict: job.status === "wanted",
+                            savedAt: job.savedAt,
+                            statusSeen: job.status,
+                        });
+                    } catch (err) {
+                        console.warn(`book-sync: downloading "${job.title}" failed; it's tried again on a later page:`, err);
+                        result = "failed";
+                        break;
+                    }
+                    if (result !== "missing") break;
+                }
+                if (result !== "yielded") break;
             }
             if (result === "ok") void keepCover(job.uuid).catch(() => {});
             if (result === "paused") {
@@ -250,14 +285,17 @@ async function runJobs(user: string, jobs: Job[]): Promise<void> {
             }
             if (result === "no-room") savedStopped = true; // no room for Saved books without dropping others
         }
-        writeSync(user, { active: null, waiting: paused() ? left : 0 });
+        writeSync(user, { active: null, held: false, waiting: paused() ? left : 0 });
     };
-    // Another tab downloading: it does these too.
-    if (navigator.locks) await navigator.locks.request("cf-book-downloads", { ifAvailable: true }, async (lock) => (lock ? run() : undefined));
+    // One tab at a time. The others wait their turn (not skip): if the tab
+    // downloading closes, the next takes over, finding done what's done.
+    if (navigator.locks) await navigator.locks.request("cf-book-downloads", run);
     else await run();
 }
 
 let running: Promise<void> | null = null;
+/** Asked for while a run was going (a book just saved): run again after it. */
+let again: SyncOptions | null = null;
 
 export interface SyncOptions {
     /** The grid's marks, just fetched: also tidy kept books (retention.ts) by them. */
@@ -268,7 +306,16 @@ export interface SyncOptions {
 
 /** Download what this device should have (see the top), then tidy up. One run at a time. */
 export function syncBooks(opts: SyncOptions = {}): Promise<void> {
-    running ??= runSync(opts).finally(() => (running = null));
+    if (running) {
+        again = { ...again, ...opts, force: !!(again?.force || opts.force) };
+        return running;
+    }
+    running = runSync(opts).finally(() => {
+        running = null;
+        const next = again;
+        again = null;
+        if (next) void syncBooks(next).catch(() => {});
+    });
     return running;
 }
 
@@ -326,6 +373,7 @@ export function startBookSync(marks?: Marks): void {
     const go = (opts: SyncOptions = {}): void => void syncBooks(opts).catch(() => {});
     if (!started) {
         started = true;
+        watchPage(); // downloads give way to this page's own loading (page-busy.ts)
         let wasPaused = paused();
         onSyncChange(currentUser(), () => {
             const now = paused();

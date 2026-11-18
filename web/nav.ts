@@ -264,6 +264,8 @@ function init(bar: HTMLElement): void {
                   (s.waiting ? `, then ${plural(s.waiting, "more book")}.` : ".")
                 : s.paused
                   ? `Book downloads are paused${waiting ? `: ${plural(waiting, "book")} waiting` : ""}.`
+                  : s.held && waiting
+                    ? `${plural(waiting, "book")} to download once the page has finished loading.`
                   : waiting
                     ? `${plural(waiting, "book")} waiting to download. Downloads go on while a library page is open.`
                     : "Books for offline reading are up to date on this device.";
