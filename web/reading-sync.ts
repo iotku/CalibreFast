@@ -5,8 +5,10 @@
  * When signed in, also synced with the server so another device or a fresh
  * login can resume:
  *   - position: last-writer-wins on updatedAt (ms); the newer of local and
- *     server is used when a book opens; failed pushes are retried when the
- *     server can be reached again (server-watch.ts) and when the page is hidden.
+ *     server is used when a book opens. Sent as soon as the reader moves (one
+ *     request at a time: moves made meanwhile go in the next); failed pushes
+ *     are retried when the server can be reached again (server-watch.ts),
+ *     when the page is hidden, and from any page (send-pending.ts).
  *   - bookmarks: ids are generated here, so copies made offline merge; local
  *     deletions are queued until the server confirms them.
  */
@@ -15,7 +17,8 @@ import { api, random } from "./dom.js";
 import { lastKnownUser, localKey, type Owner } from "./local-keys.js";
 import { noteLocalReading } from "./local-reading.js";
 import { noteReadingHere } from "./offline-books.js";
-import { isUnreachable, onServerBack, serverDown } from "./server-watch.js";
+import { refusedForGood } from "./send-pending.js";
+import { isServerDown, isUnreachable, onServerBack, serverDown } from "./server-watch.js";
 import type { MeResponse } from "./types.js";
 
 export type BookFormat = "epub" | "pdf";
@@ -114,10 +117,7 @@ export async function createReadingSync(
         if (legacy && legacy !== "undefined") local = { position: legacy, percent: 0, updatedAt: 0 };
     }
 
-    let timer: ReturnType<typeof setTimeout> | undefined;
-
     async function push(keepalive = false): Promise<void> {
-        clearTimeout(timer);
         if (!signedIn || !local?.pending) return;
         const body = { format, position: local.position, percent: local.percent, updated_at: local.updatedAt };
         try {
@@ -128,6 +128,15 @@ export async function createReadingSync(
             }
             onStatus("Saved");
         } catch (e) {
+            if (refusedForGood(e)) {
+                // The book is gone from the library, or the server won't take it: don't keep it waiting forever.
+                if (local && local.updatedAt === body.updated_at) {
+                    local.pending = false;
+                    LS.set(progressKey, local);
+                }
+                onStatus("Not saved to the server");
+                return;
+            }
             if (isUnreachable(e)) serverDown();
             onStatus("Offline — saved on this device");
         }
@@ -154,6 +163,25 @@ export async function createReadingSync(
         return local;
     }
 
+    // Sent at once; while a send is on its way, the latest position goes right after it.
+    let sending: Promise<void> | null = null;
+    let sendAgain = false;
+    function sendNow(): void {
+        // The server isn't answering: it's sent when it is again (onServerBack below).
+        if (isServerDown()) return;
+        if (sending) {
+            sendAgain = true;
+            return;
+        }
+        sending = push().finally(() => {
+            sending = null;
+            if (sendAgain) {
+                sendAgain = false;
+                sendNow();
+            }
+        });
+    }
+
     /** Record a new position (call when the reader actually moves). */
     function saveProgress(position: string | number, percent: number): void {
         local = {
@@ -167,8 +195,7 @@ export async function createReadingSync(
         // The Reading list kept for the offline page: this book is being read now.
         else if (user !== null) noteReadingHere(user, uuid, local.percent, title());
         if (legacyKey && !signedIn) localStorage.setItem(legacyKey, String(position));
-        clearTimeout(timer);
-        timer = setTimeout(() => void push(), 1500);
+        sendNow();
     }
 
     // ---- bookmarks --------------------------------------------------------
@@ -187,6 +214,10 @@ export async function createReadingSync(
                 await api("DELETE", `/api/me/bookmarks/${uuid}/${encodeURIComponent(id)}`);
                 deleted = deleted.filter((d) => d !== id);
             } catch (e) {
+                if (refusedForGood(e)) {
+                    deleted = deleted.filter((d) => d !== id); // gone there already, or never will be
+                    continue;
+                }
                 if (isUnreachable(e)) serverDown();
                 break;
             }
@@ -196,6 +227,11 @@ export async function createReadingSync(
                 await api("PUT", `/api/me/bookmarks/${uuid}/${encodeURIComponent(b.id)}`, b);
                 b.synced = true;
             } catch (e) {
+                // Refused for good (the book gone, a bad or one-too-many bookmark): kept here, not retried forever.
+                if (refusedForGood(e)) {
+                    b.synced = true;
+                    continue;
+                }
                 if (isUnreachable(e)) serverDown();
                 break;
             }
@@ -248,7 +284,7 @@ export async function createReadingSync(
     // device's network coming back, or the server itself) / leave the page.
     onServerBack(() => {
         if (!signedIn) return;
-        if (local?.pending) void push();
+        if (local?.pending) sendNow();
         else onStatus("Synced");
         void flushBookmarks();
     });
