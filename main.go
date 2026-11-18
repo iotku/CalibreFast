@@ -327,7 +327,15 @@ func main() {
 	emptyRecycle := flag.String("empty-recycle-bin", "", "permanently delete Recycling Bin batches older than this (e.g. 30d, 12h; 0 for all) and exit")
 	createUserName := flag.String("create-user", "", "create a user (or reset their password) and exit; password from $CF_PASSWORD or stdin")
 	createAdmin := flag.Bool("admin", false, "with -create-user: make the user an admin")
+	configPath := flag.String("config", "", "read options from this file, one \"name = value\" per line (see calibrefast.conf.example); options on the command line win")
 	flag.Parse()
+	if *configPath != "" {
+		onCommandLine := map[string]bool{}
+		flag.Visit(func(f *flag.Flag) { onCommandLine[f.Name] = true })
+		if err := applyConfigFile(flag.CommandLine, *configPath, onCommandLine); err != nil {
+			log.Fatal("config: ", err)
+		}
+	}
 
 	if *emptyRecycle != "" {
 		age, err := parseAge(*emptyRecycle)
@@ -688,9 +696,12 @@ func serveLibraryHTTP() {
 	registerCategoryRoutes()
 	registerWorkerRoutes() // offline reading (sw.go)
 
+	// Server status and the admin's Stop button (server.go)
+	registerServerRoutes()
+
 	log.Println("Listening on :" + hostPort)
 	registerAuthRoutes()
-	log.Fatal(http.ListenAndServe(":"+hostPort, robotsHeader(csrfProtect(withAuth(http.DefaultServeMux)))))
+	serve(":"+hostPort, robotsHeader(csrfProtect(withAuth(http.DefaultServeMux))))
 }
 
 // registerBookEditRoutes: uploads, covers, the metadata editor and
