@@ -3,6 +3,7 @@
  * Functions for transforming book data and generating UI elements
  */
 
+import { el, safeUrl } from "./dom.js";
 import type { Book } from "./types.js";
 
 /**
@@ -112,30 +113,54 @@ export function seriesLabel(count: number): string {
     return `Series · ${count} ${count === 1 ? "book" : "books"}`;
 }
 
+/** A card's cover <img>: shown at once when coverReady, else waiting in data-src for the download queue. */
+function coverImg(src: string, coverReady: boolean, uuid?: string): HTMLImageElement {
+    const img = el("img", { className: coverReady ? "book-cover loaded" : "book-cover" });
+    if (coverReady) img.src = src;
+    else {
+        img.dataset["src"] = src;
+        img.setAttribute("fetchpriority", "low");
+    }
+    if (uuid !== undefined) img.dataset["id"] = uuid;
+    else img.alt = "";
+    return img;
+}
+
+/** A card's cover box: --cover-hue, then the image (if any) and a banner. */
+function coverWrapper(book: Pick<Book, "uuid">, ...children: (Node | string)[]): HTMLDivElement {
+    const w = el("div", { className: "cover-wrapper" }, ...children);
+    w.style.setProperty("--cover-hue", String(coverHue(book)));
+    return w;
+}
+
+/** A card's title, author and (empty) formats under the cover. */
+function bookInfo(title: string, author: string): HTMLDivElement {
+    return el(
+        "div",
+        { className: "book-info" },
+        el("h2", {}, title),
+        el("div", { className: "book-author" }, author),
+        el("div", { className: "formats" }),
+    );
+}
+
 /**
  * A shelf's whole series (Book.series_card): the first book's cover under
  * a "Series · N books" banner, stacked, linking to the series page. No
  * data-uuid, so the reading marks, cover buttons, selection and the popup's
  * next/previous all pass it by.
  */
-function renderSeriesCard(book: Book, s: NonNullable<Book["series_card"]>, coverReady: boolean): string {
-    const name = escapeHtml(s.name || book.title);
-    const author = escapeHtml(book.authors || "");
-    const cover = escapeHtml(coverUrl(book));
-    const img = coverReady
-        ? `<img class="book-cover loaded" src="${cover}" alt="" />`
-        : `<img class="book-cover" data-src="${cover}" alt="" fetchpriority="low" />`;
-    const label = escapeHtml(seriesLabel(s.count));
-    return `<div class="book series-card" data-series="${name}">
-    <a href="${escapeHtml(s.href)}" class="book-link series-link" aria-label="${name}, ${label}">
-        <div class="cover-wrapper" style="--cover-hue:${coverHue(book)}">${img}<span class="series-banner" aria-hidden="true">${label}</span></div>
-    </a>
-    <div class="book-info">
-        <h2>${name}</h2>
-        <div class="book-author">${author}</div>
-        <div class="formats"></div>
-    </div>
-</div>`;
+function seriesCard(book: Book, s: NonNullable<Book["series_card"]>, coverReady: boolean): HTMLElement {
+    const name = s.name || book.title;
+    const label = seriesLabel(s.count);
+    const link = el("a", { href: safeUrl(s.href), className: "book-link series-link" });
+    link.setAttribute("aria-label", `${name}, ${label}`);
+    const banner = el("span", { className: "series-banner" }, label);
+    banner.setAttribute("aria-hidden", "true");
+    link.append(coverWrapper(book, coverImg(coverUrl(book), coverReady), banner));
+    const card = el("div", { className: "book series-card" }, link, bookInfo(name, book.authors || ""));
+    card.dataset["series"] = name;
+    return card;
 }
 
 /**
@@ -144,59 +169,47 @@ function renderSeriesCard(book: Book, s: NonNullable<Book["series_card"]>, cover
  * linking to its page. No data-uuid, so reading marks, selection and the
  * popup pass it by; data-placeholder names it (On deck's ✕).
  */
-function renderPlaceholderCard(book: Book, p: NonNullable<Book["placeholder"]>): string {
-    const title = escapeHtml(book.title || "Untitled");
-    const author = escapeHtml(book.authors || "");
-    const img = p.cover ? `<img class="book-cover loaded" src="${escapeHtml(p.cover)}" alt="" />` : "";
+function placeholderCard(book: Book, p: NonNullable<Book["placeholder"]>): HTMLElement {
+    const title = book.title || "Untitled";
     const index = book.series_index && book.series_index !== 1 ? ` #${book.series_index}` : "";
-    return `<div class="book placeholder-card" data-placeholder="${escapeHtml(book.uuid)}">
-    <a href="${escapeHtml(p.href)}" class="book-link placeholder-link" aria-label="${title}${escapeHtml(index)}, not in the library">
-        <div class="cover-wrapper${img ? "" : " no-cover"}" style="--cover-hue:${coverHue(book)}">${img}<span class="placeholder-banner" aria-hidden="true">Not in library</span></div>
-    </a>
-    <div class="book-info">
-        <h2>${title}</h2>
-        <div class="book-author">${author}</div>
-        <div class="formats"></div>
-    </div>
-</div>`;
+    const link = el("a", { href: safeUrl(p.href), className: "book-link placeholder-link" });
+    link.setAttribute("aria-label", `${title}${index}, not in the library`);
+    const banner = el("span", { className: "placeholder-banner" }, "Not in library");
+    banner.setAttribute("aria-hidden", "true");
+    const wrapper = p.cover
+        ? coverWrapper(book, el("img", { className: "book-cover loaded", src: safeUrl(p.cover), alt: "" }), banner)
+        : coverWrapper(book, banner);
+    if (!p.cover) wrapper.classList.add("no-cover");
+    link.append(wrapper);
+    const card = el("div", { className: "book placeholder-card" }, link, bookInfo(title, book.authors || ""));
+    card.dataset["placeholder"] = book.uuid;
+    return card;
 }
 
 /**
- * Render a single book card HTML
+ * A book's card.
  * Plain link to #book/<uuid>; modal logic lives in setupModal(). htmx only
  * preloads the book on hover (hx-trigger="none": the click is the hash
- * change, and modal.ts's loadBook uses the preloaded response).
+ * change, and modal.ts's loadBook uses the preloaded response). Run
+ * htmx.process on the container once it's in the page (setupBookClickHandlers
+ * does).
  *
  * The cover waits in data-src for the grid's download queue, unless
  * coverReady says the browser already has it: then it's shown at once,
  * without the fade-in.
  */
-export function renderBookCard(book: Book, coverReady = false): string {
-    if (book.series_card) return renderSeriesCard(book, book.series_card, coverReady);
-    if (book.placeholder) return renderPlaceholderCard(book, book.placeholder);
-    const title = escapeHtml(book.title || "Untitled");
-    const author = escapeHtml(book.authors || "Unknown Author");
-    const uuid = escapeHtml(book.uuid);
-    const hue = coverHue(book);
-    const cover = escapeHtml(coverUrl(book));
-    const img = coverReady
-        ? `<img class="book-cover loaded" src="${cover}" data-id="${uuid}" />`
-        : `<img class="book-cover" data-src="${cover}" data-id="${uuid}" fetchpriority="low" />`;
-
-    return `<div class="book" data-uuid="${uuid}">
-    <a href="#book/${uuid}" class="book-link"
-       hx-get="/book/get/${uuid}"
-       hx-trigger="none"
-       hx-preload="mouseover"
-    >
-        <div class="cover-wrapper" style="--cover-hue:${hue}">${img}</div>
-    </a>
-    <div class="book-info">
-        <h2>${title}</h2>
-        <div class="book-author">${author}</div>
-        <div class="formats"></div>
-    </div>
-</div>`;
+export function bookCard(book: Book, coverReady = false): HTMLElement {
+    if (book.series_card) return seriesCard(book, book.series_card, coverReady);
+    if (book.placeholder) return placeholderCard(book, book.placeholder);
+    const id = encodeURIComponent(book.uuid);
+    const link = el("a", { href: `#book/${id}`, className: "book-link" });
+    link.setAttribute("hx-get", `/book/get/${id}`);
+    link.setAttribute("hx-trigger", "none");
+    link.setAttribute("hx-preload", "mouseover");
+    link.append(coverWrapper(book, coverImg(coverUrl(book), coverReady, book.uuid)));
+    const card = el("div", { className: "book" }, link, bookInfo(book.title || "Untitled", book.authors || "Unknown Author"));
+    card.dataset["uuid"] = book.uuid;
+    return card;
 }
 
 /** Covers fade in once loaded; one that fails leaves the card's title and author showing. */

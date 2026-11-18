@@ -94,3 +94,61 @@ export function withPageScheme(url: string): string {
     if (location.protocol !== "https:" || !(url === plain || url.startsWith(plain + "/"))) return url;
     return "https://" + url.slice("http://".length);
 }
+
+/* ------------------------------------------------------------------ */
+/* SVG icons, built without parsing markup (Trusted Types)             */
+/* ------------------------------------------------------------------ */
+
+const SVG_NS = "http://www.w3.org/2000/svg";
+
+/** Attributes of an SVG element. */
+export type SvgAttrs = Record<string, string | number>;
+
+/** One shape of an icon: [tag, attributes], e.g. ["path", { d: "M6 6l12 12" }]. */
+export type SvgShape = [tag: string, attrs: SvgAttrs];
+
+/** An SVG element with these attributes and children. */
+export function svgEl(tag: string, attrs: SvgAttrs = {}, ...children: Node[]): SVGElement {
+    const e = document.createElementNS(SVG_NS, tag) as SVGElement;
+    for (const [k, v] of Object.entries(attrs)) e.setAttribute(k, String(v));
+    e.append(...children);
+    return e;
+}
+
+/**
+ * A 24×24 icon: <svg viewBox="0 0 24 24" aria-hidden="true" …attrs> with
+ * these shapes. A string shape is a path's d. Built fresh each call, so it
+ * can go straight into the page.
+ */
+export function icon(attrs: SvgAttrs, ...shapes: (SvgShape | string)[]): SVGSVGElement {
+    return svgEl(
+        "svg",
+        { viewBox: "0 0 24 24", "aria-hidden": "true", ...attrs },
+        ...shapes.map((s) => (typeof s === "string" ? svgEl("path", { d: s }) : svgEl(s[0], s[1]))),
+    ) as SVGSVGElement;
+}
+
+/** The attributes of a stroked line icon, the usual kind. */
+export function lineIcon(size: number, strokeWidth = 2): SvgAttrs {
+    return {
+        width: size,
+        height: size,
+        fill: "none",
+        stroke: "currentColor",
+        "stroke-width": strokeWidth,
+        "stroke-linecap": "round",
+        "stroke-linejoin": "round",
+    };
+}
+
+/**
+ * A URL from data that's safe in href or src: a path on this site (starting
+ * with one "/"), a fragment, or http(s). Anything else (javascript:, data:,
+ * "//host") gives "#".
+ */
+export function safeUrl(url: string | null | undefined): string {
+    if (!url) return "#";
+    if (url.startsWith("#")) return url;
+    if (url.startsWith("/")) return url.startsWith("//") || url.startsWith("/\\") ? "#" : url;
+    return /^https?:/i.test(url) ? url : "#";
+}

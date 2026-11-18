@@ -9,6 +9,7 @@
  */
 
 import { mediaType, type EpubSource } from "./epub-source.js";
+import { parseInert } from "./trusted.js";
 
 const XLINK = "http://www.w3.org/1999/xlink";
 
@@ -43,12 +44,12 @@ export function openEpub(source: EpubSource, uuid: string): OpenedBook {
             case "xml":
             case "opf":
             case "ncx":
-                return new DOMParser().parseFromString(text, "text/xml");
+                return parseInert(text, "text/xml");
             case "xhtml":
-                return new DOMParser().parseFromString(text, "application/xhtml+xml");
+                return parseInert(text, "application/xhtml+xml");
             case "html":
             case "htm":
-                return new DOMParser().parseFromString(text, "text/html");
+                return parseInert(text, "text/html");
             default:
                 return text;
         }

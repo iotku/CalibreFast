@@ -776,7 +776,7 @@
             uploadAgainLink.addEventListener("click", () => {
                 stagedFiles = [];
                 renderFileList();
-                resultsList.innerHTML = "";
+                resultsList.replaceChildren();
                 results.classList.remove("visible");
                 uploadAgain.classList.remove("visible");
                 uploadStatus.textContent = "";
@@ -807,7 +807,7 @@
             }
 
             function renderFileList() {
-                fileList.innerHTML = "";
+                fileList.replaceChildren();
                 fileCount.textContent = stagedFiles.length;
                 btnUpload.disabled = stagedFiles.length === 0;
 
@@ -936,28 +936,24 @@
             // (duplicates.go): which books, and Upload anyway unless the
             // library has one of its files byte for byte.
             function renderDuplicate(item, sent) {
-                const div = document.createElement("div");
                 const sameFile = item.duplicate.books.some((b) => b.same_file);
-                div.className = "result-item duplicate" + (sameFile ? " same-file" : "");
-                const matches = item.duplicate.books
-                    .map((b) => {
-                        const by = (b.authors || []).join(" & ");
-                        const why = b.same_file ? "identical file" : "same title & authors";
-                        return `<li><a href="/book/get/${encodeURIComponent(b.uuid)}" target="_blank">${escHtml(b.title)}</a>${by ? " — " + escHtml(by) : ""} <span class="result-dup-why">${why}</span></li>`;
-                    })
-                    .join("");
-                div.innerHTML = `
-          <span class="result-status-icon">!</span>
-          <div class="result-body">
-            <div class="result-title">${escHtml(item.title || "Untitled")}</div>
-            <div class="result-meta">${escHtml((item.authors || []).join(", "))}</div>
-            <div class="result-dup">${sameFile
-                ? "Not added: the library already has this file."
-                : "Not added: possibly already in the library."}</div>
-            <ul class="result-dup-list">${matches}</ul>
-          </div>
-          <span></span>
-        `;
+                const matches = item.duplicate.books.map((b) => {
+                    const by = (b.authors || []).join(" & ");
+                    const link = h("a", "", b.title);
+                    link.href = `/book/get/${encodeURIComponent(b.uuid)}`;
+                    link.target = "_blank";
+                    return h("li", "", link, by ? " — " + by : "", " ",
+                        h("span", "result-dup-why", b.same_file ? "identical file" : "same title & authors"));
+                });
+                const body = h("div", "result-body",
+                    h("div", "result-title", item.title || "Untitled"),
+                    h("div", "result-meta", (item.authors || []).join(", ")),
+                    h("div", "result-dup", sameFile
+                        ? "Not added: the library already has this file."
+                        : "Not added: possibly already in the library."),
+                    h("ul", "result-dup-list", ...matches));
+                const div = h("div", "result-item duplicate" + (sameFile ? " same-file" : ""),
+                    h("span", "result-status-icon", "!"), body, h("span", ""));
                 const files = (item.files || [])
                     .map((name) => sent.find((f) => f.name === name))
                     .filter(Boolean);
@@ -982,69 +978,55 @@
                             alert("Upload failed: " + err.message);
                         }
                     });
-                    div.querySelector(".result-body").appendChild(btn);
+                    body.appendChild(btn);
                 }
                 return div;
             }
 
             function renderItem(item, sent) {
                     if (item.duplicate) return renderDuplicate(item, sent);
-                    const div = document.createElement("div");
                     if (item.error) {
-                        div.className = "result-item error";
-                        div.innerHTML = `
-          <span class="result-status-icon">✕</span>
-          <div class="result-body">
-            <div class="result-error">${escHtml(item.error)}</div>
-          </div>
-          <span></span>
-        `;
-                    } else {
-                        const fmtBadges = (item.formats || [])
-                            .map((f) => {
-                                const cls = [
-                                    "epub",
-                                    "pdf",
-                                    "mobi",
-                                    "azw3",
-                                    "djvu",
-                                ].includes(f)
-                                    ? f
-                                    : "other";
-                                return `<span class="file-ext ext-${cls}">${f}</span>`;
-                            })
-                            .join("");
-                        const authors = (item.authors || []).join(", ");
-                        const bookLink = item.uuid
-                            ? `/book/get/${item.uuid}`
-                            : null;
-                        div.className = "result-item success";
-                        div.innerHTML = `
-          <div class="result-item-container">
-            <span class="result-status-icon">✓</span>
-            <img class="result-cover-thumb result-thumb-hidden" id="result-thumb-${item.uuid}" src="/cover-thumb/${item.uuid}" />
-          </div>
-          <div class="result-body">
-            <div class="result-title">${escHtml(item.title || "Untitled")}</div>
-            <div class="result-meta">${escHtml(authors)}</div>
-            <div class="result-formats">${fmtBadges}</div>
-          </div>
-          ${bookLink ? `<a class="result-link" href="${bookLink}">View →</a>` : "<span></span>"}
-        `;
+                        return h("div", "result-item error",
+                            h("span", "result-status-icon", "✕"),
+                            h("div", "result-body", h("div", "result-error", item.error)),
+                            h("span", ""));
+                    }
+                    const known = ["epub", "pdf", "mobi", "azw3", "djvu"];
+                    const fmtBadges = (item.formats || []).map((f) =>
+                        h("span", `file-ext ext-${known.includes(f) ? f : "other"}`, f));
+                    const id = item.uuid ? encodeURIComponent(item.uuid) : "";
+                    const thumbImg = h("img", "result-cover-thumb result-thumb-hidden");
+                    if (id) thumbImg.src = `/cover-thumb/${id}`;
+                    const body = h("div", "result-body",
+                        h("div", "result-title", item.title || "Untitled"),
+                        h("div", "result-meta", (item.authors || []).join(", ")),
+                        h("div", "result-formats", ...fmtBadges));
+                    let view = h("span", "");
+                    if (id) {
+                        view = h("a", "result-link", "View →");
+                        view.href = `/book/get/${id}`;
+                    }
+                    const div = h("div", "result-item success",
+                        h("div", "result-item-container", h("span", "result-status-icon", "✓"), thumbImg),
+                        body, view);
 
-                        // Add cover picker with autoSelectDefault: true
-                        if (item.uuid && item.formats && item.formats.length > 0) {
-                            const thumbImg = div.querySelector(`#result-thumb-${item.uuid}`);
-                            const picker = buildCoverPicker(item.uuid, item.formats, (uuid) => {
-                                if (thumbImg) {
-                                    thumbImg.classList.remove('result-thumb-hidden');
-                                    thumbImg.src = `/cover-thumb/${uuid}?t=${Date.now()}`;
-                                }
-                            }, { autoSelectDefault: true });
-                            div.querySelector(".result-body").appendChild(picker);
-                        }
+                    // Add cover picker with autoSelectDefault: true
+                    if (item.uuid && item.formats && item.formats.length > 0) {
+                        const picker = buildCoverPicker(item.uuid, item.formats, (uuid) => {
+                            thumbImg.classList.remove('result-thumb-hidden');
+                            thumbImg.src = `/cover-thumb/${encodeURIComponent(uuid)}?t=${Date.now()}`;
+                        }, { autoSelectDefault: true });
+                        body.appendChild(picker);
                     }
                     return div;
+            }
+
+            // An element with a class and children (text is set as text, never parsed).
+            function h(tag, cls, ...children) {
+                const e = document.createElement(tag);
+                if (cls) e.className = cls;
+                e.append(...children);
+                return e;
             }
 
             function fmtSize(bytes) {
@@ -1052,14 +1034,6 @@
                 if (bytes < 1024 * 1024)
                     return (bytes / 1024).toFixed(0) + " KB";
                 return (bytes / (1024 * 1024)).toFixed(1) + " MB";
-            }
-
-            function escHtml(s) {
-                return String(s)
-                    .replace(/&/g, "&amp;")
-                    .replace(/</g, "&lt;")
-                    .replace(/>/g, "&gt;")
-                    .replace(/"/g, "&quot;");
             }
         })();
     </script>

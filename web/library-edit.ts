@@ -9,7 +9,7 @@
 // The filters, sort, duplicate mode and tag check are kept in the URL (replaceState),
 // so coming back (with Back) finds the same view.
 
-import { api, byId, closeOnBackdropClick, el, errorMessage, modalOpen } from "./dom.js";
+import { api, byId, closeOnBackdropClick, el, errorMessage, icon, lineIcon, modalOpen } from "./dom.js";
 import { attachSuggest } from "./suggest.js";
 import { deleteBooks } from "./delete-books.js";
 import { languageChipLabel, languageKey, loadLanguageCodes } from "./languages.js";
@@ -60,7 +60,7 @@ const COLUMNS: Column[] = [
 /** What the Formats filter matches for files only in a book's folder, not in metadata.db. */
 const FOLDER_ONLY = "folder only";
 
-const PENCIL = `<svg viewBox="0 0 24 24" width="13" height="13" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 20h9"/><path d="M16.5 3.5a2.1 2.1 0 0 1 3 3L7 19l-4 1 1-4Z"/></svg>`;
+const PENCIL = () => icon(lineIcon(13), "M12 20h9", "M16.5 3.5a2.1 2.1 0 0 1 3 3L7 19l-4 1 1-4Z");
 
 /** Lower case, without accents: what searches compare. */
 function fold(s: string): string {
@@ -549,7 +549,7 @@ function rowElement(r: Row, i: number): HTMLElement {
             if (c.edit) {
                 // The chips filter when clicked: this edits the cell (as a double-click does).
                 const pen = el("button", { type: "button", className: "lt-cell-edit", title: `Edit ${c.label.toLowerCase()}`, ariaLabel: `Edit the ${c.label.toLowerCase()} of “${b.title}”` });
-                pen.innerHTML = PENCIL;
+                pen.append(PENCIL());
                 cell.append(pen);
             }
             for (const v of values) {

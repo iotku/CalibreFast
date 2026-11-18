@@ -12,7 +12,8 @@
  * changes saved here are reported too ("cf:status"), for the grid to apply.
  */
 
-import { api, errorMessage } from "./dom.js";
+import { api, el, errorMessage } from "./dom.js";
+import { serverHtml } from "./trusted.js";
 import { deleteBooks } from "./delete-books.js";
 import "./book-files.js"; // the book page's Files row (admins)
 import "./series-shelf.js"; // "Add series to shelf" (also the series page's, via app-htmx.ts)
@@ -53,7 +54,7 @@ async function loadControls(container: HTMLElement, fresh = false): Promise<void
     prefetched.delete(uuid);
     const html = await (!fresh && hit && hit.expires > Date.now() ? hit.html : fetchControls(uuid));
     if (html === null || !container.isConnected) return;
-    container.innerHTML = html;
+    serverHtml(container, html); // html/template output from our server
     reportState(container, uuid);
 }
 
@@ -82,7 +83,7 @@ function paintWant(btn: HTMLButtonElement, status: string): void {
     const on = status === "wanted";
     const icon = status === "reading" ? ICONS.read : status === "finished" ? ICONS.done : on ? ICONS.wanted : ICONS.want;
     const label = status === "reading" ? "Reading" : status === "finished" ? "Finished" : on ? "Saved" : "Save";
-    btn.innerHTML = `${icon}<span>${label}</span>`;
+    btn.replaceChildren(icon(), el("span", {}, label));
     btn.classList.toggle("is-on", status !== "");
     if (toggle) btn.setAttribute("aria-pressed", String(on));
     else btn.removeAttribute("aria-pressed");

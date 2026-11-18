@@ -1,7 +1,7 @@
 // /admin/discover (templates/admin-discover.html): which tags get a row on
 // the home page. Every tag is listed with whether it has a row and why not;
 // an admin includes or excludes tags and sets the cutoff (tag_rows.go).
-import { api, byId, errorMessage, statusLine } from "./dom.js";
+import { api, byId, el, errorMessage, statusLine } from "./dom.js";
 
 interface TagInfo {
     name: string;
@@ -85,8 +85,7 @@ function render(): void {
     );
     if (shown.length > 500) {
         const tr = document.createElement("tr");
-        tr.innerHTML = `<td colspan="4" class="auth-muted"></td>`;
-        tr.firstElementChild!.textContent = `${shown.length - 500} more: narrow the list with Find a tag.`;
+        tr.append(el("td", { colSpan: 4, className: "auth-muted" }, `${shown.length - 500} more: narrow the list with Find a tag.`));
         list.append(tr);
     }
 }

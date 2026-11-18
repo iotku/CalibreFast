@@ -4,7 +4,7 @@
 // right away. The metadata editor uses cover-dialog.ts instead.
 
 import { libraryBook } from "./book-target.js";
-import { errorMessage } from "./dom.js";
+import { el, errorMessage } from "./dom.js";
 import { type CoverChoice, epubPages, fileChoice, pdfPages } from "./cover-sources.js";
 
 /** Called after a cover is saved for a book. */
@@ -23,22 +23,12 @@ export function buildCoverPicker(
     const book = libraryBook(uuid);
     const picker = document.createElement("div");
     picker.className = "cover-picker";
-    picker.innerHTML = `
-        <div class="cover-picker-header">
-            <h3>Cover Image</h3>
-            <span class="cover-picker-done">✓ Cover updated</span>
-        </div>
-        <div class="cover-picker-actions"></div>
-        <div class="cover-pages">
-            <div class="cover-pages-strip"></div>
-            <div class="cover-pages-status"></div>
-        </div>
-    `;
-    const actions = picker.querySelector<HTMLElement>(".cover-picker-actions")!;
-    const pages = picker.querySelector<HTMLElement>(".cover-pages")!;
-    const strip = picker.querySelector<HTMLElement>(".cover-pages-strip")!;
-    const status = picker.querySelector<HTMLElement>(".cover-pages-status")!;
-    const done = picker.querySelector<HTMLElement>(".cover-picker-done")!;
+    const done = el("span", { className: "cover-picker-done" }, "✓ Cover updated");
+    const actions = el("div", { className: "cover-picker-actions" });
+    const strip = el("div", { className: "cover-pages-strip" });
+    const status = el("div", { className: "cover-pages-status" });
+    const pages = el("div", { className: "cover-pages" }, strip, status);
+    picker.append(el("div", { className: "cover-picker-header" }, el("h3", {}, "Cover Image"), done), actions, pages);
 
     const save = async (choice: CoverChoice, thumb: HTMLElement | null, isDefault = false): Promise<void> => {
         if (!choice.save) return;

@@ -11,7 +11,7 @@
 // "Try Google Books".
 
 import type { BookTarget } from "./book-target.js";
-import { api, closeOnBackdropClick, el, errorMessage, maybeId } from "./dom.js";
+import { api, closeOnBackdropClick, el, errorMessage, icon, lineIcon, maybeId } from "./dom.js";
 import type { CoverCandidate, IsbnCandidate, IsbnResponse, LookupResult, MetaSource } from "./types.js";
 import { openPdf } from "./vendor.js";
 
@@ -53,8 +53,7 @@ type Source = "openlibrary" | "google";
 const SOURCE_NAMES: Record<Source, string> = { openlibrary: "Open Library", google: "Google Books" };
 
 /** "Opens in a new window": a box with an arrow out of its corner. */
-const EXTERNAL_ICON =
-    '<svg viewBox="0 0 24 24" width="12" height="12" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6"/><path d="M15 3h6v6"/><path d="M10 14 21 3"/></svg>';
+const EXTERNAL_ICON = () => icon(lineIcon(12), "M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6", "M15 3h6v6", "M10 14 21 3");
 
 /** Pages of a PDF read for ISBNs: copyright pages are near either end. */
 const PDF_FIRST_PAGES = 5;
@@ -418,7 +417,7 @@ function mountLookup(host: IsbnToolsHost): { lookUpIsbn(isbn: string): void; sug
         const url = pageUrl(m);
         if (!url) return el("span", { className: "lookup-result-label" }, name);
         const a = el("a", { className: "lookup-result-label", href: url, target: "_blank", rel: "noopener noreferrer", title: `Open this ${SOURCE_NAMES[m.source]} page in a new tab` }, name);
-        a.insertAdjacentHTML("beforeend", EXTERNAL_ICON);
+        a.append(EXTERNAL_ICON());
         return a;
     }
 

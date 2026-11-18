@@ -5,6 +5,7 @@ import { importEditsKey, type BookTarget } from "./book-target.js";
 import { createDescriptionEditor } from "./description.js";
 import { closeOnBackdropClick, el as tag, errorMessage, maybeId } from "./dom.js";
 import { isbnDigits, mountIsbnTools } from "./isbn-tools.js";
+import { parseInert } from "./trusted.js";
 import { joinAuthors, splitAuthors, tidyAuthors } from "./authors.js";
 import type { DuplicateBook, DuplicateCheck, MetaSource, ValueSuggestion } from "./types.js";
 
@@ -794,7 +795,7 @@ export async function applyValues(book: BookTarget, values: FormValues, { overri
 
 /** Plain text of a description's HTML, cut short. */
 function plainText(html: string, max = 280): string {
-  const text = (new DOMParser().parseFromString(html, "text/html").body.textContent ?? "").replace(/\s+/g, " ").trim();
+  const text = (parseInert(html, "text/html").body.textContent ?? "").replace(/\s+/g, " ").trim();
   return text.length > max ? `${text.slice(0, max)}…` : text;
 }
 
