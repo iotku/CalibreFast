@@ -38,14 +38,14 @@
  * row's icon goes to its page (or pins a "More in" tag); its ✕ takes a
  * pinned row off the page, or a tag out of the "More in" rows for good.
  *
- * Covers use the same URLs (coverUrl) and cards (renderBookCard) as the
+ * Covers use the same URLs (coverUrl) and cards (bookCard) as the
  * grid, so a cover cached there is cached here. They load on-screen first,
  * a few at a time (maxCovers).
  */
 
-import { api, byId, maybeId } from "./dom.js";
+import { api, byId, el, icon, lineIcon, maybeId, safeUrl, type SvgShape } from "./dom.js";
 import type { Book } from "./types.js";
-import { coverUrl, escapeHtml, renderBookCard, setupCoverStates } from "./utils.js";
+import { bookCard, coverUrl, setupCoverStates } from "./utils.js";
 import { makeReorderable, type Reorderable } from "./reorder.js";
 import { setupBookClickHandlers, loadBook, HASH_PREFIX } from "./modal.js";
 import {
@@ -98,38 +98,46 @@ const store = {
     },
 };
 
-/** A row's "See all" button. */
-function seeAll(href: string): string {
-    return `<a href="${escapeHtml(href)}" class="row-btn row-all">
-        <span>See all</span>
-        <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M9 6l6 6-6 6"/></svg>
-    </a>`;
+/** An element with attributes (aria-*, data-*, title…) set as given. */
+function withAttrs<T extends Element>(e: T, attrs: Record<string, string>): T {
+    for (const [k, v] of Object.entries(attrs)) e.setAttribute(k, v);
+    return e;
 }
 
-const SHUFFLE_ICON = `<svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M16 3h5v5M4 20L21 3M21 16v5h-5M15 15l6 6M4 4l5 5"/></svg>`;
-const svg = (paths: string, fill = "none"): string =>
-    `<svg viewBox="0 0 24 24" width="20" height="20" fill="${fill}" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">${paths}</svg>`;
-const PIN_PATH = '<path d="M12 17v5"/><path d="M9 10.8V4h6v6.8a2 2 0 0 0 1.1 1.8l1.8.9a2 2 0 0 1 1.1 1.8V17H5v-1.7a2 2 0 0 1 1.1-1.8l1.8-.9A2 2 0 0 0 9 10.8z"/><path d="M8 3h8"/>';
-const PIN_ICON = svg(PIN_PATH);
-const PINNED_ICON = svg(PIN_PATH, "currentColor");
-const TAG_ICON = svg('<path d="M20.6 13.4l-7.2 7.2a2 2 0 0 1-2.8 0L2 12V2h10l8.6 8.6a2 2 0 0 1 0 2.8z"/><circle cx="7" cy="7" r="1.5"/>');
-const SERIES_ICON = svg('<path d="M4 4h4v16H4zM10 4h4v16h-4zM15 5l3.5-1 3 15-3.5 1z"/>');
-const CHECK_ICON = `<svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M5 12l5 5 9-10"/></svg>`;
-const SHELVES_ICON = svg('<path d="M5 4v16M10 4v16M14.5 5l4 15M3 20h18"/>');
-const X_ICON = `<svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" aria-hidden="true"><path d="M6 6l12 12M18 6L6 18"/></svg>`;
-const BACK_ICON = `<svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M9 14L4 9l5-5"/><path d="M4 9h11a5 5 0 0 1 0 10h-3"/></svg>`;
+/** A button of a row's tools: type="button", class, attributes and contents. */
+function rowButton(cls: string, attrs: Record<string, string>, ...children: (Node | string)[]): HTMLButtonElement {
+    return withAttrs(el("button", { type: "button", className: cls }, ...children), attrs);
+}
+
+/** A row's "See all" button. */
+function seeAll(href: string): HTMLAnchorElement {
+    return el("a", { href: safeUrl(href), className: "row-btn row-all" }, el("span", {}, "See all"), icon(lineIcon(16), "M9 6l6 6-6 6"));
+}
+
+const SHUFFLE_ICON = () => icon(lineIcon(16), "M16 3h5v5M4 20L21 3M21 16v5h-5M15 15l6 6M4 4l5 5");
+/** A row's 20px icon; fill for a filled one. */
+const rowIcon = (fill: string, ...shapes: (SvgShape | string)[]) => icon({ ...lineIcon(20), fill }, ...shapes);
+const PIN_PATHS = [
+    "M12 17v5",
+    "M9 10.8V4h6v6.8a2 2 0 0 0 1.1 1.8l1.8.9a2 2 0 0 1 1.1 1.8V17H5v-1.7a2 2 0 0 1 1.1-1.8l1.8-.9A2 2 0 0 0 9 10.8z",
+    "M8 3h8",
+];
+const PIN_ICON = () => rowIcon("none", ...PIN_PATHS);
+const PINNED_ICON = () => rowIcon("currentColor", ...PIN_PATHS);
+const TAG_ICON = () => rowIcon("none", "M20.6 13.4l-7.2 7.2a2 2 0 0 1-2.8 0L2 12V2h10l8.6 8.6a2 2 0 0 1 0 2.8z", ["circle", { cx: 7, cy: 7, r: 1.5 }]);
+const SERIES_ICON = () => rowIcon("none", "M4 4h4v16H4zM10 4h4v16h-4zM15 5l3.5-1 3 15-3.5 1z");
+const CHECK_ICON = () => icon(lineIcon(16, 2.5), "M5 12l5 5 9-10");
+const SHELVES_ICON = () => rowIcon("none", "M5 4v16M10 4v16M14.5 5l4 15M3 20h18");
+const X_ICON = () => icon(lineIcon(16, 2.5), "M6 6l12 12M18 6L6 18");
+const BACK_ICON = () => icon(lineIcon(16), "M9 14L4 9l5-5", "M4 9h11a5 5 0 0 1 0 10h-3");
 
 /** A tag row's Previous and Shuffle (hidden when the tag fits in one strip). */
-function tagStepButtons(name: string, hidden: boolean): string {
-    const h = hidden ? " hidden" : "";
-    return `<button type="button" class="row-btn" data-act="tag-back" aria-label="Previous books in ${name}" disabled${h}>
-                    ${BACK_ICON}
-                    <span>Previous</span>
-                </button>
-                <button type="button" class="row-btn" data-act="tag-next" aria-label="More books in ${name}"${h}>
-                    ${SHUFFLE_ICON}
-                    <span>Shuffle</span>
-                </button>`;
+function tagStepButtons(name: string, hidden: boolean): HTMLButtonElement[] {
+    const back = rowButton("row-btn", { "data-act": "tag-back", "aria-label": `Previous books in ${name}` }, BACK_ICON(), el("span", {}, "Previous"));
+    back.disabled = true;
+    const next = rowButton("row-btn", { "data-act": "tag-next", "aria-label": `More books in ${name}` }, SHUFFLE_ICON(), el("span", {}, "Shuffle"));
+    back.hidden = next.hidden = hidden;
+    return [back, next];
 }
 
 /* ------------------------------------------------------------------ */
@@ -181,7 +189,7 @@ function fillRow(row: string | HTMLElement, books: Book[], { hint = false, all =
     const section = typeof row === "string" ? byId(row) : row;
     const list = section.querySelector<HTMLElement>(".row-books");
     if (!list) return;
-    list.innerHTML = books.map((b) => renderBookCard(b, loadedCovers.has(coverUrl(b)))).join("");
+    list.replaceChildren(...books.map((b) => bookCard(b, loadedCovers.has(coverUrl(b)))));
     for (const card of list.querySelectorAll<HTMLElement>(".book")) markCard(card, marks);
     setupBookClickHandlers(list);
     const hintEl = section.querySelector<HTMLElement>(".row-hint");
@@ -714,28 +722,25 @@ function showShelves(shelves: HomeShelf[], own: boolean): void {
         section.dataset["name"] = s.name;
         section.setAttribute("aria-labelledby", `pin-${i}-title`);
         pinOrder.push(id);
-        const name = escapeHtml(s.name);
-        const icon =
+        const name = s.name;
+        const rowLink =
             !tag && !series
-                ? `<a class="row-icon" href="/shelves" title="Shelves" aria-label="All shelves">${SHELVES_ICON}</a>`
+                ? withAttrs(el("a", { className: "row-icon", href: "/shelves", title: "Shelves" }, SHELVES_ICON()), { "aria-label": "All shelves" })
                 : own
-                  ? `<button type="button" class="row-icon" data-act="unpin" aria-pressed="true" title="Pinned: unpin" aria-label="Unpin ${name} from home">${PINNED_ICON}</button>`
+                  ? rowButton("row-icon", { "data-act": "unpin", "aria-pressed": "true", title: "Pinned: unpin", "aria-label": `Unpin ${name} from home` }, PINNED_ICON())
                   : series
-                    ? `<a class="row-icon" href="/series" title="Series" aria-label="All series">${SERIES_ICON}</a>`
-                    : `<a class="row-icon" href="/tags" title="Tags" aria-label="All tags">${TAG_ICON}</a>`;
-        const sub = tag ? '<span class="row-sub"> tag</span>' : series ? '<span class="row-sub"> series</span>' : "";
-        section.innerHTML = `
-            <header class="row-head">
-                <h2 id="pin-${i}-title">${icon}<a class="row-title-link" href="${escapeHtml(s.href)}">${name}</a>${sub}</h2>
-                <div class="row-tools">
-                    ${tag ? tagStepButtons(name, s.count <= PIN_STRIP) : ""}
-                    ${series && own && (s.finished ?? 0) > 0 ? finishedToggle(name, !!s.show_finished, s.finished ?? 0) : ""}
-                    ${seeAll(s.href)}
-                    ${own ? `<button type="button" class="row-btn row-x" data-act="unpin" title="Remove from home" aria-label="Remove ${name} from home">${X_ICON}</button>` : ""}
-                </div>
-            </header>
-            ${series ? '<p class="row-hint" hidden>You’ve finished every book in this series.</p>' : ""}
-            <div class="row-books"></div>`;
+                    ? withAttrs(el("a", { className: "row-icon", href: "/series", title: "Series" }, SERIES_ICON()), { "aria-label": "All series" })
+                    : withAttrs(el("a", { className: "row-icon", href: "/tags", title: "Tags" }, TAG_ICON()), { "aria-label": "All tags" });
+        const title = el("h2", { id: `pin-${i}-title` }, rowLink, el("a", { className: "row-title-link", href: safeUrl(s.href) }, name));
+        if (tag || series) title.append(el("span", { className: "row-sub" }, tag ? " tag" : " series"));
+        const tools = el("div", { className: "row-tools" });
+        if (tag) tools.append(...tagStepButtons(name, s.count <= PIN_STRIP));
+        if (series && own && (s.finished ?? 0) > 0) tools.append(finishedToggle(name, !!s.show_finished, s.finished ?? 0));
+        tools.append(seeAll(s.href));
+        if (own) tools.append(rowButton("row-btn row-x", { "data-act": "unpin", title: "Remove from home", "aria-label": `Remove ${name} from home` }, X_ICON()));
+        section.append(el("header", { className: "row-head" }, title, tools));
+        if (series) section.append(el("p", { className: "row-hint", hidden: true }, "You’ve finished every book in this series."));
+        section.append(el("div", { className: "row-books" }));
         slot.before(section);
         fillRow(section, s.books, { all: true, hint: series });
         if (walker) {
@@ -875,15 +880,11 @@ function applyLayout(): void {
 function showHiddenTags(): void {
     const box = byId("hidden-tags");
     box.hidden = hiddenTags.length === 0;
-    box.innerHTML =
-        "<span>Not shown:</span> " +
-        hiddenTags
-            .map(
-                (t) =>
-                    `<button type="button" class="row-btn" data-act="unhide-tag" data-name="${escapeHtml(t)}" aria-label="Show ${escapeHtml(t)} again">` +
-                    `${escapeHtml(t)}${X_ICON}</button>`, // no <span>: narrow screens hide a button's
-            )
-            .join(" ");
+    box.replaceChildren(el("span", {}, "Not shown:"));
+    for (const t of hiddenTags) {
+        // No <span> round the name: narrow screens hide a button's.
+        box.append(" ", rowButton("row-btn", { "data-act": "unhide-tag", "data-name": t, "aria-label": `Show ${t} again` }, t, X_ICON()));
+    }
 }
 
 function setTagHidden(name: string, hide: boolean): void {
@@ -900,20 +901,21 @@ function setTagHidden(name: string, hide: boolean): void {
 let editing: Reorderable | null = null;
 
 /** A section's Show switch, while editing. */
-function addToggle(el: HTMLElement): void {
-    const key = el.dataset["key"];
-    const head = el.querySelector<HTMLElement>(":scope > .row-head");
-    if (!key || !head || !TOGGLEABLE.includes(key) || el.classList.contains("row-na")) return;
+function addToggle(row: HTMLElement): void {
+    const key = row.dataset["key"];
+    const head = row.querySelector<HTMLElement>(":scope > .row-head");
+    if (!key || !head || !TOGGLEABLE.includes(key) || row.classList.contains("row-na")) return;
     const label = document.createElement("label");
     label.className = "row-toggle";
-    label.innerHTML = `<input type="checkbox" role="switch" /><span>Show</span>`;
-    const box = label.querySelector("input")!;
+    const box = el("input", { type: "checkbox" });
+    box.setAttribute("role", "switch");
+    label.append(box, el("span", {}, "Show"));
     box.checked = !layout.hidden.includes(key);
-    box.setAttribute("aria-label", `Show ${el.dataset["name"] ?? key}`);
+    box.setAttribute("aria-label", `Show ${row.dataset["name"] ?? key}`);
     box.addEventListener("change", () => {
         layout.hidden = layout.hidden.filter((k) => k !== key);
         if (!box.checked) layout.hidden.push(key);
-        el.classList.toggle("row-off", !box.checked);
+        row.classList.toggle("row-off", !box.checked);
         saveLayout();
     });
     head.append(label);
@@ -967,14 +969,21 @@ function setEditing(on: boolean): void {
 /** The user's strongest tags (lower case): their rows come first. */
 let affinityTags: string[] = [];
 
-const HIDE_ICON = `<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M6 6l12 12M18 6L6 18" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round"/></svg>`;
+const HIDE_ICON = () => icon({}, ["path", { d: "M6 6l12 12M18 6L6 18", fill: "none", stroke: "currentColor", "stroke-width": 2.5, "stroke-linecap": "round" }]);
 
-/** A pinned series' Show finished (name: escaped). */
-function finishedToggle(name: string, on: boolean, n: number): string {
-    return `<button type="button" class="row-btn" data-act="series-finished" aria-pressed="${on}" title="Show the ${n} you’ve finished" aria-label="Show the books of ${name} you’ve finished">
-                    ${CHECK_ICON}
-                    <span>Show finished</span>
-                </button>`;
+/** A pinned series' Show finished. */
+function finishedToggle(name: string, on: boolean, n: number): HTMLButtonElement {
+    return rowButton(
+        "row-btn",
+        {
+            "data-act": "series-finished",
+            "aria-pressed": String(on),
+            title: `Show the ${n} you’ve finished`,
+            "aria-label": `Show the books of ${name} you’ve finished`,
+        },
+        CHECK_ICON(),
+        el("span", {}, "Show finished"),
+    );
 }
 
 /** On deck: the next book of the series the user is reading through, each with ✕. */
@@ -990,7 +999,7 @@ function showOnDeck(books: Book[]): void {
         x.dataset["act"] = "deck-hide";
         x.title = "Remove from On deck";
         x.setAttribute("aria-label", `Remove ${b.title || "this book"} from On deck`);
-        x.innerHTML = HIDE_ICON;
+        x.append(HIDE_ICON());
         card.append(x);
     });
 }
@@ -1029,7 +1038,7 @@ function showRecommended(recs: RecBook[]): void {
         hide.dataset["act"] = "rec-hide";
         hide.title = "Not interested";
         hide.setAttribute("aria-label", `Not interested in ${r.book.title || "this book"}`);
-        hide.innerHTML = HIDE_ICON;
+        hide.append(HIDE_ICON());
         card.append(hide);
         const info = card.querySelector(".book-info");
         if (!info || !r.because) return;
@@ -1079,7 +1088,7 @@ function setupRecommended(): void {
             if (!on) return;
             const gone = document.createElement("div");
             gone.className = "rec-gone";
-            gone.innerHTML = `<p>Not interested</p><button type="button" class="row-btn" data-act="rec-undo">Undo</button>`;
+            gone.append(el("p", {}, "Not interested"), rowButton("row-btn", { "data-act": "rec-undo" }, "Undo"));
             card.append(gone);
             gone.querySelector("button")!.focus();
         };
@@ -1324,18 +1333,22 @@ function setupTagRows(): void {
             const row = queue.splice(k, 1)[0]!;
             const cur = cursors.get(row.name.toLowerCase()) ?? { starts: [], next: null };
             const w: TagWalker = { row, size: STRIP, cur, books: [], busy: false };
-            const name = escapeHtml(row.name);
-            const href = escapeHtml(row.href);
+            const name = row.name;
             section.dataset["name"] = row.name;
             section.hidden = false;
             // The pin for a signed-in user (updateTagRows), else the tag's icon.
-            section.querySelector("header")!.innerHTML = `
-            <h2 id="tag-row-${i}-title"><button type="button" class="row-icon tag-pin" data-act="pin-tag" title="Pin to home" aria-label="Pin ${name} to home" hidden>${PIN_ICON}</button><a class="row-icon tag-link" href="/tags" title="Tags" aria-label="All tags">${TAG_ICON}</a>More in <a class="row-title-link" href="${href}">${name}</a></h2>
-            <div class="row-tools">
-                ${tagStepButtons(name, row.count <= STRIP)}
-                ${seeAll(row.href)}
-                <button type="button" class="row-btn row-x" data-act="hide-tag" title="Don't show this tag here" aria-label="Don't show ${name} on the home page">${X_ICON}</button>
-            </div>`;
+            const pin = rowButton("row-icon tag-pin", { "data-act": "pin-tag", title: "Pin to home", "aria-label": `Pin ${name} to home` }, PIN_ICON());
+            pin.hidden = true;
+            const tagLink = withAttrs(el("a", { className: "row-icon tag-link", href: "/tags", title: "Tags" }, TAG_ICON()), { "aria-label": "All tags" });
+            const title = el("h2", { id: `tag-row-${i}-title` }, pin, tagLink, "More in ", el("a", { className: "row-title-link", href: safeUrl(row.href) }, name));
+            const tools = el(
+                "div",
+                { className: "row-tools" },
+                ...tagStepButtons(name, row.count <= STRIP),
+                seeAll(row.href),
+                rowButton("row-btn row-x", { "data-act": "hide-tag", title: "Don't show this tag here", "aria-label": `Don't show ${name} on the home page` }, X_ICON()),
+            );
+            section.querySelector("header")!.replaceChildren(title, tools);
             tagWalkers.set(section, w);
             if (await showTagStrip(section, w, w.cur.next, true)) break;
         }
@@ -1359,7 +1372,7 @@ function setupTagRows(): void {
         section.className = "row tag-row";
         section.dataset["i"] = String(i);
         section.setAttribute("aria-labelledby", `tag-row-${i}-title`);
-        section.innerHTML = `<header class="row-head"></header><div class="row-books"></div>`;
+        section.append(el("header", { className: "row-head" }), el("div", { className: "row-books" }));
         rows.append(section);
         near.observe(section);
     }

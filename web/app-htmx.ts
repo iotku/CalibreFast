@@ -24,9 +24,9 @@
  * keeps the exact book, so a reload or back/forward returns to the same row.
  */
 
-import { byId, maybeId } from "./dom.js";
+import { byId, el, maybeId } from "./dom.js";
 import type { Book } from "./types.js";
-import { coverUrl, renderBookCard, setupCoverStates } from "./utils.js";
+import { bookCard, coverUrl, setupCoverStates } from "./utils.js";
 import { maxCovers } from "./cover-limits.js";
 import { setupBookClickHandlers, loadBook, HASH_PREFIX } from "./modal.js";
 import { agrees, applyChange, cachedMarks, coverAction, fetchMarks, markCard, saveMarks, statusOf, type BookChange, type BookState, type Marks } from "./reading.js";
@@ -47,9 +47,12 @@ const HISTORY_DEBOUNCE_MS = 300; // browsers throttle rapid history updates
 const COVERS_WAIT_SCREENS_PER_SEC = 4; // faster than this, covers wait until it slows
 const SETTLE_MS = 120; // no scrolling for this long: stopped
 
-const SKELETON = `<div class="book skeleton" aria-hidden="true"></div>`;
-// A page that came back shorter than the count said (rewritten since).
-const MISSING = `<div class="book missing" aria-hidden="true"></div>`;
+/** An empty card: a skeleton (page still loading) or "missing". */
+function blankCard(kind: "skeleton" | "missing"): HTMLElement {
+    const card = el("div", { className: `book ${kind}` });
+    card.setAttribute("aria-hidden", "true");
+    return card;
+}
 
 interface PageLoad {
     promise: Promise<Book[] | null>;
@@ -307,7 +310,7 @@ function measure(): void {
     const colGap = parseFloat(cs.columnGap) || 0;
 
     // Any card will do: they're all the same size. Without one, a probe.
-    const probe = cards.size ? null : booksEl.appendChild(cardElements(SKELETON)[0]!);
+    const probe = cards.size ? null : booksEl.appendChild(blankCard("skeleton"));
     const card = probe ?? cards.values().next().value!;
     const cardH = card.getBoundingClientRect().height;
     const radius = parseFloat(getComputedStyle(card).borderTopLeftRadius) || 0;
@@ -344,26 +347,18 @@ function windowRows(top: number): [number, number] {
     return [Math.max(0, top - (down ? behind : ahead)), Math.min(rows, top + view + (down ? ahead : behind))];
 }
 
-/** Parse card HTML into elements. */
-function cardElements(html: string): HTMLElement[] {
-    const t = document.createElement("template");
-    t.innerHTML = html;
-    return [...t.content.children] as HTMLElement[];
-}
-
-function cardHtml(i: number): string {
+function cardFor(i: number): HTMLElement {
     const books = pageCache.get(pageOf(i));
-    if (!books) return SKELETON;
+    if (!books) return blankCard("skeleton");
     const book = books[i % pageSize];
-    if (!book) return MISSING;
-    return renderBookCard(book, loadedCovers.has(coverUrl(book)));
+    if (!book) return blankCard("missing"); // a page shorter than the count said (rewritten since)
+    return bookCard(book, loadedCovers.has(coverUrl(book)));
 }
 
 /** Cards for books [from, to), registered in `cards`; insert them, then activate them. */
 function makeCards(from: number, to: number): HTMLElement[] {
-    let html = "";
-    for (let i = from; i < to; i++) html += cardHtml(i);
-    const els = cardElements(html);
+    const els: HTMLElement[] = [];
+    for (let i = from; i < to; i++) els.push(cardFor(i));
     els.forEach((el, k) => {
         cards.set(from + k, el);
         markReading(el);

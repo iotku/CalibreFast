@@ -1,6 +1,6 @@
 import { colorValue, setupAnnotationUI } from "./annotation-ui.js";
 import { createAnnotationStore, parsePdfAnchor, type Annotation, type PdfAnchor } from "./annotations.js";
-import { byId, maybeId, modalOpen } from "./dom.js";
+import { byId, el, maybeId, modalOpen } from "./dom.js";
 import { setupPdfGestures } from "./pdf-gestures.js";
 import { setupLoupe } from "./pdf-loupe.js";
 import { ACTUAL_SIZE, createPdfView, type PdfView, type ViewLayout } from "./pdf-view.js";
@@ -13,7 +13,7 @@ import { loadPdfJs, openPdf } from "./vendor.js";
 
 const found = readerBook();
 if (!found) {
-    document.body.innerHTML = "<p>No book specified.</p>";
+    document.body.replaceChildren(el("p", {}, "No book specified."));
     throw new Error("missing uuid");
 }
 const target: ReaderBook = found;
@@ -370,7 +370,7 @@ async function renderToc(pdf: PdfJS.Document): Promise<void> {
     const outline = await pdf.getOutline().catch(() => null);
     const list = byId("toc-list");
     if (!outline?.length) {
-        list.innerHTML = '<li class="toc-empty">This PDF has no contents.</li>';
+        list.replaceChildren(el("li", { className: "toc-empty" }, "This PDF has no contents."));
         return;
     }
     const build = (items: PdfJS.OutlineItem[], el: HTMLElement): void => {

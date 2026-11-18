@@ -16,7 +16,7 @@
  * (agrees), and a disagreement fetches them anew.
  */
 
-import { api } from "./dom.js";
+import { api, el, icon, safeUrl } from "./dom.js";
 import { meRequest } from "./me.js";
 
 export interface Marks {
@@ -233,13 +233,22 @@ function paintProgress(card: HTMLElement, progress: number | null | undefined, f
 }
 
 const BOOKMARK_PATH = "M6 3h12a1 1 0 0 1 1 1v17l-7-4.5L5 21V4a1 1 0 0 1 1-1z";
-/** The cover buttons' icons (also the book popup's Save button, user.ts). */
+/** The cover buttons' icons (also the book popup's Save button, user.ts). Each call makes a new one. */
 export const ICONS = {
-    want: `<svg viewBox="0 0 24 24" aria-hidden="true"><path d="${BOOKMARK_PATH}" fill="none" stroke="currentColor" stroke-width="2" stroke-linejoin="round"/></svg>`,
-    wanted: `<svg viewBox="0 0 24 24" aria-hidden="true"><path d="${BOOKMARK_PATH}" fill="currentColor" stroke="currentColor" stroke-width="2" stroke-linejoin="round"/></svg>`,
-    read: `<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M8 5v14l11-7z" fill="currentColor"/></svg>`,
-    done: `<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M5 12.5l4.5 4.5L19 7.5" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"/></svg>`,
+    want: () => icon({}, ["path", { d: BOOKMARK_PATH, fill: "none", stroke: "currentColor", "stroke-width": 2, "stroke-linejoin": "round" }]),
+    wanted: () => icon({}, ["path", { d: BOOKMARK_PATH, fill: "currentColor", stroke: "currentColor", "stroke-width": 2, "stroke-linejoin": "round" }]),
+    read: () => icon({}, ["path", { d: "M8 5v14l11-7z", fill: "currentColor" }]),
+    done: () =>
+        icon({}, ["path", { d: "M5 12.5l4.5 4.5L19 7.5", fill: "none", stroke: "currentColor", "stroke-width": 2.5, "stroke-linecap": "round", "stroke-linejoin": "round" }]),
 };
+
+/** A cover button (or link, or badge) with a title, label and icon. */
+function coverButton<K extends "button" | "a" | "span">(tag: K, cls: string, title: string, ...children: (Node | string)[]): HTMLElementTagNameMap[K] {
+    const b = el(tag, { className: `cover-action ${cls}`, title } as Partial<HTMLElementTagNameMap[K]>, ...children);
+    b.setAttribute("aria-label", title);
+    if (b instanceof HTMLButtonElement) b.type = "button";
+    return b;
+}
 
 /** The right button's state, which decides what it shows and does. */
 function rightState(uuid: string, marks: Marks): "want" | "wanted" | "read" | "done" | "" {
@@ -266,24 +275,34 @@ function paintActions(card: HTMLElement, uuid: string, marks: Marks): void {
     box.dataset["key"] = key;
 
     const favTitle = fav ? "Remove from favorites" : "Add to favorites";
-    let html = `<button type="button" class="cover-action cover-fav${fav ? " is-on" : ""}" data-action="favorite" aria-pressed="${fav}" title="${favTitle}" aria-label="${favTitle}">${fav ? "★" : "☆"}</button>`;
+    const favBtn = coverButton("button", `cover-fav${fav ? " is-on" : ""}`, favTitle, fav ? "★" : "☆");
+    favBtn.dataset["action"] = "favorite";
+    favBtn.setAttribute("aria-pressed", String(fav));
+    const buttons: HTMLElement[] = [favBtn];
     switch (right) {
         case "want":
         case "wanted": {
             const title = right === "wanted" ? "Remove from Saved" : "Save for later";
-            html += `<button type="button" class="cover-action cover-want${right === "wanted" ? " is-on" : ""}" data-action="want" aria-pressed="${right === "wanted"}" title="${title}" aria-label="${title}">${ICONS[right]}</button>`;
+            const b = coverButton("button", `cover-want${right === "wanted" ? " is-on" : ""}`, title, ICONS[right]());
+            b.dataset["action"] = "want";
+            b.setAttribute("aria-pressed", String(right === "wanted"));
+            buttons.push(b);
             break;
         }
         case "read": {
-            const href = marks.resume.get(uuid) ?? "";
-            html += `<a class="cover-action cover-read" href="${href.replace(/"/g, "&quot;")}" title="Continue reading" aria-label="Continue reading">${ICONS.read}</a>`;
+            const a = coverButton("a", "cover-read", "Continue reading", ICONS.read());
+            a.href = safeUrl(marks.resume.get(uuid));
+            buttons.push(a);
             break;
         }
-        case "done":
-            html += `<span class="cover-action cover-done" title="Finished" role="img" aria-label="Finished">${ICONS.done}</span>`;
+        case "done": {
+            const done = coverButton("span", "cover-done", "Finished", ICONS.done());
+            done.setAttribute("role", "img");
+            buttons.push(done);
             break;
+        }
     }
-    box.innerHTML = html;
+    box.replaceChildren(...buttons);
 }
 
 /**

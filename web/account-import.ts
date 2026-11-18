@@ -19,9 +19,9 @@
  * Then on to next.
  */
 
-import { byId } from "./dom.js";
+import { byId, el } from "./dom.js";
 import type { Book } from "./types.js";
-import { coverUrl, escapeHtml } from "./utils.js";
+import { coverUrl } from "./utils.js";
 import { collectGuestData, forgetGuestBooks, type GuestBook } from "./guest-data.js";
 
 interface Position {
@@ -146,32 +146,31 @@ function render(): void {
         const extras: string[] = [];
         if (p.new_annotations) extras.push(plural(p.new_annotations, "highlight", "highlights"));
         if (p.new_bookmarks) extras.push(plural(p.new_bookmarks, "bookmark", "bookmarks"));
-        let html = `
-            <label class="import-include">
-                <input type="checkbox" checked aria-label="Add ${escapeHtml(b.title)}" />
-            </label>
-            <img class="import-cover" src="${escapeHtml(coverUrl(b))}" alt="" loading="lazy" />
-            <div class="import-info">
-                <div class="import-title">${escapeHtml(b.title)}</div>
-                <div class="import-author">${escapeHtml(b.authors)}</div>`;
+        const include = el("input", { type: "checkbox", checked: true });
+        include.setAttribute("aria-label", `Add ${b.title}`);
+        const cover = el("img", { className: "import-cover", src: coverUrl(b), alt: "", loading: "lazy" });
+        const info = el("div", { className: "import-info" }, el("div", { className: "import-title" }, b.title), el("div", { className: "import-author" }, b.authors));
+        const line = (text: string) => el("div", { className: "import-line" }, text);
         if (p.state === "conflict" && p.device && p.account) {
             const deviceNewer = p.device.updated_at >= p.account.updated_at;
             const name = `place-${p.uuid}`;
-            html += `
-                <fieldset class="import-choice">
-                    <legend>Your place differs. Keep:</legend>
-                    <label><input type="radio" name="${escapeHtml(name)}" value="device"${deviceNewer ? " checked" : ""} /> This device: ${escapeHtml(place(p.device))}</label>
-                    <label><input type="radio" name="${escapeHtml(name)}" value="account"${deviceNewer ? "" : " checked"} /> Your account: ${escapeHtml(place(p.account))}</label>
-                </fieldset>`;
+            const radio = (value: string, checked: boolean, text: string) =>
+                el("label", {}, el("input", { type: "radio", name, value, checked }), text);
+            info.append(
+                el(
+                    "fieldset",
+                    { className: "import-choice" },
+                    el("legend", {}, "Your place differs. Keep:"),
+                    radio("device", deviceNewer, ` This device: ${place(p.device)}`),
+                    radio("account", !deviceNewer, ` Your account: ${place(p.account)}`),
+                ),
+            );
         } else if (p.device) {
-            html += `<div class="import-line">Place: ${escapeHtml(place(p.device))}${p.device.percent >= 0.97 ? " (finished)" : ""}</div>`;
+            info.append(line(`Place: ${place(p.device)}${p.device.percent >= 0.97 ? " (finished)" : ""}`));
         }
-        if (extras.length) html += `<div class="import-line">${escapeHtml(extras.join(", "))} to add</div>`;
-        if (p.merged_notes) {
-            html += `<div class="import-line">${escapeHtml(plural(p.merged_notes, "note", "notes"))} added to highlights you already have</div>`;
-        }
-        html += `</div>`;
-        li.innerHTML = html;
+        if (extras.length) info.append(line(`${extras.join(", ")} to add`));
+        if (p.merged_notes) info.append(line(`${plural(p.merged_notes, "note", "notes")} added to highlights you already have`));
+        li.append(el("label", { className: "import-include" }, include), cover, info);
         // A cover that isn't there: the box stays, empty.
         li.querySelector("img")?.addEventListener("error", (e) => (e.target as HTMLImageElement).classList.add("missing"));
         listEl.append(li);

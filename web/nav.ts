@@ -141,7 +141,8 @@ function init(bar: HTMLElement): void {
     // ---- user part ----------------------------------------------------------
     //
     // The last answer from /api/me is kept in localStorage, and the user part
-    // it made as markup (NAV_KEY): the template's inline script puts that in
+    // it made as a tree of nodes (NAV_KEY, JSON: never HTML, which would need
+    // innerHTML and so Trusted Types): the template's inline script builds it
     // as soon as the bar is parsed, before this module runs (modules wait for
     // the whole page). This then draws it again, live, from the answer, and
     // the request redraws it only if the server's answer changed (promoted,
@@ -151,8 +152,13 @@ function init(bar: HTMLElement): void {
     if (!user) return;
     const userEl: HTMLElement = user;
     const CACHE_KEY = "cf-me";
-    /** The user part's markup, as topbar.html's inline script reads it (keep the name in step). */
-    const NAV_KEY = "cf-nav";
+    /** The user part as a NavNode list, as topbar.html's inline script reads it (keep the name and shape in step). */
+    const NAV_KEY = "cf-nav-tree";
+    try {
+        localStorage.removeItem("cf-nav"); // its old form, as markup
+    } catch {
+        /* storage blocked */
+    }
     interface MeState {
         username: string | null;
         isAdmin: boolean;
@@ -283,12 +289,32 @@ function init(bar: HTMLElement): void {
         snapshot();
     }
 
-    /** Keep the user part's markup for the next page's inline script, without this page's highlight. */
+    /**
+     * A node of the snapshot: text, or an element (t its tag, s: 1 for SVG,
+     * a its attributes, c its children). topbar.html's inline script builds
+     * it back with createElement, only from the tags and attributes nav.ts
+     * itself makes.
+     */
+    type NavNode = string | { t: string; s?: 1; a: [string, string][]; c: NavNode[] };
+    function navTree(n: Node): NavNode[] {
+        if (n.nodeType === Node.TEXT_NODE) return [n.textContent ?? ""];
+        if (!(n instanceof Element)) return [];
+        return [
+            {
+                t: n.localName,
+                ...(n.namespaceURI === "http://www.w3.org/2000/svg" ? { s: 1 as const } : {}),
+                a: [...n.attributes].map((a): [string, string] => [a.name, a.value]),
+                c: [...n.childNodes].flatMap(navTree),
+            },
+        ];
+    }
+
+    /** Keep the user part for the next page's inline script, without this page's highlight. */
     function snapshot(): void {
         const copy = userEl.cloneNode(true) as HTMLElement;
         for (const a of copy.querySelectorAll("[aria-current]")) a.removeAttribute("aria-current");
         try {
-            localStorage.setItem(NAV_KEY, copy.innerHTML);
+            localStorage.setItem(NAV_KEY, JSON.stringify([...copy.childNodes].flatMap(navTree)));
         } catch {
             /* storage blocked */
         }

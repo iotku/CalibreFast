@@ -9,6 +9,8 @@
  * last one's order rather than a mix.
  */
 
+import { el, icon, lineIcon, type SvgShape } from "./dom.js";
+
 export interface Reorderable {
     /** Take the handles and buttons away again. */
     stop(): void;
@@ -25,14 +27,21 @@ export interface ReorderOptions {
     slot?(item: HTMLElement): HTMLElement;
 }
 
-const GRIP =
-    '<svg viewBox="0 0 24 24" width="16" height="16" fill="currentColor" aria-hidden="true">' +
-    '<circle cx="9" cy="6" r="1.6"/><circle cx="15" cy="6" r="1.6"/><circle cx="9" cy="12" r="1.6"/>' +
-    '<circle cx="15" cy="12" r="1.6"/><circle cx="9" cy="18" r="1.6"/><circle cx="15" cy="18" r="1.6"/></svg>';
-const UP = '<svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M6 15l6-6 6 6"/></svg>';
-const FIRST = '<svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M6 5h12M6 17l6-6 6 6"/></svg>';
-const LAST = '<svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M6 19h12M6 7l6 6 6-6"/></svg>';
-const DOWN = '<svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M6 9l6 6 6-6"/></svg>';
+const GRIP = () =>
+    icon(
+        { width: 16, height: 16, fill: "currentColor" },
+        ...[6, 12, 18].flatMap((cy): SvgShape[] => [
+            ["circle", { cx: 9, cy, r: 1.6 }],
+            ["circle", { cx: 15, cy, r: 1.6 }],
+        ]),
+    );
+/** The move buttons' icons. */
+const MOVES = {
+    first: "M6 5h12M6 17l6-6 6 6",
+    up: "M6 15l6-6 6 6",
+    down: "M6 9l6 6 6-6",
+    last: "M6 19h12M6 7l6 6 6-6",
+};
 
 export function makeReorderable(opts: ReorderOptions): Reorderable {
     const { list } = opts;
@@ -55,12 +64,12 @@ export function makeReorderable(opts: ReorderOptions): Reorderable {
         const name = opts.label(item);
         const c = document.createElement("span");
         c.className = "reorder";
-        c.innerHTML =
-            `<span class="reorder-grip" title="Drag to move">${GRIP}</span>` +
-            `<button type="button" class="reorder-btn" data-move="first">${FIRST}</button>` +
-            `<button type="button" class="reorder-btn" data-move="up">${UP}</button>` +
-            `<button type="button" class="reorder-btn" data-move="down">${DOWN}</button>` +
-            `<button type="button" class="reorder-btn" data-move="last">${LAST}</button>`;
+        c.append(el("span", { className: "reorder-grip", title: "Drag to move" }, GRIP()));
+        for (const [move, d] of Object.entries(MOVES)) {
+            const b = el("button", { type: "button", className: "reorder-btn" }, icon(lineIcon(16), d));
+            b.dataset["move"] = move;
+            c.append(b);
+        }
         const labels: Record<string, string> = { first: "to the start", up: "up", down: "down", last: "to the end" };
         for (const b of c.querySelectorAll<HTMLButtonElement>(".reorder-btn")) {
             const label = `Move ${name} ${labels[b.dataset["move"] ?? ""]}`;

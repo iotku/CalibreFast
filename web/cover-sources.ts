@@ -5,6 +5,7 @@
 
 import type { BookTarget } from "./book-target.js";
 import { EPUBJS_URL, JSZIP_URL, openPdf } from "./vendor.js";
+import { setVendorScriptSrc } from "./trusted.js";
 
 /** Response of /upload-cover, /revert-cover and /cover-status. */
 export interface CoverStatus {
@@ -181,7 +182,7 @@ export async function* pdfPages(book: BookTarget): AsyncGenerator<CoverChoice> {
 function loadScript(src: string): Promise<void> {
     return new Promise((resolve, reject) => {
         const s = document.createElement("script");
-        s.src = src;
+        setVendorScriptSrc(s, src);
         s.onload = () => resolve();
         s.onerror = () => reject(new Error(`failed to load ${src}`));
         document.head.appendChild(s);

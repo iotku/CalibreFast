@@ -2,7 +2,7 @@ import { colorValue, setupAnnotationUI } from "./annotation-ui.js";
 import { createAnnotationStore, type Annotation } from "./annotations.js";
 import { currentUser, getBook, offlinePref, putBook, registerWorker, sweep, updateBook, type CachedBook } from "./book-cache.js";
 import { keepCover } from "./offline-books.js";
-import { byId, errorMessage, maybeId, modalOpen } from "./dom.js";
+import { byId, el, errorMessage, maybeId, modalOpen } from "./dom.js";
 import { openEpub } from "./epub-open.js";
 import { canInflate, openBuffer, openRemote, type EpubSource } from "./epub-source.js";
 import { syncGuestBook } from "./guest-sync.js";
@@ -13,7 +13,7 @@ import { createReadingSync, renderBookmarks, type Bookmark, type BookmarkHandler
 
 const found = readerBook();
 if (!found) {
-    document.body.innerHTML = "<p>No book specified.</p>";
+    document.body.replaceChildren(el("p", {}, "No book specified."));
     throw new Error("missing uuid");
 }
 const target: ReaderBook = found;
@@ -750,7 +750,7 @@ function markCurrentChapter(): void {
 
 void book.ready.then(() => {
     renderToc(book.navigation.toc, byId("toc-list"));
-    if (!tocEntries.length) byId("toc-list").innerHTML = '<li class="toc-empty">This book has no contents.</li>';
+    if (!tocEntries.length) byId("toc-list").replaceChildren(el("li", { className: "toc-empty" }, "This book has no contents."));
     markCurrentChapter();
     showPosition();
 });

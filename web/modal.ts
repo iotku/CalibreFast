@@ -1,4 +1,6 @@
 import { forgetControls, prefetchControls } from "./user.js"; // favorite / status / shelves controls in the book popup
+import { el, icon, lineIcon } from "./dom.js";
+import { parseServerHtml } from "./trusted.js";
 /* ------------------------------------------------------------------ */
 /* Modal (hash-driven)                                                 */
 /* ------------------------------------------------------------------ */
@@ -26,9 +28,9 @@ function bodyEl(): HTMLElement | null {
 function isModalOpen(): boolean {
     return modalEl()?.classList.contains("open") ?? false;
 }
-function setBody(html: string): void {
-    const body = bodyEl();
-    if (body) body.innerHTML = html;
+/** Show a message in place of the book. */
+function setBodyText(text: string): void {
+    bodyEl()?.replaceChildren(text);
 }
 
 /** htmx 4's request events carry the request's context. */
@@ -77,9 +79,21 @@ function hashUuid(): string | null {
 /* Busy: grid covers pause while the modal loads                       */
 /* ------------------------------------------------------------------ */
 
-const LOADING_HTML =
-    '<div class="modal-loading" role="status" aria-label="Loading"><span class="throbber" aria-hidden="true">' +
-    '<span class="throbber-dot"></span><span class="throbber-dot"></span><span class="throbber-dot"></span></span></div>';
+/** Three bouncing dots. */
+function throbber(): HTMLElement {
+    const dot = () => el("span", { className: "throbber-dot" });
+    const t = el("span", { className: "throbber" }, dot(), dot(), dot());
+    t.setAttribute("aria-hidden", "true");
+    return t;
+}
+
+/** The popup's throbber while a book loads. */
+function loadingBox(): HTMLElement {
+    const box = el("div", { className: "modal-loading" }, throbber());
+    box.setAttribute("role", "status");
+    box.setAttribute("aria-label", "Loading");
+    return box;
+}
 /** A book that arrives sooner shows without a loading state in between. */
 const LOADING_DELAY_MS = 100;
 let loadingUrl: string | null = null; // the book request whose answer the modal waits for
@@ -142,11 +156,11 @@ function showModal(): void {
         modalEl()?.classList.remove("pending");
         if (loadingUrl === null) return;
         if (keep) setSwitching(true);
-        else setBody(LOADING_HTML);
+        else bodyEl()?.replaceChildren(loadingBox());
     }, LOADING_DELAY_MS);
     bodyEl()?.setAttribute("aria-busy", "true");
     if (isModalOpen()) return;
-    setBody("");
+    bodyEl()?.replaceChildren();
     // Hiding the scrollbar would widen the page: keep its space if there was one.
     const root = document.documentElement;
     root.classList.toggle("keep-gutter", root.scrollHeight > root.clientHeight);
@@ -197,7 +211,7 @@ function hideModal(): void {
     queuedStep = null;
     const body = bodyEl();
     if (body) {
-        body.innerHTML = "";
+        body.replaceChildren();
         body.removeAttribute("aria-busy");
     }
     document.title = BASE_TITLE; // every close path ends here
@@ -228,7 +242,7 @@ export function loadBook(uuid: string): void {
     shownCard = card;
     if (typeof htmx === "undefined") {
         showModal();
-        setBody("htmx not loaded.");
+        setBodyText("htmx not loaded.");
         return;
     }
     const url = bookUrl(uuid);
@@ -247,7 +261,7 @@ export function loadBook(uuid: string): void {
         ...(hit ? { fetch: () => hit } : {}),
     }).catch(() => {
         if (loadingUrl === url) {
-            setBody("Failed to load book.");
+            setBodyText("Failed to load book.");
             doneLoading();
         }
     });
@@ -343,7 +357,7 @@ function takePrefetch(uuid: string): Promise<Response> | null {
 
 /** Have the browser fetch the popup's cover images (thumbnail and full cover). */
 function preloadCovers(html: string): void {
-    const doc = new DOMParser().parseFromString(html, "text/html"); // inert: nothing loads or runs
+    const doc = parseServerHtml(html); // inert: nothing loads or runs
     for (const img of doc.querySelectorAll<HTMLImageElement>(".cover-stack img")) {
         const src = img.getAttribute("src");
         if (!src) continue;
@@ -365,15 +379,21 @@ function prefetchNeighbours(): void {
 
 /* On-screen arrows and swipes: the same steps as the arrow keys. */
 
-const NAV_HTML = (dir: "prev" | "next") =>
-    `<button type="button" class="modal-nav modal-nav-${dir}" data-step="${dir === "next" ? 1 : -1}" ` +
-    `aria-label="${dir === "next" ? "Next book" : "Previous book"}" hidden>` +
-    `<svg viewBox="0 0 24 24" width="22" height="22" fill="none" stroke="currentColor" stroke-width="2.2" ` +
-    `stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="${dir === "next" ? "m9 6 6 6-6 6" : "m15 6-6 6 6 6"}"/></svg></button>`;
+/** An on-screen arrow, hidden until there's a book that way. */
+function navButton(dir: "prev" | "next"): HTMLButtonElement {
+    const btn = el("button", { type: "button", className: `modal-nav modal-nav-${dir}`, hidden: true });
+    btn.dataset["step"] = dir === "next" ? "1" : "-1";
+    btn.setAttribute("aria-label", dir === "next" ? "Next book" : "Previous book");
+    btn.append(icon(lineIcon(22, 2.2), dir === "next" ? "m9 6 6 6-6 6" : "m15 6-6 6 6 6"));
+    return btn;
+}
 
-const SWITCHING_HTML =
-    '<div class="modal-switching" aria-hidden="true" hidden><span class="throbber">' +
-    '<span class="throbber-dot"></span><span class="throbber-dot"></span><span class="throbber-dot"></span></span></div>';
+/** The throbber shown over the popup while it switches books. */
+function switchingThrobber(): HTMLElement {
+    const box = el("div", { className: "modal-switching", hidden: true }, throbber());
+    box.setAttribute("aria-hidden", "true");
+    return box;
+}
 
 let navButtons: HTMLButtonElement[] = [];
 
@@ -544,9 +564,11 @@ export function setupModal(): void {
 
     // Close: X button or backdrop click. Previous/next: the arrows.
     const modal = modalEl();
-    modal?.insertAdjacentHTML("beforeend", NAV_HTML("prev") + NAV_HTML("next") + SWITCHING_HTML);
-    switchingEl = modal?.querySelector<HTMLElement>(".modal-switching") ?? null;
-    navButtons = [...(modal?.querySelectorAll<HTMLButtonElement>(".modal-nav") ?? [])];
+    if (modal) {
+        navButtons = [navButton("prev"), navButton("next")];
+        switchingEl = switchingThrobber();
+        modal.append(...navButtons, switchingEl);
+    }
     for (const mq of [narrow, shortLandscape]) mq.addEventListener("change", updateNavButtons);
     modal?.addEventListener("click", (e) => {
         const nav = e.target instanceof Element ? e.target.closest<HTMLElement>(".modal-nav") : null;
@@ -584,7 +606,7 @@ export function setupModal(): void {
         const ctx = (e as HtmxCtxEvent).detail?.ctx;
         if (!ctx || ctx.target !== bodyEl() || loadingUrl === null) return;
         if (!samePath(ctx.request?.action ?? "", loadingUrl)) return;
-        if (ctx.status !== "swapped" || (ctx.response?.status ?? 0) >= 400) setBody("Failed to load book.");
+        if (ctx.status !== "swapped" || (ctx.response?.status ?? 0) >= 400) setBodyText("Failed to load book.");
         doneLoading();
     });
 

@@ -6,9 +6,9 @@
  *
  * Configured on #list-edit: data-arrange, where the order is PUT.
  */
-import { api, byId, errorMessage } from "./dom.js";
+import { api, byId, el, errorMessage } from "./dom.js";
 import type { Book } from "./types.js";
-import { colorFromBook, coverUrl, escapeHtml, seriesLabel } from "./utils.js";
+import { colorFromBook, coverUrl, seriesLabel } from "./utils.js";
 import { makeReorderable, type Reorderable } from "./reorder.js";
 
 const SAVE_DELAY_MS = 400; // moves in a row are one save
@@ -47,16 +47,23 @@ function flush(): Promise<void> {
     return saving;
 }
 
-function row(b: Book): string {
-    const title = escapeHtml(b.title || "Untitled");
+function row(b: Book): HTMLLIElement {
+    const title = b.title || "Untitled";
     // A shelf's whole series (shelf_series.go): one entry, moved like a book.
     const series = b.series_card;
-    const sub = series ? `<span class="arrange-series">${escapeHtml(seriesLabel(series.count))}</span>` : escapeHtml(b.authors || "Unknown Author");
-    return `<li class="arrange-item${series ? " is-series" : ""}" data-id="${escapeHtml(b.uuid)}" data-name="${title}">
-        <img class="arrange-cover" src="${escapeHtml(coverUrl(b))}" alt="" loading="lazy" decoding="async" style="background:${colorFromBook(b)}" />
-        <span class="arrange-text"><span class="arrange-title">${title}</span><span class="arrange-author">${sub}</span></span>
-        <span class="arrange-controls"></span>
-    </li>`;
+    const sub = series ? el("span", { className: "arrange-series" }, seriesLabel(series.count)) : b.authors || "Unknown Author";
+    const cover = el("img", { className: "arrange-cover", src: coverUrl(b), alt: "", loading: "lazy", decoding: "async" });
+    cover.style.background = colorFromBook(b);
+    const li = el(
+        "li",
+        { className: `arrange-item${series ? " is-series" : ""}` },
+        cover,
+        el("span", { className: "arrange-text" }, el("span", { className: "arrange-title" }, title), el("span", { className: "arrange-author" }, sub)),
+        el("span", { className: "arrange-controls" }),
+    );
+    li.dataset["id"] = b.uuid;
+    li.dataset["name"] = title;
+    return li;
 }
 
 function setPressed(on: boolean): void {
@@ -74,10 +81,13 @@ async function start(): Promise<void> {
         panel = document.createElement("section");
         panel.className = "arrange";
         panel.setAttribute("aria-label", "Arrange books");
-        panel.innerHTML =
-            `<p class="arrange-hint">Drag the books into place, or move them with the arrows. Changes are saved as you go.</p>` +
-            `<p class="arrange-status" role="status"></p>` +
-            `<ol class="arrange-list">${list.map(row).join("")}</ol>`;
+        const statusEl = el("p", { className: "arrange-status" });
+        statusEl.setAttribute("role", "status");
+        panel.append(
+            el("p", { className: "arrange-hint" }, "Drag the books into place, or move them with the arrows. Changes are saved as you go."),
+            statusEl,
+            el("ol", { className: "arrange-list" }, ...list.map(row)),
+        );
         // No cover: the book's colour, as on the grid.
         panel.addEventListener(
             "error",
