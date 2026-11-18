@@ -45,9 +45,10 @@ export const DEVICE_CHOICES: { [K in keyof DevicePrefs]: readonly number[] } = {
 export const DEVICE_DEFAULTS: DevicePrefs = {
     readingKeepDays: 7,
     // Someone back after a long time away, with no connection, still has something to read.
-    keepReadingN: 3,
+    keepReadingN: 5,
     maxBookBytes: 100 * MB,
-    prefetchSavedN: 0,
+    // The first books of Discover's "On deck / Saved for later" row are ready offline.
+    prefetchSavedN: 3,
     maxBytes: -1,
 };
 
