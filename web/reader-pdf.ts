@@ -2,6 +2,7 @@ import { colorValue, setupAnnotationUI } from "./annotation-ui.js";
 import { currentUser, getBook, registerWorker, updateBook, type CachedBook } from "./book-cache.js";
 import { shouldKeep, storeBook, sweep } from "./retention.js";
 import { holdBackgroundDownloads } from "./page-busy.js";
+import { createSyncIndicator } from "./sync-indicator.js";
 import { createAnnotationStore, parsePdfAnchor, type Annotation, type PdfAnchor } from "./annotations.js";
 import { byId, el, maybeId, modalOpen } from "./dom.js";
 import { setupPdfGestures } from "./pdf-gestures.js";
@@ -452,8 +453,20 @@ async function download(): Promise<{ bytes: Uint8Array; lastModified: string }> 
     return { bytes: new Uint8Array(await res.arrayBuffer()), lastModified: res.headers.get("last-modified") ?? "" };
 }
 
+// The top bar's sync button: saved offline, and synced with the server (sync-indicator.ts).
+const syncButton = preview ? null : createSyncIndicator(uuid, "pdf");
+
 /** Read from the server: once pdf.js has all of it, keep that (no second download). */
 async function keepWhenLoaded(pdf: PdfJS.Document, head: Promise<Response | null>): Promise<void> {
+    void head.then((r) => syncButton?.setSize(Number(r?.headers.get("content-length")) || 0));
+    try {
+        await keepLoaded(pdf, head);
+    } finally {
+        syncButton?.downloading(false);
+    }
+}
+
+async function keepLoaded(pdf: PdfJS.Document, head: Promise<Response | null>): Promise<void> {
     await pdf.getDownloadInfo();
     const res = await head;
     const bytes = await pdf.getData();
@@ -491,7 +504,10 @@ async function openBook(): Promise<PdfJS.Document> {
     }
     // Its Last-Modified, for checking a kept copy later (pdf.js doesn't say).
     const head = preview ? Promise.resolve(null) : fetch(downloadUrl, { method: "HEAD", credentials: "same-origin" }).catch(() => null);
-    const pdf = await openPdf(downloadUrl).catch((err: unknown) => {
+    // The sync button's ring follows the file arriving (whole, it's kept: keepWhenLoaded).
+    const pdf = await openPdf(downloadUrl, {}, (loaded, total) => {
+        if (total) syncButton?.downloading(Math.min(1, loaded / total));
+    }).catch((err: unknown) => {
         release();
         throw err;
     });

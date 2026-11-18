@@ -217,7 +217,11 @@ declare namespace PdfJS {
                 standardFontDataUrl?: string;
                 iccUrl?: string;
             },
-        ): { promise: Promise<Document> };
+        ): {
+            promise: Promise<Document>;
+            /** Called as the file arrives: bytes so far, and in all (0 when unknown). */
+            onProgress?: (p: { loaded: number; total: number }) => void;
+        };
         TextLayer: new (options: { textContentSource: ReadableStream; container: HTMLElement; viewport: Viewport }) => TextLayer;
     }
 }

@@ -87,3 +87,27 @@ export function unsentBooks(owner: string): number {
     }
     return books.size;
 }
+
+/** What of one book's reading the server doesn't have yet (the reader's sync indicator). */
+export interface UnsentBook {
+    position: boolean;
+    bookmarks: number;
+    highlights: number;
+}
+
+export function unsentFor(owner: string, uuid: string): UnsentBook {
+    const read = (name: string): unknown => {
+        try {
+            return JSON.parse(localStorage.getItem(localKey(owner, name)) ?? "null");
+        } catch {
+            return null;
+        }
+    };
+    const unsynced = (v: unknown): number => (Array.isArray(v) ? v.filter((x: { synced?: boolean } | null) => x && !x.synced).length : 0);
+    const deleted = read(`bookmarks-deleted-${uuid}`);
+    return {
+        position: ["epub", "pdf"].some((f) => !!(read(`progress-${uuid}-${f}`) as { pending?: boolean } | null)?.pending),
+        bookmarks: unsynced(read(`bookmarks-${uuid}`)) + (Array.isArray(deleted) ? deleted.length : 0),
+        highlights: unsynced(read(`annotations-${uuid}`)),
+    };
+}

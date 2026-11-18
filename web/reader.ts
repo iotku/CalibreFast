@@ -3,6 +3,7 @@ import { createAnnotationStore, type Annotation } from "./annotations.js";
 import { currentUser, getBook, registerWorker, updateBook, type CachedBook } from "./book-cache.js";
 import { shouldKeep, storeBook, sweep } from "./retention.js";
 import { holdBackgroundDownloads } from "./page-busy.js";
+import { createSyncIndicator } from "./sync-indicator.js";
 import { keepCover } from "./offline-books.js";
 import { byId, el, errorMessage, maybeId, modalOpen } from "./dom.js";
 import { openEpub } from "./epub-open.js";
@@ -50,12 +51,14 @@ allowEpubChapters(); // epub.js sets each chapter as its sandboxed iframe's srcd
 if (!preview) registerWorker();
 // Background book downloads in other tabs wait while this book loads (page-busy.ts).
 const releaseDownloads = preview ? (): void => {} : holdBackgroundDownloads();
+// The top bar's sync button: saved offline, and synced with the server (sync-indicator.ts).
+const syncButton = preview ? null : createSyncIndicator(uuid, "epub");
 const downloadUrl = target.file("epub");
 /** Below this the whole file is fetched at once: it usually beats the ranges. */
 const SMALL_BOOK = 3 << 20;
 
-/** The whole .epub, streamed; onProgress gets the fraction (or MB when the size is unknown). */
-async function downloadBook(onProgress?: (text: string) => void): Promise<{ buf: Uint8Array; lastModified: string }> {
+/** The whole .epub, streamed; onProgress gets the text to show, and the fraction (null: size unknown). */
+async function downloadBook(onProgress?: (text: string, fraction: number | null) => void): Promise<{ buf: Uint8Array; lastModified: string }> {
     const res = await fetch(downloadUrl, { credentials: "same-origin" });
     if (!res.ok || !res.body) throw new Error(`HTTP ${res.status}`);
     const total = Number(res.headers.get("content-length")) || 0;
@@ -67,7 +70,7 @@ async function downloadBook(onProgress?: (text: string) => void): Promise<{ buf:
         if (done) break;
         chunks.push(value);
         got += value.length;
-        onProgress?.(total ? `Loading ${Math.round((got / total) * 100)}%` : `Loading ${(got / 1048576).toFixed(1)} MB`);
+        onProgress?.(total ? `Loading ${Math.round((got / total) * 100)}%` : `Loading ${(got / 1048576).toFixed(1)} MB`, total ? got / total : null);
     }
     const buf = new Uint8Array(got);
     let at = 0;
@@ -145,14 +148,17 @@ let wholeDone: Promise<void> = Promise.resolve();
 function fetchRest(): void {
     const src = source;
     if (!src || src.whole) return;
-    wholeDone = downloadBook()
+    syncButton?.downloading(null);
+    wholeDone = downloadBook((_, f) => syncButton?.downloading(f))
         .then(async ({ buf, lastModified }) => {
             // The file changed since the first page was read: keep the new one for next time only.
             if (lastModified === src.lastModified) src.useBuffer(buf);
             await keepCopy(buf, lastModified);
         })
-        .catch((err: unknown) => console.warn("downloading the rest of the book failed:", err));
+        .catch((err: unknown) => console.warn("downloading the rest of the book failed:", err))
+        .finally(() => syncButton?.downloading(false));
 }
+if (source) syncButton?.setSize(source.size);
 if (source && !source.whole && source.size < SMALL_BOOK) fetchRest();
 
 if (cached) {
@@ -173,7 +179,11 @@ if (cached) {
 }
 if (!cached && source?.whole) {
     // Downloaded whole (small book, or no Range support): keep it.
-    void source.complete.then((buf) => keepCopy(buf, source?.lastModified ?? "")).catch(() => {});
+    syncButton?.downloading(null);
+    void source.complete
+        .then((buf) => keepCopy(buf, source?.lastModified ?? ""))
+        .catch(() => {})
+        .finally(() => syncButton?.downloading(false));
 }
 
 const epubFlow = (s: ReaderSettings): string => (s.flow === "scrolled" ? "scrolled-doc" : "paginated");
