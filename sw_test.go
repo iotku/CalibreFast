@@ -18,7 +18,7 @@ func TestServiceWorker(t *testing.T) {
 		t.Fatalf("%d %v", rec.Code, rec.Header())
 	}
 	reader, _ := assetURL("reader.js")
-	if !strings.HasPrefix(body, "self.CF_ASSETS=[") || !strings.Contains(body, `"`+reader+`"`) || !strings.Contains(body, "epub.min.js") {
+	if !strings.HasPrefix(body, "self.CF_ASSETS=[") || !strings.Contains(body, `"`+reader+`"`) || !strings.Contains(body, "epub.min.js") || !strings.Contains(body, "pdf.worker.min.mjs") {
 		t.Fatalf("asset list: %.300s", body)
 	}
 	if strings.Contains(body[:strings.Index(body, "\n")], ".map") {

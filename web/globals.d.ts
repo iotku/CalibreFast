@@ -185,9 +185,13 @@ declare namespace PdfJS {
         getDestination(id: string): Promise<unknown[] | null>;
         getPageIndex(ref: unknown): Promise<number>;
         /** metadata: the XMP packet, when there is one. */
-        getMetadata(): Promise<{ metadata: { getRaw(): string } | null }>;
+        getMetadata(): Promise<{ info?: { Title?: unknown; Author?: unknown }; metadata: { getRaw(): string } | null }>;
         /** Stops loading and frees the worker's copy. */
         destroy(): Promise<void>;
+        /** Resolves once the whole file has arrived (pdf.js fetches the rest in the background). */
+        getDownloadInfo(): Promise<{ length: number }>;
+        /** The whole file, once it has all arrived. */
+        getData(): Promise<Uint8Array>;
     }
     interface LoadOptions {
         /** Fetch only what's asked for, not the rest in the background. */
@@ -203,7 +207,10 @@ declare namespace PdfJS {
         GlobalWorkerOptions: { workerSrc: string; workerPort: Worker | null };
         getDocument(
             src: LoadOptions & {
-                url: string;
+                /** Where to read it from (in ranges, while the rest streams in), or… */
+                url?: string;
+                /** …the whole file, already in memory (pdf.js takes it over). */
+                data?: Uint8Array;
                 wasmUrl?: string;
                 cMapUrl?: string;
                 cMapPacked?: boolean;

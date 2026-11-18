@@ -18,6 +18,7 @@ import { deleteBooks } from "./delete-books.js";
 import "./book-files.js"; // the book page's Files row (admins)
 import "./series-shelf.js"; // "Add series to shelf" (also the series page's, via app-htmx.ts)
 import "./offline-control.js"; // "On this device" and keeping the book (book.html)
+import "./read-link.js"; // the cover opens the format last read (book.html)
 import { ICONS, cachedMarks, type BookChange, type BookState } from "./reading.js";
 
 interface StatusResponse {

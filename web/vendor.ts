@@ -36,10 +36,12 @@ export function loadPdfJs(): Promise<PdfJS.Lib> {
 }
 
 /**
- * Opens a PDF with pdf.js. To read only a few pages of a large file, pass
- * { disableAutoFetch: true, disableStream: true }.
+ * Opens a PDF with pdf.js, from its URL or from the whole file in memory (a
+ * copy kept in this browser; pdf.js takes the buffer over). To read only a
+ * few pages of a large file, pass { disableAutoFetch: true, disableStream: true }.
  */
-export async function openPdf(url: string, options: PdfJS.LoadOptions = {}): Promise<PdfJS.Document> {
+export async function openPdf(from: string | Uint8Array, options: PdfJS.LoadOptions = {}): Promise<PdfJS.Document> {
     const lib = await loadPdfJs();
-    return lib.getDocument({ ...options, url, ...PDFJS_DATA }).promise;
+    const src = typeof from === "string" ? { url: from } : { data: from };
+    return lib.getDocument({ ...options, ...src, ...PDFJS_DATA }).promise;
 }

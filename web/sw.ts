@@ -7,9 +7,11 @@
  *     with their content, so a cached copy is never stale. The current
  *     build's are fetched when it installs (CF_ASSETS, written by the server
  *     in front of this script).
- *   - the EPUB reader's page for a book is kept once opened, and used when
- *     the server can't be reached. Pages for books no longer kept are dropped
- *     (messages from book-cache.ts).
+ *   - the readers' pages for a book (EPUB and PDF) are kept once opened, and
+ *     used when the server can't be reached. Pages for books no longer kept
+ *     are dropped (messages from book-cache.ts).
+ *   - files pdf.js fetches when a PDF needs them (fonts, image decoders,
+ *     under /static/vendor/) are kept once fetched, like the scripts.
  *   - any other page, when the server can't be reached (or a proxy in front
  *     says it's down: 502-504, as while it restarts), is the offline page
  *     (/offline, web/offline.ts): the Reading list, with the books kept here
@@ -88,7 +90,7 @@ sw.addEventListener("activate", (e) => {
             // (we're online, having just updated), then drop scripts no page uses.
             const pages = await caches.open(PAGES);
             for (const req of await pages.keys()) {
-                if (new URL(req.url).pathname !== "/read") continue;
+                if (!READERS.has(new URL(req.url).pathname)) continue;
                 try {
                     const res = await fetch(req, { credentials: "same-origin" });
                     if (res.ok && !res.redirected) await pages.put(req, res);
@@ -98,30 +100,39 @@ sw.addEventListener("activate", (e) => {
                 }
             }
             const keep = new Set(assets());
+            // A library's other files (pdf.js's fonts…) stay while its version is in use.
+            const vendorDir = (path: string): string | null => /^\/static\/vendor\/[^/]+\//.exec(path)?.[0] ?? null;
+            const libs = new Set(assets().map(vendorDir).filter((d) => d !== null));
             const statics = await caches.open(STATIC);
             for (const req of await statics.keys()) {
-                if (!keep.has(new URL(req.url).pathname)) await statics.delete(req);
+                const path = new URL(req.url).pathname;
+                const dir = vendorDir(path);
+                if (!keep.has(path) && !(dir && libs.has(dir))) await statics.delete(req);
             }
         })(),
     );
 });
 
 sw.addEventListener("message", (e) => {
-    const msg = e.data as { type?: string; uuid?: string } | null;
+    const msg = e.data as { type?: string; uuid?: string; format?: string } | null;
     if (msg?.type === "evict" && msg.uuid) {
-        e.waitUntil(caches.open(PAGES).then((c) => c.delete(readerKey(msg.uuid ?? ""))));
+        const path = msg.format === "pdf" ? "/read-pdf" : "/read";
+        e.waitUntil(caches.open(PAGES).then((c) => c.delete(readerKey(path, msg.uuid ?? ""))));
     } else if (msg?.type === "clear-books") {
         e.waitUntil(
             caches.open(PAGES).then(async (c) => {
-                for (const req of await c.keys()) if (new URL(req.url).pathname === "/read") await c.delete(req);
+                for (const req of await c.keys()) if (READERS.has(new URL(req.url).pathname)) await c.delete(req);
             }),
         );
     }
 });
 
+/** The readers' pages: EPUB, PDF. */
+const READERS = new Set(["/read", "/read-pdf"]);
+
 /** The cache key of a book's reader page. */
-function readerKey(uuid: string): string {
-    return `/read?uuid=${encodeURIComponent(uuid)}`;
+function readerKey(path: string, uuid: string): string {
+    return `${path}?uuid=${encodeURIComponent(uuid)}`;
 }
 
 sw.addEventListener("fetch", (e) => {
@@ -141,8 +152,8 @@ sw.addEventListener("fetch", (e) => {
     }
     if (req.mode !== "navigate") return;
     // A preview (web/reader-preview.ts) isn't kept: the book isn't either.
-    if (url.pathname === "/read" && url.searchParams.get("uuid") && !url.searchParams.get("preview")) {
-        e.respondWith(readerPage(req, readerKey(url.searchParams.get("uuid") ?? "")));
+    if (READERS.has(url.pathname) && url.searchParams.get("uuid") && !url.searchParams.get("preview")) {
+        e.respondWith(readerPage(req, readerKey(url.pathname, url.searchParams.get("uuid") ?? "")));
         return;
     }
     e.respondWith(page(req));

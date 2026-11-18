@@ -10,6 +10,7 @@ import { syncGuestBook } from "./guest-sync.js";
 import { offerSignIn, pageColors, setupChrome } from "./reader-chrome.js";
 import { keepsHistory, leaveReader, previewSync, readerBook, type ReaderBook } from "./reader-preview.js";
 import { getSettings, onSettingsChange, type ReaderSettings } from "./reader-settings.js";
+import { noteFormatOpened } from "./last-format.js";
 import { createReadingSync, renderBookmarks, type Bookmark, type BookmarkHandlers } from "./reading-sync.js";
 
 const found = readerBook();
@@ -115,6 +116,7 @@ async function keepCopy(buf: Uint8Array, lastModified: string, locations?: strin
     const meta = book.packaging?.metadata;
     await putBook({
         uuid,
+        format: "epub",
         user: currentUser(),
         bytes: new Blob([buf as BlobPart], { type: "application/epub+zip" }),
         lastModified,
@@ -148,7 +150,7 @@ function fetchRest(): void {
 if (source && !source.whole && source.size < SMALL_BOOK) fetchRest();
 
 if (cached) {
-    void updateBook(uuid, { lastOpened: Date.now() }).catch(() => {});
+    void updateBook(uuid, "epub", { lastOpened: Date.now() }).catch(() => {});
     // The copy kept here may be out of date: check, and fetch the new one for next time.
     void fetch(downloadUrl, { method: "HEAD", credentials: "same-origin" })
         .then(async (res) => {
@@ -363,6 +365,7 @@ new ResizeObserver(() => {
 const sync = preview
     ? previewSync(chrome.setStatus)
     : await createReadingSync(uuid, "epub", { legacyKey: `reader-cfi-${uuid}`, onStatus: chrome.setStatus });
+if (!preview) noteFormatOpened(sync.user, uuid, "epub"); // the book's cover opens this format next time (last-format.ts)
 // Just signed in from this page: what was read here signed out goes to the
 // account first, so the place below is the synced one.
 if (sync.signedIn && !preview) await syncGuestBook(uuid, chrome.setStatus);
@@ -688,7 +691,7 @@ void book.ready
         await wholeDone;
         await book.locations.generate(CHARS_PER_PAGE);
         const saved = book.locations.save();
-        if (!preview) void updateBook(uuid, { locations: saved }).catch(() => {});
+        if (!preview) void updateBook(uuid, "epub", { locations: saved }).catch(() => {});
     })
     .then(() => {
         locationsReady = true;
