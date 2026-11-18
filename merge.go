@@ -158,6 +158,10 @@ type mergePageData struct {
 	Incoming string
 	// IncomingFiles: the new files' names.
 	IncomingFiles []string
+	// FromQueue: the new files are a book of its own in the import queue,
+	// added to this one instead (a possible duplicate): back to the queue
+	// once added or discarded.
+	FromQueue bool
 }
 
 func (d *mergePageData) KeepBook() *mergeBook {

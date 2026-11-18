@@ -34,6 +34,8 @@ export interface BookTarget {
     coverStatus: string;
     /** A waiting book whose metadata is offered as sources too (Go: GetOptionsForBook's ?import=). */
     importSource?: string;
+    /** New files that were a book of their own in the import queue: back there once added. */
+    fromQueue?: boolean;
 }
 
 /** localStorage key for the import review's edits, offered in a library book's editor. */
@@ -93,12 +95,14 @@ export function mergeBooks(keep: string, ids: string[], extra: () => Record<stri
 /**
  * New files being added to a library book (Go: add_format.go): the merge
  * editor, with the uploaded files (waiting in the import queue as importId)
- * as the other book.
+ * as the other book. fromQueue: they were a book of their own there, a
+ * possible duplicate of this one; the review's edits are offered too.
  */
-export function addFiles(uuid: string, importId: string, extra: () => Record<string, unknown>): BookTarget {
+export function addFiles(uuid: string, importId: string, extra: () => Record<string, unknown>, fromQueue = false): BookTarget {
     const base = `/book/add-format/${encodeURIComponent(uuid)}/${encodeURIComponent(importId)}`;
     return {
         ...libraryBook(uuid),
+        ...(fromQueue ? { fromQueue, importSource: importId } : {}),
         merge: true,
         adding: true,
         metadata: `${base}/metadata`,

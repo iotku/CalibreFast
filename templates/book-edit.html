@@ -244,7 +244,7 @@
             <div id="edit-status" class="edit-status"></div>
 
             <!-- Metadata Edit Form -->
-            <form id="metadata-form" data-uuid="{{.UUID}}"{{ if .Import }} data-import="{{ .Import.ID }}"{{ end }}{{ if .Merge }}{{ if .Merge.Incoming }} data-incoming="{{ .Merge.Incoming }}"{{ else }} data-merge="{{ .Merge.IDs }}"{{ end }}{{ end }}>
+            <form id="metadata-form" data-uuid="{{.UUID}}"{{ if .Import }} data-import="{{ .Import.ID }}"{{ end }}{{ if .Merge }}{{ if .Merge.Incoming }} data-incoming="{{ .Merge.Incoming }}"{{ if .Merge.FromQueue }} data-from-queue{{ end }}{{ else }} data-merge="{{ .Merge.IDs }}"{{ end }}{{ end }}>
                 <div class="form-grid">
                     <!-- Title, swap button, Author(s): one grid cell so the spacing
                          around the swap button can be set exactly. -->
@@ -395,7 +395,7 @@
                     {{ if .Import }}
                     <button type="button" id="btn-discard" class="btn-secondary btn-discard" title="Delete this book's files from the import queue">Discard</button>
                     {{ else if and .Merge .Merge.Incoming }}
-                    <button type="button" id="btn-discard" class="btn-secondary btn-discard" data-discard="/import/{{ .Merge.Incoming }}/discard" data-back="/book/get/{{ .UUID }}" title="Delete the new files instead of adding them">Discard new files</button>
+                    <button type="button" id="btn-discard" class="btn-secondary btn-discard" data-discard="/import/{{ .Merge.Incoming }}/discard" data-back="{{ if .Merge.FromQueue }}/import{{ else }}/book/get/{{ .UUID }}{{ end }}" title="Delete the new files instead of adding them">Discard new files</button>
                     {{ end }}
                 </div>
             </form>
@@ -425,6 +425,7 @@
                 <ul id="duplicate-files" hidden>{{ range .Import.Files }}<li data-name="{{ .Name }}" data-format="{{ .Format }}"></li>{{ end }}</ul>
                 <footer class="compare-footer">
                     <form method="dialog"><button class="btn-secondary">Cancel</button></form>
+                    <span id="duplicate-merge" class="duplicate-merge-links"></span>
                     <button type="button" id="duplicate-add" class="btn-primary">Add anyway</button>
                     <a id="duplicate-edit" class="btn-primary" target="_blank" hidden title="Open the library book's metadata editor, with this book's metadata offered as sources">Edit Metadata</a>
                     <button type="button" id="duplicate-discard" class="btn-primary btn-blocked" hidden>Discard from queue</button>
@@ -520,7 +521,7 @@ import { mountMetadataEditor } from {{ asset "metadata.js" }};
             const book = form.dataset.import
                 ? pendingImport(form.dataset.import)
                 : form.dataset.incoming
-                  ? addFiles(form.dataset.uuid, form.dataset.incoming, mergeChoices)
+                  ? addFiles(form.dataset.uuid, form.dataset.incoming, mergeChoices, "fromQueue" in form.dataset)
                   : form.dataset.merge
                   ? mergeBooks(form.dataset.uuid, form.dataset.merge.split(","), () => ({
                         keep: form.dataset.uuid,
