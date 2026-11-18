@@ -258,9 +258,11 @@ async function refresh(): Promise<void> {
 }
 
 void refresh();
-setInterval(() => {
-    if (document.visibilityState === "visible") void refresh();
-}, POLL_MS);
+// Not while a mass import runs: it refreshes once at the end.
+const poll = (): void => {
+    if (document.visibilityState === "visible" && !running) void refresh();
+};
+setInterval(poll, POLL_MS);
 document.addEventListener("visibilitychange", () => {
-    if (document.visibilityState === "visible") void refresh();
+    poll();
 });
