@@ -7,8 +7,9 @@
  *     with their content, so a cached copy is never stale. The current
  *     build's are fetched when it installs (CF_ASSETS, written by the server
  *     in front of this script).
- *   - the readers' pages for a book (EPUB and PDF) are kept once opened, and
- *     used when the server can't be reached. Pages for books no longer kept
+ *   - the readers' pages for a book (EPUB and PDF) are kept once opened, or
+ *     once the book is kept (a download ahead of time: a "keep" message from
+ *     retention.ts), and used when the server can't be reached. Pages for books no longer kept
  *     are dropped (messages from book-cache.ts).
  *   - files pdf.js fetches when a PDF needs them (fonts, image decoders,
  *     under /static/vendor/) are kept once fetched, like the scripts.
@@ -115,7 +116,10 @@ sw.addEventListener("activate", (e) => {
 
 sw.addEventListener("message", (e) => {
     const msg = e.data as { type?: string; uuid?: string; format?: string } | null;
-    if (msg?.type === "evict" && msg.uuid) {
+    if (msg?.type === "keep" && msg.uuid) {
+        const path = msg.format === "pdf" ? "/read-pdf" : "/read";
+        e.waitUntil(keepPage(readerKey(path, msg.uuid)));
+    } else if (msg?.type === "evict" && msg.uuid) {
         const path = msg.format === "pdf" ? "/read-pdf" : "/read";
         e.waitUntil(caches.open(PAGES).then((c) => c.delete(readerKey(path, msg.uuid ?? ""))));
     } else if (msg?.type === "clear-books") {
@@ -129,6 +133,18 @@ sw.addEventListener("message", (e) => {
 
 /** The readers' pages: EPUB, PDF. */
 const READERS = new Set(["/read", "/read-pdf"]);
+
+/** Fetch and keep a reader page, unless one is kept already (activate refreshes those). */
+async function keepPage(key: string): Promise<void> {
+    const pages = await caches.open(PAGES);
+    if (await pages.match(key)) return;
+    try {
+        const res = await fetch(key, { credentials: "same-origin" });
+        if (res.ok && !res.redirected) await pages.put(key, res);
+    } catch {
+        /* offline: kept the next time it's opened or downloaded */
+    }
+}
 
 /** The cache key of a book's reader page. */
 function readerKey(path: string, uuid: string): string {
