@@ -14,7 +14,9 @@ package main
 //     after the furthest one finished that they haven't finished, unless
 //     they're reading it (it's in Continue reading) or took it off with
 //     the card's ✕ (on_deck_dismissed). Most recently finished series
-//     first. Recommended's "Next in series" leaves these out.
+//     first. Then the first few books on the Saved list (onDeckSavedMax,
+//     oldest saved first: it's a queue), so there's something to start
+//     next. Recommended's "Next in series" leaves these out.
 //       DELETE /api/me/on-deck/{uuid}
 
 import (
@@ -163,10 +165,13 @@ func seriesPinPatchHandler(w http.ResponseWriter, r *http.Request) {
 // On Deck
 // ---------------------------------------------------------------------------
 
+// onDeckSavedMax: the most Saved books On Deck adds after the series' next books.
+const onDeckSavedMax = 3
+
 // onDeck: u's On Deck books (see the top of the file), most recently
-// finished series first, at most homeRowMax. active: when each book's
-// status last changed (userReading), for the order; nil when it doesn't
-// matter.
+// finished series first, then a few Saved books, at most homeRowMax.
+// active: when each book's status last changed (userReading), for the
+// order; nil when it doesn't matter.
 func onDeck(u *User, m readingMarks, active map[string]int64) ([]Book, error) {
 	dismissed := map[string]bool{}
 	uuids, err := scanStrings(appDB.Query(`SELECT book_uuid FROM on_deck_dismissed WHERE user_id = ?`, u.ID))
@@ -176,7 +181,36 @@ func onDeck(u *User, m readingMarks, active map[string]int64) ([]Book, error) {
 	for _, id := range uuids {
 		dismissed[id] = true
 	}
-	return nextInSeries(currentRecIndex(), m, dismissed, active), nil
+	wanted, err := wantedInOrder(u)
+	if err != nil {
+		return nil, err
+	}
+	ix := currentRecIndex()
+	return withSaved(ix, nextInSeries(ix, m, dismissed, active), wanted, dismissed), nil
+}
+
+// withSaved adds to deck the first onDeckSavedMax of wanted (the Saved list,
+// in order) that are in the library and not on it already or dismissed,
+// while it has room.
+func withSaved(ix *recIndex, deck []Book, wanted []string, dismissed map[string]bool) []Book {
+	c := ix.cat
+	on := make(map[string]bool, len(deck))
+	for _, b := range deck {
+		on[b.UUID] = true
+	}
+	added := 0
+	for _, id := range wanted {
+		if added == onDeckSavedMax || len(deck) >= homeRowMax {
+			break
+		}
+		i, ok := c.byUUID[id]
+		if !ok || c.books[i].Removed || on[id] || dismissed[id] {
+			continue
+		}
+		deck = append(deck, c.books[i].Book)
+		added++
+	}
+	return deck
 }
 
 // nextInSeries works out On Deck from the user's marks.

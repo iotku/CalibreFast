@@ -10,8 +10,10 @@ package main
 //
 // The order is the whole list as the user arranged it. Books left out of it
 // (added since the editor loaded, or gone from the library) lose their
-// place and go where a new book would: first on the user's lists (newest
-// first, as before any arranging), last on a shelf (oldest first).
+// place and go where a new book would: first on Favorites and Finished
+// (newest first, as before any arranging), last on Saved and on a shelf
+// (oldest first). Saved is a queue of books to read: the oldest saved are
+// read (and downloaded ahead of time, prefs.go) first.
 // A book that changes status loses its place too (userdata.go setStatus).
 
 import (
@@ -23,6 +25,7 @@ import (
 const (
 	favoritesOrder = `ORDER BY position IS NOT NULL, position, created_at DESC, book_uuid`
 	statusOrder    = `ORDER BY position IS NOT NULL, position, updated_at DESC, book_uuid`
+	wantedOrder    = `ORDER BY position IS NULL, position, updated_at, book_uuid`
 	shelfOrder     = `ORDER BY position IS NULL, position, added_at, book_uuid`
 )
 
@@ -127,7 +130,7 @@ func shelfBookOrderHandler(w http.ResponseWriter, r *http.Request) {
 
 // wantedInOrder: u's want-to-read books, in the order of their page.
 func wantedInOrder(u *User) ([]string, error) {
-	uuids, err := scanStrings(appDB.Query(`SELECT book_uuid FROM reading_status WHERE user_id = ? AND status = 'wanted' `+statusOrder, u.ID))
+	uuids, err := scanStrings(appDB.Query(`SELECT book_uuid FROM reading_status WHERE user_id = ? AND status = 'wanted' `+wantedOrder, u.ID))
 	if uuids == nil && err == nil {
 		uuids = []string{}
 	}

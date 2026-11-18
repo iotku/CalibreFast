@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"net/http"
 	"slices"
+	"strconv"
 	"testing"
 )
 
@@ -232,5 +233,60 @@ func TestOnDeck(t *testing.T) {
 	}
 	if rec := call(t, mux, nil, "DELETE", "/api/me/on-deck/"+other[1], ""); rec.Code != http.StatusUnauthorized {
 		t.Fatalf("signed out: %d", rec.Code)
+	}
+}
+
+func TestOnDeckSaved(t *testing.T) {
+	db, wheel, _ := seriesFixture(t)
+	var saved []string
+	for i := range 5 {
+		saved = append(saved, addTestBook(t, db, "Saved "+strconv.Itoa(i), []string{"Writer"}, nil, "", "epub"))
+	}
+	if err := writeLibraryPages(); err != nil {
+		t.Fatal(err)
+	}
+	alice, _ := createUser("alice", "a long enough password", false)
+	mux := seriesMux()
+	status := func(uuid, s string, at int64) {
+		t.Helper()
+		if _, err := appDB.Exec(`INSERT INTO reading_status (user_id, book_uuid, status, source, updated_at) VALUES (?, ?, ?, 'manual', ?)`, alice.ID, uuid, s, at); err != nil {
+			t.Fatal(err)
+		}
+	}
+	deck := func() []string {
+		t.Helper()
+		rec := call(t, mux, alice, "GET", "/api/me/home", "")
+		var h homeAnswer
+		if err := json.Unmarshal(rec.Body.Bytes(), &h); err != nil {
+			t.Fatal(err)
+		}
+		var out []string
+		for _, b := range h.OnDeck {
+			out = append(out, b.UUID)
+		}
+		return out
+	}
+	status(wheel[0], "finished", 1)
+	// The series' next book is saved too (first, saved longest ago): it stays
+	// where the series puts it and doesn't count among the Saved ones.
+	status(wheel[1], "wanted", 5)
+	for i, u := range saved {
+		status(u, "wanted", int64(10+i))
+	}
+	if got, want := deck(), []string{wheel[1], saved[0], saved[1], saved[2]}; !slices.Equal(got, want) {
+		t.Fatalf("on deck %q, want %q (series first, then the oldest %d Saved)", got, want, onDeckSavedMax)
+	}
+	if got, _ := wantedInOrder(alice); !slices.Equal(got, append([]string{wheel[1]}, saved...)) {
+		t.Fatalf("Saved %q, want oldest first", got)
+	}
+	// ✕ on a Saved card: the next Saved book takes its place; still Saved.
+	if rec := call(t, mux, alice, "DELETE", "/api/me/on-deck/"+saved[0], ""); rec.Code != http.StatusNoContent {
+		t.Fatalf("dismiss: %d %s", rec.Code, rec.Body)
+	}
+	if got, want := deck(), []string{wheel[1], saved[1], saved[2], saved[3]}; !slices.Equal(got, want) {
+		t.Fatalf("after dismiss %q, want %q", got, want)
+	}
+	if got, _ := wantedInOrder(alice); !slices.Contains(got, saved[0]) {
+		t.Fatal("dismissed from On Deck dropped it from Saved")
 	}
 }

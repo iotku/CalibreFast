@@ -81,8 +81,8 @@ type savedBook struct {
 // offers up to 50), so it asks for just those (?limit=).
 const maxSavedBooks = 500
 
-// GET /api/me/saved-books?limit=N: the N books saved longest ago, oldest
-// first (unlike /me/saved, which is in the order the user arranged), for
+// GET /api/me/saved-books?limit=N: the first N books on the Saved list, in
+// its page's order (oldest saved first unless arranged, list_order.go), for
 // the books kept on a device ahead of time (web/book-sync.ts). Oldest, so
 // saving more books later doesn't swap one download for another. Tagged:
 // 304 when the device's copy is current.
@@ -93,7 +93,7 @@ func savedBooksHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	rows, err := appDB.Query(`SELECT book_uuid, updated_at FROM reading_status
-		WHERE user_id = ? AND status = 'wanted' ORDER BY updated_at, book_uuid LIMIT ?`, currentUser(r).ID, limit)
+		WHERE user_id = ? AND status = 'wanted' `+wantedOrder+` LIMIT ?`, currentUser(r).ID, limit)
 	if err != nil {
 		http.Error(w, "query failed", http.StatusInternalServerError)
 		return

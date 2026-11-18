@@ -16,7 +16,8 @@
  *     its books in order, without the ones the user finished unless they
  *     turn on the row's Show finished.
  *   - On deck (signed in): the next book of each series the user finished
- *     one of, from /api/me/home; a card's ✕ takes it off for good.
+ *     one of, then the first few Saved books, from /api/me/home; a card's ✕
+ *     takes it off for good.
  *   - Recommended for you (signed in): from /api/me/home, next in series
  *     first, each with what it follows or is like. It stays the same until
  *     the user asks for more (Refresh: the next page of their list, from
@@ -988,7 +989,7 @@ function finishedToggle(name: string, on: boolean, n: number): HTMLButtonElement
     );
 }
 
-/** On deck: the next book of the series the user is reading through, each with ✕. */
+/** On deck: the next book of the series the user is reading through, then a few Saved ones, each with ✕. */
 function showOnDeck(books: Book[]): void {
     const section = byId("row-ondeck");
     fillRow(section, books, { hint: true });

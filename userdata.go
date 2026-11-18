@@ -187,7 +187,9 @@ func favoritesList(u *User) uuidList {
 // statusList: u's books with a status, listed at /me/<page>.
 func statusList(u *User, status, page, title, empty string) uuidList {
 	order := statusOrder
-	if status == "reading" { // most recently read first, always
+	if status == "wanted" { // oldest first, a queue (list_order.go)
+		order = wantedOrder
+	} else if status == "reading" { // most recently read first, always
 		order = `ORDER BY updated_at DESC, book_uuid`
 	}
 	var extra map[string]any
