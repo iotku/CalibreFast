@@ -8,7 +8,7 @@
  * other (a tombstone), so it reaches the other devices.
  */
 
-import { api } from "./dom.js";
+import { api, random } from "./dom.js";
 import { localKey, type Owner } from "./local-keys.js";
 import type { BookFormat } from "./reading-sync.js";
 
@@ -66,7 +66,7 @@ export interface AnnotationStore {
 }
 
 const newId = (): string =>
-    (crypto.randomUUID?.() ?? `${Date.now().toString(36)}-${Math.random().toString(36).slice(2)}`).slice(0, 64);
+    (crypto.randomUUID?.() ?? `${Date.now().toString(36)}-${random().toString(36).slice(2)}`).slice(0, 64);
 
 /**
  * owner: the signed-in user (from ReadingSync), or null when signed out. Each
