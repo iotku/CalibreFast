@@ -30,7 +30,7 @@ import { bookCard, coverUrl, setupCoverStates } from "./utils.js";
 import { maxCovers } from "./cover-limits.js";
 import { setupBookClickHandlers, loadBook, HASH_PREFIX } from "./modal.js";
 import { agrees, applyChange, cachedMarks, coverAction, fetchMarks, markCard, saveMarks, statusOf, type BookChange, type BookState, type Marks } from "./reading.js";
-import { sweep } from "./book-cache.js";
+import { prefetchSaved, sweep } from "./retention.js";
 import { markSelected, setupSelection } from "./select-books.js";
 import { setupPageDragScroll } from "./drag-scroll.js";
 import "./offline-marks.js"; // the "on this device" badge on cards
@@ -205,11 +205,18 @@ async function refreshReading(first = false): Promise<void> {
     sweepKept();
 }
 
-/** Books kept for offline reading: drop old ones and ones back to "not started". */
+/**
+ * Books kept for offline reading: apply the device's rules (retention.ts)
+ * with fresh statuses, then (at most every 10 minutes, if this device is set
+ * to) download the newest Saved books. Here rather than on every page: the
+ * grid has the marks already, so this costs no request when nothing changed.
+ */
 function sweepKept(): void {
     if (!marks.signedIn) return;
     const m = marks;
-    void sweep((u) => statusOf(m, u)).catch(() => {});
+    void sweep((u) => statusOf(m, u))
+        .then(() => prefetchSaved(false, undefined, m))
+        .catch(() => {});
 }
 
 function repaintBook(uuid: string): void {

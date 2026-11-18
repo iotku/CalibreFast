@@ -24,9 +24,20 @@ function wantsReading(): boolean {
     return document.getElementById("books") !== null;
 }
 
+/** The tag of the marks kept here (reading.ts's TAG_KEY): unchanged ones aren't sent again. */
+function marksTag(): string {
+    try {
+        return localStorage.getItem("cf-reading-tag") ?? "";
+    } catch {
+        return "";
+    }
+}
+
 /** This page's /api/me answer: requested by whichever script asks first. Rejects when offline. */
 export function meRequest(): Promise<MeAnswer> {
-    window.cfMe ??= fetch(wantsReading() ? "/api/me?reading=1" : "/api/me", { credentials: "same-origin" }).then(async (r) => ({
+    const tag = wantsReading() ? marksTag() : "";
+    const url = wantsReading() ? `/api/me?reading=1${tag ? `&have=${encodeURIComponent(tag)}` : ""}` : "/api/me";
+    window.cfMe ??= fetch(url, { credentials: "same-origin" }).then(async (r) => ({
         ok: r.ok,
         status: r.status,
         body: (await r.json()) as MeResponse,

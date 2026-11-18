@@ -4,14 +4,14 @@
  * without a download, and reads with no server at all (with the service
  * worker, sw.ts). A book with both formats may have either or both kept.
  *
- * A book stays until it hasn't been opened for a week, or its status goes
- * back to "not started". Each copy belongs to the user who read it: another
- * user signing in, or signing out, removes it.
+ * This is the store itself. What is kept and for how long (the readers'
+ * copies, Saved books downloaded ahead of time, the user's storage limits)
+ * is retention.ts, by the preferences in prefs.ts. Each copy belongs to the
+ * user who read it: another user signing in, or signing out, removes it.
  *
  * Each book can be set (offline-control.ts, the book's page) to be kept for
- * good ("keep": never dropped for age or status, and downloaded right away)
- * or never kept ("never": the reader streams it and keeps nothing). The
- * choice is per user and per device, in localStorage.
+ * good ("keep") or never kept ("never": the reader streams it and keeps
+ * nothing). The choice is per user and per device, in localStorage.
  */
 
 import { scriptUrl } from "./trusted.js";
@@ -19,7 +19,6 @@ import { scriptUrl } from "./trusted.js";
 const DB = "cf-books";
 /** The kept files of each format, keyed by the book's uuid. */
 const STORES = { epub: "books", pdf: "pdfs" } as const;
-const MAX_AGE_MS = 7 * 24 * 3600 * 1000;
 
 /** The formats the readers open, and so the ones kept. */
 export type KeptFormat = keyof typeof STORES;
@@ -44,8 +43,10 @@ export interface CachedBook {
     /** epub.js locations (page numbers), once generated (EPUB only). */
     locations?: string;
     lastOpened: number;
-    /** The last status seen for the book, other than "not started". */
+    /** The last status seen for the book, other than Not Reading. */
     statusSeen?: string;
+    /** When it was saved (ms), for a Saved book downloaded ahead of time (retention.ts). */
+    savedAt?: number;
 }
 
 let dbPromise: Promise<IDBDatabase> | null = null;
@@ -142,7 +143,7 @@ export async function updateBook(uuid: string, format: KeptFormat, change: Parti
 /* Keep for good, or never                                            */
 /* ------------------------------------------------------------------ */
 
-/** auto: kept while it's being read (the week rule above); keep: for good; never: not at all. */
+/** auto: kept by the rules in retention.ts; keep: for good; never: not at all. */
 export type OfflinePref = "auto" | "keep" | "never";
 
 const PREFS = "cf-offline-prefs";
@@ -168,7 +169,7 @@ function changed(uuid: string): void {
 
 /**
  * Set a book's preference (for all its formats). "never" drops kept copies;
- * "keep" doesn't fetch one by itself (downloadForOffline does).
+ * "keep" doesn't fetch one by itself (retention.ts's downloadForOffline does).
  */
 export async function setOfflinePref(uuid: string, pref: OfflinePref): Promise<void> {
     const prefs = readPrefs();
@@ -182,47 +183,6 @@ export async function setOfflinePref(uuid: string, pref: OfflinePref): Promise<v
         /* storage full or blocked */
     }
     if (pref === "never") await deleteBook(uuid);
-    changed(uuid);
-}
-
-/**
- * Download a book's file and keep it, without opening it (for "keep").
- * onProgress gets the fraction done (0..1) when the size is known.
- */
-export async function downloadForOffline(
-    uuid: string,
-    format: KeptFormat,
-    title: string,
-    authors: string,
-    onProgress?: (f: number) => void,
-): Promise<void> {
-    const res = await fetch(`/download/${encodeURIComponent(uuid)}/${format}`, { credentials: "same-origin" });
-    if (!res.ok || !res.body) throw new Error(`HTTP ${res.status}`);
-    const total = Number(res.headers.get("content-length")) || 0;
-    const chunks: Uint8Array[] = [];
-    let got = 0;
-    const reader = res.body.getReader();
-    for (;;) {
-        const { done, value } = await reader.read();
-        if (done) break;
-        chunks.push(value);
-        got += value.length;
-        if (total) onProgress?.(got / total);
-    }
-    const had = await getBook(uuid, format);
-    await putBook({
-        uuid,
-        format,
-        user: currentUser(),
-        bytes: new Blob(chunks as BlobPart[], { type: format === "pdf" ? "application/pdf" : "application/epub+zip" }),
-        lastModified: res.headers.get("last-modified") ?? "",
-        size: got,
-        title,
-        authors,
-        locations: had?.locations,
-        lastOpened: had?.lastOpened ?? Date.now(),
-        statusSeen: had?.statusSeen,
-    });
     changed(uuid);
 }
 
@@ -255,30 +215,6 @@ export async function keepOnlyUser(user: string | null): Promise<void> {
         dropped += others.length;
     }
     if (dropped) tellWorker({ type: "clear-books" });
-}
-
-/**
- * Drop books not opened for a week. With statuses (the grid's answer from
- * /api/me/reading), also drop books moved back to "not started", and note
- * the others' statuses for next time. Books set to "keep" stay regardless.
- *
- * Only call this after the server has answered: offline, a kept book may be
- * the only way to read it, however long ago it was opened. keep is never
- * dropped (the book being opened).
- */
-export async function sweep(statusOf?: (uuid: string) => string, keep?: string): Promise<void> {
-    const now = Date.now();
-    for (const b of await listBooks()) {
-        if (b.uuid === keep || offlinePref(b.uuid) === "keep") continue;
-        if (now - b.lastOpened > MAX_AGE_MS) {
-            await deleteBook(b.uuid, b.format);
-            continue;
-        }
-        if (!statusOf) continue;
-        const status = statusOf(b.uuid);
-        if (status && status !== b.statusSeen) await updateBook(b.uuid, b.format ?? "epub", { statusSeen: status });
-        else if (!status && b.statusSeen) await deleteBook(b.uuid, b.format);
-    }
 }
 
 /** Tell the service worker (sw.ts) to drop cached reader pages. */

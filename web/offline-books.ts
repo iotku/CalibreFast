@@ -32,6 +32,8 @@ export interface ReadingSnapshot {
     user: string;
     at: number;
     books: ListedBook[];
+    /** The answer's tag (listtag.go): sent back, an unchanged list is answered 304. */
+    tag?: string;
 }
 
 const KEY = "cf-offline-reading";
@@ -105,18 +107,32 @@ export function refreshOfflineReading(force = false): Promise<void> {
 
 async function save(user: string): Promise<void> {
     if (savedFor() !== user) await forgetOfflineReading(); // another user's covers aren't this one's
-    const res = await fetch("/me/reading?api=1&all=1", { credentials: "same-origin", headers: { accept: "application/json" } });
+    const last = readingSnapshot();
+    const tag = last?.tag;
+    const res = await fetch("/me/reading?api=1&all=1", {
+        credentials: "same-origin",
+        headers: { accept: "application/json", ...(tag ? { "if-none-match": tag } : {}) },
+    });
+    if (res.status === 304 && last) {
+        // Unchanged: just note when it was checked.
+        writeSnapshot({ ...last, at: Date.now() });
+        return;
+    }
     if (!res.ok || !(res.headers.get("content-type") ?? "").includes("json")) return; // signed out, or not answering
     const raw = (await res.json()) as { uuid: string; title: string; authors: string; last_modified: string; placeholder?: unknown }[];
     const books: ListedBook[] = raw
         .filter((b) => !b.placeholder)
         .map((b) => ({ uuid: b.uuid, title: b.title, authors: b.authors, stamp: b.last_modified }));
-    try {
-        localStorage.setItem(KEY, JSON.stringify({ user, at: Date.now(), books } satisfies ReadingSnapshot));
-    } catch {
-        /* storage full or blocked */
-    }
+    writeSnapshot({ user, at: Date.now(), books, tag: res.headers.get("etag") ?? "" });
     await saveCovers(books);
+}
+
+function writeSnapshot(snap: ReadingSnapshot): void {
+    try {
+        localStorage.setItem(KEY, JSON.stringify(snap));
+    } catch (err) {
+        console.warn("offline: couldn't keep the Reading list for the offline page in localStorage (storage full, or blocked by the browser):", err);
+    }
 }
 
 /** Keep the covers of the Reading list and of the books kept here; drop the rest. */
@@ -160,6 +176,7 @@ export function noteReadingHere(user: string, uuid: string, percent: number, tit
     const entry = i >= 0 ? snap.books.splice(i, 1)[0]! : { uuid, title, authors: "", stamp: "" };
     if (percent < LOCAL_FINISHED) snap.books.unshift(entry);
     else if (i < 0) return; // finished, and wasn't listed: nothing changes
+    delete snap.tag; // no longer the server's answer: the next refresh fetches it whole
     try {
         localStorage.setItem(KEY, JSON.stringify(snap));
     } catch {

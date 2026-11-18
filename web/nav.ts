@@ -7,6 +7,7 @@
  *     search box (narrow screens); a click outside or Escape closes them
  */
 import { keepOnlyUser, registerWorker } from "./book-cache.js";
+import { settleAccountPrefs } from "./account-prefs.js";
 import { forgetOfflineReading, refreshOfflineReading } from "./offline-books.js";
 import { el, withPageScheme } from "./dom.js";
 import { forgetSynced } from "./local-keys.js";
@@ -41,6 +42,7 @@ const BOOK = "M2 4h6a4 4 0 0 1 4 4v12a3 3 0 0 0-3-3H2zM22 4h-6a4 4 0 0 0-4 4v12a
 const BOOKMARK = "M6 3h12a1 1 0 0 1 1 1v17l-7-4.5L5 21V4a1 1 0 0 1 1-1z";
 const UPLOAD = "M12 15V4M7 9l5-5 5 5M4 15v4a1 1 0 0 0 1 1h14a1 1 0 0 0 1-1v-4";
 const INBOX = "M3 13l3-8h12l3 8M3 13v5a1 1 0 0 0 1 1h16a1 1 0 0 0 1-1v-5M3 13h5l1 2h6l1-2h5";
+const SLIDERS = "M4 6h9m4 0h3M4 12h3m4 0h9M4 18h11m4 0h1M15 4v4M9 10v4M17 16v4";
 
 /**
  * The offer to add this device's signed-out reading to the account: a strip
@@ -201,7 +203,9 @@ function init(bar: HTMLElement): void {
             const next = encodeURIComponent(location.pathname + location.search);
             const signIn = el("a", { className: "tb-btn", href: `/login?next=${next}`, textContent: "Sign in" });
             signIn.dataset["next"] = ""; // the inline script points it back at its own page
-            userEl.replaceChildren(signIn);
+            const prefs = mark(el("a", { className: "tb-icon tb-shortcut", href: "/preferences", title: "Preferences", ariaLabel: "Preferences" }), "preferences");
+            prefs.append(icon(SLIDERS));
+            userEl.replaceChildren(prefs, signIn);
             snapshot();
             return;
         }
@@ -266,6 +270,7 @@ function init(bar: HTMLElement): void {
             [
                 ...(guestBooks ? [el("a", { href: "/account/import", textContent: "Reading on this device" })] : []),
                 el("a", { href: "/account", textContent: "Account" }),
+                mark(el("a", { href: "/preferences", textContent: "Preferences" }), "preferences"),
                 logout,
             ],
         ];
@@ -348,6 +353,8 @@ function init(bar: HTMLElement): void {
             // on the Reading page every time, elsewhere now and then.
             if (ok && st.username) {
                 const onReading = location.pathname === "/me/reading";
+                // The account's preferences (prefs.ts), or the guest's for an account just made here.
+                void settleAccountPrefs(st.username, body.prefs);
                 whenIdle(() => void refreshOfflineReading(onReading).catch(() => {}));
             } else if (ok) void forgetOfflineReading();
             if (json !== shown) render(st);

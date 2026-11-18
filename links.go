@@ -342,6 +342,7 @@ func linkHandler(w http.ResponseWriter, r *http.Request) {
 			http.Error(w, "could not sign in", http.StatusInternalServerError)
 			return
 		}
+		markNewAccount(w, r)
 		log.Printf("invite link used: created %s (admin=%v)", u.Username, u.IsAdmin)
 		http.Redirect(w, r, "/", http.StatusSeeOther)
 	}

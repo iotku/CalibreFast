@@ -5202,3 +5202,177 @@ body.selecting .book.selected .cover-wrapper {
 .ph-group a:hover {
     text-decoration: underline;
 }
+
+/* Preferences (templates/preferences.html, web/preferences.ts) */
+.prefs-radios {
+    border: 0;
+    margin: 0;
+    padding: 0;
+    display: flex;
+    flex-direction: column;
+    gap: var(--gap-medium);
+}
+.prefs-radios legend {
+    color: var(--text-muted);
+    font-size: 0.85rem;
+    margin-bottom: var(--gap-medium);
+    padding: 0;
+}
+.prefs-radios label {
+    display: flex;
+    align-items: center;
+    gap: var(--gap-medium);
+}
+.prefs-fields {
+    display: flex;
+    flex-direction: column;
+    gap: 0.85rem;
+    margin: var(--gap-large) 0;
+}
+.prefs-fields label {
+    display: flex;
+    flex-direction: column;
+    gap: 0.35rem;
+    font-size: 0.85rem;
+    color: var(--text-muted);
+}
+.prefs-fields label[hidden] {
+    display: none;
+}
+.prefs-fields select {
+    max-width: 100%;
+    min-height: var(--touch-target);
+    padding: 0 0.6rem;
+    color: var(--text-primary);
+    background: var(--bg-elevated);
+    border: 1px solid var(--border-medium);
+    border-radius: var(--radius-small);
+    font: inherit;
+    font-size: 0.95rem;
+}
+.prefs-fields select:disabled {
+    opacity: 0.5;
+}
+.prefs-radios input {
+    accent-color: var(--status-reading);
+}
+.prefs-status {
+    margin: var(--gap-medium) 0 0;
+    min-height: 1.2em;
+    font-size: 0.85rem;
+    color: var(--text-secondary);
+}
+.prefs-rules {
+    margin-top: var(--gap-large);
+    font-size: 0.9rem;
+    line-height: 1.5;
+    color: var(--text-secondary);
+}
+.prefs-rules summary {
+    cursor: pointer;
+    color: var(--text-primary);
+}
+.prefs-rules ul {
+    padding-left: 1.2rem;
+}
+.prefs-rules [hidden] {
+    display: none;
+}
+.prefs-storage {
+    display: flex;
+    flex-direction: column;
+    gap: var(--gap-xlarge);
+}
+.prefs-meter p {
+    margin: 0;
+}
+.prefs-meter-title {
+    font-size: 0.9rem;
+    margin-bottom: var(--gap-medium) !important;
+}
+.prefs-bar {
+    display: flex;
+    height: 14px;
+    overflow: hidden;
+    border-radius: var(--radius-round);
+    background: var(--bg-elevated);
+    border: 1px solid var(--border-light);
+}
+.prefs-seg {
+    display: block;
+    height: 100%;
+    flex: none;
+}
+.prefs-seg + .prefs-seg {
+    box-shadow: inset 1px 0 0 var(--bg-surface);
+}
+.prefs-legend {
+    list-style: none;
+    padding: 0;
+    margin: var(--gap-medium) 0;
+    display: flex;
+    flex-wrap: wrap;
+    gap: var(--gap-small) var(--gap-large);
+    font-size: 0.8rem;
+    color: var(--text-secondary);
+}
+.prefs-legend li {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+}
+.prefs-swatch {
+    width: 10px;
+    height: 10px;
+    border-radius: 2px;
+    display: inline-block;
+}
+.seg-reading { background: var(--status-reading); }
+.seg-wanted { background: var(--status-wanted); }
+.seg-finished { background: var(--status-finished); }
+.seg-other { background: #a58bd6; }
+.seg-books { background: var(--status-reading); }
+.seg-covers { background: #a58bd6; }
+.seg-other-data { background: #777; }
+.seg-free { background: transparent; }
+.prefs-swatch.seg-free { border: 1px solid var(--border-medium); box-sizing: border-box; }
+.prefs-group {
+    font-size: 0.95rem;
+    margin: var(--gap-xlarge) 0 var(--gap-medium);
+}
+.prefs-book-list {
+    list-style: none;
+    margin: 0;
+    padding: 0;
+    display: flex;
+    flex-direction: column;
+    gap: var(--gap-small);
+}
+.prefs-book {
+    display: flex;
+    align-items: center;
+    gap: var(--gap-large);
+    padding: var(--gap-medium);
+    background: var(--bg-elevated);
+    border-radius: var(--radius-small);
+}
+.prefs-book-text {
+    flex: 1;
+    min-width: 0;
+    display: flex;
+    flex-direction: column;
+    gap: 2px;
+}
+.prefs-book-title {
+    color: var(--text-primary);
+    font-weight: 600;
+    overflow-wrap: anywhere;
+}
+.prefs-book-line {
+    color: var(--text-secondary);
+    font-size: var(--font-size-small);
+    overflow-wrap: anywhere;
+}
+.prefs-main .import-actions {
+    margin-top: var(--gap-large);
+}

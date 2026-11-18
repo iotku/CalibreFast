@@ -126,8 +126,7 @@ func serveUUIDList(w http.ResponseWriter, r *http.Request, l uuidList) {
 			http.Error(w, "query failed", http.StatusInternalServerError)
 			return
 		}
-		w.Header().Set("Cache-Control", "private, no-store")
-		writeJSON(w, http.StatusOK, books)
+		writeJSONTagged(w, r, books) // 304 when the browser's copy is current (the offline Reading list)
 		return
 	}
 	n, err := l.Count()
