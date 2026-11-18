@@ -13,7 +13,9 @@ package main
 // book and the new files as the two "books": the metadata may be taken from
 // what the new files say, and where the book already has a file in a format,
 // the admin picks which one it keeps (a book has one file per format, as in
-// Calibre). It also lists books the new files may belong to instead: those
+// Calibre). A book of its own waiting in the queue (Into "") can be added to
+// a library book the same way: its review offers it for a possible
+// duplicate, and the editor goes back to the queue once it's added. It also lists books the new files may belong to instead: those
 // with the same title (and authors) or ISBN, and above all one holding an
 // identical file, which is offered to be merged into this book.
 //
@@ -72,7 +74,7 @@ func addFormatBooks(w http.ResponseWriter, r *http.Request) (keep, incoming *mer
 	if isSafeUUIDComponent(id) {
 		it = imports.get(id)
 	}
-	if it == nil || it.Into != u {
+	if it == nil || !addableTo(it, u) {
 		http.Error(w, "these files aren't waiting to be added to this book (already added or discarded?)", http.StatusNotFound)
 		return nil, nil, nil, false
 	}
@@ -84,10 +86,17 @@ func addFormatBooks(w http.ResponseWriter, r *http.Request) (keep, incoming *mer
 	return keep, incomingMergeBook(it), it, true
 }
 
-// incomingDuplicates are the library books other than the one it's for
-// that the new files may belong to: same title (and authors), same ISBN, or
-// an identical file.
-func incomingDuplicates(it *pendingImport) *duplicateCheck {
+// addableTo says whether waiting book it may be added to library book u as
+// new files: it's new files for u, or a book of its own (not one for a
+// placeholder, which would be left waiting).
+func addableTo(it *pendingImport, u string) bool {
+	return it.Into == u || (it.Into == "" && it.Placeholder == "" && u != "")
+}
+
+// incomingDuplicates are the library books other than into that the new
+// files may belong to: same title (and authors), same ISBN, or an identical
+// file.
+func incomingDuplicates(it *pendingImport, into string) *duplicateCheck {
 	var isbns []string
 	for _, s := range append([]*UploadedBookMeta{&it.Merged}, it.Sources...) {
 		for _, id := range s.Identifiers {
@@ -96,7 +105,7 @@ func incomingDuplicates(it *pendingImport) *duplicateCheck {
 			}
 		}
 	}
-	check, err := findDuplicatesISBN(calibreDB, baseDir, it.Merged.Title, it.Merged.Creators, imports.dupFiles(it), it.Into, isbns)
+	check, err := findDuplicatesISBN(calibreDB, baseDir, it.Merged.Title, it.Merged.Creators, imports.dupFiles(it), into, isbns)
 	if err != nil {
 		logErr(err, "add format: duplicate check for "+it.ID)
 		return nil
@@ -201,6 +210,7 @@ func addFormatPage(w http.ResponseWriter, r *http.Request) {
 	}
 	d := newMergePageData([]*mergeBook{keep, incoming}, keep.UUID, "", chosen)
 	d.Incoming = it.ID
+	d.FromQueue = it.Into == ""
 	for _, f := range it.Files {
 		d.IncomingFiles = append(d.IncomingFiles, f.Name)
 	}
@@ -211,7 +221,7 @@ func addFormatPage(w http.ResponseWriter, r *http.Request) {
 		Lookups:      !noLookups,
 		GoogleBooks:  googleBooksEnabled(),
 		Merge:        d,
-		Duplicates:   incomingDuplicates(it),
+		Duplicates:   incomingDuplicates(it, keep.UUID),
 	}
 	w.Header().Set("Cache-Control", "no-store")
 	if err := templates.ExecuteTemplate(w, "book-edit.html", data); err != nil {
@@ -250,14 +260,14 @@ func addFormatApplyHandler(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "these files were just added or discarded", http.StatusConflict)
 		return
 	}
-	if it.Into != u {
+	if !addableTo(it, u) {
 		imports.put(it)
 		http.Error(w, "these files aren't waiting to be added to this book", http.StatusNotFound)
 		return
 	}
 	// A file the library already holds in another book isn't added twice:
 	// that book is this one, and is merged into it instead.
-	if dup := incomingDuplicates(it); dup.SameFile() {
+	if dup := incomingDuplicates(it, u); dup.SameFile() {
 		imports.put(it)
 		writeJSON(w, http.StatusConflict, map[string]any{"error": (&duplicateError{dup}).Error(), "duplicate": dup})
 		return

@@ -1148,8 +1148,14 @@ export async function mountMetadataEditor(book: BookTarget, form: HTMLFormElemen
     form.addEventListener("metadata-discarded", () => {
       added = true;
     });
+    // Off to add this book's files to a library book, with its edits: no
+    // "leave page?" prompt. Back again (bfcache): the guard is back on.
+    let handedOver = false;
+    window.addEventListener("pageshow", () => {
+      handedOver = false;
+    });
     const isDirty = (): boolean =>
-      !saving && !added &&
+      !saving && !added && !handedOver &&
       (chipInputs.some((c) => c.textInput.value.trim()) || snapshot() !== baseline);
 
     // Apply Changes is only for changes the admin made: off until the form
@@ -1232,7 +1238,8 @@ export async function mountMetadataEditor(book: BookTarget, form: HTMLFormElemen
       overrideNext = true;
       form.requestSubmit();
     });
-    maybeId("duplicate-edit")?.addEventListener("click", () => {
+    // The review's edits, offered in the library book's editor.
+    const handOverEdits = (): void => {
       const importId = form.dataset["import"];
       if (!importId) return;
       try {
@@ -1240,7 +1247,8 @@ export async function mountMetadataEditor(book: BookTarget, form: HTMLFormElemen
       } catch {
         /* storage blocked: its files' metadata is still offered */
       }
-    });
+    };
+    maybeId("duplicate-edit")?.addEventListener("click", handOverEdits);
     maybeId("duplicate-split")?.addEventListener("click", async (e) => {
       const btn = e.currentTarget as HTMLButtonElement;
       const values = collectValues(form);
@@ -1335,15 +1343,34 @@ export async function mountMetadataEditor(book: BookTarget, form: HTMLFormElemen
           ? `Discard ${gone}, add ${kept} to “${holders[0]!.title}”`
           : `Discard ${gone}, keep ${kept}`;
       }
+      // Maybe the same book in another format: add its files to that one,
+      // in the merge editor, then back to the queue.
+      const mergeInto = maybeId("duplicate-merge");
+      const targets = blocked || !importId ? [] : check.books;
+      mergeInto?.replaceChildren(...targets.map((b) => {
+        const link = tag("a", {
+          className: "btn-primary",
+          href: `/book/add-format/${encodeURIComponent(b.uuid)}/${encodeURIComponent(importId ?? "")}`,
+          title: `Add this book's files to “${b.title}”: pick each field's value and which file to keep where both have one, then back to the import queue`,
+        }, targets.length === 1 ? "Merge into it" : `Merge into “${b.title}”`);
+        link.addEventListener("click", () => {
+          handOverEdits();
+          handedOver = true;
+        });
+        return link;
+      }));
       const add = maybeId("duplicate-add");
       const discard = maybeId("duplicate-discard");
-      if (add) add.hidden = blocked;
+      if (add) {
+        add.hidden = blocked;
+        add.className = targets.length ? "btn-secondary" : "btn-primary";
+      }
       if (discard) {
         discard.hidden = !blocked || !maybeId("btn-discard");
         discard.textContent = rest.length ? "Discard all" : "Discard from queue";
       }
       if (!dupDialog.open) dupDialog.showModal();
-      (blocked ? (split && !split.hidden ? split : discard) : add)?.focus();
+      (blocked ? (split && !split.hidden ? split : discard) : mergeInto?.querySelector("a") ?? add)?.focus();
     };
 
     form.addEventListener("submit", async (e) => {
@@ -1385,7 +1412,7 @@ export async function mountMetadataEditor(book: BookTarget, form: HTMLFormElemen
         if (statusEl) {
           statusEl.className = "edit-status success";
           statusEl.textContent = book.adding
-            ? "✓ Added. Opening the book…"
+            ? book.fromQueue ? "✓ Added. Back to the import queue…" : "✓ Added. Opening the book…"
             : book.merge
             ? "✓ Merged. Opening the book…"
             : !book.pending
@@ -1404,6 +1431,8 @@ export async function mountMetadataEditor(book: BookTarget, form: HTMLFormElemen
           link.href = `/book/get/${encodeURIComponent(result.uuid)}`;
           link.textContent = book.adding ? "Open the book" : "Open the merged book";
           statusEl.append(link);
+        } else if (book.fromQueue) {
+          location.assign("/import");
         } else if (book.pending && result.next) {
           // On through the queue; the next page says what was just added.
           location.assign(`/import/${encodeURIComponent(result.next)}?added=${encodeURIComponent(result.uuid)}`);

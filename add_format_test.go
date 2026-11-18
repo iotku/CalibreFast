@@ -297,6 +297,66 @@ func TestAddFormatKeepsOwnFileAndRefusesAnotherBooksFile(t *testing.T) {
 	}
 }
 
+// A book of its own in the queue, maybe the same as a library book in
+// another format: its files can be added to that book in the merge editor,
+// which goes back to the queue after.
+func TestAddFormatFromQueue(t *testing.T) {
+	db := setupRecycleLibrary(t)
+	mux, admin := setupAddFormat(t)
+	a := addOPFTestBook(t, db, "Alpha", []string{"Ann"}, nil, nil)
+	do := func(method, path, body string) *httptest.ResponseRecorder {
+		rec := httptest.NewRecorder()
+		mux.ServeHTTP(rec, asUser(httptest.NewRequest(method, path, strings.NewReader(body)), admin))
+		return rec
+	}
+	stage := func(name, content string) *pendingImport {
+		p := filepath.Join(t.TempDir(), name)
+		if err := os.WriteFile(p, []byte(content), 0o644); err != nil {
+			t.Fatal(err)
+		}
+		it, err := imports.stage([]string{p}, "", "")
+		if err != nil {
+			t.Fatal(err)
+		}
+		return it
+	}
+
+	it := stage("Alpha.pdf", "QUEUED PDF")
+	path := "/book/add-format/" + a.uuid + "/" + it.ID
+	rec := do("GET", path, "")
+	if rec.Code != http.StatusOK || !strings.Contains(rec.Body.String(), "data-from-queue") || !strings.Contains(rec.Body.String(), `data-back="/import"`) {
+		t.Fatalf("editor: %d", rec.Code)
+	}
+	// The book it's added to isn't offered as a duplicate of itself.
+	if strings.Contains(rec.Body.String(), `/book/merge?ids=`+a.uuid+","+a.uuid) {
+		t.Error("the book is listed as its own duplicate")
+	}
+	if rec := do("POST", path+"/apply", `{"title":"Alpha","creators":"Ann"}`); rec.Code != http.StatusOK {
+		t.Fatalf("apply: %d %s", rec.Code, rec.Body)
+	}
+	if formats, _ := bookFormats(a.id); !slices.Equal(formats, []string{"epub", "pdf"}) {
+		t.Errorf("formats %v", formats)
+	}
+	if imports.get(it.ID) != nil {
+		t.Error("still waiting in the queue")
+	}
+
+	// New files for one book can't be added to another.
+	other := addOPFTestBook(t, db, "Beta", []string{"Bo"}, nil, nil)
+	rec = uploadNewFiles(t, mux, admin, a.uuid, map[string]string{"Alpha.mobi": "MOBI"})
+	var up struct{ ID string }
+	_ = json.Unmarshal(rec.Body.Bytes(), &up)
+	if rec := do("GET", "/book/add-format/"+other.uuid+"/"+up.ID, ""); rec.Code != http.StatusNotFound {
+		t.Errorf("another book's new files: %d", rec.Code)
+	}
+	if rec := do("POST", "/book/add-format/"+other.uuid+"/"+up.ID+"/apply", `{"title":"Beta"}`); rec.Code != http.StatusNotFound {
+		t.Errorf("another book's new files, applied: %d", rec.Code)
+	}
+	if imports.get(up.ID) == nil {
+		t.Error("refused, but gone from the queue")
+	}
+}
+
 func TestDuplicatesByISBN(t *testing.T) {
 	db := setupRecycleLibrary(t)
 	a := addOPFTestBook(t, db, "Alpha", []string{"Ann"}, nil, nil)
