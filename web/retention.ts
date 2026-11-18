@@ -16,7 +16,7 @@
  *     has a status (a guest's books have none: for good).
  *
  * On top of that, all kept books stay under the storage limit (storageLimit:
- * the user's, else the default fitted to what the browser allows): room is
+ * the user's, else half of what the browser allows): room is
  * made by dropping Finished books (oldest opened first), then Saved copies
  * never opened here (most recently saved first), then other books not being read
  * (oldest opened first). Books being read, pinned ones and the one being
@@ -48,7 +48,7 @@ import {
 } from "./book-cache.js";
 import { localKey, type Owner } from "./local-keys.js";
 import { readingSnapshot } from "./offline-books.js";
-import { DEVICE_CHOICES, devicePrefs, devicePrefSet, FINISHED_KEEP_DAYS, type DevicePrefs } from "./prefs.js";
+import { AUTO_LIMIT, devicePrefs, FALLBACK_LIMIT, FINISHED_KEEP_DAYS, type DevicePrefs } from "./prefs.js";
 import { cachedMarks, fetchMarks, statusOf as statusIn } from "./reading.js";
 
 const DAY_MS = 24 * 3600 * 1000;
@@ -123,17 +123,16 @@ function browserQuota(): Promise<number> {
 }
 
 /**
- * The storage limit for kept books: the user's choice, if they made one;
- * else the default, lowered to fit in half of what the browser allows (so
- * books never crowd out the rest, or push the browser to clear the site).
- * Decided here, as books are kept: most people never open /preferences.
+ * The storage limit for kept books (bytes; 0: none): the user's choice, or
+ * by default half of what the browser lets this site store, so books never
+ * crowd out the rest or push the browser to clear the site (1 GB when it
+ * doesn't say). Decided here, as books are kept: most people never open
+ * /preferences.
  */
 export async function storageLimit(p: DevicePrefs = devicePrefs()): Promise<number> {
-    if (devicePrefSet("maxBytes") || !p.maxBytes) return p.maxBytes;
-    const half = (await browserQuota()) / 2;
-    if (!half || p.maxBytes <= half) return p.maxBytes;
-    const fits = DEVICE_CHOICES.maxBytes.filter((v) => v && v <= half);
-    return fits.length ? Math.max(...fits) : Math.floor(half);
+    if (p.maxBytes !== AUTO_LIMIT) return p.maxBytes;
+    const half = Math.floor((await browserQuota()) / 2);
+    return half || FALLBACK_LIMIT;
 }
 
 /** The Saved books to keep here (the oldest N); null: the list isn't known yet (keep what's here). */

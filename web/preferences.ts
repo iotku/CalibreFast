@@ -15,6 +15,7 @@ import { lastKnownUser } from "./local-keys.js";
 import { meRequest } from "./me.js";
 import {
     accountPrefs,
+    AUTO_LIMIT,
     DEVICE_CHOICES,
     devicePrefs,
     FORMAT_PREFS,
@@ -74,19 +75,21 @@ const keyOf = (s: HTMLSelectElement): keyof DevicePrefs => s.dataset["pref"] as 
 
 /** The browser's quota for this site, if it says (bytes). */
 let quota = 0;
-/** The storage limit in force: the user's, else the default fitted to the quota (retention.ts). */
-let limitInForce = devicePrefs(user).maxBytes;
+/** The storage limit in force (bytes; 0: none): the user's, else half of the quota (retention.ts). */
+let limitInForce = 0;
 
 function showDevice(): void {
     const p = devicePrefs(user);
     for (const s of selects) {
         const key = keyOf(s);
-        const v = key === "maxBytes" ? limitInForce : p[key];
-        // A fitted default may fall between the choices: show the nearest below.
-        s.value = String(key === "maxBytes" && ![...s.options].some((o) => Number(o.value) === v) ? DEVICE_CHOICES.maxBytes[0] : v);
-        // A storage limit the browser wouldn't allow anyway.
-        if (key === "maxBytes" && quota) {
-            for (const o of s.options) o.disabled = Number(o.value) > quota;
+        s.value = String(p[key]);
+        if (key !== "maxBytes") continue;
+        for (const o of s.options) {
+            const v = Number(o.value);
+            // The default says what it comes to here.
+            if (v === AUTO_LIMIT) o.textContent = `Half of what the browser allows${quota ? ` (${size(Math.floor(quota / 2))})` : ""}`;
+            // A limit the browser wouldn't allow anyway.
+            else o.disabled = !!quota && v > quota;
         }
     }
     // Keeping the last N doesn't apply when nothing is kept automatically.

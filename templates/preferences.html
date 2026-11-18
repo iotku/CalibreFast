@@ -75,6 +75,7 @@
             </label>
             <label>Most storage for books
                 <select data-pref="maxBytes">
+                    <option value="-1">Half of what the browser allows</option>
                     <option value="262144000">250 MB</option>
                     <option value="524288000">500 MB</option>
                     <option value="1073741824">1 GB</option>
@@ -93,7 +94,7 @@
                 <li class="prefs-signed-in" hidden><b>Finished:</b> kept for a day after you last open them, in case you want to go back to something.</li>
                 <li class="prefs-signed-in" hidden><b>Not Reading:</b> a book you set to Not Reading is removed from this device right away, even one you chose to always keep.</li>
                 <li><b>Always keep</b> (on a book's page): kept for good, whatever its size.<span class="prefs-signed-in" hidden> The book is added to Saved if it isn't on any of your lists, so you can always find it.</span></li>
-                <li><b>Running out of room:</b> when books would go over the storage limit, Finished books go first, then Saved books you haven't opened here (saved longest ago first), then other books you're not reading (opened longest ago first). Books you're reading and books you chose to always keep are never removed to make room. Unless you choose a limit, it's 1 GB, or less if the browser allows this site less room.</li>
+                <li><b>Running out of room:</b> when books would go over the storage limit, Finished books go first, then Saved books you haven't opened here (saved longest ago first), then other books you're not reading (opened longest ago first). Books you're reading and books you chose to always keep are never removed to make room. Unless you choose a limit, it's half of what the browser lets this site store.</li>
             </ul>
         </details>
     </section>
