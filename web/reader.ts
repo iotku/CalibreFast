@@ -4,6 +4,7 @@ import { currentUser, getBook, offlinePref, putBook, registerWorker, sweep, upda
 import { keepCover } from "./offline-books.js";
 import { byId, el, errorMessage, maybeId, modalOpen } from "./dom.js";
 import { openEpub } from "./epub-open.js";
+import { allowEpubChapters } from "./trusted.js";
 import { canInflate, openBuffer, openRemote, type EpubSource } from "./epub-source.js";
 import { syncGuestBook } from "./guest-sync.js";
 import { offerSignIn, pageColors, setupChrome } from "./reader-chrome.js";
@@ -42,6 +43,7 @@ chrome.setScrubbable(false);
  * scripts; nothing from the book is served by our origin as a page.
  * A preview neither uses nor keeps a copy in this browser.
  */
+allowEpubChapters(); // epub.js sets each chapter as its sandboxed iframe's srcdoc
 if (!preview) registerWorker();
 const downloadUrl = target.file("epub");
 /** Below this the whole file is fetched at once: it usually beats the ranges. */

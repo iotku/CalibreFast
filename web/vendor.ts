@@ -3,6 +3,8 @@
 // upgrading one means a new directory and updating its paths; TestVendor
 // checks they all exist.
 
+import { scriptUrl } from "./trusted.js";
+
 export const JSZIP_URL = "/static/vendor/jszip@3.10.2/dist/jszip.min.js";
 export const EPUBJS_URL = "/static/vendor/epubjs@0.3.93/dist/epub.min.js";
 const PDFJS_URL = "/static/vendor/pdfjs-dist@5.7.284/build/pdf.min.mjs";
@@ -25,7 +27,9 @@ let pdfjs: Promise<PdfJS.Lib> | undefined;
 /** pdf.js itself, loaded on first use. */
 export function loadPdfJs(): Promise<PdfJS.Lib> {
     pdfjs ??= (import(PDFJS_URL) as Promise<PdfJS.Lib>).then((lib) => {
-        lib.GlobalWorkerOptions.workerSrc = PDFJS_WORKER_URL;
+        // Our own Worker, so its URL goes through the script-URL policy
+        // (Trusted Types); pdf.js would otherwise make one from workerSrc.
+        lib.GlobalWorkerOptions.workerPort = new Worker(scriptUrl(PDFJS_WORKER_URL), { type: "module" });
         return lib;
     });
     return pdfjs;

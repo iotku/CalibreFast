@@ -1,6 +1,7 @@
 import { forgetControls, prefetchControls } from "./user.js"; // favorite / status / shelves controls in the book popup
 import { el, icon, lineIcon } from "./dom.js";
 import { parseServerHtml } from "./trusted.js";
+import "./htmx-security.js"; // htmx swaps under Trusted Types
 /* ------------------------------------------------------------------ */
 /* Modal (hash-driven)                                                 */
 /* ------------------------------------------------------------------ */
