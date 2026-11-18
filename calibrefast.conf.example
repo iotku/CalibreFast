@@ -1,0 +1,42 @@
+# CalibreFast launch options. Copy this file to calibrefast.conf (which git
+# ignores), edit it, and start the server with:
+#
+#     ./CalibreFast -config calibrefast.conf
+#
+# The systemd unit in deploy/systemd/ does exactly that (docs/DEPLOY.md).
+#
+# One option per line: "name = value", the same names as the command-line
+# flags (./CalibreFast -help lists them all). A flag that's just on/off can
+# be a bare name ("allow-writes") or "name = true/false". Put a value in
+# double quotes if it starts or ends with spaces. Lines starting with # are
+# comments. An option also given on the command line uses the command
+# line's value.
+#
+# Secrets (OAuth client secrets, CF_GOOGLE_BOOKS_KEY) are environment
+# variables, not options: see calibrefast.env.example.
+
+# Required: the Calibre library (the folder with metadata.db).
+basedir = /srv/calibre/library
+
+# Where CalibreFast keeps its own database (accounts, favorites, progress,
+# shelves) and its cover thumbnails.
+datadir = /var/lib/calibrefast/data
+cachedir = /var/lib/calibrefast/cache
+
+port = 8080
+
+# Let admins (and editors, for books) change the library.
+# allow-writes
+
+# Your external URL (needed for GitHub/Google sign-in).
+# public-url = https://books.example.com
+
+# A folder to watch for new books (needs allow-writes).
+# watch-dir = /srv/calibre/incoming
+
+# Browsing (and reading) without signing in.
+# public
+# public-read
+
+# Never look books up online.
+# no-lookups

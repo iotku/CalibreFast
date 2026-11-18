@@ -4,7 +4,7 @@ CalibreFast has accounts, but it's a personal project: the authentication code i
 
 ## Who can do what
 
-| | Browse the catalog (covers, metadata, search) | Read and download books | Favorites, progress, bookmarks, own shelves | Change the library (metadata, uploads, covers, groups) | Manage users, global shelves |
+| | Browse the catalog (covers, metadata, search) | Read and download books | Favorites, progress, bookmarks, own shelves | Change the library (metadata, uploads, covers, groups) | Manage users, global shelves, stop the server |
 |---|---|---|---|---|---|
 | **Anonymous visitor** | Only with `-public` | Only with `-public-read` | No | **Never** | No |
 | **Signed-in user** | Yes | Yes | Yes (their own; progress also from KOReader with a sync key) | **Never** | No |
@@ -37,6 +37,7 @@ CalibreFast has accounts, but it's a personal project: the authentication code i
   - `-allow-registrations` lets anyone who can reach the server create an account from the sign-in page, or by signing in with GitHub/Google. New accounts are never admins.
   - **Bots will try to create accounts.** There's no CAPTCHA or email verification, only rate limiting. Use it only on a trusted network, such as a Tailscale network shared with people you trust, and turn it off once everyone has an account.
 - **The last admin** can't be demoted, disabled or deleted.
+- **Stopping the server** from the web (`/admin/server`) is for admins only. It's a clean stop, and under systemd also a restart that pulls and rebuilds the latest commit ([DEPLOY.md](DEPLOY.md)), so it can't change the library or the server's options. Like any admin action it needs a signed-in admin's session and a same-origin request.
 
 ### Device sync keys (KOReader)
 

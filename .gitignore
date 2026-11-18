@@ -19,3 +19,9 @@ testout.opf
 .TemporaryItems
 .DocumentRevisions-V100
 Icon\r
+
+# Local launch options and secrets (calibrefast.conf.example, calibrefast.env.example)
+/calibrefast.conf
+/calibrefast.env
+# The update script's build in progress (deploy/update.sh)
+/CalibreFast.new
