@@ -14,7 +14,9 @@ package main
 //     after the furthest one finished that they haven't finished, unless
 //     they're reading it (it's in Continue reading) or took it off with
 //     the card's ✕ (on_deck_dismissed). Most recently finished series
-//     first. Recommended's "Next in series" leaves these out.
+//     first. Discover shows them first in its "On deck / Saved for later"
+//     row, before the Saved books. Recommended's "Next in series" leaves
+//     these out.
 //       DELETE /api/me/on-deck/{uuid}
 
 import (

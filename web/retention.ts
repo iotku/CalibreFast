@@ -68,7 +68,7 @@ function statuses(given?: (uuid: string) => string): StatusFn {
 }
 
 /* ------------------------------------------------------------------ */
-/* The Saved list, newest first (GET /api/me/saved-books)             */
+/* The Saved list, in its order (GET /api/me/saved-books)            */
 /* ------------------------------------------------------------------ */
 
 /** A Saved book, as /api/me/saved-books lists them (oldest saved first). */

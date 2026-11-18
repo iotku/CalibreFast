@@ -155,7 +155,7 @@ func TestSeriesPins(t *testing.T) {
 		t.Fatalf("after unpin %q", got)
 	}
 	// A home layout may name a series row.
-	if !validLayout(homeLayout{Order: []string{"k:ondeck", "r:Other"}, Hidden: []string{"ondeck"}}) {
+	if !validLayout(homeLayout{Order: []string{"k:wanted", "r:Other"}, Hidden: []string{"wanted"}}) {
 		t.Error("layout with On deck and a series refused")
 	}
 }
@@ -234,3 +234,4 @@ func TestOnDeck(t *testing.T) {
 		t.Fatalf("signed out: %d", rec.Code)
 	}
 }
+

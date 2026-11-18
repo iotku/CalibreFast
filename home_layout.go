@@ -26,7 +26,9 @@ import (
 
 // homeSections: the sections a user can turn off (Continue reading
 // can't be). Keep in step with web/discover.ts.
-var homeSections = []string{"greeting", "ondeck", "wanted", "recommended", "shuffle", "latest", "tags"}
+// "wanted" is the "On deck / Saved for later" row (On deck was a row of its
+// own; a layout that hid it doesn't hide the combined one).
+var homeSections = []string{"greeting", "wanted", "recommended", "shuffle", "latest", "tags"}
 
 const maxLayoutID = 300 // bytes: "t:" and a tag name (or "r:" and a series')
 
@@ -80,7 +82,10 @@ func validLayout(l homeLayout) bool {
 
 func homeLayoutHandler(w http.ResponseWriter, r *http.Request) {
 	var l homeLayout
-	if err := json.NewDecoder(http.MaxBytesReader(w, r.Body, 128<<10)).Decode(&l); err != nil || !validLayout(l) {
+	err := json.NewDecoder(http.MaxBytesReader(w, r.Body, 128<<10)).Decode(&l)
+	// A page from before On deck joined Saved may still name it: dropped.
+	l.Hidden = slices.DeleteFunc(l.Hidden, func(h string) bool { return h == "ondeck" })
+	if err != nil || !validLayout(l) {
 		http.Error(w, "invalid layout", http.StatusBadRequest)
 		return
 	}

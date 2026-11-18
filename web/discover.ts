@@ -15,8 +15,9 @@
  *     Shuffle and Previous, like the "More in" rows. A pinned series shows
  *     its books in order, without the ones the user finished unless they
  *     turn on the row's Show finished.
- *   - On deck (signed in): the next book of each series the user finished
- *     one of, from /api/me/home; a card's ✕ takes it off for good.
+ *   - On deck / Saved for later (signed in), one row from /api/me/home: the
+ *     next book of each series the user finished one of (a card's ✕ takes
+ *     it off for good), then the Saved books, oldest first.
  *   - Recommended for you (signed in): from /api/me/home, next in series
  *     first, each with what it follows or is like. It stays the same until
  *     the user asks for more (Refresh: the next page of their list, from
@@ -505,8 +506,7 @@ function cachedHome(): HomeAnswer | null {
 function showHome(h: HomeAnswer): void {
     byId("row-reading-device").hidden = true;
     fillRow("row-reading", h.reading, { hint: true, all: h.reading_count > 0 });
-    fillRow("row-wanted", h.wanted, { hint: true, all: h.wanted_count > 0 });
-    showOnDeck(h.on_deck ?? []);
+    showOnDeck(h.on_deck ?? [], h.wanted, h.wanted_count);
     for (const id of ACCOUNT_ROWS) byId(id).classList.remove("row-na");
     if (!editing) {
         layout = cleanLayout(h.layout);
@@ -765,11 +765,11 @@ interface Layout {
 }
 
 /** The rows' order by default; "pins" stands for the pinned rows. */
-const DEFAULT_ORDER = ["k:reading", "k:ondeck", "k:wanted", "pins", "k:recommended", "k:shuffle", "k:latest", "k:tags"];
+const DEFAULT_ORDER = ["k:reading", "k:wanted", "pins", "k:recommended", "k:shuffle", "k:latest", "k:tags"];
 /** Sections that can be turned off (Go: homeSections). */
-const TOGGLEABLE = ["greeting", "ondeck", "wanted", "recommended", "shuffle", "latest", "tags"];
+const TOGGLEABLE = ["greeting", "wanted", "recommended", "shuffle", "latest", "tags"];
 /** Rows only a signed-in user has. */
-const ACCOUNT_ROWS = ["row-ondeck", "row-wanted", "row-recommended"];
+const ACCOUNT_ROWS = ["row-wanted", "row-recommended"];
 
 let layout: Layout = { order: [], hidden: [] };
 /** Tags the user wants no "More in" rows for. */
@@ -988,11 +988,20 @@ function finishedToggle(name: string, on: boolean, n: number): HTMLButtonElement
     );
 }
 
-/** On deck: the next book of the series the user is reading through, each with ✕. */
-function showOnDeck(books: Book[]): void {
-    const section = byId("row-ondeck");
-    fillRow(section, books, { hint: true });
-    books.forEach((b, i) => {
+/** The most books in the On deck / Saved for later row (Go: homeRowMax). */
+const DECK_ROW_MAX = 20;
+
+/**
+ * On deck / Saved for later, one row: the next book of the series the user
+ * is reading through (each with ✕), then Saved, oldest first. A series'
+ * next book is often a long way off, so the row is mostly Saved.
+ */
+function showOnDeck(deck: Book[], saved: Book[], savedCount: number): void {
+    const section = byId("row-wanted");
+    const on = new Set(deck.map((b) => b.uuid));
+    const books = [...deck, ...saved.filter((b) => !on.has(b.uuid))].slice(0, DECK_ROW_MAX);
+    fillRow(section, books, { hint: true, all: savedCount > 0 });
+    deck.slice(0, DECK_ROW_MAX).forEach((b, i) => {
         const card = section.querySelectorAll<HTMLElement>(".row-books > .book")[i];
         if (!card) return;
         const x = document.createElement("button");
@@ -1007,7 +1016,7 @@ function showOnDeck(books: Book[]): void {
 }
 
 function setupOnDeck(): void {
-    const section = byId("row-ondeck");
+    const section = byId("row-wanted");
     section.addEventListener("click", (e) => {
         const btn = e.target instanceof Element ? e.target.closest<HTMLButtonElement>('[data-act="deck-hide"]') : null;
         const card = btn?.closest<HTMLElement>(".book");
