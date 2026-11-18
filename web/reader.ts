@@ -362,9 +362,12 @@ new ResizeObserver(() => {
 
 // ---- position: resume (local or synced), save as the reader moves ----------
 
+/** The book's title as the page shows it, for the Reading list kept for offline (offline-books.ts). */
+const bookTitle = (): string => document.getElementById("book-title")?.textContent?.trim() ?? "";
+
 const sync = preview
     ? previewSync(chrome.setStatus)
-    : await createReadingSync(uuid, "epub", { legacyKey: `reader-cfi-${uuid}`, onStatus: chrome.setStatus });
+    : await createReadingSync(uuid, "epub", { legacyKey: `reader-cfi-${uuid}`, onStatus: chrome.setStatus, title: bookTitle });
 if (!preview) noteFormatOpened(sync.user, uuid, "epub"); // the book's cover opens this format next time (last-format.ts)
 // Just signed in from this page: what was read here signed out goes to the
 // account first, so the place below is the synced one.

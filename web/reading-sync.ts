@@ -14,6 +14,7 @@
 import { api, random } from "./dom.js";
 import { lastKnownUser, localKey, type Owner } from "./local-keys.js";
 import { noteLocalReading } from "./local-reading.js";
+import { noteReadingHere } from "./offline-books.js";
 import { isUnreachable, onServerBack, serverDown } from "./server-watch.js";
 import type { MeResponse } from "./types.js";
 
@@ -81,7 +82,11 @@ const newId = (): string =>
 export async function createReadingSync(
     uuid: string,
     format: BookFormat,
-    { legacyKey, onStatus = () => {} }: { legacyKey?: string; onStatus?: (text: string) => void } = {},
+    {
+        legacyKey,
+        onStatus = () => {},
+        title = () => "",
+    }: { legacyKey?: string; onStatus?: (text: string) => void; title?: () => string } = {},
 ): Promise<ReadingSync> {
     // A signed-in user's records are under their name, a guest's under the
     // plain names (local-keys.ts). Offline, whoever the top bar last saw
@@ -159,6 +164,8 @@ export async function createReadingSync(
         };
         LS.set(progressKey, local);
         if (!signedIn) noteLocalReading(uuid, format, local.percent, local.updatedAt);
+        // The Reading list kept for the offline page: this book is being read now.
+        else if (user !== null) noteReadingHere(user, uuid, local.percent, title());
         if (legacyKey && !signedIn) localStorage.setItem(legacyKey, String(position));
         clearTimeout(timer);
         timer = setTimeout(() => void push(), 1500);
