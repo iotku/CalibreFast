@@ -7,6 +7,7 @@
  *     search box (narrow screens); a click outside or Escape closes them
  */
 import { keepOnlyUser, registerWorker } from "./book-cache.js";
+import { forgetOfflineReading, refreshOfflineReading } from "./offline-books.js";
 import { el, withPageScheme } from "./dom.js";
 import { forgetSynced } from "./local-keys.js";
 import { declineOffer, guestBookCount, offerDeclined, offerDeclinedForGood } from "./guest-data.js";
@@ -231,6 +232,7 @@ function init(bar: HTMLElement): void {
             cache.set(null);
             forgetSynced(name);
             void keepOnlyUser(null).catch(() => {});
+            void forgetOfflineReading();
         });
         // Sections, with a rule between those that have anything in them:
         // reading, library tools, admin, then the account itself.
@@ -315,11 +317,23 @@ function init(bar: HTMLElement): void {
             // Books kept for offline reading belong to whoever read them
             // (only on a real answer: an error isn't a sign-out).
             if (ok) void keepOnlyUser(st.username).catch(() => {});
+            // The Reading list and covers for the offline page (offline-books.ts):
+            // on the Reading page every time, elsewhere now and then.
+            if (ok && st.username) {
+                const onReading = location.pathname === "/me/reading";
+                whenIdle(() => void refreshOfflineReading(onReading).catch(() => {}));
+            } else if (ok) void forgetOfflineReading();
             if (json !== shown) render(st);
         })
         .catch(() => {
             if (!shown) userEl.replaceChildren(); // offline, nothing known: drop the throbber
         });
+}
+
+/** Run fn once the page has settled (it fetches, and shouldn't compete with the page's own requests). */
+function whenIdle(fn: () => void): void {
+    if ("requestIdleCallback" in window) requestIdleCallback(fn, { timeout: 5000 });
+    else setTimeout(fn, 2000);
 }
 
 // Last, so the constants above are initialized (init may render synchronously).

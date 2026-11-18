@@ -291,7 +291,8 @@ func canAdminLibrary(r *http.Request) bool {
 func isPublicPath(p string) bool {
 	return p == "/login" || p == "/logout" || p == "/register" || p == "/api/me" ||
 		p == "/robots.txt" || strings.HasPrefix(p, "/l/") || isKosyncPath(p) ||
-		strings.HasPrefix(p, "/auth/") || isPublicAsset(p)
+		strings.HasPrefix(p, "/auth/") || isPublicAsset(p) ||
+		strings.HasPrefix(p, "/"+iconDir+"/") // the app's icons (sw.go)
 }
 
 // isPublicAsset: the signed-out pages' stylesheet (web/auth.css), at this

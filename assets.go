@@ -45,6 +45,9 @@ func init() {
 	if err := loadVendor(vendorDir); err != nil {
 		panic(err)
 	}
+	if err := loadVendor(iconDir); err != nil {
+		panic(err)
+	}
 }
 
 func loadAssets(dir string) error {
@@ -124,7 +127,7 @@ func assetURL(name string) (string, error) {
 	return "/" + distDir + "/" + file, nil
 }
 
-// serveAsset serves /static/dist/ and /static/vendor/: cached for a year
+// serveAsset serves /static/dist/, /static/vendor/ and /static/icons/: cached for a year
 // (the URL changes with the content), gzipped when the browser accepts it.
 func serveAsset(w http.ResponseWriter, r *http.Request) {
 	a := assetFiles[r.URL.Path]

@@ -3,20 +3,35 @@
 <head>
     <meta charset="utf-8">
     {{ robotsMeta }}
-    <title>Offline — {{ .Title }}</title>
+    {{ appHead }}
+    <title>Reading — {{ .Title }}</title>
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <link rel="stylesheet" href="{{ asset "style.css" }}">
 </head>
-<body class="auth-body">
-{{/* Shown by the service worker (web/sw.ts) when the server can't be reached. */}}
-<main class="auth-main">
-    <section class="auth-card">
-        <h1>Offline</h1>
-        <p class="auth-muted" id="offline-intro">The library can't be reached. Books kept on this device can still be read:</p>
-        <ul class="offline-books" id="offline-books"></ul>
-        <p class="auth-muted" id="offline-none" hidden>No books are kept on this device. Books you open in the EPUB reader are kept for a week after you last open them.</p>
-        <p><a class="meta-link" href="/">Try the library again</a></p>
+<body class="offline-body">
+{{/* The service worker (web/sw.ts) shows this page, at the address asked
+     for, whenever the server can't be reached: the Reading list as last
+     seen, with the books kept on this device to read. web/offline.ts fills
+     it in, and goes back to the real page once the server answers. */}}
+<header class="top-bar site-bar offline-bar">
+    <span class="tb-brand">{{ .Title }}</span>
+    <h1 class="tb-title">Reading</h1>
+</header>
+<main class="offline-main">
+    <p class="offline-status" id="offline-status" role="status">
+        <span class="offline-dot" aria-hidden="true"></span>
+        <span id="offline-status-text">Offline. Books on this device can be read; the rest of the library is back when the connection is.</span>
+        <button type="button" class="btn-standard" id="offline-retry">Try again</button>
+    </p>
+    <section id="offline-reading" hidden>
+        <h2 class="offline-heading">Reading</h2>
+        <div class="offline-grid" id="offline-reading-books"></div>
     </section>
+    <section id="offline-kept" hidden>
+        <h2 class="offline-heading">Also on this device</h2>
+        <div class="offline-grid" id="offline-kept-books"></div>
+    </section>
+    <p class="auth-muted offline-none" id="offline-none" hidden>No books are kept on this device yet. Books you open in the EPUB reader are kept for a week after you last open them, to read with no connection.</p>
 </main>
 <script type="module" src="{{ asset "offline.js" }}"></script>
 </body>

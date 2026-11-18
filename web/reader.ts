@@ -1,6 +1,7 @@
 import { colorValue, setupAnnotationUI } from "./annotation-ui.js";
 import { createAnnotationStore, type Annotation } from "./annotations.js";
 import { currentUser, getBook, putBook, registerWorker, sweep, updateBook, type CachedBook } from "./book-cache.js";
+import { keepCover } from "./offline-books.js";
 import { byId, errorMessage, maybeId, modalOpen } from "./dom.js";
 import { openEpub } from "./epub-open.js";
 import { canInflate, openBuffer, openRemote, type EpubSource } from "./epub-source.js";
@@ -122,6 +123,7 @@ async function keepCopy(buf: Uint8Array, lastModified: string, locations?: strin
         lastOpened: Date.now(),
         statusSeen: cached?.statusSeen,
     });
+    void keepCover(uuid).catch(() => {}); // for the offline Reading page (offline-books.ts)
 }
 
 /**
