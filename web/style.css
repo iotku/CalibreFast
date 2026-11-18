@@ -1005,6 +1005,34 @@ button.row-icon:hover {
     background: var(--status-reading);
 }
 
+/* Kept on this device, to read offline (offline-marks.ts): a small badge
+   at the top right of the cover, clear of the title and author below. On
+   hover that corner is the status button (reading.ts), so it steps aside. */
+.book.is-offline::after {
+    content: "";
+    position: absolute;
+    top: 6px;
+    right: 6px;
+    z-index: 4;
+    width: 22px;
+    height: 22px;
+    border-radius: 50%;
+    background: rgba(0, 0, 0, 0.72) center / 14px no-repeat
+        url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='%23c8a96e' stroke-width='2.6' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='M12 4v11m-5-5 5 5 5-5M5 20h14'/%3E%3C/svg%3E");
+    box-shadow: 0 0 0 1px rgba(200, 169, 110, 0.6);
+    pointer-events: none;
+}
+
+@media (hover: hover) {
+    .book.is-offline::after {
+        transition: opacity var(--transition-fast);
+    }
+
+    .book.is-offline:hover::after {
+        opacity: 0;
+    }
+}
+
 /* Buttons over the cover on hover (reading.ts): favorite top left; want to
    read / continue reading / finished top right. Touch screens use the
    book popup's controls instead. */
@@ -1867,6 +1895,43 @@ body.book-standalone {
 /* A row per format: Read, with a small Download button joined to it as
    one split button (a touch target like the reading status menu's); a
    format without a reader gets Download across the row. */
+/* "On this device" and whether to keep the book there (offline-control.ts). */
+.book-offline {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 0.4rem 0.6rem;
+    margin-top: 0.6rem;
+    font-size: var(--font-size-small);
+    color: var(--text-muted);
+}
+
+.book-offline[hidden] {
+    display: none;
+}
+
+.book-offline-state {
+    flex: 1 1 auto;
+}
+
+.book-offline.is-kept .book-offline-state {
+    color: var(--status-reading);
+}
+
+.book-offline.is-kept .book-offline-state::before {
+    content: "\2193\00a0"; /* ↓ */
+}
+
+.book-offline-pref {
+    max-width: 100%;
+    padding: 4px 6px;
+    border: 1px solid var(--border-medium);
+    border-radius: var(--radius-medium);
+    background: var(--bg-surface);
+    color: var(--text-primary);
+    font: inherit;
+}
+
 .book-actions {
     display: grid;
     --side: 48px; /* Download beside Read */

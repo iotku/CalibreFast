@@ -1,6 +1,6 @@
 import { colorValue, setupAnnotationUI } from "./annotation-ui.js";
 import { createAnnotationStore, type Annotation } from "./annotations.js";
-import { currentUser, getBook, putBook, registerWorker, sweep, updateBook, type CachedBook } from "./book-cache.js";
+import { currentUser, getBook, offlinePref, putBook, registerWorker, sweep, updateBook, type CachedBook } from "./book-cache.js";
 import { keepCover } from "./offline-books.js";
 import { byId, errorMessage, maybeId, modalOpen } from "./dom.js";
 import { openEpub } from "./epub-open.js";
@@ -108,7 +108,7 @@ try {
 
 /** Keep the whole file in this browser, with the book's title for the offline page. */
 async function keepCopy(buf: Uint8Array, lastModified: string, locations?: string): Promise<void> {
-    if (preview) return;
+    if (preview || offlinePref(uuid) === "never") return; // set on the book's page (offline-control.ts)
     await book.ready;
     const meta = book.packaging?.metadata;
     await putBook({

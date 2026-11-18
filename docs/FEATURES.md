@@ -327,6 +327,12 @@ Admins on a server with `-allow-writes` can remove books from the library. Nothi
   - **KOReader:** **Notes → KOReader** exports them as the annotations file KOReader imports, and imports the one KOReader exports ([KOREADER.md](KOREADER.md#highlights-and-notes)). Neither direction deletes anything.
 - **EPUB reader opens quickly, then keeps the book:** it reads only what the first page needs, then fetches the rest of the book in the background. Page numbers and search work once the whole book has arrived.
   - **Offline reading:** the book is kept in the browser, so reopening it needs no download. On HTTPS (or localhost), a kept book also opens with no connection to the server.
+  - **On this device:** a book's page and popup say whether its EPUB is kept in this browser, and how big it is. A setting next to that chooses:
+    - **Keep while reading** (the default): kept once opened, dropped after a week unopened, or when its status goes back to not started.
+    - **Always keep on this device:** downloaded right away and never dropped for age or status.
+    - **Don't keep on this device:** removes a kept copy, and the reader keeps none.
+
+    The setting is per user and per device. Kept books get a small download badge in the cover's top-right corner, on the library's cards and the home page's rows.
   - **With no connection**, any other page shows the **Reading** page as last seen online. Books kept on this device show their covers and open in the reader. The rest of the list are dimmed placeholders marked **Not on this device**. Books kept here that aren't on the list come under **Also on this device**. The same page shows when a proxy in front of the server says it's down (502–504, as while it restarts). The page checks for the server every 15 seconds (and on **Try again**), and once it answers, loads the full page that was asked for.
   - **Installing:** CalibreFast is a web app that can be installed. Chrome on Android offers **Install app** (or **Add to Home screen**), and desktop Chrome offers an install button in the address bar. It then opens on its own, without the browser's bars, on the library, or with no connection on the Reading page above. This needs HTTPS (or localhost) and a signed-in session, as the manifest names the library.
   - A kept book is removed when it hasn't been opened for a week, when it's set back to **Not reading**, or when you sign out.

@@ -103,6 +103,20 @@
                 </a>
                 {{ end }}{{ end }}
             </div>
+            {{ range .Formats }}{{ if eq . "epub" }}
+            <!-- Kept on this device for reading offline, and whether to keep it
+                 (web/offline-control.ts fills it in; it stays hidden where the
+                 browser can't keep books: not HTTPS or localhost). -->
+            <div class="book-offline" data-uuid="{{ $.UUID }}" data-title="{{ $.Title }}"
+                data-authors="{{ range $i, $a := $.Authors }}{{ if $i }}, {{ end }}{{ $a }}{{ end }}" hidden>
+                <span class="book-offline-state" role="status"></span>
+                <select class="book-offline-pref" aria-label="Keep this book on this device">
+                    <option value="auto">Keep while reading</option>
+                    <option value="keep">Always keep on this device</option>
+                    <option value="never">Don't keep on this device</option>
+                </select>
+            </div>
+            {{ end }}{{ end }}
             <!-- Per-user controls (/book/me/<uuid>), loaded by user.ts. The
                  column's CSS puts Favorite and the reading status above the
                  cover (the throbber holds their place, so nothing moves when
