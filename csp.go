@@ -10,28 +10,46 @@ import (
 	"sync"
 )
 
-// Trusted Types, in report-only mode for now.
+// Trusted Types.
 //
 // require-trusted-types-for 'script' makes the browser refuse a plain string
 // at every DOM sink that turns text into markup or code (innerHTML,
-// outerHTML, insertAdjacentHTML, iframe srcdoc, document.write, script src,
-// new Worker(url), eval, …). That stops the whole class of client-side XSS
-// where data from a book, its metadata or a user ends up parsed as HTML.
+// outerHTML, insertAdjacentHTML, iframe srcdoc, DOMParser, document.write,
+// script src, new Worker(url), service worker registration, eval,
+// Function, …). That stops the whole class of client-side XSS where data
+// from a book, its metadata or a user ends up parsed as HTML or run as code,
+// even where an escape was forgotten.
 //
-// It's sent as Content-Security-Policy-Report-Only, so nothing is blocked
-// yet: each place that would be is reported to /api/csp-report and logged
-// once. When that log stays empty (our own code moved off string HTML, and
-// the vendored libraries given a policy), the header becomes the enforcing
-// Content-Security-Policy. See docs/SECURITY.md.
+// Only values made by a named policy pass, and the trusted-types directive
+// lists the only names allowed (web/trusted.ts makes them; each is for one
+// narrow job). 'allow-duplicates' because bundles don't share modules: two
+// scripts on one page each make their own "cf-server-html".
+//
+// Violations are refused and reported to /api/csp-report, which logs each
+// distinct one once. -trusted-types-report-only sends the policy as
+// Content-Security-Policy-Report-Only instead: reported but not refused, for
+// when something breaks and a fix isn't out yet. See docs/SECURITY.md.
 const cspReportPath = "/api/csp-report"
 
-const trustedTypesReportOnly = "require-trusted-types-for 'script'; report-uri " + cspReportPath
+// trustedTypesPolicyNames: every name web/trusted.ts passes to createPolicy
+// (TestTrustedTypesPolicyNames checks they match).
+var trustedTypesPolicyNames = []string{"cf-server-html", "cf-inert-parse", "cf-script-url", "cf-htmx", "default"}
 
-// securityHeaders adds the report-only Trusted Types policy to every
-// response. Only documents act on it; other responses ignore it.
+var trustedTypesPolicy = "require-trusted-types-for 'script'; trusted-types " +
+	strings.Join(trustedTypesPolicyNames, " ") + " 'allow-duplicates'; report-uri " + cspReportPath
+
+// trustedTypesReportOnly: -trusted-types-report-only.
+var trustedTypesReportOnly bool
+
+// securityHeaders adds the Trusted Types policy to every response. Documents
+// and workers act on it; other responses ignore it.
 func securityHeaders(h http.Handler) http.Handler {
+	header := "Content-Security-Policy"
+	if trustedTypesReportOnly {
+		header = "Content-Security-Policy-Report-Only"
+	}
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		w.Header().Set("Content-Security-Policy-Report-Only", trustedTypesReportOnly)
+		w.Header().Set(header, trustedTypesPolicy)
 		h.ServeHTTP(w, r)
 	})
 }
@@ -57,6 +75,7 @@ type cspReport struct {
 		Line        int    `json:"line-number"`
 		Column      int    `json:"column-number"`
 		Sample      string `json:"script-sample"`
+		Disposition string `json:"disposition"` // "enforce" (refused) or "report"
 	} `json:"csp-report"`
 }
 
@@ -106,10 +125,14 @@ func cspReportHandler(w http.ResponseWriter, r *http.Request) {
 	cspSeen.Unlock()
 
 	if !seen && !full {
-		log.Printf("csp report-only: %s %q at %s:%d:%d on %s",
-			directive, truncate(v.Sample, 120), v.SourceFile, v.Line, v.Column, pathOnly(v.DocumentURI))
+		what := "refused"
+		if v.Disposition == "report" {
+			what = "report-only"
+		}
+		log.Printf("csp %s: %s %q at %s:%d:%d on %s",
+			what, directive, truncate(v.Sample, 120), v.SourceFile, v.Line, v.Column, pathOnly(v.DocumentURI))
 		if cspSeen.full {
-			log.Printf("csp report-only: %d distinct reports logged; not logging more until restart", cspReportMaxSeen)
+			log.Printf("csp: %d distinct reports logged; not logging more until restart", cspReportMaxSeen)
 		}
 	}
 	w.WriteHeader(http.StatusNoContent)

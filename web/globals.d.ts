@@ -11,6 +11,19 @@ interface HtmxApi {
         options: { target: string; swap?: string; source?: Element; fetch?: () => Promise<Response> },
     ): Promise<void>;
     process(element: Element): void;
+    /** init gets htmx's internal API once, when the extension is registered. */
+    registerExtension(name: string, ext: { init?(api: HtmxInternalApi): void }): boolean;
+}
+interface HtmxInternalApi {
+    /**
+     * Replace what htmx parses responses with (createHTML), runs swapped
+     * <script>s with (createScript), and compiles hx-on handlers with.
+     */
+    initSecurity(
+        policy: { createHTML(html: string): unknown; createScript(script: string): unknown },
+        functionCtor: unknown,
+        asyncFunctionCtor: unknown,
+    ): void;
 }
 declare const htmx: HtmxApi | undefined;
 
@@ -187,7 +200,7 @@ declare namespace PdfJS {
         cancel(): void;
     }
     interface Lib {
-        GlobalWorkerOptions: { workerSrc: string };
+        GlobalWorkerOptions: { workerSrc: string; workerPort: Worker | null };
         getDocument(
             src: LoadOptions & {
                 url: string;

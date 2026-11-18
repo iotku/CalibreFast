@@ -13,6 +13,8 @@
  * choice is per user and per device, in localStorage.
  */
 
+import { scriptUrl } from "./trusted.js";
+
 const DB = "cf-books";
 const STORE = "books";
 const MAX_AGE_MS = 7 * 24 * 3600 * 1000;
@@ -226,5 +228,5 @@ function tellWorker(msg: { type: "evict"; uuid: string } | { type: "clear-books"
  */
 export function registerWorker(): void {
     if (!isSecureContext || !("serviceWorker" in navigator)) return;
-    navigator.serviceWorker.register("/sw.js").catch((err: unknown) => console.warn("service worker:", err));
+    navigator.serviceWorker.register(scriptUrl("/sw.js")).catch((err: unknown) => console.warn("service worker:", err));
 }

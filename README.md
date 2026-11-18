@@ -90,6 +90,7 @@ Then open [http://localhost:8080](http://localhost:8080) and sign in. Add more u
 | `-robots-allowed` | Let search engines index the library. Only works with `-public-read`; otherwise robots.txt, an `X-Robots-Tag` header and a meta tag on every page keep them out |
 | `-allow-registrations` | Let anyone create an account from the sign-in page. **Bots will try to sign up:** only use on a trusted network, such as a Tailscale network shared with people you trust. |
 | `-public-url` | Your external URL, e.g. `https://books.example.com` (needed for GitHub/Google sign-in) |
+| `-trusted-types-report-only` | Report Trusted Types violations instead of refusing them (docs/SECURITY.md). Only as a stopgap if something in the browser breaks. |
 | `-no-lookups` | Never look books up online: hides the metadata editor's ISBN lookup. Lookups are on by default but only happen when an admin clicks **Look up**. |
 | `-no-google-books` | Never offer Google Books in the metadata editor, even with `CF_GOOGLE_BOOKS_KEY`. Open Library still works. |
 | `-recycle-bin DIR` | Where books removed from the library are kept until you empty it (default `<datadir>/recycle-bin`). On the library's filesystem, removing and restoring are instant; elsewhere the files are copied. |

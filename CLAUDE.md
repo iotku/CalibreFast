@@ -20,7 +20,7 @@ This is where past bugs came from (code scanning alert 23: a tag name with `"` b
 - **Never** put data into `innerHTML`, `outerHTML`, `insertAdjacentHTML`, `document.write`, `iframe.srcdoc`, `DOMParser.parseFromString`, `setAttribute("on…")`, `eval`, `new Function`, `setTimeout(string)`, or `el(tag, { innerHTML })`. Fixed markup we wrote ourselves (icon SVG constants) is fine.
 - **Rich HTML from a book** (descriptions) is sanitized: by bluemonday on the server (`descriptionPolicy`, book.go) and by DOMPurify in the editor (`web/description.ts`). Never show it any other way, and never loosen those policies to allow `style`, `on*`, `<script>`, `<iframe>`, `<form>` or `javascript:` URLs.
 - Elements with `hx-*` attributes added from script need `htmx.process(container)` after insertion.
-- Trusted Types run in report-only mode on every page (`csp.go`). A new HTML-string sink shows up in the server log as `csp report-only: require-trusted-types-for …`. When adding front-end code, check the log stays free of new lines. The goal is to switch to enforcing, so don't add sinks that would make that harder.
+- Trusted Types are **enforced** on every page (`csp.go`): a plain string at an HTML or script sink throws, and the server logs `csp refused: …`. Policies live only in `web/trusted.ts`, and their names must be listed in `trustedTypesPolicyNames` (`TestTrustedTypesPolicyNames`). Don't widen a policy (above all the reader's `default` one) or add a pass-through policy to make an error go away: build the DOM instead. `-trusted-types-report-only` is an emergency switch, not a fix.
 
 ## Server side
 
