@@ -294,4 +294,19 @@ func TestImportQueueChecksDuplicatesInTheBackground(t *testing.T) {
 	if s := list(); s.Checking || !s.Duplicate.found() {
 		t.Errorf("after the check: checking %v, duplicate %+v", s.Checking, s.Duplicate)
 	}
+
+	// The library changing (a mass import adds a book) doesn't have every
+	// waiting book checked again: the list keeps its result.
+	checked, _ := w.inbox.cachedDuplicates(it)
+	catalogChanged("")
+	if s := list(); s.Checking || !s.Duplicate.found() {
+		t.Errorf("after a library change: checking %v, duplicate %+v", s.Checking, s.Duplicate)
+	}
+	if c, _ := w.inbox.cachedDuplicates(it); c != checked {
+		t.Error("checked again after a library change")
+	}
+	// Its review page checks afresh.
+	if c := w.inbox.recheckDuplicates(it); c == checked || !c.found() {
+		t.Errorf("recheck: %+v", c)
+	}
 }

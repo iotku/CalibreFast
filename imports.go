@@ -99,9 +99,9 @@ type importInbox struct {
 	items map[string]*pendingImport
 
 	dupMu      sync.Mutex
-	dups       map[string]cachedDuplicates // duplicates, by id
-	dupRunning bool                        // checkDuplicatesSoon is at work
-	dupAgain   bool                        // and should look again when done
+	dups       map[string]*duplicateCheck // duplicates, by id: checked once while it waits
+	dupRunning bool                       // checkDuplicatesSoon is at work
+	dupAgain   bool                       // and should look again when done
 }
 
 // openInbox opens (creating if needed) the queue in dir and loads the books
@@ -876,7 +876,7 @@ func importReviewPage(w http.ResponseWriter, r *http.Request) {
 	}
 	logErr(templates.ExecuteTemplate(w, "book-edit.html", EditBookPageData{
 		Import:      page,
-		Duplicates:  imports.duplicates(it),
+		Duplicates:  imports.recheckDuplicates(it), // afresh: the library may have changed since the list
 		ReadLink:    previewReadLink("import", it.ID, formats),
 		Lookups:     !noLookups,
 		GoogleBooks: googleBooksEnabled(),
