@@ -1288,3 +1288,70 @@ body[data-margin="wide"] #reader-container {
         transition: none;
     }
 }
+
+/* The sync button (web/sync-indicator.ts): a cloud for the server (check:
+   synced, arrow: sending, struck: no connection; a phone: this device
+   only), a ring while the book is being saved here, and a small badge
+   once it is. */
+.r-sync {
+    position: relative;
+}
+.r-sync[hidden] {
+    display: none;
+}
+.r-sync[data-state="sending"] .r-sync-glyph,
+.r-sync[data-state="offline"] .r-sync-glyph {
+    color: var(--chrome-muted);
+}
+.r-sync-ring {
+    position: absolute;
+    inset: 4px;
+    width: calc(100% - 8px);
+    height: calc(100% - 8px);
+    transform: rotate(-90deg);
+    pointer-events: none;
+    display: none;
+}
+.r-sync.is-saving .r-sync-ring {
+    display: block;
+}
+.r-sync-ring circle {
+    fill: none;
+    stroke: var(--accent);
+    stroke-width: 2.5;
+    stroke-linecap: round;
+    transition: stroke-dasharray 0.25s ease;
+}
+.r-sync-kept {
+    display: none;
+    position: absolute;
+    right: 7px;
+    bottom: 7px;
+    width: 9px;
+    height: 9px;
+    border-radius: 50%;
+    background: var(--accent);
+    box-shadow: 0 0 0 2px var(--chrome-bg);
+}
+.r-sync.is-kept .r-sync-kept {
+    display: block;
+}
+.r-sync-pop {
+    width: min(320px, calc(100vw - 16px));
+}
+.r-sync-head {
+    margin: 10px 0 2px;
+    font-size: 12px;
+    font-weight: 600;
+    letter-spacing: 0.02em;
+    text-transform: uppercase;
+    color: var(--chrome-muted);
+}
+.r-sync-text {
+    margin: 0 0 6px;
+    font-size: 14px;
+    line-height: 1.45;
+}
+.r-sync-text a {
+    color: var(--accent);
+}

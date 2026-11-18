@@ -5376,3 +5376,110 @@ body.selecting .book.selected .cover-wrapper {
 .prefs-main .import-actions {
     margin-top: var(--gap-large);
 }
+
+/* The top bar's sync button (web/nav.ts): a ring shows a download's
+   progress, a dot that something waits (unsent changes, paused books). */
+.tb-sync-btn {
+    position: relative;
+}
+.tb-sync-ring {
+    position: absolute;
+    inset: 3px;
+    width: calc(100% - 6px);
+    height: calc(100% - 6px);
+    transform: rotate(-90deg);
+    pointer-events: none;
+}
+.tb-sync-ring circle {
+    fill: none;
+    stroke: var(--status-reading);
+    stroke-width: 2.5;
+    stroke-linecap: round;
+    transition: stroke-dasharray var(--transition-normal);
+}
+.tb-sync-btn:not(.is-busy) .tb-sync-ring {
+    display: none;
+}
+.tb-sync-btn.is-busy > svg:first-child {
+    color: var(--status-reading);
+}
+.tb-sync-btn.has-note::after {
+    content: "";
+    position: absolute;
+    top: 6px;
+    right: 6px;
+    width: 7px;
+    height: 7px;
+    border-radius: 50%;
+    background: var(--status-reading);
+}
+.tb-sync-panel {
+    width: min(300px, calc(100vw - 32px));
+}
+.tb-sync-line {
+    margin: 4px 8px 8px;
+    font-size: 0.85rem;
+    line-height: 1.4;
+    color: var(--text-secondary);
+}
+.tb-sync-book {
+    display: flex;
+    gap: 10px;
+    align-items: flex-start;
+    margin: 0 8px 8px;
+}
+.tb-sync-book[hidden],
+.tb-sync-next[hidden] {
+    display: none;
+}
+.tb-sync-cover {
+    flex: none;
+    width: 40px;
+    height: 56px;
+    object-fit: cover;
+    border-radius: var(--radius-small);
+    background: var(--bg-surface);
+}
+.tb-sync-book-text {
+    flex: 1;
+    min-width: 0;
+    display: flex;
+    flex-direction: column;
+    gap: 3px;
+}
+.tb-sync-title {
+    font-weight: 600;
+    font-size: 0.9rem;
+    overflow-wrap: anywhere;
+}
+.tb-sync-authors,
+.tb-sync-detail {
+    font-size: 0.78rem;
+    color: var(--text-secondary);
+    overflow-wrap: anywhere;
+}
+.tb-sync-bar {
+    display: block;
+    height: 6px;
+    margin-top: 3px;
+    overflow: hidden;
+    border-radius: var(--radius-round);
+    background: var(--bg-surface);
+}
+.tb-sync-fill {
+    display: block;
+    height: 100%;
+    background: var(--status-reading);
+    transition: width var(--transition-normal);
+}
+.tb-sync-bar.is-unknown .tb-sync-fill {
+    width: 30% !important;
+    animation: tb-sync-slide 1.2s ease-in-out infinite;
+}
+@keyframes tb-sync-slide {
+    from { transform: translateX(-100%); }
+    to { transform: translateX(340%); }
+}
+@media (prefers-reduced-motion: reduce) {
+    .tb-sync-bar.is-unknown .tb-sync-fill { animation: none; }
+}

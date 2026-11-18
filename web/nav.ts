@@ -8,6 +8,7 @@
  */
 import { keepOnlyUser, registerWorker } from "./book-cache.js";
 import { settleAccountPrefs } from "./account-prefs.js";
+import { onSyncChange, readSync, STALE_MS, unsentBooks, writeSync } from "./sync-state.js";
 import { forgetOfflineReading, refreshOfflineReading } from "./offline-books.js";
 import { el, withPageScheme } from "./dom.js";
 import { forgetSynced } from "./local-keys.js";
@@ -42,6 +43,7 @@ const BOOK = "M2 4h6a4 4 0 0 1 4 4v12a3 3 0 0 0-3-3H2zM22 4h-6a4 4 0 0 0-4 4v12a
 const BOOKMARK = "M6 3h12a1 1 0 0 1 1 1v17l-7-4.5L5 21V4a1 1 0 0 1 1-1z";
 const UPLOAD = "M12 15V4M7 9l5-5 5 5M4 15v4a1 1 0 0 0 1 1h14a1 1 0 0 0 1-1v-4";
 const INBOX = "M3 13l3-8h12l3 8M3 13v5a1 1 0 0 0 1 1h16a1 1 0 0 0 1-1v-5M3 13h5l1 2h6l1-2h5";
+const SYNC = "M20 11a8 8 0 0 0-14.3-4.9L4 8M4 4v4h4M4 13a8 8 0 0 0 14.3 4.9L20 16m0 4v-4h-4";
 const SLIDERS = "M4 6h9m4 0h3M4 12h3m4 0h9M4 18h11m4 0h1M15 4v4M9 10v4M17 16v4";
 
 /**
@@ -192,6 +194,138 @@ function init(bar: HTMLElement): void {
     if (/^\/(login|register|l\/)/.test(location.pathname)) cache.set(null);
 
     let userToggle: Toggle | null = null;
+    let syncToggle: Toggle | null = null;
+
+    // ---- sync button ----------------------------------------------------------
+    // Whether reading changes have reached the server, and the books being
+    // downloaded for offline reading (book-sync.ts, sync-state.ts), with a
+    // switch to pause downloads on a slow connection. A ring shows a
+    // download's progress; a dot, something waiting (unsent changes, books
+    // paused or left for the next library page).
+
+    const megabytes = (n: number): string => `${(n / 1048576).toFixed(1)} MB`;
+    const plural = (n: number, one: string): string => `${n} ${one}${n === 1 ? "" : "s"}`;
+    let syncFor: { name: string; node: HTMLElement } | null = null;
+    /** The sync button, made once per user (render runs again when the server's answer differs). */
+    function syncButton(name: string): HTMLElement {
+        if (syncFor?.name !== name) syncFor = { name, node: makeSyncButton(name) };
+        return syncFor.node;
+    }
+    function makeSyncButton(name: string): HTMLElement {
+        const ns = "http://www.w3.org/2000/svg";
+        const ring = document.createElementNS(ns, "svg");
+        ring.setAttribute("viewBox", "0 0 36 36");
+        ring.setAttribute("class", "tb-sync-ring");
+        ring.setAttribute("aria-hidden", "true");
+        const arc = document.createElementNS(ns, "circle");
+        for (const [k, v] of [["cx", "18"], ["cy", "18"], ["r", "16"], ["pathLength", "100"], ["stroke-dasharray", "0 100"]]) arc.setAttribute(k!, v!);
+        ring.append(arc);
+        const btn = el("button", { type: "button", className: "tb-icon tb-sync-btn", title: "Sync", ariaLabel: "Sync status" });
+        btn.setAttribute("aria-haspopup", "true");
+        btn.setAttribute("aria-expanded", "false");
+        btn.append(icon(SYNC), ring);
+        // Built once and updated in place: rebuilding it under the pointer
+        // (or the keyboard focus) would lose a click.
+        const readingLine = el("p", { className: "tb-sync-line" });
+        const booksLine = el("p", { className: "tb-sync-line" });
+        readingLine.setAttribute("role", "status");
+        booksLine.setAttribute("role", "status");
+        // The book downloading: cover, title, authors, a progress bar, sizes.
+        const cover = el("img", { className: "tb-sync-cover", alt: "", width: 40, height: 56, loading: "lazy" });
+        const bookTitle = el("span", { className: "tb-sync-title" });
+        const bookAuthors = el("span", { className: "tb-sync-authors" });
+        const fill = el("span", { className: "tb-sync-fill" });
+        const bar = el("span", { className: "tb-sync-bar" }, fill);
+        bar.setAttribute("role", "progressbar");
+        bar.setAttribute("aria-valuemin", "0");
+        bar.setAttribute("aria-valuemax", "100");
+        const bookDetail = el("span", { className: "tb-sync-detail" });
+        const card = el("div", { className: "tb-sync-book", hidden: true }, cover, el("span", { className: "tb-sync-book-text" }, bookTitle, bookAuthors, bar, bookDetail));
+        const nextLine = el("p", { className: "tb-sync-line tb-sync-next", hidden: true });
+        const pause = el("button", { type: "button" });
+        pause.addEventListener("click", (e) => {
+            e.stopPropagation();
+            writeSync(name, { paused: !readSync(name).paused });
+        });
+        const panel = el(
+            "div",
+            { className: "tb-menu-list tb-sync-panel", hidden: true },
+            readingLine,
+            booksLine,
+            card,
+            nextLine,
+            el("hr"),
+            pause,
+            mark(el("a", { href: "/preferences", textContent: "Storage and preferences" }), "preferences"),
+        );
+
+        const paint = (): void => {
+            const s = readSync(name);
+            const a = s.active && Date.now() - s.active.at < STALE_MS ? s.active : null;
+            const waiting = (s.waiting ?? 0) + (s.active && !a ? 1 : 0);
+            const unsent = unsentBooks(name);
+            arc.setAttribute("stroke-dasharray", `${a?.total ? Math.round((a.got / a.total) * 100) : a ? 8 : 0} 100`);
+            btn.classList.toggle("is-busy", !!a);
+            btn.classList.toggle("has-note", !a && (!!s.paused || waiting > 0 || unsent > 0 || !navigator.onLine));
+            if (panel.hidden) return;
+            const reading = !navigator.onLine
+                ? `Offline. ${unsent ? `Changes to ${plural(unsent, "book")} are` : "Your reading is"} kept here and sent when you're back online.`
+                : unsent
+                  ? `Changes to ${plural(unsent, "book")} waiting to be sent to the server.`
+                  : "Reading progress, bookmarks and highlights are saved to the server.";
+            const books = a
+                ? "Downloading for reading offline:"
+                : s.paused
+                  ? `Book downloads are paused${waiting ? `: ${plural(waiting, "book")} waiting` : ""}.`
+                  : s.held && waiting
+                    ? `${plural(waiting, "book")} to download once the page has finished loading.`
+                  : waiting
+                    ? `${plural(waiting, "book")} waiting to download. Downloads go on while a library page is open.`
+                    : "Books for offline reading are up to date on this device.";
+            if (readingLine.textContent !== reading) readingLine.textContent = reading;
+            if (booksLine.textContent !== books) booksLine.textContent = books;
+            card.hidden = !a;
+            if (a) {
+                // A path we build, not a URL from data.
+                if (cover.dataset["uuid"] !== a.uuid) {
+                    cover.dataset["uuid"] = a.uuid;
+                    cover.src = `/cover-thumb/${encodeURIComponent(a.uuid)}`;
+                }
+                bookTitle.textContent = a.title;
+                bookAuthors.textContent = a.authors;
+                const pct = a.total ? Math.min(100, Math.round((a.got / a.total) * 100)) : null;
+                fill.style.width = `${pct ?? 0}%`;
+                bar.classList.toggle("is-unknown", pct === null);
+                if (pct === null) bar.removeAttribute("aria-valuenow");
+                else bar.setAttribute("aria-valuenow", String(pct));
+                bar.setAttribute("aria-label", `${a.title}: ${pct === null ? "starting" : `${pct}%`}`);
+                bookDetail.textContent = [
+                    a.total ? `${megabytes(a.got)} of ${megabytes(a.total)}` : a.got ? megabytes(a.got) : "Starting…",
+                    a.format.toUpperCase(),
+                    ...(pct === null ? [] : [`${pct}%`]),
+                ].join(" · ");
+            }
+            const next = a ? (s.next ?? []) : [];
+            const more = (s.waiting ?? 0) - next.length;
+            nextLine.hidden = !next.length;
+            nextLine.textContent = next.length ? `Then: ${next.join(", ")}${more > 0 ? `, and ${plural(more, "more book")}` : ""}.` : "";
+            pause.textContent = s.paused ? "Resume book downloads" : "Pause book downloads";
+        };
+        if (syncToggle) toggles = toggles.filter((t) => t !== syncToggle);
+        syncToggle = register(btn, (open) => {
+            panel.hidden = !open;
+            paint();
+        });
+        onSyncChange(name, paint);
+        window.addEventListener("online", paint);
+        window.addEventListener("offline", paint);
+        // A download whose page closed stops reporting: notice it went stale.
+        setInterval(() => {
+            if (readSync(name).active || !panel.hidden) paint();
+        }, 3000);
+        paint();
+        return el("div", { className: "tb-menu tb-sync" }, btn, panel);
+    }
     function render(st: MeState): void {
         // Other scripts on the page (the grid's Select) follow this.
         if (st.canEdit) document.documentElement.dataset["canEdit"] = "1";
@@ -289,6 +423,7 @@ function init(bar: HTMLElement): void {
             shortcut("/me/saved", "Saved", BOOKMARK, "saved"),
             shortcut("/me/favorites", "Favorites", STAR, "favorites"),
             shortcut("/me/reading", "Reading", BOOK, "reading"),
+            syncButton(name),
             el("div", { className: "tb-menu" }, btn, list),
         );
         snapshot();

@@ -20,7 +20,8 @@ import { preferredFormat } from "./last-format.js";
 import { keepCover } from "./offline-books.js";
 import { devicePrefs } from "./prefs.js";
 import { applyChange, cachedMarks, saveMarks, type BookChange } from "./reading.js";
-import { downloadForOffline, fitsBookLimit, requestPersist } from "./retention.js";
+import { downloadForOffline } from "./book-sync.js";
+import { fitsBookLimit, requestPersist } from "./retention.js";
 
 /** Whether this browser can keep books at all (IndexedDB, and the service worker to read them offline). */
 const canKeep = isSecureContext && "indexedDB" in window && "serviceWorker" in navigator;

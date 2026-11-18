@@ -40,8 +40,14 @@ export function loadPdfJs(): Promise<PdfJS.Lib> {
  * copy kept in this browser; pdf.js takes the buffer over). To read only a
  * few pages of a large file, pass { disableAutoFetch: true, disableStream: true }.
  */
-export async function openPdf(from: string | Uint8Array, options: PdfJS.LoadOptions = {}): Promise<PdfJS.Document> {
+export async function openPdf(
+    from: string | Uint8Array,
+    options: PdfJS.LoadOptions = {},
+    onProgress?: (loaded: number, total: number) => void,
+): Promise<PdfJS.Document> {
     const lib = await loadPdfJs();
     const src = typeof from === "string" ? { url: from } : { data: from };
-    return lib.getDocument({ ...options, ...src, ...PDFJS_DATA }).promise;
+    const task = lib.getDocument({ ...options, ...src, ...PDFJS_DATA });
+    if (onProgress) task.onProgress = (p) => onProgress(p.loaded, p.total);
+    return task.promise;
 }

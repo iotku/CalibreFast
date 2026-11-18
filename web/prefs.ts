@@ -29,7 +29,7 @@ export interface DevicePrefs {
     maxBookBytes: number;
     /** The newest N Saved books are downloaded ahead of time (signed in); 0: none. */
     prefetchSavedN: number;
-    /** The most all kept books may use (bytes); 0: no limit. */
+    /** The most all kept books may use (bytes); 0: no limit; AUTO_LIMIT: half of what the browser allows (retention.ts). */
     maxBytes: number;
 }
 
@@ -39,7 +39,7 @@ export const DEVICE_CHOICES: { [K in keyof DevicePrefs]: readonly number[] } = {
     keepReadingN: [0, 1, 3, 5, 10],
     maxBookBytes: [25 * MB, 50 * MB, 100 * MB, 250 * MB, 500 * MB, 0],
     prefetchSavedN: [0, 3, 5, 10, 20, 50],
-    maxBytes: [250 * MB, 500 * MB, 1024 * MB, 2048 * MB, 5120 * MB, 0],
+    maxBytes: [-1, 250 * MB, 500 * MB, 1024 * MB, 2048 * MB, 5120 * MB, 0],
 };
 
 export const DEVICE_DEFAULTS: DevicePrefs = {
@@ -48,8 +48,13 @@ export const DEVICE_DEFAULTS: DevicePrefs = {
     keepReadingN: 3,
     maxBookBytes: 100 * MB,
     prefetchSavedN: 0,
-    maxBytes: 1024 * MB,
+    maxBytes: -1,
 };
+
+/** maxBytes: half of what the browser lets this site store (the default). */
+export const AUTO_LIMIT = -1;
+/** The automatic limit when the browser doesn't say how much it allows. */
+export const FALLBACK_LIMIT = 1024 * MB;
 
 /** Finished books stay this long unopened (not a preference): to go back to straight away, not to keep. */
 export const FINISHED_KEEP_DAYS = 1;
@@ -79,11 +84,6 @@ function savedDevicePrefs(owner: Owner): Partial<DevicePrefs> {
         if (typeof v === "number" && DEVICE_CHOICES[k].includes(v)) out[k] = v;
     }
     return out;
-}
-
-/** Whether the user chose this one (else the default applies, which retention.ts may fit to the browser). */
-export function devicePrefSet(key: keyof DevicePrefs, owner: Owner = lastKnownUser()): boolean {
-    return savedDevicePrefs(owner)[key] !== undefined;
 }
 
 /** This device's preferences for whoever is signed in (or the guest). */

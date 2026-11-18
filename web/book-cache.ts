@@ -9,6 +9,10 @@
  * is retention.ts, by the preferences in prefs.ts. Each copy belongs to the
  * user who read it: another user signing in, or signing out, removes it.
  *
+ * Downloads cut off part way (the page left, downloads paused) keep what
+ * arrived in "partials", so the next one continues from there (HTTP Range,
+ * book-sync.ts) instead of starting over on a slow connection.
+ *
  * Each book can be set (offline-control.ts, the book's page) to be kept for
  * good ("keep") or never kept ("never": the reader streams it and keeps
  * nothing). The choice is per user and per device, in localStorage.
@@ -58,12 +62,13 @@ function db(): Promise<IDBDatabase> {
     // (the readers read from the server) instead of waiting.
     if (blocked) return Promise.reject(new Error("the book cache is in use by an older page"));
     dbPromise ??= new Promise((resolve, reject) => {
-        const req = indexedDB.open(DB, 2);
+        const req = indexedDB.open(DB, 3);
         req.onupgradeneeded = () => {
-            // Version 1 had only "books" (EPUBs); 2 adds "pdfs".
+            // Version 1 had only "books" (EPUBs); 2 adds "pdfs"; 3 "partials".
             for (const name of Object.values(STORES)) {
                 if (!req.result.objectStoreNames.contains(name)) req.result.createObjectStore(name, { keyPath: "uuid" });
             }
+            if (!req.result.objectStoreNames.contains(PARTIALS)) req.result.createObjectStore(PARTIALS, { keyPath: "key" });
         };
         req.onsuccess = () => {
             const d = req.result;
@@ -90,10 +95,14 @@ function db(): Promise<IDBDatabase> {
 }
 
 async function tx<T>(format: KeptFormat, mode: IDBTransactionMode, run: (s: IDBObjectStore) => IDBRequest<T> | void): Promise<T | undefined> {
+    return txIn(STORES[format], mode, run);
+}
+
+async function txIn<T>(store: string, mode: IDBTransactionMode, run: (s: IDBObjectStore) => IDBRequest<T> | void): Promise<T | undefined> {
     const d = await db();
     return new Promise((resolve, reject) => {
-        const t = d.transaction(STORES[format], mode);
-        const req = run(t.objectStore(STORES[format]));
+        const t = d.transaction(store, mode);
+        const req = run(t.objectStore(store));
         t.oncomplete = () => resolve(req ? req.result : undefined);
         t.onerror = () => reject(t.error);
         t.onabort = () => reject(t.error);
@@ -130,7 +139,49 @@ export async function getBookFiles(uuid: string): Promise<CachedBook[]> {
 export async function putBook(book: CachedBook): Promise<void> {
     const format = book.format ?? "epub";
     await tx(format, "readwrite", (s) => s.put({ ...book, format }));
+    await deletePartial(book.uuid, format).catch(() => {}); // whole now, however it arrived
     changed(book.uuid);
+}
+
+/* ------------------------------------------------------------------ */
+/* Downloads cut off part way                                         */
+/* ------------------------------------------------------------------ */
+
+const PARTIALS = "partials";
+
+/** The first got bytes of a book's file, and what's needed to ask for the rest. */
+export interface PartialBook {
+    key: string;
+    uuid: string;
+    format: KeptFormat;
+    user: string | null;
+    bytes: Blob;
+    got: number;
+    /** The whole file's size, and its Last-Modified (If-Range: the rest only if it's the same file). */
+    total: number;
+    lastModified: string;
+}
+
+const partialKey = (uuid: string, format: KeptFormat): string => `${format}:${uuid}`;
+
+/** This user's partial download of a book's file, if any. */
+export async function getPartial(uuid: string, format: KeptFormat): Promise<PartialBook | null> {
+    const p = await txIn<PartialBook>(PARTIALS, "readonly", (s) => s.get(partialKey(uuid, format)));
+    return p && p.user === currentUser() ? p : null;
+}
+
+export async function putPartial(p: Omit<PartialBook, "key">): Promise<void> {
+    await txIn(PARTIALS, "readwrite", (s) => s.put({ ...p, key: partialKey(p.uuid, p.format) }));
+}
+
+export async function deletePartial(uuid: string, format: KeptFormat): Promise<void> {
+    await txIn(PARTIALS, "readwrite", (s) => s.delete(partialKey(uuid, format)));
+}
+
+/** All of this user's partial downloads (their bytes count against the storage limit). */
+export async function listPartials(): Promise<PartialBook[]> {
+    const all = (await txIn<PartialBook[]>(PARTIALS, "readonly", (s) => s.getAll())) ?? [];
+    return all.filter((p) => p.user === currentUser());
 }
 
 /** Change some fields of a cached book's file. */
@@ -169,7 +220,7 @@ function changed(uuid: string): void {
 
 /**
  * Set a book's preference (for all its formats). "never" drops kept copies;
- * "keep" doesn't fetch one by itself (retention.ts's downloadForOffline does).
+ * "keep" doesn't fetch one by itself (book-sync.ts's downloadForOffline does).
  */
 export async function setOfflinePref(uuid: string, pref: OfflinePref): Promise<void> {
     const prefs = readPrefs();
@@ -201,6 +252,7 @@ export async function listBooks(): Promise<CachedBook[]> {
 export async function deleteBook(uuid: string, format?: KeptFormat): Promise<void> {
     for (const f of format ? [format] : KEPT_FORMATS) {
         await tx(f, "readwrite", (s) => s.delete(uuid));
+        await deletePartial(uuid, f).catch(() => {});
         tellWorker({ type: "evict", uuid, format: f });
     }
     changed(uuid);
@@ -214,6 +266,8 @@ export async function keepOnlyUser(user: string | null): Promise<void> {
         for (const b of others) await tx(format, "readwrite", (s) => s.delete(b.uuid));
         dropped += others.length;
     }
+    const parts = (await txIn<PartialBook[]>(PARTIALS, "readonly", (s) => s.getAll()).catch(() => [])) ?? [];
+    for (const p of parts.filter((x) => x.user !== user)) await txIn(PARTIALS, "readwrite", (s) => s.delete(p.key));
     if (dropped) tellWorker({ type: "clear-books" });
 }
 

@@ -36,6 +36,11 @@
     <symbol id="i-note" viewBox="0 0 24 24"><path d="M5 5h14v10l-4 4H5zM15 19v-4h4M8 9h8M8 12h5"/></symbol>
     <symbol id="i-copy" viewBox="0 0 24 24"><path d="M9 9h10v11H9zM15 9V5H5v11h4"/></symbol>
     <symbol id="i-trash" viewBox="0 0 24 24"><path d="M5 7h14M10 7V4h4v3M7 7l1 13h8l1-13M10 11v6M14 11v6"/></symbol>
+    {{/* The sync button's states (web/sync-indicator.ts): synced, sending, no connection, this device only. */}}
+    <symbol id="i-sync-synced" viewBox="0 0 24 24"><path d="M7 19h10a4 4 0 0 0 .6-7.96A6 6 0 0 0 6.2 11.6 3.7 3.7 0 0 0 7 19zM9.5 14.5l2 2 3.5-3.5"/></symbol>
+    <symbol id="i-sync-sending" viewBox="0 0 24 24"><path d="M7 19h10a4 4 0 0 0 .6-7.96A6 6 0 0 0 6.2 11.6 3.7 3.7 0 0 0 7 19zM12 17v-5M9.6 14.2L12 11.8l2.4 2.4"/></symbol>
+    <symbol id="i-sync-offline" viewBox="0 0 24 24"><path d="M7 19h10a4 4 0 0 0 .6-7.96A6 6 0 0 0 6.2 11.6 3.7 3.7 0 0 0 7 19zM4 4l16 16"/></symbol>
+    <symbol id="i-sync-local" viewBox="0 0 24 24"><path d="M8 3h8a1 1 0 0 1 1 1v16a1 1 0 0 1-1 1H8a1 1 0 0 1-1-1V4a1 1 0 0 1 1-1zM11 18h2"/></symbol>
 </svg>
 {{ end }}
 
@@ -54,6 +59,14 @@
 {{ define "reader-top-end" }}
     {{/* Shown to signed-out readers (offerSignIn, reader-chrome.ts). */}}
     <a id="reader-signin" class="r-btn r-btn-text r-signin" href="/login" hidden title="Sign in to keep your place, bookmarks and highlights on every device">Sign in</a>
+    {{/* Saved offline, and synced with the server (web/sync-indicator.ts; hidden in a preview). */}}
+    {{ if not .Preview }}
+    <button id="sync-btn" class="r-btn r-sync" type="button" hidden aria-haspopup="true" aria-expanded="false" aria-controls="sync-pop">
+        <svg class="r-icon r-sync-glyph"><use href="#i-sync-synced"/></svg>
+        <svg class="r-sync-ring" viewBox="0 0 36 36" aria-hidden="true"><circle cx="18" cy="18" r="16" pathLength="100" stroke-dasharray="0 100"/></svg>
+        <span class="r-sync-kept" aria-hidden="true"></span>
+    </button>
+    {{ end }}
     <button id="bookmark-btn" class="r-btn" type="button" title="Bookmark this page" aria-label="Bookmark this page">
         <svg class="r-icon"><use href="#i-bookmark"/></svg>
     </button>
@@ -79,6 +92,15 @@
 </footer>
 <div id="reader-mini" class="r-mini" aria-hidden="true"></div>
 <div id="reader-toast" class="r-toast" role="status"></div>
+{{ if not .Preview }}
+<div id="sync-pop" class="r-sheet r-sync-pop" role="dialog" aria-label="Offline copy and sync">
+    <p class="r-sync-head">On this device</p>
+    <p id="sync-pop-copy" class="r-sync-text" role="status"></p>
+    <p class="r-sync-head">With the server</p>
+    <p id="sync-pop-sync" class="r-sync-text" role="status"></p>
+    <p class="r-sync-text"><a href="/preferences">Storage and preferences</a></p>
+</div>
+{{ end }}
 
 {{/* Highlights and notes (web/annotation-ui.ts). The colour buttons are added by the script. */}}
 <div id="annot-bar" class="r-annot" hidden>

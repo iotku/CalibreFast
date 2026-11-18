@@ -65,6 +65,7 @@ import { forgetLocalReading, localReading, LOCAL_FINISHED } from "./local-readin
 import { maxCovers } from "./cover-limits.js";
 import { setupDragScroll, setupPageDragScroll } from "./drag-scroll.js";
 import "./offline-marks.js"; // the "on this device" badge on cards
+import { startBookSync } from "./book-sync.js";
 
 const STRIP = 12; // books in a row
 const PIN_STRIP = 24; // books in a pinned tag's row (Go: shelfRowBooks)
@@ -597,6 +598,7 @@ async function refreshHome(): Promise<void> {
         store.set(HOME_KEY, JSON.stringify(h));
         marks = marksFromAnswer(h.marks);
         showHome(h);
+        startBookSync(marks); // books for offline reading, with these fresh statuses (book-sync.ts)
     } else {
         return;
     }

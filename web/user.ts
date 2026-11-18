@@ -12,6 +12,7 @@
  * changes saved here are reported too ("cf:status"), for the grid to apply.
  */
 
+import { startBookSync } from "./book-sync.js";
 import { api, el, errorMessage } from "./dom.js";
 import { serverHtml } from "./trusted.js";
 import { deleteBooks } from "./delete-books.js";
@@ -269,3 +270,6 @@ document.addEventListener("click", async (e) => {
     if (location.hash.startsWith("#book/")) location.replace(location.pathname + location.search);
     else location.href = "/";
 });
+
+// A library page: books for offline reading that this device is missing (book-sync.ts).
+startBookSync();

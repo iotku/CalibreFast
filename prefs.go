@@ -77,13 +77,14 @@ type savedBook struct {
 }
 
 // maxSavedBooks: the most /api/me/saved-books lists in one answer. Any
-// number of books can be saved; a device only downloads the newest few
-// (web/prefs.ts offers up to 50), so it asks for just those (?limit=).
+// number of books can be saved; a device only downloads a few (web/prefs.ts
+// offers up to 50), so it asks for just those (?limit=).
 const maxSavedBooks = 500
 
-// GET /api/me/saved-books?limit=N: the newest N Saved books, most recently
-// saved first (unlike /me/saved, which is in the order the user arranged),
-// for the books kept on a device ahead of time (web/retention.ts). Tagged:
+// GET /api/me/saved-books?limit=N: the N books saved longest ago, oldest
+// first (unlike /me/saved, which is in the order the user arranged), for
+// the books kept on a device ahead of time (web/book-sync.ts). Oldest, so
+// saving more books later doesn't swap one download for another. Tagged:
 // 304 when the device's copy is current.
 func savedBooksHandler(w http.ResponseWriter, r *http.Request) {
 	limit, err := strconv.Atoi(r.URL.Query().Get("limit"))
@@ -92,7 +93,7 @@ func savedBooksHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	rows, err := appDB.Query(`SELECT book_uuid, updated_at FROM reading_status
-		WHERE user_id = ? AND status = 'wanted' ORDER BY updated_at DESC, book_uuid LIMIT ?`, currentUser(r).ID, limit)
+		WHERE user_id = ? AND status = 'wanted' ORDER BY updated_at, book_uuid LIMIT ?`, currentUser(r).ID, limit)
 	if err != nil {
 		http.Error(w, "query failed", http.StatusInternalServerError)
 		return

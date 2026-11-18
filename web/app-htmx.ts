@@ -29,8 +29,8 @@ import type { Book } from "./types.js";
 import { bookCard, coverUrl, setupCoverStates } from "./utils.js";
 import { maxCovers } from "./cover-limits.js";
 import { setupBookClickHandlers, loadBook, HASH_PREFIX } from "./modal.js";
-import { agrees, applyChange, cachedMarks, coverAction, fetchMarks, markCard, saveMarks, statusOf, type BookChange, type BookState, type Marks } from "./reading.js";
-import { prefetchSaved, sweep } from "./retention.js";
+import { agrees, applyChange, cachedMarks, coverAction, fetchMarks, markCard, saveMarks, type BookChange, type BookState, type Marks } from "./reading.js";
+import { startBookSync, syncBooks } from "./book-sync.js";
 import { markSelected, setupSelection } from "./select-books.js";
 import { setupPageDragScroll } from "./drag-scroll.js";
 import "./offline-marks.js"; // the "on this device" badge on cards
@@ -206,17 +206,15 @@ async function refreshReading(first = false): Promise<void> {
 }
 
 /**
- * Books kept for offline reading: apply the device's rules (retention.ts)
- * with fresh statuses, then (at most every 10 minutes, if this device is set
- * to) download the newest Saved books. Here rather than on every page: the
- * grid has the marks already, so this costs no request when nothing changed.
+ * Books kept for offline reading (book-sync.ts): tidied by the device's
+ * rules with the grid's fresh statuses, then whatever's missing downloaded
+ * (the last Reading books, Saved ones ahead of time). force: a status just
+ * changed here, so the Saved list is asked for again at once.
  */
-function sweepKept(): void {
+function sweepKept(force = false): void {
     if (!marks.signedIn) return;
-    const m = marks;
-    void sweep((u) => statusOf(m, u))
-        .then(() => prefetchSaved(false, undefined, m))
-        .catch(() => {});
+    if (force) void syncBooks({ marks, force }).catch(() => {});
+    else startBookSync(marks);
 }
 
 function repaintBook(uuid: string): void {
@@ -250,7 +248,7 @@ function setupReading(): void {
         }
         saveMarks(marks);
         repaintBook(change.uuid);
-        if (change.status !== undefined) sweepKept();
+        if (change.status !== undefined) sweepKept(true);
     });
     // The popup's controls, just loaded: what the server says now.
     document.addEventListener("cf:book-state", (e) => {

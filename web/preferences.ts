@@ -15,6 +15,7 @@ import { lastKnownUser } from "./local-keys.js";
 import { meRequest } from "./me.js";
 import {
     accountPrefs,
+    AUTO_LIMIT,
     DEVICE_CHOICES,
     devicePrefs,
     FORMAT_PREFS,
@@ -24,7 +25,9 @@ import {
     type FormatPref,
 } from "./prefs.js";
 import { cachedMarks, fetchMarks, statusOf, type Marks } from "./reading.js";
-import { makeRoom, prefetchSaved, requestPersist, storageLimit, sweepFresh } from "./retention.js";
+import { syncBooks } from "./book-sync.js";
+import { makeRoom, requestPersist, storageLimit } from "./retention.js";
+import { onSyncChange, readSync } from "./sync-state.js";
 
 const MB = 1 << 20;
 
@@ -72,19 +75,21 @@ const keyOf = (s: HTMLSelectElement): keyof DevicePrefs => s.dataset["pref"] as 
 
 /** The browser's quota for this site, if it says (bytes). */
 let quota = 0;
-/** The storage limit in force: the user's, else the default fitted to the quota (retention.ts). */
-let limitInForce = devicePrefs(user).maxBytes;
+/** The storage limit in force (bytes; 0: none): the user's, else half of the quota (retention.ts). */
+let limitInForce = 0;
 
 function showDevice(): void {
     const p = devicePrefs(user);
     for (const s of selects) {
         const key = keyOf(s);
-        const v = key === "maxBytes" ? limitInForce : p[key];
-        // A fitted default may fall between the choices: show the nearest below.
-        s.value = String(key === "maxBytes" && ![...s.options].some((o) => Number(o.value) === v) ? DEVICE_CHOICES.maxBytes[0] : v);
-        // A storage limit the browser wouldn't allow anyway.
-        if (key === "maxBytes" && quota) {
-            for (const o of s.options) o.disabled = Number(o.value) > quota;
+        s.value = String(p[key]);
+        if (key !== "maxBytes") continue;
+        for (const o of s.options) {
+            const v = Number(o.value);
+            // The default says what it comes to here.
+            if (v === AUTO_LIMIT) o.textContent = `Half of what the browser allows${quota ? ` (${size(Math.floor(quota / 2))})` : ""}`;
+            // A limit the browser wouldn't allow anyway.
+            else o.disabled = !!quota && v > quota;
         }
     }
     // Keeping the last N doesn't apply when nothing is kept automatically.
@@ -94,12 +99,9 @@ function showDevice(): void {
 
 async function applied(key: keyof DevicePrefs): Promise<void> {
     if (!navigator.onLine) return; // offline, a kept book may be the only way to read it: tidy up later
-    if (key === "prefetchSavedN") {
-        await prefetchSaved(true, (p) => {
-            deviceStatus.textContent = p.done ? "Saved books are up to date on this device." : `Downloading “${p.title}”… ${Math.round(p.fraction * 100)}%`;
-        });
-    } else if (key === "maxBytes") await makeRoom(0);
-    else await sweepFresh();
+    if (key === "maxBytes") await makeRoom(0);
+    // What to keep changed: tidy with fresh statuses, and download what's now wanted (book-sync.ts).
+    else await syncBooks({ force: true });
     const fresh = user ? await fetchMarks() : null;
     if (fresh) marks = fresh;
 }
@@ -294,6 +296,17 @@ removeAll.addEventListener("click", () => {
     });
 });
 window.addEventListener("cf:offline-changed", () => void render());
+
+// Downloads in progress (the top bar's sync button shows them too).
+function showDownloads(): void {
+    const s = readSync(user);
+    const a = s.active;
+    if (a && Date.now() - a.at < 10_000) {
+        const pct = a.total ? ` ${Math.round((a.got / a.total) * 100)}%` : "";
+        deviceStatus.textContent = `Downloading “${a.title}”…${pct}${s.waiting ? `, ${s.waiting} more waiting` : ""}`;
+    } else if (s.paused && s.waiting) deviceStatus.textContent = `Downloads paused: ${s.waiting} book${s.waiting === 1 ? "" : "s"} waiting.`;
+}
+onSyncChange(user, showDownloads);
 
 /* ------------------------------------------------------------------ */
 /* Start                                                              */

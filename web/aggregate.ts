@@ -14,6 +14,7 @@
  *   its books' covers.
  */
 
+import { startBookSync } from "./book-sync.js";
 import { byId, el, random } from "./dom.js";
 import { bestScore, fold, type Hay, prepare, prepareQuery } from "./fuzzy.js";
 import type { AggregateEntry, Book } from "./types.js";
@@ -345,3 +346,6 @@ document.addEventListener("keydown", (e) => {
     if (e.key === "Escape") hidePreview();
 });
 window.addEventListener("scroll", hidePreview, { passive: true });
+
+// A library page: books for offline reading that this device is missing (book-sync.ts).
+startBookSync();

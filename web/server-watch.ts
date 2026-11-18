@@ -27,6 +27,11 @@ export function isUnreachable(e: unknown): boolean {
     return status === undefined || status === 502 || status === 503 || status === 504;
 }
 
+/** Whether a request failed for want of the server, and it hasn't answered since. */
+export function isServerDown(): boolean {
+    return down;
+}
+
 /** Call fn each time the server answers again after serverDown(). */
 export function onServerBack(fn: () => void): void {
     waiting.add(fn);
