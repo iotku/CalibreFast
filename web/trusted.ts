@@ -15,6 +15,10 @@
 // - parseInert ("cf-inert-parse"): hostile text (a book's XHTML, OPF, NCX;
 //   a looked-up description) parsed into a separate document that runs and
 //   loads nothing, to read from.
+// - dompurifyPolicy ("cf-dompurify", description.ts): DOMPurify parsing a
+//   description into its own inert document to sanitize it. It only
+//   parses; nothing it is given is put into this page except DOMPurify's
+//   sanitized result, as DOM nodes.
 // - scriptUrl / setVendorScriptSrc ("cf-script-url"): /sw.js and our own
 //   scripts under /static/ (vendored libraries, bundles, pdf.js's worker).
 // - htmxPolicy ("cf-htmx", htmx-security.ts): htmx's swaps of our server's
@@ -93,6 +97,22 @@ let inertPolicy: TrustedHTMLPolicy | null | undefined;
 export function parseInert(text: string, type: DOMParserSupportedType): Document {
     inertPolicy ??= makePolicy("cf-inert-parse", { createHTML: (s) => s });
     return new DOMParser().parseFromString((inertPolicy ? inertPolicy.createHTML(text) : text) as string, type);
+}
+
+let purifyPolicy: (TrustedHTMLPolicy & TrustedScriptURLPolicy) | null | undefined;
+
+/**
+ * The policy DOMPurify parses with (its TRUSTED_TYPES_POLICY option): its
+ * own "dompurify" policy isn't in the header's list. Only for
+ * DOMPurify.sanitize, never for a sink of ours. Undefined where Trusted
+ * Types aren't supported: DOMPurify then parses plain strings.
+ */
+export function dompurifyPolicy(): (TrustedHTMLPolicy & TrustedScriptURLPolicy) | undefined {
+    purifyPolicy ??= makePolicy("cf-dompurify", {
+        createHTML: (s) => s,
+        createScriptURL: () => null, // DOMPurify requires the hook; it loads nothing
+    });
+    return purifyPolicy ?? undefined;
 }
 
 /** Our own scripts: /sw.js, or a file under /static/ (no "..", no other host). */
