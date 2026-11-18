@@ -37,10 +37,13 @@ const chrome = setupChrome({
 });
 chrome.setScrubbable(false);
 
+/** The book's title as the page shows it, for the Reading list kept for offline (offline-books.ts). */
+const bookTitle = (): string => document.getElementById("book-title")?.textContent?.trim() ?? "";
+
 // Resume from this device or the server (whichever is newer).
 const sync = preview
     ? previewSync(chrome.setStatus)
-    : await createReadingSync(uuid, "pdf", { legacyKey: `pdf-page-${uuid}`, onStatus: chrome.setStatus });
+    : await createReadingSync(uuid, "pdf", { legacyKey: `pdf-page-${uuid}`, onStatus: chrome.setStatus, title: bookTitle });
 if (!preview) noteFormatOpened(sync.user, uuid, "pdf"); // the book's cover opens this format next time (last-format.ts)
 // Just signed in from this page: what was read here signed out goes to the
 // account first, so the place below is the synced one.

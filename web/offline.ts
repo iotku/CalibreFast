@@ -13,9 +13,10 @@
  * loaded (the full page, with everything that needs the server).
  */
 
-import { listBooks, readerUrl, type CachedBook, type KeptFormat } from "./book-cache.js";
+import { KEPT_FORMATS, listBooks, readerUrl, type CachedBook, type KeptFormat } from "./book-cache.js";
 import { byId, el } from "./dom.js";
 import { preferredFormat } from "./last-format.js";
+import { lastKnownUser, localKey } from "./local-keys.js";
 import { keptCover, readingSnapshot, type ListedBook } from "./offline-books.js";
 import { coverHue } from "./utils.js";
 
@@ -29,6 +30,25 @@ function progress(): Record<string, number | null> {
     } catch {
         return {};
     }
+}
+
+/**
+ * How far along a book is: the newest position saved on this device (in
+ * either format, reading-sync.ts), else the library's marks. Pages read just
+ * before going offline count, though the marks predate them.
+ */
+function percentOf(uuid: string, marks: Record<string, number | null>): number | null | undefined {
+    const owner = lastKnownUser();
+    let newest: { percent?: number; updatedAt?: number } | null = null;
+    for (const f of KEPT_FORMATS) {
+        try {
+            const p = JSON.parse(localStorage.getItem(localKey(owner, `progress-${uuid}-${f}`)) ?? "null") as { percent?: number; updatedAt?: number } | null;
+            if (p && (p.updatedAt ?? 0) > (newest?.updatedAt ?? -1)) newest = p;
+        } catch {
+            /* unreadable: skip */
+        }
+    }
+    return newest?.percent ?? marks[uuid];
 }
 
 interface Card {
@@ -97,12 +117,23 @@ async function render(): Promise<void> {
     const listed: ListedBook[] = readingSnapshot()?.books ?? [];
     const onList = new Set(listed.map((b) => b.uuid));
 
-    const reading = listed.map((b) => card({ ...b, href: hrefOf(b.uuid), percent: marks[b.uuid] }));
+    // A book a reader added to the list (offline-books.ts, noteReadingHere)
+    // has only its title: the kept copy has the rest.
+    const reading = listed.map((b) => {
+        const k = keptBy.get(b.uuid)?.book;
+        return card({
+            uuid: b.uuid,
+            title: b.title || k?.title || "",
+            authors: b.authors || k?.authors || "",
+            href: hrefOf(b.uuid),
+            percent: percentOf(b.uuid, marks),
+        });
+    });
     // Books kept here but not on the list: most recently opened first.
     const others = kept
         .filter((b) => !onList.has(b.uuid))
         .sort((a, b) => b.lastOpened - a.lastOpened)
-        .map((b) => card({ uuid: b.uuid, title: b.title, authors: b.authors, href: hrefOf(b.uuid), percent: marks[b.uuid] }));
+        .map((b) => card({ uuid: b.uuid, title: b.title, authors: b.authors, href: hrefOf(b.uuid), percent: percentOf(b.uuid, marks) }));
 
     // Kept books first on the Reading list: they're the ones that open.
     const unavailable = (e: HTMLElement): number => Number(e.classList.contains("offline-unavailable"));

@@ -10,9 +10,15 @@
  *
  * nav.ts refreshes them now and then on signed-in pages, the Reading page
  * every time, and the reader adds a book's cover when it keeps the book.
+ * The readers also move a book to the top of the saved list as they save a
+ * position (noteReadingHere), or take it off once it's finished: the server
+ * does the same to its list, and the next page offline mustn't wait for a
+ * refresh to show a book just started (reading it, then going offline, is
+ * the usual way to get there).
  */
 
 import { currentUser, listBooks } from "./book-cache.js";
+import { LOCAL_FINISHED } from "./local-reading.js";
 
 export interface ListedBook {
     uuid: string;
@@ -132,6 +138,32 @@ async function saveCovers(listed: ListedBook[]): Promise<void> {
     const cache = await caches.open(COVERS);
     for (const req of await cache.keys()) {
         if (!wanted.has(new URL(req.url).pathname)) await cache.delete(req);
+    }
+}
+
+/**
+ * A reader saved a position (reading-sync.ts, signed in): the book is being
+ * read, the most recently of all, unless it's now finished. Updates the
+ * saved list in place, keeping its age, so the next refresh still comes on
+ * time and replaces it with the server's own.
+ */
+export function noteReadingHere(user: string, uuid: string, percent: number, title: string): void {
+    let snap: ReadingSnapshot | null;
+    try {
+        snap = JSON.parse(localStorage.getItem(KEY) ?? "null") as ReadingSnapshot | null;
+    } catch {
+        snap = null;
+    }
+    // None yet (or someone else's): a new one, old enough that the next page online refreshes it.
+    if (!snap || snap.user !== user) snap = { user, at: 0, books: [] };
+    const i = snap.books.findIndex((b) => b.uuid === uuid);
+    const entry = i >= 0 ? snap.books.splice(i, 1)[0]! : { uuid, title, authors: "", stamp: "" };
+    if (percent < LOCAL_FINISHED) snap.books.unshift(entry);
+    else if (i < 0) return; // finished, and wasn't listed: nothing changes
+    try {
+        localStorage.setItem(KEY, JSON.stringify(snap));
+    } catch {
+        /* storage full or blocked */
     }
 }
 
