@@ -702,8 +702,9 @@ func serveLibraryHTTP() {
 	registerServerRoutes()
 
 	log.Println("Listening on :" + hostPort)
+	http.HandleFunc(cspReportPath, requireUser(cspReportHandler)) // csp.go
 	registerAuthRoutes()
-	serve(":"+hostPort, robotsHeader(csrfProtect(withAuth(http.DefaultServeMux))))
+	serve(":"+hostPort, securityHeaders(robotsHeader(csrfProtect(withAuth(http.DefaultServeMux)))))
 }
 
 // registerBookEditRoutes: uploads, covers, the metadata editor and

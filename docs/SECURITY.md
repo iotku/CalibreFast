@@ -84,6 +84,10 @@ Browsers let any website send requests to a server on your network (cross-site r
 
 EPUBs can contain scripts and arbitrary HTML. The server only ever sends the `.epub` itself, as a download (whole, or byte ranges of it). The reader unpacks it in the browser, and epub.js shows each chapter in a sandboxed iframe with scripts disabled; the book's images and styles reach the chapter as `blob:` URLs, never from our origin. Kept books (for offline reading) stay in that browser's storage, belong to the user who read them, and are removed on sign-out. Book descriptions are sanitized on the server (bluemonday) and in the metadata editor (DOMPurify).
 
+## Browser safeguards (Trusted Types)
+
+Every response carries `Content-Security-Policy-Report-Only: require-trusted-types-for 'script'` (`csp.go`). Under Trusted Types the browser refuses a plain string at every sink that turns text into markup or code (`innerHTML`, `insertAdjacentHTML`, `iframe.srcdoc`, `DOMParser`, script URLs, `eval`, …). That blocks client-side XSS from book data even when an escape is missed. For now it's **report-only**: nothing is blocked, and browsers send each would-be violation to `/api/csp-report` (signed-in users only, at most 16 KB a report), which logs each distinct one once as `csp report-only: …`, up to 500 per run. Once our own code no longer writes HTML strings and the vendored libraries (htmx, epub.js) are given a policy, the header becomes the enforcing `Content-Security-Policy`.
+
 ## Online lookups
 
 The metadata editor's lookup bar sends a book's ISBN (**Search ISBN**) or its title and first author (**Search title & author**) to Open Library. Google Books is asked only when an admin clicks **Try Google Books**, which is offered only when the server has a Google Books API key. The cover dialog's **Look up cover online** sends the ISBN to Open Library too. That tells those sites a book is in your library.
