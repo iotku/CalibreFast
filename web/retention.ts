@@ -109,7 +109,14 @@ export interface SavedList {
     tag?: string;
 }
 
-export const SAVED_REFRESH_MS = 10 * 60_000;
+/**
+ * How long the list is used as it is before asking again. Short: asking
+ * costs an empty 304 when nothing changed, and a book saved (or the next in
+ * a series turning up) on another device, in the reader or in another tab
+ * should be downloaded by the next library page. Only clicks from page to
+ * page in quick succession share one answer.
+ */
+export const SAVED_REFRESH_MS = 30_000;
 
 /** The list as last fetched for this device (book-sync.ts): the first N, On deck then Saved. */
 export function savedList(owner: Owner): SavedList | null {
