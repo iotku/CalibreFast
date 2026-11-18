@@ -16,8 +16,10 @@ import { localKey, type Owner } from "./local-keys.js";
 export interface SyncState {
     /** Book downloads paused by the user (this device). */
     paused?: boolean;
-    /** The download in progress: title, bytes so far and in all (0: unknown), and when last reported (ms). */
-    active?: { title: string; got: number; total: number; at: number } | null;
+    /** The download in progress, bytes so far and in all (0: unknown), and when last reported (ms). */
+    active?: { uuid: string; title: string; authors: string; format: string; got: number; total: number; at: number } | null;
+    /** The titles of the next few books to download. */
+    next?: string[];
     /** Books waiting to be downloaded after the active one. */
     waiting?: number;
     /** Waiting for pages to finish loading what's on screen (page-busy.ts). */

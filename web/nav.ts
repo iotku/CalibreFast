@@ -230,6 +230,18 @@ function init(bar: HTMLElement): void {
         const booksLine = el("p", { className: "tb-sync-line" });
         readingLine.setAttribute("role", "status");
         booksLine.setAttribute("role", "status");
+        // The book downloading: cover, title, authors, a progress bar, sizes.
+        const cover = el("img", { className: "tb-sync-cover", alt: "", width: 40, height: 56, loading: "lazy" });
+        const bookTitle = el("span", { className: "tb-sync-title" });
+        const bookAuthors = el("span", { className: "tb-sync-authors" });
+        const fill = el("span", { className: "tb-sync-fill" });
+        const bar = el("span", { className: "tb-sync-bar" }, fill);
+        bar.setAttribute("role", "progressbar");
+        bar.setAttribute("aria-valuemin", "0");
+        bar.setAttribute("aria-valuemax", "100");
+        const bookDetail = el("span", { className: "tb-sync-detail" });
+        const card = el("div", { className: "tb-sync-book", hidden: true }, cover, el("span", { className: "tb-sync-book-text" }, bookTitle, bookAuthors, bar, bookDetail));
+        const nextLine = el("p", { className: "tb-sync-line tb-sync-next", hidden: true });
         const pause = el("button", { type: "button" });
         pause.addEventListener("click", (e) => {
             e.stopPropagation();
@@ -240,6 +252,8 @@ function init(bar: HTMLElement): void {
             { className: "tb-menu-list tb-sync-panel", hidden: true },
             readingLine,
             booksLine,
+            card,
+            nextLine,
             el("hr"),
             pause,
             mark(el("a", { href: "/preferences", textContent: "Storage and preferences" }), "preferences"),
@@ -260,8 +274,7 @@ function init(bar: HTMLElement): void {
                   ? `Changes to ${plural(unsent, "book")} waiting to be sent to the server.`
                   : "Reading progress, bookmarks and highlights are saved to the server.";
             const books = a
-                ? `Downloading “${a.title}”${a.total ? `: ${Math.round((a.got / a.total) * 100)}% (${megabytes(a.got)} of ${megabytes(a.total)})` : "…"}` +
-                  (s.waiting ? `, then ${plural(s.waiting, "more book")}.` : ".")
+                ? "Downloading for reading offline:"
                 : s.paused
                   ? `Book downloads are paused${waiting ? `: ${plural(waiting, "book")} waiting` : ""}.`
                   : s.held && waiting
@@ -271,6 +284,31 @@ function init(bar: HTMLElement): void {
                     : "Books for offline reading are up to date on this device.";
             if (readingLine.textContent !== reading) readingLine.textContent = reading;
             if (booksLine.textContent !== books) booksLine.textContent = books;
+            card.hidden = !a;
+            if (a) {
+                // A path we build, not a URL from data.
+                if (cover.dataset["uuid"] !== a.uuid) {
+                    cover.dataset["uuid"] = a.uuid;
+                    cover.src = `/cover-thumb/${encodeURIComponent(a.uuid)}`;
+                }
+                bookTitle.textContent = a.title;
+                bookAuthors.textContent = a.authors;
+                const pct = a.total ? Math.min(100, Math.round((a.got / a.total) * 100)) : null;
+                fill.style.width = `${pct ?? 0}%`;
+                bar.classList.toggle("is-unknown", pct === null);
+                if (pct === null) bar.removeAttribute("aria-valuenow");
+                else bar.setAttribute("aria-valuenow", String(pct));
+                bar.setAttribute("aria-label", `${a.title}: ${pct === null ? "starting" : `${pct}%`}`);
+                bookDetail.textContent = [
+                    a.total ? `${megabytes(a.got)} of ${megabytes(a.total)}` : a.got ? megabytes(a.got) : "Starting…",
+                    a.format.toUpperCase(),
+                    ...(pct === null ? [] : [`${pct}%`]),
+                ].join(" · ");
+            }
+            const next = a ? (s.next ?? []) : [];
+            const more = (s.waiting ?? 0) - next.length;
+            nextLine.hidden = !next.length;
+            nextLine.textContent = next.length ? `Then: ${next.join(", ")}${more > 0 ? `, and ${plural(more, "more book")}` : ""}.` : "";
             pause.textContent = s.paused ? "Resume book downloads" : "Pause book downloads";
         };
         if (syncToggle) toggles = toggles.filter((t) => t !== syncToggle);

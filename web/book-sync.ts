@@ -75,10 +75,10 @@ const REPORT_MS = 500;
 const paused = (): boolean => !!readSync(currentUser()).paused;
 
 let reportedAt = 0;
-function report(title: string, got: number, total: number, force = false): void {
+function report(book: { uuid: string; title: string; authors: string; format: string }, got: number, total: number, force = false): void {
     if (!force && Date.now() - reportedAt < REPORT_MS) return;
     reportedAt = Date.now();
-    writeSync(currentUser(), { active: { title, got, total, at: reportedAt } });
+    writeSync(currentUser(), { active: { ...book, got, total, at: reportedAt } });
 }
 
 /**
@@ -157,7 +157,7 @@ export async function downloadForOffline(
         pendingBytes += value.length;
         got += value.length;
         if (total) opts.onProgress?.(got / total);
-        report(title, got, total);
+        report({ uuid, title, authors, format }, got, total);
         if (pendingBytes >= SAVE_EVERY) {
             kept = new Blob([kept, ...(pending as BlobPart[])]);
             pending = [];
@@ -204,16 +204,20 @@ function formatsFor(uuid: string): KeptFormat[] {
 }
 
 /**
- * The most recently read Reading books: the saved Reading list (offline-
- * books.ts, newest first), after any the marks say are being read that it
- * doesn't have yet (just switched to Reading: the newest of all).
+ * The most recently read Reading books, as the saved Reading list (offline-
+ * books.ts) has them: newest first, with titles and authors. If the marks
+ * say a book is being read that the list doesn't have yet (just switched
+ * to Reading), the list is fetched again first (cheap: tagged, 304 when
+ * unchanged); one it still lacks waits for a later page.
  */
-function readingOrder(marks: Marks): { uuid: string; title: string; authors: string }[] {
-    const listed = readingSnapshot()?.books ?? [];
-    const known = new Set(listed.map((b) => b.uuid));
-    const fresh = [...marks.reading.keys()].filter((u) => !known.has(u)).map((uuid) => ({ uuid, title: "", authors: "" }));
+async function readingOrder(marks: Marks): Promise<{ uuid: string; title: string; authors: string }[]> {
+    const lacks = (): boolean => {
+        const known = new Set((readingSnapshot()?.books ?? []).map((b) => b.uuid));
+        return [...marks.reading.keys()].some((u) => !known.has(u));
+    };
+    if (marks.signedIn && lacks()) await refreshOfflineReading(true).catch(() => {});
     const reading = (u: string): boolean => !marks.signedIn || marks.reading.has(u);
-    return [...fresh, ...listed.filter((b) => reading(b.uuid))];
+    return (readingSnapshot()?.books ?? []).filter((b) => reading(b.uuid));
 }
 
 /** The oldest N Saved books, fetched again at most every SAVED_REFRESH_MS (unchanged: an empty 304). */
@@ -243,13 +247,14 @@ async function runJobs(user: string, jobs: Job[]): Promise<void> {
     const run = async (): Promise<void> => {
         let left = jobs.length;
         let savedStopped = false;
-        for (const job of jobs) {
+        for (const [i, job] of jobs.entries()) {
             if (paused() || currentUser() !== user) break;
             left--;
             if (savedStopped && job.status === "wanted") continue;
             // Another tab may have got it while this one waited for its turn.
             if ((await getBookFiles(job.uuid).catch(() => [])).length) continue;
-            writeSync(user, { waiting: left });
+            const next = jobs.slice(i + 1, i + 4).map((j) => j.title);
+            writeSync(user, { waiting: left, next });
             let result: DownloadResult | "failed" = "missing";
             // Waits for quiet pages first, and again each time it gives way to one.
             for (let tries = 0; tries < 50; tries++) {
@@ -260,7 +265,7 @@ async function runJobs(user: string, jobs: Job[]): Promise<void> {
                     result = "paused";
                     break;
                 }
-                report(job.title, 0, 0, true);
+                report({ uuid: job.uuid, title: job.title, authors: job.authors, format: job.formats[0] ?? "epub" }, 0, 0, true);
                 for (const f of job.formats) {
                     try {
                         result = await downloadForOffline(job.uuid, f, job.title, job.authors, {
@@ -285,7 +290,7 @@ async function runJobs(user: string, jobs: Job[]): Promise<void> {
             }
             if (result === "no-room") savedStopped = true; // no room for Saved books without dropping others
         }
-        writeSync(user, { active: null, held: false, waiting: paused() ? left : 0 });
+        writeSync(user, { active: null, held: false, waiting: paused() ? left : 0, next: [] });
     };
     // One tab at a time. The others wait their turn (not skip): if the tab
     // downloading closes, the next takes over, finding done what's done.
@@ -330,9 +335,9 @@ async function runSync({ marks, force = false }: SyncOptions): Promise<void> {
     const jobs: Job[] = [];
 
     if (prefs.readingKeepDays !== -1 && prefs.keepReadingN) {
-        for (const b of readingOrder(m).slice(0, prefs.keepReadingN)) {
+        for (const b of (await readingOrder(m)).slice(0, prefs.keepReadingN)) {
             if (kept.has(b.uuid) || offlinePref(b.uuid) === "never") continue;
-            jobs.push({ ...b, title: b.title || "a book you're reading", formats: formatsFor(b.uuid), status: "reading" });
+            jobs.push({ uuid: b.uuid, title: b.title, authors: b.authors, formats: formatsFor(b.uuid), status: "reading" });
         }
     }
     const saved = await savedToFetch(user, prefs.prefetchSavedN, force);
