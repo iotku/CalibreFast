@@ -10,6 +10,8 @@
  * actually be shown.
  */
 
+import { dompurifyPolicy } from "./trusted.js";
+
 // Mirrors bluemonday's UGCPolicy element list.
 const ALLOWED = (
     "a abbr acronym address article aside b bdi bdo blockquote br caption cite code col colgroup " +
@@ -79,6 +81,7 @@ export function cleanFragment(html: string): DocumentFragment {
         ALLOWED_ATTR: Object.keys(ATTRS),
         ADD_FORBID_CONTENTS: DROP,
         RETURN_DOM_FRAGMENT: true,
+        TRUSTED_TYPES_POLICY: dompurifyPolicy(), // without it, enforced Trusted Types leave DOMPurify nothing to parse
     });
     // A <span> with no attributes left adds nothing (pasted layout noise).
     for (const span of [...frag.querySelectorAll("span")]) {

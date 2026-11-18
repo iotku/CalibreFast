@@ -222,6 +222,8 @@ declare namespace DOMPurifyTypes {
         ALLOWED_ATTR?: string[];
         ADD_FORBID_CONTENTS?: string[];
         RETURN_DOM_FRAGMENT?: boolean;
+        /** Its parsing goes through this policy (web/trusted.ts) instead of its own "dompurify". */
+        TRUSTED_TYPES_POLICY?: { createHTML(html: string): unknown; createScriptURL(url: string): unknown };
     }
     interface AttrHookData {
         attrName: string;

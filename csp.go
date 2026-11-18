@@ -33,7 +33,7 @@ const cspReportPath = "/api/csp-report"
 
 // trustedTypesPolicyNames: every name web/trusted.ts passes to createPolicy
 // (TestTrustedTypesPolicyNames checks they match).
-var trustedTypesPolicyNames = []string{"cf-server-html", "cf-inert-parse", "cf-script-url", "cf-htmx", "default"}
+var trustedTypesPolicyNames = []string{"cf-server-html", "cf-inert-parse", "cf-dompurify", "cf-script-url", "cf-htmx", "default"}
 
 var trustedTypesPolicy = "require-trusted-types-for 'script'; trusted-types " +
 	strings.Join(trustedTypesPolicyNames, " ") + " 'allow-duplicates'; report-uri " + cspReportPath
