@@ -171,7 +171,7 @@ func readingHandler(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "query failed", http.StatusInternalServerError)
 		return
 	}
-	writeJSON(w, http.StatusOK, m)
+	writeJSONTagged(w, r, m) // 304 when the browser's copy is current (listtag.go)
 }
 
 // resumeURL is the web reader for a book, in the format last read when there

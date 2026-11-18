@@ -553,6 +553,7 @@ func registerHandler(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "could not sign in", http.StatusInternalServerError)
 		return
 	}
+	markNewAccount(w, r)
 	http.Redirect(w, r, next, http.StatusSeeOther)
 }
 
@@ -600,7 +601,9 @@ func accountHandler(w http.ResponseWriter, r *http.Request) {
 
 // meHandler: GET /api/me — who am I (used by the nav and the readers).
 // ?reading=1 adds the user's reading marks (as GET /api/me/reading), which
-// the library grids want first thing: one round trip instead of two.
+// the library grids want first thing: one round trip instead of two. With
+// &have=<tag> (the tag of the marks the browser has, listtag.go), unchanged
+// marks aren't sent again: reading_same says so. reading_tag is their tag.
 func meHandler(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Content-Type", "application/json")
 	w.Header().Set("Cache-Control", "no-store")
@@ -615,13 +618,29 @@ func meHandler(w http.ResponseWriter, r *http.Request) {
 	if n := imports.count(); canEditLibrary(r) && (n > 0 || watching()) {
 		me["pending_imports"] = n
 	}
+	prefs, err := userPrefsFor(u)
+	if err != nil {
+		http.Error(w, "query failed", http.StatusInternalServerError)
+		return
+	}
+	me["prefs"] = prefs
 	if r.URL.Query().Get("reading") != "" {
 		m, _, err := userReading(u)
 		if err != nil {
 			http.Error(w, "query failed", http.StatusInternalServerError)
 			return
 		}
-		me["reading"] = m
+		_, tag, err := marshalTagged(m)
+		if err != nil {
+			http.Error(w, "could not encode", http.StatusInternalServerError)
+			return
+		}
+		me["reading_tag"] = tag
+		if r.URL.Query().Get("have") == tag {
+			me["reading_same"] = true
+		} else {
+			me["reading"] = m
+		}
 	}
 	_ = json.NewEncoder(w).Encode(me)
 }
@@ -811,6 +830,7 @@ func registerAuthRoutes() {
 	registerDiscoverAdminRoutes()
 	registerLinkRoutes()
 	registerKosyncRoutes(http.DefaultServeMux)
+	registerPrefsRoutes()
 }
 
 func withUserCtx(r *http.Request, u *User) context.Context {

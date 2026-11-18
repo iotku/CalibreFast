@@ -9,7 +9,9 @@
  *     before this was noted);
  *   - else where the server says to resume (the Reading marks, reading.ts:
  *     the format last read on any device).
- * With none of these, the page's own choice (EPUB) stands.
+ * With none of these, the page's own choice (EPUB) stands. All of this only
+ * when the reader's preference (prefs.ts, /preferences) is "the one last
+ * read": "always EPUB" or "always PDF" wins wherever the book has it.
  *
  * Kept in localStorage under the reader's name (local-keys.ts), like the
  * positions, so a guest's choices aren't another user's.
@@ -17,6 +19,7 @@
 
 import type { KeptFormat } from "./book-cache.js";
 import { lastKnownUser, localKey, type Owner } from "./local-keys.js";
+import { formatPref } from "./prefs.js";
 import { cachedMarks } from "./reading.js";
 
 /** uuid -> the format last opened and when (ms). */
@@ -53,6 +56,9 @@ export function noteFormatOpened(owner: Owner, uuid: string, format: KeptFormat)
 export function preferredFormat(uuid: string, has: readonly string[], owner: Owner = lastKnownUser()): KeptFormat | null {
     const available = FORMATS.filter((f) => has.includes(f));
     if (available.length < 2) return null;
+
+    const pref = formatPref(owner);
+    if (pref !== "last" && available.includes(pref)) return pref;
 
     const opened = read<Opened>(localKey(owner, "last-format"))?.[uuid]?.f;
     if (opened && available.includes(opened)) return opened;

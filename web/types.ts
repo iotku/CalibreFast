@@ -68,6 +68,12 @@ export interface MeResponse {
     pending_imports?: number;
     /** The user's reading marks, when asked for (?reading=1), as /api/me/reading has them. */
     reading?: StoredMarks;
+    /** The tag of the user's marks (listtag.go), with ?reading=1. */
+    reading_tag?: string;
+    /** The marks are those the browser has (?have=): not sent again. */
+    reading_same?: boolean;
+    /** The account's preferences (Go: userPrefs; prefs.ts). */
+    prefs?: { format: "last" | "epub" | "pdf" };
 }
 
 /** A library value suggestion (Go: groupValuesHandler). */

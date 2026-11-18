@@ -33,6 +33,8 @@ export interface Marks {
 }
 
 const KEY = "cf-reading";
+/** The tag of the marks kept under KEY (listtag.go): sent back, the server answers only if they changed. */
+export const TAG_KEY = "cf-reading-tag";
 
 /** /api/me/reading's answer, as stored. */
 export interface StoredMarks {
@@ -66,12 +68,33 @@ function lastUser(): string | null | undefined {
     }
 }
 
-function store(v: StoredMarks | null): void {
+function store(v: StoredMarks | null, tag: string | null = null): void {
     try {
         if (v) localStorage.setItem(KEY, JSON.stringify(v));
         else localStorage.removeItem(KEY);
+        // A tag only with the answer it came with: marks changed here have none.
+        if (tag && v) localStorage.setItem(TAG_KEY, tag);
+        else localStorage.removeItem(TAG_KEY);
     } catch {
         /* storage blocked: cards are marked once the request answers */
+    }
+}
+
+/** The tag of the marks kept here, if they're whole as the server sent them. */
+function storedTag(): string | null {
+    try {
+        return localStorage.getItem(TAG_KEY);
+    } catch {
+        return null;
+    }
+}
+
+/** The marks kept here, as stored (whoever they belong to). */
+function storedMarks(): StoredMarks | null {
+    try {
+        return JSON.parse(localStorage.getItem(KEY) ?? "null") as StoredMarks | null;
+    } catch {
+        return null;
     }
 }
 
@@ -172,22 +195,28 @@ export async function fetchMarks(first = false): Promise<Marks | null> {
                 return toMarks(null);
             }
             if (me.ok && me.body.reading) {
-                store(me.body.reading);
+                store(me.body.reading, me.body.reading_tag ?? null);
                 return toMarks(me.body.reading);
             }
+            // Unchanged since the copy kept here (me.ts sent its tag).
+            const kept = storedMarks();
+            if (me.ok && me.body.reading_same && kept) return toMarks(kept);
         } catch {
             /* offline, or no marks in the answer: ask /api/me/reading */
         }
     }
     try {
-        const res = await fetch("/api/me/reading", { credentials: "same-origin" });
+        const kept = storedMarks();
+        const tag = kept ? storedTag() : null;
+        const res = await fetch("/api/me/reading", { credentials: "same-origin", headers: tag ? { "if-none-match": tag } : {} });
         if (res.status === 401) {
             store(null);
             return toMarks(null);
         }
+        if (res.status === 304 && kept) return toMarks(kept); // the copy kept here is current
         if (!res.ok) return null;
         const body = (await res.json()) as StoredMarks;
-        store(body);
+        store(body, res.headers.get("etag"));
         return toMarks(body);
     } catch {
         return null; // offline: keep what's shown

@@ -1,5 +1,6 @@
 import { colorValue, setupAnnotationUI } from "./annotation-ui.js";
-import { currentUser, getBook, offlinePref, putBook, registerWorker, sweep, updateBook, type CachedBook } from "./book-cache.js";
+import { currentUser, getBook, registerWorker, updateBook, type CachedBook } from "./book-cache.js";
+import { shouldKeep, storeBook, sweep } from "./retention.js";
 import { createAnnotationStore, parsePdfAnchor, type Annotation, type PdfAnchor } from "./annotations.js";
 import { byId, el, maybeId, modalOpen } from "./dom.js";
 import { setupPdfGestures } from "./pdf-gestures.js";
@@ -423,10 +424,11 @@ const downloadUrl = target.file("pdf");
 
 /** Keep the whole file in this browser, with a title and authors for the offline page. */
 async function keepCopy(pdf: PdfJS.Document | null, bytes: Uint8Array, lastModified: string, had: CachedBook | null): Promise<void> {
-    if (preview || offlinePref(uuid) === "never") return; // set on the book's page (offline-control.ts)
+    // The book's own choice (offline-control.ts), then the device's (prefs.ts, retention.ts).
+    if (preview || !shouldKeep(uuid, bytes.length)) return;
     const info = pdf ? (await pdf.getMetadata().catch(() => null))?.info : undefined;
     const text = (v: unknown): string => (typeof v === "string" ? v.trim() : "");
-    await putBook({
+    await storeBook({
         uuid,
         format: "pdf",
         user: currentUser(),
@@ -437,6 +439,7 @@ async function keepCopy(pdf: PdfJS.Document | null, bytes: Uint8Array, lastModif
         authors: text(info?.Author) || had?.authors || "",
         lastOpened: Date.now(),
         statusSeen: had?.statusSeen,
+        savedAt: had?.savedAt,
     });
     void keepCover(uuid).catch(() => {}); // for the offline Reading page (offline-books.ts)
 }

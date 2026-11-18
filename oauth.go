@@ -305,8 +305,14 @@ func oauthCallback(w http.ResponseWriter, r *http.Request) {
 		fail("Could not sign in.")
 		return
 	}
+	if msg == msgNewAccount {
+		markNewAccount(w, r)
+	}
 	http.Redirect(w, r, pa.Next, http.StatusSeeOther)
 }
+
+// msgNewAccount: resolveOAuthUser's message when it made a new account.
+const msgNewAccount = "new account"
 
 var (
 	errNotLinked     = errors.New("no account is linked to that sign-in. Sign in with your password and link it from your account page, or ask an admin")
@@ -381,7 +387,7 @@ func resolveOAuthUser(provider string, ou *oauthUser, linkUserID int64, invite s
 		return 0, "", err
 	}
 	log.Printf("oauth: created user %s from %s", u.Username, provider)
-	return u.ID, "", nil
+	return u.ID, msgNewAccount, nil
 }
 
 var nonNameChars = regexp.MustCompile(`[^A-Za-z0-9._-]+`)

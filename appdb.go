@@ -365,6 +365,14 @@ var migrations = []string{
 	CREATE INDEX edit_log_user ON edit_log(user_id, at);
 	CREATE INDEX edit_log_target ON edit_log(kind, target);
 	`,
+	// 21: per-user preferences that follow the account to every device
+	// (prefs.go), as JSON. Device-only ones stay in the browser.
+	`
+	CREATE TABLE user_prefs (
+		user_id INTEGER PRIMARY KEY REFERENCES users(id) ON DELETE CASCADE,
+		prefs   TEXT    NOT NULL
+	);
+	`,
 }
 
 // openAppDB opens (creating if needed) and migrates the app database.

@@ -1,0 +1,114 @@
+<!doctype html>
+<html lang="en">
+<head>
+    <meta charset="utf-8">
+    {{ robotsMeta }}
+    {{ appHead }}
+    <title>Preferences · {{ .Title }}</title>
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <link rel="stylesheet" href="{{ asset "style.css" }}">
+</head>
+<body class="auth-body">
+{{ $tb := topbar "Title" "Preferences" "Active" "preferences" }}
+{{ template "topbar-start" $tb }}
+{{ template "topbar-end" $tb }}
+<!-- Filled in and saved by web/preferences.ts: the account's preferences
+     (prefs.go) and this device's (web/prefs.ts, web/retention.ts). -->
+<main class="auth-main auth-wide prefs-main">
+    <section class="auth-card">
+        <h1>Preferences</h1>
+        <p class="auth-muted" id="prefs-who">Saved in this browser. Sign in to keep your reading format on every device.</p>
+    </section>
+
+    <section class="auth-card" aria-labelledby="prefs-format-title">
+        <h2 id="prefs-format-title">Opening books</h2>
+        <fieldset class="prefs-radios">
+            <legend>A book with both an EPUB and a PDF opens as</legend>
+            <label><input type="radio" name="format" value="last"> The format you last read it in</label>
+            <label><input type="radio" name="format" value="epub"> EPUB</label>
+            <label><input type="radio" name="format" value="pdf"> PDF</label>
+        </fieldset>
+        <p class="prefs-status" id="prefs-format-status" role="status"></p>
+    </section>
+
+    <section class="auth-card" aria-labelledby="prefs-device-title" id="prefs-device">
+        <h2 id="prefs-device-title">Books on this device</h2>
+        <p class="auth-muted">Books you read are kept in this browser, so they open at once and can be read with no connection. These settings are for this device only.</p>
+        <div class="prefs-fields">
+            <label>Keep Reading books unopened for
+                <select data-pref="readingKeepDays">
+                    <option value="1">1 day</option>
+                    <option value="7">1 week</option>
+                    <option value="30">1 month</option>
+                    <option value="0">As long as they're in Reading</option>
+                    <option value="-1">Don't keep books automatically</option>
+                </select>
+            </label>
+            <label>Always keep my most recent Reading books
+                <select data-pref="keepReadingN">
+                    <option value="0">None</option>
+                    <option value="1">The last one</option>
+                    <option value="3">The last 3</option>
+                    <option value="5">The last 5</option>
+                    <option value="10">The last 10</option>
+                </select>
+            </label>
+            <label class="prefs-signed-in" hidden>Download Saved books ahead of time
+                <select data-pref="prefetchSavedN">
+                    <option value="0">Off</option>
+                    <option value="3">The 3 most recently saved</option>
+                    <option value="5">The 5 most recently saved</option>
+                    <option value="10">The 10 most recently saved</option>
+                    <option value="20">The 20 most recently saved</option>
+                    <option value="50">The 50 most recently saved</option>
+                </select>
+            </label>
+            <label>Largest book to keep automatically
+                <select data-pref="maxBookBytes">
+                    <option value="26214400">25 MB</option>
+                    <option value="52428800">50 MB</option>
+                    <option value="104857600">100 MB</option>
+                    <option value="262144000">250 MB</option>
+                    <option value="524288000">500 MB</option>
+                    <option value="0">No limit</option>
+                </select>
+            </label>
+            <label>Most storage for books
+                <select data-pref="maxBytes">
+                    <option value="262144000">250 MB</option>
+                    <option value="524288000">500 MB</option>
+                    <option value="1073741824">1 GB</option>
+                    <option value="2147483648">2 GB</option>
+                    <option value="5368709120">5 GB</option>
+                    <option value="0">No limit</option>
+                </select>
+            </label>
+        </div>
+        <p class="prefs-status" id="prefs-device-status" role="status"></p>
+        <details class="prefs-rules">
+            <summary>How books are kept</summary>
+            <ul>
+                <li><b>Reading:</b> kept from the time you open them until they go unopened for the time chosen above. Your most recent ones stay however long you're away.</li>
+                <li class="prefs-signed-in" hidden><b>Saved:</b> only the most recently saved, if you choose to download them ahead of time. They're dropped once newer books push them out.</li>
+                <li class="prefs-signed-in" hidden><b>Finished:</b> kept for a day after you last open them, in case you want to go back to something.</li>
+                <li class="prefs-signed-in" hidden><b>Not Reading:</b> a book you set to Not Reading is removed from this device right away, even one you chose to always keep.</li>
+                <li><b>Always keep</b> (on a book's page): kept for good, whatever its size.<span class="prefs-signed-in" hidden> The book is added to Saved if it isn't on any of your lists, so you can always find it.</span></li>
+                <li><b>Running out of room:</b> when books would go over the storage limit, Finished books go first, then Saved books you haven't opened here (saved longest ago first), then other books you're not reading (opened longest ago first). Books you're reading and books you chose to always keep are never removed to make room. Unless you choose a limit, it's 1 GB, or less if the browser allows this site less room.</li>
+            </ul>
+        </details>
+    </section>
+
+    <section class="auth-card" aria-labelledby="prefs-storage-title">
+        <h2 id="prefs-storage-title">Storage on this device</h2>
+        <div id="prefs-storage" class="prefs-storage">
+            <p class="auth-muted">Looking at this device…</p>
+        </div>
+        <div id="prefs-books" class="prefs-books"></div>
+        <div class="import-actions">
+            <button type="button" class="btn-standard btn-danger" id="prefs-remove-all" hidden>Remove all books from this device</button>
+        </div>
+    </section>
+</main>
+<script type="module" src="{{ asset "preferences.js" }}"></script>
+</body>
+</html>
