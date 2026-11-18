@@ -529,6 +529,7 @@ var templates = template.Must(
 		"booksPerPage": func() int { return booksPerPage },
 		"join":         strings.Join,
 		"robotsMeta":   robotsMeta,
+		"appHead":      appHead,
 		"count":        countLabel,
 		"dict":         templateDict,
 		"alias":        groupAlias,
@@ -637,6 +638,7 @@ func serveLibraryHTTP() {
 	// Scripts, styles and libraries (assets.go): cached for good.
 	http.HandleFunc("GET /static/dist/", serveAsset)
 	http.HandleFunc("GET /static/vendor/", serveAsset)
+	http.HandleFunc("GET /static/icons/", serveAsset) // the app's icons (sw.go)
 
 	// server cover getter
 	http.HandleFunc("/cover/", coverHandler)            // Full cover image

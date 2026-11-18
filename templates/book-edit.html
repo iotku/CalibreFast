@@ -3,6 +3,7 @@
     <head>
         <meta charset="UTF-8" />
         {{ robotsMeta }}
+        {{ appHead }}
         <meta name="viewport" content="width=device-width, initial-scale=1.0" />
         <title>{{ if .Merge }}{{ if .Merge.Incoming }}Add files{{ else }}Merge books{{ end }}{{ else if .Import }}Review import{{ else }}Edit Metadata{{ end }} — CalibreFast</title>
         <link rel="stylesheet" href="{{ asset "style.css" }}" />

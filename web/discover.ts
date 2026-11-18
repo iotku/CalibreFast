@@ -64,6 +64,7 @@ import {
 import { forgetLocalReading, localReading, LOCAL_FINISHED } from "./local-reading.js";
 import { maxCovers } from "./cover-limits.js";
 import { setupDragScroll, setupPageDragScroll } from "./drag-scroll.js";
+import "./offline-marks.js"; // the "on this device" badge on cards
 
 const STRIP = 12; // books in a row
 const PIN_STRIP = 24; // books in a pinned tag's row (Go: shelfRowBooks)

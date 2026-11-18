@@ -33,6 +33,7 @@ import { agrees, applyChange, cachedMarks, coverAction, fetchMarks, markCard, sa
 import { sweep } from "./book-cache.js";
 import { markSelected, setupSelection } from "./select-books.js";
 import { setupPageDragScroll } from "./drag-scroll.js";
+import "./offline-marks.js"; // the "on this device" badge on cards
 
 const RENDER_AHEAD = 1; // screens of rows in the DOM past the viewport, in the scroll direction
 const RENDER_BEHIND = 0.5; // ...and the other way

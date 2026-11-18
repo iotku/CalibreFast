@@ -10,8 +10,12 @@
  *   - the EPUB reader's page for a book is kept once opened, and used when
  *     the server can't be reached. Pages for books no longer kept are dropped
  *     (messages from book-cache.ts).
- *   - any other page, when the server can't be reached, is the offline page
- *     (/offline), which lists the books kept here.
+ *   - any other page, when the server can't be reached (or a proxy in front
+ *     says it's down: 502-504, as while it restarts), is the offline page
+ *     (/offline, web/offline.ts): the Reading list, with the books kept here
+ *     to read. It loads the real page once the server is back. That's also
+ *     what the installed app (/manifest.webmanifest) opens on with no
+ *     connection.
  * Nothing else is cached: API calls go to the network, and the readers keep
  * their own copies of positions, bookmarks and notes.
  */
@@ -141,8 +145,22 @@ sw.addEventListener("fetch", (e) => {
         e.respondWith(readerPage(req, readerKey(url.searchParams.get("uuid") ?? "")));
         return;
     }
-    e.respondWith(fetch(req).catch(async () => (await caches.match(OFFLINE)) ?? Response.error()));
+    e.respondWith(page(req));
 });
+
+/** A gateway's answer for a server that's down (a reverse proxy while CalibreFast restarts). */
+const serverDown = (res: Response): boolean => res.status === 502 || res.status === 503 || res.status === 504;
+
+/** Any other page: from the server, else the offline page. */
+async function page(req: Request): Promise<Response> {
+    try {
+        const res = await fetch(req);
+        if (!serverDown(res)) return res;
+        return (await caches.match(OFFLINE)) ?? res;
+    } catch {
+        return (await caches.match(OFFLINE)) ?? Response.error();
+    }
+}
 
 async function cacheFirst(req: Request): Promise<Response> {
     const hit = await caches.match(req);
@@ -157,14 +175,16 @@ async function cacheFirst(req: Request): Promise<Response> {
 
 /** The reader: from the server (kept when it's a book page), else the kept copy. */
 async function readerPage(req: Request, key: string): Promise<Response> {
+    const kept = async (): Promise<Response | undefined> => (await caches.match(key)) ?? (await caches.match(OFFLINE));
     try {
         const res = await fetch(req);
         if (res.ok && !res.redirected) {
             const copy = res.clone();
             void caches.open(PAGES).then((c) => c.put(key, copy));
         }
+        if (serverDown(res)) return (await kept()) ?? res;
         return res;
     } catch {
-        return (await caches.match(key)) ?? (await caches.match(OFFLINE)) ?? Response.error();
+        return (await kept()) ?? Response.error();
     }
 }

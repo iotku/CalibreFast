@@ -1,6 +1,7 @@
 package main
 
 import (
+	"encoding/json"
 	"net/http"
 	"net/http/httptest"
 	"os"
@@ -26,7 +27,7 @@ func TestServiceWorker(t *testing.T) {
 
 	rec = httptest.NewRecorder()
 	offlineHandler(rec, httptest.NewRequest("GET", "/offline", nil))
-	if rec.Code != 200 || !strings.Contains(rec.Body.String(), "offline-books") {
+	if rec.Code != 200 || !strings.Contains(rec.Body.String(), "offline-reading-books") {
 		t.Fatalf("offline page: %d", rec.Code)
 	}
 	// On a private server neither loads without a session: the worker's
@@ -76,5 +77,52 @@ func TestDownloadRanges(t *testing.T) {
 	// The file changed: the whole new file, not a range of it.
 	if rec := get(map[string]string{"Range": "bytes=10-19", "If-Range": "Mon, 02 Jan 2006 15:04:05 GMT"}); rec.Code != 200 {
 		t.Fatalf("stale If-Range: %d", rec.Code)
+	}
+}
+
+// The web app manifest makes the site installable (Chrome's "Install app"):
+// a name, a start page, standalone display and 192/512 px icons that exist.
+func TestManifest(t *testing.T) {
+	rec := httptest.NewRecorder()
+	manifestHandler(rec, httptest.NewRequest(http.MethodGet, "/manifest.webmanifest", nil))
+	if ct := rec.Header().Get("Content-Type"); ct != "application/manifest+json" {
+		t.Errorf("Content-Type %q", ct)
+	}
+	var m struct {
+		Name, Display string
+		Icons                   []struct{ Src, Sizes, Purpose string }
+	}
+	if err := json.Unmarshal(rec.Body.Bytes(), &m); err != nil {
+		t.Fatal(err)
+	}
+	if m.Name == "" || m.Display != "standalone" {
+		t.Errorf("manifest: %+v", m)
+	}
+	sizes := map[string]bool{}
+	for _, i := range m.Icons {
+		sizes[i.Sizes] = true
+		if assetFiles[i.Src] == nil {
+			t.Errorf("icon %s isn't served", i.Src)
+		}
+	}
+	if !sizes["192x192"] || !sizes["512x512"] {
+		t.Errorf("icon sizes %v: installing needs 192 and 512", sizes)
+	}
+}
+
+// The icons are public (the browser may fetch them without a session); the
+// manifest, which names the library, isn't.
+func TestAppIconsPublic(t *testing.T) {
+	if !isPublicPath("/static/icons/icon-192-v1.png") {
+		t.Error("icons should be public")
+	}
+	if isPublicPath("/manifest.webmanifest") {
+		t.Error("the manifest names the library: it shouldn't be public")
+	}
+	if strings.Contains(string(appHead("reader")), "theme-color") {
+		t.Error("the readers set their own theme-color")
+	}
+	if !strings.Contains(string(appHead()), `rel="manifest"`) {
+		t.Error("appHead should link the manifest")
 	}
 }
