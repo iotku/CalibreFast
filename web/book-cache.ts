@@ -271,6 +271,21 @@ export async function keepOnlyUser(user: string | null): Promise<void> {
     if (dropped) tellWorker({ type: "clear-books" });
 }
 
+/**
+ * Have the service worker (sw.ts) keep a book's reader page, so a book
+ * downloaded ahead of time opens offline though its reader was never opened
+ * in this browser. Sent to the active worker, not the page's controller: a
+ * page loaded before the worker first installed has none.
+ */
+export function keepReaderPage(uuid: string, format: KeptFormat): void {
+    if (!isSecureContext || !("serviceWorker" in navigator)) return;
+    navigator.serviceWorker.ready
+        .then((reg) => reg.active?.postMessage({ type: "keep", uuid, format }))
+        .catch(() => {
+            /* no service worker */
+        });
+}
+
 /** Tell the service worker (sw.ts) to drop cached reader pages. */
 function tellWorker(msg: { type: "evict"; uuid: string; format: KeptFormat } | { type: "clear-books" }): void {
     try {

@@ -39,6 +39,7 @@ import {
     deleteBook,
     getBook,
     getPartial,
+    keepReaderPage,
     listBooks,
     listPartials,
     offlinePref,
@@ -302,6 +303,7 @@ export async function storeBook(book: CachedBook): Promise<void> {
         );
         throw err;
     }
+    keepReaderPage(book.uuid, format);
     requestPersist();
 }
 
