@@ -68,10 +68,6 @@ func TestHomeAnswer(t *testing.T) {
 	if got, want := ids(h.Wanted), b[2]+","+b[3]; got != want {
 		t.Errorf("wanted %s, want %s (oldest first)", got, want)
 	}
-	// Nothing finished in a series: On Deck is the first Saved books.
-	if got, want := ids(h.OnDeck), b[2]+","+b[3]; got != want {
-		t.Errorf("on deck %s, want %s (Saved, oldest first)", got, want)
-	}
 	if h.ReadingCount != 2 || h.WantedCount != 2 {
 		t.Errorf("counts %d %d", h.ReadingCount, h.WantedCount)
 	}

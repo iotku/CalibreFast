@@ -6,8 +6,8 @@ package main
 //   - reading: the books being read, most recently active first (the newer
 //     of the status change and the last position, from any device);
 //   - wanted: want to read, in its page's order (oldest first unless arranged);
-//   - on_deck: the next book of each series the user finished one of, then
-//     the first few Saved books (series_pins.go);
+//   - on_deck: the next book of each series the user finished one of
+//     (series_pins.go), shown before wanted in one row;
 //   - the page's layout and hidden tags (home_layout.go);
 // each capped, with the full counts for "See all". Book details come from
 // the catalog: nothing is read from the library.
