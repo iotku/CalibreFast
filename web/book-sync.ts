@@ -5,9 +5,10 @@
  *   1. the most recently read keepReadingN Reading books, when the reader
  *      hasn't kept them (a book switched to Reading and left at once, or
  *      read on another device);
- *   2. the oldest prefetchSavedN Saved books, if this device is set to
- *      (oldest, so saving more books later doesn't swap one download for
- *      another).
+ *   2. the first prefetchSavedN books of Discover's "On deck / Saved for
+ *      later" row, if this device is set to: the next book of each series
+ *      the user finished one of, then the oldest Saved (oldest, so saving
+ *      more books later doesn't swap one download for another).
  *
  * One book at a time, in one tab at a time (a Web Lock), shown in the top
  * bar's sync button (sync-state.ts). The user can pause them there. A
@@ -231,7 +232,7 @@ async function readingOrder(marks: Marks): Promise<{ uuid: string; title: string
     return (readingSnapshot()?.books ?? []).filter((b) => reading(b.uuid));
 }
 
-/** The oldest N Saved books, fetched again at most every SAVED_REFRESH_MS (unchanged: an empty 304). */
+/** The first N On deck and Saved books, fetched again at most every SAVED_REFRESH_MS (unchanged: an empty 304). */
 async function savedToFetch(user: string, n: number, force: boolean): Promise<SavedBook[] | null> {
     const last = savedList(user);
     if (!n) {

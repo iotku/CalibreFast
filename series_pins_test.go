@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"net/http"
 	"slices"
+	"strconv"
 	"testing"
 )
 
@@ -235,3 +236,45 @@ func TestOnDeck(t *testing.T) {
 	}
 }
 
+
+// Downloads ahead of time: On Deck first, then Saved, N in all.
+func TestSavedBooksOnDeck(t *testing.T) {
+	_, wheel, other := seriesFixture(t)
+	alice, _ := createUser("alice", "a long enough password", false)
+	mux := seriesMux()
+	mux.HandleFunc("GET /api/me/saved-books", requireUser(savedBooksHandler))
+	status := func(uuid, s string, at int64) {
+		t.Helper()
+		if _, err := appDB.Exec(`INSERT INTO reading_status (user_id, book_uuid, status, source, updated_at) VALUES (?, ?, ?, 'manual', ?)`, alice.ID, uuid, s, at); err != nil {
+			t.Fatal(err)
+		}
+	}
+	list := func(n int) []savedBook {
+		t.Helper()
+		rec := call(t, mux, alice, "GET", "/api/me/saved-books?limit="+strconv.Itoa(n), "")
+		var got []savedBook
+		if err := json.Unmarshal(rec.Body.Bytes(), &got); err != nil {
+			t.Fatalf("%d %s", rec.Code, rec.Body)
+		}
+		return got
+	}
+	status(wheel[0], "finished", 1) // On Deck: wheel[1]
+	status(other[0], "finished", 2) // On Deck: other[1] (finished more recently: first)
+	status(wheel[3], "wanted", 10)
+	status(wheel[1], "wanted", 5) // On Deck and Saved: listed once, as On Deck
+	status(wheel[2], "wanted", 20)
+	got := list(4)
+	var ids []string
+	for _, b := range got {
+		ids = append(ids, b.UUID)
+	}
+	if want := []string{other[1], wheel[1], wheel[3], wheel[2]}; !slices.Equal(ids, want) {
+		t.Fatalf("got %q, want %q", ids, want)
+	}
+	if !got[0].OnDeck || !got[1].OnDeck || got[2].OnDeck || got[2].SavedAt != 10*1000 {
+		t.Errorf("flags: %+v", got)
+	}
+	if got := list(1); len(got) != 1 || got[0].UUID != other[1] {
+		t.Errorf("limit 1: %+v", got)
+	}
+}

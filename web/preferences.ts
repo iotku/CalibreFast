@@ -26,7 +26,7 @@ import {
 } from "./prefs.js";
 import { cachedMarks, fetchMarks, statusOf, type Marks } from "./reading.js";
 import { syncBooks } from "./book-sync.js";
-import { makeRoom, requestPersist, storageLimit } from "./retention.js";
+import { makeRoom, requestPersist, savedList, storageLimit } from "./retention.js";
 import { onSyncChange, readSync } from "./sync-state.js";
 
 const MB = 1 << 20;
@@ -128,7 +128,7 @@ for (const s of selects) {
 type Group = "reading" | "wanted" | "finished" | "other";
 const GROUPS: { key: Group; label: string }[] = [
     { key: "reading", label: "Reading" },
-    { key: "wanted", label: "Saved" },
+    { key: "wanted", label: "On deck and Saved" },
     { key: "finished", label: "Finished" },
     { key: "other", label: "Kept on this device" },
 ];
@@ -136,6 +136,8 @@ const GROUPS: { key: Group; label: string }[] = [
 function groupOf(b: CachedBook): Group {
     if (!marks.signedIn) return "other";
     const s = statusOf(marks, b.uuid);
+    // The next in a series, downloaded ahead of time: no status of its own.
+    if (s === "" && savedList(marks.user)?.books.some((x) => x.on_deck && x.uuid === b.uuid)) return "wanted";
     return s === "reading" || s === "wanted" || s === "finished" ? s : b.statusSeen ? "other" : "reading";
 }
 
