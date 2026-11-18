@@ -43,7 +43,7 @@
  * a few at a time (maxCovers).
  */
 
-import { api, byId, el, icon, lineIcon, maybeId, safeUrl, type SvgShape } from "./dom.js";
+import { api, byId, el, icon, lineIcon, maybeId, random, safeUrl, type SvgShape } from "./dom.js";
 import type { Book } from "./types.js";
 import { bookCard, coverUrl, setupCoverStates } from "./utils.js";
 import { makeReorderable, type Reorderable } from "./reorder.js";
@@ -232,7 +232,7 @@ function loadShuffle(): ShuffleState {
     }
     // A restart made a new order (or first visit): a random place, so
     // visitors don't all start on the same strip.
-    return { version, starts: [], next: Math.floor(Math.random() * shuffleTotal) };
+    return { version, starts: [], next: Math.floor(random() * shuffleTotal) };
 }
 
 let shuffle: ShuffleState = { version, starts: [], next: 0 };
@@ -1171,7 +1171,7 @@ function pickTagRows(index: TagRow[], k: number): TagRow[] {
     const pool = index.map((t) => ({ t, w: t.include ? top : Math.max(1, t.count) }));
     const out: TagRow[] = [];
     while (out.length < k && pool.length) {
-        let r = Math.random() * pool.reduce((s, p) => s + p.w, 0);
+        let r = random() * pool.reduce((s, p) => s + p.w, 0);
         let i = 0;
         while (i < pool.length - 1 && (r -= pool[i]!.w) > 0) i++;
         out.push(pool.splice(i, 1)[0]!.t);

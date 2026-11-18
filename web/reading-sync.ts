@@ -11,7 +11,7 @@
  *     deletions are queued until the server confirms them.
  */
 
-import { api } from "./dom.js";
+import { api, random } from "./dom.js";
 import { lastKnownUser, localKey, type Owner } from "./local-keys.js";
 import { noteLocalReading } from "./local-reading.js";
 import type { MeResponse } from "./types.js";
@@ -75,7 +75,7 @@ const LS = {
 };
 
 const newId = (): string =>
-    (crypto.randomUUID?.() ?? `${Date.now().toString(36)}-${Math.random().toString(36).slice(2)}`).slice(0, 64);
+    (crypto.randomUUID?.() ?? `${Date.now().toString(36)}-${random().toString(36).slice(2)}`).slice(0, 64);
 
 export async function createReadingSync(
     uuid: string,

@@ -152,3 +152,12 @@ export function safeUrl(url: string | null | undefined): string {
     if (url.startsWith("/")) return url.startsWith("//") || url.startsWith("/\\") ? "#" : url;
     return /^https?:/i.test(url) ? url : "#";
 }
+
+/**
+ * A random number in [0, 1), like Math.random but from crypto.getRandomValues.
+ * Nothing here needs unguessable numbers (shuffles, picks, fallback ids), but
+ * code scanning can't tell, and it costs nothing.
+ */
+export function random(): number {
+    return crypto.getRandomValues(new Uint32Array(1))[0]! / 2 ** 32;
+}

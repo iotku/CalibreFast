@@ -14,7 +14,7 @@
  *   its books' covers.
  */
 
-import { byId, el } from "./dom.js";
+import { byId, el, random } from "./dom.js";
 import { bestScore, fold, type Hay, prepare, prepareQuery } from "./fuzzy.js";
 import type { AggregateEntry, Book } from "./types.js";
 import { colorFromBook, coverUrl } from "./utils.js";
@@ -147,7 +147,7 @@ function sample<T>(all: T[], n: number, skip: (t: T) => boolean): T[] {
     const out: T[] = [];
     const copy = source.slice();
     for (let i = 0; i < n && copy.length; i++) {
-        const j = Math.floor(Math.random() * copy.length);
+        const j = Math.floor(random() * copy.length);
         out.push(copy[j] as T);
         copy[j] = copy[copy.length - 1] as T;
         copy.pop();
