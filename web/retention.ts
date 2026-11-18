@@ -4,9 +4,11 @@
  *
  *   - Reading: kept once opened, until unopened for readingKeepDays (or for
  *     good); the most recently read keepReadingN stay regardless.
- *   - Saved: only the oldest prefetchSavedN, downloaded ahead of time
- *     (book-sync.ts) and dropped once no longer among them. No age rule.
- *     Oldest, so saving more books doesn't swap one download for another.
+ *   - Saved: only the first prefetchSavedN of On deck (the next book in a
+ *     series, which counts as Saved here) then Saved (oldest first),
+ *     downloaded ahead of time (book-sync.ts) and dropped once no longer
+ *     among them. No age rule. Oldest, so saving more books doesn't swap
+ *     one download for another.
  *     One opened here is being read, whatever its status says yet: as
  *     Reading. (A copy downloaded ahead of time has lastOpened 0 until then.)
  *   - Finished: until unopened for FINISHED_KEEP_DAYS (a day: there to go
@@ -58,9 +60,22 @@ const DAY_MS = 24 * 3600 * 1000;
 /** A book's status ("", "wanted", "reading", "finished"); undefined: not known. */
 type StatusFn = (uuid: string) => string | undefined;
 
-/** Statuses: given, else the cached marks if they're this user's; none for a guest. */
+/**
+ * Statuses: given, else the cached marks if they're this user's; none for a
+ * guest. An On deck book downloaded ahead of time (the next in a series,
+ * with no status of its own) counts as Saved while the list has it.
+ */
 function statuses(given?: (uuid: string) => string): StatusFn {
-    if (given) return given;
+    const base = given ?? marksStatus();
+    const deck = new Set((savedList(currentUser())?.books ?? []).filter((b) => b.on_deck).map((b) => b.uuid));
+    if (!deck.size) return base;
+    return (u) => {
+        const s = base(u);
+        return s === "" && deck.has(u) ? "wanted" : s;
+    };
+}
+
+function marksStatus(): StatusFn {
     const user = currentUser();
     const m = cachedMarks();
     if (user !== null && m.signedIn && m.user === user) return (u) => statusIn(m, u);
@@ -71,12 +86,19 @@ function statuses(given?: (uuid: string) => string): StatusFn {
 /* The Saved list, in its order (GET /api/me/saved-books)            */
 /* ------------------------------------------------------------------ */
 
-/** A Saved book, as /api/me/saved-books lists them (oldest saved first). */
+/**
+ * A book to download ahead of time, as /api/me/saved-books lists them: the
+ * On deck books (the next in a series), then Saved (oldest saved first),
+ * as Discover's "On deck / Saved for later" row shows them.
+ */
 export interface SavedBook {
     uuid: string;
     title: string;
     authors: string;
-    saved_at: number;
+    /** When it was saved (ms); none for an On deck book. */
+    saved_at?: number;
+    /** The next book in a series the user finished one of: no status of its own, kept as Saved. */
+    on_deck?: boolean;
 }
 
 export interface SavedList {
@@ -87,9 +109,16 @@ export interface SavedList {
     tag?: string;
 }
 
-export const SAVED_REFRESH_MS = 10 * 60_000;
+/**
+ * How long the list is used as it is before asking again. Short: asking
+ * costs an empty 304 when nothing changed, and a book saved (or the next in
+ * a series turning up) on another device, in the reader or in another tab
+ * should be downloaded by the next library page. Only clicks from page to
+ * page in quick succession share one answer.
+ */
+export const SAVED_REFRESH_MS = 30_000;
 
-/** The Saved list as last fetched for this device (book-sync.ts): the oldest N, oldest first. */
+/** The list as last fetched for this device (book-sync.ts): the first N, On deck then Saved. */
 export function savedList(owner: Owner): SavedList | null {
     if (owner === null) return null;
     try {
@@ -137,7 +166,7 @@ export async function storageLimit(p: DevicePrefs = devicePrefs()): Promise<numb
     return half || FALLBACK_LIMIT;
 }
 
-/** The Saved books to keep here (the oldest N); null: the list isn't known yet (keep what's here). */
+/** The On deck and Saved books to keep here (the first N); null: the list isn't known yet (keep what's here). */
 function savedToKeep(owner: Owner, prefs: DevicePrefs): Set<string> | null {
     const list = savedList(owner);
     return list ? new Set(list.books.slice(0, prefs.prefetchSavedN).map((b) => b.uuid)) : null;

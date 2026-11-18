@@ -27,7 +27,7 @@ export interface DevicePrefs {
     keepReadingN: number;
     /** The largest file kept automatically (bytes); 0: no limit. A pinned book is kept anyway. */
     maxBookBytes: number;
-    /** The first N Saved books (oldest saved, unless arranged) are downloaded ahead of time (signed in); 0: none. */
+    /** The first N On deck then Saved books (oldest saved, unless arranged) are downloaded ahead of time (signed in); 0: none. */
     prefetchSavedN: number;
     /** The most all kept books may use (bytes); 0: no limit; AUTO_LIMIT: half of what the browser allows (retention.ts). */
     maxBytes: number;
@@ -45,9 +45,10 @@ export const DEVICE_CHOICES: { [K in keyof DevicePrefs]: readonly number[] } = {
 export const DEVICE_DEFAULTS: DevicePrefs = {
     readingKeepDays: 7,
     // Someone back after a long time away, with no connection, still has something to read.
-    keepReadingN: 3,
+    keepReadingN: 5,
     maxBookBytes: 100 * MB,
-    prefetchSavedN: 0,
+    // The first books of Discover's "On deck / Saved for later" row are ready offline.
+    prefetchSavedN: 3,
     maxBytes: -1,
 };
 

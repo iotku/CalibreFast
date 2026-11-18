@@ -66,7 +66,7 @@ import { forgetLocalReading, localReading, LOCAL_FINISHED } from "./local-readin
 import { maxCovers } from "./cover-limits.js";
 import { setupDragScroll, setupPageDragScroll } from "./drag-scroll.js";
 import "./offline-marks.js"; // the "on this device" badge on cards
-import { startBookSync } from "./book-sync.js";
+import { startBookSync, syncBooks } from "./book-sync.js";
 
 const STRIP = 12; // books in a row
 const PIN_STRIP = 24; // books in a pinned tag's row (Go: shelfRowBooks)
@@ -574,6 +574,8 @@ async function showGuest(): Promise<void> {
 }
 
 let homeFetchedAt = 0;
+/** A status here just changed: the next answer asks for the download list at once (book-sync.ts). */
+let listChanged = false;
 /** What the server last said: signed in (true), out (false), or not yet asked. */
 let serverSignedIn: boolean | null = null;
 
@@ -598,7 +600,11 @@ async function refreshHome(): Promise<void> {
         store.set(HOME_KEY, JSON.stringify(h));
         marks = marksFromAnswer(h.marks);
         showHome(h);
-        startBookSync(marks); // books for offline reading, with these fresh statuses (book-sync.ts)
+        // Books for offline reading, with these fresh statuses (book-sync.ts);
+        // after a change here, with the download list asked for again now.
+        if (listChanged) void syncBooks({ marks, force: true }).catch(() => {});
+        else startBookSync(marks);
+        listChanged = false;
     } else {
         return;
     }
@@ -627,6 +633,7 @@ function setupHome(): Promise<void> {
     document.addEventListener("cf:status", (e) => {
         const change = (e as CustomEvent<BookChange>).detail;
         if (change.status !== undefined || !applyChange(marks, change)) {
+            if (change.status !== undefined) listChanged = true;
             void refreshHome();
             return;
         }
@@ -646,7 +653,10 @@ function setupHome(): Promise<void> {
         const action = btn.dataset["action"] ?? "";
         void coverAction(action, uuid, marks, () => repaintMarks(uuid)).then(() => {
             // Saved has a row of its own; a favorite is only the mark.
-            if (action === "want") void refreshHome();
+            if (action === "want") {
+                listChanged = true;
+                void refreshHome();
+            }
             else keepMarks();
         });
     });
@@ -1031,7 +1041,10 @@ function setupOnDeck(): void {
             store.set(HOME_KEY, JSON.stringify(h));
         }
         if (!section.querySelector(".row-books > .book")) fillRow(section, [], { hint: true });
-        void api("DELETE", `/api/me/on-deck/${encodeURIComponent(uuid)}`).catch(() => void refreshHome());
+        // Then the download list again: a copy kept ahead of time goes, the next one comes.
+        void api("DELETE", `/api/me/on-deck/${encodeURIComponent(uuid)}`)
+            .then(() => syncBooks({ marks, force: true }))
+            .catch(() => void refreshHome());
     });
 }
 

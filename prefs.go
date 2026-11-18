@@ -68,12 +68,16 @@ func putPrefsHandler(w http.ResponseWriter, r *http.Request) {
 	w.WriteHeader(http.StatusNoContent)
 }
 
-// savedBook: a book on the user's Saved list, and when it was saved.
+// savedBook: a book to download ahead of time: On Deck, or on the user's
+// Saved list and when it was saved.
 type savedBook struct {
 	UUID    string `json:"uuid"`
 	Title   string `json:"title"`
 	Authors string `json:"authors"`
-	SavedAt int64  `json:"saved_at"` // unix ms
+	SavedAt int64  `json:"saved_at,omitempty"` // unix ms; none for On Deck
+	// OnDeck: the next book of a series the user finished one of
+	// (series_pins.go), which has no status of its own.
+	OnDeck bool `json:"on_deck,omitempty"`
 }
 
 // maxSavedBooks: the most /api/me/saved-books lists in one answer. Any
@@ -81,19 +85,45 @@ type savedBook struct {
 // offers up to 50), so it asks for just those (?limit=).
 const maxSavedBooks = 500
 
-// GET /api/me/saved-books?limit=N: the first N books on the Saved list, in
-// its page's order (oldest saved first unless arranged, list_order.go), for
-// the books kept on a device ahead of time (web/book-sync.ts). Oldest, so
-// saving more books later doesn't swap one download for another. Tagged:
-// 304 when the device's copy is current.
+// GET /api/me/saved-books?limit=N: the first N books of Discover's "On deck
+// / Saved for later" row, for the books kept on a device ahead of time
+// (web/book-sync.ts): the On Deck books (the next in the series the user
+// finished one of), then the Saved list in its page's order (oldest saved
+// first unless arranged, list_order.go). Oldest, so saving more books later
+// doesn't swap one download for another. Books not in the library yet
+// (placeholders) are left out: nothing to download. Tagged: 304 when the
+// device's copy is current.
 func savedBooksHandler(w http.ResponseWriter, r *http.Request) {
 	limit, err := strconv.Atoi(r.URL.Query().Get("limit"))
 	if err != nil || limit < 1 || limit > maxSavedBooks {
 		http.Error(w, "limit: 1 to "+strconv.Itoa(maxSavedBooks), http.StatusBadRequest)
 		return
 	}
+	u := currentUser(r)
+	marks, active, err := userReading(u)
+	if err != nil {
+		http.Error(w, "query failed", http.StatusInternalServerError)
+		return
+	}
+	deck, err := onDeck(u, marks, active)
+	if err != nil {
+		http.Error(w, "query failed", http.StatusInternalServerError)
+		return
+	}
+	out := make([]savedBook, 0, limit)
+	listed := map[string]bool{}
+	for _, b := range deck {
+		if len(out) == limit {
+			break
+		}
+		if b.Placeholder != nil || b.SeriesCard != nil {
+			continue
+		}
+		listed[b.UUID] = true
+		out = append(out, savedBook{UUID: b.UUID, Title: b.Title, Authors: b.Authors, OnDeck: true})
+	}
 	rows, err := appDB.Query(`SELECT book_uuid, updated_at FROM reading_status
-		WHERE user_id = ? AND status = 'wanted' `+wantedOrder+` LIMIT ?`, currentUser(r).ID, limit)
+		WHERE user_id = ? AND status = 'wanted' `+wantedOrder+` LIMIT ?`, u.ID, limit)
 	if err != nil {
 		http.Error(w, "query failed", http.StatusInternalServerError)
 		return
@@ -103,7 +133,7 @@ func savedBooksHandler(w http.ResponseWriter, r *http.Request) {
 	for rows.Next() {
 		var uuid string
 		var t int64
-		if rows.Scan(&uuid, &t) == nil {
+		if rows.Scan(&uuid, &t) == nil && !listed[uuid] {
 			uuids = append(uuids, uuid)
 			at[uuid] = t * 1000
 		}
@@ -114,8 +144,10 @@ func savedBooksHandler(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "query failed", http.StatusInternalServerError)
 		return
 	}
-	out := make([]savedBook, 0, len(books))
 	for _, b := range books {
+		if len(out) == limit {
+			break
+		}
 		if b.Placeholder != nil || b.SeriesCard != nil {
 			continue // nothing to download
 		}

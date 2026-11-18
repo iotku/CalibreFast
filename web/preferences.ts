@@ -3,7 +3,8 @@
  * (prefs.go; a guest's are only in this browser) and this device's
  * (prefs.ts, applied by retention.ts), and what this device stores: a bar
  * of the space used against the limit and the browser's quota, and the
- * books kept here by status, each with a Remove button.
+ * books kept here by status, each with a Remove button (which also sets the
+ * book to "Don't keep on this device", so it isn't downloaded again).
  *
  * Everything is built with DOM calls (el()); titles and authors are text.
  */
@@ -26,7 +27,7 @@ import {
 } from "./prefs.js";
 import { cachedMarks, fetchMarks, statusOf, type Marks } from "./reading.js";
 import { syncBooks } from "./book-sync.js";
-import { makeRoom, requestPersist, storageLimit } from "./retention.js";
+import { makeRoom, requestPersist, savedList, storageLimit } from "./retention.js";
 import { onSyncChange, readSync } from "./sync-state.js";
 
 const MB = 1 << 20;
@@ -128,7 +129,7 @@ for (const s of selects) {
 type Group = "reading" | "wanted" | "finished" | "other";
 const GROUPS: { key: Group; label: string }[] = [
     { key: "reading", label: "Reading" },
-    { key: "wanted", label: "Saved" },
+    { key: "wanted", label: "On deck and Saved" },
     { key: "finished", label: "Finished" },
     { key: "other", label: "Kept on this device" },
 ];
@@ -136,6 +137,8 @@ const GROUPS: { key: Group; label: string }[] = [
 function groupOf(b: CachedBook): Group {
     if (!marks.signedIn) return "other";
     const s = statusOf(marks, b.uuid);
+    // The next in a series, downloaded ahead of time: no status of its own.
+    if (s === "" && savedList(marks.user)?.books.some((x) => x.on_deck && x.uuid === b.uuid)) return "wanted";
     return s === "reading" || s === "wanted" || s === "finished" ? s : b.statusSeen ? "other" : "reading";
 }
 
@@ -256,13 +259,15 @@ async function render(): Promise<void> {
 function bookRow(b: CachedBook): HTMLElement {
     const pinned = offlinePref(b.uuid) === "keep";
     const remove = el("button", { type: "button", className: "btn-standard", textContent: "Remove" });
-    remove.setAttribute("aria-label", `Remove ${b.title || "this book"} (${(b.format ?? "epub").toUpperCase()}) from this device`);
+    remove.title = "Remove from this device, and don't download it again";
+    remove.setAttribute("aria-label", `Remove ${b.title || "this book"} from this device and don't download it again`);
     remove.addEventListener("click", () => {
         remove.disabled = true;
-        // Removed by hand: no longer pinned, or it would come back as "kept for good".
-        void (pinned ? setOfflinePref(b.uuid, "auto") : Promise.resolve())
-            .then(() => deleteBook(b.uuid, b.format))
-            .finally(() => void render());
+        // Removed by hand, likely for a reason (its size, not reading it
+        // offline): set to "Don't keep on this device", or it would only be
+        // downloaded again (On deck, Saved). Every format goes; the book's
+        // popup can set it back.
+        void setOfflinePref(b.uuid, "never").finally(() => void render());
     });
     const details = [(b.format ?? "epub").toUpperCase(), size(b.size), ...(pinned ? ["always kept"] : [])].join(" · ");
     return el(
