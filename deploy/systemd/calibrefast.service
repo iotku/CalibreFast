@@ -1,0 +1,46 @@
+# CalibreFast as a systemd service: on every start it pulls the latest
+# commit, rebuilds (deploy/update.sh), then runs with the options in
+# calibrefast.conf. It's started again whenever it stops on its own,
+# including an admin's Stop button (Server page); `systemctl stop` stops it.
+#
+# Adjust the paths and user below to your install, then see docs/DEPLOY.md:
+#
+#     sudo cp deploy/systemd/calibrefast.service /etc/systemd/system/
+#     sudo systemctl daemon-reload
+#     sudo systemctl enable --now calibrefast
+
+[Unit]
+Description=CalibreFast (Calibre library web server)
+Wants=network-online.target
+After=network-online.target
+
+[Service]
+Type=simple
+User=calibrefast
+Group=calibrefast
+# The git checkout: the update script, the binary, templates and static files.
+WorkingDirectory=/opt/calibrefast
+# Where go is (go generate and go build run before each start).
+Environment=PATH=/usr/local/go/bin:/usr/local/bin:/usr/bin:/bin
+Environment=CALIBREFAST_BRANCH=master
+# Secrets (OAuth, Google Books key), if any: see calibrefast.env.example.
+EnvironmentFile=-/opt/calibrefast/calibrefast.env
+
+# "-": when the update can't run (offline, a build error) the build that's
+# already there starts anyway.
+ExecStartPre=-/opt/calibrefast/deploy/update.sh
+ExecStart=/opt/calibrefast/CalibreFast -config /opt/calibrefast/calibrefast.conf
+
+# An admin's Stop exits cleanly (status 0): "always" brings it back.
+Restart=always
+RestartSec=2
+# The first build downloads Go modules and the TypeScript tools.
+TimeoutStartSec=15min
+# Requests in progress get 30s to finish (server.go).
+TimeoutStopSec=45
+
+NoNewPrivileges=true
+PrivateTmp=true
+
+[Install]
+WantedBy=multi-user.target

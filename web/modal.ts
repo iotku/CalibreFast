@@ -121,17 +121,28 @@ function checkIdle(): void {
     }
 }
 
+/** Shown over a book while the next one loads (a switch from one to the next). */
+let switchingEl: HTMLElement | null = null;
+
+/** Whether the modal shows a book (not a throbber or an error), to keep while the next loads. */
+const showsBook = (): boolean => !!bodyEl()?.querySelector(":scope > .book-page");
+
 /**
  * Open the modal for a book that's loading. A new modal stays invisible
- * (.pending) and a switch from another book keeps that book showing, until
- * the new one arrives or LOADING_DELAY_MS passes, when the throbber shows.
+ * (.pending) until the book arrives or LOADING_DELAY_MS passes, when the
+ * throbber shows. A switch from another book keeps that book showing,
+ * dimmed after LOADING_DELAY_MS: the cover and the arrows beside it stay
+ * where they are, so a run of taps on an arrow keeps hitting it.
  */
 function showModal(): void {
     setBusy(true);
     clearTimeout(loadingTimer);
+    const keep = isModalOpen() && showsBook();
     loadingTimer = setTimeout(() => {
         modalEl()?.classList.remove("pending");
-        if (loadingUrl !== null) setBody(LOADING_HTML);
+        if (loadingUrl === null) return;
+        if (keep) setSwitching(true);
+        else setBody(LOADING_HTML);
     }, LOADING_DELAY_MS);
     bodyEl()?.setAttribute("aria-busy", "true");
     if (isModalOpen()) return;
@@ -143,16 +154,37 @@ function showModal(): void {
     modalEl()?.classList.add("open", "pending");
 }
 
+function setSwitching(on: boolean): void {
+    modalEl()?.classList.toggle("switching", on);
+    if (switchingEl) switchingEl.hidden = !on;
+}
+
 /** The book (or its error) is in the modal: show it, and get the books either side ready. */
 function doneLoading(): void {
     if (loadingUrl === null) return;
     loadingUrl = null;
     clearTimeout(loadingTimer);
     modalEl()?.classList.remove("pending");
+    setSwitching(false);
     bodyEl()?.removeAttribute("aria-busy");
-    const content = modalEl()?.querySelector(".modal-content");
-    if (content) content.scrollTop = 0;
     updateNavButtons();
+    checkIdle();
+}
+
+/**
+ * The modal's body changed. A book that just came in gets the arrows and
+ * starts at the top here, before it's drawn (observer callbacks run before
+ * the next frame), so it never shows a frame without them or scrolled.
+ */
+let freshSwap = false;
+function bodyChanged(): void {
+    if (freshSwap) {
+        freshSwap = false;
+        const content = modalEl()?.querySelector(".modal-content");
+        if (content) content.scrollTop = 0;
+        setSwitching(false);
+        updateNavButtons();
+    }
     checkIdle();
 }
 
@@ -160,6 +192,9 @@ function hideModal(): void {
     document.body.classList.remove("no-scroll");
     document.documentElement.classList.remove("keep-gutter");
     modalEl()?.classList.remove("open", "pending");
+    setSwitching(false);
+    watchGrid(null);
+    queuedStep = null;
     const body = bodyEl();
     if (body) {
         body.innerHTML = "";
@@ -187,6 +222,7 @@ function samePath(a: string, b: string): boolean {
 }
 
 export function loadBook(uuid: string): void {
+    queuedStep = null; // another book asked for (back/forward, a link): drop a waiting step
     const card = cardFor(uuid);
     shownUuid = uuid;
     shownCard = card;
@@ -198,6 +234,8 @@ export function loadBook(uuid: string): void {
     const url = bookUrl(uuid);
     loadingUrl = url;
     showModal();
+    watchGrid(card);
+    updateNavButtons(); // the arrows follow the book asked for, not the one still showing
     prefetchControls(uuid); // in parallel with the book, not after it
     const hit = takePrefetch(uuid);
     // Otherwise the book's card (if on the page) as the source: htmx then
@@ -230,21 +268,53 @@ function cardFor(uuid: string): HTMLElement | null {
 }
 
 /**
- * The book card next to the shown one (dir 1) or before it (-1), in its
- * grid or row. Null at the end, or when the next card is still a
- * skeleton (its page hasn't arrived).
+ * The card next to the shown one (dir 1) or before it (-1), in its grid or
+ * row: a book, or a skeleton whose page hasn't arrived yet. Null at the end.
  */
-function neighbour(dir: 1 | -1): HTMLElement | null {
+function adjacent(dir: 1 | -1): HTMLElement | null {
     const card = shownUuid ? cardFor(shownUuid) : null;
     for (let el = card ? sibling(card, dir) : null; el; el = sibling(el, dir)) {
-        if (!el.classList.contains("book")) continue; // e.g. the grid's spacers
-        return el.dataset["uuid"] ? el : null;
+        if (el.classList.contains("book")) return el; // not e.g. the grid's spacers
     }
     return null;
 }
 
+/** The book next to the shown one, if it's there yet (not a skeleton). */
+function neighbour(dir: 1 | -1): HTMLElement | null {
+    const el = adjacent(dir);
+    return el?.dataset["uuid"] ? el : null;
+}
+
+/** A step asked for while that way was still a skeleton: taken once it's a book. */
+let queuedStep: 1 | -1 | null = null;
+
 const sibling = (el: Element, dir: 1 | -1): HTMLElement | null =>
     (dir > 0 ? el.nextElementSibling : el.previousElementSibling) as HTMLElement | null;
+
+/**
+ * The grid around the shown card fills in skeletons as their pages arrive
+ * (app-htmx.ts): an arrow hidden because the next card was a skeleton
+ * shows once it's a book.
+ */
+let gridObserver: MutationObserver | null = null;
+let watchedGrid: Element | null = null;
+function watchGrid(card: HTMLElement | null): void {
+    const grid = card?.parentElement ?? null;
+    if (grid === watchedGrid) return;
+    gridObserver?.disconnect();
+    watchedGrid = grid;
+    if (!grid) return;
+    gridObserver ??= new MutationObserver(() => {
+        if (!isModalOpen()) return;
+        if (queuedStep && neighbour(queuedStep)) {
+            step(queuedStep);
+            return;
+        }
+        updateNavButtons();
+        if (loadingUrl === null && !busy) prefetchNeighbours();
+    });
+    gridObserver.observe(grid, { childList: true });
+}
 
 /** Fetch a book's popup ahead of time, with its cover images. */
 function prefetchBook(uuid: string): void {
@@ -301,6 +371,10 @@ const NAV_HTML = (dir: "prev" | "next") =>
     `<svg viewBox="0 0 24 24" width="22" height="22" fill="none" stroke="currentColor" stroke-width="2.2" ` +
     `stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="${dir === "next" ? "m9 6 6 6-6 6" : "m15 6-6 6 6 6"}"/></svg></button>`;
 
+const SWITCHING_HTML =
+    '<div class="modal-switching" aria-hidden="true" hidden><span class="throbber">' +
+    '<span class="throbber-dot"></span><span class="throbber-dot"></span><span class="throbber-dot"></span></span></div>';
+
 let navButtons: HTMLButtonElement[] = [];
 
 /**
@@ -315,11 +389,17 @@ const shortLandscape = matchMedia("(max-height: 520px) and (orientation: landsca
 
 /** Put the arrows where they go, and show each only when there's a book that way. */
 function updateNavButtons(): void {
-    const cover = narrow.matches && !shortLandscape.matches ? bodyEl()?.querySelector(".book-page-cover") : null;
+    const byCover = narrow.matches && !shortLandscape.matches;
+    modalEl()?.classList.toggle("nav-by-cover", byCover);
+    const cover = byCover ? bodyEl()?.querySelector(".book-page-cover") : null;
     const home = cover ?? modalEl();
     for (const btn of navButtons) {
         if (home && btn.parentElement !== home) home.append(btn);
-        btn.hidden = !neighbour(btn.dataset["step"] === "1" ? 1 : -1);
+        // A skeleton that way: the arrow stays (a tap waits for the book),
+        // so a quick run of taps never finds it gone.
+        const next = adjacent(btn.dataset["step"] === "1" ? 1 : -1);
+        btn.hidden = !next;
+        btn.classList.toggle("waiting", !!next && !next.dataset["uuid"]);
     }
 }
 
@@ -369,9 +449,19 @@ function setupSwipe(content: HTMLElement): void {
 
 /** Show the next or previous book, in place of this one in history. */
 function step(dir: 1 | -1): void {
+    queuedStep = null;
     const card = neighbour(dir);
     const uuid = card?.dataset["uuid"];
-    if (!card || !uuid) return;
+    if (!card || !uuid) {
+        const pending = adjacent(dir);
+        if (pending) {
+            // Its page is on the way (the grid fetches around the shown card).
+            queuedStep = dir;
+            revealCard(pending);
+            if (showsBook()) setSwitching(true);
+        }
+        return;
+    }
     revealCard(card);
     // No hashchange or popstate: those mean back/forward to the listeners above.
     history.replaceState(history.state, "", location.pathname + location.search + HASH_PREFIX + encodeURIComponent(uuid));
@@ -450,11 +540,12 @@ export function setupModal(): void {
     });
 
     const body = bodyEl();
-    if (body) new MutationObserver(checkIdle).observe(body, { childList: true, subtree: true });
+    if (body) new MutationObserver(bodyChanged).observe(body, { childList: true, subtree: true });
 
     // Close: X button or backdrop click. Previous/next: the arrows.
     const modal = modalEl();
-    modal?.insertAdjacentHTML("beforeend", NAV_HTML("prev") + NAV_HTML("next"));
+    modal?.insertAdjacentHTML("beforeend", NAV_HTML("prev") + NAV_HTML("next") + SWITCHING_HTML);
+    switchingEl = modal?.querySelector<HTMLElement>(".modal-switching") ?? null;
     navButtons = [...(modal?.querySelectorAll<HTMLButtonElement>(".modal-nav") ?? [])];
     for (const mq of [narrow, shortLandscape]) mq.addEventListener("change", updateNavButtons);
     modal?.addEventListener("click", (e) => {
@@ -487,6 +578,7 @@ export function setupModal(): void {
         const ctx = (e as HtmxCtxEvent).detail?.ctx;
         if (!ctx || ctx.target !== bodyEl()) return;
         if (loadingUrl === null || !samePath(ctx.request?.action ?? "", loadingUrl)) e.preventDefault();
+        else freshSwap = true;
     });
     document.addEventListener("htmx:finally:request", (e) => {
         const ctx = (e as HtmxCtxEvent).detail?.ctx;

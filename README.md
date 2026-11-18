@@ -95,6 +95,9 @@ Then open [http://localhost:8080](http://localhost:8080) and sign in. Add more u
 | `-recycle-bin DIR` | Where books removed from the library are kept until you empty it (default `<datadir>/recycle-bin`). On the library's filesystem, removing and restoring are instant; elsewhere the files are copied. |
 | `-empty-recycle-bin AGE` | Permanently delete what was removed from the library more than `AGE` ago (`30d`, `12h`; `0` for everything) and exit. The only way to empty the Recycling Bin: it can't be done from the web. |
 | `-create-user NAME` | Create a user (or reset their password) and exit; add `-admin` to make them an admin |
+| `-config FILE` | Read the options from a file, one `name = value` per line (see `calibrefast.conf.example`); options also on the command line win |
+
+To run it as a service that updates itself (systemd: pull, rebuild, restart), with the options in `calibrefast.conf`, see [DEPLOY.md](docs/DEPLOY.md).
 
 GitHub and Google sign-in are optional: see [OAUTH.md](docs/OAUTH.md) for step-by-step setup.
 
@@ -133,6 +136,7 @@ Editors: VS Code's TypeScript support reads `tsconfig.json` as-is. See [ARCHITEC
 ## Documentation
 
 - [SECURITY.md](docs/SECURITY.md): the risks, and how to run CalibreFast safely
+- [DEPLOY.md](docs/DEPLOY.md): running it as a systemd service, the config file, stopping it from the web
 - [OAUTH.md](docs/OAUTH.md): setting up GitHub and Google sign-in
 - [KOREADER.md](docs/KOREADER.md): syncing reading positions with KOReader
 - [FEATURES.md](docs/FEATURES.md): how everything behaves, in detail

@@ -1,0 +1,35 @@
+<!doctype html>
+<html lang="en">
+<head>
+    <meta charset="utf-8">
+    {{ robotsMeta }}
+    {{ appHead }}
+    <title>Server — {{ .Title }}</title>
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <link rel="stylesheet" href="{{ asset "style.css" }}">
+</head>
+<body class="auth-body">
+{{ $tb := topbar "Active" "admin-server" "Title" "Server" }}
+{{ template "topbar-start" $tb }}
+{{ template "topbar-end" $tb }}
+<main class="auth-main">
+    <section class="auth-card">
+        <h1>Server</h1>
+        <dl class="sync-facts">
+            <dt>Version</dt><dd>{{ with .Revision }}<code>{{ . }}</code>{{ else }}unknown{{ end }}{{ with .GoVersion }} · {{ . }}{{ end }}</dd>
+            <dt>Running since</dt><dd>{{ .Started }} ({{ .Uptime }})</dd>
+            <dt>Started by</dt><dd>{{ if .Systemd }}systemd{{ else }}hand, or a service manager other than systemd{{ end }}</dd>
+        </dl>
+        <h2>Stop the server</h2>
+        {{ if .Systemd }}
+        <p class="auth-muted">Requests in progress finish first, then the server stops. systemd starts it again if its unit restarts it (<code>Restart=always</code>, as in <code>deploy/systemd/</code>, which also pulls and rebuilds it first). Expect a minute or so.</p>
+        {{ else }}
+        <p class="auth-muted">Requests in progress finish first, then the server stops. <strong>Nothing starts it again</strong> unless a service manager watches it: it stays down until someone starts it on the server.</p>
+        {{ end }}
+        <button type="button" id="server-stop" class="btn-standard btn-danger" data-restarts="{{ .Systemd }}">Stop server…</button>
+        <p id="server-status" class="auth-notice" role="status" hidden></p>
+    </section>
+</main>
+<script type="module" src="{{ asset "admin-server.js" }}"></script>
+</body>
+</html>

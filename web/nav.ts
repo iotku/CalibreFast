@@ -255,6 +255,7 @@ function init(bar: HTMLElement): void {
                 ...(st.isAdmin ? [el("a", { href: "/admin/users", textContent: "Manage users" })] : []),
                 ...(st.isAdmin ? [el("a", { href: "/admin/activity", textContent: "Activity" })] : []),
                 ...(st.isAdmin ? [mark(el("a", { href: "/admin/discover", textContent: "Home page tags" }), "admin-discover")] : []),
+                ...(st.isAdmin ? [mark(el("a", { href: "/admin/server", textContent: "Server" }), "admin-server")] : []),
             ],
             [
                 ...(guestBooks ? [el("a", { href: "/account/import", textContent: "Reading on this device" })] : []),
