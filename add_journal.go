@@ -123,6 +123,15 @@ func syncDir(dir string) {
 type addOptions struct {
 	Cover  string            // copied into the book's folder as cover.jpg ("" for none)
 	Import *addJournalImport // the book's import queue folder; see addJournalImport
+	Timing *addTiming        // if set, how long the steps took
+}
+
+// addTiming is how long an add's steps took, for telling a slow disk from a
+// busy database.
+type addTiming struct {
+	Files    time.Duration // the files into a staging folder in the library (a copy across drives)
+	Database time.Duration // the rows, and the staging folder renamed to the book's
+	Finish   time.Duration // the add's last steps (an import's queue folder removed)
 }
 
 // errSimulatedCrash, from addStepHook in tests, stops an add where it is,
@@ -200,6 +209,11 @@ func addBook(meta *UploadedBookMeta, entries []formatEntry, opts addOptions) (bo
 		return "", "", err
 	}
 
+	timing := opts.Timing
+	if timing == nil {
+		timing = &addTiming{}
+	}
+	start := time.Now()
 	staging := j.staging()
 	if err = os.Mkdir(staging, 0o755); err != nil {
 		return "", "", fmt.Errorf("failed to create the staging folder: %w", err)
@@ -221,6 +235,8 @@ func addBook(meta *UploadedBookMeta, entries []formatEntry, opts addOptions) (bo
 		}
 	}
 
+	timing.Files = time.Since(start)
+	start = time.Now()
 	bookOPF := &OPF{
 		Metadata: OPFMetadata{ // TODO: Can we get things to a state where we can just pass in `merged` directly?
 			Title:       meta.Title,
@@ -270,11 +286,15 @@ func addBook(meta *UploadedBookMeta, entries []formatEntry, opts addOptions) (bo
 		return "", "", err
 	}
 
+	timing.Database = time.Since(start)
+	start = time.Now()
+
 	// The book is in the library: nothing after this undoes that.
 	if err := addStep("committed"); err != nil {
 		return "", "", err
 	}
 	finishAdd(j)
+	timing.Finish = time.Since(start)
 	if err := addStep("finished"); err != nil {
 		return "", "", err
 	}

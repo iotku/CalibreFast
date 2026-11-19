@@ -6,7 +6,7 @@
 import type { BookTarget } from "./book-target.js";
 import { openEpub } from "./epub-open.js";
 import { canInflate, mediaType, openBuffer, openRemote, type EpubSource } from "./epub-source.js";
-import { EPUBJS_URL, openPdf } from "./vendor.js";
+import { EPUBJS_URL, openPdfRanges } from "./vendor.js";
 import { setVendorScriptSrc } from "./trusted.js";
 
 /** Response of /upload-cover, /revert-cover and /cover-status. */
@@ -163,12 +163,12 @@ export async function fileChoice(book: BookTarget, file: File): Promise<CoverCho
 
 /**
  * The first pages of the book's PDF, rendered as they would be saved. Read
- * with range requests: only the cross-reference table and those pages'
- * objects are fetched, not the whole file (pdf.js falls back to all of it
- * when the file's structure is broken).
+ * with range requests only (openPdfRanges): the cross-reference table and
+ * those pages' objects are fetched, not the whole file (pdf.js reads all of
+ * it when the file's structure is broken).
  */
 export async function* pdfPages(book: BookTarget): AsyncGenerator<CoverChoice> {
-    const pdf = await openPdf(book.file("pdf"), { disableAutoFetch: true, disableStream: true });
+    const pdf = await openPdfRanges(book.file("pdf"), { disableAutoFetch: true, disableStream: true });
     try {
         for (let n = 1; n <= Math.min(pdf.numPages, PAGES); n++) {
             const page = await pdf.getPage(n);

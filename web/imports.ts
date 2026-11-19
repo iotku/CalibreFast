@@ -186,6 +186,12 @@ async function defaultCover(item: ImportSummary): Promise<boolean> {
 
 /** Library pages are rewritten after this many books, and at the end. */
 const REFRESH_EVERY = 25;
+/**
+ * Mass import: covers are found this many books ahead (fetched and drawn
+ * here) while the server adds the book before them. The adds themselves go
+ * one at a time, each checked against the library as it is after the last.
+ */
+const COVERS_AHEAD = 2;
 const progress = byId("imports-progress");
 const progressBar = byId("imports-progress-bar", HTMLProgressElement);
 const progressText = byId("imports-progress-text");
@@ -264,16 +270,28 @@ acceptAll?.addEventListener("click", async () => {
     notAdded.clear();
     let added = 0;
     let sinceRefresh = 0;
+    // The library's pages, rewritten in the background while books go on being added.
+    let refreshing: Promise<unknown> = Promise.resolve();
+    const covers = new Map<string, Promise<boolean>>();
+    const coverOf = (it: ImportSummary): Promise<boolean> => {
+        let c = covers.get(it.id);
+        if (!c) {
+            // The browser renders what the server can't (a PDF page of text, an EPUB's first page).
+            c = it.has_cover ? Promise.resolve(true) : defaultCover(it).catch(() => false);
+            covers.set(it.id, c);
+        }
+        return c;
+    };
     const plural = (n: number): string => `${n} book${n === 1 ? "" : "s"}`;
     const counts = (): string => `${plural(added)} added${notAdded.size ? `, ${notAdded.size} left for review` : ""}`;
     try {
         for (const [i, it] of items.entries()) {
             if (stopping) break;
             const step = `${i + 1} of ${items.length} · ${counts()} · `;
+            for (const next of items.slice(i, i + 1 + COVERS_AHEAD)) void coverOf(next);
             if (!it.has_cover) {
                 progressText.textContent = `${step}Finding a cover for “${it.title}”…`;
-                // The browser renders what the server can't (a PDF page of text, an EPUB's first page).
-                await defaultCover(it);
+                await coverOf(it);
             }
             progressText.textContent = `${step}Adding “${it.title}”…`;
             try {
@@ -282,7 +300,8 @@ acceptAll?.addEventListener("click", async () => {
                     added++;
                     if (++sinceRefresh >= REFRESH_EVERY) {
                         sinceRefresh = 0;
-                        await api("POST", "/api/imports/accept-done");
+                        // Not waited for; one at a time.
+                        refreshing = refreshing.then(() => api("POST", "/api/imports/accept-done")).catch(() => undefined);
                     }
                 } else if (res.reason) {
                     notAdded.set(it.id, res.reason);
@@ -293,6 +312,7 @@ acceptAll?.addEventListener("click", async () => {
             progressBar.value = i + 1;
         }
         progressText.textContent = `${counts()} · showing them in the library…`;
+        await refreshing;
         if (added) await api("POST", "/api/imports/accept-done");
         const stopped = stopping ? "Stopped. " : "";
         say(`${stopped}Added ${plural(added)} to the library.${notAdded.size ? ` ${notAdded.size} left here for review: each says why.` : ""}`);

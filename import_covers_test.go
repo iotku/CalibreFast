@@ -161,3 +161,45 @@ func TestExtractImportCoverKeepsJPEG(t *testing.T) {
 		t.Errorf("cover.jpg was re-encoded: %d bytes, the EPUB's %d", len(got), len(orig))
 	}
 }
+
+// Mass Import doesn't read a book's files for a cover again once the cover
+// worker has: the files are the same, so is the answer.
+func TestCoverFromFilesOnlyOnce(t *testing.T) {
+	inbox, err := openInbox(filepath.Join(t.TempDir(), "imports"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	it := &pendingImport{ID: "a", Files: []importFile{{Name: "b.epub", Format: "epub"}}}
+	dir := inbox.itemDir(it.ID)
+	epub := coverEPUB(t, ``, `<item id="x" href="images/c.png" media-type="image/png" properties="cover-image"/>`, testPNG(t, 600, 900))
+	writeTestFile(t, filepath.Join(dir, "b.epub"), epub)
+	inbox.put(it)
+
+	// Looked at already (here: as if the files had offered none then).
+	inbox.triedCover(it.ID)
+	if inbox.coverFromFiles(it) {
+		t.Error("a cover reported without one")
+	}
+	if _, err := os.Stat(filepath.Join(dir, "cover.jpg")); err == nil {
+		t.Error("the files were read again")
+	}
+	// One chosen meanwhile (on the page) counts.
+	writeTestFile(t, filepath.Join(dir, "cover.jpg"), []byte("chosen"))
+	if !inbox.coverFromFiles(it) {
+		t.Error("the chosen cover wasn't seen")
+	}
+
+	// Not looked at yet: read now, and only now.
+	other := &pendingImport{ID: "b", Files: it.Files}
+	writeTestFile(t, filepath.Join(inbox.itemDir("b"), "b.epub"), epub)
+	inbox.put(other)
+	if !inbox.coverFromFiles(other) {
+		t.Fatal("no cover taken")
+	}
+	inbox.coverMu.Lock()
+	tried := inbox.coverTried["b"]
+	inbox.coverMu.Unlock()
+	if !tried {
+		t.Error("not noted as looked at")
+	}
+}
