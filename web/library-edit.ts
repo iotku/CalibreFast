@@ -659,7 +659,7 @@ document.addEventListener("click", (e) => {
 function chip(col: ColKey, value: string): HTMLElement {
     return el(
         "button",
-        { type: "button", className: "lt-chip", title: `Show only books with ${value}` },
+        { type: "button", className: "lt-chip", title: `${value}: click for options` },
         col === "languages" ? languageChipLabel(value) : value,
     );
 }
@@ -677,7 +677,7 @@ function tagChip(value: string): HTMLElement {
     const c = el(
         "span",
         { className: "lt-chip lt-chip-tag" },
-        el("button", { type: "button", className: "lt-chip-label", title: `Show only books with ${value}; double-click to edit it` }, value),
+        el("button", { type: "button", className: "lt-chip-label", title: `${value}: click for options (filter, edit, split…), double-click to edit` }, value),
         el("button", { type: "button", className: "lt-chip-x", title: `Remove ${value} from this book`, ariaLabel: `Remove the tag ${value}` }, "✕"),
     );
     c.dataset["value"] = value;
@@ -907,9 +907,8 @@ body.addEventListener("click", (e) => {
         else fn();
     };
     if (ch) {
-        // Filter by it.
         const value = ch.dataset["value"] ?? "";
-        run(() => setFilter(col.key, `=${value}`));
+        run(() => selectChip(uuid, col.key, value, ch));
         return;
     }
     if (target.closest(".lt-expanded")) return;
@@ -917,7 +916,8 @@ body.addEventListener("click", (e) => {
 });
 
 // ---------------------------------------------------------------------------
-// A clicked cell: selected, with a menu (filter by it, hide it, edit, copy)
+// A clicked cell or chip: selected, with a menu (filter by it, hide it, edit,
+// copy; a tag can also be split or removed)
 // ---------------------------------------------------------------------------
 
 /** How long a click waits for a second one (a double-click edits), in ms. */
@@ -942,7 +942,83 @@ function closeCellMenu(): void {
 function deselectCell(): void {
     closeCellMenu();
     selectedCell = null;
-    for (const c of body.querySelectorAll(".lt-cell-selected")) c.classList.remove("lt-cell-selected");
+    for (const c of body.querySelectorAll(".lt-cell-selected, .lt-chip-selected")) c.classList.remove("lt-cell-selected", "lt-chip-selected");
+}
+
+type MenuItem = [label: string, run: () => void];
+
+/** A menu under (or above) an item in a row, at left (px from the row's left). */
+function openMenu(row: HTMLElement, left: number, label: string, items: MenuItem[]): void {
+    if (!items.length) return;
+    const buttons = items.map(([text, run]) => {
+        const btn = el("button", { type: "button", className: "lt-menu-item", role: "menuitem", title: text }, text);
+        btn.addEventListener("click", () => {
+            deselectCell();
+            run();
+        });
+        return btn;
+    });
+    const menu = el("div", { className: "lt-cell-menu", role: "menu", ariaLabel: label }, ...buttons);
+    menu.style.left = `${left}px`;
+    row.classList.add("lt-row-open");
+    row.append(menu);
+    cellMenu = menu;
+    // Up, if it would go past the bottom of the table.
+    if (menu.getBoundingClientRect().bottom > scroller.getBoundingClientRect().bottom) menu.classList.add("lt-menu-up");
+}
+
+const copyItem = (text: string): MenuItem => [
+    "Copy",
+    () => {
+        navigator.clipboard?.writeText(text).then(
+            () => say("Copied.", "ok"),
+            () => say("Couldn't copy: the browser didn't allow it.", "error"),
+        );
+    },
+];
+
+/** The row drawn for a book, if it's on screen. */
+const rowOnScreen = (uuid: string): HTMLElement | undefined => [...body.querySelectorAll<HTMLElement>(".lt-row")].find((x) => x.dataset["uuid"] === uuid);
+
+/** Edit the book's cell for key (with item picked out), if it's on screen. */
+function editCell(uuid: string, key: ColKey, item?: string): void {
+    const c = rowOnScreen(uuid)?.querySelector<HTMLElement>(`.lt-editable[data-col="${key}"]`);
+    if (c) startEdit(c, item);
+}
+
+/** A clicked tag, language or format (in the row or its "+N" panel): its own menu. */
+function selectChip(uuid: string, key: ColKey, value: string, chipEl: HTMLElement): void {
+    deselectCell();
+    if (!chipEl.isConnected) {
+        // Redrawn since the click: the same chip in the new row (or, if it's
+        // one the "+N" hides, its cell).
+        const cell = rowOnScreen(uuid)?.querySelector<HTMLElement>(`.lt-cell[data-col="${key}"]`);
+        const again = [...(cell?.querySelectorAll<HTMLElement>(".lt-chip") ?? [])].find((c) => c.dataset["value"] === value);
+        const found = again && !again.hidden ? again : cell;
+        if (!found) return;
+        chipEl = found;
+    }
+    const row = chipEl.closest<HTMLElement>(".lt-row");
+    const r = rows.find((x) => x.b.uuid === uuid);
+    const col = COLUMNS.find((c) => c.key === key);
+    if (!row || !r || !col) return;
+    selectedCell = { uuid, col: key };
+    chipEl.classList.add("lt-chip-selected");
+    const name = shortText(key === "languages" ? languageChipLabel(value) : value);
+    const items: MenuItem[] = [];
+    // | separates alternatives in a filter.
+    if (!value.includes("|")) {
+        items.push([`Only books with “${name}”`, () => setFilter(key, `=${value}`)]);
+        items.push([`Hide books with “${name}”`, () => setFilter(key, `!=${value}`)]);
+    }
+    if (col.edit) items.push([`Edit “${name}”… (double-click)`, () => editCell(uuid, key, value)]);
+    if (key === "tags") {
+        items.push([`Split “${name}”…`, () => openSplitDialog({ uuid, tag: value })]);
+        items.push(["Remove from this book", () => void removeTag(uuid, value)]);
+    }
+    items.push(copyItem(value));
+    const left = chipEl.getBoundingClientRect().left - row.getBoundingClientRect().left;
+    openMenu(row, left, `${col.label}: ${value}, of “${r.b.title}”`, items);
 }
 
 const shortText = (s: string): string => (s.length > 40 ? `${s.slice(0, 39)}…` : s);
@@ -961,54 +1037,28 @@ function selectCell(uuid: string, key: ColKey): void {
     const b = r.b;
     const text = col.text(b);
     const blank = col.blank(b);
-    const items: HTMLButtonElement[] = [];
-    const item = (label: string, run: () => void): void => {
-        const btn = el("button", { type: "button", className: "lt-menu-item", role: "menuitem", title: label }, label);
-        btn.addEventListener("click", () => {
-            deselectCell();
-            run();
-        });
-        items.push(btn);
-    };
-    // A list's values are filtered by clicking them; | separates alternatives in a filter.
+    const items: MenuItem[] = [];
+    // A list's values have their own menus (click one); | separates alternatives in a filter.
     if (!col.list && !blank && !text.includes("|")) {
         // A series: every book in it, whatever its number.
         const value = col.key === "series" ? b.series : text;
         const exact = col.key === "series" ? value : `=${value}`;
-        item(`Only “${shortText(value)}”`, () => setFilter(key, exact));
-        item(`Hide “${shortText(value)}”`, () => setFilter(key, col.key === "series" ? `!${value}` : `!${exact}`));
+        items.push([`Only “${shortText(value)}”`, () => setFilter(key, exact)]);
+        items.push([`Hide “${shortText(value)}”`, () => setFilter(key, col.key === "series" ? `!${value}` : `!${exact}`)]);
     }
     if (blank) {
-        item(`Only books with no ${col.label.toLowerCase()}`, () => {
-            blankOnly.add(key);
-            blankBoxes.get(key)!.checked = true;
-            refresh();
-        });
+        items.push([
+            `Only books with no ${col.label.toLowerCase()}`,
+            () => {
+                blankOnly.add(key);
+                blankBoxes.get(key)!.checked = true;
+                refresh();
+            },
+        ]);
     }
-    if (col.edit) {
-        item(blank && !text ? "Add… (double-click)" : "Edit… (double-click)", () => {
-            const c = [...body.querySelectorAll<HTMLElement>(".lt-row")]
-                .find((x) => x.dataset["uuid"] === uuid)
-                ?.querySelector<HTMLElement>(`.lt-editable[data-col="${key}"]`);
-            if (c) startEdit(c);
-        });
-    }
-    if (text) {
-        item("Copy", () => {
-            navigator.clipboard?.writeText(text).then(
-                () => say("Copied.", "ok"),
-                () => say("Couldn't copy: the browser didn't allow it.", "error"),
-            );
-        });
-    }
-    if (!items.length) return;
-    const menu = el("div", { className: "lt-cell-menu", role: "menu", ariaLabel: `${col.label} of “${b.title}”` }, ...items);
-    menu.style.left = `${cell.offsetLeft}px`;
-    row.classList.add("lt-row-open");
-    row.append(menu);
-    cellMenu = menu;
-    // Up, if it would go past the bottom of the table.
-    if (menu.getBoundingClientRect().bottom > scroller.getBoundingClientRect().bottom) menu.classList.add("lt-menu-up");
+    if (col.edit) items.push([blank && !text ? "Add… (double-click)" : "Edit… (double-click)", () => editCell(uuid, key)]);
+    if (text) items.push(copyItem(text));
+    openMenu(row, cell.offsetLeft, `${col.label} of “${b.title}”`, items);
 }
 
 document.addEventListener("click", (e) => {
@@ -1200,6 +1250,17 @@ async function putTagBack(uuid: string, tag: string): Promise<void> {
     if (!r) return;
     const changes = await tagEdit([r.b], { add_tags: [tag] }, false);
     if (changes) say(`Put “${tag}” back on “${r.b.title}”.`, "ok");
+}
+
+/** Split one of a book's tags on sep, with Undo. */
+async function splitTag(uuid: string, tag: string, sep: string): Promise<void> {
+    const r = rows.find((x) => x.b.uuid === uuid);
+    if (!r) return;
+    const parts = splitParts(tag, sep, r.b.tags.filter((t) => t !== tag));
+    const edit: BulkEdit = { remove_tags: [tag] };
+    if (parts.length) edit.add_tags = parts;
+    const changes = await tagEdit([r.b], edit, false);
+    if (changes?.length) offerUndo(`Split “${tag}” into ${plural(parts.length, "tag")}.`, () => undoTags(changes, false));
 }
 
 /** Split the selected books' tags on sep, with Undo. */
@@ -1536,9 +1597,36 @@ const splitSummary = byId("split-summary");
 const splitApply = byId("split-apply", HTMLButtonElement);
 closeOnBackdropClick(splitDialog);
 let lastSep = SPLIT_SEP;
+/** Splitting one book's tag (its chip's menu), not the selected books' tags. */
+let splitOne: { uuid: string; tag: string } | null = null;
+/** What a tag is likely glued together with: the dialog's first guess for it. */
+const LIKELY_SEPS = [";", " -- ", "/", "|", " - ", "&", ":", "."];
+
+/** The tags a tag split on sep makes: trimmed, not empty, none twice or that the book has. */
+function splitParts(tag: string, sep: string, has: string[]): string[] {
+    const out: string[] = [];
+    for (const p of tag.split(sep).map((x) => x.trim())) {
+        if (p && ![...has, ...out].some((t) => sameTag(t, p))) out.push(p);
+    }
+    return out;
+}
 
 function splitPreview(): void {
     const sep = splitSepInput.value;
+    if (splitOne) {
+        const { uuid, tag } = splitOne;
+        const has = rows.find((r) => r.b.uuid === uuid)?.b.tags.filter((t) => t !== tag) ?? [];
+        const parts = sep ? splitParts(tag, sep, has) : [];
+        splitSummary.textContent = !sep
+            ? "Type the separator."
+            : !tag.includes(sep)
+              ? `“${tag}” has no “${sep}” in it.`
+              : parts.length
+                ? `Becomes ${parts.map((t) => `“${t}”`).join(", ")}.`
+                : "The book has every part already: the tag just goes.";
+        splitApply.disabled = !sep || !tag.includes(sep);
+        return;
+    }
     const books = sep ? selectedBooks().filter((b) => b.tags.some((t) => t.includes(sep))) : [];
     const tags = [...new Set(books.flatMap((b) => b.tags.filter((t) => t.includes(sep))))];
     splitSummary.textContent = !sep
@@ -1549,8 +1637,13 @@ function splitPreview(): void {
     splitApply.disabled = books.length === 0;
 }
 
-function openSplitDialog(): void {
-    splitSepInput.value = lastSep;
+function openSplitDialog(one: { uuid: string; tag: string } | null = null): void {
+    splitOne = one;
+    byId("split-title").textContent = one ? `Split “${shortText(one.tag)}”` : "Split tags";
+    byId("split-hint").textContent = one
+        ? "This book's tag becomes the tags it lists. Parts the book already has are left out. Undo puts it back."
+        : "Each tag holding the separator becomes the tags it lists. Parts a book already has are left out. Undo puts the tags back.";
+    splitSepInput.value = one ? (LIKELY_SEPS.find((x) => one.tag.includes(x)) ?? lastSep) : lastSep;
     splitPreview();
     splitDialog.showModal();
     splitSepInput.select();
@@ -1563,7 +1656,8 @@ splitForm.addEventListener("submit", (e) => {
     if (!sep || splitApply.disabled) return;
     lastSep = sep;
     splitDialog.close();
-    void splitTags(sep);
+    if (splitOne) void splitTag(splitOne.uuid, splitOne.tag, sep);
+    else void splitTags(sep);
 });
 onlySelectedBox.addEventListener("change", () => {
     onlySelected = onlySelectedBox.checked;
@@ -1689,7 +1783,11 @@ async function reloadRows(): Promise<void> {
     let stale = false;
     try {
         const data = await api<TableData>("GET", "/api/library/table");
-        if (editing || modalOpen()) return;
+        if (editing || modalOpen() || cellMenu) {
+            // Redrawing would close what's open: next time.
+            reloadedAt = 0;
+            return;
+        }
         if (gen !== changedHere) {
             stale = true;
             return;

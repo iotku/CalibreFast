@@ -64,7 +64,7 @@
                     <li>a dashed format is a file in the book's folder that metadata.db doesn't list (Calibre won't show it); <code>folder</code> in Formats finds them</li>
                     <li>the tick box beside a column's name: only books with nothing there, or the default a book gets when nothing was known (author or title <code>Unknown</code>, language <code>und</code>)</li>
                 </ul>
-                <p>Click a cell for its options: show only books with that, hide them, edit, copy. Click a tag, language or format to filter by it; <strong>+N</strong> shows the ones that don't fit. Double-click a title, author, series, publisher, date, tags or languages to edit it there (tags and languages also have a ✎ button before them; double-click a tag or language to edit that one) (Enter saves, Esc cancels); a series' number goes in brackets: <code>Dune [2]</code>. Shift-click ticks a range. A tag's ✕ removes it from that book at once; Undo brings it back.</p>
+                <p>Click a cell for its options: show only books with that, hide them, edit, copy. Click a tag, language or format for its own: only or hide books with it, edit it, split a tag; <strong>+N</strong> shows the ones that don't fit. Double-click a title, author, series, publisher, date, tags or languages to edit it there (tags and languages also have a ✎ button before them; double-click a tag or language to edit that one) (Enter saves, Esc cancels); a series' number goes in brackets: <code>Dune [2]</code>. Shift-click ticks a range. A tag's ✕ removes it from that book at once; Undo brings it back.</p>
                 <p>Drag the edge of a column's name to resize it; double-click the edge for its usual width.</p>
             </div>
         </details>
@@ -130,7 +130,7 @@
 <dialog id="split-dialog" class="lt-dialog lt-dialog-small" aria-labelledby="split-title">
     <form id="split-form" method="dialog">
         <h2 id="split-title">Split tags</h2>
-        <p class="lt-hint">Each tag holding the separator becomes the tags it lists. Parts a book already has are left out. Undo puts the tags back.</p>
+        <p id="split-hint" class="lt-hint">Each tag holding the separator becomes the tags it lists. Parts a book already has are left out. Undo puts the tags back.</p>
         <label class="lt-field">Separator <input id="split-sep" autocomplete="off" spellcheck="false" maxlength="10" value=";"></label>
         <p id="split-summary" class="lt-hint lt-split-summary" aria-live="polite"></p>
         <div class="lt-dialog-actions">
