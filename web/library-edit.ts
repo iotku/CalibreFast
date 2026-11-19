@@ -1153,8 +1153,12 @@ function deselectCell(): void {
 
 type MenuItem = [label: string, run: () => void];
 
-/** A menu under (or above) an item in a row, at left (px from the row's left). */
-function openMenu(row: HTMLElement, left: number, label: string, items: MenuItem[], key: string): void {
+/**
+ * A menu under (or above) an item in a row, at left (px from the row's left);
+ * with below, under (or above) that element instead of the row (a tag on a
+ * lower line of the "+N" panel).
+ */
+function openMenu(row: HTMLElement, left: number, label: string, items: MenuItem[], key: string, below?: HTMLElement): void {
     if (!items.length) return;
     const buttons = items.map(([text, run]) => {
         const btn = el("button", { type: "button", className: "lt-menu-item", role: "menuitem", title: text }, text);
@@ -1170,8 +1174,17 @@ function openMenu(row: HTMLElement, left: number, label: string, items: MenuItem
     row.append(menu);
     cellMenu = menu;
     menuFor = key;
+    const rowBox = row.getBoundingClientRect();
+    const anchor = below?.getBoundingClientRect();
+    if (anchor) menu.style.top = `${anchor.bottom - rowBox.top + 2}px`;
     // Up, if it would go past the bottom of the table.
-    if (menu.getBoundingClientRect().bottom > scroller.getBoundingClientRect().bottom) menu.classList.add("lt-menu-up");
+    if (menu.getBoundingClientRect().bottom > scroller.getBoundingClientRect().bottom) {
+        menu.classList.add("lt-menu-up");
+        if (anchor) {
+            menu.style.top = "auto";
+            menu.style.bottom = `${rowBox.bottom - anchor.top + 2}px`;
+        }
+    }
 }
 
 const copyItem = (text: string): MenuItem => [
@@ -1220,7 +1233,8 @@ function selectChip(uuid: string, key: ColKey, value: string, chipEl: HTMLElemen
     }
     items.push(copyItem(value));
     const left = chipEl.getBoundingClientRect().left - row.getBoundingClientRect().left;
-    openMenu(row, left, `${col.label}: ${value}, of “${r.b.title}”`, items, menuKey(uuid, key, value));
+    const inPanel = expanded?.contains(chipEl) ? chipEl : undefined;
+    openMenu(row, left, `${col.label}: ${value}, of “${r.b.title}”`, items, menuKey(uuid, key, value), inPanel);
 }
 
 const shortText = (s: string): string => (s.length > 40 ? `${s.slice(0, 39)}…` : s);
