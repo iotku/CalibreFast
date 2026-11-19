@@ -66,7 +66,7 @@ func TestWatchFolderTakesFinishedBooks(t *testing.T) {
 	if n := w.scan(); n != 0 || w.inbox.count() != 0 {
 		t.Fatalf("first scan took %d book(s)", n)
 	}
-	if waiting, _, _ := w.status(); waiting != 4 {
+	if waiting, _, _, _ := w.status(); waiting != 4 {
 		t.Errorf("waiting = %d, want 4 book files", waiting)
 	}
 	if n := w.scan(); n != 2 {
@@ -463,7 +463,7 @@ func TestWatchFolderRunFollowsEvents(t *testing.T) {
 				return
 			}
 		}
-		_, problem, polling := w.status()
+		_, _, problem, polling := w.status()
 		t.Fatalf("%d book(s) in the queue, want %d (polling=%v, problem=%q)", w.inbox.count(), want, polling, problem)
 	}
 	writeTestFile(t, filepath.Join(dir, "First.epub"), importTestEPUB(t))
@@ -471,7 +471,7 @@ func TestWatchFolderRunFollowsEvents(t *testing.T) {
 	// A folder made later is watched too.
 	writeTestFile(t, filepath.Join(dir, "later", "Second.epub"), importTestEPUB(t))
 	wait(2)
-	if _, _, polling := w.status(); polling {
+	if _, _, _, polling := w.status(); polling {
 		t.Error("fell back to polling on a system that can watch folders")
 	}
 }
@@ -483,10 +483,10 @@ func TestWatchFolderForcePolling(t *testing.T) {
 	writeTestFile(t, filepath.Join(dir, "Book.epub"), importTestEPUB(t))
 	go w.run()
 	for deadline := time.Now().Add(5 * time.Second); time.Now().Before(deadline); time.Sleep(20 * time.Millisecond) {
-		if _, _, polling := w.status(); polling {
+		if _, _, _, polling := w.status(); polling {
 			// Only the first scan has run; the next is a poll interval away.
 			time.Sleep(100 * time.Millisecond)
-			if waiting, _, _ := w.status(); waiting != 1 || w.inbox.count() != 0 {
+			if waiting, _, _, _ := w.status(); waiting != 1 || w.inbox.count() != 0 {
 				t.Errorf("after the first poll: %d waiting, %d taken", waiting, w.inbox.count())
 			}
 			return

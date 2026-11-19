@@ -15,8 +15,10 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"slices"
 	"strconv"
 	"strings"
+	"sync"
 
 	"github.com/iotku/CalibreFast/pkg/filehash"
 	"github.com/iotku/CalibreFast/pkg/isbn"
@@ -365,50 +367,159 @@ func libraryBookDuplicates(db *sql.DB, libDir, uuid string) (*duplicateCheck, er
 	return findDuplicates(db, libDir, title, authors, files, uuid)
 }
 
-// duplicates is findDuplicates for a waiting book as its files say it is,
-// for the queue's list: each book is checked once, when it's first listed,
-// and the result kept while it waits. The check reads metadata.db and may
-// hash files, too slow to repeat for every book in the queue whenever the
-// library changes (a mass import changes it with every book it adds).
-// Adding a book checks it again (approve), and its review page checks it
-// afresh (recheckDuplicates), so a result gone stale never lets a duplicate
-// in: the list may only show a book as new that adding would stop.
-func (b *importInbox) duplicates(it *pendingImport) *duplicateCheck {
-	if c, ok := b.cachedDuplicates(it); ok {
-		return c
+// titleKey is a title as findDuplicatesISBN matches it in SQL: spaces
+// trimmed (trim) and ASCII letters' case aside (COLLATE NOCASE). title is
+// already whitespace-collapsed by the caller where it is the one checked.
+func titleKey(title string) string {
+	b := []byte(strings.Trim(title, " "))
+	for i, c := range b {
+		if 'A' <= c && c <= 'Z' {
+			b[i] = c + ('a' - 'A')
+		}
 	}
-	return b.recheckDuplicates(it)
+	return string(b)
 }
 
-// recheckDuplicates is duplicates against the library as it is now, kept
-// for the list.
+// dupIndex finds library books by title in the catalog the server already
+// holds in memory, so checking the queue's books doesn't scan metadata.db's
+// books table once per book over its single connection. Nothing on disk is
+// read to build it.
+type dupIndex struct {
+	cat     *catalog
+	byTitle map[string][]int32 // titleKey -> slots in cat.books
+}
+
+var dupIndexCache struct {
+	sync.Mutex
+	idx *dupIndex
+}
+
+// currentDupIndex is the index of the current catalog, built again when
+// the catalog has changed; nil when there is no catalog yet.
+func currentDupIndex() *dupIndex {
+	cat := libraryCatalog.Load()
+	if cat == nil {
+		return nil
+	}
+	dupIndexCache.Lock()
+	defer dupIndexCache.Unlock()
+	if idx := dupIndexCache.idx; idx != nil && idx.cat == cat {
+		return idx
+	}
+	idx := &dupIndex{cat: cat, byTitle: make(map[string][]int32, len(cat.books))}
+	for i := range cat.books {
+		if b := &cat.books[i]; !b.Removed && b.UUID != "" {
+			k := titleKey(b.Title)
+			idx.byTitle[k] = append(idx.byTitle[k], int32(i))
+		}
+	}
+	dupIndexCache.idx = idx
+	return idx
+}
+
+// find is findDuplicates (without ISBNs or an excluded book) from the
+// index. Only the candidates' file lists come from metadata.db (by book
+// id), and only their files of the same format and size are hashed.
+func (x *dupIndex) find(libDir, title string, authors []string, files []dupFile) (*duplicateCheck, error) {
+	check := &duplicateCheck{Books: []duplicateBook{}}
+	title = strings.Join(strings.Fields(title), " ")
+	if title == "" {
+		return check, nil
+	}
+	for _, i := range x.byTitle[titleKey(title)] {
+		b := &x.cat.books[i]
+		names := make([]string, 0, len(b.AuthorIDs))
+		for _, id := range b.AuthorIDs {
+			names = append(names, x.cat.authorNames[id])
+		}
+		d := duplicateBook{UUID: b.UUID, Title: b.Title, Authors: names, SameAuthors: sameNames(names, authors)}
+		var err error
+		if d.SameFiles, err = sameFiles(calibreDB, libDir, b.ID, b.Path, files); err != nil {
+			return nil, err
+		}
+		d.SameFile = len(d.SameFiles) > 0
+		if d.SameAuthors || d.SameFile {
+			for _, f := range b.Formats {
+				d.Formats = append(d.Formats, strings.ToUpper(f))
+			}
+			slices.Sort(d.Formats)
+			check.Books = append(check.Books, d)
+		}
+	}
+	return check, nil
+}
+
+// dupResult is a waiting book's check for the queue's list, and the
+// catalog it was made against.
+type dupResult struct {
+	check *duplicateCheck
+	cat   *catalog
+}
+
+// duplicates is findDuplicates for a waiting book as its files say it is,
+// for the queue's list, kept while it waits. It is checked against the
+// in-memory catalog (dupIndex), and again in the background whenever the
+// catalog changes, the old result shown meanwhile. Adding a book checks it
+// against metadata.db (approve), and its review page does too
+// (recheckDuplicates), so a result a moment stale never lets a duplicate
+// in: the list may only show a book as new that adding would stop.
+func (b *importInbox) duplicates(it *pendingImport) *duplicateCheck {
+	if c, ok, stale := b.cachedDuplicates(it); ok && !stale {
+		return c
+	}
+	idx := currentDupIndex()
+	if idx == nil { // no catalog yet (or in tests): metadata.db
+		return b.recheckDuplicates(it)
+	}
+	check, err := idx.find(baseDir, it.Merged.Title, it.Merged.Creators, b.dupFiles(it))
+	if err != nil {
+		logErr(err, "imports: duplicate check for "+it.ID)
+		return nil
+	}
+	b.keepDuplicates(it.ID, check, idx.cat)
+	return check
+}
+
+// recheckDuplicates is duplicates against metadata.db as it is now (the
+// review page's), kept for the list.
 func (b *importInbox) recheckDuplicates(it *pendingImport) *duplicateCheck {
+	cat := libraryCatalog.Load()
 	check, err := findDuplicates(calibreDB, baseDir, it.Merged.Title, it.Merged.Creators, b.dupFiles(it), "")
 	if err != nil {
 		logErr(err, "imports: duplicate check for "+it.ID)
 		return nil
 	}
-	b.dupMu.Lock()
-	if b.dups == nil {
-		b.dups = map[string]*duplicateCheck{}
-	}
-	b.dups[it.ID] = check
-	b.dupMu.Unlock()
+	b.keepDuplicates(it.ID, check, cat)
 	return check
 }
 
-// cachedDuplicates is duplicates without checking: ok is false when the
-// book hasn't been checked yet.
-func (b *importInbox) cachedDuplicates(it *pendingImport) (*duplicateCheck, bool) {
+func (b *importInbox) keepDuplicates(id string, check *duplicateCheck, cat *catalog) {
+	if b.get(id) == nil {
+		return // added or discarded meanwhile
+	}
 	b.dupMu.Lock()
-	defer b.dupMu.Unlock()
-	c, ok := b.dups[it.ID]
-	return c, ok
+	if b.dups == nil {
+		b.dups = map[string]dupResult{}
+	}
+	b.dups[id] = dupResult{check, cat}
+	b.dupMu.Unlock()
 }
 
-// checkDuplicatesSoon has the waiting books not checked yet checked in the background, one at a time, so the queue's list can
-// answer at once and show each result on a later poll. Calls while a run is
-// going on leave it to that run, which looks again before it stops.
+// cachedDuplicates is duplicates without checking: ok is false when the
+// book hasn't been checked yet, stale true when the library has changed
+// since (the result is still the best there is to show).
+func (b *importInbox) cachedDuplicates(it *pendingImport) (check *duplicateCheck, ok, stale bool) {
+	b.dupMu.Lock()
+	defer b.dupMu.Unlock()
+	r, ok := b.dups[it.ID]
+	return r.check, ok, ok && r.cat != libraryCatalog.Load()
+}
+
+// checkDuplicatesSoon has the waiting books not checked yet, or checked
+// before the library last changed, checked in the background, one at a
+// time, so the queue's list can answer at once and show each result on a
+// later poll. Calls while a run is going on leave it to that run, which
+// looks again before it stops.
 func (b *importInbox) checkDuplicatesSoon() {
 	b.dupMu.Lock()
 	if b.dupRunning {
@@ -424,7 +535,7 @@ func (b *importInbox) checkDuplicatesSoon() {
 				if it.Into != "" {
 					continue // reviewed against its library book, not checked
 				}
-				if _, ok := b.cachedDuplicates(it); !ok && b.get(it.ID) != nil {
+				if _, ok, stale := b.cachedDuplicates(it); (!ok || stale) && b.get(it.ID) != nil {
 					b.duplicates(it)
 				}
 			}

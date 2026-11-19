@@ -224,6 +224,8 @@ export interface ImportQueue {
     polling?: boolean;
     /** Files in the watch folder not taken yet (still being copied, or just seen). */
     settling: number;
+    /** Books being taken into the queue right now. */
+    staging: number;
     problem?: string;
     items: ImportSummary[];
 }

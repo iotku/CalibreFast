@@ -67,11 +67,51 @@ func extractImportCover(dir string, files []importFile) bool {
 	return false
 }
 
-// backfillImportCovers gives books already waiting (staged before covers
-// were taken from their files) a cover, one at a time.
-func backfillImportCovers(b *importInbox) {
-	for _, it := range b.list() {
-		extractImportCover(b.itemDir(it.ID), it.Files)
+// startCoverWorker takes the covers of books coverSoon is given from their
+// files, one at a time, in the background: a staged book is listed at once,
+// and its cover shows on a later poll.
+func (b *importInbox) startCoverWorker() {
+	b.coverMu.Lock()
+	b.coverWake = make(chan struct{}, 1)
+	wake := b.coverWake
+	b.coverMu.Unlock()
+	go func() {
+		for range wake {
+			for {
+				b.coverMu.Lock()
+				if len(b.coverIDs) == 0 {
+					b.coverMu.Unlock()
+					break
+				}
+				id := b.coverIDs[0]
+				b.coverIDs = b.coverIDs[1:]
+				b.coverMu.Unlock()
+				if it := b.get(id); it != nil { // not added or discarded meanwhile
+					extractImportCover(b.itemDir(id), it.Files)
+				}
+			}
+		}
+	}()
+}
+
+// coverSoon has the waiting book id given its files' cover, in the
+// background when the worker runs, else at once.
+func (b *importInbox) coverSoon(id string) {
+	b.coverMu.Lock()
+	wake := b.coverWake
+	if wake != nil {
+		b.coverIDs = append(b.coverIDs, id)
+	}
+	b.coverMu.Unlock()
+	if wake == nil {
+		if it := b.get(id); it != nil {
+			extractImportCover(b.itemDir(id), it.Files)
+		}
+		return
+	}
+	select {
+	case wake <- struct{}{}:
+	default: // already woken: it looks at coverIDs before sleeping
 	}
 }
 

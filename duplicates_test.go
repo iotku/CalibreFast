@@ -284,7 +284,7 @@ func TestImportQueueChecksDuplicatesInTheBackground(t *testing.T) {
 	}
 	it := w.inbox.list()[0]
 	for deadline := time.Now().Add(10 * time.Second); ; time.Sleep(10 * time.Millisecond) {
-		if _, ok := w.inbox.cachedDuplicates(it); ok {
+		if _, ok, _ := w.inbox.cachedDuplicates(it); ok {
 			break
 		}
 		if time.Now().After(deadline) {
@@ -295,17 +295,30 @@ func TestImportQueueChecksDuplicatesInTheBackground(t *testing.T) {
 		t.Errorf("after the check: checking %v, duplicate %+v", s.Checking, s.Duplicate)
 	}
 
-	// The library changing (a mass import adds a book) doesn't have every
-	// waiting book checked again: the list keeps its result.
-	checked, _ := w.inbox.cachedDuplicates(it)
-	catalogChanged("")
+	// The library changing (a mass import adds a book): the list keeps
+	// showing the result, not "checking", while it's checked again.
+	checked, _, _ := w.inbox.cachedDuplicates(it)
+	libraryCatalog.Store(newCatalog())
+	t.Cleanup(func() { libraryCatalog.Store(nil) })
+	if _, _, stale := w.inbox.cachedDuplicates(it); !stale {
+		t.Error("not stale after a library change")
+	}
 	if s := list(); s.Checking || !s.Duplicate.found() {
 		t.Errorf("after a library change: checking %v, duplicate %+v", s.Checking, s.Duplicate)
 	}
-	if c, _ := w.inbox.cachedDuplicates(it); c != checked {
-		t.Error("checked again after a library change")
+	for deadline := time.Now().Add(10 * time.Second); ; time.Sleep(10 * time.Millisecond) {
+		if c, _, stale := w.inbox.cachedDuplicates(it); !stale {
+			if c == checked {
+				t.Error("not checked again")
+			}
+			break
+		}
+		if time.Now().After(deadline) {
+			t.Fatal("the background recheck never finished")
+		}
 	}
 	// Its review page checks afresh.
+	libraryCatalog.Store(nil)
 	if c := w.inbox.recheckDuplicates(it); c == checked || !c.found() {
 		t.Errorf("recheck: %+v", c)
 	}

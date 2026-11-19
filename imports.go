@@ -27,6 +27,7 @@ import (
 	"net/http"
 	"os"
 	"path/filepath"
+	"runtime"
 	"slices"
 	"strings"
 	"sync"
@@ -50,6 +51,14 @@ var (
 	imports *importInbox
 	// watcher scans watchDir; nil when nothing is watched.
 	watcher *folderWatcher
+	// importWorkers is -import-workers: how many books a scan stages at
+	// once (reading their metadata is CPU work). Never more than the CPU
+	// threads (startImports).
+	importWorkers = min(runtime.NumCPU(), 8)
+	// stageIO bounds the file moves (a full copy where the watch folder is
+	// on another file system) going on at once, so parallel staging doesn't
+	// have a hard disk seeking between many large files.
+	stageIO = make(chan struct{}, 2)
 )
 
 const (
@@ -98,10 +107,14 @@ type importInbox struct {
 	mu    sync.Mutex
 	items map[string]*pendingImport
 
+	coverMu   sync.Mutex
+	coverIDs  []string      // waiting for extractImportCover (coverSoon)
+	coverWake chan struct{} // nil: no cover worker (tests), covers are taken at once
+
 	dupMu      sync.Mutex
-	dups       map[string]*duplicateCheck // duplicates, by id: checked once while it waits
-	dupRunning bool                       // checkDuplicatesSoon is at work
-	dupAgain   bool                       // and should look again when done
+	dups       map[string]dupResult // duplicates, by id: the list's last check
+	dupRunning bool                 // checkDuplicatesSoon is at work
+	dupAgain   bool                 // and should look again when done
 }
 
 // openInbox opens (creating if needed) the queue in dir and loads the books
@@ -210,7 +223,16 @@ func (b *importInbox) put(it *pendingImport) {
 // stage moves the files at paths (the formats of one book) into the queue
 // and reads their metadata. from is the folder they came from, for display.
 // If it fails, the files are back where they were.
+//
+// Its cover is taken from its files in the background (coverSoon), so the
+// book is listed without waiting for that.
 func (b *importInbox) stage(paths []string, from, into string) (*pendingImport, error) {
+	return b.stageFiles(paths, from, into, false)
+}
+
+// stageFiles is stage; coverNow takes the cover from the files before it
+// returns.
+func (b *importInbox) stageFiles(paths []string, from, into string, coverNow bool) (*pendingImport, error) {
 	if len(paths) == 0 {
 		return nil, errors.New("no files")
 	}
@@ -238,7 +260,10 @@ func (b *importInbox) stage(paths []string, from, into string) (*pendingImport, 
 	for _, p := range paths {
 		name := filepath.Base(p)
 		dest := filepath.Join(dir, name)
-		if err := moveFile(p, dest); err != nil {
+		stageIO <- struct{}{}
+		err := moveFile(p, dest)
+		<-stageIO
+		if err != nil {
 			return fail(fmt.Errorf("moving %s: %w", p, err))
 		}
 		moved = append(moved, move{p, dest})
@@ -262,15 +287,21 @@ func (b *importInbox) stage(paths []string, from, into string) (*pendingImport, 
 	}
 	// Its cover from its files, if one can be had without a browser
 	// (import_covers.go); else the review page picks one.
-	extractImportCover(dir, it.Files)
+	if coverNow {
+		extractImportCover(dir, it.Files)
+	}
 	b.put(it)
+	if !coverNow {
+		b.coverSoon(it.ID)
+	}
 	return it, nil
 }
 
 // stageForPlaceholder queues files for placeholder p: what p says is the
-// starting metadata, and p's cover is the book's unless the files have one.
+// starting metadata, and p's cover is the book's unless the files have one
+// (so theirs is taken first, not in the background).
 func (b *importInbox) stageForPlaceholder(paths []string, p *placeholder) (*pendingImport, error) {
-	it, err := b.stage(paths, "", "")
+	it, err := b.stageFiles(paths, "", "", true)
 	if err != nil {
 		return nil, err
 	}
@@ -398,6 +429,7 @@ type folderWatcher struct {
 	dirs     []string             // the folder and its subfolders, as of the last scan
 	waiting  int                  // book files seen but not taken yet
 	settling int                  // those of them a later scan may take without anything changing
+	staging  int                  // books a scan is taking in right now
 	lastErr  string               // why the last scan failed or left a file behind
 	polling  bool                 // scanning on a timer: the OS isn't reporting changes
 }
@@ -464,9 +496,11 @@ func (w *folderWatcher) scan() int {
 		w.note(fmt.Sprintf("can't read the watch folder: %v", err))
 		return 0
 	}
-	scanErr := ""
-
-	taken := 0
+	// What's finished is staged with w.mu released, so the queue's page
+	// (status) never waits on a batch being taken in, and several books are
+	// staged at once (stageAll). Only this goroutine scans, so nothing else
+	// changes seen or failed meanwhile.
+	var jobs []stageJob
 	for _, key := range order {
 		paths := groups[key]
 		finished := true
@@ -494,19 +528,27 @@ func (w *folderWatcher) scan() int {
 		if from == "." {
 			from = ""
 		}
-		it, err := w.inbox.stage(take, from, "")
-		if err != nil {
-			scanErr = fmt.Sprintf("couldn't take %s: %v", take[0], err)
-			for _, p := range take {
+		jobs = append(jobs, stageJob{take, from})
+	}
+	w.staging = len(jobs)
+	w.mu.Unlock()
+	errs := w.stageAll(jobs)
+	w.mu.Lock()
+
+	scanErr := ""
+	taken := 0
+	for i, j := range jobs {
+		if errs[i] != nil {
+			scanErr = fmt.Sprintf("couldn't take %s: %v", j.paths[0], errs[i])
+			for _, p := range j.paths {
 				w.failed[p] = now[p].fileStamp
 			}
 			continue
 		}
-		for _, p := range take {
+		for _, p := range j.paths {
 			delete(now, p)
 		}
 		taken++
-		log.Printf("watch folder: %q is waiting for review (%d file(s), /import/%s)", it.Merged.Title, len(it.Files), it.ID)
 	}
 
 	for p := range w.failed {
@@ -528,6 +570,40 @@ func (w *folderWatcher) scan() int {
 	w.seen, w.dirs, w.waiting, w.settling = now, dirs, len(now), settling
 	w.note(scanErr)
 	return taken
+}
+
+// stageJob is one book a scan takes: its files, and the folder they're in.
+type stageJob struct {
+	paths []string
+	from  string
+}
+
+// stageAll stages jobs, importWorkers at a time, each book joining the
+// queue (and its list) as soon as it's in. errs[i] is jobs[i]'s.
+func (w *folderWatcher) stageAll(jobs []stageJob) (errs []error) {
+	errs = make([]error, len(jobs))
+	next := make(chan int)
+	var wg sync.WaitGroup
+	for range max(1, min(importWorkers, len(jobs))) {
+		wg.Go(func() {
+			for i := range next {
+				it, err := w.inbox.stage(jobs[i].paths, jobs[i].from, "")
+				errs[i] = err
+				if err == nil {
+					log.Printf("watch folder: %q is waiting for review (%d file(s), /import/%s)", it.Merged.Title, len(it.Files), it.ID)
+				}
+				w.mu.Lock()
+				w.staging--
+				w.mu.Unlock()
+			}
+		})
+	}
+	for i := range jobs {
+		next <- i
+	}
+	close(next)
+	wg.Wait()
+	return errs
 }
 
 // note records the scan's problem, logging it when it changes (not every
@@ -657,10 +733,12 @@ func (w *folderWatcher) poll(why error) {
 	}
 }
 
-func (w *folderWatcher) status() (waiting int, problem string, polling bool) {
+// status is for the queue's list. It never waits on a scan: w.mu is only
+// held while the folder is read, not while books are staged.
+func (w *folderWatcher) status() (waiting, staging int, problem string, polling bool) {
 	w.mu.Lock()
 	defer w.mu.Unlock()
-	return w.waiting, w.lastErr, w.polling
+	return w.waiting, w.staging, w.lastErr, w.polling
 }
 
 // insideDir reports whether p is dir or somewhere under it.
@@ -706,10 +784,14 @@ func startImports() {
 	if imports, err = openInbox(filepath.Join(dataDir, "imports")); err != nil {
 		log.Fatal("import queue: ", err)
 	}
+	imports.startCoverWorker()
 	if n := imports.count(); n > 0 {
 		log.Printf("import queue: %d book(s) waiting for review at /import", n)
-		go backfillImportCovers(imports)
+		for _, it := range imports.list() { // staged before covers were taken from files
+			imports.coverSoon(it.ID)
+		}
 	}
+	importWorkers = max(1, min(importWorkers, runtime.NumCPU()))
 	if watchDir == "" {
 		if watchForcePolling {
 			log.Println("-watch-dir-force-polling does nothing without -watch-dir")
@@ -773,6 +855,7 @@ type importQueue struct {
 	Folder   string          `json:"folder,omitempty"`  // the watch folder
 	Polling  bool            `json:"polling,omitempty"` // it is checked on a timer: the OS doesn't report changes to it
 	Settling int             `json:"settling"`          // files in it not taken yet (still being copied, or just seen)
+	Staging  int             `json:"staging"`           // books being taken into the queue right now
 	Problem  string          `json:"problem,omitempty"` // why a file can't be taken
 	Items    []importSummary `json:"items"`
 }
@@ -824,7 +907,7 @@ func importQueueHandler(w http.ResponseWriter, r *http.Request) {
 	q := importQueue{Watching: watching(), Items: []importSummary{}}
 	if watcher != nil {
 		q.Folder = watcher.dir
-		q.Settling, q.Problem, q.Polling = watcher.status()
+		q.Settling, q.Staging, q.Problem, q.Polling = watcher.status()
 	}
 	checking := false
 	for _, it := range imports.list() {
@@ -838,11 +921,13 @@ func importQueueHandler(w http.ResponseWriter, r *http.Request) {
 			if b, ok := currentCatalog().lookup(it.Into); ok {
 				s.IntoTitle = b.Title
 			}
-		} else if dup, ok := imports.cachedDuplicates(it); !ok {
-			s.Checking = true
-			checking = true
-		} else if dup.found() {
-			s.Duplicate = dup
+		} else {
+			dup, ok, stale := imports.cachedDuplicates(it)
+			s.Checking = !ok
+			checking = checking || !ok || stale
+			if dup.found() {
+				s.Duplicate = dup
+			}
 		}
 		q.Items = append(q.Items, s)
 	}

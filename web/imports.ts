@@ -2,14 +2,16 @@
 // admin to review them (Go: imports.go). Each row opens the review page, the
 // metadata editor pointed at that book; Discard deletes its files. The list
 // follows the folder: it's asked for again every few seconds while the page
-// is in view.
+// is in view, and only the rows whose book changed are built again.
 
 import { api, byId, el, errorMessage, maybeId, statusLine } from "./dom.js";
 import { pendingImport } from "./book-target.js";
 import { epubPages, formatBytes, pdfPages, type CoverChoice } from "./cover-sources.js";
-import type { DiscardExistingResult, DuplicateCheck, ImportQueue, ImportSummary } from "./types.js";
+import type { DuplicateCheck, ImportQueue, ImportSummary } from "./types.js";
 
 const POLL_MS = 5000;
+/** While books are being taken in or checked: they show up one by one. */
+const BUSY_POLL_MS = 1500;
 
 const say = statusLine("imports-status");
 const list = byId("imports-list");
@@ -94,19 +96,46 @@ function row(item: ImportSummary): HTMLLIElement {
     );
 }
 
-let shown = "";
+/** The rows shown, by id, with what each was built from. */
+const rows = new Map<string, { key: string; li: HTMLLIElement }>();
+
+/** Puts these rows in the list, in this order, moving only what's out of place (focus and loaded covers stay). */
+function placeRows(lis: HTMLLIElement[]): void {
+    let prev: ChildNode | null = null;
+    for (const li of lis) {
+        const at: ChildNode | null = prev ? prev.nextSibling : list.firstChild;
+        if (at !== li) list.insertBefore(li, at);
+        prev = li;
+    }
+    for (let extra = prev ? prev.nextSibling : list.firstChild; extra; extra = prev ? prev.nextSibling : list.firstChild) {
+        extra.remove();
+    }
+}
+
+/** Whether the server is still at work on the queue: taking books in, or checking them. */
+const busy = (q: ImportQueue | null): boolean => !!q && (q.staging > 0 || q.items.some((it) => it.checking));
+
 function render(q: ImportQueue): void {
     queue = q;
-    const json = JSON.stringify(q) + JSON.stringify([...notAdded]);
-    if (json === shown) return; // nothing new: leave the page (and focus) alone
-    shown = json;
+    const seen = new Set<string>();
+    const lis = q.items.map((item) => {
+        seen.add(item.id);
+        const key = JSON.stringify(item) + (notAdded.get(item.id) ?? "");
+        let r = rows.get(item.id);
+        if (r?.key !== key) {
+            r = { key, li: row(item) };
+            rows.set(item.id, r);
+        }
+        return r.li;
+    });
+    for (const id of [...rows.keys()]) if (!seen.has(id)) rows.delete(id);
+    placeRows(lis);
 
     const n = q.items.length;
     count.textContent = n ? `${n} book${n === 1 ? "" : "s"} waiting for review` : "Nothing waiting for review";
-    list.replaceChildren(...q.items.map(row));
     list.hidden = n === 0;
-    empty.hidden = n > 0;
-    const same = q.items.reduce((sum, it) => sum + identicalFiles(it).size, 0);
+    empty.hidden = n > 0 || q.staging > 0;
+    const same = q.items.reduce((sum, it) => sum + (it.into ? 0 : identicalFiles(it).size), 0);
     discardExisting.hidden = same === 0;
     if (acceptAll) acceptAll.hidden = !q.items.some(addable);
     discardExisting.title = `Discard the ${same} file${same === 1 ? "" : "s"} the library already has, byte for byte. A book's other formats stay, as new files for the book that has the rest.`;
@@ -114,7 +143,9 @@ function render(q: ImportQueue): void {
     const parts: string[] = [];
     if (q.watching) {
         parts.push(`Watching ${q.folder ?? "the watch folder"}: books put there appear here ${q.polling ? "within a minute (the folder is checked every 30 seconds)" : "within a few seconds"}.`);
-        if (q.settling) {
+        if (q.staging) parts.push(`Taking in ${q.staging} book${q.staging === 1 ? "" : "s"}…`);
+        // Counted at the end of a scan: while one takes books in, those are among them.
+        if (q.settling && !q.staging) {
             parts.push(q.problem
                 ? `${q.settling} file${q.settling === 1 ? "" : "s"} there can't be taken.`
                 : `${q.settling} file${q.settling === 1 ? " is" : "s are"} still arriving.`);
@@ -122,28 +153,13 @@ function render(q: ImportQueue): void {
     } else {
         parts.push("No folder is being watched: start the server with -watch-dir and -allow-writes.");
     }
+    const checking = q.items.filter((it) => it.checking).length;
+    if (checking) parts.push(`Checking ${checking} for duplicates…`);
     folder.textContent = parts.join(" ");
     const problem = byId("imports-problem");
     problem.hidden = !q.problem;
     problem.textContent = q.problem ? `Watch folder: ${q.problem}` : "";
 }
-
-discardExisting.addEventListener("click", async () => {
-    if (!confirm(`${discardExisting.title}\n\nDiscard them?`)) return;
-    discardExisting.disabled = true;
-    say("Discarding the files the library already has…");
-    try {
-        const res = await api<DiscardExistingResult>("POST", "/api/imports/discard-existing");
-        const parts = [`Discarded ${res.files} file${res.files === 1 ? "" : "s"} already in the library`];
-        if (res.split) parts.push(`${res.split} book${res.split === 1 ? " keeps its" : "s keep their"} other formats`);
-        say(`${parts.join("; ")}.${res.errors?.length ? ` Not done: ${res.errors.join("; ")}` : ""} An admin can undo it from Activity.`, !!res.errors?.length);
-        await refresh();
-    } catch (err) {
-        say(errorMessage(err), true);
-    } finally {
-        discardExisting.disabled = false;
-    }
-});
 
 /** The first cover offered by a book's files: the EPUB's (its own cover, else its first page), else the PDF's first page. */
 async function defaultCover(item: ImportSummary): Promise<boolean> {
@@ -183,20 +199,66 @@ window.addEventListener("beforeunload", (e) => {
     if (running) e.preventDefault(); // leaving stops it part way
 });
 
+/** Shows the progress bar for a run over total books, one request each, with Stop. */
+function startRun(total: number): void {
+    running = true;
+    stopping = false;
+    discardExisting.disabled = true;
+    if (acceptAll) acceptAll.disabled = true;
+    progressStop.disabled = false;
+    progressStop.textContent = "Stop";
+    progressBar.max = total;
+    progressBar.value = 0;
+    progress.hidden = false;
+    byId("imports-status").hidden = true;
+}
+
+function endRun(): void {
+    running = false;
+    progress.hidden = true;
+    discardExisting.disabled = false;
+    if (acceptAll) acceptAll.disabled = false;
+}
+
+// One book per request, as the mass import: a long queue never makes one
+// request outlast the proxy's timeout, and the bar shows how far it got.
+// Each is checked against metadata.db again before anything goes.
+discardExisting.addEventListener("click", async () => {
+    if (running) return;
+    const items = (queue?.items ?? []).filter((it) => !it.into && identicalFiles(it).size > 0);
+    if (!items.length || !confirm(`${discardExisting.title}\n\nDiscard them?`)) return;
+    startRun(items.length);
+    let files = 0;
+    let books = 0;
+    const errors: string[] = [];
+    try {
+        for (const [i, it] of items.entries()) {
+            if (stopping) break;
+            progressText.textContent = `${i + 1} of ${items.length} · ${files} file${files === 1 ? "" : "s"} discarded · “${it.title}”…`;
+            try {
+                // No title or authors: checked as its files say it is, as the list was.
+                const res = await api<{ discarded: number }>("POST", `/import/${encodeURIComponent(it.id)}/discard-identical`, {});
+                files += res.discarded;
+                if (res.discarded) books++;
+            } catch (err) {
+                errors.push(`“${it.title}”: ${errorMessage(err)}`);
+            }
+            progressBar.value = i + 1;
+        }
+        const stopped = stopping ? "Stopped. " : "";
+        say(`${stopped}Discarded ${files} file${files === 1 ? "" : "s"} already in the library, from ${books} book${books === 1 ? "" : "s"}.${errors.length ? ` Not done: ${errors.join("; ")}` : ""} An admin can undo it from Activity.`, errors.length > 0);
+    } finally {
+        endRun();
+        await refresh();
+    }
+});
+
 acceptAll?.addEventListener("click", async () => {
     const items = (queue?.items ?? []).filter(addable);
     if (!items.length || running) return;
     const waiting = queue?.items.length ?? 0;
     if (!confirm(`Add ${items.length} book${items.length === 1 ? "" : "s"} to the library with the metadata their files offer, without review?${waiting > items.length ? `\n\n${waiting - items.length} other${waiting - items.length === 1 ? "" : "s"} (maybe already in the library, new files for a library book, or not checked yet) stay here for review.` : ""}`)) return;
-    running = true;
-    stopping = false;
-    acceptAll.disabled = discardExisting.disabled = true;
-    progressStop.disabled = false;
-    progressStop.textContent = "Stop";
-    progressBar.max = items.length;
-    progressBar.value = 0;
-    progress.hidden = false;
-    byId("imports-status").hidden = true;
+    startRun(items.length);
     notAdded.clear();
     let added = 0;
     let sinceRefresh = 0;
@@ -235,9 +297,7 @@ acceptAll?.addEventListener("click", async () => {
     } catch (err) {
         say(errorMessage(err), true);
     } finally {
-        running = false;
-        progress.hidden = true;
-        acceptAll.disabled = discardExisting.disabled = false;
+        endRun();
         await refresh();
     }
 });
@@ -257,12 +317,14 @@ async function refresh(): Promise<void> {
     }
 }
 
-void refresh();
-// Not while a mass import runs: it refreshes once at the end.
-const poll = (): void => {
-    if (document.visibilityState === "visible" && !running) void refresh();
-};
-setInterval(poll, POLL_MS);
+// Not while a run (mass import, discard) goes on: it refreshes once at the end.
+let timer = 0;
+async function poll(): Promise<void> {
+    clearTimeout(timer);
+    if (document.visibilityState === "visible" && !running) await refresh();
+    timer = window.setTimeout(() => void poll(), busy(queue) ? BUSY_POLL_MS : POLL_MS);
+}
+void poll();
 document.addEventListener("visibilitychange", () => {
-    poll();
+    if (document.visibilityState === "visible") void poll();
 });
