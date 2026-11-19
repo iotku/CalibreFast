@@ -553,6 +553,55 @@ function applyFilters(): void {
             r.group = g;
         });
     }
+    shownSet = new Set(shown.map((r) => r.b.uuid));
+    updatePinned();
+}
+
+/**
+ * Ticked books the filters hide, pinned above the list under a heading: an
+ * edit to the selected books reaches them too, so they stay in sight.
+ */
+let pinned: Row[] = [];
+let shownSet = new Set<string>();
+/** The rows above the shown ones: the heading and the pinned rows (none if nothing's pinned). */
+const pinOffset = (): number => (pinned.length ? pinned.length + 1 : 0);
+
+/** Work out the pinned rows again; true if they changed. */
+function updatePinned(): boolean {
+    const next = selected.size ? rows.filter((r) => selected.has(r.b.uuid) && !shownSet.has(r.b.uuid)).sort(compare) : [];
+    const same = next.length === pinned.length && next.every((r, i) => r === pinned[i]);
+    pinned = next;
+    return !same;
+}
+
+/** The body's height and row count, for the pinned rows and the shown ones. */
+function sizeBody(): void {
+    const total = pinOffset() + shown.length;
+    table.setAttribute("aria-rowcount", String(total));
+    body.style.height = `${total * ROW_H}px`;
+}
+
+/** The heading over the pinned rows, with a button to untick them. */
+function pinHeading(): HTMLElement {
+    const untick = el("button", { type: "button", className: "lt-action", title: "Untick the selected books the filters hide" }, "Untick them");
+    untick.addEventListener("click", () => {
+        for (const r of pinned) selected.delete(r.b.uuid);
+        selectionChanged();
+    });
+    const k = pinned.length;
+    const head = el(
+        "div",
+        { className: "lt-row lt-pin-head", role: "row" },
+        el(
+            "span",
+            { className: "lt-pin-label", role: "gridcell" },
+            `${plural(k, "selected book")} the filters hide (still selected: edits reach ${k === 1 ? "it" : "them"} too)`,
+            untick,
+        ),
+    );
+    head.style.top = "0px";
+    head.setAttribute("aria-rowindex", "1");
+    return head;
 }
 
 /** The test a tag must pass for its book to show, under the tag check; null: no check. */
@@ -591,8 +640,7 @@ function refresh(): void {
     countEl.textContent =
         `${n(shown.length)} of ${plural(rows.length, "book")}` +
         (dupMode === MARKED ? ` · ${plural(groupsShown, "group")} marked not duplicates` : dupMode ? ` · ${plural(groupsShown, "group")} of look-alikes` : "");
-    table.setAttribute("aria-rowcount", String(shown.length));
-    body.style.height = `${shown.length * ROW_H}px`;
+    sizeBody();
     emptyEl.hidden = shown.length > 0 || rows.length === 0;
     saveView();
     draw(true);
@@ -603,11 +651,16 @@ let drawn = { from: -1, to: -1 };
 function draw(force = false): void {
     const top = Math.max(0, scroller.scrollTop - body.offsetTop);
     const from = Math.max(0, Math.floor(top / ROW_H) - OVERSCAN);
-    const to = Math.min(shown.length, Math.ceil((top + scroller.clientHeight) / ROW_H) + OVERSCAN);
+    const pins = pinOffset();
+    const to = Math.min(pins + shown.length, Math.ceil((top + scroller.clientHeight) / ROW_H) + OVERSCAN);
     if (!force && from === drawn.from && to === drawn.to) return;
     drawn = { from, to };
     const out: HTMLElement[] = [];
-    for (let i = from; i < to; i++) out.push(rowElement(shown[i]!, i));
+    for (let j = from; j < to; j++) {
+        if (j >= pins) out.push(rowElement(shown[j - pins]!, j - pins));
+        else if (j === 0) out.push(pinHeading());
+        else out.push(rowElement(pinned[j - 1]!, j - 1, true));
+    }
     closeExpanded();
     closeCellMenu();
     body.replaceChildren(...out);
@@ -722,16 +775,22 @@ function removedChip(value: string): HTMLElement {
     return c;
 }
 
-function rowElement(r: Row, i: number): HTMLElement {
+/** Row i of the shown ones, or (pin) of the pinned ones. */
+function rowElement(r: Row, i: number, pin = false): HTMLElement {
     const b = r.b;
     const on = selected.has(b.uuid);
     const row = el("div", { className: "lt-row", role: "row" });
     row.dataset["uuid"] = b.uuid;
-    row.style.top = `${i * ROW_H}px`;
-    row.setAttribute("aria-rowindex", String(i + 1));
+    const at = pin ? i + 1 : i + pinOffset();
+    row.style.top = `${at * ROW_H}px`;
+    row.setAttribute("aria-rowindex", String(at + 1));
+    if (pin) row.classList.add("lt-row-pinned");
+    if (pin && i === pinned.length - 1) row.classList.add("lt-pin-last");
+    // The duplicate groups are the shown rows'.
+    const dup = pin ? "" : dupMode;
     row.setAttribute("aria-selected", String(on));
-    if (dupMode) row.classList.add(r.group % 2 ? "lt-group-odd" : "lt-group-even");
-    if (dupMode && i > 0 && shown[i - 1]!.dupKey !== r.dupKey) row.classList.add("lt-group-start");
+    if (dup) row.classList.add(r.group % 2 ? "lt-group-odd" : "lt-group-even");
+    if (dup && i > 0 && shown[i - 1]!.dupKey !== r.dupKey) row.classList.add("lt-group-start");
 
     const box = el("input", { type: "checkbox", checked: on, ariaLabel: `Select “${b.title}”` });
     row.append(el("span", { className: "lt-cell lt-check" }, box));
@@ -783,13 +842,13 @@ function rowElement(r: Row, i: number): HTMLElement {
     // A group's buttons: Merge on its first row, Not Dupe on its second (a
     // group has at least two books, so the column stays narrow), unless a
     // filter leaves only one of them shown.
-    const first = !QUEUE && dupMode !== "" && (i === 0 || shown[i - 1]!.dupKey !== r.dupKey);
-    const second = !QUEUE && dupMode !== "" && !first && (i === 1 || shown[i - 2]!.dupKey !== r.dupKey);
-    if (dupMode === MARKED && first) {
+    const first = !QUEUE && dup !== "" && (i === 0 || shown[i - 1]!.dupKey !== r.dupKey);
+    const second = !QUEUE && dup !== "" && !first && (i === 1 || shown[i - 2]!.dupKey !== r.dupKey);
+    if (dup === MARKED && first) {
         const un = el("button", { type: "button", className: "lt-action lt-unmark", title: "They may be duplicates after all: show them in the duplicates view again" }, "Unmark");
         un.dataset["set"] = r.dupKey.replace(/^set:/, "");
         actions.append(un);
-    } else if (dupMode && dupMode !== MARKED && (first || second)) {
+    } else if (dup && dup !== MARKED && (first || second)) {
         const group = groupOf(r);
         const size = group.length;
         if (first && size > 1 && size <= MERGE_MAX) {
@@ -822,6 +881,10 @@ new ResizeObserver(() => draw()).observe(scroller);
 // ---------------------------------------------------------------------------
 
 function selectionChanged(): void {
+    if (updatePinned()) {
+        sizeBody();
+        draw(true);
+    }
     const k = selected.size;
     bar.hidden = k === 0;
     selectedEl.textContent = `${plural(k, "book")} selected`;
