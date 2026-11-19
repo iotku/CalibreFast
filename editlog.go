@@ -23,7 +23,7 @@ package main
 //     again (to a new batch).
 //   - not-dup: a "not duplicates" marking made or unmarked.
 //   - import: a book discarded from the import queue, whose folder was moved
-//     to <datadir>/imports-discarded; undoing puts it back in the queue.
+//     to imports-discarded beside the queue's folder; undoing puts it back in the queue.
 //
 // Undoing never destroys anything either: what it replaces is in the log
 // (as the undo's own entry) or the bin. An entry is only undone while
@@ -692,7 +692,8 @@ func revertNotDup(e *editLogEntry, by *User, undo string) error {
 }
 
 // discardedDir is where a book discarded from the queue goes: beside the
-// queue's folder (<datadir>/imports-discarded).
+// queue's folder (<datadir>/imports-discarded, or -import-dir's name with
+// "-discarded"), so on the same drive.
 func (b *importInbox) discardedDir() string { return b.dir + "-discarded" }
 
 func revertImportDiscard(e *editLogEntry, by *User) error {

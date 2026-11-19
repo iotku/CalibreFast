@@ -337,6 +337,60 @@ func TestCheckWatchDir(t *testing.T) {
 	}
 }
 
+func TestImportDir(t *testing.T) {
+	origBase, origData, origImport := baseDir, dataDir, importDir
+	defer func() { baseDir, dataDir, importDir = origBase, origData, origImport }()
+	root := t.TempDir()
+	baseDir, dataDir = filepath.Join(root, "library"), filepath.Join(root, "data")
+	for _, d := range []string{baseDir, dataDir, filepath.Join(root, "watch")} {
+		os.MkdirAll(d, 0o755)
+	}
+	if got := importQueueDir(); got != filepath.Join(dataDir, "imports") {
+		t.Errorf("default: %s", got)
+	}
+	// Its discarded books go beside it, not inside it.
+	importDir = filepath.Join(root, "queue") + string(filepath.Separator)
+	if got := imports_discardedDir(importQueueDir()); got != filepath.Join(root, "queue-discarded") {
+		t.Errorf("discarded beside %q: %s", importDir, got)
+	}
+
+	for dir, ok := range map[string]bool{
+		filepath.Join(root, "queue"):           true, // beside the library, made on first use
+		filepath.Join(dataDir, "imports"):      true, // the default
+		filepath.Join(root, "library-imports"): true, // only starts like the library's name
+		baseDir:                                false,
+		filepath.Join(baseDir, "imports"):      false,
+		root:                                   false, // holds the library
+		dataDir:                                false,
+		filepath.Join(baseDir, "a", "b", ".."): false,
+	} {
+		if err := checkImportDir(dir); (err == nil) != ok {
+			t.Errorf("checkImportDir(%s) = %v, want ok=%v", dir, err, ok)
+		}
+	}
+
+	// The watch folder can't be the queue's, or hold it.
+	importDir = filepath.Join(root, "watch", "queue")
+	if err := checkWatchDir(filepath.Join(root, "watch")); err == nil {
+		t.Error("a watch folder holding the queue was accepted")
+	}
+	importDir = filepath.Join(root, "queue")
+	if err := checkWatchDir(filepath.Join(root, "watch")); err != nil {
+		t.Errorf("watch folder beside the queue: %v", err)
+	}
+
+	// Books left in the old folder are counted, not loaded.
+	old := filepath.Join(dataDir, "imports")
+	writeTestFile(t, filepath.Join(old, "3dcd4db9-cfac-46df-9888-dd91165abf71", "item.json"), []byte("{}"))
+	os.MkdirAll(filepath.Join(old, "not-a-book"), 0o755)
+	if n := waitingIn(old); n != 1 {
+		t.Errorf("waitingIn: %d", n)
+	}
+}
+
+// imports_discardedDir is discardedDir for a queue in dir.
+func imports_discardedDir(dir string) string { return (&importInbox{dir: dir}).discardedDir() }
+
 func TestImportHandlers(t *testing.T) {
 	setupTestAppDB(t)
 	w, dir := newTestWatcher(t)

@@ -233,7 +233,7 @@ Start the server with `-watch-dir /path/to/folder` (and `-allow-writes`). Books 
   - A file is taken once it has been unchanged for 5 seconds, so a copy in progress is left alone.
   - Files in one folder with the same name and different formats (`Book.epub` + `Book.pdf`) are one book.
   - Hidden files and folders (`.name`), symbolic links and empty files are ignored. Other files are left where they are.
-- **Taken files are moved** out of the watch folder into the queue (in `-datadir`), so the folder shows what is still to come.
+- **Taken files are moved** out of the watch folder into the queue (in `-datadir`, or `-import-dir`), so the folder shows what is still to come. With `-import-dir` on the library's drive (beside the library, not in it), adding a book moves its files there instead of copying them, which matters for large files on slow disks.
 - **The queue** (`/import`, **Review imports** in the user menu, and an inbox icon with a count in the top bar while books wait) lists each book with its cover and files. It updates by itself.
 - **Covers are taken from the files** when a book arrives: the cover its EPUB declares, else its PDF's first page when that page is a single picture (a scan, or a cover image). Books already waiting get one when the server starts.
 - **Reviewing a book** uses the metadata editor, on the waiting book:
