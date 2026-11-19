@@ -368,3 +368,22 @@ func mustJSON(t *testing.T, v any) string {
 	}
 	return string(b)
 }
+
+// Signed out, /api/me says whether guests may read here: where they can't, a
+// reader that gets the 401 keeps what's read under the user last signed in
+// (reading-sync.ts) instead of as a guest's.
+func TestMeSaysGuestReading(t *testing.T) {
+	defer func(v bool) { publicRead = v }(publicRead)
+	for _, open := range []bool{false, true} {
+		publicRead = open
+		rec := httptest.NewRecorder()
+		meHandler(rec, httptest.NewRequest(http.MethodGet, "/api/me", nil))
+		var body map[string]any
+		if err := json.Unmarshal(rec.Body.Bytes(), &body); err != nil {
+			t.Fatal(err)
+		}
+		if rec.Code != http.StatusUnauthorized || body["guest_reading"] != open {
+			t.Fatalf("public-read %v: %d %v", open, rec.Code, body)
+		}
+	}
+}
