@@ -876,6 +876,21 @@ body:has(.lt-resizing) {
 }
 
 /* The status line's Undo (the last tag change) */
+.lt-action.lt-undo {
+    flex: none;
+    padding: 4px 12px;
+    border-color: var(--status-reading);
+    color: var(--status-reading);
+    font-size: 0.85rem;
+    font-weight: 600;
+}
+
+.lt-action.lt-undo:hover,
+.lt-action.lt-undo:focus-visible {
+    background: rgba(200, 169, 110, 0.14);
+    color: var(--status-reading);
+}
+
 .lt-undo[hidden] {
     display: none;
 }
