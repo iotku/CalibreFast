@@ -1021,14 +1021,14 @@ body.addEventListener("click", (e) => {
         toggle(uuid, !selected.has(uuid), false);
         return;
     }
-    if (e.detail > 1) return; // the box is up already
     const key = target.closest<HTMLElement>("[data-col]")?.dataset["col"];
     const col = COLUMNS.find((c) => c.key === key);
     if (!col?.edit) return;
     const ch = target.closest<HTMLElement>(".lt-chip:not(.lt-chip-removed)");
     // A tag in the "+N" panel is edited there (editAt keeps it open).
-    if (!ch || !expanded?.contains(ch)) closeExpanded();
-    void editAt(uuid, col.key, ch?.dataset["value"]);
+    const inPanel = ch !== null && expanded !== null && expanded.contains(ch);
+    if (!inPanel) closeExpanded();
+    void editAt(uuid, col.key, ch?.dataset["value"], inPanel);
 });
 
 /** A Ctrl-click under way: on a Mac that's a right-click (contextmenu, no click), but here it ticks the row. */
@@ -1596,10 +1596,10 @@ let editing: { cell: HTMLElement; area: HTMLElement; input: HTMLInputElement; fi
 
 /**
  * Edit the book's cell for key, if its row is on screen; with value, just that
- * tag or language (or, if the "+N" hides its chip, the cell with it picked
- * out). A box open elsewhere is saved first.
+ * tag or language (in the "+N" panel if that hides it, or inPanel: it was
+ * clicked there). A box open elsewhere is saved first.
  */
-async function editAt(uuid: string, key: ColKey, value?: string): Promise<void> {
+async function editAt(uuid: string, key: ColKey, value?: string, inPanel = false): Promise<void> {
     if (editing) {
         await editing.finish(true);
         if (editing) return;
@@ -1609,8 +1609,9 @@ async function editAt(uuid: string, key: ColKey, value?: string): Promise<void> 
     const chipIn = (box: ParentNode | null): HTMLElement | undefined =>
         value === undefined ? undefined : [...(box?.querySelectorAll<HTMLElement>(".lt-chip:not(.lt-chip-removed)") ?? [])].find((c) => c.dataset["value"] === value);
     let ch = chipIn(cell);
-    // One the "+N" hides: edited in the panel that shows them all.
-    if (ch?.hidden) {
+    // One the "+N" hides, or one clicked in its panel (which covers the
+    // row): edited in the panel that shows them all.
+    if (ch && (ch.hidden || inPanel)) {
         if (!isExpanded(cell)) expand(cell);
         ch = chipIn(expanded);
     }
