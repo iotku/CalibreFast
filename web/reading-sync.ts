@@ -82,6 +82,9 @@ const LS = {
 const newId = (): string =>
     (crypto.randomUUID?.() ?? `${Date.now().toString(36)}-${random().toString(36).slice(2)}`).slice(0, 64);
 
+/** The server answered that nobody is signed in (the session ended). */
+const signedOut = (e: unknown): boolean => (e as { status?: number } | null)?.status === 401;
+
 export async function createReadingSync(
     uuid: string,
     format: BookFormat,
@@ -92,13 +95,24 @@ export async function createReadingSync(
     }: { legacyKey?: string; onStatus?: (text: string) => void; title?: () => string } = {},
 ): Promise<ReadingSync> {
     // A signed-in user's records are under their name, a guest's under the
-    // plain names (local-keys.ts). Offline, whoever the top bar last saw
-    // signed in: their changes wait under their name and are sent once the
-    // server can be reached.
+    // plain names (local-keys.ts). Only an answer saying nobody is signed in,
+    // on a server where guests may read, makes this a guest. Otherwise
+    // (offline; an error answer, as a proxy gives while the server restarts;
+    // signed out where guests can't read, the session having ended under a
+    // page from the offline copy) it's whoever the top bar last saw signed
+    // in: their changes wait under their name and are sent once the server
+    // takes them. Saved as a guest's, they'd come back later as reading
+    // "done signed out on this device", to review and add to the account.
     let user: Owner = null;
     try {
         const r = await fetch("/api/me", { credentials: "same-origin" });
-        if (r.ok) user = ((await r.json()) as MeResponse).user?.username ?? null;
+        const me = (await r.json().catch(() => null)) as MeResponse | null;
+        if (r.ok) user = me?.user?.username ?? null;
+        else if (r.status === 401 && me?.guest_reading) user = null;
+        else {
+            user = lastKnownUser();
+            if (isUnreachable({ status: r.status })) serverDown();
+        }
     } catch {
         user = lastKnownUser();
         serverDown();
@@ -138,7 +152,7 @@ export async function createReadingSync(
                 return;
             }
             if (isUnreachable(e)) serverDown();
-            onStatus("Offline — saved on this device");
+            onStatus(signedOut(e) ? "Signed out — saved on this device until you sign in" : "Offline — saved on this device");
         }
     }
 
@@ -158,7 +172,7 @@ export async function createReadingSync(
             }
         } catch (e) {
             if (isUnreachable(e)) serverDown();
-            onStatus("Offline — saved on this device");
+            onStatus(signedOut(e) ? "Signed out — saved on this device until you sign in" : "Offline — saved on this device");
         }
         return local;
     }

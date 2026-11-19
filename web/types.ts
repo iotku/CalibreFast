@@ -61,6 +61,8 @@ export interface MeResponse {
     can_edit_library?: boolean;
     can_admin_library?: boolean;
     registration?: boolean;
+    /** Signed out only: whether visitors who aren't signed in may read here (-public-read). */
+    guest_reading?: boolean;
     /**
      * Books from the watch folder waiting for review. Only sent to those who
      * can review them, when there is a watch folder or something is waiting.

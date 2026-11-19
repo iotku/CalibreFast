@@ -609,8 +609,12 @@ func meHandler(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Cache-Control", "no-store")
 	u := currentUser(r)
 	if u == nil {
+		// guest_reading: whether anyone signed out can read here (-public-read).
+		// Where they can't, a reader that gets this has lost its session (it
+		// came from the offline copy), and keeps what's read under the user
+		// last signed in rather than as a guest's (reading-sync.ts).
 		w.WriteHeader(http.StatusUnauthorized)
-		_ = json.NewEncoder(w).Encode(map[string]any{"user": nil, "registration": allowRegistrations})
+		_ = json.NewEncoder(w).Encode(map[string]any{"user": nil, "registration": allowRegistrations, "guest_reading": publicRead})
 		return
 	}
 	me := map[string]any{"user": u, "can_edit_library": canEditLibrary(r), "can_admin_library": canAdminLibrary(r)}
