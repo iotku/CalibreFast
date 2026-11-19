@@ -233,7 +233,7 @@ func queueBulkEdit(uuids []string, edit *bulkEdit, by *User) (bulkResult, error)
 		p.jobs++
 		p.next = "" // this change is the last to it now
 	}
-	q.jobs[id] = &bulkJob{State: "queued", Total: len(job.uuids)}
+	trackBulkJob(id, &bulkJob{State: "queued", Total: len(job.uuids)})
 	q.waiting = append(q.waiting, job)
 	startBulkWorker()
 	q.changed.Broadcast()
@@ -309,21 +309,44 @@ func runBulkQueue() {
 		}
 	}()
 	for {
-		q.mu.Lock()
-		if len(q.waiting) == 0 || q.stopping {
-			q.worker = false
-			q.changed.Broadcast()
-			q.mu.Unlock()
+		job := nextQueuedEdit()
+		if job == nil {
 			return
 		}
-		job := q.waiting[0]
-		q.jobs[job.id].State = "running"
-		q.mu.Unlock()
-
 		if res, finished := runQueuedEdit(job); finished {
 			finishQueuedEdit(job, res)
 		}
 	}
+}
+
+// nextQueuedEdit is the change for the worker to make next, or nil when
+// it's to stop (and it's marked stopped). It unlocks bulkQueue.mu even if
+// it panics: runBulkQueue's recover takes the lock.
+func nextQueuedEdit() *queuedEdit {
+	q := &bulkQueue
+	q.mu.Lock()
+	defer q.mu.Unlock()
+	if len(q.waiting) == 0 || q.stopping {
+		q.worker = false
+		q.changed.Broadcast()
+		return nil
+	}
+	job := q.waiting[0]
+	q.jobs[job.id].State = "running"
+	return job
+}
+
+// trackBulkJob keeps the job's state for the editors to ask about. Under
+// bulkQueue.mu. Ids come back: bulk_edit_queue's rowids start again from
+// the highest left, so from 1 when the queue has emptied. A finished job
+// with the same id is forgotten now, rather than later, when forgetting it
+// would take this one's state with it.
+func trackBulkJob(id int64, j *bulkJob) {
+	q := &bulkQueue
+	if _, ok := q.jobs[id]; ok {
+		q.finished = slices.DeleteFunc(q.finished, func(f int64) bool { return f == id })
+	}
+	q.jobs[id] = j
 }
 
 // runQueuedEdit makes the change to each of its books without an outcome.
@@ -540,7 +563,7 @@ func loadBulkQueue() {
 				p.jobs++
 			}
 		}
-		q.jobs[job.id] = &bulkJob{State: "queued", Done: job.made(), Total: len(job.uuids)}
+		trackBulkJob(job.id, &bulkJob{State: "queued", Done: job.made(), Total: len(job.uuids)})
 		q.waiting = append(q.waiting, job)
 	}
 	startBulkWorker()

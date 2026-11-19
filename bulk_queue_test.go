@@ -9,6 +9,7 @@ import (
 	"slices"
 	"strconv"
 	"strings"
+	"sync"
 	"testing"
 	"time"
 )
@@ -59,7 +60,7 @@ func TestBulkQueueAnswersBeforeWriting(t *testing.T) {
 	a := addOPFTestBook(t, db, "Alpha", []string{"Ann"}, []string{"t1"}, nil)
 	b := addOPFTestBook(t, db, "Beta", []string{"Bob"}, []string{"t2"}, nil)
 
-	bulkMu.Lock() // the worker can't write yet
+	unlock := holdBulkMu(t) // the worker can't write yet
 	res := postBulk(t, `{"uuids":["`+a.uuid+`","`+b.uuid+`"],"edit":{"add_tags":["new"],"remove_tags":["t2"]}}`)
 	if res.Changed != 2 || len(res.Books) != 2 || res.Job == 0 {
 		t.Fatalf("answer %+v", res)
@@ -87,7 +88,7 @@ func TestBulkQueueAnswersBeforeWriting(t *testing.T) {
 	if s := bulkJobState(t, res.Job).State; s != "queued" && s != "running" {
 		t.Errorf("job %s", s)
 	}
-	bulkMu.Unlock()
+	unlock()
 	waitBulkEdits()
 
 	if r := tableRow(t, db, a.uuid); r.Title != "Alpha Two" || !slices.Equal(r.Tags, []string{"new", "t1"}) && !slices.Equal(r.Tags, []string{"t1", "new"}) {
@@ -112,12 +113,37 @@ func TestBulkQueueAnswersBeforeWriting(t *testing.T) {
 // A change the server stopped in the middle of is saved with how far it
 // got, and finished when the server starts again.
 func TestBulkQueueResumesAfterStop(t *testing.T) {
+	// The hook goes after the worker is done with it (cleanups run last
+	// registered first, and setupRecycleLibrary's waits for the queue).
+	t.Cleanup(func() { bulkEditBookHook = nil })
 	db := setupRecycleLibrary(t)
 	a := addOPFTestBook(t, db, "Alpha", []string{"Ann"}, nil, nil)
 	b := addOPFTestBook(t, db, "Beta", []string{"Bob"}, nil, nil)
 
-	bulkMu.Lock()
+	// Hold the worker inside Alpha's write: past its check for a stop, so
+	// Alpha is written whenever the stop comes. (Holding bulkMu instead
+	// doesn't say whether the worker got that far before the stop: on a
+	// busy machine it may not have started.)
+	writing, release := make(chan struct{}), make(chan struct{})
+	var releaseOnce sync.Once
+	letGo := func() { releaseOnce.Do(func() { close(release) }) }
+	t.Cleanup(letGo)
+	bulkEditBookHook = func(u string) {
+		if u == a.uuid {
+			select {
+			case <-writing:
+			default:
+				close(writing)
+				<-release
+			}
+		}
+	}
 	res := postBulk(t, `{"uuids":["`+a.uuid+`","`+b.uuid+`"],"edit":{"publisher":"Pub"}}`)
+	select {
+	case <-writing:
+	case <-time.After(10 * time.Second):
+		t.Fatal("the worker didn't start Alpha")
+	}
 	stopped := make(chan struct{})
 	go func() { stopBulkEdits(time.Now()); close(stopped) }()
 	for { // the deadline has passed: wait for stopBulkEdits to say stop
@@ -129,7 +155,7 @@ func TestBulkQueueResumesAfterStop(t *testing.T) {
 		}
 		time.Sleep(time.Millisecond)
 	}
-	bulkMu.Unlock() // the book being written is finished, then it stops
+	letGo() // the book being written is finished, then it stops
 	<-stopped
 
 	outcomes := map[int]sql.NullString{}
@@ -171,10 +197,28 @@ func TestBulkQueueResumesAfterStop(t *testing.T) {
 
 // restartBulkQueue is the queue as a server starting again finds it.
 func restartBulkQueue() {
+	resetBulkQueue()
+	loadBulkQueue()
+}
+
+// resetBulkQueue forgets the queue in memory, as the server stopping does
+// (what's queued is still in the app database).
+func resetBulkQueue() {
 	bulkQueue.mu.Lock()
 	bulkQueue.stopping, bulkQueue.waiting, bulkQueue.rows = false, nil, map[string]*pendingRow{}
 	bulkQueue.mu.Unlock()
-	loadBulkQueue()
+}
+
+// holdBulkMu keeps the worker from writing until unlock is called, or the
+// test ends: a test that fails while holding it mustn't leave it locked
+// for the tests after (their workers would wait for it forever).
+func holdBulkMu(t *testing.T) (unlock func()) {
+	t.Helper()
+	bulkMu.Lock()
+	var once sync.Once
+	unlock = func() { once.Do(bulkMu.Unlock) }
+	t.Cleanup(unlock)
+	return unlock
 }
 
 func keptFailures(t *testing.T) []keptBulkFailure {
@@ -196,14 +240,14 @@ func TestBulkQueueChangedElsewhereFails(t *testing.T) {
 	a := addOPFTestBook(t, db, "Alpha", []string{"Ann"}, nil, nil)
 	b := addOPFTestBook(t, db, "Beta", []string{"Bob"}, nil, nil)
 
-	bulkMu.Lock()
+	unlock := holdBulkMu(t)
 	first := postBulk(t, `{"uuids":["`+a.uuid+`","`+b.uuid+`"],"edit":{"title":"Renamed"}}`)
 	second := postBulk(t, `{"uuids":["`+a.uuid+`"],"edit":{"add_tags":["later"]}}`)
 	// Calibre changes Alpha meanwhile.
 	if _, err := db.Exec(`UPDATE books SET title = 'Desk', last_modified = '2030-01-01 00:00:00+00:00' WHERE uuid = ?`, a.uuid); err != nil {
 		t.Fatal(err)
 	}
-	bulkMu.Unlock()
+	unlock()
 	waitBulkEdits()
 
 	if r := tableRow(t, db, a.uuid); r.Title != "Desk" || len(r.Tags) != 0 {
@@ -320,7 +364,7 @@ func TestAfterBookEditsWaitsOnlyForEditors(t *testing.T) {
 	orig := allowWrites
 	allowWrites = true
 	t.Cleanup(func() { allowWrites = orig })
-	bulkMu.Lock()
+	unlock := holdBulkMu(t)
 	postBulk(t, `{"uuids":["`+a.uuid+`"],"edit":{"publisher":"P"}}`)
 	h := afterBookEdits(func(w http.ResponseWriter, r *http.Request) { w.WriteHeader(http.StatusTeapot) })
 	get := func(u *User) chan int {
@@ -348,7 +392,7 @@ func TestAfterBookEditsWaitsOnlyForEditors(t *testing.T) {
 		t.Error("an editor didn't wait for the queue")
 	case <-time.After(100 * time.Millisecond):
 	}
-	bulkMu.Unlock()
+	unlock()
 	if code := <-editor; code != http.StatusTeapot {
 		t.Errorf("editor: %d", code)
 	}
@@ -432,4 +476,50 @@ func TestBulkQueueMigratesFrom23(t *testing.T) {
 		t.Errorf("queued %+v", res)
 	}
 	waitBulkEdits()
+}
+
+// Job ids come back once the queue has emptied (they're bulk_edit_queue's
+// rowids). Forgetting the oldest finished job mustn't forget a queued one
+// that has its id: the worker would find no state for it, and stop.
+func TestBulkQueueReusedJobIDs(t *testing.T) {
+	db := setupRecycleLibrary(t)
+	a := addOPFTestBook(t, db, "Alpha", []string{"Ann"}, nil, nil)
+	b := addOPFTestBook(t, db, "Beta", []string{"Bob"}, nil, nil)
+
+	// Finished jobs remembered from before the queue last emptied, as many
+	// as are kept; the oldest has the id the second change below gets.
+	bulkQueue.mu.Lock()
+	bulkQueue.finished = []int64{2}
+	for id := int64(1000); len(bulkQueue.finished) < bulkJobsKept; id++ {
+		bulkQueue.finished = append(bulkQueue.finished, id)
+	}
+	for _, id := range bulkQueue.finished {
+		bulkQueue.jobs[id] = &bulkJob{State: "done"}
+	}
+	bulkQueue.mu.Unlock()
+	t.Cleanup(func() {
+		bulkQueue.mu.Lock()
+		bulkQueue.jobs, bulkQueue.finished = map[int64]*bulkJob{}, nil
+		bulkQueue.mu.Unlock()
+	})
+
+	unlock := holdBulkMu(t)
+	first := postBulk(t, `{"uuids":["`+a.uuid+`"],"edit":{"publisher":"P"}}`)
+	second := postBulk(t, `{"uuids":["`+b.uuid+`"],"edit":{"publisher":"P"}}`)
+	if first.Job != 1 || second.Job != 2 {
+		t.Fatalf("job ids %d, %d", first.Job, second.Job)
+	}
+	unlock()
+	done := make(chan struct{})
+	go func() { waitBulkEdits(); close(done) }()
+	select {
+	case <-done:
+	case <-time.After(10 * time.Second):
+		t.Fatal("the queue stopped")
+	}
+	for _, id := range []int64{first.Job, second.Job} {
+		if j := bulkJobState(t, id); j.State != "done" || j.Result == nil || j.Result.Changed != 1 {
+			t.Errorf("job %d: %+v", id, j)
+		}
+	}
 }
