@@ -186,7 +186,10 @@ async function run(user: string): Promise<void> {
             else if (kind === "annotations") await sendAnnotations(key, uuid!);
             else if (kind === "mark") await sendMarkOf(user, uuid!);
         } catch (e) {
-            if (e instanceof Unreachable) return; // the rest when the server is back
+            if (e instanceof Unreachable) {
+                watch(user); // the rest when the server is back
+                return;
+            }
             console.warn(`send-pending: the server didn't take ${key.slice(prefix.length)}; it's tried again later:`, e);
         }
     }
@@ -194,10 +197,20 @@ async function run(user: string): Promise<void> {
 
 let watching = "";
 
+/**
+ * Send what waits whenever the server is back. Each page script is bundled
+ * on its own (tools/jsbuild), so each has its own server-watch.ts: a send
+ * that failed here is retried by this copy's watch, whichever script it's in.
+ */
+function watch(user: string): void {
+    if (watching === user) return;
+    const first = !watching;
+    watching = user;
+    if (first) onServerBack(() => void sendPending(watching));
+}
+
 /** A signed-in page (nav.ts): send what waits now, and whenever the server is back. */
 export function startSendingPending(user: string): void {
     void sendPending(user);
-    if (watching === user) return;
-    watching = user;
-    onServerBack(() => void sendPending(watching));
+    watch(user);
 }

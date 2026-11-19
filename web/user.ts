@@ -140,6 +140,25 @@ function applyPending(controls: HTMLElement, uuid: string): void {
     }
 }
 
+// A change the server took, or turned down for a later one made elsewhere
+// (pending-marks.ts), or made on a cover: shown controls follow, unless a
+// newer change to that field still waits here.
+document.addEventListener("cf:status", (e) => {
+    const c = (e as CustomEvent<BookChange>).detail;
+    const user = lastKnownUser();
+    for (const controls of document.querySelectorAll<HTMLElement>(".book-user-controls")) {
+        if (controls.dataset["uuid"] !== c.uuid) continue;
+        const star = controls.querySelector<HTMLButtonElement>(".btn-favorite");
+        if (star && c.favorite !== undefined && !changeWaits(user, c.uuid, "favorite")) paintStar(star, c.favorite);
+        const select = controls.querySelector<HTMLSelectElement>(".book-status");
+        if (select && c.status !== undefined && !changeWaits(user, c.uuid, "status")) {
+            select.value = c.status;
+            const btn = controls.querySelector<HTMLButtonElement>(".btn-want");
+            if (btn) paintWant(btn, c.status);
+        }
+    }
+});
+
 // The server answers again: controls built here give way to its own (shelves too).
 onServerBack(() => {
     for (const c of document.querySelectorAll<HTMLElement>(".book-user-controls[data-local]")) {
@@ -201,23 +220,20 @@ function bind(controls: HTMLElement): void {
         if (!user) return;
         const want = star.getAttribute("aria-pressed") !== "true";
         paintStar(star, want);
-        noteMark(user, uuid, { favorite: want }, { favorite: !want });
+        noteMark(user, uuid, { favorite: want });
         void sendNoted({ uuid, favorite: want }, "favorite");
     });
 
     const status = controls.querySelector<HTMLSelectElement>(".book-status");
     const want = controls.querySelector<HTMLButtonElement>(".btn-want");
     const note = controls.querySelector<HTMLElement>(".book-status-note");
-    let current = status?.value ?? "";
-    if (want) paintWant(want, current);
+    if (want && status) paintWant(want, status.value);
     const save = async (value: string): Promise<void> => {
         if (!status || !user) return;
-        const was = current;
-        current = value;
         status.value = value;
         if (want) paintWant(want, value);
         if (note) note.textContent = note.dataset["progress"] ?? ""; // set here, not by the reader
-        noteMark(user, uuid, { status: value }, { status: was });
+        noteMark(user, uuid, { status: value });
         await sendNoted({ uuid, status: value }, "status");
     };
     status?.addEventListener("change", () => void save(status.value));
@@ -225,8 +241,8 @@ function bind(controls: HTMLElement): void {
     // Once reading or finished it shows that, and opens the menu.
     want?.addEventListener("click", () => {
         if (!status) return;
-        if (current === "" || current === "wanted") {
-            void save(current === "wanted" ? "" : "wanted");
+        if (status.value === "" || status.value === "wanted") {
+            void save(status.value === "wanted" ? "" : "wanted");
             return;
         }
         try {

@@ -352,13 +352,12 @@ export async function coverAction(action: string, uuid: string, marks: Marks, re
         const on = !marks.favorites.has(uuid);
         if (on) marks.favorites.add(uuid);
         else marks.favorites.delete(uuid);
-        noteMark(user, uuid, { favorite: on }, { favorite: !on });
+        noteMark(user, uuid, { favorite: on });
     } else if (action === "want") {
-        const was = statusOf(marks, uuid);
         const on = !marks.wanted.has(uuid);
         if (on) marks.wanted.add(uuid);
         else marks.wanted.delete(uuid);
-        noteMark(user, uuid, { status: on ? "wanted" : "" }, { status: was });
+        noteMark(user, uuid, { status: on ? "wanted" : "" });
     } else return;
     saveMarks(marks);
     repaint();

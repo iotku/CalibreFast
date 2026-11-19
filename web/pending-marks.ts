@@ -8,11 +8,15 @@
  * missing connection never undoes a click, and what waits survives a
  * reload.
  *
- * Each record keeps what the server had before the first change ("was"):
- * a change back to it (favorite, then unfavorite) drops that field instead
- * of sending two requests that cancel out. Marks fetched from the server
- * (reading.ts) and controls it renders get what waits laid over them, so
- * nothing jumps back while it's on its way.
+ * Changes to one field coalesce: favorite, unfavorite, favorite sends one
+ * request, the last. Each keeps when it was made, sent as how long ago
+ * (age_ms, so the devices' clocks needn't agree): the server keeps the
+ * newest change (mark_changes, userdata.go), so one made earlier offline
+ * doesn't undo a later one made elsewhere meanwhile. That's also why a
+ * change back to what the server had is still sent: the server may have
+ * changed since. Marks fetched from the server (reading.ts) and controls it
+ * renders get what waits laid over them, so nothing jumps back while it's
+ * on its way; the server's answer, applied or not, is what then shows.
  */
 
 import { localKey } from "./local-keys.js";
@@ -23,9 +27,9 @@ export interface MarkFields {
     status?: string;
 }
 
-/** A book's changes waiting to be sent, and the server's values before them. */
+/** A book's changes waiting to be sent, and when each was made (Date.now()). */
 export interface PendingMark extends MarkFields {
-    was: MarkFields;
+    at: { favorite?: number; status?: number };
 }
 
 const PREFIX = "mark-";
@@ -71,23 +75,17 @@ export function pendingMarks(user: string | null): Map<string, PendingMark> {
     return out;
 }
 
-/**
- * Note a change made here. was: what was showing before it, which is what
- * the server has when nothing waits for that field yet. A change back to
- * the server's value drops the field: nothing to send.
- */
-export function noteMark(user: string, uuid: string, change: MarkFields, was: MarkFields): void {
+/** Note a change made here, now; it replaces one to the same field still waiting. */
+export function noteMark(user: string, uuid: string, change: MarkFields): void {
     const key = localKey(user, PREFIX + uuid);
-    const p: PendingMark = read(key) ?? { was: {} };
+    const p: PendingMark = read(key) ?? { at: {} };
+    p.at ??= {}; // a record from before change times were kept
+    const now = Date.now();
     for (const f of FIELDS) {
         const v = change[f];
         if (v === undefined) continue;
-        if (p[f] === undefined) (p.was as Record<string, unknown>)[f] = was[f];
         (p as unknown as Record<string, unknown>)[f] = v;
-        if (p[f] === p.was[f]) {
-            delete p[f];
-            delete p.was[f];
-        }
+        p.at[f] = now;
     }
     write(key, p);
     window.dispatchEvent(new CustomEvent("cf:sync")); // the sync button counts what's left
@@ -130,22 +128,27 @@ export async function sendMark(
     const p = read(key);
     if (!p) return;
     const path = `/api/me/books/${encodeURIComponent(uuid)}`;
-    const done = (f: (typeof FIELDS)[number], v: unknown): void => {
+    // Done with a field, unless it changed again while its request was out.
+    const done = (f: (typeof FIELDS)[number], at: number | undefined): void => {
         const now = read(key);
-        if (!now || now[f] !== v) return;
+        if (!now || now.at?.[f] !== at) return;
         delete now[f];
-        delete now.was[f];
+        delete now.at[f];
         write(key, now);
     };
+    const age = (at: number | undefined): number => Math.max(0, Date.now() - (at ?? Date.now()));
     const told = (change: BookChange): void => void document.dispatchEvent(new CustomEvent<BookChange>("cf:status", { detail: change }));
+    // The answer is the field as it stands: this change, or a later one made elsewhere.
     if (p.favorite !== undefined) {
-        await send("PUT", `${path}/favorite`, { favorite: p.favorite });
-        done("favorite", p.favorite);
-        told({ uuid, favorite: p.favorite });
+        const at = p.at?.favorite;
+        const res = (await send("PUT", `${path}/favorite`, { favorite: p.favorite, age_ms: age(at) })) as { favorite?: boolean } | null;
+        done("favorite", at);
+        told({ uuid, favorite: res?.favorite ?? p.favorite });
     }
     if (p.status !== undefined) {
-        const res = (await send("PUT", `${path}/status`, { status: p.status })) as { status?: string } | null;
-        done("status", p.status);
+        const at = p.at?.status;
+        const res = (await send("PUT", `${path}/status`, { status: p.status, age_ms: age(at) })) as { status?: string } | null;
+        done("status", at);
         told({ uuid, status: res?.status ?? p.status });
     }
 }
