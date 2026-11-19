@@ -382,3 +382,54 @@ func TestPredictRow(t *testing.T) {
 		}
 	}
 }
+
+// A database that had the first queue table (migration 23) is converted:
+// a change left in it keeps its books; those written are skipped, and the
+// rest fail (no base to check against) rather than are written unchecked.
+func TestBulkQueueMigratesFrom23(t *testing.T) {
+	db := setupRecycleLibrary(t)
+	a := addOPFTestBook(t, db, "Alpha", []string{"Ann"}, nil, nil)
+	b := addOPFTestBook(t, db, "Beta", []string{"Bob"}, nil, nil)
+
+	app, err := sql.Open("sqlite3", "file:"+t.TempDir()+"/app.db?_foreign_keys=on&_journal_mode=WAL")
+	if err != nil {
+		t.Fatal(err)
+	}
+	app.SetMaxOpenConns(1)
+	t.Cleanup(func() { app.Close() })
+	all := migrations
+	migrations = all[:23]
+	err = migrate(app)
+	migrations = all
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := app.Exec(`INSERT INTO bulk_edit_queue (id, uuids, edit, done, created_at) VALUES (7, ?, '{"publisher":"Old"}', 1, 0)`,
+		`["`+a.uuid+`","`+b.uuid+`"]`); err != nil {
+		t.Fatal(err)
+	}
+	if err := migrate(app); err != nil {
+		t.Fatal(err)
+	}
+	var n int
+	if err := app.QueryRow(`SELECT COUNT(*) FROM bulk_edit_books WHERE job_id = 7 AND ((pos = 0 AND uuid = ? AND outcome = 'unchanged') OR (pos = 1 AND uuid = ? AND outcome IS NULL AND base IS NULL))`, a.uuid, b.uuid).Scan(&n); err != nil || n != 2 {
+		t.Fatalf("converted books: %d %v", n, err)
+	}
+
+	orig := appDB
+	appDB = app
+	t.Cleanup(func() { appDB = orig })
+	restartBulkQueue()
+	waitBulkEdits()
+	if r := tableRow(t, db, b.uuid); r.Publisher == "Old" {
+		t.Errorf("Beta written unchecked: %+v", r)
+	}
+	if kept := keptFailures(t); len(kept) != 1 || kept[0].UUID != b.uuid {
+		t.Errorf("kept %+v", kept)
+	}
+	// New changes queue as usual.
+	if res := postBulk(t, `{"uuids":["`+a.uuid+`"],"edit":{"remove_tags":["x"]}}`); res.Job == 0 {
+		t.Errorf("queued %+v", res)
+	}
+	waitBulkEdits()
+}

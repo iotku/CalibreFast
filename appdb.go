@@ -387,15 +387,34 @@ var migrations = []string{
 	) WITHOUT ROWID;
 	`,
 	// 23: bulk editor changes waiting to be written to the library
-	// (bulk_queue.go), so a stop or crash doesn't lose them. A change goes
-	// when every book has an outcome; its books go with it.
+	// (bulk_queue.go), so a stop or crash doesn't lose them. A row goes when
+	// its change has been made to every book. done: books already written.
+	// (Replaced by 24.)
 	`
+	CREATE TABLE bulk_edit_queue (
+		id         INTEGER PRIMARY KEY,
+		uuids      TEXT    NOT NULL,              -- JSON array
+		edit       TEXT    NOT NULL,              -- JSON bulkEdit
+		user_id    INTEGER REFERENCES users(id) ON DELETE SET NULL,
+		done       INTEGER NOT NULL DEFAULT 0,
+		created_at INTEGER NOT NULL
+	);
+	`,
+	// 24: the queue a book at a time (bulk_queue.go): each book's base (the
+	// last_modified it's written against) and outcome, and failures kept
+	// until seen. A change goes when every book has an outcome; its books go
+	// with it. A change left by 23 keeps its books; those not yet written
+	// have no base, so they fail rather than are written unchecked.
+	`
+	ALTER TABLE bulk_edit_queue RENAME TO bulk_edit_queue_23;
 	CREATE TABLE bulk_edit_queue (
 		id         INTEGER PRIMARY KEY,
 		edit       TEXT    NOT NULL,              -- JSON bulkEdit
 		user_id    INTEGER REFERENCES users(id) ON DELETE SET NULL,
 		created_at INTEGER NOT NULL
 	);
+	INSERT INTO bulk_edit_queue (id, edit, user_id, created_at)
+		SELECT id, edit, user_id, created_at FROM bulk_edit_queue_23;
 	CREATE TABLE bulk_edit_books (
 		job_id  INTEGER NOT NULL REFERENCES bulk_edit_queue(id) ON DELETE CASCADE,
 		pos     INTEGER NOT NULL,                 -- the order they're written in
@@ -405,6 +424,10 @@ var migrations = []string{
 		PRIMARY KEY (job_id, pos)
 	);
 	CREATE INDEX bulk_edit_books_uuid ON bulk_edit_books(uuid, job_id);
+	INSERT INTO bulk_edit_books (job_id, pos, uuid, outcome)
+		SELECT q.id, CAST(j.key AS INTEGER), j.value, CASE WHEN CAST(j.key AS INTEGER) < q.done THEN 'unchanged' END
+		FROM bulk_edit_queue_23 q, json_each(q.uuids) j;
+	DROP TABLE bulk_edit_queue_23;
 	-- Books a queued change couldn't be made to, until an editor has seen them.
 	CREATE TABLE bulk_edit_failures (
 		id      INTEGER PRIMARY KEY,
