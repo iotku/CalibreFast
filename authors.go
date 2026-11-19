@@ -11,13 +11,27 @@ package main
 //     guess is never saved by itself.
 //
 // web/authors.ts reads the field the same way: keep them in sync.
+//
+// Calibre keeps a comma in an author's name ("Battey, Nick") as "|" in
+// metadata.db's authors.name ("Battey| Nick"), and turns it back into a
+// comma whenever it reads the name. So does every query here that reads
+// authors.name (authorNameSQL), and upsertAuthor stores names that way.
 
 import "strings"
+
+// authorNameSQL is an author's (alias a) name as Calibre shows it: "|" in
+// metadata.db is a comma.
+const authorNameSQL = `replace(a.name, '|', ',')`
+
+// authorDBName is a name as Calibre stores it in authors.name.
+func authorDBName(name string) string {
+	return strings.ReplaceAll(name, ",", "|")
+}
 
 // bookAuthorsSQL is a book's (alias b) author names in Calibre's order,
 // "A & B", for the grids. Calibre's books.author_sort is the sort form
 // ("Last, First"), which isn't what the book popup shows.
-const bookAuthorsSQL = `COALESCE((SELECT group_concat(a.name, ' & ' ORDER BY bal.id)
+const bookAuthorsSQL = `COALESCE((SELECT group_concat(` + authorNameSQL + `, ' & ' ORDER BY bal.id)
 	FROM books_authors_link bal JOIN authors a ON a.id = bal.author WHERE bal.book = b.id), '')`
 
 // splitAuthors splits authors written "A & B". Spaces are tidied; empty

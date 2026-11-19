@@ -242,7 +242,7 @@ func bookFormatsIn(db *sql.DB, bookID int64) ([]string, error) {
 }
 
 func bookAuthorNames(db *sql.DB, bookID int64) ([]string, error) {
-	rows, err := db.Query(`SELECT a.name FROM books_authors_link l JOIN authors a ON a.id = l.author WHERE l.book = ? ORDER BY l.id`, bookID)
+	rows, err := db.Query(`SELECT `+authorNameSQL+` FROM books_authors_link l JOIN authors a ON a.id = l.author WHERE l.book = ? ORDER BY l.id`, bookID)
 	if err != nil {
 		return nil, err
 	}
