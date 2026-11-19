@@ -10,7 +10,8 @@ export const EPUBJS_URL = "/static/vendor/epubjs@0.3.93/dist/epub.min.js";
 const PDFJS_URL = "/static/vendor/pdfjs-dist@5.7.284/build/pdf.min.mjs";
 const PDFJS_WORKER_URL = "/static/vendor/pdfjs-dist@5.7.284/build/pdf.worker.min.mjs";
 // What pdf.js fetches when a document needs it, a file at a time:
-//   wasm/            decoders for JPEG 2000 and JBIG2 images (common in scans)
+//   wasm/            decoders for JPEG 2000 and JBIG2 images (common in scans), and
+//                    qcms for ICC colour profiles (without it, their colours are approximated)
 //   cmaps/           character maps for CJK fonts that don't embed their own
 //   standard_fonts/  the 14 standard fonts (Helvetica, Times, …), which PDFs may use without embedding
 //   iccs/            a CMYK colour profile
