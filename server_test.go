@@ -114,11 +114,14 @@ public = false
 	}
 }
 
-// The Server page's storage bar splits -datadir into the database, the
-// recycle bin and the import queue, and counts a recycle bin kept elsewhere.
+// The Server page's storage bars split -datadir into the database, the
+// recycle bin and the import queue, one bar per disk the active folders are
+// on, with each disk's free space and a warning when it runs low.
 func TestServerStorage(t *testing.T) {
-	origData, origRecycle, origImport := dataDir, recycleDir, importDir
-	t.Cleanup(func() { dataDir, recycleDir, importDir = origData, origRecycle, origImport })
+	origData, origRecycle, origImport, origBase, origCache, origWatch, origDisk := dataDir, recycleDir, importDir, baseDir, cacheDir, watchDir, diskOf
+	t.Cleanup(func() {
+		dataDir, recycleDir, importDir, baseDir, cacheDir, watchDir, diskOf = origData, origRecycle, origImport, origBase, origCache, origWatch, origDisk
+	})
 	write := func(p string, n int) {
 		t.Helper()
 		if err := os.MkdirAll(filepath.Dir(p), 0o700); err != nil {
@@ -135,26 +138,65 @@ func TestServerStorage(t *testing.T) {
 		}
 		return out
 	}
+	// Disks by folder: a folder under a root is on that root's disk.
+	disks := map[string]diskInfo{}
+	diskOf = func(p string) (diskInfo, bool) {
+		for root, d := range disks {
+			if insideDir(p, root) {
+				return d, true
+			}
+		}
+		return diskInfo{}, false
+	}
 
-	dataDir, recycleDir, importDir = t.TempDir(), "", ""
+	dataDir, recycleDir, importDir, cacheDir, watchDir = t.TempDir(), "", "", "", ""
+	baseDir = t.TempDir()
+	disks[realPath(dataDir)] = diskInfo{ID: 1, Total: 100 << 30, Free: 40 << 30}
+	disks[realPath(baseDir)] = diskInfo{ID: 2, Total: 1000 << 30, Free: 50 << 30}
 	write(filepath.Join(dataDir, appDBFile), 1000)
 	write(filepath.Join(dataDir, appDBFile+"-wal"), 200)
 	write(filepath.Join(dataDir, "recycle-bin", "b1", "books", "1", "x.epub"), 3000)
 	write(filepath.Join(dataDir, "imports", "7", "y.epub"), 400)
 	write(filepath.Join(dataDir, aggregateImagesDir, "z.jpg"), 50)
-	got := bytesOf(serverStorage())
-	want := map[string]int64{"Database": 1200, "Recycle bin": 3000, "Import queue": 400, "Other data": 50}
+	ms := serverStorage()
+	if len(ms) != 2 {
+		t.Fatalf("got %d bars, want 2 (data disk, library disk)", len(ms))
+	}
+	got := bytesOf(ms[0])
+	want := map[string]int64{"Database": 1200, "Recycle bin": 3000, "Import queue": 400, "Other data": 50,
+		"Other files": 60<<30 - 4650, "Free": 40 << 30}
 	if !reflect.DeepEqual(got, want) {
-		t.Errorf("inside: got %v, want %v", got, want)
+		t.Errorf("data disk: got %v, want %v", got, want)
+	}
+	if ms[0].Title != "Data folder, recycle bin and import queue: 40.0 GB free of 100.0 GB" || ms[0].Low != "" {
+		t.Errorf("data disk: title %q, low %q", ms[0].Title, ms[0].Low)
+	}
+	if got := bytesOf(ms[1]); !reflect.DeepEqual(got, map[string]int64{"Other files": 950 << 30, "Free": 50 << 30}) {
+		t.Errorf("library disk: got %v", got)
+	}
+	if !strings.HasPrefix(ms[1].Title, "Library: ") || ms[1].Low == "" {
+		t.Errorf("library disk (5%% free): title %q, low %q; want a warning", ms[1].Title, ms[1].Low)
 	}
 
+	// A recycle bin elsewhere is measured there, on its own disk's bar.
 	recycleDir = t.TempDir()
+	disks[realPath(recycleDir)] = diskInfo{ID: 3, Total: 10 << 30, Free: 512 << 20}
 	write(filepath.Join(recycleDir, "b2", "books", "2", "a.pdf"), 5000)
-	m := serverStorage()
-	if got := bytesOf(m)["Recycle bin"]; got != 5000 {
-		t.Errorf("elsewhere: recycle bin %d, want 5000", got)
+	ms = serverStorage()
+	if len(ms) != 3 {
+		t.Fatalf("got %d bars, want 3", len(ms))
 	}
-	if !strings.Contains(m.Note, recycleDir) {
-		t.Errorf("note %q doesn't say where the recycle bin is", m.Note)
+	if got := bytesOf(ms[1])["Recycle bin"]; got != 5000 || !strings.HasPrefix(ms[1].Title, "Recycle bin: ") || ms[1].Low == "" {
+		t.Errorf("recycle bin disk: bin %d, title %q, low %q", got, ms[1].Title, ms[1].Low)
+	}
+	if _, ok := bytesOf(ms[0])["Recycle bin"]; ok {
+		t.Errorf("data disk still shows the recycle bin: %v", bytesOf(ms[0]))
+	}
+
+	// Without disk information: what we keep, no free space.
+	diskOf = func(string) (diskInfo, bool) { return diskInfo{}, false }
+	ms = serverStorage()
+	if len(ms) != 1 || bytesOf(ms[0])["Free"] != 0 || !strings.Contains(ms[0].Title, "free space unknown") {
+		t.Errorf("unknown disks: %+v", ms)
 	}
 }

@@ -300,6 +300,8 @@ func mergeFormats(books []*mergeBook, keep string, chosen map[string]string) map
 
 func humanSize(n int64) string {
 	switch {
+	case n >= 1<<40:
+		return fmt.Sprintf("%.1f TB", float64(n)/(1<<40))
 	case n >= 1<<30:
 		return fmt.Sprintf("%.1f GB", float64(n)/(1<<30))
 	case n >= 1<<20:

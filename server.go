@@ -13,14 +13,11 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
-	"io/fs"
 	"log"
 	"net/http"
 	"os"
 	"os/signal"
-	"path/filepath"
 	"runtime/debug"
-	"strings"
 	"syscall"
 	"time"
 )
@@ -127,83 +124,7 @@ type serverPageData struct {
 	Uptime    string
 	Systemd   bool
 	GoVersion string
-	Storage   storageMeter
-}
-
-// storageSeg is one part of a storage bar: the same markup and classes as
-// the Preferences page's storage breakdown (bar() in web/preferences.ts).
-type storageSeg struct {
-	Label string
-	Class string
-	Bytes int64
-	Size  string
-	Width float64 // percent of the bar
-}
-
-type storageMeter struct {
-	Title string
-	Aria  string
-	Segs  []storageSeg
-	Note  string
-}
-
-// serverStorage measures -datadir and the recycle bin, which may be inside
-// it (the default) or elsewhere (-recycle-bin). The import queue is counted
-// on its own when it's inside -datadir.
-func serverStorage() storageMeter {
-	data := realPath(dataDir)
-	bin := realPath(recycleBinDir())
-	queue := realPath(importQueueDir())
-	binInside := insideDir(bin, data)
-	queueInside := insideDir(queue, data) && !insideDir(queue, bin)
-	var db, binBytes, queueBytes, other int64
-	_ = filepath.WalkDir(data, func(p string, d fs.DirEntry, err error) error {
-		if err != nil || !d.Type().IsRegular() {
-			return nil
-		}
-		info, err := d.Info()
-		if err != nil {
-			return nil
-		}
-		n := info.Size()
-		switch {
-		case binInside && insideDir(p, bin):
-			binBytes += n
-		case queueInside && insideDir(p, queue):
-			queueBytes += n
-		case filepath.Dir(p) == data && strings.HasPrefix(d.Name(), appDBFile):
-			db += n // calibrefast.db and its -wal and -shm
-		default:
-			other += n
-		}
-		return nil
-	})
-	note := "In " + dataDir + "."
-	if !binInside {
-		binBytes = dirSize(bin)
-		note = "In " + dataDir + "; the recycle bin is in " + recycleBinDir() + "."
-	}
-	segs := []storageSeg{
-		{Label: "Database", Class: "seg-database", Bytes: db},
-		{Label: "Recycle bin", Class: "seg-recycle", Bytes: binBytes},
-		{Label: "Import queue", Class: "seg-imports", Bytes: queueBytes},
-		{Label: "Other data", Class: "seg-other-data", Bytes: other},
-	}
-	total := db + binBytes + queueBytes + other
-	m := storageMeter{Title: "Server data: " + humanSize(total), Note: note}
-	var aria []string
-	for _, s := range segs {
-		if s.Bytes <= 0 {
-			continue
-		}
-		s.Size = humanSize(s.Bytes)
-		// At least a sliver, so a small part still shows.
-		s.Width = max(0.6, float64(s.Bytes)/float64(total)*100)
-		aria = append(aria, s.Label+" "+s.Size)
-		m.Segs = append(m.Segs, s)
-	}
-	m.Aria = m.Title + ": " + strings.Join(aria, ", ")
-	return m
+	Storage   []storageMeter
 }
 
 // GET /admin/server: what's running, and the Stop button.

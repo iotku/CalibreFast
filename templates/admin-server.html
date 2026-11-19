@@ -23,7 +23,9 @@
         <h2>Storage</h2>
         {{ with .Storage }}
         <div class="prefs-storage server-storage">
+            {{- range . }}
             <div class="prefs-meter">
+                {{ with .Low }}<p class="auth-error" role="alert">{{ . }}</p>{{ end }}
                 <p class="prefs-meter-title">{{ .Title }}</p>
                 <div class="prefs-bar" role="img" aria-label="{{ .Aria }}">
                     {{- range .Segs }}<span class="prefs-seg {{ .Class }}" title="{{ .Label }}: {{ .Size }}" style="width: {{ printf "%.2f" .Width }}%"></span>{{ end -}}
@@ -33,8 +35,11 @@
                     <li><span class="prefs-swatch {{ .Class }}"></span><span>{{ .Label }} {{ .Size }}</span></li>
                     {{- end }}
                 </ul>
-                <p class="auth-muted">{{ .Note }}</p>
+                {{- range .Paths }}
+                <p class="auth-muted server-path">{{ . }}</p>
+                {{- end }}
             </div>
+            {{- end }}
         </div>
         {{ end }}
         <h2>Stop the server</h2>
