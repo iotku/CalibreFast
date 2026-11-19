@@ -454,6 +454,10 @@ func (x *dupIndex) find(libDir, title string, authors []string, files []dupFile)
 type dupResult struct {
 	check *duplicateCheck
 	cat   *catalog
+	// it: the waiting book as it was checked. A quick edit puts a new copy
+	// in the queue (imports_edit.go), so a check of the old one, finished
+	// after the edit, is never taken for the new title's.
+	it *pendingImport
 }
 
 // duplicates is findDuplicates for a waiting book as its files say it is,
@@ -476,7 +480,7 @@ func (b *importInbox) duplicates(it *pendingImport) *duplicateCheck {
 		logErr(err, "imports: duplicate check for "+it.ID)
 		return nil
 	}
-	b.keepDuplicates(it.ID, check, idx.cat)
+	b.keepDuplicates(it, check, idx.cat)
 	return check
 }
 
@@ -489,29 +493,41 @@ func (b *importInbox) recheckDuplicates(it *pendingImport) *duplicateCheck {
 		logErr(err, "imports: duplicate check for "+it.ID)
 		return nil
 	}
-	b.keepDuplicates(it.ID, check, cat)
+	b.keepDuplicates(it, check, cat)
 	return check
 }
 
-func (b *importInbox) keepDuplicates(id string, check *duplicateCheck, cat *catalog) {
-	if b.get(id) == nil {
-		return // added or discarded meanwhile
+func (b *importInbox) keepDuplicates(it *pendingImport, check *duplicateCheck, cat *catalog) {
+	if b.get(it.ID) != it {
+		return // added, discarded or edited meanwhile
 	}
 	b.dupMu.Lock()
 	if b.dups == nil {
 		b.dups = map[string]dupResult{}
 	}
-	b.dups[id] = dupResult{check, cat}
+	b.dups[it.ID] = dupResult{check, cat, it}
+	b.dupMu.Unlock()
+}
+
+// forgetDuplicates drops the list's last check of a waiting book, whose
+// title or authors have changed (imports_edit.go): the list shows it as
+// being checked until it's checked again.
+func (b *importInbox) forgetDuplicates(id string) {
+	b.dupMu.Lock()
+	delete(b.dups, id)
 	b.dupMu.Unlock()
 }
 
 // cachedDuplicates is duplicates without checking: ok is false when the
-// book hasn't been checked yet, stale true when the library has changed
+// book hasn't been checked yet (as it is now), stale true when the library has changed
 // since (the result is still the best there is to show).
 func (b *importInbox) cachedDuplicates(it *pendingImport) (check *duplicateCheck, ok, stale bool) {
 	b.dupMu.Lock()
 	defer b.dupMu.Unlock()
 	r, ok := b.dups[it.ID]
+	if ok && r.it != it {
+		return nil, false, false // made for it before a quick edit
+	}
 	return r.check, ok, ok && r.cat != libraryCatalog.Load()
 }
 

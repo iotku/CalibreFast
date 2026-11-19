@@ -322,6 +322,8 @@ export interface TableBook {
     formats_from_folder?: boolean;
     isbn: string;
     has_cover: boolean;
+    /** A waiting book only (Go: tableBook.Library): "checking", "same file", "in library" or "new". */
+    library?: string;
 }
 
 /** What to change in each book (Go: bulkEdit). Fields left out stay as they are. */

@@ -19,6 +19,7 @@ const empty = byId("imports-empty");
 const folder = byId("imports-folder");
 const count = byId("imports-count");
 const discardExisting = byId("imports-discard-existing", HTMLButtonElement);
+const editTable = byId("imports-edit-table");
 const acceptAll = maybeId("imports-accept-all", HTMLButtonElement); // admins only
 /** Why the last mass import left a book waiting, by id. */
 const notAdded = new Map<string, string>();
@@ -137,6 +138,7 @@ function render(q: ImportQueue): void {
     empty.hidden = n > 0 || q.staging > 0;
     const same = q.items.reduce((sum, it) => sum + (it.into ? 0 : identicalFiles(it).size), 0);
     discardExisting.hidden = same === 0;
+    editTable.hidden = !q.items.some((it) => !it.into);
     if (acceptAll) acceptAll.hidden = !q.items.some(addable);
     discardExisting.title = `Discard the ${same} file${same === 1 ? "" : "s"} the library already has, byte for byte. A book's other formats stay, as new files for the book that has the rest.`;
 
