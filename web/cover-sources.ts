@@ -5,7 +5,7 @@
 
 import type { BookTarget } from "./book-target.js";
 import { openEpub } from "./epub-open.js";
-import { canInflate, mediaType, openBuffer } from "./epub-source.js";
+import { canInflate, mediaType, openBuffer, openRemote, type EpubSource } from "./epub-source.js";
 import { EPUBJS_URL, openPdf } from "./vendor.js";
 import { setVendorScriptSrc } from "./trusted.js";
 
@@ -161,9 +161,14 @@ export async function fileChoice(book: BookTarget, file: File): Promise<CoverCho
     };
 }
 
-/** The first pages of the book's PDF, rendered as they would be saved. */
+/**
+ * The first pages of the book's PDF, rendered as they would be saved. Read
+ * with range requests: only the cross-reference table and those pages'
+ * objects are fetched, not the whole file (pdf.js falls back to all of it
+ * when the file's structure is broken).
+ */
 export async function* pdfPages(book: BookTarget): AsyncGenerator<CoverChoice> {
-    const pdf = await openPdf(book.file("pdf"));
+    const pdf = await openPdf(book.file("pdf"), { disableAutoFetch: true, disableStream: true });
     try {
         for (let n = 1; n <= Math.min(pdf.numPages, PAGES); n++) {
             const page = await pdf.getPage(n);
@@ -198,12 +203,19 @@ function loadScript(src: string): Promise<void> {
 export async function* epubPages(target: BookTarget): AsyncGenerator<CoverChoice> {
     if (!canInflate) return; // no DecompressionStream to unzip it with
     if (typeof window.ePub === "undefined") await loadScript(EPUBJS_URL);
-    const res = await fetch(target.file("epub"), { credentials: "same-origin" });
-    if (!res.ok) throw new Error(`HTTP ${res.status}`);
     // Read as the reader does (epub-open.ts): epub.js gets each file through
     // a requestMethod that parses it with parseInert, never a plain string
-    // to DOMParser (refused under Trusted Types outside the reader).
-    const source = openBuffer(new Uint8Array(await res.arrayBuffer()), "");
+    // to DOMParser (refused under Trusted Types outside the reader). The zip
+    // is read file by file with range requests, so only the files looked at
+    // are fetched; the whole file where that can't be done.
+    let source: EpubSource;
+    try {
+        source = await openRemote(target.file("epub"));
+    } catch {
+        const res = await fetch(target.file("epub"), { credentials: "same-origin" });
+        if (!res.ok) throw new Error(`HTTP ${res.status}`);
+        source = openBuffer(new Uint8Array(await res.arrayBuffer()), "");
+    }
     const { book, pathOf } = openEpub(source, "cover-sources");
     await book.ready;
     /** A file in the book as a blob: URL (the choice's src, so kept); null if it isn't in the book. */
