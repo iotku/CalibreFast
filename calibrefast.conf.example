@@ -33,6 +33,10 @@ port = 8080
 
 # A folder to watch for new books (needs allow-writes).
 # watch-dir = /srv/calibre/incoming
+# Where they wait for review (default: imports in datadir). On the library's
+# drive (beside the library, not inside it), adding a book moves its files
+# instead of copying them.
+# import-dir = /srv/calibre/import-queue
 # How many of its books are taken in at once (default: CPU threads, at most 8).
 # import-workers = 8
 

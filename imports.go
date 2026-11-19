@@ -4,7 +4,7 @@ package main
 //
 // With -watch-dir, book files that appear in that folder (the operating
 // system says when; see folderWatcher.run) are moved into
-// <datadir>/imports/<id>/ and wait there: nothing is added to metadata.db or
+// <datadir>/imports/<id>/ (or -import-dir) and wait there: nothing is added to metadata.db or
 // the library folder until an admin reviews the book at /import/<id>, which
 // is the metadata editor (templates/book-edit.html) pointed at the waiting
 // book instead of one in the library. There the admin fixes the metadata
@@ -42,6 +42,10 @@ import (
 var (
 	// watchDir is -watch-dir: the folder watched for new books ("" for none).
 	watchDir string
+	// importDir is -import-dir: the queue's folder ("" for <datadir>/imports;
+	// importQueueDir). On the library's file system, adding a book renames
+	// its files into it instead of copying them.
+	importDir string
 	// watchForcePolling is -watch-dir-force-polling: scan on a timer even
 	// where the folder can be watched. Some mounts (NFS, SMB, some container
 	// bind mounts) accept a watch and then never report anything.
@@ -319,6 +323,21 @@ func (b *importInbox) stageForPlaceholder(paths []string, p *placeholder) (*pend
 		}
 	}
 	return it, nil
+}
+
+// waitingIn counts the waiting books' folders in dir (a queue folder not in
+// use), without loading them.
+func waitingIn(dir string) int {
+	entries, _ := os.ReadDir(dir)
+	n := 0
+	for _, e := range entries {
+		if e.IsDir() && isSafeUUIDComponent(e.Name()) {
+			if _, err := os.Stat(filepath.Join(dir, e.Name(), "item.json")); err == nil {
+				n++
+			}
+		}
+	}
+	return n
 }
 
 // discard takes a waiting book out of the queue, to discardedDir.
@@ -744,15 +763,47 @@ func insideDir(p, dir string) bool {
 	return err == nil && rel != ".." && !strings.HasPrefix(rel, ".."+string(filepath.Separator))
 }
 
-// realPath is p made absolute, with symbolic links resolved when it exists.
+// realPath is p made absolute, with symbolic links resolved: in p, or for a
+// path not made yet, in the nearest folder above it that is.
 func realPath(p string) string {
 	if abs, err := filepath.Abs(p); err == nil {
 		p = abs
 	}
-	if real, err := filepath.EvalSymlinks(p); err == nil {
-		p = real
+	var rest []string
+	for {
+		if real, err := filepath.EvalSymlinks(p); err == nil {
+			return filepath.Join(append([]string{real}, rest...)...)
+		}
+		parent := filepath.Dir(p)
+		if parent == p {
+			return filepath.Join(append([]string{p}, rest...)...)
+		}
+		rest = append([]string{filepath.Base(p)}, rest...)
+		p = parent
 	}
-	return p
+}
+
+// importQueueDir is the queue's folder: -import-dir, else <datadir>/imports.
+func importQueueDir() string {
+	if importDir != "" {
+		return filepath.Clean(importDir) // "x/" would put x/-discarded inside it
+	}
+	return filepath.Join(dataDir, "imports")
+}
+
+// checkImportDir refuses a queue folder that overlaps the library (Calibre
+// would find stray folders in it, and the queue the library's) or holds
+// -datadir. Inside -datadir is where it is by default.
+func checkImportDir(dir string) error {
+	q := realPath(dir) // may be made on first use
+	l := realPath(baseDir)
+	if insideDir(q, l) || insideDir(l, q) {
+		return errors.New("it overlaps the library (-basedir): use a folder beside it, on the same drive")
+	}
+	if insideDir(realPath(dataDir), q) {
+		return errors.New("it holds -datadir: use a folder of its own")
+	}
+	return nil
 }
 
 // checkWatchDir refuses a watch folder that would have the watcher taking
@@ -766,7 +817,7 @@ func checkWatchDir(dir string) error {
 		return errors.New("not a folder")
 	}
 	w := realPath(dir)
-	for what, other := range map[string]string{"the library (-basedir)": baseDir, "-datadir": dataDir} {
+	for what, other := range map[string]string{"the library (-basedir)": baseDir, "-datadir": dataDir, "the import queue (-import-dir)": importQueueDir()} {
 		o := realPath(other)
 		if insideDir(w, o) || insideDir(o, w) {
 			return fmt.Errorf("it overlaps %s: use a folder of its own", what)
@@ -778,8 +829,22 @@ func checkWatchDir(dir string) error {
 // startImports opens the import queue and, with -watch-dir, starts watching.
 func startImports() {
 	var err error
-	if imports, err = openInbox(filepath.Join(dataDir, "imports")); err != nil {
+	dir := importQueueDir()
+	if err := checkImportDir(dir); err != nil {
+		log.Fatalf("-import-dir %s: %v", dir, err)
+	}
+	if imports, err = openInbox(dir); err != nil {
 		log.Fatal("import queue: ", err)
+	}
+	if importDir != "" {
+		log.Printf("import queue: %s", dir)
+		// Books left in the old folder aren't moved (a copy across drives,
+		// perhaps a long one): they'd only be out of sight.
+		if old := filepath.Join(dataDir, "imports"); realPath(old) != realPath(dir) {
+			if n := waitingIn(old); n > 0 {
+				log.Printf("import queue: %d book(s) still wait in %s, which -import-dir replaces: move their folders into %s (with the server stopped) to review them", n, old, dir)
+			}
+		}
 	}
 	imports.startCoverWorker()
 	if n := imports.count(); n > 0 {
