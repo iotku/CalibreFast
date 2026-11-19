@@ -712,6 +712,20 @@ function closeExpanded(): void {
     expanded = null;
 }
 
+/** Whether the "+N" panel open is cell's. */
+const isExpanded = (cell: HTMLElement): boolean =>
+    expanded !== null && expanded.dataset["col"] === cell.dataset["col"] && expanded.closest(".lt-row") === cell.closest(".lt-row");
+
+/** Open the book's "+N" panel for key, once a box open elsewhere is saved (that redraws the rows). */
+async function expandAt(uuid: string, key: ColKey): Promise<void> {
+    if (editing) {
+        await editing.finish(true);
+        if (editing) return;
+    }
+    const cell = rowOnScreen(uuid)?.querySelector<HTMLElement>(`.lt-cell[data-col="${key}"]`);
+    if (cell) expand(cell);
+}
+
 /** Every chip of a list cell, wrapped, in a panel over the rows below it. */
 function expand(cell: HTMLElement): void {
     closeExpanded();
@@ -732,7 +746,9 @@ function expand(cell: HTMLElement): void {
 }
 
 document.addEventListener("click", (e) => {
-    if (expanded && !expanded.contains(e.target as Node) && !(e.target as HTMLElement).closest(".lt-more")) closeExpanded();
+    const t = e.target as HTMLElement;
+    // Not for a click on something since removed (a tag the click redrew): it was in the table.
+    if (expanded && t.isConnected && !expanded.contains(t) && !t.closest(".lt-more")) closeExpanded();
 });
 
 function chip(col: ColKey, value: string): HTMLElement {
@@ -958,7 +974,9 @@ body.addEventListener("click", (e) => {
         toggle(uuid, target.checked, e.shiftKey);
         return;
     }
-    if (editing?.cell.contains(target)) return;
+    if (editing?.area.contains(target)) return;
+    // A ✕ while a box is open only closes the box (it may be a slip).
+    if (editing && target.closest(".lt-chip-x")) return;
     const pen = target.closest<HTMLElement>(".lt-cell-edit");
     if (pen) {
         // In the row, or in its expanded panel: the row's cell for that column.
@@ -986,10 +1004,10 @@ body.addEventListener("click", (e) => {
     }
     const more = target.closest<HTMLElement>(".lt-more");
     if (more) {
-        const cell = more.closest<HTMLElement>(".lt-cell");
-        const open = expanded !== null && expanded.dataset["col"] === cell?.dataset["col"] && expanded.closest(".lt-row") === row;
+        const key = more.closest<HTMLElement>(".lt-cell")?.dataset["col"] as ColKey | undefined;
+        const open = expanded !== null && expanded.dataset["col"] === key && expanded.closest(".lt-row") === row;
         if (open) closeExpanded();
-        else if (cell) expand(cell);
+        else if (key) void expandAt(uuid, key);
         return;
     }
     if (target.closest("a, .lt-actions")) return;
@@ -1003,13 +1021,14 @@ body.addEventListener("click", (e) => {
         toggle(uuid, !selected.has(uuid), false);
         return;
     }
-    if (e.detail > 1) return; // the box is up already
     const key = target.closest<HTMLElement>("[data-col]")?.dataset["col"];
     const col = COLUMNS.find((c) => c.key === key);
     if (!col?.edit) return;
     const ch = target.closest<HTMLElement>(".lt-chip:not(.lt-chip-removed)");
-    closeExpanded();
-    void editAt(uuid, col.key, ch?.dataset["value"]);
+    // A tag in the "+N" panel is edited there (editAt keeps it open).
+    const inPanel = ch !== null && expanded !== null && expanded.contains(ch);
+    if (!inPanel) closeExpanded();
+    void editAt(uuid, col.key, ch?.dataset["value"], inPanel);
 });
 
 /** A Ctrl-click under way: on a Mac that's a right-click (contextmenu, no click), but here it ticks the row. */
@@ -1058,7 +1077,7 @@ body.addEventListener("pointerdown", (e) => {
     ctrlTicked = false;
     clearTimeout(pressTimer);
     const target = e.target as HTMLElement;
-    if (!touchTap || editing?.cell.contains(target) || target.closest(".lt-cell-menu, input, a, .lt-actions, .lt-chip-x, .lt-more, .lt-cell-edit")) return;
+    if (!touchTap || editing?.area.contains(target) || target.closest(".lt-cell-menu, input, a, .lt-actions, .lt-chip-x, .lt-more, .lt-cell-edit")) return;
     pressFrom = { x: e.clientX, y: e.clientY };
     pressTimer = window.setTimeout(() => {
         pressFrom = null;
@@ -1082,7 +1101,7 @@ body.addEventListener("pointercancel", pressEnded);
 body.addEventListener("contextmenu", (e) => {
     const target = e.target as HTMLElement;
     // A link's, a box's and the menu's own: the browser's.
-    if (cellMenu?.contains(target) || editing?.cell.contains(target) || target.closest("input, a")) return;
+    if (cellMenu?.contains(target) || editing?.area.contains(target) || target.closest("input, a")) return;
     const uuid = target.closest<HTMLElement>(".lt-row")?.dataset["uuid"];
     if (ctrlDown && uuid) {
         ctrlDown = false;
@@ -1134,8 +1153,12 @@ function deselectCell(): void {
 
 type MenuItem = [label: string, run: () => void];
 
-/** A menu under (or above) an item in a row, at left (px from the row's left). */
-function openMenu(row: HTMLElement, left: number, label: string, items: MenuItem[], key: string): void {
+/**
+ * A menu under (or above) an item in a row, at left (px from the row's left);
+ * with below, under (or above) that element instead of the row (a tag on a
+ * lower line of the "+N" panel).
+ */
+function openMenu(row: HTMLElement, left: number, label: string, items: MenuItem[], key: string, below?: HTMLElement): void {
     if (!items.length) return;
     const buttons = items.map(([text, run]) => {
         const btn = el("button", { type: "button", className: "lt-menu-item", role: "menuitem", title: text }, text);
@@ -1151,8 +1174,17 @@ function openMenu(row: HTMLElement, left: number, label: string, items: MenuItem
     row.append(menu);
     cellMenu = menu;
     menuFor = key;
+    const rowBox = row.getBoundingClientRect();
+    const anchor = below?.getBoundingClientRect();
+    if (anchor) menu.style.top = `${anchor.bottom - rowBox.top + 2}px`;
     // Up, if it would go past the bottom of the table.
-    if (menu.getBoundingClientRect().bottom > scroller.getBoundingClientRect().bottom) menu.classList.add("lt-menu-up");
+    if (menu.getBoundingClientRect().bottom > scroller.getBoundingClientRect().bottom) {
+        menu.classList.add("lt-menu-up");
+        if (anchor) {
+            menu.style.top = "auto";
+            menu.style.bottom = `${rowBox.bottom - anchor.top + 2}px`;
+        }
+    }
 }
 
 const copyItem = (text: string): MenuItem => [
@@ -1201,7 +1233,8 @@ function selectChip(uuid: string, key: ColKey, value: string, chipEl: HTMLElemen
     }
     items.push(copyItem(value));
     const left = chipEl.getBoundingClientRect().left - row.getBoundingClientRect().left;
-    openMenu(row, left, `${col.label}: ${value}, of “${r.b.title}”`, items, menuKey(uuid, key, value));
+    const inPanel = expanded?.contains(chipEl) ? chipEl : undefined;
+    openMenu(row, left, `${col.label}: ${value}, of “${r.b.title}”`, items, menuKey(uuid, key, value), inPanel);
 }
 
 const shortText = (s: string): string => (s.length > 40 ? `${s.slice(0, 39)}…` : s);
@@ -1572,21 +1605,30 @@ function seriesEdit(value: string): BulkEdit {
     return index ? { series: m[1]!, series_index: index } : { series: m[1]! };
 }
 
-let editing: { cell: HTMLElement; input: HTMLInputElement; finish: (save: boolean) => Promise<void> } | null = null;
+/** The box open for an edit: in cell, taking up area (the cell, or one tag's place in it). */
+let editing: { cell: HTMLElement; area: HTMLElement; input: HTMLInputElement; finish: (save: boolean) => Promise<void> } | null = null;
 
 /**
  * Edit the book's cell for key, if its row is on screen; with value, just that
- * tag or language (or, if the "+N" hides its chip, the cell with it picked
- * out). A box open elsewhere is saved first.
+ * tag or language (in the "+N" panel if that hides it, or inPanel: it was
+ * clicked there). A box open elsewhere is saved first.
  */
-async function editAt(uuid: string, key: ColKey, value?: string): Promise<void> {
+async function editAt(uuid: string, key: ColKey, value?: string, inPanel = false): Promise<void> {
     if (editing) {
         await editing.finish(true);
         if (editing) return;
     }
     const cell = rowOnScreen(uuid)?.querySelector<HTMLElement>(`.lt-editable[data-col="${key}"]`);
     if (!cell) return;
-    const ch = value === undefined ? undefined : [...cell.querySelectorAll<HTMLElement>(".lt-chip:not(.lt-chip-removed)")].find((c) => c.dataset["value"] === value);
+    const chipIn = (box: ParentNode | null): HTMLElement | undefined =>
+        value === undefined ? undefined : [...(box?.querySelectorAll<HTMLElement>(".lt-chip:not(.lt-chip-removed)") ?? [])].find((c) => c.dataset["value"] === value);
+    let ch = chipIn(cell);
+    // One the "+N" hides, or one clicked in its panel (which covers the
+    // row): edited in the panel that shows them all.
+    if (ch && (ch.hidden || inPanel)) {
+        if (!isExpanded(cell)) expand(cell);
+        ch = chipIn(expanded);
+    }
     if (ch && !ch.hidden && (key === "tags" || key === "languages")) startChipEdit(ch, uuid, key);
     else startEdit(cell, value);
 }
@@ -1612,7 +1654,8 @@ function wireEditKeys(input: HTMLInputElement, finish: (save: boolean) => Promis
 
 /** Edit one tag or language in place of its chip: empty removes it. */
 function startChipEdit(chipEl: HTMLElement, uuid: string, key: "tags" | "languages"): boolean {
-    const cell = chipEl.closest<HTMLElement>(".lt-editable");
+    // In the row's cell, or in the "+N" panel.
+    const cell = chipEl.closest<HTMLElement>(".lt-editable, .lt-expanded");
     const r = rows.find((x) => x.b.uuid === uuid);
     const before = chipEl.dataset["value"];
     if (!cell || !r || before === undefined || editing) return false;
@@ -1645,7 +1688,8 @@ function startChipEdit(chipEl: HTMLElement, uuid: string, key: "tags" | "languag
         }
         refresh();
     };
-    editing = { cell, input, finish };
+    // Clicks elsewhere in the cell (another tag) are for the other tag.
+    editing = { cell, area: input.parentElement ?? input, input, finish };
     input.focus();
     input.select();
     wireEditKeys(input, finish);
@@ -1701,7 +1745,7 @@ function startEdit(cell: HTMLElement, item?: string): boolean {
         }
         refresh();
     };
-    editing = { cell, input, finish };
+    editing = { cell, area: cell, input, finish };
     wireEditKeys(input, finish);
     return true;
 }
@@ -2109,7 +2153,7 @@ async function reloadRows(): Promise<void> {
     let stale = false;
     try {
         const data = await api<TableData>("GET", SOURCE.table);
-        if (editing || modalOpen() || cellMenu) {
+        if (editing || modalOpen() || cellMenu || expanded) {
             // Redrawing would close what's open: next time.
             reloadedAt = 0;
             return;
