@@ -202,6 +202,32 @@
     border-top: 1px solid var(--border-medium);
 }
 
+/* Ticked books the filters hide, pinned above the list */
+.lt-rows .lt-pin-head {
+    display: flex;
+    background: var(--bg-elevated);
+    font-size: 0.8rem;
+    color: var(--text-secondary);
+}
+
+.lt-pin-label {
+    position: sticky;
+    left: 0;
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    padding: 0 10px;
+    white-space: nowrap;
+}
+
+.lt-rows .lt-row-pinned {
+    background: color-mix(in srgb, var(--accent) 7%, transparent);
+}
+
+.lt-rows .lt-row.lt-pin-last {
+    border-bottom: 2px solid var(--border-medium);
+}
+
 .lt-cell {
     min-width: 0;
     padding: 0 6px;
@@ -255,7 +281,7 @@
 }
 
 /* The row's full height, not just its text's: an empty cell (no publisher,
-   say) is then still there to double-click. 33px: the row less its border. */
+   say) is then still there to click. 33px: the row less its border. */
 .lt-rows .lt-editable:not(.lt-list-cell) {
     align-self: stretch;
     line-height: 33px;
@@ -273,10 +299,30 @@
     min-width: 0;
 }
 
+/* One tag or language being edited, in place of its chip */
+.lt-rows .lt-chip-edit {
+    flex: 0 1 14em;
+    min-width: 8em;
+}
+
 .lt-rows .lt-editable:empty:hover::after {
-    content: "Double-click to add";
+    content: "Click to add";
     font-size: 0.75rem;
     color: var(--text-muted);
+}
+
+/* A touch screen: a tap ticks the row and a long press opens the menu, so
+   no text selection or callout on the rows. */
+@media (pointer: coarse) {
+    .lt-rows .lt-row {
+        -webkit-user-select: none;
+        user-select: none;
+        -webkit-touch-callout: none;
+    }
+
+    .lt-rows .lt-editable:empty:hover::after {
+        content: none;
+    }
 }
 
 .lt-sort {
