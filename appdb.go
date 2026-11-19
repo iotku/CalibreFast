@@ -387,16 +387,34 @@ var migrations = []string{
 	) WITHOUT ROWID;
 	`,
 	// 23: bulk editor changes waiting to be written to the library
-	// (bulk_queue.go), so a stop or crash doesn't lose them. A row goes when
-	// its change has been made to every book. done: books already written.
+	// (bulk_queue.go), so a stop or crash doesn't lose them. A change goes
+	// when every book has an outcome; its books go with it.
 	`
 	CREATE TABLE bulk_edit_queue (
 		id         INTEGER PRIMARY KEY,
-		uuids      TEXT    NOT NULL,              -- JSON array
 		edit       TEXT    NOT NULL,              -- JSON bulkEdit
 		user_id    INTEGER REFERENCES users(id) ON DELETE SET NULL,
-		done       INTEGER NOT NULL DEFAULT 0,
 		created_at INTEGER NOT NULL
+	);
+	CREATE TABLE bulk_edit_books (
+		job_id  INTEGER NOT NULL REFERENCES bulk_edit_queue(id) ON DELETE CASCADE,
+		pos     INTEGER NOT NULL,                 -- the order they're written in
+		uuid    TEXT    NOT NULL,
+		base    TEXT,                             -- the book's last_modified the change is written against; NULL until the change before it to this book is made
+		outcome TEXT,                             -- NULL: not yet; 'changed' | 'unchanged' | 'failed'
+		PRIMARY KEY (job_id, pos)
+	);
+	CREATE INDEX bulk_edit_books_uuid ON bulk_edit_books(uuid, job_id);
+	-- Books a queued change couldn't be made to, until an editor has seen them.
+	CREATE TABLE bulk_edit_failures (
+		id      INTEGER PRIMARY KEY,
+		job_id  INTEGER NOT NULL,
+		uuid    TEXT    NOT NULL,
+		title   TEXT    NOT NULL,
+		edit    TEXT    NOT NULL,                 -- JSON bulkEdit, to say what wasn't made
+		error   TEXT    NOT NULL,
+		user_id INTEGER REFERENCES users(id) ON DELETE SET NULL,
+		at      INTEGER NOT NULL
 	);
 	`,
 }

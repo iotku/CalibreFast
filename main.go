@@ -1077,8 +1077,11 @@ func applyMetadataHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	// bulkMu: not at the same time as a queued bulk edit of it (bulk_queue.go).
+	bulkMu.Lock()
 	before := snapBook(uuid)
 	bookPath, err := updateBookInCalibreDB(calibreDB, baseDir, uuid, &meta)
+	bulkMu.Unlock()
 	if err != nil {
 		log.Println("apply metadata error:", err)
 		http.Error(w, "Failed to update metadata: "+err.Error(), http.StatusInternalServerError)

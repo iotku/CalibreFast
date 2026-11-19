@@ -356,6 +356,18 @@ export interface BulkResult {
     job?: number;
 }
 
+/** GET /api/library/bulk/failures: a book a queued edit couldn't be made to (Go: keptBulkFailure). */
+export interface BulkFailureKept {
+    id: number;
+    uuid: string;
+    title: string;
+    edit: BulkEdit;
+    error: string;
+    by: string;
+    /** Unix seconds. */
+    at: number;
+}
+
 /** GET /api/library/bulk/jobs: how far a queued edit has got (Go: bulkJob). */
 export interface BulkJob {
     state: "queued" | "running" | "done" | "unknown";

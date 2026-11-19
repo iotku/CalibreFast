@@ -3,31 +3,53 @@ package main
 // The bulk editor's write queue. A library on slow storage can take seconds
 // to write a change to (each book's metadata.opf, metadata.db), and the
 // editor shouldn't wait for it. So POST /api/library/bulk only checks the
-// change, saves it to calibrefast.db (bulk_edit_queue) and answers with the
-// rows as they will be, foreseen from metadata.db; one worker then makes
-// the changes in the order they came, a book at a time, as bulkEditBooksAs
-// does.
+// change, saves it to calibrefast.db and answers with the rows as they will
+// be, foreseen from metadata.db; one worker then makes the changes in the
+// order they came, a book at a time, as bulkEditBooksAs does.
+//
+// Safety comes first: a change that can't be made safely fails, and says
+// so, rather than writing over something.
+//
+//   - Saved before answering. The change and its books (bulk_edit_queue,
+//     bulk_edit_books) are committed to calibrefast.db before the 202; if
+//     that fails, the editor is told and nothing is made.
+//   - Written against the book as it was when queued. Each book records its
+//     last_modified then (its base). The write checks it in the same transaction as the write itself
+//     (updateBookIfUnchanged), so a book changed meanwhile (Calibre, another
+//     server, anything) isn't written over: that book fails. A book with an
+//     earlier queued change is written against the last_modified that change
+//     leaves (or, if it failed, against the same base, so it fails too when
+//     the book was changed elsewhere).
+//   - Each book's outcome is committed as it's made, with the base of the
+//     next change to that book, so after a stop or crash only books without
+//     one are made. A book written just before a crash, its outcome not yet
+//     saved, then fails as changed elsewhere (its last_modified is the new
+//     one): never written twice over a change.
+//   - Failures are kept (bulk_edit_failures) until an editor has seen them
+//     in the bulk editor, whether or not the page that made them is open.
+//   - A panic making a book is that book's failure (bulkEditBook).
+//   - On a normal stop the server gives the queue up to shutdownTimeout to
+//     empty, then finishes the book being written and stops; the rest is
+//     made when it starts again, with the same checks. Requests waiting for
+//     the queue meanwhile are refused (503) rather than run ahead of it.
 //
 // Until a book's queued changes are all made, the table (GET
 // /api/library/table) shows it as they will leave it. GET
 // /api/library/bulk/jobs says how far each change has got, with the rows
 // as written (and any book that couldn't be changed) once it's done.
 //
-// A change stays in bulk_edit_queue until it's been made to every book, so
-// one the server stopped or crashed in the middle of is finished when it
-// starts again. Making a change twice to a book does nothing more (every
-// bulkEdit sets, adds or removes values), so a book written just before a
-// crash is safe to write again. On a normal stop the server first gives
-// the queue up to shutdownTimeout to empty.
-//
 // Other changes to the library (the metadata editor, merges, removing
-// books, undo) wait for the queue to empty first (waitBulkEdits), so they
-// start from the books as the queued changes leave them.
+// books, undo) wait for the queue first (afterBulkEdits, afterBookEdits),
+// so they start from the books as the queued changes leave them.
 
 import (
+	"database/sql"
 	"encoding/json"
+	"errors"
+	"fmt"
 	"log"
 	"net/http"
+	"runtime/debug"
 	"slices"
 	"strconv"
 	"strings"
@@ -39,11 +61,22 @@ import (
 
 // queuedEdit is a change waiting in the queue.
 type queuedEdit struct {
-	id    int64
-	uuids []string
-	edit  bulkEdit
-	by    *User
-	done  int // books already written: the worker resumes after them
+	id      int64
+	uuids   []string
+	base    []string // per book: the last_modified it's written against; "" until the change before it to the book is made
+	outcome []string // per book: "" until made, then "changed", "unchanged" or "failed"
+	edit    bulkEdit
+	by      *User
+}
+
+func (j *queuedEdit) made() int {
+	n := 0
+	for _, o := range j.outcome {
+		if o != "" {
+			n++
+		}
+	}
+	return n
 }
 
 // bulkJob is how far a queued change has got (TS: BulkJob in web/types.ts).
@@ -58,17 +91,22 @@ type bulkJob struct {
 type pendingRow struct {
 	row  tableBook
 	jobs int // queued changes still to make to it
+	// next: when the last of them has been made to it (its change not yet
+	// finished with every book), the last_modified it left: the base of a
+	// change queued now.
+	next string
 }
 
 // bulkJobsKept: how many finished changes the server remembers for the
 // editors to ask about.
 const bulkJobsKept = 500
 
+var errBulkStopping = errors.New("the server is stopping; try again when it's back")
+
 var bulkQueue = struct {
 	mu       sync.Mutex
 	changed  *sync.Cond // the queue or a change's progress changed
 	waiting  []*queuedEdit
-	running  bool // the worker is making waiting[0]
 	jobs     map[int64]*bulkJob
 	finished []int64 // oldest first, to forget
 	rows     map[string]*pendingRow
@@ -117,6 +155,9 @@ func queueBulkEdit(uuids []string, edit *bulkEdit, by *User) (bulkResult, error)
 	q := &bulkQueue
 	q.mu.Lock()
 	defer q.mu.Unlock()
+	if q.stopping {
+		return res, errBulkStopping
+	}
 
 	// A book with queued changes starts from its row as they'll leave it;
 	// any other from metadata.db (no change to it is being made: the lock
@@ -130,6 +171,7 @@ func queueBulkEdit(uuids []string, edit *bulkEdit, by *User) (bulkResult, error)
 			read = append(read, u)
 		}
 	}
+	fresh := map[string]bool{}
 	for chunk := range slices.Chunk(read, 500) {
 		got, err := tableBooks(calibreDB, chunk)
 		if err != nil {
@@ -137,9 +179,10 @@ func queueBulkEdit(uuids []string, edit *bulkEdit, by *User) (bulkResult, error)
 		}
 		for _, b := range got {
 			rows[b.UUID] = b
+			fresh[b.UUID] = true
 		}
 	}
-	var queued []string
+	job := &queuedEdit{edit: *edit, by: by}
 	next := map[string]tableBook{}
 	for _, u := range uuids {
 		b, ok := rows[u]
@@ -149,7 +192,17 @@ func queueBulkEdit(uuids []string, edit *bulkEdit, by *User) (bulkResult, error)
 		}
 		// Every book is queued, even one this doesn't foresee a change to:
 		// the change is made to its metadata.opf, which may not match.
-		queued = append(queued, u)
+		job.uuids = append(job.uuids, u)
+		base := "" // set when the change before it to this book is made
+		if fresh[u] {
+			base = b.modified
+			if base == "" {
+				base = "-" // no last_modified to check: it fails rather than writes unchecked
+			}
+		} else if p := q.rows[u]; p.next != "" {
+			base = p.next // that change has been made to it already
+		}
+		job.base = append(job.base, base)
 		if now, changed := predictRow(b, edit); changed {
 			next[u] = now
 			res.Books = append(res.Books, now)
@@ -158,17 +211,17 @@ func queueBulkEdit(uuids []string, edit *bulkEdit, by *User) (bulkResult, error)
 		}
 	}
 	res.Changed = len(res.Books)
-	if len(queued) == 0 {
+	if len(job.uuids) == 0 {
 		return res, nil
 	}
+	job.outcome = make([]string, len(job.uuids))
 
-	job := &queuedEdit{uuids: queued, edit: *edit, by: by}
 	id, err := saveQueuedEdit(job)
 	if err != nil {
 		return res, err
 	}
 	job.id, res.Job = id, id
-	for _, u := range queued {
+	for _, u := range job.uuids {
 		p := q.rows[u]
 		if p == nil {
 			p = &pendingRow{row: rows[u]}
@@ -178,23 +231,21 @@ func queueBulkEdit(uuids []string, edit *bulkEdit, by *User) (bulkResult, error)
 			p.row = now
 		}
 		p.jobs++
+		p.next = "" // this change is the last to it now
 	}
-	q.jobs[id] = &bulkJob{State: "queued", Total: len(queued)}
+	q.jobs[id] = &bulkJob{State: "queued", Total: len(job.uuids)}
 	q.waiting = append(q.waiting, job)
 	startBulkWorker()
 	q.changed.Broadcast()
 	return res, nil
 }
 
-// saveQueuedEdit writes the change to bulk_edit_queue, and answers its id.
+// saveQueuedEdit commits the change and its books to calibrefast.db, and
+// answers its id.
 func saveQueuedEdit(job *queuedEdit) (int64, error) {
 	if appDB == nil {
 		bulkQueue.lastID++
 		return bulkQueue.lastID, nil
-	}
-	uuids, err := json.Marshal(job.uuids)
-	if err != nil {
-		return 0, err
 	}
 	edit, err := json.Marshal(job.edit)
 	if err != nil {
@@ -204,12 +255,34 @@ func saveQueuedEdit(job *queuedEdit) (int64, error) {
 	if job.by != nil && job.by.ID != 0 {
 		user = job.by.ID
 	}
-	r, err := appDB.Exec(`INSERT INTO bulk_edit_queue (uuids, edit, user_id, created_at) VALUES (?, ?, ?, ?)`,
-		string(uuids), string(edit), user, time.Now().Unix())
+	tx, err := appDB.Begin()
 	if err != nil {
 		return 0, err
 	}
-	return r.LastInsertId()
+	defer tx.Rollback()
+	r, err := tx.Exec(`INSERT INTO bulk_edit_queue (edit, user_id, created_at) VALUES (?, ?, ?)`, string(edit), user, time.Now().Unix())
+	if err != nil {
+		return 0, err
+	}
+	id, err := r.LastInsertId()
+	if err != nil {
+		return 0, err
+	}
+	ins, err := tx.Prepare(`INSERT INTO bulk_edit_books (job_id, pos, uuid, base) VALUES (?, ?, ?, ?)`)
+	if err != nil {
+		return 0, err
+	}
+	defer ins.Close()
+	for i, u := range job.uuids {
+		var base any
+		if job.base[i] != "" {
+			base = job.base[i]
+		}
+		if _, err := ins.Exec(id, i, u, base); err != nil {
+			return 0, err
+		}
+	}
+	return id, tx.Commit()
 }
 
 // startBulkWorker starts the worker if it isn't running. Under bulkQueue.mu.
@@ -221,18 +294,29 @@ func startBulkWorker() {
 }
 
 // runBulkQueue makes the queued changes, oldest first, until none are left.
+// A panic outside a book's own write (bulkEditBook catches those) stops the
+// queue until the server restarts, and refuses library writes that would
+// go ahead of it, rather than taking the server down.
 func runBulkQueue() {
 	q := &bulkQueue
+	defer func() {
+		if p := recover(); p != nil {
+			log.Printf("bulk edit queue: STOPPED until the server restarts (the queued changes are kept): panic: %v\n%s", p, debug.Stack())
+			q.mu.Lock()
+			q.worker, q.stopping = false, true
+			q.changed.Broadcast()
+			q.mu.Unlock()
+		}
+	}()
 	for {
 		q.mu.Lock()
 		if len(q.waiting) == 0 || q.stopping {
-			q.worker, q.running = false, false
+			q.worker = false
 			q.changed.Broadcast()
 			q.mu.Unlock()
 			return
 		}
 		job := q.waiting[0]
-		q.running = true
 		q.jobs[job.id].State = "running"
 		q.mu.Unlock()
 
@@ -242,41 +326,63 @@ func runBulkQueue() {
 	}
 }
 
-// runQueuedEdit makes the change to each of its books not yet written. It
-// stops early, and says so, when the server is stopping.
+// runQueuedEdit makes the change to each of its books without an outcome.
+// It stops early, and says so, when the server is stopping.
 func runQueuedEdit(job *queuedEdit) (bulkResult, bool) {
 	q := &bulkQueue
 	res := bulkResult{Failed: []bulkFailure{}, Books: []tableBook{}, Job: job.id}
 	var changed []string
-	for i := job.done; i < len(job.uuids); i++ {
+	for i, u := range job.uuids {
+		switch job.outcome[i] { // made before the server last stopped
+		case "changed":
+			changed = append(changed, u)
+			continue
+		case "unchanged":
+			res.Unchanged++
+			continue
+		case "failed":
+			res.Failed = append(res.Failed, bulkFailure{u, "see the failures kept from before the server stopped"})
+			continue
+		}
 		q.mu.Lock()
 		stop := q.stopping
 		q.mu.Unlock()
 		if stop {
-			job.done = i
-			if appDB != nil {
-				_, err := appDB.Exec(`UPDATE bulk_edit_queue SET done = ? WHERE id = ?`, i, job.id)
-				logErr(err, "bulk edit queue: saving progress")
-			}
-			// What it did change is in the catalog when the server starts.
-			bulkEditsMade(changed)
+			bulkEditsMade(changed) // what it did change is in the catalog when the server starts
 			return res, false
 		}
-		u := job.uuids[i]
-		bulkMu.Lock()
-		ok, err := bulkEditBook(u, &job.edit, job.by)
-		bulkMu.Unlock()
-		switch {
-		case err != nil:
-			res.Failed = append(res.Failed, bulkFailure{u, err.Error()})
-		case ok:
-			changed = append(changed, u)
-		default:
-			res.Unchanged++
+
+		base, outcome, after := job.base[i], "", ""
+		var err error
+		if base == "" {
+			// The change before it to this book couldn't say what it left.
+			err = errors.New("couldn't tell whether the book was changed elsewhere since this edit was made; nothing was written")
+		} else {
+			var ok bool
+			ok, after, err = bulkEditBook(u, &job.edit, job.by, base)
+			if err == nil && !ok {
+				outcome = "unchanged"
+			} else if err == nil {
+				outcome = "changed"
+			}
 		}
-		q.mu.Lock()
-		q.jobs[job.id].Done = i + 1
-		q.mu.Unlock()
+		next := after
+		switch outcome {
+		case "changed":
+			changed = append(changed, u)
+		case "unchanged":
+			res.Unchanged++
+			next = base
+		default:
+			outcome = "failed"
+			// A later change to it is checked against the same base: it
+			// fails too if the book was changed elsewhere, and is made if
+			// this one only couldn't be written.
+			next = base
+			res.Failed = append(res.Failed, bulkFailure{u, err.Error()})
+			log.Printf("bulk edit %s: not made: %v", u, err)
+		}
+		recordOutcome(job, i, outcome, next, err)
 	}
 	res.Changed = len(changed)
 	res.Books = bulkEditsMade(changed)
@@ -290,9 +396,81 @@ func runQueuedEdit(job *queuedEdit) (bulkResult, bool) {
 	return res, true
 }
 
+// recordOutcome commits a book's outcome, the base of the next queued
+// change to it, and any failure, together, and keeps them in memory. Under
+// bulkQueue.mu throughout, so a change queued meanwhile either is that
+// next change or takes the base from pendingRow.next.
+func recordOutcome(job *queuedEdit, i int, outcome, next string, failure error) {
+	u := job.uuids[i]
+	title := u
+	if failure != nil {
+		if b, err := tableBooks(calibreDB, []string{u}); err == nil && len(b) == 1 {
+			title = b[0].Title
+		}
+	}
+	q := &bulkQueue
+	q.mu.Lock()
+	defer q.mu.Unlock()
+	var later *queuedEdit
+	for _, j := range q.waiting {
+		if j.id > job.id && slices.Contains(j.uuids, u) {
+			later = j
+			break
+		}
+	}
+	if appDB != nil {
+		err := func() error {
+			tx, err := appDB.Begin()
+			if err != nil {
+				return err
+			}
+			defer tx.Rollback()
+			if _, err := tx.Exec(`UPDATE bulk_edit_books SET outcome = ? WHERE job_id = ? AND pos = ?`, outcome, job.id, i); err != nil {
+				return err
+			}
+			if later != nil {
+				if _, err := tx.Exec(`UPDATE bulk_edit_books SET base = ? WHERE job_id = ? AND uuid = ? AND base IS NULL`, next, later.id, u); err != nil {
+					return err
+				}
+			}
+			if failure != nil {
+				edit, _ := json.Marshal(job.edit)
+				var user any
+				if job.by != nil && job.by.ID != 0 {
+					user = job.by.ID
+				}
+				if _, err := tx.Exec(`INSERT INTO bulk_edit_failures (job_id, uuid, title, edit, error, user_id, at) VALUES (?, ?, ?, ?, ?, ?, ?)`,
+					job.id, u, title, string(edit), failure.Error(), user, time.Now().Unix()); err != nil {
+					return err
+				}
+			}
+			return tx.Commit()
+		}()
+		if err != nil {
+			// After a restart this book is made again: its write is checked
+			// against the same base, and fails if it was made (its
+			// last_modified moved). A later change to it has no base, and
+			// fails rather than writes unchecked.
+			log.Printf("bulk edit queue: saving %s's outcome: %v", u, err)
+		}
+	}
+	job.outcome[i] = outcome
+	if later != nil {
+		if k := slices.Index(later.uuids, u); k >= 0 && later.base[k] == "" {
+			later.base[k] = next
+		}
+	} else if p := q.rows[u]; p != nil {
+		p.next = next
+	}
+	q.jobs[job.id].Done = job.made()
+	q.changed.Broadcast()
+}
+
 // finishQueuedEdit takes a change that's been made off the queue.
 func finishQueuedEdit(job *queuedEdit, res bulkResult) {
 	if appDB != nil {
+		// If this fails, the change stays; every book has an outcome, so
+		// making it again when the server starts writes nothing.
 		_, err := appDB.Exec(`DELETE FROM bulk_edit_queue WHERE id = ?`, job.id)
 		logErr(err, "bulk edit queue: removing a change made")
 	}
@@ -313,7 +491,6 @@ func finishQueuedEdit(job *queuedEdit, res bulkResult) {
 		}
 	}
 	q.waiting = q.waiting[1:]
-	q.running = false
 	q.jobs[job.id] = &bulkJob{State: "done", Done: len(job.uuids), Total: len(job.uuids), Result: &res}
 	q.finished = append(q.finished, job.id)
 	if len(q.finished) > bulkJobsKept {
@@ -323,38 +500,14 @@ func finishQueuedEdit(job *queuedEdit, res bulkResult) {
 	q.changed.Broadcast()
 }
 
-// loadBulkQueue takes up the changes left in bulk_edit_queue when the
-// server last stopped, and starts making them.
+// loadBulkQueue takes up the changes left in calibrefast.db when the server
+// last stopped, and starts making them.
 func loadBulkQueue() {
-	rows, err := appDB.Query(`SELECT id, uuids, edit, user_id, done FROM bulk_edit_queue ORDER BY id`)
+	jobs, err := readBulkQueue()
 	if err != nil {
-		log.Println("bulk edit queue:", err)
+		log.Println("bulk edit queue: NOT making the changes left from the last run:", err)
 		return
 	}
-	var jobs []*queuedEdit
-	for rows.Next() {
-		var job queuedEdit
-		var uuids, edit string
-		var user *int64
-		if err := rows.Scan(&job.id, &uuids, &edit, &user, &job.done); err != nil {
-			log.Println("bulk edit queue:", err)
-			continue
-		}
-		if err := json.Unmarshal([]byte(uuids), &job.uuids); err != nil {
-			log.Printf("bulk edit queue: change %d: %v", job.id, err)
-			continue
-		}
-		if err := json.Unmarshal([]byte(edit), &job.edit); err != nil {
-			log.Printf("bulk edit queue: change %d: %v", job.id, err)
-			continue
-		}
-		if user != nil {
-			job.by, _ = getUserByID(*user)
-		}
-		jobs = append(jobs, &job)
-	}
-	logErr(rows.Err(), "bulk edit queue")
-	rows.Close()
 	if len(jobs) == 0 {
 		return
 	}
@@ -364,7 +517,12 @@ func loadBulkQueue() {
 	q.mu.Lock()
 	defer q.mu.Unlock()
 	for _, job := range jobs {
-		left := job.uuids[min(job.done, len(job.uuids)):]
+		var left []string
+		for i, u := range job.uuids {
+			if job.outcome[i] == "" {
+				left = append(left, u)
+			}
+		}
 		books, err := tableBooks(calibreDB, left)
 		if err != nil {
 			log.Println("bulk edit queue: reading rows:", err)
@@ -382,10 +540,61 @@ func loadBulkQueue() {
 				p.jobs++
 			}
 		}
-		q.jobs[job.id] = &bulkJob{State: "queued", Done: job.done, Total: len(job.uuids)}
+		q.jobs[job.id] = &bulkJob{State: "queued", Done: job.made(), Total: len(job.uuids)}
 		q.waiting = append(q.waiting, job)
 	}
 	startBulkWorker()
+}
+
+// readBulkQueue reads the queued changes, oldest first. Any it can't read
+// stop it: making the ones after could undo them (a later change to a book
+// is written against what the earlier one leaves).
+func readBulkQueue() ([]*queuedEdit, error) {
+	rows, err := appDB.Query(`SELECT id, edit, user_id FROM bulk_edit_queue ORDER BY id`)
+	if err != nil {
+		return nil, err
+	}
+	var jobs []*queuedEdit
+	for rows.Next() {
+		job := &queuedEdit{}
+		var edit string
+		var user sql.NullInt64
+		if err := rows.Scan(&job.id, &edit, &user); err != nil {
+			rows.Close()
+			return nil, err
+		}
+		if err := json.Unmarshal([]byte(edit), &job.edit); err != nil {
+			rows.Close()
+			return nil, fmt.Errorf("change %d: %w", job.id, err)
+		}
+		if user.Valid {
+			job.by, _ = getUserByID(user.Int64)
+		}
+		jobs = append(jobs, job)
+	}
+	rows.Close()
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	for _, job := range jobs {
+		books, err := appDB.Query(`SELECT uuid, COALESCE(base, ''), COALESCE(outcome, '') FROM bulk_edit_books WHERE job_id = ? ORDER BY pos`, job.id)
+		if err != nil {
+			return nil, err
+		}
+		for books.Next() {
+			var u, base, outcome string
+			if err := books.Scan(&u, &base, &outcome); err != nil {
+				books.Close()
+				return nil, err
+			}
+			job.uuids, job.base, job.outcome = append(job.uuids, u), append(job.base, base), append(job.outcome, outcome)
+		}
+		books.Close()
+		if err := books.Err(); err != nil {
+			return nil, err
+		}
+	}
+	return jobs, nil
 }
 
 // pendingBulkRows puts the rows of books with queued changes in place of
@@ -404,15 +613,30 @@ func pendingBulkRows(books []tableBook) {
 	}
 }
 
-// waitBulkEdits waits until the queue is empty (or the server stops making
-// its changes). Never call it holding bulkMu: the worker needs it.
-func waitBulkEdits() {
+// waitBulkEdits waits until the queue is empty. false: the server is
+// stopping, and the caller mustn't change the library (it would go ahead
+// of what's left in the queue). Never call it holding bulkMu: the worker
+// needs it.
+func waitBulkEdits() bool {
 	q := &bulkQueue
 	q.mu.Lock()
 	defer q.mu.Unlock()
 	for len(q.waiting) > 0 && q.worker {
 		q.changed.Wait()
 	}
+	return !q.stopping
+}
+
+// waitBulkEditsFor waits until no queued change to the book is left; false
+// as waitBulkEdits.
+func waitBulkEditsFor(uuid string) bool {
+	q := &bulkQueue
+	q.mu.Lock()
+	defer q.mu.Unlock()
+	for q.rows[uuid] != nil && q.worker {
+		q.changed.Wait()
+	}
+	return !q.stopping
 }
 
 // stopBulkEdits, as the server stops, gives the queue until the deadline to
@@ -436,6 +660,7 @@ func stopBulkEdits(deadline time.Time) {
 		q.changed.Wait()
 	}
 	q.stopping = true
+	q.changed.Broadcast() // requests waiting for the queue are refused
 	for q.worker {
 		q.changed.Wait()
 	}
@@ -479,31 +704,103 @@ func bulkJobsHandler(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, http.StatusOK, map[string]any{"jobs": out, "waiting": waiting})
 }
 
+// bulkFailure kept until seen (TS: BulkFailureKept in web/types.ts).
+type keptBulkFailure struct {
+	ID    int64           `json:"id"`
+	UUID  string          `json:"uuid"`
+	Title string          `json:"title"`
+	Edit  json.RawMessage `json:"edit"`
+	Error string          `json:"error"`
+	By    string          `json:"by"`
+	At    int64           `json:"at"` // unix seconds
+}
+
+// bulkFailuresKeptMax: how many kept failures are listed at once.
+const bulkFailuresKeptMax = 500
+
+// bulkFailuresHandler lists the books queued changes couldn't be made to,
+// newest first, with how many there are in all.
+func bulkFailuresHandler(w http.ResponseWriter, r *http.Request) {
+	out := []keptBulkFailure{}
+	var total int
+	if err := appDB.QueryRow(`SELECT COUNT(*) FROM bulk_edit_failures`).Scan(&total); err != nil {
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+		return
+	}
+	rows, err := appDB.Query(`SELECT f.id, f.uuid, f.title, f.edit, f.error, COALESCE(u.username, ''), f.at
+		FROM bulk_edit_failures f LEFT JOIN users u ON u.id = f.user_id ORDER BY f.id DESC LIMIT ?`, bulkFailuresKeptMax)
+	if err != nil {
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+		return
+	}
+	defer rows.Close()
+	for rows.Next() {
+		var f keptBulkFailure
+		var edit string
+		if err := rows.Scan(&f.ID, &f.UUID, &f.Title, &edit, &f.Error, &f.By, &f.At); err != nil {
+			http.Error(w, err.Error(), http.StatusInternalServerError)
+			return
+		}
+		f.Edit = json.RawMessage(edit)
+		if !json.Valid(f.Edit) {
+			f.Edit = json.RawMessage(`{}`)
+		}
+		out = append(out, f)
+	}
+	w.Header().Set("Cache-Control", "no-store")
+	writeJSON(w, http.StatusOK, map[string]any{"failures": out, "total": total})
+}
+
+// bulkFailuresDismissHandler forgets the kept failures named ({"ids":[…]}).
+func bulkFailuresDismissHandler(w http.ResponseWriter, r *http.Request) {
+	var req struct {
+		IDs []int64 `json:"ids"`
+	}
+	if err := json.NewDecoder(http.MaxBytesReader(w, r.Body, 1<<20)).Decode(&req); err != nil || len(req.IDs) == 0 || len(req.IDs) > bulkFailuresKeptMax {
+		http.Error(w, "bad request", http.StatusBadRequest)
+		return
+	}
+	tx, err := appDB.Begin()
+	if err != nil {
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+		return
+	}
+	defer tx.Rollback()
+	for _, id := range req.IDs {
+		if _, err := tx.Exec(`DELETE FROM bulk_edit_failures WHERE id = ?`, id); err != nil {
+			http.Error(w, err.Error(), http.StatusInternalServerError)
+			return
+		}
+	}
+	if err := tx.Commit(); err != nil {
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+		return
+	}
+	w.WriteHeader(http.StatusNoContent)
+}
+
 // afterBulkEdits runs h once the queue is empty: a change h makes to the
 // library starts from the books as the queued changes leave them.
 func afterBulkEdits(h http.HandlerFunc) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
-		waitBulkEdits()
+		if !waitBulkEdits() {
+			http.Error(w, errBulkStopping.Error(), http.StatusServiceUnavailable)
+			return
+		}
 		h(w, r)
 	}
 }
 
-// afterBookEdits runs h once the queued changes to the book in the path
-// ({uuid}) are made: the metadata editor shows and saves it as they leave
-// it, not as it was before them.
+// afterBookEdits runs h, for someone who can edit the library, once the
+// queued changes to the book in the path ({uuid}) are made: the metadata
+// editor shows and saves it as they leave it, not as it was before them.
+// Anyone else gets the book as it is now, without waiting.
 func afterBookEdits(h http.HandlerFunc) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
-		waitBulkEditsFor(r.PathValue("uuid"))
+		if canEditLibrary(r) && !waitBulkEditsFor(r.PathValue("uuid")) {
+			http.Error(w, errBulkStopping.Error(), http.StatusServiceUnavailable)
+			return
+		}
 		h(w, r)
-	}
-}
-
-// waitBulkEditsFor waits until no queued change to the book is left.
-func waitBulkEditsFor(uuid string) {
-	q := &bulkQueue
-	q.mu.Lock()
-	defer q.mu.Unlock()
-	for q.rows[uuid] != nil && q.worker {
-		q.changed.Wait()
 	}
 }

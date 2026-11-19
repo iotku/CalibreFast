@@ -55,6 +55,11 @@
             <button type="button" id="lt-unlisted-show" class="lt-action">Show</button>
             <button type="button" id="lt-unlisted-fix" class="lt-action lt-merge-group"{{ if not .CanRepair }} hidden{{ end }} title="Add a metadata.db row for each of their files, so Calibre lists them. Only the database is modified.">Add to metadata.db</button>
         </span>
+        <!-- Queued edits the server couldn't make (bulk_queue.go), until dismissed -->
+        <span id="lt-failures" class="lt-unlisted lt-failures" role="alert" hidden>
+            <span id="lt-failures-text"></span>
+            <button type="button" id="lt-failures-show" class="lt-action">Details</button>
+        </span>
         <details class="lt-help">
             <summary>Filter tips</summary>
             <div class="lt-help-body">
@@ -141,6 +146,19 @@
         <div class="lt-dialog-actions">
             <button type="button" id="split-cancel" class="btn-action">Cancel</button>
             <button type="submit" id="split-apply" class="btn-action btn-primary-action">Split</button>
+        </div>
+    </form>
+</dialog>
+
+<dialog id="failures-dialog" class="lt-dialog" aria-labelledby="failures-title">
+    <form method="dialog">
+        <h2 id="failures-title">Edits not saved</h2>
+        <p class="lt-hint">These books weren't changed, so nothing in them was written over. A book changed elsewhere (in Calibre, say) after the edit was made is left as it is: make the edit again if it's still wanted.</p>
+        <ul id="failures-list" class="lt-failures-list"></ul>
+        <div class="lt-dialog-actions">
+            <button type="button" id="failures-select" class="btn-action">Select these books</button>
+            <button type="button" id="failures-dismiss" class="btn-action">Dismiss</button>
+            <button type="submit" class="btn-action btn-primary-action">Close</button>
         </div>
     </form>
 </dialog>

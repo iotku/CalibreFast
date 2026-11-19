@@ -2,11 +2,13 @@ package main
 
 import (
 	"bytes"
+	"database/sql"
 	"encoding/json"
 	"net/http"
 	"net/http/httptest"
 	"slices"
 	"strconv"
+	"strings"
 	"testing"
 	"time"
 )
@@ -49,7 +51,6 @@ func bulkJobState(t *testing.T, id int64) bulkJob {
 	}
 	return out.Jobs[strconv.FormatInt(id, 10)]
 }
-
 
 // A bulk edit is answered before it's written: the answer, and the table,
 // show the books as it will leave them; the job says when it's written.
@@ -131,19 +132,28 @@ func TestBulkQueueResumesAfterStop(t *testing.T) {
 	bulkMu.Unlock() // the book being written is finished, then it stops
 	<-stopped
 
-	var done int
-	if err := appDB.QueryRow(`SELECT done FROM bulk_edit_queue WHERE id = ?`, res.Job).Scan(&done); err != nil || done != 1 {
-		t.Fatalf("saved progress %d %v", done, err)
+	outcomes := map[int]sql.NullString{}
+	rows, err := appDB.Query(`SELECT pos, outcome FROM bulk_edit_books WHERE job_id = ?`, res.Job)
+	if err != nil {
+		t.Fatal(err)
+	}
+	for rows.Next() {
+		var pos int
+		var o sql.NullString
+		if err := rows.Scan(&pos, &o); err != nil {
+			t.Fatal(err)
+		}
+		outcomes[pos] = o
+	}
+	rows.Close()
+	if outcomes[0].String != "changed" || outcomes[1].Valid {
+		t.Fatalf("saved outcomes %v", outcomes)
 	}
 	if r := tableRow(t, db, b.uuid); r.Publisher == "Pub" {
 		t.Fatalf("Beta written after the stop: %+v", r)
 	}
 
-	// The server starts again.
-	bulkQueue.mu.Lock()
-	bulkQueue.stopping, bulkQueue.waiting, bulkQueue.rows = false, nil, map[string]*pendingRow{}
-	bulkQueue.mu.Unlock()
-	loadBulkQueue()
+	restartBulkQueue()
 	if r := tableRows(t)[b.uuid]; r.Publisher != "Pub" {
 		t.Errorf("table before it's written: %+v", r)
 	}
@@ -156,6 +166,191 @@ func TestBulkQueueResumesAfterStop(t *testing.T) {
 	var left int
 	if err := appDB.QueryRow(`SELECT COUNT(*) FROM bulk_edit_queue`).Scan(&left); err != nil || left != 0 {
 		t.Errorf("queue rows left: %d %v", left, err)
+	}
+}
+
+// restartBulkQueue is the queue as a server starting again finds it.
+func restartBulkQueue() {
+	bulkQueue.mu.Lock()
+	bulkQueue.stopping, bulkQueue.waiting, bulkQueue.rows = false, nil, map[string]*pendingRow{}
+	bulkQueue.mu.Unlock()
+	loadBulkQueue()
+}
+
+func keptFailures(t *testing.T) []keptBulkFailure {
+	t.Helper()
+	rec := httptest.NewRecorder()
+	bulkFailuresHandler(rec, httptest.NewRequest("GET", "/api/library/bulk/failures", nil))
+	var out struct{ Failures []keptBulkFailure }
+	if err := json.Unmarshal(rec.Body.Bytes(), &out); err != nil {
+		t.Fatalf("%v: %s", err, rec.Body)
+	}
+	return out.Failures
+}
+
+// A book changed elsewhere after its edit was queued isn't written over:
+// the edit, and a later one built on it, fail, and the failures are kept
+// until dismissed.
+func TestBulkQueueChangedElsewhereFails(t *testing.T) {
+	db := setupRecycleLibrary(t)
+	a := addOPFTestBook(t, db, "Alpha", []string{"Ann"}, nil, nil)
+	b := addOPFTestBook(t, db, "Beta", []string{"Bob"}, nil, nil)
+
+	bulkMu.Lock()
+	first := postBulk(t, `{"uuids":["`+a.uuid+`","`+b.uuid+`"],"edit":{"title":"Renamed"}}`)
+	second := postBulk(t, `{"uuids":["`+a.uuid+`"],"edit":{"add_tags":["later"]}}`)
+	// Calibre changes Alpha meanwhile.
+	if _, err := db.Exec(`UPDATE books SET title = 'Desk', last_modified = '2030-01-01 00:00:00+00:00' WHERE uuid = ?`, a.uuid); err != nil {
+		t.Fatal(err)
+	}
+	bulkMu.Unlock()
+	waitBulkEdits()
+
+	if r := tableRow(t, db, a.uuid); r.Title != "Desk" || len(r.Tags) != 0 {
+		t.Errorf("Alpha written over: %+v", r)
+	}
+	if r := tableRow(t, db, b.uuid); r.Title != "Renamed" {
+		t.Errorf("Beta not written: %+v", r)
+	}
+	if j := bulkJobState(t, first.Job); j.Result == nil || j.Result.Changed != 1 || len(j.Result.Failed) != 1 || j.Result.Failed[0].UUID != a.uuid {
+		t.Errorf("first %+v", j.Result)
+	}
+	if j := bulkJobState(t, second.Job); j.Result == nil || j.Result.Changed != 0 || len(j.Result.Failed) != 1 {
+		t.Errorf("second %+v", j.Result)
+	}
+	kept := keptFailures(t)
+	if len(kept) != 2 || kept[0].UUID != a.uuid || !strings.Contains(kept[0].Error, "changed elsewhere") || kept[0].Title != "Desk" {
+		t.Fatalf("kept %+v", kept)
+	}
+	rec := httptest.NewRecorder()
+	body, _ := json.Marshal(map[string]any{"ids": []int64{kept[0].ID, kept[1].ID}})
+	bulkFailuresDismissHandler(rec, httptest.NewRequest("POST", "/api/library/bulk/failures/dismiss", bytes.NewReader(body)))
+	if rec.Code != http.StatusNoContent || len(keptFailures(t)) != 0 {
+		t.Errorf("dismiss: %d, left %v", rec.Code, keptFailures(t))
+	}
+}
+
+// An edit left from before a restart is written only if the book hasn't
+// changed since it was queued.
+func TestBulkQueueReplayChecksBase(t *testing.T) {
+	db := setupRecycleLibrary(t)
+	a := addOPFTestBook(t, db, "Alpha", []string{"Ann"}, nil, nil)
+	b := addOPFTestBook(t, db, "Beta", []string{"Bob"}, nil, nil)
+	stamp := func(u string) string { m, _ := bookModified(db, u); return m }
+	str := func(s string) *string { return &s }
+	job := &queuedEdit{uuids: []string{a.uuid, b.uuid}, base: []string{stamp(a.uuid), stamp(b.uuid)}, outcome: []string{"", ""}, edit: bulkEdit{Publisher: str("Old edit")}}
+	if _, err := saveQueuedEdit(job); err != nil {
+		t.Fatal(err)
+	}
+	// Changed while the server was down (or ran without -allow-writes).
+	if _, err := db.Exec(`UPDATE books SET last_modified = '2030-01-01 00:00:00+00:00' WHERE uuid = ?`, a.uuid); err != nil {
+		t.Fatal(err)
+	}
+	restartBulkQueue()
+	waitBulkEdits()
+	if r := tableRow(t, db, a.uuid); r.Publisher == "Old edit" {
+		t.Errorf("Alpha written over: %+v", r)
+	}
+	if r := tableRow(t, db, b.uuid); r.Publisher != "Old edit" {
+		t.Errorf("Beta not written: %+v", r)
+	}
+	if kept := keptFailures(t); len(kept) != 1 || kept[0].UUID != a.uuid {
+		t.Errorf("kept %+v", kept)
+	}
+}
+
+// A panic writing a book fails that book; the queue and server go on.
+func TestBulkQueuePanicFailsTheBook(t *testing.T) {
+	db := setupRecycleLibrary(t)
+	a := addOPFTestBook(t, db, "Alpha", []string{"Ann"}, nil, nil)
+	b := addOPFTestBook(t, db, "Beta", []string{"Bob"}, nil, nil)
+	bulkEditBookHook = func(u string) {
+		if u == a.uuid {
+			panic("boom")
+		}
+	}
+	t.Cleanup(func() { bulkEditBookHook = nil })
+	res := postBulk(t, `{"uuids":["`+a.uuid+`","`+b.uuid+`"],"edit":{"publisher":"P"}}`)
+	waitBulkEdits()
+	j := bulkJobState(t, res.Job)
+	if j.Result == nil || j.Result.Changed != 1 || len(j.Result.Failed) != 1 || !strings.Contains(j.Result.Failed[0].Error, "boom") {
+		t.Errorf("result %+v", j.Result)
+	}
+	if r := tableRow(t, db, b.uuid); r.Publisher != "P" {
+		t.Errorf("Beta %+v", r)
+	}
+	if !bulkMu.TryLock() {
+		t.Fatal("bulkMu left locked")
+	}
+	bulkMu.Unlock()
+}
+
+// Once the server is stopping, writes waiting for the queue are refused
+// rather than made ahead of it, and nothing new is queued.
+func TestBulkQueueStoppingRefuses(t *testing.T) {
+	db := setupRecycleLibrary(t)
+	a := addOPFTestBook(t, db, "Alpha", []string{"Ann"}, nil, nil)
+	bulkQueue.mu.Lock()
+	bulkQueue.stopping = true
+	bulkQueue.mu.Unlock()
+	t.Cleanup(func() {
+		bulkQueue.mu.Lock()
+		bulkQueue.stopping = false
+		bulkQueue.mu.Unlock()
+	})
+	ran := false
+	rec := httptest.NewRecorder()
+	afterBulkEdits(func(http.ResponseWriter, *http.Request) { ran = true })(rec, httptest.NewRequest("POST", "/merge/apply", nil))
+	if ran || rec.Code != http.StatusServiceUnavailable {
+		t.Errorf("merge while stopping: ran %v, %d", ran, rec.Code)
+	}
+	rec = httptest.NewRecorder()
+	req := httptest.NewRequest("POST", "/api/library/bulk", bytes.NewBufferString(`{"uuids":["`+a.uuid+`"],"edit":{"publisher":"P"}}`))
+	bulkEditHandler(rec, req.WithContext(withUserCtx(req, &User{Username: "admin", IsAdmin: true})))
+	if rec.Code != http.StatusServiceUnavailable {
+		t.Errorf("queued while stopping: %d", rec.Code)
+	}
+}
+
+// Someone who can't edit gets a book's metadata at once, without waiting
+// for its queued changes; an editor waits for them.
+func TestAfterBookEditsWaitsOnlyForEditors(t *testing.T) {
+	db := setupRecycleLibrary(t)
+	a := addOPFTestBook(t, db, "Alpha", []string{"Ann"}, nil, nil)
+	orig := allowWrites
+	allowWrites = true
+	t.Cleanup(func() { allowWrites = orig })
+	bulkMu.Lock()
+	postBulk(t, `{"uuids":["`+a.uuid+`"],"edit":{"publisher":"P"}}`)
+	h := afterBookEdits(func(w http.ResponseWriter, r *http.Request) { w.WriteHeader(http.StatusTeapot) })
+	get := func(u *User) chan int {
+		done := make(chan int, 1)
+		go func() {
+			req := httptest.NewRequest("GET", "/metadata/"+a.uuid, nil)
+			req.SetPathValue("uuid", a.uuid)
+			if u != nil {
+				req = req.WithContext(withUserCtx(req, u))
+			}
+			rec := httptest.NewRecorder()
+			h(rec, req)
+			done <- rec.Code
+		}()
+		return done
+	}
+	select {
+	case <-get(nil):
+	case <-time.After(2 * time.Second):
+		t.Error("an anonymous request waited for the queue")
+	}
+	editor := get(&User{ID: 1, Username: "ed", IsEditor: true})
+	select {
+	case <-editor:
+		t.Error("an editor didn't wait for the queue")
+	case <-time.After(100 * time.Millisecond):
+	}
+	bulkMu.Unlock()
+	if code := <-editor; code != http.StatusTeapot {
+		t.Errorf("editor: %d", code)
 	}
 }
 

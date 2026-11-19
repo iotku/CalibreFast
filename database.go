@@ -3,6 +3,7 @@ package main
 import (
 	"cmp"
 	"database/sql"
+	"errors"
 	"fmt"
 	"path/filepath"
 	"regexp"
@@ -263,23 +264,49 @@ func linkBookAuthors(tx *sql.Tx, bookID int64, creators []string) ([]int64, stri
 // It ensures strict Calibre database compatibility, including cleaning up orphaned authors, tags,
 // publishers, and languages when the edited book was the only book linked to them.
 func updateBookInCalibreDB(db *sql.DB, baseDir string, bookUUID string, meta *OPFMetadata) (string, error) {
+	path, _, err := updateBookIfUnchanged(db, baseDir, bookUUID, meta, "")
+	return path, err
+}
+
+// errChangedElsewhere: the book's last_modified isn't the one the change
+// was made against, so something else changed it meanwhile.
+var errChangedElsewhere = errors.New("the book was changed elsewhere since this edit was made; nothing was written")
+
+// bookModified is a book's last_modified, as stored (text, as Calibre
+// writes it), "" if there's no such book.
+func bookModified(q interface {
+	QueryRow(string, ...any) *sql.Row
+}, uuid string) (string, error) {
+	var m sql.NullString
+	err := q.QueryRow(`SELECT CAST(last_modified AS TEXT) FROM books WHERE uuid = ?`, uuid).Scan(&m)
+	if errors.Is(err, sql.ErrNoRows) {
+		return "", nil
+	}
+	return m.String, err
+}
+
+// updateBookIfUnchanged is updateBookInCalibreDB, written only if the
+// book's last_modified is still expect ("": whatever it is), in the same
+// transaction as the write: errChangedElsewhere if not. It answers the
+// book's path and its new last_modified.
+func updateBookIfUnchanged(db *sql.DB, baseDir string, bookUUID string, meta *OPFMetadata, expect string) (string, string, error) {
 	meta.Subjects = opf.UniqueTags(meta.Subjects)
 	var bookID int64
 	var bookPath string
 	err := db.QueryRow(`SELECT id, path FROM books WHERE uuid = ?`, bookUUID).Scan(&bookID, &bookPath)
 	if err != nil {
-		return "", fmt.Errorf("book with uuid %s not found: %w", bookUUID, err)
+		return "", "", fmt.Errorf("book with uuid %s not found: %w", bookUUID, err)
 	}
 
 	// Checked before anything is written.
 	seriesName, seriesIndex, err := opf.CleanSeries(meta.Series, meta.SeriesIndex)
 	if meta.SeriesSet && err != nil {
-		return "", err
+		return "", "", err
 	}
 
 	tx, err := db.Begin()
 	if err != nil {
-		return "", fmt.Errorf("begin tx: %w", err)
+		return "", "", fmt.Errorf("begin tx: %w", err)
 	}
 	defer func() {
 		if err != nil {
@@ -299,7 +326,7 @@ func updateBookInCalibreDB(db *sql.DB, baseDir string, bookUUID string, meta *OP
 	var oldAuthorIDs []int64
 	rows, err := tx.Query(`SELECT author FROM books_authors_link WHERE book = ?`, bookID)
 	if err != nil {
-		return "", fmt.Errorf("fetch current authors: %w", err)
+		return "", "", fmt.Errorf("fetch current authors: %w", err)
 	}
 	for rows.Next() {
 		var aID int64
@@ -311,7 +338,7 @@ func updateBookInCalibreDB(db *sql.DB, baseDir string, bookUUID string, meta *OP
 
 	newAuthorIDs, authorSort, err := linkBookAuthors(tx, bookID, meta.Creators)
 	if err != nil {
-		return "", err
+		return "", "", err
 	}
 	newAuthorIDMap := make(map[int64]bool, len(newAuthorIDs))
 	for _, id := range newAuthorIDs {
@@ -327,34 +354,43 @@ func updateBookInCalibreDB(db *sql.DB, baseDir string, bookUUID string, meta *OP
 	}
 
 	// 1. Update books table
-	_, err = tx.Exec(`
+	var res sql.Result
+	res, err = tx.Exec(`
 		UPDATE books SET
 			title = ?,
 			sort = ?,
 			author_sort = ?,
 			pubdate = ?,
 			last_modified = ?
-		WHERE id = ?`,
+		WHERE id = ? AND (? = '' OR CAST(last_modified AS TEXT) = ?)`,
 		meta.Title,
 		tSort,
 		authorSort,
 		pubDate,
 		now,
 		bookID,
+		expect, expect,
 	)
+	if err == nil && expect != "" {
+		// Not this one's last_modified: changed meanwhile. All undone.
+		if n, rErr := res.RowsAffected(); rErr != nil || n != 1 {
+			err = errChangedElsewhere
+			return "", "", err
+		}
+	}
 	if err != nil {
-		return "", fmt.Errorf("update books table: %w", err)
+		return "", "", fmt.Errorf("update books table: %w", err)
 	}
 
 	// 2. Update comments (description)
 	_, err = tx.Exec(`DELETE FROM comments WHERE book = ?`, bookID)
 	if err != nil {
-		return "", fmt.Errorf("delete comments: %w", err)
+		return "", "", fmt.Errorf("delete comments: %w", err)
 	}
 	if strings.TrimSpace(meta.Description) != "" {
 		_, err = tx.Exec(`INSERT INTO comments (book, text) VALUES (?, ?)`, bookID, meta.Description)
 		if err != nil {
-			return "", fmt.Errorf("insert comments: %w", err)
+			return "", "", fmt.Errorf("insert comments: %w", err)
 		}
 	}
 
@@ -365,7 +401,7 @@ func updateBookInCalibreDB(db *sql.DB, baseDir string, bookUUID string, meta *OP
 			var count int
 			if cErr := tx.QueryRow(`SELECT COUNT(*) FROM books_authors_link WHERE author = ?`, oldID).Scan(&count); cErr == nil && count == 0 {
 				if _, delErr := tx.Exec(`DELETE FROM authors WHERE id = ?`, oldID); delErr != nil {
-					return "", fmt.Errorf("clean up orphan author %d: %w", oldID, delErr)
+					return "", "", fmt.Errorf("clean up orphan author %d: %w", oldID, delErr)
 				}
 			}
 		}
@@ -375,7 +411,7 @@ func updateBookInCalibreDB(db *sql.DB, baseDir string, bookUUID string, meta *OP
 	var oldTagIDs []int64
 	rows, err = tx.Query(`SELECT tag FROM books_tags_link WHERE book = ?`, bookID)
 	if err != nil {
-		return "", fmt.Errorf("fetch current tags: %w", err)
+		return "", "", fmt.Errorf("fetch current tags: %w", err)
 	}
 	for rows.Next() {
 		var tID int64
@@ -393,23 +429,23 @@ func updateBookInCalibreDB(db *sql.DB, baseDir string, bookUUID string, meta *OP
 		}
 		tID, tErr := upsertSimpleEntity(tx, "tags", trimmed)
 		if tErr != nil {
-			return "", fmt.Errorf("upsert tag %q: %w", trimmed, tErr)
+			return "", "", fmt.Errorf("upsert tag %q: %w", trimmed, tErr)
 		}
 		newTagIDMap[tID] = true
 		if _, tErr = tx.Exec(`INSERT OR IGNORE INTO books_tags_link (book, tag) VALUES (?, ?)`, bookID, tID); tErr != nil {
-			return "", fmt.Errorf("link tag: %w", tErr)
+			return "", "", fmt.Errorf("link tag: %w", tErr)
 		}
 	}
 
 	for _, oldID := range oldTagIDs {
 		if !newTagIDMap[oldID] {
 			if _, dErr := tx.Exec(`DELETE FROM books_tags_link WHERE book = ? AND tag = ?`, bookID, oldID); dErr != nil {
-				return "", fmt.Errorf("unlink tag %d: %w", oldID, dErr)
+				return "", "", fmt.Errorf("unlink tag %d: %w", oldID, dErr)
 			}
 			var count int
 			if cErr := tx.QueryRow(`SELECT COUNT(*) FROM books_tags_link WHERE tag = ?`, oldID).Scan(&count); cErr == nil && count == 0 {
 				if _, delErr := tx.Exec(`DELETE FROM tags WHERE id = ?`, oldID); delErr != nil {
-					return "", fmt.Errorf("clean up orphan tag %d: %w", oldID, delErr)
+					return "", "", fmt.Errorf("clean up orphan tag %d: %w", oldID, delErr)
 				}
 			}
 		}
@@ -419,7 +455,7 @@ func updateBookInCalibreDB(db *sql.DB, baseDir string, bookUUID string, meta *OP
 	var oldPubIDs []int64
 	rows, err = tx.Query(`SELECT publisher FROM books_publishers_link WHERE book = ?`, bookID)
 	if err != nil {
-		return "", fmt.Errorf("fetch current publishers: %w", err)
+		return "", "", fmt.Errorf("fetch current publishers: %w", err)
 	}
 	for rows.Next() {
 		var pID int64
@@ -434,7 +470,7 @@ func updateBookInCalibreDB(db *sql.DB, baseDir string, bookUUID string, meta *OP
 	if pubTrimmed != "" {
 		newPubID, err = upsertSimpleEntity(tx, "publishers", pubTrimmed)
 		if err != nil {
-			return "", fmt.Errorf("upsert publisher %q: %w", pubTrimmed, err)
+			return "", "", fmt.Errorf("upsert publisher %q: %w", pubTrimmed, err)
 		}
 	}
 
@@ -444,19 +480,19 @@ func updateBookInCalibreDB(db *sql.DB, baseDir string, bookUUID string, meta *OP
 	for _, oldID := range oldPubIDs {
 		if oldID != newPubID {
 			if _, dErr := tx.Exec(`DELETE FROM books_publishers_link WHERE book = ? AND publisher = ?`, bookID, oldID); dErr != nil {
-				return "", fmt.Errorf("unlink publisher %d: %w", oldID, dErr)
+				return "", "", fmt.Errorf("unlink publisher %d: %w", oldID, dErr)
 			}
 			var count int
 			if cErr := tx.QueryRow(`SELECT COUNT(*) FROM books_publishers_link WHERE publisher = ?`, oldID).Scan(&count); cErr == nil && count == 0 {
 				if _, delErr := tx.Exec(`DELETE FROM publishers WHERE id = ?`, oldID); delErr != nil {
-					return "", fmt.Errorf("clean up orphan publisher %d: %w", oldID, delErr)
+					return "", "", fmt.Errorf("clean up orphan publisher %d: %w", oldID, delErr)
 				}
 			}
 		}
 	}
 	if newPubID != 0 {
 		if _, err = tx.Exec(`INSERT OR IGNORE INTO books_publishers_link (book, publisher) VALUES (?, ?)`, bookID, newPubID); err != nil {
-			return "", fmt.Errorf("link publisher: %w", err)
+			return "", "", fmt.Errorf("link publisher: %w", err)
 		}
 	}
 
@@ -464,7 +500,7 @@ func updateBookInCalibreDB(db *sql.DB, baseDir string, bookUUID string, meta *OP
 	var oldLangIDs []int64
 	rows, err = tx.Query(`SELECT lang_code FROM books_languages_link WHERE book = ?`, bookID)
 	if err != nil {
-		return "", fmt.Errorf("fetch current languages: %w", err)
+		return "", "", fmt.Errorf("fetch current languages: %w", err)
 	}
 	for rows.Next() {
 		var lID int64
@@ -479,14 +515,14 @@ func updateBookInCalibreDB(db *sql.DB, baseDir string, bookUUID string, meta *OP
 	for i, lang := range opf.CleanLanguages(meta.Languages) {
 		langID, lErr := upsertLanguage(tx, lang)
 		if lErr != nil {
-			return "", fmt.Errorf("upsert language %q: %w", lang, lErr)
+			return "", "", fmt.Errorf("upsert language %q: %w", lang, lErr)
 		}
 		keepLang[langID] = true
 		if _, lErr = tx.Exec(`
 			INSERT INTO books_languages_link (book, lang_code, item_order) VALUES (?, ?, ?)
 			ON CONFLICT(book, lang_code) DO UPDATE SET item_order = excluded.item_order`,
 			bookID, langID, i); lErr != nil {
-			return "", fmt.Errorf("link language %q: %w", lang, lErr)
+			return "", "", fmt.Errorf("link language %q: %w", lang, lErr)
 		}
 	}
 
@@ -504,7 +540,7 @@ func updateBookInCalibreDB(db *sql.DB, baseDir string, bookUUID string, meta *OP
 	// book's rows stay, and any in meta are ignored.
 	_, editedIDs := opf.SplitLibraryIdentifiers(meta.Identifiers)
 	if _, err = tx.Exec(`DELETE FROM identifiers WHERE book = ? AND lower(type) NOT IN ('calibre', 'uuid')`, bookID); err != nil {
-		return "", fmt.Errorf("delete old identifiers: %w", err)
+		return "", "", fmt.Errorf("delete old identifiers: %w", err)
 	}
 	// Calibre's identifiers table needs a type and holds one value per type,
 	// so scheme-less (or duplicate-type) identifiers can't live there; they are
@@ -516,7 +552,7 @@ func updateBookInCalibreDB(db *sql.DB, baseDir string, bookUUID string, meta *OP
 		idType, idVal := parseIdentifier(id)
 		if idType != "" && idVal != "" {
 			if _, err = tx.Exec(`INSERT OR IGNORE INTO identifiers (book, type, val) VALUES (?, ?, ?)`, bookID, idType, idVal); err != nil {
-				return "", fmt.Errorf("insert identifier %s=%s: %w", idType, idVal, err)
+				return "", "", fmt.Errorf("insert identifier %s=%s: %w", idType, idVal, err)
 			}
 		}
 	}
@@ -525,12 +561,17 @@ func updateBookInCalibreDB(db *sql.DB, baseDir string, bookUUID string, meta *OP
 	// stays as it is.
 	if meta.SeriesSet {
 		if err = setBookSeries(tx, bookID, seriesName, seriesIndex); err != nil {
-			return "", fmt.Errorf("series: %w", err)
+			return "", "", fmt.Errorf("series: %w", err)
 		}
 	}
 
+	// As stored, to check the next change against.
+	var modified string
+	if modified, err = bookModified(tx, bookUUID); err != nil {
+		return "", "", fmt.Errorf("read last_modified: %w", err)
+	}
 	if err = tx.Commit(); err != nil {
-		return "", fmt.Errorf("commit: %w", err)
+		return "", "", fmt.Errorf("commit: %w", err)
 	}
 
 	// 8. Update metadata.opf on disk
@@ -566,5 +607,5 @@ func updateBookInCalibreDB(db *sql.DB, baseDir string, bookUUID string, meta *OP
 
 	uuidPathIndex.Store(bookUUID, bookPath)
 
-	return bookPath, nil
+	return bookPath, modified, nil
 }

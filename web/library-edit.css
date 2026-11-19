@@ -660,6 +660,38 @@
     display: none;
 }
 
+.lt-failures {
+    color: #e59999;
+}
+
+.lt-failures-list {
+    list-style: none;
+    margin: 0 0 12px;
+    padding: 0;
+    max-height: 50vh;
+    overflow-y: auto;
+    font-size: 0.85rem;
+}
+
+.lt-failures-list li {
+    padding: 6px 0;
+    border-bottom: 1px solid var(--border-light);
+    overflow-wrap: anywhere;
+}
+
+.lt-failures-list .lt-failure-title {
+    font-weight: 600;
+    color: var(--text-primary);
+}
+
+.lt-failures-list .lt-failure-error {
+    color: #e59999;
+}
+
+.lt-failures-list .lt-failure-meta {
+    color: var(--text-secondary);
+}
+
 /* A box with its ✕ (clearable() in library-edit.ts) */
 .lt-clearable {
     position: relative;

@@ -20,7 +20,7 @@ import { attachSuggest } from "./suggest.js";
 import { joinAuthors, splitAuthors, tidyAuthors } from "./authors.js";
 import { deleteBooks } from "./delete-books.js";
 import { languageChipLabel, languageKey, loadLanguageCodes } from "./languages.js";
-import type { BulkEdit, BulkJob, BulkResult, FormatRepair, NotDuplicateSet, TableBook } from "./types.js";
+import type { BulkEdit, BulkFailureKept, BulkJob, BulkResult, FormatRepair, NotDuplicateSet, TableBook } from "./types.js";
 
 /** Editing the import queue's waiting books, not the library's. */
 const QUEUE = document.querySelector<HTMLElement>(".lt-main")?.dataset["source"] === "queue";
@@ -1421,6 +1421,7 @@ async function pollJobs(): Promise<void> {
         if (failed.length) {
             say(`Couldn't save ${plural(failed.length, "book")}: ${failed.slice(0, 2).join("; ")}`, "error");
             gone = true; // show the books as they are
+            void loadFailures();
         }
         showSaving(data.jobs);
         if (gone) {
@@ -1434,6 +1435,82 @@ async function pollJobs(): Promise<void> {
     if (queuedJobs.size || written.size) jobTimer = window.setTimeout(pollJobs, wait);
     else showSaving(null);
 }
+
+// Kept failures: books a queued edit couldn't be made to, from this page or
+// any other, until someone dismisses them (Go: bulk_edit_failures).
+const failuresNote = byId("lt-failures");
+const failuresDialog = byId("failures-dialog", HTMLDialogElement);
+const failuresList = byId("failures-list");
+closeOnBackdropClick(failuresDialog);
+let failures: BulkFailureKept[] = [];
+
+async function loadFailures(): Promise<void> {
+    if (QUEUE) return;
+    try {
+        const data = await api<{ failures: BulkFailureKept[]; total: number }>("GET", "/api/library/bulk/failures");
+        failures = data.failures;
+        failuresNote.hidden = data.total === 0;
+        byId("lt-failures-text").textContent = `${plural(data.total, "edit")} not saved`;
+    } catch {
+        /* shown next time */
+    }
+}
+
+/** What an edit was meant to do, in a few words. */
+function describeEdit(e: BulkEdit): string {
+    const q = (v: string): string => (v ? `“${v}”` : "none");
+    const parts: string[] = [];
+    if (e.title !== undefined) parts.push(`title ${q(e.title)}`);
+    if (e.authors !== undefined) parts.push(`authors ${q(e.authors)}`);
+    if (e.series !== undefined) parts.push(`series ${q(e.series)}`);
+    if (e.series_index !== undefined) parts.push(`number ${q(e.series_index)}`);
+    if (e.publisher !== undefined) parts.push(`publisher ${q(e.publisher)}`);
+    if (e.date !== undefined) parts.push(`published ${q(e.date)}`);
+    if (e.tags !== undefined) parts.push(`tags ${q(e.tags)}`);
+    if (e.remove_tags?.length) parts.push(`remove tags ${e.remove_tags.map(q).join(", ")}`);
+    if (e.add_tags?.length) parts.push(`add tags ${e.add_tags.map(q).join(", ")}`);
+    if (e.split_tags) parts.push(`split tags on ${q(e.split_tags)}`);
+    if (e.languages !== undefined) parts.push(`languages ${q(e.languages)}`);
+    if (e.remove_languages?.length) parts.push(`remove languages ${e.remove_languages.join(", ")}`);
+    if (e.add_languages?.length) parts.push(`add languages ${e.add_languages.join(", ")}`);
+    return parts.join("; ") || "an edit";
+}
+
+byId("lt-failures-show").addEventListener("click", () => {
+    failuresList.replaceChildren(
+        ...failures.map((f) =>
+            el(
+                "li",
+                {},
+                el("div", { className: "lt-failure-title", textContent: f.title }),
+                el("div", { textContent: `Meant to set: ${describeEdit(f.edit)}` }),
+                el("div", { className: "lt-failure-error", textContent: f.error }),
+                el("div", { className: "lt-failure-meta", textContent: `${f.by || "Someone"}, ${new Date(f.at * 1000).toLocaleString()}` }),
+            ),
+        ),
+    );
+    failuresDialog.showModal();
+});
+
+byId("failures-select").addEventListener("click", () => {
+    const known = new Set(rows.map((r) => r.b.uuid));
+    selected.clear();
+    for (const f of failures) if (known.has(f.uuid)) selected.add(f.uuid);
+    failuresDialog.close();
+    refresh();
+    say(`Selected ${plural(selected.size, "book")} whose edits weren't saved.`, "ok");
+});
+
+byId("failures-dismiss").addEventListener("click", async () => {
+    try {
+        await api("POST", "/api/library/bulk/failures/dismiss", { ids: failures.map((f) => f.id) });
+    } catch (err) {
+        say(`Couldn't dismiss them: ${errorMessage(err)}`, "error");
+        return;
+    }
+    failuresDialog.close();
+    await loadFailures();
+});
 
 /** Rows as the server wrote them, to show where they differ from what it foresaw. */
 const written = new Map<string, TableBook>();
@@ -2246,6 +2323,7 @@ async function start(): Promise<void> {
 /** After the rows (re)load: selected books no longer in the library don't count. */
 function loaded(): void {
     showUnlisted();
+    void loadFailures();
     const known = new Set(rows.map((r) => r.b.uuid));
     for (const u of selected) if (!known.has(u)) selected.delete(u);
     fillDatalists();
