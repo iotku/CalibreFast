@@ -69,7 +69,7 @@ export function unsentBooks(owner: string): number {
     }
     for (const key of keys) {
         const name = key.slice(prefix.length);
-        const m = /^(progress|bookmarks-deleted|bookmarks|annotations)-(.+?)(?:-(?:epub|pdf))?$/.exec(name);
+        const m = /^(progress|bookmarks-deleted|bookmarks|annotations|mark)-(.+?)(?:-(?:epub|pdf))?$/.exec(name);
         if (!m) continue;
         let v: unknown;
         try {
@@ -78,7 +78,9 @@ export function unsentBooks(owner: string): number {
             continue;
         }
         const unsent =
-            m[1] === "progress"
+            m[1] === "mark"
+                ? v !== null
+                : m[1] === "progress"
                 ? !!(v as { pending?: boolean } | null)?.pending
                 : m[1] === "bookmarks-deleted"
                   ? Array.isArray(v) && v.length > 0
