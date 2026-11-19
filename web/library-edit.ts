@@ -958,7 +958,9 @@ body.addEventListener("click", (e) => {
         toggle(uuid, target.checked, e.shiftKey);
         return;
     }
-    if (editing?.cell.contains(target)) return;
+    if (editing?.area.contains(target)) return;
+    // A ✕ while a box is open only closes the box (it may be a slip).
+    if (editing && target.closest(".lt-chip-x")) return;
     const pen = target.closest<HTMLElement>(".lt-cell-edit");
     if (pen) {
         // In the row, or in its expanded panel: the row's cell for that column.
@@ -1058,7 +1060,7 @@ body.addEventListener("pointerdown", (e) => {
     ctrlTicked = false;
     clearTimeout(pressTimer);
     const target = e.target as HTMLElement;
-    if (!touchTap || editing?.cell.contains(target) || target.closest(".lt-cell-menu, input, a, .lt-actions, .lt-chip-x, .lt-more, .lt-cell-edit")) return;
+    if (!touchTap || editing?.area.contains(target) || target.closest(".lt-cell-menu, input, a, .lt-actions, .lt-chip-x, .lt-more, .lt-cell-edit")) return;
     pressFrom = { x: e.clientX, y: e.clientY };
     pressTimer = window.setTimeout(() => {
         pressFrom = null;
@@ -1082,7 +1084,7 @@ body.addEventListener("pointercancel", pressEnded);
 body.addEventListener("contextmenu", (e) => {
     const target = e.target as HTMLElement;
     // A link's, a box's and the menu's own: the browser's.
-    if (cellMenu?.contains(target) || editing?.cell.contains(target) || target.closest("input, a")) return;
+    if (cellMenu?.contains(target) || editing?.area.contains(target) || target.closest("input, a")) return;
     const uuid = target.closest<HTMLElement>(".lt-row")?.dataset["uuid"];
     if (ctrlDown && uuid) {
         ctrlDown = false;
@@ -1572,7 +1574,8 @@ function seriesEdit(value: string): BulkEdit {
     return index ? { series: m[1]!, series_index: index } : { series: m[1]! };
 }
 
-let editing: { cell: HTMLElement; input: HTMLInputElement; finish: (save: boolean) => Promise<void> } | null = null;
+/** The box open for an edit: in cell, taking up area (the cell, or one tag's place in it). */
+let editing: { cell: HTMLElement; area: HTMLElement; input: HTMLInputElement; finish: (save: boolean) => Promise<void> } | null = null;
 
 /**
  * Edit the book's cell for key, if its row is on screen; with value, just that
@@ -1586,7 +1589,14 @@ async function editAt(uuid: string, key: ColKey, value?: string): Promise<void> 
     }
     const cell = rowOnScreen(uuid)?.querySelector<HTMLElement>(`.lt-editable[data-col="${key}"]`);
     if (!cell) return;
-    const ch = value === undefined ? undefined : [...cell.querySelectorAll<HTMLElement>(".lt-chip:not(.lt-chip-removed)")].find((c) => c.dataset["value"] === value);
+    const chipIn = (box: ParentNode | null): HTMLElement | undefined =>
+        value === undefined ? undefined : [...(box?.querySelectorAll<HTMLElement>(".lt-chip:not(.lt-chip-removed)") ?? [])].find((c) => c.dataset["value"] === value);
+    let ch = chipIn(cell);
+    // One the "+N" hides: edited in the panel that shows them all.
+    if (ch?.hidden) {
+        expand(cell);
+        ch = chipIn(expanded);
+    }
     if (ch && !ch.hidden && (key === "tags" || key === "languages")) startChipEdit(ch, uuid, key);
     else startEdit(cell, value);
 }
@@ -1612,7 +1622,8 @@ function wireEditKeys(input: HTMLInputElement, finish: (save: boolean) => Promis
 
 /** Edit one tag or language in place of its chip: empty removes it. */
 function startChipEdit(chipEl: HTMLElement, uuid: string, key: "tags" | "languages"): boolean {
-    const cell = chipEl.closest<HTMLElement>(".lt-editable");
+    // In the row's cell, or in the "+N" panel.
+    const cell = chipEl.closest<HTMLElement>(".lt-editable, .lt-expanded");
     const r = rows.find((x) => x.b.uuid === uuid);
     const before = chipEl.dataset["value"];
     if (!cell || !r || before === undefined || editing) return false;
@@ -1645,7 +1656,8 @@ function startChipEdit(chipEl: HTMLElement, uuid: string, key: "tags" | "languag
         }
         refresh();
     };
-    editing = { cell, input, finish };
+    // Clicks elsewhere in the cell (another tag) are for the other tag.
+    editing = { cell, area: input.parentElement ?? input, input, finish };
     input.focus();
     input.select();
     wireEditKeys(input, finish);
@@ -1701,7 +1713,7 @@ function startEdit(cell: HTMLElement, item?: string): boolean {
         }
         refresh();
     };
-    editing = { cell, input, finish };
+    editing = { cell, area: cell, input, finish };
     wireEditKeys(input, finish);
     return true;
 }
@@ -2109,7 +2121,7 @@ async function reloadRows(): Promise<void> {
     let stale = false;
     try {
         const data = await api<TableData>("GET", SOURCE.table);
-        if (editing || modalOpen() || cellMenu) {
+        if (editing || modalOpen() || cellMenu || expanded) {
             // Redrawing would close what's open: next time.
             reloadedAt = 0;
             return;
