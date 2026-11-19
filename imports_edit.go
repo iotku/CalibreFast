@@ -166,7 +166,9 @@ func (b *importInbox) editOne(id string, edit *bulkEdit) (*pendingImport, bool, 
 		// approve takes the series from Meta (SeriesSet isn't stored).
 		m.SyncSeriesMeta()
 	}
-	if err := writeItemJSON(b.itemDir(id), next); err != nil {
+	// The folder of the item found, by its own id: never a path made from
+	// the request's (which validate checked, and which named a queued book).
+	if err := writeItemJSON(b.itemDir(it.ID), next); err != nil {
 		log.Printf("imports: editing %s: %v", id, err)
 		return nil, false, err
 	}
