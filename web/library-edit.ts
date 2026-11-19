@@ -685,7 +685,7 @@ document.addEventListener("click", (e) => {
 function chip(col: ColKey, value: string): HTMLElement {
     return el(
         "button",
-        { type: "button", className: "lt-chip", title: `${value}: click for options` },
+        { type: "button", className: "lt-chip", title: `${value}: right-click for options` },
         col === "languages" ? languageChipLabel(value) : value,
     );
 }
@@ -703,7 +703,7 @@ function tagChip(value: string): HTMLElement {
     const c = el(
         "span",
         { className: "lt-chip lt-chip-tag" },
-        el("button", { type: "button", className: "lt-chip-label", title: `${value}: click for options (filter, edit, split…), double-click to edit` }, value),
+        el("button", { type: "button", className: "lt-chip-label", title: `${value}: click to edit; right-click for options (filter, split…)` }, value),
         el("button", { type: "button", className: "lt-chip-x", title: `Remove ${value} from this book`, ariaLabel: `Remove the tag ${value}` }, "✕"),
     );
     c.dataset["value"] = value;
@@ -743,7 +743,7 @@ function rowElement(r: Row, i: number): HTMLElement {
             const values = c.items(b);
             const unlisted = c.key === "formats" && b.formats_from_folder;
             if (c.edit) {
-                // The chips filter when clicked: this edits the cell (as a double-click does).
+                // A click on a chip edits that one: this edits them all (as a click beside them does).
                 const pen = el("button", { type: "button", className: "lt-cell-edit", title: `Edit ${c.label.toLowerCase()}`, ariaLabel: `Edit the ${c.label.toLowerCase()} of “${b.title}”` });
                 pen.append(PENCIL());
                 cell.append(pen);
@@ -878,11 +878,16 @@ function mergeLink(uuids: string[]): string {
     return `/book/merge?${new URLSearchParams({ ids: uuids.join(",") })}`;
 }
 
+// A click edits a cell, or one tag or language; Ctrl/⌘-click ticks the row,
+// Shift-click a range (as in a file manager). On a touch screen a tap ticks
+// the row. The menu (filter by it, edit, copy…) is a right-click or a long press.
 body.addEventListener("click", (e) => {
     const target = e.target as HTMLElement;
     if (cellMenu?.contains(target)) return; // its items handle themselves
-    const openFor = cellMenu ? menuFor : "";
-    closeCellMenu();
+    const hadMenu = cellMenu !== null;
+    deselectCell();
+    // The click that ends a long press (its menu is up), or a Ctrl-click done already.
+    if (Date.now() < quietUntil || ctrlTicked) return;
     const row = target.closest<HTMLElement>(".lt-row");
     const uuid = row?.dataset["uuid"];
     if (!row || !uuid) return;
@@ -890,13 +895,13 @@ body.addEventListener("click", (e) => {
         toggle(uuid, target.checked, e.shiftKey);
         return;
     }
+    if (editing?.cell.contains(target)) return;
     const pen = target.closest<HTMLElement>(".lt-cell-edit");
     if (pen) {
         // In the row, or in its expanded panel: the row's cell for that column.
-        const col = pen.closest<HTMLElement>("[data-col]")?.dataset["col"];
-        const cell = row.querySelector<HTMLElement>(`.lt-editable[data-col="${col}"]`);
+        const col = pen.closest<HTMLElement>("[data-col]")?.dataset["col"] as ColKey | undefined;
         closeExpanded();
-        if (cell) startEdit(cell);
+        if (col) void editAt(uuid, col);
         return;
     }
     if (target.closest(".lt-notdup")) {
@@ -924,45 +929,119 @@ body.addEventListener("click", (e) => {
         else if (cell) expand(cell);
         return;
     }
-    // A chip or a cell: the second click of a double-click edits (dblclick), so
-    // in a column that can be edited the first one waits to see if it's one.
-    if (e.detail > 1) {
-        clearTimeout(clickTimer);
+    if (target.closest("a, .lt-actions")) return;
+    // A click away from a menu only closes it.
+    if (hadMenu) return;
+    if (e.shiftKey) {
+        toggle(uuid, true, true);
         return;
     }
-    const ch = target.closest<HTMLElement>(".lt-chip");
-    if (ch?.classList.contains("lt-chip-removed")) return;
+    if (e.ctrlKey || e.metaKey || touchTap) {
+        toggle(uuid, !selected.has(uuid), false);
+        return;
+    }
+    if (e.detail > 1) return; // the box is up already
     const key = target.closest<HTMLElement>("[data-col]")?.dataset["col"];
     const col = COLUMNS.find((c) => c.key === key);
-    if (!col) return;
-    const run = (fn: () => void): void => {
-        clearTimeout(clickTimer);
-        if (col.edit) clickTimer = window.setTimeout(fn, CLICK_WAIT);
-        else fn();
-    };
-    // The cell or chip whose menu is open: the click closes it.
+    if (!col?.edit) return;
+    const ch = target.closest<HTMLElement>(".lt-chip:not(.lt-chip-removed)");
+    closeExpanded();
+    void editAt(uuid, col.key, ch?.dataset["value"]);
+});
+
+/** A Ctrl-click under way: on a Mac that's a right-click (contextmenu, no click), but here it ticks the row. */
+let ctrlDown = false;
+/** That Ctrl-click ticked its row already (at contextmenu), should a click come too. */
+let ctrlTicked = false;
+
+// Shift-click picks a range, not the text in it.
+body.addEventListener("mousedown", (e) => {
+    ctrlDown = e.button === 0 && e.ctrlKey;
+    ctrlTicked = false;
+    if (e.shiftKey && !(e.target as HTMLElement).closest("input")) e.preventDefault();
+});
+
+/** Open the menu for what was right-clicked or long-pressed: a chip's, or its cell's. */
+function menuAt(target: HTMLElement): void {
+    const row = target.closest<HTMLElement>(".lt-row");
+    const uuid = row?.dataset["uuid"];
+    const key = target.closest<HTMLElement>("[data-col]")?.dataset["col"];
+    const col = COLUMNS.find((c) => c.key === key);
+    if (!uuid || !col) return;
+    const ch = target.closest<HTMLElement>(".lt-chip:not(.lt-chip-removed)");
     const value = ch?.dataset["value"];
-    if (openFor && openFor === menuKey(uuid, col.key, value)) {
-        clearTimeout(clickTimer);
+    // The same one again closes its menu.
+    const again = cellMenu !== null && menuFor === menuKey(uuid, col.key, value);
+    deselectCell();
+    if (again) return;
+    if (ch) selectChip(uuid, col.key, value ?? "", ch);
+    else if (!target.closest(".lt-expanded")) selectCell(uuid, col.key);
+}
+
+/** Whether the click under way is a tap on a touch screen (it ticks the row). */
+let touchTap = false;
+/** Clicks before this (ms) end a long press, whose menu is up. */
+let quietUntil = 0;
+let pressTimer = 0;
+let pressFrom: { x: number; y: number } | null = null;
+/** How long a press is long, in ms, and how far (px) a finger may move in it. */
+const LONG_PRESS = 500;
+const PRESS_SLOP = 10;
+/** When a long press last opened a menu (Android's contextmenu then comes too). */
+let pressedAt = 0;
+
+body.addEventListener("pointerdown", (e) => {
+    touchTap = e.pointerType === "touch" || e.pointerType === "pen";
+    ctrlTicked = false;
+    clearTimeout(pressTimer);
+    const target = e.target as HTMLElement;
+    if (!touchTap || editing?.cell.contains(target) || target.closest(".lt-cell-menu, input, a, .lt-actions, .lt-chip-x, .lt-more, .lt-cell-edit")) return;
+    pressFrom = { x: e.clientX, y: e.clientY };
+    pressTimer = window.setTimeout(() => {
+        pressFrom = null;
+        pressedAt = Date.now();
+        quietUntil = Infinity;
+        menuAt(target);
+    }, LONG_PRESS);
+});
+body.addEventListener("pointermove", (e) => {
+    if (pressFrom && Math.hypot(e.clientX - pressFrom.x, e.clientY - pressFrom.y) > PRESS_SLOP) clearTimeout(pressTimer);
+});
+const pressEnded = (): void => {
+    clearTimeout(pressTimer);
+    pressFrom = null;
+    // A long press's own click (if the browser sends one) comes right after.
+    if (quietUntil === Infinity) quietUntil = Date.now() + 400;
+};
+body.addEventListener("pointerup", pressEnded);
+body.addEventListener("pointercancel", pressEnded);
+
+body.addEventListener("contextmenu", (e) => {
+    const target = e.target as HTMLElement;
+    // A link's, a box's and the menu's own: the browser's.
+    if (cellMenu?.contains(target) || editing?.cell.contains(target) || target.closest("input, a")) return;
+    const uuid = target.closest<HTMLElement>(".lt-row")?.dataset["uuid"];
+    if (ctrlDown && uuid) {
+        ctrlDown = false;
+        e.preventDefault();
         deselectCell();
+        toggle(uuid, !selected.has(uuid), false);
+        ctrlTicked = true;
         return;
     }
-    if (ch) {
-        run(() => selectChip(uuid, col.key, value ?? "", ch));
-        return;
-    }
-    if (target.closest(".lt-expanded")) return;
-    run(() => selectCell(uuid, col.key));
+    if (!target.closest("[data-col]")) return;
+    e.preventDefault();
+    clearTimeout(pressTimer);
+    // Android sends one at the end of a long press, which opened the menu already.
+    if (Date.now() - pressedAt < 1500) return;
+    menuAt(target);
 });
 
 // ---------------------------------------------------------------------------
-// A clicked cell or chip: selected, with a menu (filter by it, hide it, edit,
-// copy; a tag can also be split or removed)
+// A right-clicked (or long-pressed) cell or chip: selected, with a menu
+// (filter by it, hide it, edit, copy; a tag can also be split or removed)
 // ---------------------------------------------------------------------------
 
-/** How long a click waits for a second one (a double-click edits), in ms. */
-const CLICK_WAIT = 250;
-let clickTimer = 0;
 let selectedCell: { uuid: string; col: ColKey } | null = null;
 let cellMenu: HTMLElement | null = null;
 /** What the open menu is for (menuKey). */
@@ -1026,13 +1105,8 @@ const copyItem = (text: string): MenuItem => [
 /** The row drawn for a book, if it's on screen. */
 const rowOnScreen = (uuid: string): HTMLElement | undefined => [...body.querySelectorAll<HTMLElement>(".lt-row")].find((x) => x.dataset["uuid"] === uuid);
 
-/** Edit the book's cell for key (with item picked out), if it's on screen. */
-function editCell(uuid: string, key: ColKey, item?: string): void {
-    const c = rowOnScreen(uuid)?.querySelector<HTMLElement>(`.lt-editable[data-col="${key}"]`);
-    if (c) startEdit(c, item);
-}
 
-/** A clicked tag, language or format (in the row or its "+N" panel): its own menu. */
+/** A right-clicked tag, language or format (in the row or its "+N" panel): its own menu. */
 function selectChip(uuid: string, key: ColKey, value: string, chipEl: HTMLElement): void {
     deselectCell();
     if (!chipEl.isConnected) {
@@ -1057,7 +1131,7 @@ function selectChip(uuid: string, key: ColKey, value: string, chipEl: HTMLElemen
         items.push([`Only books with “${name}”`, () => setFilter(key, `=${value}`)]);
         items.push([`Hide books with “${name}”`, () => setFilter(key, `!=${value}`)]);
     }
-    if (col.edit) items.push([`Edit “${name}”… (double-click)`, () => editCell(uuid, key, value)]);
+    if (col.edit) items.push([`Edit “${name}”…`, () => void editAt(uuid, key, value)]);
     if (key === "tags") {
         items.push([`Split “${name}”…`, () => openSplitDialog({ uuid, tag: value })]);
         items.push(["Remove from this book", () => void removeTag(uuid, value)]);
@@ -1102,7 +1176,7 @@ function selectCell(uuid: string, key: ColKey): void {
             },
         ]);
     }
-    if (col.edit) items.push([blank && !text ? "Add… (double-click)" : "Edit… (double-click)", () => editCell(uuid, key)]);
+    if (col.edit) items.push([blank && !text ? "Add…" : "Edit…", () => void editAt(uuid, key)]);
     if (key === "authors") items.push(...authorItems(b));
     if (text) items.push(copyItem(text));
     openMenu(row, cell.offsetLeft, `${col.label} of “${b.title}”`, items, menuKey(uuid, key));
@@ -1435,24 +1509,85 @@ function seriesEdit(value: string): BulkEdit {
     return index ? { series: m[1]!, series_index: index } : { series: m[1]! };
 }
 
-let editing: { cell: HTMLElement; input: HTMLInputElement } | null = null;
+let editing: { cell: HTMLElement; input: HTMLInputElement; finish: (save: boolean) => Promise<void> } | null = null;
 
-// Double-click: edit the cell; on a tag or language, with that one picked out.
-body.addEventListener("dblclick", (e) => {
-    clearTimeout(clickTimer);
-    const target = e.target as HTMLElement;
-    if (target.closest(".lt-chip-x, .lt-cell-edit, .lt-more, .lt-action, .lt-cell-menu, input, a")) return;
-    const row = target.closest<HTMLElement>(".lt-row");
-    const key = target.closest<HTMLElement>("[data-col]")?.dataset["col"];
-    const col = COLUMNS.find((c) => c.key === key);
-    if (!row || !col?.edit) return;
-    const ch = target.closest<HTMLElement>(".lt-chip:not(.lt-chip-removed)");
-    // In the row, or in its expanded panel: the row's cell for that column.
-    const cell = row.querySelector<HTMLElement>(`.lt-editable[data-col="${col.key}"]`);
-    deselectCell();
-    closeExpanded();
-    if (cell && startEdit(cell, ch?.dataset["value"])) e.preventDefault();
-});
+/**
+ * Edit the book's cell for key, if its row is on screen; with value, just that
+ * tag or language (or, if the "+N" hides its chip, the cell with it picked
+ * out). A box open elsewhere is saved first.
+ */
+async function editAt(uuid: string, key: ColKey, value?: string): Promise<void> {
+    if (editing) {
+        await editing.finish(true);
+        if (editing) return;
+    }
+    const cell = rowOnScreen(uuid)?.querySelector<HTMLElement>(`.lt-editable[data-col="${key}"]`);
+    if (!cell) return;
+    const ch = value === undefined ? undefined : [...cell.querySelectorAll<HTMLElement>(".lt-chip:not(.lt-chip-removed)")].find((c) => c.dataset["value"] === value);
+    if (ch && !ch.hidden && (key === "tags" || key === "languages")) startChipEdit(ch, uuid, key);
+    else startEdit(cell, value);
+}
+
+/** Enter saves, Esc cancels, and leaving the box saves, as in a spreadsheet (a suggestion click comes back to it). */
+function wireEditKeys(input: HTMLInputElement, finish: (save: boolean) => Promise<void>): void {
+    input.addEventListener("keydown", (ev) => {
+        if (ev.key === "Enter" && !ev.defaultPrevented) {
+            ev.preventDefault();
+            void finish(true);
+        } else if (ev.key === "Escape") {
+            ev.preventDefault();
+            ev.stopPropagation();
+            void finish(false);
+        }
+    });
+    input.addEventListener("blur", () => {
+        setTimeout(() => {
+            if (document.activeElement !== input) void finish(true);
+        }, 150);
+    });
+}
+
+/** Edit one tag or language in place of its chip: empty removes it. */
+function startChipEdit(chipEl: HTMLElement, uuid: string, key: "tags" | "languages"): boolean {
+    const cell = chipEl.closest<HTMLElement>(".lt-editable");
+    const r = rows.find((x) => x.b.uuid === uuid);
+    const before = chipEl.dataset["value"];
+    if (!cell || !r || before === undefined || editing) return false;
+    const what = key === "tags" ? "tag" : "language";
+    const input = el("input", { type: "text", className: "lt-cell-input lt-chip-input", value: before, ariaLabel: `The ${what} ${before}` });
+    input.title = `Edit this ${what} (empty removes it). Enter saves, Esc cancels.`;
+    chipEl.replaceWith(input);
+    if (key === "tags") attachSuggest(input, { category: "tag" });
+    else attachSuggest(input, { category: "language", key: languageKey });
+    input.parentElement?.classList.add("lt-chip-edit");
+    cell.classList.add("lt-editing-chip");
+    let done = false;
+    const finish = async (save: boolean): Promise<void> => {
+        if (done) return;
+        done = true;
+        editing = null;
+        const value = input.value.trim();
+        if (!save || value === before) {
+            draw(true);
+            return;
+        }
+        input.disabled = true;
+        const edit: BulkEdit =
+            key === "tags" ? { remove_tags: [before], ...(value ? { add_tags: [value] } : {}) } : { remove_languages: [before], ...(value ? { add_languages: [value] } : {}) };
+        try {
+            const res = await sendEdit([uuid], edit);
+            say(res.failed.length ? resultText(res) : `Saved “${res.books[0]?.title ?? r.b.title}”.`, res.failed.length ? "error" : "ok");
+        } catch (err) {
+            say(`Couldn't save: ${errorMessage(err)}`, "error");
+        }
+        refresh();
+    };
+    editing = { cell, input, finish };
+    input.focus();
+    input.select();
+    wireEditKeys(input, finish);
+    return true;
+}
 
 /** Edit a cell in place, with item (a tag or language) selected; false if it can't be edited (now). */
 function startEdit(cell: HTMLElement, item?: string): boolean {
@@ -1463,6 +1598,8 @@ function startEdit(cell: HTMLElement, item?: string): boolean {
     const field = col.edit;
     const before = cellValue(r.b, field);
     const input = el("input", { type: field === "date" ? "date" : "text", className: "lt-cell-input", value: before, ariaLabel: col.label });
+    // In the cell first: a suggestion list goes in a box around it.
+    cell.replaceChildren(input);
     if (field === "tags") attachSuggest(input, { category: "tag", multi: true });
     if (field === "languages") attachSuggest(input, { category: "language", multi: true, key: languageKey });
     if (field === "authors") attachSuggest(input, { category: "author", multi: true, separators: "&" });
@@ -1472,9 +1609,7 @@ function startEdit(cell: HTMLElement, item?: string): boolean {
         input.placeholder = "Series [number]";
         input.title = "The series, and the book's number in it in brackets: Dune [2]. Without a number the book keeps its own; empty: no series.";
     }
-    cell.replaceChildren(input);
     cell.classList.add("lt-editing");
-    editing = { cell, input };
     input.focus();
     // That tag or language picked out ("a, b, c" is how cellValue joins them): typing replaces it.
     const items = field === "tags" ? r.b.tags : field === "languages" ? r.b.languages : [];
@@ -1503,22 +1638,8 @@ function startEdit(cell: HTMLElement, item?: string): boolean {
         }
         refresh();
     };
-    input.addEventListener("keydown", (ev) => {
-        if (ev.key === "Enter" && !ev.defaultPrevented) {
-            ev.preventDefault();
-            void finish(true);
-        } else if (ev.key === "Escape") {
-            ev.preventDefault();
-            ev.stopPropagation();
-            void finish(false);
-        }
-    });
-    // Leaving the box saves, as in a spreadsheet; a suggestion click comes back to it.
-    input.addEventListener("blur", () => {
-        setTimeout(() => {
-            if (document.activeElement !== input) void finish(true);
-        }, 150);
-    });
+    editing = { cell, input, finish };
+    wireEditKeys(input, finish);
     return true;
 }
 
