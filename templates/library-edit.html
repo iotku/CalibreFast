@@ -4,18 +4,19 @@
     <meta charset="utf-8">
     {{ robotsMeta }}
     {{ appHead }}
-    <title>Bulk edit — {{ .Title }}</title>
+    <title>{{ if .Queue }}Edit the import queue{{ else }}Bulk edit{{ end }} — {{ .Title }}</title>
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <link rel="stylesheet" href="{{ asset "style.css" }}">
     <link rel="stylesheet" href="{{ asset "library-edit.css" }}">
 </head>
 <body class="lt-body">
-{{ $tb := topbar "Active" "library-edit" "Title" "Bulk edit" "NoSearch" true }}
+{{ $tb := topbar "Active" (or (and .Queue "imports") "library-edit") "Title" (or (and .Queue "Edit the import queue") "Bulk edit") "NoSearch" true }}
 {{ template "topbar-start" $tb }}
 {{ template "topbar-end" $tb }}
 <!-- Every book as a table row, to find duplicates and fix metadata in bulk
-     (web/library-edit.ts, bulk_edit.go) -->
-<main class="lt-main">
+     (web/library-edit.ts, bulk_edit.go); with .Queue, the books waiting in
+     the import queue instead (imports_edit.go) -->
+<main class="lt-main"{{ if .Queue }} data-source="queue"{{ end }}>
     <div class="lt-toolbar" role="search">
         <input id="lt-search" type="search" class="lt-search" placeholder="Search every column…" aria-label="Search every column" autocomplete="off" spellcheck="false">
         <label class="lt-tool" title="Show only books that look like another: then merge them">
@@ -25,7 +26,7 @@
                 <option value="title">Similar title</option>
                 <option value="title-authors">Similar title &amp; authors</option>
                 <option value="isbn">Same ISBN</option>
-                <option value="marked">Marked not duplicates</option>
+                {{ if not .Queue }}<option value="marked">Marked not duplicates</option>{{ end }}
             </select>
         </label>
         <label class="lt-tool" title="Show only books with a tag that may need fixing">
@@ -42,7 +43,7 @@
         </label>
         <label class="lt-tool"><input type="checkbox" id="lt-only-selected"> Only selected</label>
         <button type="button" id="lt-clear" class="btn-action">Clear filters</button>
-        <span id="lt-count" class="lt-count" role="status">Loading the library…</span>
+        <span id="lt-count" class="lt-count" role="status">{{ if .Queue }}Loading the import queue…{{ else }}Loading the library…{{ end }}</span>
         <!-- Before the message, which can be long (and is cut short): always in sight -->
         <button type="button" id="lt-undo" class="lt-action lt-undo" hidden>Undo</button>
         <span id="lt-status" class="lt-status" role="status" hidden></span>
@@ -55,6 +56,7 @@
         <details class="lt-help">
             <summary>Filter tips</summary>
             <div class="lt-help-body">
+                {{ if .Queue }}<p>These are the books waiting in the import queue. Edits change the metadata each will be added with (by <strong>Mass Import</strong>, or as its review page starts); nothing is added to the library here. <strong>Library</strong> says whether a book looks already in it: <code>new</code>, <code>in library</code> (same title and authors), <code>same file</code>, or <code>checking</code> after an edit.</p>{{ end }}
                 <p>Each column's box filters that column; every box must match.</p>
                 <ul>
                     <li><code>word</code> contains the text (any case or accent); in Tags, Languages and Formats, any one of them does</li>
@@ -87,8 +89,8 @@
         <button type="button" id="lt-select-none" class="btn-action">Clear</button>
         <button type="button" id="lt-edit" class="btn-action">Edit…</button>
         <button type="button" id="lt-split" class="btn-action">Split tags…</button>
-        <button type="button" id="lt-merge" class="btn-action" title="Make the selected books one book, with every format">Merge…</button>
-        <button type="button" id="lt-remove" class="btn-action btn-danger">Remove…</button>
+        <button type="button" id="lt-merge" class="btn-action" title="Make the selected books one book, with every format"{{ if .Queue }} hidden{{ end }}>Merge…</button>
+        <button type="button" id="lt-remove" class="btn-action btn-danger"{{ if .Queue }} hidden{{ end }}>Remove…</button>
     </span>
 </div>
 

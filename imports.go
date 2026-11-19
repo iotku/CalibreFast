@@ -82,8 +82,11 @@ type importFile struct {
 	Size   int64  `json:"size"`
 }
 
-// pendingImport is a book waiting for review (item.json). It doesn't change
-// once written: the admin's edits go straight into the library on approval.
+// pendingImport is a book waiting for review (item.json). Quick edits in
+// the queue's table (imports_edit.go) replace Merged, never in place: a
+// new copy goes into importInbox.items, so whoever holds the old one reads
+// it whole. The review page's edits go straight into the library on
+// approval.
 type pendingImport struct {
 	ID    string       `json:"id"`
 	Added time.Time    `json:"added"`
@@ -279,11 +282,7 @@ func (b *importInbox) stageFiles(paths []string, from, into string, coverNow boo
 	it.Merged = *mergeMeta(it.Sources)
 	it.Merged.Format, it.Merged.FileName = "current", ""
 
-	data, err := json.MarshalIndent(it, "", "  ")
-	if err != nil {
-		return fail(err)
-	}
-	if err := os.WriteFile(filepath.Join(dir, "item.json"), data, 0o600); err != nil {
+	if err := writeItemJSON(dir, it); err != nil {
 		return fail(err)
 	}
 	// Its cover from its files, if one can be had without a browser
@@ -311,10 +310,8 @@ func (b *importInbox) stageForPlaceholder(paths []string, p *placeholder) (*pend
 	defer b.mu.Unlock()
 	it.Placeholder = p.UUID
 	it.Merged.OPFMetadata = withPlaceholder(it.Merged.OPFMetadata, p)
-	if data, err := json.MarshalIndent(it, "", "  "); err == nil {
-		if err := os.WriteFile(filepath.Join(dir, "item.json"), data, 0o600); err != nil {
-			log.Printf("imports: %s: %v", it.ID, err)
-		}
+	if err := writeItemJSON(dir, it); err != nil {
+		log.Printf("imports: %s: %v", it.ID, err)
 	}
 	cover := filepath.Join(dir, "cover.jpg")
 	if _, err := os.Stat(cover); err != nil && strings.HasSuffix(p.Cover, ".jpg") {
@@ -880,6 +877,9 @@ type importQueue struct {
 func registerImportRoutes() {
 	http.HandleFunc("GET /import", requireEditor(importQueuePage))
 	http.HandleFunc("GET /api/imports", requireEditor(importQueueHandler))
+	http.HandleFunc("GET /import/edit", requireEditor(importEditPage))
+	http.HandleFunc("GET /api/imports/table", requireEditor(importTableHandler))
+	http.HandleFunc("POST /api/imports/bulk", requireEditor(importBulkHandler))
 	http.HandleFunc("GET /import/{id}", requireEditor(importReviewPage))
 	http.HandleFunc("GET /import/{id}/metadata", requireEditor(importMetadataHandler))
 	http.HandleFunc("POST /import/{id}/apply", requireEditor(importApplyHandler))

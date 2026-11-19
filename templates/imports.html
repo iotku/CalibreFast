@@ -18,6 +18,7 @@
         <div class="ph-head">
             <h1 id="imports-count">Review imports</h1>
             <div class="ph-actions">
+                <a id="imports-edit-table" class="btn-standard" href="/import/edit" hidden title="Fix titles, authors, tags and series of many waiting books at once, as in the bulk editor">Edit in Table</a>
                 {{ if .Admin }}<button type="button" id="imports-accept-all" class="btn-standard btn-primary" hidden title="Add every book with the metadata its files offer, without review. Books that may already be in the library stay here.">Mass Import, Don't Ask</button>{{ end }}
                 <button type="button" id="imports-discard-existing" class="btn-standard btn-danger" hidden>Discard Existing Files</button>
             </div>

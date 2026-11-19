@@ -236,6 +236,20 @@
     font-variant-numeric: tabular-nums;
 }
 
+/* The import queue's Library column (imports_edit.go) */
+.lt-col-library {
+    color: var(--text-secondary);
+}
+
+.lt-col-library.lt-lib-checking {
+    color: var(--text-muted);
+    font-style: italic;
+}
+
+.lt-col-library.lt-lib-dup {
+    color: #e59999;
+}
+
 .lt-editable {
     cursor: text;
 }
@@ -964,4 +978,9 @@ body:has(.lt-resizing) {
 .lt-menu-item:hover,
 .lt-menu-item:focus-visible {
     background: rgba(200, 169, 110, 0.14);
+}
+
+/* Merge… and Remove… aren't offered for the import queue (imports_edit.go) */
+.lt-bar .btn-action[hidden] {
+    display: none;
 }

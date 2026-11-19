@@ -8,6 +8,12 @@
 //
 // The filters, sort, duplicate mode and tag check are kept in the URL (replaceState),
 // so coming back (with Back) finds the same view.
+//
+// The same page edits the import queue (/import/edit; Go: imports_edit.go)
+// when <main> says data-source="queue": the rows are the books waiting to be
+// added, edits change the metadata they'll be added with, and a Library
+// column shows whether each looks already in the library. Merging, removing
+// and marking not duplicates are the library's only.
 
 import { api, byId, closeOnBackdropClick, el, errorMessage, icon, lineIcon, modalOpen } from "./dom.js";
 import { attachSuggest } from "./suggest.js";
@@ -16,6 +22,12 @@ import { deleteBooks } from "./delete-books.js";
 import { languageChipLabel, languageKey, loadLanguageCodes } from "./languages.js";
 import type { BulkEdit, BulkResult, FormatRepair, NotDuplicateSet, TableBook } from "./types.js";
 
+/** Editing the import queue's waiting books, not the library's. */
+const QUEUE = document.querySelector<HTMLElement>(".lt-main")?.dataset["source"] === "queue";
+const SOURCE = QUEUE
+    ? { table: "/api/imports/table", bulk: "/api/imports/bulk", name: "the import queue" }
+    : { table: "/api/library/table", bulk: "/api/library/bulk", name: "the library" };
+
 const ROW_H = 34; // px; .lt-row's height in library-edit.css
 const OVERSCAN = 8; // rows drawn beyond the screen, each way
 /** sessionStorage: books the grid's "Edit in table" picked (select-books.ts). */
@@ -23,7 +35,7 @@ const BULK_SELECTION_KEY = "cf-bulk-selection";
 /** At most this many books are merged at once (Go: mergeMaxBooks). */
 const MERGE_MAX = 20;
 
-type ColKey = "title" | "authors" | "series" | "publisher" | "pubdate" | "languages" | "tags" | "formats" | "added";
+type ColKey = "title" | "authors" | "series" | "publisher" | "pubdate" | "languages" | "tags" | "formats" | "added" | "library";
 /** The bulk edit field a column's cells edit. */
 type EditField = "title" | "authors" | "series" | "publisher" | "date" | "tags" | "languages";
 
@@ -55,8 +67,12 @@ const COLUMNS: Column[] = [
     },
     { key: "tags", label: "Tags", list: true, edit: "tags", text: (b) => b.tags.join(", "), items: (b) => b.tags, blank: (b) => b.tags.length === 0 },
     { key: "formats", label: "Formats", list: true, text: (b) => b.formats.join(", "), items: (b) => b.formats, blank: (b) => b.formats.length === 0 },
-    { key: "added", label: "Added", text: (b) => b.added, blank: (b) => !b.added },
+    { key: "added", label: QUEUE ? "Queued" : "Added", text: (b) => b.added, blank: (b) => !b.added },
 ];
+if (QUEUE) {
+    // Go: tableBook.Library, the queue's duplicate check. Its tick box: new books.
+    COLUMNS.push({ key: "library", label: "Library", text: (b) => b.library ?? "", blank: (b) => b.library === "new" });
+}
 
 /**
  * The grid's columns, in order, with their usual widths (as --lt-cols in
@@ -76,12 +92,21 @@ const GRID: { key: "actions" | "check" | ColKey; def: string; min: number }[] = 
     { key: "formats", def: "110px", min: 110 },
     { key: "added", def: "96px", min: 96 },
 ];
+if (QUEUE) GRID.push({ key: "library", def: "104px", min: 96 });
 const COL_MIN = 56;
 const COL_MAX = 2000;
-const COL_WIDTHS_KEY = "cf-bulk-col-widths";
+const COL_WIDTHS_KEY = QUEUE ? "cf-queue-col-widths" : "cf-bulk-col-widths";
 
 /** What the Formats filter matches for files only in a book's folder, not in metadata.db. */
 const FOLDER_ONLY = "folder only";
+
+/** The Library column's values, explained. */
+const LIBRARY_TITLES: Record<string, string> = {
+    checking: "Being checked against the library",
+    "same file": "The library already has one of its files: it can't be added",
+    "in library": "A library book has the same title and authors: adding it asks first",
+    new: "Not in the library",
+};
 
 const PENCIL = () => icon(lineIcon(13), "M12 20h9", "M16.5 3.5a2.1 2.1 0 0 1 3 3L7 19l-4 1 1-4Z");
 
@@ -739,6 +764,11 @@ function rowElement(r: Row, i: number): HTMLElement {
             const text = c.text(b);
             cell.textContent = text;
             cell.title = text;
+            if (c.key === "library") {
+                cell.title = LIBRARY_TITLES[text] ?? text;
+                if (text === "checking") cell.classList.add("lt-lib-checking");
+                if (text === "in library" || text === "same file") cell.classList.add("lt-lib-dup");
+            }
         }
         if (c.edit) cell.classList.add("lt-editable");
         if (selectedCell?.uuid === b.uuid && selectedCell.col === c.key) cell.classList.add("lt-cell-selected");
@@ -746,13 +776,15 @@ function rowElement(r: Row, i: number): HTMLElement {
     }
     const actions = el("span", { className: "lt-cell lt-actions" });
     actions.append(
-        el("a", { href: `/book/edit/${encodeURIComponent(b.uuid)}`, target: "_blank", className: "lt-action", title: "Open in the metadata editor (new tab)", ariaLabel: `Edit “${b.title}”` }, "Edit"),
+        QUEUE
+            ? el("a", { href: `/import/${encodeURIComponent(b.uuid)}`, target: "_blank", className: "lt-action", title: "Open its review page (new tab)", ariaLabel: `Review “${b.title}”` }, "Review")
+            : el("a", { href: `/book/edit/${encodeURIComponent(b.uuid)}`, target: "_blank", className: "lt-action", title: "Open in the metadata editor (new tab)", ariaLabel: `Edit “${b.title}”` }, "Edit"),
     );
     // A group's buttons: Merge on its first row, Not Dupe on its second (a
     // group has at least two books, so the column stays narrow), unless a
     // filter leaves only one of them shown.
-    const first = dupMode !== "" && (i === 0 || shown[i - 1]!.dupKey !== r.dupKey);
-    const second = dupMode !== "" && !first && (i === 1 || shown[i - 2]!.dupKey !== r.dupKey);
+    const first = !QUEUE && dupMode !== "" && (i === 0 || shown[i - 1]!.dupKey !== r.dupKey);
+    const second = !QUEUE && dupMode !== "" && !first && (i === 1 || shown[i - 2]!.dupKey !== r.dupKey);
     if (dupMode === MARKED && first) {
         const un = el("button", { type: "button", className: "lt-action lt-unmark", title: "They may be duplicates after all: show them in the duplicates view again" }, "Unmark");
         un.dataset["set"] = r.dupKey.replace(/^set:/, "");
@@ -1136,7 +1168,7 @@ byId("lt-remove").addEventListener("click", async () => {
 
 /** Send an edit; the changed rows come back. */
 async function sendEdit(uuids: string[], edit: BulkEdit): Promise<BulkResult> {
-    const res = await api<BulkResult>("POST", "/api/library/bulk", { uuids, edit });
+    const res = await api<BulkResult>("POST", SOURCE.bulk, { uuids, edit });
     const fresh = new Map(res.books.map((b) => [b.uuid, b]));
     // In the rows shown too, in place: a change needn't move or hide its row.
     const made = new Map<string, Row>();
@@ -1155,6 +1187,7 @@ async function sendEdit(uuids: string[], edit: BulkEdit): Promise<BulkResult> {
     rows = rows.map(swap);
     shown = shown.map(swap);
     changedHere++;
+    pollChecking();
     return res;
 }
 
@@ -1832,12 +1865,12 @@ async function start(): Promise<void> {
     loadView();
     buildHead();
     try {
-        const [data] = await Promise.all([api<TableData>("GET", "/api/library/table"), loadLanguageCodes()]);
+        const [data] = await Promise.all([api<TableData>("GET", SOURCE.table), loadLanguageCodes()]);
         rows = data.books.map(makeRow);
         notDupSets = data.not_duplicates;
     } catch (err) {
         countEl.textContent = "";
-        say(`Couldn't load the library: ${errorMessage(err)}`, "error");
+        say(`Couldn't load ${SOURCE.name}: ${errorMessage(err)}`, "error");
         return;
     }
     loaded();
@@ -1850,6 +1883,25 @@ function loaded(): void {
     for (const u of selected) if (!known.has(u)) selected.delete(u);
     fillDatalists();
     refresh();
+    pollChecking();
+}
+
+// The queue: books edited (or just queued) are checked against the library
+// again in the background; the rows are fetched again until none is waiting
+// for that.
+const CHECK_POLL = 3000;
+let checkTimer = 0;
+function pollChecking(): void {
+    if (!QUEUE || checkTimer) return;
+    checkTimer = window.setTimeout(() => {
+        checkTimer = 0;
+        if (!rows.some((r) => r.b.library === "checking")) return;
+        reloadedAt = 0;
+        void reloadRows().finally(() => {
+            // Not fetched (something open, or the tab hidden): try again later.
+            if (rows.some((r) => r.b.library === "checking")) pollChecking();
+        });
+    }, CHECK_POLL);
 }
 
 // Merges and edits done in other tabs (a Merge link opened in a new tab,
@@ -1872,7 +1924,7 @@ async function reloadRows(): Promise<void> {
     const gen = changedHere;
     let stale = false;
     try {
-        const data = await api<TableData>("GET", "/api/library/table");
+        const data = await api<TableData>("GET", SOURCE.table);
         if (editing || modalOpen() || cellMenu) {
             // Redrawing would close what's open: next time.
             reloadedAt = 0;
@@ -1886,7 +1938,7 @@ async function reloadRows(): Promise<void> {
         rows = data.books.map(makeRow);
         notDupSets = data.not_duplicates;
         loaded();
-        if (rows.length < before) say(`${plural(before - rows.length, "book")} fewer since this page loaded (merged or removed elsewhere).`, "ok");
+        if (rows.length < before) say(`${plural(before - rows.length, "book")} fewer since this page loaded (${QUEUE ? "added or discarded" : "merged or removed"} elsewhere).`, "ok");
     } catch {
         /* keep what's shown */
     } finally {
@@ -1921,7 +1973,7 @@ byId("lt-unlisted-fix").addEventListener("click", async (e) => {
     btn.disabled = true;
     try {
         const res = await api<FormatRepair>("POST", "/api/library/repair-formats", { uuids });
-        const data = await api<TableData>("GET", "/api/library/table");
+        const data = await api<TableData>("GET", SOURCE.table);
         rows = data.books.map(makeRow);
         notDupSets = data.not_duplicates;
         changedHere++;
