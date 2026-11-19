@@ -51,7 +51,19 @@ func splitAuthors(s string) []string {
 }
 
 // splitCreators applies splitAuthors to each creator of a file (one
-// dc:creator can hold "A & B") and flattens the result.
+// dc:creator can hold "A & B") and flattens the result. A trailing ";" is
+// dropped from each name: PDFs often write "First Last;", which would
+// otherwise differ from the EPUB's "First Last" when uploads are merged.
 func splitCreators(creators []string) []string {
-	return splitAuthors(strings.Join(creators, "&"))
+	names := splitAuthors(strings.Join(creators, "&"))
+	out := names[:0]
+	seen := map[string]bool{}
+	for _, n := range names {
+		n = strings.TrimSpace(strings.TrimRight(n, "; "))
+		if k := strings.ToLower(n); n != "" && !seen[k] {
+			seen[k] = true
+			out = append(out, n)
+		}
+	}
+	return out
 }
