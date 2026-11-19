@@ -51,7 +51,7 @@ import {
     type CachedBook,
 } from "./book-cache.js";
 import { localKey, type Owner } from "./local-keys.js";
-import { readingSnapshot } from "./offline-books.js";
+import { keepCover, readingSnapshot } from "./offline-books.js";
 import { AUTO_LIMIT, devicePrefs, FALLBACK_LIMIT, FINISHED_KEEP_DAYS, type DevicePrefs } from "./prefs.js";
 import { cachedMarks, fetchMarks, statusOf as statusIn } from "./reading.js";
 
@@ -333,6 +333,7 @@ export async function storeBook(book: CachedBook): Promise<void> {
         throw err;
     }
     keepReaderPage(book.uuid, format);
+    void keepCover(book.uuid).catch(() => {}); // its popup's thumbnail, offline
     requestPersist();
 }
 
