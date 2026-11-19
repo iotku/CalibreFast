@@ -34,6 +34,11 @@ func TestSplitAuthors(t *testing.T) {
 	if want := []string{"Hailu, Gebreyesus", "Ghirmai Negash", "Chrisman, Laura"}; !reflect.DeepEqual(got, want) {
 		t.Errorf("splitCreators = %q, want %q", got, want)
 	}
+	// A PDF's "First Last;" is the same author as an EPUB's "First Last".
+	got = splitCreators([]string{"Firstname Lastname;", "firstname lastname", "A Writer ; & ;"})
+	if want := []string{"Firstname Lastname", "A Writer"}; !reflect.DeepEqual(got, want) {
+		t.Errorf("splitCreators trailing ';' = %q, want %q", got, want)
+	}
 }
 
 // The grids show authors' names in Calibre's order, like the book popup,
