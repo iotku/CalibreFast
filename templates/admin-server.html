@@ -20,6 +20,23 @@
             <dt>Running since</dt><dd>{{ .Started }} ({{ .Uptime }})</dd>
             <dt>Started by</dt><dd>{{ if .Systemd }}systemd{{ else }}hand, or a service manager other than systemd{{ end }}</dd>
         </dl>
+        <h2>Storage</h2>
+        {{ with .Storage }}
+        <div class="prefs-storage server-storage">
+            <div class="prefs-meter">
+                <p class="prefs-meter-title">{{ .Title }}</p>
+                <div class="prefs-bar" role="img" aria-label="{{ .Aria }}">
+                    {{- range .Segs }}<span class="prefs-seg {{ .Class }}" title="{{ .Label }}: {{ .Size }}" style="width: {{ printf "%.2f" .Width }}%"></span>{{ end -}}
+                </div>
+                <ul class="prefs-legend">
+                    {{- range .Segs }}
+                    <li><span class="prefs-swatch {{ .Class }}"></span><span>{{ .Label }} {{ .Size }}</span></li>
+                    {{- end }}
+                </ul>
+                <p class="auth-muted">{{ .Note }}</p>
+            </div>
+        </div>
+        {{ end }}
         <h2>Stop the server</h2>
         {{ if .Systemd }}
         <p class="auth-muted">Requests in progress finish first, then the server stops. systemd starts it again if its unit restarts it (<code>Restart=always</code>, as in <code>deploy/systemd/</code>, which also pulls and rebuilds it first). Expect a minute or so.</p>

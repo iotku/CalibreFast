@@ -6,6 +6,7 @@ import (
 	"net/http/httptest"
 	"os"
 	"path/filepath"
+	"reflect"
 	"strings"
 	"testing"
 )
@@ -110,5 +111,50 @@ public = false
 		if err == nil || !strings.Contains(err.Error(), want) {
 			t.Errorf("%q: error %v, want one mentioning %q", body, err, want)
 		}
+	}
+}
+
+// The Server page's storage bar splits -datadir into the database, the
+// recycle bin and the import queue, and counts a recycle bin kept elsewhere.
+func TestServerStorage(t *testing.T) {
+	origData, origRecycle, origImport := dataDir, recycleDir, importDir
+	t.Cleanup(func() { dataDir, recycleDir, importDir = origData, origRecycle, origImport })
+	write := func(p string, n int) {
+		t.Helper()
+		if err := os.MkdirAll(filepath.Dir(p), 0o700); err != nil {
+			t.Fatal(err)
+		}
+		if err := os.WriteFile(p, make([]byte, n), 0o600); err != nil {
+			t.Fatal(err)
+		}
+	}
+	bytesOf := func(m storageMeter) map[string]int64 {
+		out := map[string]int64{}
+		for _, s := range m.Segs {
+			out[s.Label] = s.Bytes
+		}
+		return out
+	}
+
+	dataDir, recycleDir, importDir = t.TempDir(), "", ""
+	write(filepath.Join(dataDir, appDBFile), 1000)
+	write(filepath.Join(dataDir, appDBFile+"-wal"), 200)
+	write(filepath.Join(dataDir, "recycle-bin", "b1", "books", "1", "x.epub"), 3000)
+	write(filepath.Join(dataDir, "imports", "7", "y.epub"), 400)
+	write(filepath.Join(dataDir, aggregateImagesDir, "z.jpg"), 50)
+	got := bytesOf(serverStorage())
+	want := map[string]int64{"Database": 1200, "Recycle bin": 3000, "Import queue": 400, "Other data": 50}
+	if !reflect.DeepEqual(got, want) {
+		t.Errorf("inside: got %v, want %v", got, want)
+	}
+
+	recycleDir = t.TempDir()
+	write(filepath.Join(recycleDir, "b2", "books", "2", "a.pdf"), 5000)
+	m := serverStorage()
+	if got := bytesOf(m)["Recycle bin"]; got != 5000 {
+		t.Errorf("elsewhere: recycle bin %d, want 5000", got)
+	}
+	if !strings.Contains(m.Note, recycleDir) {
+		t.Errorf("note %q doesn't say where the recycle bin is", m.Note)
 	}
 }
