@@ -4408,11 +4408,33 @@ label.group-row span {
     display: block;
 }
 
-/* Not kept here: shown, not opened, until the connection is back. */
+/* Not kept here: opens a popup that waits for the connection (offline.ts). */
 .book.offline-unavailable {
-    cursor: default;
     opacity: 0.5;
     filter: grayscale(0.6);
+}
+
+/* A list's books not kept here, folded away (offline.ts). */
+.offline-more {
+    margin-top: 0.75rem;
+}
+
+.offline-more > summary {
+    cursor: pointer;
+    width: fit-content;
+    padding: 0.35rem 0.75rem;
+    border-radius: var(--radius-medium);
+    background: var(--bg-elevated);
+    color: var(--text-secondary);
+    font-size: var(--font-size-small);
+}
+
+.offline-more > summary:hover {
+    color: var(--text-primary);
+}
+
+.offline-more[open] > summary {
+    margin-bottom: 0.6rem;
 }
 
 .offline-badge {
