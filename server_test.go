@@ -9,6 +9,7 @@ import (
 	"reflect"
 	"strings"
 	"testing"
+	"time"
 )
 
 // Only an admin can stop the server: everyone else gets the 404 of an
@@ -114,9 +115,9 @@ public = false
 	}
 }
 
-// The Server page's storage bars split -datadir into the database, the
-// recycle bin and the import queue, one bar per disk the active folders are
-// on, with each disk's free space and a warning when it runs low.
+// The Server page's storage bars: one per disk the active folders are on,
+// with the database's size, each disk's free space, a warning when it runs
+// low, and only the folders' own names.
 func TestServerStorage(t *testing.T) {
 	origData, origRecycle, origImport, origBase, origCache, origWatch, origDisk := dataDir, recycleDir, importDir, baseDir, cacheDir, watchDir, diskOf
 	t.Cleanup(func() {
@@ -149,54 +150,70 @@ func TestServerStorage(t *testing.T) {
 		return diskInfo{}, false
 	}
 
-	dataDir, recycleDir, importDir, cacheDir, watchDir = t.TempDir(), "", "", "", ""
-	baseDir = t.TempDir()
-	disks[realPath(dataDir)] = diskInfo{ID: 1, Total: 100 << 30, Free: 40 << 30}
-	disks[realPath(baseDir)] = diskInfo{ID: 2, Total: 1000 << 30, Free: 50 << 30}
+	root := t.TempDir()
+	dataDir, recycleDir, importDir, cacheDir, watchDir = filepath.Join(root, "cf-data"), "", "", "", ""
+	baseDir = filepath.Join(t.TempDir(), "Calibre Library")
 	write(filepath.Join(dataDir, appDBFile), 1000)
 	write(filepath.Join(dataDir, appDBFile+"-wal"), 200)
-	write(filepath.Join(dataDir, "recycle-bin", "b1", "books", "1", "x.epub"), 3000)
-	write(filepath.Join(dataDir, "imports", "7", "y.epub"), 400)
-	write(filepath.Join(dataDir, aggregateImagesDir, "z.jpg"), 50)
-	ms := serverStorage()
+	write(filepath.Join(baseDir, "metadata.db"), 10)
+	disks[realPath(dataDir)] = diskInfo{ID: 1, Total: 100 << 30, Free: 40 << 30}
+	disks[realPath(baseDir)] = diskInfo{ID: 2, Total: 1000 << 30, Free: 50 << 30}
+	ms := measureStorage()
 	if len(ms) != 2 {
 		t.Fatalf("got %d bars, want 2 (data disk, library disk)", len(ms))
 	}
-	got := bytesOf(ms[0])
-	want := map[string]int64{"Database": 1200, "Recycle bin": 3000, "Import queue": 400, "Other data": 50,
-		"Other files": 60<<30 - 4650, "Free": 40 << 30}
-	if !reflect.DeepEqual(got, want) {
+	want := map[string]int64{"Database": 1200, "Other files": 60<<30 - 1200, "Free": 40 << 30}
+	if got := bytesOf(ms[0]); !reflect.DeepEqual(got, want) {
 		t.Errorf("data disk: got %v, want %v", got, want)
 	}
 	if ms[0].Title != "Data folder, recycle bin and import queue: 40.0 GB free of 100.0 GB" || ms[0].Low != "" {
 		t.Errorf("data disk: title %q, low %q", ms[0].Title, ms[0].Low)
 	}
+	if want := []string{"Data folder: cf-data", "Recycle bin: recycle-bin", "Import queue: imports"}; !reflect.DeepEqual(ms[0].Paths, want) {
+		t.Errorf("data disk paths %q, want %q (names only)", ms[0].Paths, want)
+	}
 	if got := bytesOf(ms[1]); !reflect.DeepEqual(got, map[string]int64{"Other files": 950 << 30, "Free": 50 << 30}) {
 		t.Errorf("library disk: got %v", got)
 	}
-	if !strings.HasPrefix(ms[1].Title, "Library: ") || ms[1].Low == "" {
-		t.Errorf("library disk (5%% free): title %q, low %q; want a warning", ms[1].Title, ms[1].Low)
+	if ms[1].Low == "" || !reflect.DeepEqual(ms[1].Paths, []string{"Library: Calibre Library"}) {
+		t.Errorf("library disk (5%% free): low %q, paths %q; want a warning", ms[1].Low, ms[1].Paths)
 	}
 
-	// A recycle bin elsewhere is measured there, on its own disk's bar.
-	recycleDir = t.TempDir()
-	disks[realPath(recycleDir)] = diskInfo{ID: 3, Total: 10 << 30, Free: 512 << 20}
-	write(filepath.Join(recycleDir, "b2", "books", "2", "a.pdf"), 5000)
-	ms = serverStorage()
-	if len(ms) != 3 {
-		t.Fatalf("got %d bars, want 3", len(ms))
-	}
-	if got := bytesOf(ms[1])["Recycle bin"]; got != 5000 || !strings.HasPrefix(ms[1].Title, "Recycle bin: ") || ms[1].Low == "" {
-		t.Errorf("recycle bin disk: bin %d, title %q, low %q", got, ms[1].Title, ms[1].Low)
-	}
-	if _, ok := bytesOf(ms[0])["Recycle bin"]; ok {
-		t.Errorf("data disk still shows the recycle bin: %v", bytesOf(ms[0]))
+	// A recycle bin elsewhere (not made yet) gets its own disk's bar.
+	recycleDir = filepath.Join(t.TempDir(), "bin")
+	disks[filepath.Dir(realPath(recycleDir))] = diskInfo{ID: 3, Total: 10 << 30, Free: 512 << 20}
+	ms = measureStorage()
+	if len(ms) != 3 || !strings.HasPrefix(ms[1].Title, "Recycle bin: ") || ms[1].Low == "" {
+		t.Fatalf("recycle bin elsewhere: %+v", ms)
 	}
 
-	// Without disk information: what we keep, no free space.
+	// Without disk information: the folders, no free space.
 	diskOf = func(string) (diskInfo, bool) { return diskInfo{}, false }
-	ms = serverStorage()
+	ms = measureStorage()
 	if len(ms) != 1 || bytesOf(ms[0])["Free"] != 0 || !strings.Contains(ms[0].Title, "free space unknown") {
 		t.Errorf("unknown disks: %+v", ms)
 	}
+
+	// The page reads a cached measurement: asked again within storageTTL,
+	// the OS isn't.
+	storageCache.Lock()
+	storageCache.meters = nil
+	storageCache.Unlock()
+	calls := 0
+	diskOf = func(string) (diskInfo, bool) { calls++; return diskInfo{ID: 1, Total: 1 << 30, Free: 1 << 29}, true }
+	first := serverStorage()
+	n := calls
+	if again := serverStorage(); calls != n || !reflect.DeepEqual(again, first) {
+		t.Errorf("second load within %s measured again (%d calls, then %d)", storageTTL, n, calls)
+	}
+	storageCache.Lock()
+	storageCache.at = time.Now().Add(-storageTTL)
+	storageCache.Unlock()
+	serverStorage()
+	if calls == n {
+		t.Error("a stale measurement wasn't taken again")
+	}
+	storageCache.Lock()
+	storageCache.meters = nil
+	storageCache.Unlock()
 }

@@ -1,16 +1,17 @@
 package main
 
-// The Server page's storage bars: what CalibreFast keeps on the server's
-// disks, and how much room is left on each disk one of its folders is on.
+// The Server page's storage bars: how much room is left on each disk one
+// of the server's folders is on.
 // The markup and classes are the Preferences page's storage breakdown
 // (bar() in web/preferences.ts).
 
 import (
 	"fmt"
-	"io/fs"
 	"os"
 	"path/filepath"
 	"strings"
+	"sync"
+	"time"
 )
 
 // lowDiskBytes and lowDiskShare: a disk with less free than either is low.
@@ -44,7 +45,7 @@ type storageMeter struct {
 	Title string
 	Aria  string
 	Segs  []storageSeg
-	Paths []string // "Data folder: /srv/cf/data", one per folder on this disk
+	Paths []string // "Data folder: data", one per folder on this disk
 	Low   string   // a warning when the disk is nearly full
 }
 
@@ -70,11 +71,33 @@ func existingDir(p string) string {
 	}
 }
 
-// serverStorage measures -datadir, the recycle bin and the import queue,
-// and puts them on bars by the disk they're on, with the free space of each
-// disk any active folder (those three, the library, the cache and the
-// watched folder) is on.
+// storageTTL is how long a measurement stands: the Server page reads the
+// cached one, so reloading it never asks the OS more than this often.
+const storageTTL = 15 * time.Second
+
+var storageCache struct {
+	sync.Mutex
+	at     time.Time
+	meters []storageMeter
+}
+
+// serverStorage is measureStorage, at most once every storageTTL.
 func serverStorage() []storageMeter {
+	storageCache.Lock()
+	defer storageCache.Unlock()
+	if storageCache.meters == nil || time.Since(storageCache.at) >= storageTTL {
+		storageCache.meters = measureStorage()
+		storageCache.at = time.Now()
+	}
+	return storageCache.meters
+}
+
+// measureStorage puts the active folders (data folder, recycle bin, import
+// queue, library, cache, watched folder) on bars by the disk they're on,
+// with each disk's used and free space. Only the OS's figures: a stat of
+// calibrefast.db and its -wal and -shm, and a statfs of each folder. No
+// folder is walked, so it stays fast however big the recycle bin gets.
+func measureStorage() []storageMeter {
 	dirs := []storageDir{
 		{"Data folder", dataDir},
 		{"Recycle bin", recycleBinDir()},
@@ -83,50 +106,12 @@ func serverStorage() []storageMeter {
 		{"Cache", cacheDir},
 		{"Watched folder", watchDir},
 	}
-	const dataIdx, binIdx, queueIdx = 0, 1, 2
-
-	data := realPath(dataDir)
-	bin := realPath(recycleBinDir())
-	queue := realPath(importQueueDir())
-	binInside := insideDir(bin, data)
-	queueInside := insideDir(queue, data) && !insideDir(queue, bin)
-	var db, binBytes, queueBytes, other int64
-	_ = filepath.WalkDir(data, func(p string, d fs.DirEntry, err error) error {
-		if err != nil || !d.Type().IsRegular() {
-			return nil
+	const dataIdx = 0
+	var db int64
+	for _, suffix := range []string{"", "-wal", "-shm"} {
+		if st, err := os.Stat(filepath.Join(dataDir, appDBFile+suffix)); err == nil {
+			db += st.Size()
 		}
-		info, err := d.Info()
-		if err != nil {
-			return nil
-		}
-		n := info.Size()
-		switch {
-		case binInside && insideDir(p, bin):
-			binBytes += n
-		case queueInside && insideDir(p, queue):
-			queueBytes += n
-		case filepath.Dir(p) == data && strings.HasPrefix(d.Name(), appDBFile):
-			db += n // calibrefast.db and its -wal and -shm
-		default:
-			other += n
-		}
-		return nil
-	})
-	if !binInside {
-		binBytes = dirSize(bin)
-	}
-	if !queueInside {
-		queueBytes = dirSize(queue)
-	}
-	type part struct {
-		seg storageSeg
-		dir int // index in dirs: the folder it's in
-	}
-	parts := []part{
-		{storageSeg{Label: "Database", Class: "seg-database", Bytes: db}, dataIdx},
-		{storageSeg{Label: "Recycle bin", Class: "seg-recycle", Bytes: binBytes}, binIdx},
-		{storageSeg{Label: "Import queue", Class: "seg-imports", Bytes: queueBytes}, queueIdx},
-		{storageSeg{Label: "Other data", Class: "seg-other-data", Bytes: other}, dataIdx},
 	}
 
 	// The disks, in the order their first folder comes in dirs.
@@ -138,7 +123,6 @@ func serverStorage() []storageMeter {
 	var disks []*disk
 	byID := map[uint64]*disk{}
 	var unknown *disk // folders whose disk we can't tell: one bar, no free space
-	diskOfDir := make([]*disk, len(dirs))
 	for i, d := range dirs {
 		if d.Path == "" {
 			continue
@@ -160,25 +144,22 @@ func serverStorage() []storageMeter {
 			disks = append(disks, dk)
 		}
 		dk.dirs = append(dk.dirs, i)
-		diskOfDir[i] = dk
 	}
 
 	var meters []storageMeter
 	for _, dk := range disks {
 		var m storageMeter
 		var names []string
+		var ours int64
 		for _, i := range dk.dirs {
 			names = append(names, dirs[i].Name)
-			m.Paths = append(m.Paths, dirs[i].Name+": "+dirs[i].Path)
-		}
-		var ours int64
-		var segs []storageSeg
-		for _, p := range parts {
-			if diskOfDir[p.dir] == dk {
-				segs = append(segs, p.seg)
-				ours += p.seg.Bytes
+			// Only the folder's own name: the page doesn't show where on the server it is.
+			m.Paths = append(m.Paths, dirs[i].Name+": "+filepath.Base(filepath.Clean(dirs[i].Path)))
+			if i == dataIdx {
+				ours = db
 			}
 		}
+		segs := []storageSeg{{Label: "Database", Class: "seg-database", Bytes: ours}}
 		whole := ours
 		if dk.known {
 			used := dk.info.Total - dk.info.Free
@@ -193,7 +174,7 @@ func serverStorage() []storageMeter {
 					humanSize(dk.info.Free), float64(dk.info.Free)/float64(max(dk.info.Total, 1))*100)
 			}
 		} else {
-			m.Title = joinNames(names) + ": " + humanSize(ours) + " (free space unknown)"
+			m.Title = joinNames(names) + ": free space unknown"
 		}
 		var aria []string
 		for _, s := range segs {

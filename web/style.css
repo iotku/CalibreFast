@@ -5408,8 +5408,8 @@ body.selecting .book.selected .cover-wrapper {
     display: inline-block;
 }
 .seg-reading, .seg-database { background: var(--status-reading); }
-.seg-wanted, .seg-imports { background: var(--status-wanted); }
-.seg-finished, .seg-recycle { background: var(--status-finished); }
+.seg-wanted { background: var(--status-wanted); }
+.seg-finished { background: var(--status-finished); }
 .seg-other, .seg-disk-other { background: #a58bd6; }
 .seg-books { background: var(--status-reading); }
 .seg-covers { background: #a58bd6; }
