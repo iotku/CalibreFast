@@ -7,6 +7,7 @@ import (
 	"os"
 	"strings"
 	"testing"
+	"time"
 )
 
 // setupLibraryAndUser: a calibre test DB with n books and a signed-in user.
@@ -118,5 +119,59 @@ func TestFavoritesAPIAndList(t *testing.T) {
 	_ = json.Unmarshal(do("GET", "/me/favorites?api=1&page=1", "", u).Body.Bytes(), &listed)
 	if len(listed) != 1 || listed[0].UUID != books[2] {
 		t.Fatalf("after unfavorite: %+v", listed)
+	}
+}
+
+// A change kept offline and sent later (age_ms) loses to a later one made
+// elsewhere meanwhile, unfavorites and cleared statuses included; a later
+// offline change still wins.
+func TestOfflineChangeOrder(t *testing.T) {
+	u, books := setupLibraryAndUser(t, 1)
+	b := books[0]
+	mux := http.NewServeMux()
+	mux.HandleFunc("PUT /api/me/books/{uuid}/favorite", requireUser(setFavoriteHandler))
+	mux.HandleFunc("PUT /api/me/books/{uuid}/status", requireUser(setStatusHandler))
+	put := func(field, body string) map[string]any {
+		t.Helper()
+		rec := httptest.NewRecorder()
+		mux.ServeHTTP(rec, asUser(httptest.NewRequest("PUT", "/api/me/books/"+b+"/"+field, strings.NewReader(body)), u))
+		if rec.Code != 200 {
+			t.Fatalf("%s %s: %d %s", field, body, rec.Code, rec.Body)
+		}
+		var out map[string]any
+		if err := json.Unmarshal(rec.Body.Bytes(), &out); err != nil {
+			t.Fatal(err)
+		}
+		return out
+	}
+
+	// Offline device: unfavorited an hour ago. Online device since: unfavorite, then favorite.
+	put("favorite", `{"favorite":false}`)
+	put("favorite", `{"favorite":true}`)
+	got := put("favorite", `{"favorite":false,"age_ms":3600000}`)
+	if got["applied"] != false || got["favorite"] != true || !isFavorite(u.ID, b) {
+		t.Fatalf("an older offline unfavorite undid a later favorite: %v", got)
+	}
+	// Made offline after the last change recorded: applies.
+	time.Sleep(30 * time.Millisecond)
+	if got := put("favorite", `{"favorite":false,"age_ms":10}`); got["applied"] != true || isFavorite(u.ID, b) {
+		t.Fatalf("a newer offline unfavorite didn't apply: %v", got)
+	}
+
+	// Status: cleared online (no row left), an older offline "finished" loses.
+	put("status", `{"status":"reading"}`)
+	put("status", `{"status":""}`)
+	if got := put("status", `{"status":"finished","age_ms":60000}`); got["applied"] != false || got["status"] != "" {
+		t.Fatalf("an older offline status undid a later clear: %v", got)
+	}
+	// The reader moving a book on counts as a change, as of now.
+	if err := setStatus(u.ID, b, "reading", "auto"); err != nil {
+		t.Fatal(err)
+	}
+	if got := put("status", `{"status":"wanted","age_ms":3000}`); got["applied"] != false || got["status"] != "reading" {
+		t.Fatalf("an older offline status undid the reader's later one: %v", got)
+	}
+	if got := put("status", `{"status":"finished"}`); got["applied"] != true || got["status"] != "finished" {
+		t.Fatalf("a change made now didn't apply: %v", got)
 	}
 }

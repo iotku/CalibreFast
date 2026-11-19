@@ -2,7 +2,8 @@
  * Reading changes the server doesn't have yet, sent from any page (nav.ts),
  * not only from that book's reader: positions, bookmarks (and bookmark
  * deletions) and highlights the readers kept here while the server couldn't
- * be reached (reading-sync.ts, annotations.ts). Sent as soon as a page
+ * be reached (reading-sync.ts, annotations.ts), and favorite and reading
+ * status changes made anywhere (pending-marks.ts). Sent as soon as a page
  * opens, and again the moment the server answers after being down
  * (server-watch.ts). Book downloads are another matter: they wait for quiet
  * pages (book-sync.ts); these never wait.
@@ -14,6 +15,7 @@
 
 import { api } from "./dom.js";
 import { localKey } from "./local-keys.js";
+import { dropMark, sendMark } from "./pending-marks.js";
 import { isUnreachable, onServerBack, serverDown } from "./server-watch.js";
 
 function read<T>(key: string): T | null {
@@ -132,15 +134,35 @@ async function sendAnnotations(key: string, uuid: string): Promise<void> {
     }
 }
 
-const RECORD = /^(progress|bookmarks-deleted|bookmarks|annotations)-(.+?)(?:-(epub|pdf))?$/;
+async function sendMarkOf(user: string, uuid: string): Promise<void> {
+    try {
+        await sendMark(user, uuid, send);
+    } catch (e) {
+        if (e instanceof Unreachable || !refusedForGood(e)) throw e;
+        gaveUp(`a favorite or status change to ${uuid}`, e);
+        dropMark(user, uuid);
+    }
+}
+
+const RECORD = /^(progress|bookmarks-deleted|bookmarks|annotations|mark)-(.+?)(?:-(epub|pdf))?$/;
 
 let sending: Promise<void> | null = null;
+/** Asked again while a run was out: something new may wait that it already passed. */
+let again = false;
 
 /** Send everything of user's that waits, until the server stops answering. */
 export function sendPending(user: string): Promise<void> {
-    sending ??= run(user).finally(() => {
+    if (sending) {
+        again = true;
+        return sending;
+    }
+    sending = run(user).finally(() => {
         sending = null;
         window.dispatchEvent(new CustomEvent("cf:sync")); // the sync button counts what's left
+        if (again) {
+            again = false;
+            void sendPending(user);
+        }
     });
     return sending;
 }
@@ -162,8 +184,12 @@ async function run(user: string): Promise<void> {
             else if (kind === "bookmarks-deleted") await sendDeletions(key, uuid!);
             else if (kind === "bookmarks") await sendBookmarks(key, uuid!);
             else if (kind === "annotations") await sendAnnotations(key, uuid!);
+            else if (kind === "mark") await sendMarkOf(user, uuid!);
         } catch (e) {
-            if (e instanceof Unreachable) return; // the rest when the server is back
+            if (e instanceof Unreachable) {
+                watch(user); // the rest when the server is back
+                return;
+            }
             console.warn(`send-pending: the server didn't take ${key.slice(prefix.length)}; it's tried again later:`, e);
         }
     }
@@ -171,10 +197,20 @@ async function run(user: string): Promise<void> {
 
 let watching = "";
 
+/**
+ * Send what waits whenever the server is back. Each page script is bundled
+ * on its own (tools/jsbuild), so each has its own server-watch.ts: a send
+ * that failed here is retried by this copy's watch, whichever script it's in.
+ */
+function watch(user: string): void {
+    if (watching === user) return;
+    const first = !watching;
+    watching = user;
+    if (first) onServerBack(() => void sendPending(watching));
+}
+
 /** A signed-in page (nav.ts): send what waits now, and whenever the server is back. */
 export function startSendingPending(user: string): void {
     void sendPending(user);
-    if (watching === user) return;
-    watching = user;
-    onServerBack(() => void sendPending(watching));
+    watch(user);
 }

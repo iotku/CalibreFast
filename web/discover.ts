@@ -628,17 +628,22 @@ function setupHome(): Promise<void> {
         // Back from the reader in another tab: progress may have moved.
         if (document.visibilityState === "visible" && Date.now() - homeFetchedAt > 15_000) void refreshHome();
     });
-    // Saved in the book popup (user.ts). A status change moves books between
-    // the rows, which only the server can fill; a favorite is just a mark.
+    // Saved in the book popup (user.ts), or sent once the server could be
+    // reached (pending-marks.ts). The marks change at once; a status change
+    // also moves books between the rows, which only the server can fill (it
+    // has the change when this comes from pending-marks.ts; with no server,
+    // the rows wait for it).
     document.addEventListener("cf:status", (e) => {
         const change = (e as CustomEvent<BookChange>).detail;
-        if (change.status !== undefined || !applyChange(marks, change)) {
+        const applied = applyChange(marks, change);
+        if (applied) {
+            keepMarks();
+            repaintMarks(change.uuid);
+        }
+        if (change.status !== undefined || !applied) {
             if (change.status !== undefined) listChanged = true;
             void refreshHome();
-            return;
         }
-        keepMarks();
-        repaintMarks(change.uuid);
     });
     // The popup's controls, just loaded: what the server says now.
     document.addEventListener("cf:book-state", (e) => {
@@ -651,14 +656,9 @@ function setupHome(): Promise<void> {
         if (!btn || !uuid) return;
         e.preventDefault();
         const action = btn.dataset["action"] ?? "";
-        void coverAction(action, uuid, marks, () => repaintMarks(uuid)).then(() => {
-            // Saved has a row of its own; a favorite is only the mark.
-            if (action === "want") {
-                listChanged = true;
-                void refreshHome();
-            }
-            else keepMarks();
-        });
+        // Saved has a row of its own: once the server has the change, its
+        // "cf:status" (pending-marks.ts) refreshes the rows, as above.
+        void coverAction(action, uuid, marks, () => repaintMarks(uuid)).then(() => keepMarks());
     });
     return fresh;
 }

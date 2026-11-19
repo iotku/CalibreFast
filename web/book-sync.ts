@@ -24,6 +24,7 @@ import {
     getBook,
     getBookFiles,
     getPartial,
+    keepReaderPage,
     listBooks,
     listPartials,
     offlinePref,
@@ -383,7 +384,18 @@ async function runSync({ marks, force = false }: SyncOptions): Promise<void> {
 
     if (jobs.length && !paused()) await runJobs(user, jobs);
     else writeSync(user, { active: null, waiting: jobs.length && paused() ? jobs.length : 0 });
+    if (!pagesChecked && navigator.onLine) {
+        // Once a page: books kept before their popups (or reader pages) were
+        // kept with them get theirs (the worker skips those it has).
+        pagesChecked = true;
+        for (const b of await listBooks().catch(() => [])) {
+            keepReaderPage(b.uuid, b.format ?? "epub");
+            await keepCover(b.uuid).catch(() => {});
+        }
+    }
 }
+
+let pagesChecked = false;
 
 /* ------------------------------------------------------------------ */
 /* On library pages                                                   */

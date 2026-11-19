@@ -10,6 +10,13 @@
  * need. Each time the controls load, what they show is reported
  * ("cf:book-state") so the grid can check its marks against the server;
  * changes saved here are reported too ("cf:status"), for the grid to apply.
+ *
+ * A slow or missing server doesn't hold them up: if they haven't arrived
+ * shortly, the favorite and status controls are built here from the marks
+ * kept on this device (reading.ts), and replaced by the server's once they
+ * come (shelves need the server). Favorite and status changes are noted
+ * and sent now or once the server answers (pending-marks.ts, send-pending.ts),
+ * and laid over whatever the server renders until it has them.
  */
 
 import { startBookSync } from "./book-sync.js";
@@ -20,12 +27,11 @@ import "./book-files.js"; // the book page's Files row (admins)
 import "./series-shelf.js"; // "Add series to shelf" (also the series page's, via app-htmx.ts)
 import "./offline-control.js"; // "On this device" and keeping the book (book.html)
 import "./read-link.js"; // the cover opens the format last read (book.html)
-import { ICONS, cachedMarks, type BookChange, type BookState } from "./reading.js";
-
-interface StatusResponse {
-    status: string;
-    status_source: string;
-}
+import { ICONS, cachedMarks, changeWaits, statusOf, type BookChange, type BookState } from "./reading.js";
+import { lastKnownUser } from "./local-keys.js";
+import { noteMark, pendingMark } from "./pending-marks.js";
+import { sendPending } from "./send-pending.js";
+import { onServerBack } from "./server-watch.js";
 
 const PREFETCH_TTL_MS = 30_000; // like the book page's own max-age
 const prefetched = new Map<string, { html: Promise<string | null>; expires: number }>();
@@ -49,16 +55,117 @@ export function forgetControls(uuid: string): void {
     prefetched.delete(uuid);
 }
 
+/** How long the server's controls are waited for before the ones built here show. */
+const LOCAL_AFTER_MS = 300;
+
 /** (Re)load the controls into their container. A prefetch is used once; fresh skips it. */
 async function loadControls(container: HTMLElement, fresh = false): Promise<void> {
     const uuid = container.dataset["uuid"] ?? "";
     const hit = prefetched.get(uuid);
     prefetched.delete(uuid);
-    const html = await (!fresh && hit && hit.expires > Date.now() ? hit.html : fetchControls(uuid));
-    if (html === null || !container.isConnected) return;
+    const answer = !fresh && hit && hit.expires > Date.now() ? hit.html : fetchControls(uuid);
+    const timer = setTimeout(() => showLocal(container, uuid), LOCAL_AFTER_MS);
+    const html = await answer;
+    clearTimeout(timer);
+    if (!container.isConnected) return;
+    if (html === null) {
+        showLocal(container, uuid); // offline: what this device knows
+        return;
+    }
     serverHtml(container, html); // html/template output from our server
+    const controls = container.querySelector<HTMLElement>(".book-user-controls");
+    if (controls) applyPending(controls, uuid);
     reportState(container, uuid);
 }
+
+/**
+ * The favorite and status controls as this device knows them (cached marks,
+ * with what waits laid over), while the server's are slow or can't come.
+ * Same markup as book-user-actions.html, so bind() wires them up the same.
+ * Only when the marks say someone is signed in and nothing is showing yet.
+ */
+function showLocal(container: HTMLElement, uuid: string): void {
+    const m = cachedMarks();
+    if (!container.isConnected || !m.signedIn || container.querySelector(".book-user-controls")) return;
+    const fav = m.favorites.has(uuid);
+    const status = statusOf(m, uuid);
+    const star = el("button", { type: "button", className: `btn-action btn-favorite${fav ? " is-favorite" : ""}` });
+    paintStar(star, fav);
+    const select = el("select", { className: "book-status", title: "Reading status" });
+    select.setAttribute("aria-label", "Reading status");
+    for (const [value, label] of [["", "Not reading"], ["wanted", "Saved"], ["reading", "Reading"], ["finished", "Finished"]] as const) {
+        select.append(el("option", { value, textContent: label, selected: value === status }));
+    }
+    const read = m.reading.get(uuid);
+    const progress = status === "reading" && read != null ? `${Math.round(read * 100)}% read` : "";
+    const note = el("span", { className: "book-status-note", textContent: progress });
+    note.dataset["progress"] = progress;
+    const shelves = el(
+        "details",
+        { className: "book-shelves" },
+        el("summary", { textContent: "Shelves" }),
+        el("div", { className: "book-shelves-list" }, el("p", { className: "book-shelves-wait", textContent: "Shelves show once the server answers." })),
+    );
+    const controls = el(
+        "div",
+        { className: "book-user-controls" },
+        el("div", { className: "book-user-row" }, star, el("div", { className: "book-status-split" }, el("button", { type: "button", className: "btn-action btn-want" }), select)),
+        note,
+        shelves,
+    );
+    controls.dataset["uuid"] = uuid;
+    controls.dataset["local"] = "1";
+    container.replaceChildren(controls);
+}
+
+/** Paint the favorite button. */
+function paintStar(star: HTMLButtonElement, on: boolean): void {
+    star.setAttribute("aria-pressed", String(on));
+    star.classList.toggle("is-favorite", on);
+    star.textContent = `${on ? "★" : "☆"} Favorite`;
+    star.title = on ? "Remove from favorites" : "Add to favorites";
+}
+
+/** Lay the changes the server doesn't have yet over its controls (before bind() reads them). */
+function applyPending(controls: HTMLElement, uuid: string): void {
+    const p = pendingMark(lastKnownUser(), uuid);
+    if (!p) return;
+    const star = controls.querySelector<HTMLButtonElement>(".btn-favorite");
+    if (star && p.favorite !== undefined) paintStar(star, p.favorite);
+    const select = controls.querySelector<HTMLSelectElement>(".book-status");
+    if (select && p.status !== undefined) {
+        select.value = p.status;
+        const note = controls.querySelector<HTMLElement>(".book-status-note");
+        if (note) note.textContent = note.dataset["progress"] ?? "";
+    }
+}
+
+// A change the server took, or turned down for a later one made elsewhere
+// (pending-marks.ts), or made on a cover: shown controls follow, unless a
+// newer change to that field still waits here.
+document.addEventListener("cf:status", (e) => {
+    const c = (e as CustomEvent<BookChange>).detail;
+    const user = lastKnownUser();
+    for (const controls of document.querySelectorAll<HTMLElement>(".book-user-controls")) {
+        if (controls.dataset["uuid"] !== c.uuid) continue;
+        const star = controls.querySelector<HTMLButtonElement>(".btn-favorite");
+        if (star && c.favorite !== undefined && !changeWaits(user, c.uuid, "favorite")) paintStar(star, c.favorite);
+        const select = controls.querySelector<HTMLSelectElement>(".book-status");
+        if (select && c.status !== undefined && !changeWaits(user, c.uuid, "status")) {
+            select.value = c.status;
+            const btn = controls.querySelector<HTMLButtonElement>(".btn-want");
+            if (btn) paintWant(btn, c.status);
+        }
+    }
+});
+
+// The server answers again: controls built here give way to its own (shelves too).
+onServerBack(() => {
+    for (const c of document.querySelectorAll<HTMLElement>(".book-user-controls[data-local]")) {
+        const container = c.closest<HTMLElement>(".book-user-actions");
+        if (container) void loadControls(container, true);
+    }
+});
 
 /** Tell the grid what the server says about the book, as the controls just loaded show it. */
 function reportState(container: HTMLElement, uuid: string): void {
@@ -98,51 +205,44 @@ function bind(controls: HTMLElement): void {
     const uuid = controls.dataset["uuid"] ?? "";
     const container = controls.closest<HTMLElement>(".book-user-actions");
 
+    // Changes show at once and are noted, then sent (pending-marks.ts). Once
+    // the server has one it says so ("cf:status"); one still waiting (slow,
+    // or no server) is told to the grid here, for its marks.
+    const user = lastKnownUser();
+    const sendNoted = async (change: BookChange, field: "favorite" | "status"): Promise<void> => {
+        if (!user) return;
+        await sendPending(user);
+        if (changeWaits(user, uuid, field)) reportChange(change);
+    };
+
     const star = controls.querySelector<HTMLButtonElement>(".btn-favorite");
-    star?.addEventListener("click", async () => {
+    star?.addEventListener("click", () => {
+        if (!user) return;
         const want = star.getAttribute("aria-pressed") !== "true";
-        const paint = (on: boolean): void => {
-            star.setAttribute("aria-pressed", String(on));
-            star.classList.toggle("is-favorite", on);
-            star.textContent = `${on ? "★" : "☆"} Favorite`;
-            star.title = on ? "Remove from favorites" : "Add to favorites";
-        };
-        paint(want); // optimistic
-        try {
-            await api("PUT", `/api/me/books/${uuid}/favorite`, { favorite: want });
-            reportChange({ uuid, favorite: want });
-        } catch {
-            paint(!want);
-        }
+        paintStar(star, want);
+        noteMark(user, uuid, { favorite: want });
+        void sendNoted({ uuid, favorite: want }, "favorite");
     });
 
     const status = controls.querySelector<HTMLSelectElement>(".book-status");
     const want = controls.querySelector<HTMLButtonElement>(".btn-want");
     const note = controls.querySelector<HTMLElement>(".book-status-note");
-    let current = status?.value ?? "";
-    if (want) paintWant(want, current);
+    if (want && status) paintWant(want, status.value);
     const save = async (value: string): Promise<void> => {
-        if (!status) return;
-        status.value = value; // optimistic
+        if (!status || !user) return;
+        status.value = value;
         if (want) paintWant(want, value);
-        try {
-            const res = await api<StatusResponse>("PUT", `/api/me/books/${uuid}/status`, { status: value });
-            current = res.status;
-            if (note) note.textContent = note.dataset["progress"] || (res.status && res.status_source === "auto" ? "set by the reader" : "");
-            reportChange({ uuid, status: res.status });
-        } catch {
-            /* put back below */
-        }
-        status.value = current;
-        if (want) paintWant(want, current);
+        if (note) note.textContent = note.dataset["progress"] ?? ""; // set here, not by the reader
+        noteMark(user, uuid, { status: value });
+        await sendNoted({ uuid, status: value }, "status");
     };
     status?.addEventListener("change", () => void save(status.value));
     // Like the cover's button: toggles Saved for a book not started.
     // Once reading or finished it shows that, and opens the menu.
     want?.addEventListener("click", () => {
         if (!status) return;
-        if (current === "" || current === "wanted") {
-            void save(current === "wanted" ? "" : "wanted");
+        if (status.value === "" || status.value === "wanted") {
+            void save(status.value === "wanted" ? "" : "wanted");
             return;
         }
         try {
