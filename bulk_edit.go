@@ -110,7 +110,10 @@ type tableBook struct {
 	FormatsFromFolder bool   `json:"formats_from_folder,omitempty"`
 	ISBN              string `json:"isbn"`
 	HasCover          bool   `json:"has_cover"`
-	path              string
+	// Library: only for a waiting book (imports_edit.go), the list's
+	// duplicate check: "checking", "same file", "in library" or "new".
+	Library string `json:"library,omitempty"`
+	path    string
 }
 
 // tableSep separates the values group_concat joins: no tag, language or
@@ -476,29 +479,22 @@ type bulkEditRequest struct {
 	Edit  bulkEdit `json:"edit"`
 }
 
-func bulkEditHandler(w http.ResponseWriter, r *http.Request) {
-	var req bulkEditRequest
-	if err := json.NewDecoder(http.MaxBytesReader(w, r.Body, 8<<20)).Decode(&req); err != nil {
-		http.Error(w, "bad request: "+err.Error(), http.StatusBadRequest)
-		return
-	}
+// validate checks a bulk request (the library's or the import queue's):
+// some books, named by safe ids, and something valid to change.
+func (req *bulkEditRequest) validate() error {
 	if len(req.UUIDs) == 0 {
-		http.Error(w, "no books named", http.StatusBadRequest)
-		return
+		return errors.New("no books named")
 	}
 	if len(req.UUIDs) > bulkMaxBooks {
-		http.Error(w, fmt.Sprintf("at most %d books at a time", bulkMaxBooks), http.StatusBadRequest)
-		return
+		return fmt.Errorf("at most %d books at a time", bulkMaxBooks)
 	}
 	for _, u := range req.UUIDs {
 		if !isSafeUUIDComponent(u) {
-			http.Error(w, "bad book id", http.StatusBadRequest)
-			return
+			return errors.New("bad book id")
 		}
 	}
 	if req.Edit.empty() {
-		http.Error(w, "nothing to change", http.StatusBadRequest)
-		return
+		return errors.New("nothing to change")
 	}
 	if e := req.Edit; e.Series != nil || e.SeriesIndex != nil {
 		name, index := "x", ""
@@ -509,9 +505,21 @@ func bulkEditHandler(w http.ResponseWriter, r *http.Request) {
 			index = *e.SeriesIndex
 		}
 		if _, _, err := opf.CleanSeries(name, index); err != nil {
-			http.Error(w, err.Error(), http.StatusBadRequest)
-			return
+			return err
 		}
+	}
+	return nil
+}
+
+func bulkEditHandler(w http.ResponseWriter, r *http.Request) {
+	var req bulkEditRequest
+	if err := json.NewDecoder(http.MaxBytesReader(w, r.Body, 8<<20)).Decode(&req); err != nil {
+		http.Error(w, "bad request: "+err.Error(), http.StatusBadRequest)
+		return
+	}
+	if err := req.validate(); err != nil {
+		http.Error(w, err.Error(), http.StatusBadRequest)
+		return
 	}
 	res := bulkEditBooksAs(uniqueStrings(req.UUIDs), &req.Edit, currentUser(r))
 	if res.Changed > 0 {

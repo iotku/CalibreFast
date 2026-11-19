@@ -237,10 +237,30 @@ func (b *importInbox) splitOff(id string, names map[string]bool, into string) (*
 	return off, nil
 }
 
+// writeItemJSON writes a waiting book's item.json whole or not at all
+// (a temporary file, synced, then renamed over it): a crash part way
+// through never leaves one that can't be read, which would have the book
+// skipped at startup.
 func writeItemJSON(dir string, it *pendingImport) error {
 	data, err := json.MarshalIndent(it, "", "  ")
 	if err != nil {
 		return err
 	}
-	return os.WriteFile(filepath.Join(dir, "item.json"), data, 0o600)
+	tmp, err := os.CreateTemp(dir, ".item-*.json")
+	if err != nil {
+		return err
+	}
+	defer os.Remove(tmp.Name()) // nothing left once renamed
+	if _, err := tmp.Write(data); err != nil {
+		tmp.Close()
+		return err
+	}
+	if err := tmp.Sync(); err != nil {
+		tmp.Close()
+		return err
+	}
+	if err := tmp.Close(); err != nil {
+		return err
+	}
+	return os.Rename(tmp.Name(), filepath.Join(dir, "item.json"))
 }
