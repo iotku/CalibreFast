@@ -70,6 +70,9 @@ func TestImportQueueQuickEdits(t *testing.T) {
 		epub, pdf = pdf, epub
 	}
 	sourcesBefore, _ := json.Marshal(epub.Sources)
+	// Room in its lists, so an append in place would show in the old copy.
+	epub.Merged.Subjects = slices.Grow(epub.Merged.Subjects, 8)
+	epub.Merged.Meta = slices.Grow(epub.Merged.Meta, 8)
 
 	// Only editors, only with writes, only good ids, only real changes.
 	edit := bulkEditRequest{UUIDs: []string{epub.ID}, Edit: bulkEdit{
@@ -110,7 +113,7 @@ func TestImportQueueQuickEdits(t *testing.T) {
 	if now == epub {
 		t.Fatal("edited in place: whoever held the old copy saw it change")
 	}
-	if epub.Merged.Title == "Edited Title" {
+	if epub.Merged.Title == "Edited Title" || slices.Contains(epub.Merged.Subjects, "Queued") || epub.Merged.GetMeta("calibre:series") == "Saga" {
 		t.Error("the old copy changed")
 	}
 	if got, _ := json.Marshal(now.Sources); !bytes.Equal(got, sourcesBefore) {

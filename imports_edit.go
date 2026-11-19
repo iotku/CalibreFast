@@ -153,10 +153,7 @@ func (b *importInbox) editOne(id string, edit *bulkEdit) (*pendingImport, bool, 
 	if it.Into != "" {
 		return nil, false, errors.New("new files for a library book: review them against it")
 	}
-	next, err := cloneImport(it)
-	if err != nil {
-		return nil, false, err
-	}
+	next := cloneImport(it)
 	m := &next.Merged.OPFMetadata
 	m.FillSeries()
 	if !edit.apply(m) {
@@ -177,17 +174,18 @@ func (b *importInbox) editOne(id string, edit *bulkEdit) (*pendingImport, bool, 
 	return next, rename, nil
 }
 
-// cloneImport is a deep copy of it, as item.json holds it.
-func cloneImport(it *pendingImport) (*pendingImport, error) {
-	data, err := json.Marshal(it)
-	if err != nil {
-		return nil, err
-	}
-	var out pendingImport
-	if err := json.Unmarshal(data, &out); err != nil {
-		return nil, err
-	}
-	return &out, nil
+// cloneImport is a copy of it whose Merged metadata can be changed without
+// touching it: Merged's lists are copied. Files and Sources are shared, as
+// nothing changes them once the book is queued.
+func cloneImport(it *pendingImport) *pendingImport {
+	out := *it
+	m := &out.Merged.OPFMetadata
+	m.Languages = slices.Clone(m.Languages)
+	m.Identifiers = slices.Clone(m.Identifiers)
+	m.Subjects = slices.Clone(m.Subjects)
+	m.Creators = slices.Clone(m.Creators)
+	m.Meta = slices.Clone(m.Meta)
+	return &out
 }
 
 // importBulkHandler is POST /api/imports/bulk: the bulk editor's request
