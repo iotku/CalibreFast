@@ -423,7 +423,7 @@ const searchWhere = `
 FROM books b
 LEFT JOIN books_authors_link bal ON bal.book = b.id
 LEFT JOIN authors a ON a.id = bal.author
-WHERE (b.title LIKE ? OR a.name LIKE ? OR a.sort LIKE ?)`
+WHERE (b.title LIKE ? OR ` + authorNameSQL + ` LIKE ? OR a.sort LIKE ?)`
 
 // searchCount counts the books matching q.
 func searchCount(q string) int {

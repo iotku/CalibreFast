@@ -180,7 +180,7 @@ func loadCatalogBooks(db queryer, uuids []string, names *catalog) ([]catalogBook
 
 	// Authors: also the grid's "A & B" (bookAuthorsSQL's order: the link's id).
 	authorList := map[int64][]string{}
-	err = scanLinks(db, `SELECT l.book, a.id, a.name FROM books_authors_link l JOIN authors a ON a.id = l.author`+where+` ORDER BY l.id`, args,
+	err = scanLinks(db, `SELECT l.book, a.id, `+authorNameSQL+` FROM books_authors_link l JOIN authors a ON a.id = l.author`+where+` ORDER BY l.id`, args,
 		func(book int64, id int32, name string) {
 			if i, ok := at[book]; ok {
 				books[i].AuthorIDs = append(books[i].AuthorIDs, id)

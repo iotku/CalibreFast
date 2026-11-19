@@ -188,11 +188,15 @@ type formatEntry struct { // TODO: I don't really like this hanging around rando
 	Stem string
 }
 
+// upsertAuthor finds or adds the author named name (as shown: "Battey,
+// Nick"). It's stored as Calibre stores it ("Battey| Nick": authorDBName);
+// a row an older CalibreFast stored with the comma is found too.
 func upsertAuthor(tx *sql.Tx, name string) (int64, error) {
 	var id int64
-	err := tx.QueryRow(`SELECT id FROM authors WHERE name = ?`, name).Scan(&id)
+	stored := authorDBName(name)
+	err := tx.QueryRow(`SELECT id FROM authors WHERE name = ? OR name = ? ORDER BY name = ? DESC, id LIMIT 1`, stored, name, stored).Scan(&id)
 	if errors.Is(err, sql.ErrNoRows) {
-		res, err := tx.Exec(`INSERT INTO authors (name, sort) VALUES (?, ?)`, name, authorSortKey(name))
+		res, err := tx.Exec(`INSERT INTO authors (name, sort) VALUES (?, ?)`, stored, authorSortKey(name))
 		if err != nil {
 			return 0, err
 		}
@@ -249,7 +253,12 @@ func isISBN(s string) bool {
 	return isbnRe.MatchString(s)
 }
 
+// authorSortKey is a name's sort form: "Alan Donovan" → "Donovan, Alan". A
+// name already written "Last, First" is its own.
 func authorSortKey(name string) string {
+	if strings.Contains(name, ",") {
+		return strings.Join(strings.Fields(name), " ")
+	}
 	parts := strings.Fields(name)
 	if len(parts) <= 1 {
 		return name

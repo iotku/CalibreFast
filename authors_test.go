@@ -64,6 +64,63 @@ func TestBookAuthorsSQL(t *testing.T) {
 	}
 }
 
+// Calibre stores a comma in an author's name as "|" (metadata.db's
+// authors.name): it's read back as a comma, and written that way.
+func TestAuthorNamesWithCommas(t *testing.T) {
+	db, tempDir := setupTestDB(t)
+	defer os.RemoveAll(tempDir)
+	defer db.Close()
+	origDB := calibreDB
+	calibreDB = db
+	defer func() { calibreDB = origDB }()
+
+	_, uuid, _, err := insertBookIntoCalibreDB(db, &UploadedBookMeta{OPFMetadata: OPFMetadata{
+		Title:    "Plants",
+		Creators: []string{"Battey, Nick", "Mark Fellowes"},
+	}}, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var stored, sort string
+	if err := db.QueryRow(`SELECT name, sort FROM authors WHERE sort LIKE 'Battey%'`).Scan(&stored, &sort); err != nil {
+		t.Fatal(err)
+	}
+	if stored != "Battey| Nick" || sort != "Battey, Nick" {
+		t.Errorf("stored as %q (sort %q), want %q (sort %q)", stored, sort, "Battey| Nick", "Battey, Nick")
+	}
+
+	want := "Battey, Nick & Mark Fellowes"
+	books, err := booksByUUIDs([]string{uuid})
+	if err != nil || len(books) != 1 || books[0].Authors != want {
+		t.Errorf("grid authors: %v %v, want %q", books, err, want)
+	}
+	table, err := tableBooks(db, []string{uuid})
+	if err != nil || len(table) != 1 || table[0].Authors != want {
+		t.Errorf("bulk editor authors: %v %v, want %q", table, err, want)
+	}
+
+	// The same name again is the same author, and so is a row an older
+	// CalibreFast stored with the comma.
+	tx, err := db.Begin()
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer tx.Rollback()
+	var first int64
+	_ = tx.QueryRow(`SELECT id FROM authors WHERE name = 'Battey| Nick'`).Scan(&first)
+	if id, err := upsertAuthor(tx, "Battey, Nick"); err != nil || id != first {
+		t.Errorf("upsertAuthor again: %d %v, want %d", id, err, first)
+	}
+	res, err := tx.Exec(`INSERT INTO authors (name, sort) VALUES ('Old, Row', 'Old, Row')`)
+	if err != nil {
+		t.Fatal(err)
+	}
+	old, _ := res.LastInsertId()
+	if id, err := upsertAuthor(tx, "Old, Row"); err != nil || id != old {
+		t.Errorf("upsertAuthor of a comma row: %d %v, want %d", id, err, old)
+	}
+}
+
 // A book never has the same tag twice: tags are trimmed and repeats, in any
 // case, dropped, keeping the first spelling.
 func TestUniqueTags(t *testing.T) {
