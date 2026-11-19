@@ -41,3 +41,30 @@ func TestSHA256(t *testing.T) {
 		t.Error("missing file hashed")
 	}
 }
+
+func TestCacheDropsLeastRecentlyUsed(t *testing.T) {
+	dir := t.TempDir()
+	c := NewCache(2)
+	paths := make([]string, 3)
+	infos := make([]os.FileInfo, 3)
+	for i := range paths {
+		paths[i] = filepath.Join(dir, string(rune('a'+i)))
+		if err := os.WriteFile(paths[i], []byte{byte(i)}, 0o600); err != nil {
+			t.Fatal(err)
+		}
+		infos[i], _ = os.Stat(paths[i])
+	}
+	c.SHA256(paths[0], infos[0])
+	c.SHA256(paths[1], infos[1])
+	c.SHA256(paths[0], infos[0]) // a is now the most recently used
+	c.SHA256(paths[2], infos[2]) // drops b
+	if _, ok := c.m[paths[1]]; ok {
+		t.Error("b kept")
+	}
+	if _, ok := c.m[paths[0]]; !ok {
+		t.Error("a dropped")
+	}
+	if c.lru.Len() != 2 || len(c.m) != 2 {
+		t.Errorf("%d entries", c.lru.Len())
+	}
+}

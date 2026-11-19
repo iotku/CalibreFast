@@ -324,6 +324,7 @@ func main() {
 	flag.StringVar(&publicURL, "public-url", "", "external base URL, e.g. https://books.example.com (needed for GitHub/Google sign-in)")
 	flag.StringVar(&watchDir, "watch-dir", "", "folder to watch for new books; they wait in the import queue for an admin to review (needs -allow-writes)")
 	flag.BoolVar(&watchForcePolling, "watch-dir-force-polling", false, "check -watch-dir every 30 seconds instead of relying on the system to report changes (for network and container mounts where it doesn't)")
+	flag.IntVar(&importWorkers, "import-workers", importWorkers, "how many books from -watch-dir to take into the import queue at once (at most the number of CPU threads)")
 	flag.StringVar(&recycleDir, "recycle-bin", "", "where books removed from the library are kept until emptied on the server (default <datadir>/recycle-bin)")
 	emptyRecycle := flag.String("empty-recycle-bin", "", "permanently delete Recycling Bin batches older than this (e.g. 30d, 12h; 0 for all) and exit")
 	createUserName := flag.String("create-user", "", "create a user (or reset their password) and exit; password from $CF_PASSWORD or stdin")

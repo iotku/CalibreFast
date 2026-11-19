@@ -33,6 +33,8 @@ port = 8080
 
 # A folder to watch for new books (needs allow-writes).
 # watch-dir = /srv/calibre/incoming
+# How many of its books are taken in at once (default: CPU threads, at most 8).
+# import-workers = 8
 
 # Browsing (and reading) without signing in.
 # public
