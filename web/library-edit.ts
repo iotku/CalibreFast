@@ -712,6 +712,20 @@ function closeExpanded(): void {
     expanded = null;
 }
 
+/** Whether the "+N" panel open is cell's. */
+const isExpanded = (cell: HTMLElement): boolean =>
+    expanded !== null && expanded.dataset["col"] === cell.dataset["col"] && expanded.closest(".lt-row") === cell.closest(".lt-row");
+
+/** Open the book's "+N" panel for key, once a box open elsewhere is saved (that redraws the rows). */
+async function expandAt(uuid: string, key: ColKey): Promise<void> {
+    if (editing) {
+        await editing.finish(true);
+        if (editing) return;
+    }
+    const cell = rowOnScreen(uuid)?.querySelector<HTMLElement>(`.lt-cell[data-col="${key}"]`);
+    if (cell) expand(cell);
+}
+
 /** Every chip of a list cell, wrapped, in a panel over the rows below it. */
 function expand(cell: HTMLElement): void {
     closeExpanded();
@@ -732,7 +746,9 @@ function expand(cell: HTMLElement): void {
 }
 
 document.addEventListener("click", (e) => {
-    if (expanded && !expanded.contains(e.target as Node) && !(e.target as HTMLElement).closest(".lt-more")) closeExpanded();
+    const t = e.target as HTMLElement;
+    // Not for a click on something since removed (a tag the click redrew): it was in the table.
+    if (expanded && t.isConnected && !expanded.contains(t) && !t.closest(".lt-more")) closeExpanded();
 });
 
 function chip(col: ColKey, value: string): HTMLElement {
@@ -988,10 +1004,10 @@ body.addEventListener("click", (e) => {
     }
     const more = target.closest<HTMLElement>(".lt-more");
     if (more) {
-        const cell = more.closest<HTMLElement>(".lt-cell");
-        const open = expanded !== null && expanded.dataset["col"] === cell?.dataset["col"] && expanded.closest(".lt-row") === row;
+        const key = more.closest<HTMLElement>(".lt-cell")?.dataset["col"] as ColKey | undefined;
+        const open = expanded !== null && expanded.dataset["col"] === key && expanded.closest(".lt-row") === row;
         if (open) closeExpanded();
-        else if (cell) expand(cell);
+        else if (key) void expandAt(uuid, key);
         return;
     }
     if (target.closest("a, .lt-actions")) return;
@@ -1010,7 +1026,8 @@ body.addEventListener("click", (e) => {
     const col = COLUMNS.find((c) => c.key === key);
     if (!col?.edit) return;
     const ch = target.closest<HTMLElement>(".lt-chip:not(.lt-chip-removed)");
-    closeExpanded();
+    // A tag in the "+N" panel is edited there (editAt keeps it open).
+    if (!ch || !expanded?.contains(ch)) closeExpanded();
     void editAt(uuid, col.key, ch?.dataset["value"]);
 });
 
@@ -1594,7 +1611,7 @@ async function editAt(uuid: string, key: ColKey, value?: string): Promise<void> 
     let ch = chipIn(cell);
     // One the "+N" hides: edited in the panel that shows them all.
     if (ch?.hidden) {
-        expand(cell);
+        if (!isExpanded(cell)) expand(cell);
         ch = chipIn(expanded);
     }
     if (ch && !ch.hidden && (key === "tags" || key === "languages")) startChipEdit(ch, uuid, key);
