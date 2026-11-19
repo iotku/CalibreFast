@@ -2,7 +2,9 @@
  * What the offline Reading page (offline.ts) needs, saved while online:
  *
  *   - the user's Reading list (titles and authors from /me/reading) and
- *     On deck / Saved for later (/api/me/saved-books), in localStorage, so
+ *     the start of On deck / Saved for later (/api/me/saved-books: what
+ *     Discover's row shows, or as many as are downloaded ahead of time, if
+ *     more), in localStorage, so
  *     books not kept on this device can still be shown (as placeholders)
  *     with no server;
  *   - the cover thumbnails of those books and of the books kept here
@@ -19,6 +21,7 @@
  */
 
 import { currentUser, listBooks } from "./book-cache.js";
+import { localKey } from "./local-keys.js";
 import { LOCAL_FINISHED } from "./local-reading.js";
 
 export interface ListedBook {
@@ -46,8 +49,17 @@ const COVERS = "cf-covers";
 const REFRESH_MS = 10 * 60_000;
 /** Covers kept, at most: the Reading list's first ones, then On deck / Saved, then kept books'. */
 const MAX_COVERS = 80;
-/** On deck / Saved books listed, at most. */
-const MAX_SAVED = 100;
+/** On deck / Saved books listed: as many as Discover's row shows (Go: homeRowMax), or as are downloaded ahead of time. */
+const DECK_ROW_MAX = 20;
+
+/** How many On deck / Saved books this device downloads ahead of time (book-sync.ts, retention.ts savedList). */
+function downloadedAhead(user: string): number {
+    try {
+        return (JSON.parse(localStorage.getItem(localKey(user, "saved-books")) ?? "null") as { limit?: number } | null)?.limit ?? 0;
+    } catch {
+        return 0;
+    }
+}
 
 /** The Reading list last saved for whoever is signed in here (null if none, or someone else's). */
 export function readingSnapshot(): ReadingSnapshot | null {
@@ -120,7 +132,7 @@ async function save(user: string): Promise<void> {
                 .filter((b) => !b.placeholder)
                 .map((b) => ({ uuid: b.uuid, title: b.title, authors: b.authors, stamp: b.last_modified })),
         ),
-        fetchList(`/api/me/saved-books?limit=${MAX_SAVED}`, last?.savedTag, last?.saved, (raw) =>
+        fetchList(`/api/me/saved-books?limit=${Math.max(DECK_ROW_MAX, downloadedAhead(user))}`, last?.savedTag, last?.saved, (raw) =>
             (raw as { uuid: string; title: string; authors: string }[]).map((b) => ({ uuid: b.uuid, title: b.title, authors: b.authors, stamp: "" })),
         ),
     ]);

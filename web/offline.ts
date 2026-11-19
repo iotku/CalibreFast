@@ -140,7 +140,7 @@ async function render(): Promise<void> {
     const snap = readingSnapshot();
     const listed: ListedBook[] = snap?.books ?? [];
     const shown = new Set(listed.map((b) => b.uuid));
-    // On deck / Saved as saved for this page (offline-books.ts); until it is, the books downloaded ahead of time.
+    // On deck / Saved as Discover's row shows it, saved for this page (offline-books.ts); until it is, the books downloaded ahead of time.
     const saved = (snap?.saved ?? savedList(currentUser())?.books ?? []).filter((b) => !shown.has(b.uuid));
     for (const b of saved) shown.add(b.uuid);
     const reading = fill("reading", listed, keptBy, cardOf);
