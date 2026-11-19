@@ -263,6 +263,51 @@ func requireBook(w http.ResponseWriter, r *http.Request) (string, bool) {
 	return uuid, true
 }
 
+type execer interface {
+	Exec(query string, args ...any) (sql.Result, error)
+}
+
+// claimMarkChange records that a field ("favorite", "status") of a user's
+// book changed at `at` (unix ms, the server's clock), unless a later change
+// is recorded already: then it returns false, and the older change loses.
+// One statement, so two changes racing can't both win.
+func claimMarkChange(ex execer, userID int64, uuid, field string, at int64) (bool, error) {
+	res, err := ex.Exec(`INSERT INTO mark_changes (user_id, book_uuid, field, changed_at) VALUES (?, ?, ?, ?)
+		ON CONFLICT(user_id, book_uuid, field) DO UPDATE SET changed_at = excluded.changed_at
+		WHERE excluded.changed_at >= mark_changes.changed_at`, userID, uuid, field, at)
+	if err != nil {
+		return false, err
+	}
+	n, err := res.RowsAffected()
+	return n > 0, err
+}
+
+// maxChangeAge bounds age_ms: a device offline longer than this is treated as
+// if its change were made that long ago.
+const maxChangeAge = 365 * 24 * time.Hour
+
+// changeTime is when a change was made, on the server's clock. A device
+// sending one it kept while offline says how long ago it was made (age_ms,
+// measured by its own clock between the change and the send), so devices'
+// clocks needn't agree. No age: made just now.
+func changeTime(ageMS *int64) int64 {
+	now := nowMilli()
+	if ageMS == nil || *ageMS <= 0 {
+		return now
+	}
+	return now - min(*ageMS, maxChangeAge.Milliseconds())
+}
+
+// isFavorite reports whether a user has favorited a book.
+func isFavorite(userID int64, uuid string) bool {
+	var one int
+	return appDB.QueryRow(`SELECT 1 FROM favorites WHERE user_id = ? AND book_uuid = ?`, userID, uuid).Scan(&one) == nil
+}
+
+// setFavoriteHandler: PUT /api/me/books/{uuid}/favorite {favorite, age_ms?}.
+// A change older than the last one recorded (made offline, sent later) is
+// not applied; the answer says so (applied: false) and gives the favorite
+// as it stands.
 func setFavoriteHandler(w http.ResponseWriter, r *http.Request) {
 	u := currentUser(r)
 	uuid, ok := requireBook(w, r)
@@ -270,23 +315,42 @@ func setFavoriteHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	var req struct {
-		Favorite bool `json:"favorite"`
+		Favorite bool   `json:"favorite"`
+		AgeMS    *int64 `json:"age_ms"`
 	}
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
 		http.Error(w, "invalid JSON", http.StatusBadRequest)
 		return
 	}
-	var err error
-	if req.Favorite {
-		_, err = appDB.Exec(`INSERT OR IGNORE INTO favorites (user_id, book_uuid, created_at) VALUES (?, ?, ?)`, u.ID, uuid, nowUnix())
-	} else {
-		_, err = appDB.Exec(`DELETE FROM favorites WHERE user_id = ? AND book_uuid = ?`, u.ID, uuid)
-	}
+	applied, err := setFavorite(u.ID, uuid, req.Favorite, changeTime(req.AgeMS))
 	if err != nil {
+		log.Println("set favorite:", err)
 		http.Error(w, "could not save", http.StatusInternalServerError)
 		return
 	}
-	writeJSON(w, http.StatusOK, map[string]bool{"favorite": req.Favorite})
+	writeJSON(w, http.StatusOK, map[string]bool{"favorite": isFavorite(u.ID, uuid), "applied": applied})
+}
+
+// setFavorite applies a favorite change made at `at` (unix ms), unless a
+// later one is recorded. Whether it applied.
+func setFavorite(userID int64, uuid string, on bool, at int64) (bool, error) {
+	tx, err := appDB.Begin()
+	if err != nil {
+		return false, err
+	}
+	defer tx.Rollback()
+	if ok, err := claimMarkChange(tx, userID, uuid, "favorite", at); err != nil || !ok {
+		return false, err
+	}
+	if on {
+		_, err = tx.Exec(`INSERT OR IGNORE INTO favorites (user_id, book_uuid, created_at) VALUES (?, ?, ?)`, userID, uuid, nowUnix())
+	} else {
+		_, err = tx.Exec(`DELETE FROM favorites WHERE user_id = ? AND book_uuid = ?`, userID, uuid)
+	}
+	if err != nil {
+		return false, err
+	}
+	return true, tx.Commit()
 }
 
 var errBadStatus = errors.New(`status must be "", "wanted", "reading" or "finished"`)
@@ -295,19 +359,15 @@ var errBadStatus = errors.New(`status must be "", "wanted", "reading" or "finish
 // (from reader progress) only move forward: none or wanted → reading →
 // finished, and never override a status the user chose themselves for that
 // stage. Starting a wanted book takes it off Saved.
+//
+// Every change is recorded as made now (mark_changes), so a manual change
+// made earlier on a device that was offline doesn't undo it (setManualStatus).
 func setStatus(userID int64, uuid, status, source string) error {
 	if status != "" && status != "wanted" && status != "reading" && status != "finished" {
 		return errBadStatus
 	}
 	if source == "manual" {
-		if status == "" {
-			_, err := appDB.Exec(`DELETE FROM reading_status WHERE user_id = ? AND book_uuid = ?`, userID, uuid)
-			return err
-		}
-		_, err := appDB.Exec(`INSERT INTO reading_status (user_id, book_uuid, status, source, updated_at) VALUES (?, ?, ?, 'manual', ?)
-			ON CONFLICT(user_id, book_uuid) DO UPDATE SET status = excluded.status, source = 'manual', updated_at = excluded.updated_at,
-				position = CASE WHEN status = excluded.status THEN position END`,
-			userID, uuid, status, nowUnix())
+		_, err := setManualStatus(userID, uuid, status, nowMilli())
 		return err
 	}
 	cur, _ := readStatus(userID, uuid)
@@ -323,7 +383,39 @@ func setStatus(userID int64, uuid, status, source string) error {
 		ON CONFLICT(user_id, book_uuid) DO UPDATE SET status = excluded.status, source = 'auto', updated_at = excluded.updated_at,
 			position = CASE WHEN status = excluded.status THEN position END`,
 		userID, uuid, status, nowUnix())
+	if err != nil {
+		return err
+	}
+	_, err = claimMarkChange(appDB, userID, uuid, "status", nowMilli())
 	return err
+}
+
+// setManualStatus applies a status the user chose at `at` (unix ms), unless
+// a later change is recorded (made elsewhere meanwhile). Whether it applied.
+func setManualStatus(userID int64, uuid, status string, at int64) (bool, error) {
+	if status != "" && status != "wanted" && status != "reading" && status != "finished" {
+		return false, errBadStatus
+	}
+	tx, err := appDB.Begin()
+	if err != nil {
+		return false, err
+	}
+	defer tx.Rollback()
+	if ok, err := claimMarkChange(tx, userID, uuid, "status", at); err != nil || !ok {
+		return false, err
+	}
+	if status == "" {
+		_, err = tx.Exec(`DELETE FROM reading_status WHERE user_id = ? AND book_uuid = ?`, userID, uuid)
+	} else {
+		_, err = tx.Exec(`INSERT INTO reading_status (user_id, book_uuid, status, source, updated_at) VALUES (?, ?, ?, 'manual', ?)
+			ON CONFLICT(user_id, book_uuid) DO UPDATE SET status = excluded.status, source = 'manual', updated_at = excluded.updated_at,
+				position = CASE WHEN status = excluded.status THEN position END`,
+			userID, uuid, status, nowUnix())
+	}
+	if err != nil {
+		return false, err
+	}
+	return true, tx.Commit()
 }
 
 func setStatusHandler(w http.ResponseWriter, r *http.Request) {
@@ -334,13 +426,15 @@ func setStatusHandler(w http.ResponseWriter, r *http.Request) {
 	}
 	var req struct {
 		Status string `json:"status"`
+		AgeMS  *int64 `json:"age_ms"` // a change kept offline: how long ago it was made (changeTime)
 	}
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
 		http.Error(w, "invalid JSON", http.StatusBadRequest)
 		return
 	}
 	req.Status = strings.TrimSpace(req.Status)
-	if err := setStatus(u.ID, uuid, req.Status, "manual"); err != nil {
+	applied, err := setManualStatus(u.ID, uuid, req.Status, changeTime(req.AgeMS))
+	if err != nil {
 		if errors.Is(err, errBadStatus) {
 			http.Error(w, err.Error(), http.StatusBadRequest)
 			return
@@ -349,8 +443,9 @@ func setStatusHandler(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "could not save", http.StatusInternalServerError)
 		return
 	}
+	// As it stands: a change older than the last one recorded isn't applied.
 	status, source := readStatus(u.ID, uuid)
-	writeJSON(w, http.StatusOK, map[string]string{"status": status, "status_source": source})
+	writeJSON(w, http.StatusOK, map[string]any{"status": status, "status_source": source, "applied": applied})
 }
 
 // BookUserActionsData feeds the per-user controls fragment under a book's

@@ -16,8 +16,10 @@
  * (agrees), and a disagreement fetches them anew.
  */
 
-import { api, el, icon, safeUrl } from "./dom.js";
+import { el, icon, safeUrl } from "./dom.js";
 import { meRequest } from "./me.js";
+import { noteMark, overlayPending, pendingMark } from "./pending-marks.js";
+import { sendPending } from "./send-pending.js";
 
 export interface Marks {
     /** Whose marks these are; null when signed out. */
@@ -46,8 +48,9 @@ export interface StoredMarks {
     favorites?: string[];
 }
 
+/** Marks as stored, with the changes made here that the server doesn't have yet laid over them (pending-marks.ts). */
 function toMarks(v: StoredMarks | null): Marks {
-    return {
+    return overlayPending({
         user: v?.user ?? null,
         signedIn: v !== null,
         reading: new Map(Object.entries(v?.reading ?? {})),
@@ -55,7 +58,7 @@ function toMarks(v: StoredMarks | null): Marks {
         wanted: new Set(v?.wanted),
         finished: new Set(v?.finished),
         favorites: new Set(v?.favorites),
-    };
+    });
 }
 
 /** Who nav.ts last saw signed in (its cached /api/me answer), if anyone. */
@@ -336,34 +339,32 @@ function paintActions(card: HTMLElement, uuid: string, marks: Marks): void {
 
 /**
  * Do a cover button's action for a book: toggle favorite, or toggle "want
- * to read" (only offered for books not started). marks is updated at once;
- * repaint is called then, and again if saving fails (marks put back). Once
- * saved, marks are kept as the cache: no need to ask the server again.
+ * to read" (only offered for books not started). marks is updated and kept
+ * at once, and repaint called; the change is noted (pending-marks.ts) and
+ * sent now, or when the server can be reached: a slow or missing
+ * connection doesn't undo it. Once the server has it, "cf:status" says so
+ * (for rows only the server fills). Resolves once this try is over.
  */
 export async function coverAction(action: string, uuid: string, marks: Marks, repaint: () => void): Promise<void> {
+    const user = marks.user;
+    if (!user) return;
     if (action === "favorite") {
         const on = !marks.favorites.has(uuid);
-        const set = (v: boolean): void => void (v ? marks.favorites.add(uuid) : marks.favorites.delete(uuid));
-        set(on);
-        repaint();
-        try {
-            await api("PUT", `/api/me/books/${encodeURIComponent(uuid)}/favorite`, { favorite: on });
-            saveMarks(marks);
-        } catch {
-            set(!on);
-            repaint();
-        }
+        if (on) marks.favorites.add(uuid);
+        else marks.favorites.delete(uuid);
+        noteMark(user, uuid, { favorite: on });
     } else if (action === "want") {
         const on = !marks.wanted.has(uuid);
-        const set = (v: boolean): void => void (v ? marks.wanted.add(uuid) : marks.wanted.delete(uuid));
-        set(on);
-        repaint();
-        try {
-            await api("PUT", `/api/me/books/${encodeURIComponent(uuid)}/status`, { status: on ? "wanted" : "" });
-            saveMarks(marks);
-        } catch {
-            set(!on);
-            repaint();
-        }
-    }
+        if (on) marks.wanted.add(uuid);
+        else marks.wanted.delete(uuid);
+        noteMark(user, uuid, { status: on ? "wanted" : "" });
+    } else return;
+    saveMarks(marks);
+    repaint();
+    await sendPending(user);
+}
+
+/** Whether a change to a book is still waiting for the server (pending-marks.ts). */
+export function changeWaits(user: string | null, uuid: string, field: "favorite" | "status"): boolean {
+    return pendingMark(user, uuid)?.[field] !== undefined;
 }

@@ -255,6 +255,8 @@ export async function deleteBook(uuid: string, format?: KeptFormat): Promise<voi
         await deletePartial(uuid, f).catch(() => {});
         tellWorker({ type: "evict", uuid, format: f });
     }
+    // No file of it left: its popup goes too.
+    if (!(await getBookFiles(uuid).catch(() => [])).length) tellWorker({ type: "evict-book", uuid });
     changed(uuid);
 }
 
@@ -272,9 +274,9 @@ export async function keepOnlyUser(user: string | null): Promise<void> {
 }
 
 /**
- * Have the service worker (sw.ts) keep a book's reader page, so a book
- * downloaded ahead of time opens offline though its reader was never opened
- * in this browser. Sent to the active worker, not the page's controller: a
+ * Have the service worker (sw.ts) keep a book's reader page and its popup,
+ * so a book downloaded ahead of time opens offline though its reader (or
+ * its popup) was never opened in this browser. Sent to the active worker, not the page's controller: a
  * page loaded before the worker first installed has none.
  */
 export function keepReaderPage(uuid: string, format: KeptFormat): void {
@@ -286,8 +288,10 @@ export function keepReaderPage(uuid: string, format: KeptFormat): void {
         });
 }
 
-/** Tell the service worker (sw.ts) to drop cached reader pages. */
-function tellWorker(msg: { type: "evict"; uuid: string; format: KeptFormat } | { type: "clear-books" }): void {
+/** Tell the service worker (sw.ts) to drop cached reader pages and book popups. */
+function tellWorker(
+    msg: { type: "evict"; uuid: string; format: KeptFormat } | { type: "evict-book"; uuid: string } | { type: "clear-books" },
+): void {
     try {
         navigator.serviceWorker?.controller?.postMessage(msg);
     } catch {

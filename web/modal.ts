@@ -1,6 +1,7 @@
 import { forgetControls, prefetchControls } from "./user.js"; // favorite / status / shelves controls in the book popup
 import { el, icon, lineIcon } from "./dom.js";
 import { parseServerHtml } from "./trusted.js";
+import { isUnreachable, onServerBack, serverDown } from "./server-watch.js";
 import "./htmx-security.js"; // htmx swaps under Trusted Types
 /* ------------------------------------------------------------------ */
 /* Modal (hash-driven)                                                 */
@@ -95,6 +96,49 @@ function loadingBox(): HTMLElement {
     box.setAttribute("aria-label", "Loading");
     return box;
 }
+/** The book that failed for want of the server: opened again when it answers. */
+let waitingFor: string | null = null;
+
+/**
+ * A book that didn't load. When the server couldn't be reached (offline,
+ * and the book isn't kept here, so the service worker has no copy of its
+ * popup), offer the offline page (a reload: the service worker serves it,
+ * and it comes back to this page, the book open, once the server answers)
+ * and wait for the server here meanwhile.
+ */
+function showFailed(uuid: string | null, unreachable: boolean): void {
+    const body = bodyEl();
+    if (!body) return;
+    if (!unreachable || !uuid) {
+        setBodyText("Failed to load book.");
+        return;
+    }
+    waitingFor = uuid;
+    serverDown(); // asks now and then (server-watch.ts)
+    const wait = el("p", { className: "modal-failed-wait" }, throbber(), "Checking for the server…");
+    wait.setAttribute("role", "status");
+    const box = el(
+        "div",
+        { className: "modal-failed" },
+        el("p", { className: "modal-failed-title", textContent: "Failed to load book." }),
+        el("p", { textContent: "The server can't be reached, and this book isn't saved on this device. It opens here once the server is back." }),
+        wait,
+    );
+    if (navigator.serviceWorker?.controller) {
+        const btn = el("button", { type: "button", className: "btn", textContent: "Switch to offline mode" });
+        btn.title = "Show the books saved on this device";
+        btn.addEventListener("click", () => location.reload());
+        box.append(btn);
+    }
+    body.replaceChildren(box);
+}
+
+onServerBack(() => {
+    const uuid = waitingFor;
+    waitingFor = null;
+    if (uuid && uuid === shownUuid && isModalOpen()) loadBook(uuid);
+});
+
 /** A book that arrives sooner shows without a loading state in between. */
 const LOADING_DELAY_MS = 100;
 let loadingUrl: string | null = null; // the book request whose answer the modal waits for
@@ -219,6 +263,7 @@ function hideModal(): void {
     shownUuid = null;
     shownCard = null;
     loadingUrl = null;
+    waitingFor = null;
     clearTimeout(loadingTimer);
     setBusy(false);
     // The URL no longer has #book/: the grid may write its page now (app-htmx.ts).
@@ -238,6 +283,7 @@ function samePath(a: string, b: string): boolean {
 
 export function loadBook(uuid: string): void {
     queuedStep = null; // another book asked for (back/forward, a link): drop a waiting step
+    waitingFor = null;
     const card = cardFor(uuid);
     shownUuid = uuid;
     shownCard = card;
@@ -262,7 +308,7 @@ export function loadBook(uuid: string): void {
         ...(hit ? { fetch: () => hit } : {}),
     }).catch(() => {
         if (loadingUrl === url) {
-            setBodyText("Failed to load book.");
+            showFailed(uuid, true); // no answer at all
             doneLoading();
         }
     });
@@ -607,7 +653,10 @@ export function setupModal(): void {
         const ctx = (e as HtmxCtxEvent).detail?.ctx;
         if (!ctx || ctx.target !== bodyEl() || loadingUrl === null) return;
         if (!samePath(ctx.request?.action ?? "", loadingUrl)) return;
-        if (ctx.status !== "swapped" || (ctx.response?.status ?? 0) >= 400) setBodyText("Failed to load book.");
+        if (ctx.status !== "swapped" || (ctx.response?.status ?? 0) >= 400) {
+            const status = ctx.response?.status;
+            showFailed(shownUuid, isUnreachable(status ? { status } : null));
+        }
         doneLoading();
     });
 

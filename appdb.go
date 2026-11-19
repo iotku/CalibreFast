@@ -373,6 +373,19 @@ var migrations = []string{
 		prefs   TEXT    NOT NULL
 	);
 	`,
+	// 22: when a book's favorite or reading status last changed, per user
+	// (userdata.go): a change made earlier on a device that was offline
+	// doesn't undo a later one made elsewhere. Also kept for an unfavorite or
+	// a status cleared, which leave no row behind. field: "favorite" | "status".
+	`
+	CREATE TABLE mark_changes (
+		user_id    INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+		book_uuid  TEXT    NOT NULL,
+		field      TEXT    NOT NULL,
+		changed_at INTEGER NOT NULL,              -- unix milliseconds, the server's clock
+		PRIMARY KEY (user_id, book_uuid, field)
+	) WITHOUT ROWID;
+	`,
 }
 
 // openAppDB opens (creating if needed) and migrates the app database.
@@ -426,3 +439,5 @@ func migrate(db *sql.DB) error {
 }
 
 func nowUnix() int64 { return time.Now().Unix() }
+
+func nowMilli() int64 { return time.Now().UnixMilli() }
