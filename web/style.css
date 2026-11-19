@@ -2895,6 +2895,19 @@ body.book-standalone {
     flex: none;
 }
 
+.agg-header-body {
+    display: flex;
+    flex-direction: column;
+    gap: 0.75rem;
+    min-width: 0;
+}
+
+.agg-header-series {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 8px;
+}
+
 .agg-header-desc {
     margin: 0;
     line-height: 1.5;
