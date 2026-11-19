@@ -5354,6 +5354,15 @@ body.selecting .book.selected .cover-wrapper {
     flex-direction: column;
     gap: var(--gap-xlarge);
 }
+.server-storage {
+    margin-bottom: var(--gap-xlarge);
+}
+.server-storage .auth-error {
+    margin-bottom: var(--gap-medium);
+}
+.server-path {
+    overflow-wrap: anywhere;
+}
 .prefs-meter p {
     margin: 0;
 }
@@ -5398,10 +5407,10 @@ body.selecting .book.selected .cover-wrapper {
     border-radius: 2px;
     display: inline-block;
 }
-.seg-reading { background: var(--status-reading); }
+.seg-reading, .seg-database { background: var(--status-reading); }
 .seg-wanted { background: var(--status-wanted); }
 .seg-finished { background: var(--status-finished); }
-.seg-other { background: #a58bd6; }
+.seg-other, .seg-disk-other { background: #a58bd6; }
 .seg-books { background: var(--status-reading); }
 .seg-covers { background: #a58bd6; }
 .seg-other-data { background: #777; }

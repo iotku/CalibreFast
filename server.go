@@ -124,6 +124,7 @@ type serverPageData struct {
 	Uptime    string
 	Systemd   bool
 	GoVersion string
+	Storage   []storageMeter
 }
 
 // GET /admin/server: what's running, and the Stop button.
@@ -142,6 +143,7 @@ func serverPage(w http.ResponseWriter, r *http.Request) {
 		Uptime:    time.Since(started).Round(time.Second).String(),
 		Systemd:   underSystemd(),
 		GoVersion: goVersion,
+		Storage:   serverStorage(),
 	}), "render admin-server")
 }
 
