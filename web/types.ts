@@ -350,8 +350,31 @@ export interface BulkResult {
     changed: number;
     unchanged: number;
     failed: { uuid: string; error: string }[];
-    /** The changed books' rows, as they are now. */
+    /** The changed books' rows, as they are now (or, queued, as they will be). */
     books: TableBook[];
+    /** The library's edits are queued (Go: bulk_queue.go): this one's id, to follow it. */
+    job?: number;
+}
+
+/** GET /api/library/bulk/failures: a book a queued edit couldn't be made to (Go: keptBulkFailure). */
+export interface BulkFailureKept {
+    id: number;
+    uuid: string;
+    title: string;
+    edit: BulkEdit;
+    error: string;
+    by: string;
+    /** Unix seconds. */
+    at: number;
+}
+
+/** GET /api/library/bulk/jobs: how far a queued edit has got (Go: bulkJob). */
+export interface BulkJob {
+    state: "queued" | "running" | "done" | "unknown";
+    done: number;
+    total: number;
+    /** When done: what was written, the rows as they are now. */
+    result?: BulkResult;
 }
 
 /** Books marked as not duplicates of each other (Go: notDuplicateSet in not_duplicates.go). */

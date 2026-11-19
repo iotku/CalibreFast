@@ -20,7 +20,7 @@ import { attachSuggest } from "./suggest.js";
 import { joinAuthors, splitAuthors, tidyAuthors } from "./authors.js";
 import { deleteBooks } from "./delete-books.js";
 import { languageChipLabel, languageKey, loadLanguageCodes } from "./languages.js";
-import type { BulkEdit, BulkResult, FormatRepair, NotDuplicateSet, TableBook } from "./types.js";
+import type { BulkEdit, BulkFailureKept, BulkJob, BulkResult, FormatRepair, NotDuplicateSet, TableBook } from "./types.js";
 
 /** Editing the import queue's waiting books, not the library's. */
 const QUEUE = document.querySelector<HTMLElement>(".lt-main")?.dataset["source"] === "queue";
@@ -1336,11 +1336,23 @@ byId("lt-remove").addEventListener("click", async () => {
 // Edits: in a cell, or to every selected book (the dialog)
 // ---------------------------------------------------------------------------
 
-/** Send an edit; the changed rows come back. */
+/**
+ * Send an edit; the changed rows come back. The library's edits are queued
+ * by the server, which answers before writing them, with the rows as they
+ * will be (Go: bulk_queue.go): followJob watches them get written.
+ */
 async function sendEdit(uuids: string[], edit: BulkEdit): Promise<BulkResult> {
     const res = await api<BulkResult>("POST", SOURCE.bulk, { uuids, edit });
-    const fresh = new Map(res.books.map((b) => [b.uuid, b]));
-    // In the rows shown too, in place: a change needn't move or hide its row.
+    swapRows(res.books);
+    if (res.job) followJob(res.job, uuids);
+    pollChecking();
+    return res;
+}
+
+/** Put these rows in place of the books' own, in place: a change needn't move or hide its row. */
+function swapRows(books: TableBook[]): void {
+    if (!books.length) return;
+    const fresh = new Map(books.map((b) => [b.uuid, b]));
     const made = new Map<string, Row>();
     const swap = (r: Row): Row => {
         const b = fresh.get(r.b.uuid);
@@ -1357,8 +1369,166 @@ async function sendEdit(uuids: string[], edit: BulkEdit): Promise<BulkResult> {
     rows = rows.map(swap);
     shown = shown.map(swap);
     changedHere++;
-    pollChecking();
-    return res;
+}
+
+// ---------------------------------------------------------------------------
+// Queued edits: written by the server after it answered
+// ---------------------------------------------------------------------------
+
+const savingEl = byId("lt-saving");
+/** Edits sent from this page the server hasn't written yet: id → their books. */
+const queuedJobs = new Map<number, Set<string>>();
+let jobTimer = 0;
+
+function followJob(id: number, uuids: string[]): void {
+    queuedJobs.set(id, new Set(uuids));
+    showSaving(null);
+    if (!jobTimer) jobTimer = window.setTimeout(pollJobs, 700);
+}
+
+/** "Saving…" while edits wait to be written; with how far the one being written has got, when it's long. */
+function showSaving(jobs: Record<string, BulkJob> | null): void {
+    savingEl.hidden = queuedJobs.size === 0;
+    if (savingEl.hidden) return;
+    const running = jobs ? Object.values(jobs).find((j) => j.state === "running" && j.total > 20) : undefined;
+    const what = queuedJobs.size === 1 ? "Saving…" : `Saving ${n(queuedJobs.size)} changes…`;
+    savingEl.textContent = running ? `${what} ${n(running.done)} of ${plural(running.total, "book")}` : what;
+    savingEl.title = "The server has these changes and is writing them to the library.";
+}
+
+async function pollJobs(): Promise<void> {
+    jobTimer = 0;
+    if (queuedJobs.size === 0) return;
+    let wait = 1000;
+    try {
+        const ids = [...queuedJobs.keys()].slice(0, 200);
+        const data = await api<{ jobs: Record<string, BulkJob>; waiting: number }>("GET", `/api/library/bulk/jobs?ids=${ids.join(",")}`);
+        const failed: string[] = [];
+        let gone = false;
+        for (const id of ids) {
+            const job = data.jobs[String(id)];
+            if (!job || job.state === "queued" || job.state === "running") continue;
+            queuedJobs.delete(id);
+            if (job.state === "unknown") {
+                gone = true; // forgotten (the server restarted): the table has it as it is
+                continue;
+            }
+            const res = job.result;
+            if (!res) continue;
+            failed.push(...res.failed.map((f) => f.error));
+            for (const b of res.books) written.set(b.uuid, b);
+        }
+        if (failed.length) {
+            say(`Couldn't save ${plural(failed.length, "book")}: ${failed.slice(0, 2).join("; ")}`, "error");
+            gone = true; // show the books as they are
+            void loadFailures();
+        }
+        showSaving(data.jobs);
+        if (gone) {
+            reloadedAt = 0;
+            void reloadRows();
+        }
+    } catch {
+        wait = 5000; // the server is away (restarting?): its queue is kept
+    }
+    showWritten();
+    if (queuedJobs.size || written.size) jobTimer = window.setTimeout(pollJobs, wait);
+    else showSaving(null);
+}
+
+// Kept failures: books a queued edit couldn't be made to, from this page or
+// any other, until someone dismisses them (Go: bulk_edit_failures).
+const failuresNote = byId("lt-failures");
+const failuresDialog = byId("failures-dialog", HTMLDialogElement);
+const failuresList = byId("failures-list");
+closeOnBackdropClick(failuresDialog);
+let failures: BulkFailureKept[] = [];
+
+async function loadFailures(): Promise<void> {
+    if (QUEUE) return;
+    try {
+        const data = await api<{ failures: BulkFailureKept[]; total: number }>("GET", "/api/library/bulk/failures");
+        failures = data.failures;
+        failuresNote.hidden = data.total === 0;
+        byId("lt-failures-text").textContent = `${plural(data.total, "edit")} not saved`;
+    } catch {
+        /* shown next time */
+    }
+}
+
+/** What an edit was meant to do, in a few words. */
+function describeEdit(e: BulkEdit): string {
+    const q = (v: string): string => (v ? `“${v}”` : "none");
+    const parts: string[] = [];
+    if (e.title !== undefined) parts.push(`title ${q(e.title)}`);
+    if (e.authors !== undefined) parts.push(`authors ${q(e.authors)}`);
+    if (e.series !== undefined) parts.push(`series ${q(e.series)}`);
+    if (e.series_index !== undefined) parts.push(`number ${q(e.series_index)}`);
+    if (e.publisher !== undefined) parts.push(`publisher ${q(e.publisher)}`);
+    if (e.date !== undefined) parts.push(`published ${q(e.date)}`);
+    if (e.tags !== undefined) parts.push(`tags ${q(e.tags)}`);
+    if (e.remove_tags?.length) parts.push(`remove tags ${e.remove_tags.map(q).join(", ")}`);
+    if (e.add_tags?.length) parts.push(`add tags ${e.add_tags.map(q).join(", ")}`);
+    if (e.split_tags) parts.push(`split tags on ${q(e.split_tags)}`);
+    if (e.languages !== undefined) parts.push(`languages ${q(e.languages)}`);
+    if (e.remove_languages?.length) parts.push(`remove languages ${e.remove_languages.join(", ")}`);
+    if (e.add_languages?.length) parts.push(`add languages ${e.add_languages.join(", ")}`);
+    return parts.join("; ") || "an edit";
+}
+
+byId("lt-failures-show").addEventListener("click", () => {
+    failuresList.replaceChildren(
+        ...failures.map((f) =>
+            el(
+                "li",
+                {},
+                el("div", { className: "lt-failure-title", textContent: f.title }),
+                el("div", { textContent: `Meant to set: ${describeEdit(f.edit)}` }),
+                el("div", { className: "lt-failure-error", textContent: f.error }),
+                el("div", { className: "lt-failure-meta", textContent: `${f.by || "Someone"}, ${new Date(f.at * 1000).toLocaleString()}` }),
+            ),
+        ),
+    );
+    failuresDialog.showModal();
+});
+
+byId("failures-select").addEventListener("click", () => {
+    const known = new Set(rows.map((r) => r.b.uuid));
+    selected.clear();
+    for (const f of failures) if (known.has(f.uuid)) selected.add(f.uuid);
+    failuresDialog.close();
+    refresh();
+    say(`Selected ${plural(selected.size, "book")} whose edits weren't saved.`, "ok");
+});
+
+byId("failures-dismiss").addEventListener("click", async () => {
+    try {
+        await api("POST", "/api/library/bulk/failures/dismiss", { ids: failures.map((f) => f.id) });
+    } catch (err) {
+        say(`Couldn't dismiss them: ${errorMessage(err)}`, "error");
+        return;
+    }
+    failuresDialog.close();
+    await loadFailures();
+});
+
+/** Rows as the server wrote them, to show where they differ from what it foresaw. */
+const written = new Map<string, TableBook>();
+
+/** Show the written rows, unless that would close something open (they wait for the next poll). */
+function showWritten(): void {
+    if (!written.size || editing || modalOpen() || cellMenu || expanded) return;
+    // Not over a book a later edit from here is still changing: the server foresaw that one's row.
+    const later = new Set([...queuedJobs.values()].flatMap((u) => [...u]));
+    const byUuid = new Map(rows.map((r) => [r.b.uuid, r.b]));
+    const differ = [...written.values()].filter((b) => {
+        const was = byUuid.get(b.uuid);
+        return !later.has(b.uuid) && was && JSON.stringify(was) !== JSON.stringify(b);
+    });
+    written.clear();
+    if (!differ.length) return;
+    swapRows(differ);
+    refresh();
 }
 
 // ---------------------------------------------------------------------------
@@ -2153,6 +2323,7 @@ async function start(): Promise<void> {
 /** After the rows (re)load: selected books no longer in the library don't count. */
 function loaded(): void {
     showUnlisted();
+    void loadFailures();
     const known = new Set(rows.map((r) => r.b.uuid));
     for (const u of selected) if (!known.has(u)) selected.delete(u);
     fillDatalists();

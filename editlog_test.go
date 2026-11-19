@@ -260,6 +260,7 @@ func TestEditorChangesReverted(t *testing.T) {
 	do(editor, "POST", "/metadata/"+a.uuid+"/apply", `{"title":"Alpha Vandalized","creators":"Ann","subjects":"spam"}`)
 	do(editor, "POST", "/metadata/"+a.uuid+"/apply", `{"title":"Alpha Vandalized Twice","creators":"Nobody"}`)
 	do(editor, "POST", "/api/library/bulk", `{"uuids":["`+b.uuid+`"],"edit":{"add_tags":["spam"]}}`)
+	waitBulkEdits() // queued (bulk_queue.go): written before the next change, as the log expects
 	do(editor, "POST", "/upload-cover/"+a.uuid, testCoverDataURL(t))
 	do(editor, "POST", "/api/library/delete", `{"uuids":["`+c.uuid+`"]}`)
 	rec := do(editor, "POST", "/api/placeholders", `{"title":"Fake Book","creators":"Ann"}`)

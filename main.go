@@ -417,6 +417,9 @@ func main() {
 	}
 	groups = loadGroups(filepath.Join(baseDir, groupsFileName))
 	preloadCaches()
+	if allowWrites {
+		loadBulkQueue() // bulk editor changes not yet made when it stopped
+	}
 	startImports()
 	serveLibraryHTTP()
 }
@@ -785,10 +788,10 @@ func registerBookEditRoutes() {
 	}))
 
 	// Get metadata options for a book
-	http.HandleFunc("/metadata/{uuid}", GetOptionsForBook)
+	http.HandleFunc("/metadata/{uuid}", afterBookEdits(GetOptionsForBook))
 
 	// Apply updated metadata to a book
-	http.HandleFunc("/metadata/{uuid}/apply", requireEditor(applyMetadataHandler))
+	http.HandleFunc("/metadata/{uuid}/apply", requireEditor(afterBookEdits(applyMetadataHandler)))
 
 	// ISBNs found in the book's own files (isbn.go)
 	http.HandleFunc("/metadata/{uuid}/isbns", requireEditor(isbnCandidatesHandler))
@@ -1074,8 +1077,11 @@ func applyMetadataHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	// bulkMu: not at the same time as a queued bulk edit of it (bulk_queue.go).
+	bulkMu.Lock()
 	before := snapBook(uuid)
 	bookPath, err := updateBookInCalibreDB(calibreDB, baseDir, uuid, &meta)
+	bulkMu.Unlock()
 	if err != nil {
 		log.Println("apply metadata error:", err)
 		http.Error(w, "Failed to update metadata: "+err.Error(), http.StatusInternalServerError)

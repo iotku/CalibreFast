@@ -6,10 +6,11 @@ package main
 // selection at a time.
 //
 // GET /api/library/table answers the rows, from metadata.db. POST
-// /api/library/bulk changes some fields of a set of books: each book's
-// metadata.opf is read (as the metadata editor does), the changes are made
-// to it, and it's saved with updateBookInCalibreDB, the editor's own write.
-// A book the change makes no difference to isn't written.
+// /api/library/bulk changes some fields of a set of books: the change is
+// queued (bulk_queue.go) and later each book's metadata.opf is read (as the
+// metadata editor does), the changes are made to it, and it's saved with
+// updateBookInCalibreDB, the editor's own write. A book the change makes no
+// difference to isn't written.
 
 import (
 	"database/sql"
@@ -19,6 +20,7 @@ import (
 	"log"
 	"net/http"
 	"path/filepath"
+	"runtime/debug"
 	"slices"
 	"strconv"
 	"strings"
@@ -38,7 +40,10 @@ func registerBulkEditRoutes() {
 	http.HandleFunc("GET /library/edit", requireEditor(bulkEditPage))
 	http.HandleFunc("GET /api/library/table", requireEditor(libraryTableHandler))
 	http.HandleFunc("POST /api/library/bulk", requireEditor(bulkEditHandler))
-	http.HandleFunc("POST /api/library/repair-formats", requireWrites(repairFormatsHandler))
+	http.HandleFunc("GET /api/library/bulk/jobs", requireEditor(bulkJobsHandler))
+	http.HandleFunc("GET /api/library/bulk/failures", requireEditor(bulkFailuresHandler))
+	http.HandleFunc("POST /api/library/bulk/failures/dismiss", requireEditor(bulkFailuresDismissHandler))
+	http.HandleFunc("POST /api/library/repair-formats", requireWrites(afterBulkEdits(repairFormatsHandler)))
 }
 
 // repairFormatsHandler adds metadata.db rows for files in book folders it
@@ -112,8 +117,9 @@ type tableBook struct {
 	HasCover          bool   `json:"has_cover"`
 	// Library: only for a waiting book (imports_edit.go), the list's
 	// duplicate check: "checking", "same file", "in library" or "new".
-	Library string `json:"library,omitempty"`
-	path    string
+	Library  string `json:"library,omitempty"`
+	path     string
+	modified string // last_modified as stored: what a queued edit is written against (bulk_queue.go)
 }
 
 // tableSep separates the values group_concat joins: no tag, language or
@@ -128,7 +134,7 @@ const tableBooksSQL = `SELECT b.id, b.uuid, b.title, ` + bookAuthorsSQL + `, b.s
 	COALESCE((SELECT group_concat(l.lang_code, char(31) ORDER BY x.item_order) FROM books_languages_link x JOIN languages l ON l.id = x.lang_code WHERE x.book = b.id), ''),
 	COALESCE((SELECT group_concat(lower(d.format), char(31) ORDER BY d.format) FROM data d WHERE d.book = b.id), ''),
 	COALESCE((SELECT i.val FROM identifiers i WHERE i.book = b.id AND lower(i.type) = 'isbn' LIMIT 1), ''),
-	b.has_cover, b.path
+	b.has_cover, b.path, COALESCE(CAST(b.last_modified AS TEXT), '')
 	FROM books b`
 
 func splitConcat(s string) []string {
@@ -167,7 +173,7 @@ func tableBooks(db *sql.DB, uuids []string) ([]tableBook, error) {
 		var b tableBook
 		var pub, added, tags, langs, formats string
 		if err := rows.Scan(&b.ID, &b.UUID, &b.Title, &b.Authors, &b.SeriesIndex, &b.Series, &b.Publisher,
-			&pub, &added, &tags, &langs, &formats, &b.ISBN, &b.HasCover, &b.path); err != nil {
+			&pub, &added, &tags, &langs, &formats, &b.ISBN, &b.HasCover, &b.path, &b.modified); err != nil {
 			return nil, err
 		}
 		b.PubDate, b.Added = tableDate(pub), tableDate(added)
@@ -208,6 +214,7 @@ func libraryTableHandler(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, err.Error(), http.StatusInternalServerError)
 		return
 	}
+	pendingBulkRows(books)
 	notDups, err := notDuplicateSets()
 	if err != nil {
 		log.Println("library table: not duplicates:", err)
@@ -421,6 +428,9 @@ type bulkResult struct {
 	Unchanged int           `json:"unchanged"` // books the edit made no difference to
 	Failed    []bulkFailure `json:"failed"`
 	Books     []tableBook   `json:"books"` // the changed books' rows, as they are now
+	// Job: the queued change (bulk_queue.go) the counts and rows foresee;
+	// 0 when it was made before answering.
+	Job int64 `json:"job,omitempty"`
 }
 
 // bulkEditBooks makes the edit to each book.
@@ -431,47 +441,96 @@ func bulkEditBooks(uuids []string, edit *bulkEdit) bulkResult {
 // bulkEditBooksAs is bulkEditBooks by a user, each change logged
 // (editlog.go).
 func bulkEditBooksAs(uuids []string, edit *bulkEdit, by *User) bulkResult {
-	bulkMu.Lock()
-	defer bulkMu.Unlock()
 	res := bulkResult{Failed: []bulkFailure{}, Books: []tableBook{}}
 	var changed []string
 	for _, u := range uuids {
-		m, err := bookEditMetadata(u)
-		if err != nil {
+		ok, _, err := bulkEditBook(u, edit, by, "")
+		switch {
+		case err != nil:
 			res.Failed = append(res.Failed, bulkFailure{u, err.Error()})
-			continue
-		}
-		before := snapBook(u)
-		if !edit.apply(m) {
+		case ok:
+			changed = append(changed, u)
+		default:
 			res.Unchanged++
-			continue
 		}
-		if _, err := updateBookInCalibreDB(calibreDB, baseDir, u, m); err != nil {
-			log.Printf("bulk edit %s: %v", u, err)
-			res.Failed = append(res.Failed, bulkFailure{u, err.Error()})
-			continue
-		}
-		bookMetadataCache.Delete(u)
-		if before != nil {
-			logBookEdit(by, "bulk edit", u, before)
-		}
-		changed = append(changed, u)
 	}
 	res.Changed = len(changed)
-	if len(changed) > 0 {
-		catalogChanged(changed...)
-		refreshPagesFor(changed...) // edits don't change the order
-		refreshAllCaches()
-		for chunk := range slices.Chunk(changed, 500) {
-			rows, err := tableBooks(calibreDB, chunk)
-			if err != nil {
-				log.Println("bulk edit: reading rows back:", err)
-				break
-			}
-			res.Books = append(res.Books, rows...)
+	res.Books = bulkEditsMade(changed)
+	return res
+}
+
+// bulkEditBook makes the edit to one book, taking bulkMu, and says whether
+// it changed anything and the book's last_modified after. With expect, it's
+// written only if the book's last_modified is still that
+// (errChangedElsewhere if not). A panic is this book's error, not the
+// server's end.
+func bulkEditBook(u string, edit *bulkEdit, by *User, expect string) (changed bool, modified string, err error) {
+	bulkMu.Lock()
+	defer bulkMu.Unlock()
+	defer func() {
+		if p := recover(); p != nil {
+			log.Printf("bulk edit %s: panic: %v\n%s", u, p, debug.Stack())
+			changed, err = false, fmt.Errorf("internal error: %v", p)
+		}
+	}()
+	if bulkEditBookHook != nil {
+		bulkEditBookHook(u)
+	}
+	if expect != "" {
+		cur, err := bookModified(calibreDB, u)
+		if err != nil {
+			return false, "", err
+		}
+		if cur == "" {
+			return false, "", fmt.Errorf("%w: %s", errNoSuchBook, u)
+		}
+		if cur != expect {
+			return false, cur, errChangedElsewhere
 		}
 	}
-	return res
+	m, err := bookEditMetadata(u)
+	if err != nil {
+		return false, "", err
+	}
+	before := snapBook(u)
+	if !edit.apply(m) {
+		return false, expect, nil
+	}
+	if _, modified, err = updateBookIfUnchanged(calibreDB, baseDir, u, m, expect); err != nil {
+		log.Printf("bulk edit %s: %v", u, err)
+		return false, "", err
+	}
+	bookMetadataCache.Delete(u)
+	if before != nil {
+		logBookEdit(by, "bulk edit", u, before)
+	}
+	return true, modified, nil
+}
+
+// bulkEditBookHook, in tests, runs as each book is made.
+var bulkEditBookHook func(uuid string)
+
+// bulkEditsMade brings the catalog and caches up to date with the changed
+// books, and answers their rows as they are now.
+func bulkEditsMade(changed []string) []tableBook {
+	rows := []tableBook{}
+	if len(changed) == 0 {
+		return rows
+	}
+	bulkMu.Lock()
+	defer bulkMu.Unlock()
+	catalogChanged(changed...)
+	refreshPagesFor(changed...) // edits don't change the order
+	refreshAllCaches()
+	for chunk := range slices.Chunk(changed, 500) {
+		got, err := tableBooks(calibreDB, chunk)
+		if err != nil {
+			log.Println("bulk edit: reading rows back:", err)
+			break
+		}
+		rows = append(rows, got...)
+	}
+	return rows
 }
 
 type bulkEditRequest struct {
@@ -511,6 +570,9 @@ func (req *bulkEditRequest) validate() error {
 	return nil
 }
 
+// bulkEditHandler queues the edit (bulk_queue.go) and answers at once,
+// with the rows as they will be: the library may be on slow storage, and
+// the editor shouldn't wait for it.
 func bulkEditHandler(w http.ResponseWriter, r *http.Request) {
 	var req bulkEditRequest
 	if err := json.NewDecoder(http.MaxBytesReader(w, r.Body, 8<<20)).Decode(&req); err != nil {
@@ -521,12 +583,17 @@ func bulkEditHandler(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, err.Error(), http.StatusBadRequest)
 		return
 	}
-	res := bulkEditBooksAs(uniqueStrings(req.UUIDs), &req.Edit, currentUser(r))
-	if res.Changed > 0 {
-		log.Printf("bulk edit: %s changed %d book(s) (%d unchanged, %d failed)", currentUser(r).Username, res.Changed, res.Unchanged, len(res.Failed))
+	res, err := queueBulkEdit(uniqueStrings(req.UUIDs), &req.Edit, currentUser(r))
+	if errors.Is(err, errBulkStopping) {
+		http.Error(w, err.Error(), http.StatusServiceUnavailable)
+		return
 	}
-	w.Header().Set("Content-Type", "application/json")
-	logErr(json.NewEncoder(w).Encode(res), "encode bulk edit")
+	if err != nil {
+		log.Println("bulk edit: queueing:", err)
+		http.Error(w, "couldn't queue the change: "+err.Error(), http.StatusInternalServerError)
+		return
+	}
+	writeJSON(w, http.StatusAccepted, res)
 }
 
 // uniqueStrings drops repeats, keeping the first of each in order.
