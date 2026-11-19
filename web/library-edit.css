@@ -128,6 +128,17 @@
     color: #e59999;
 }
 
+.lt-saving {
+    flex: none;
+    font-size: 0.8rem;
+    color: var(--text-secondary);
+    white-space: nowrap;
+}
+
+.lt-saving[hidden] {
+    display: none;
+}
+
 /* ── The table ── */
 
 .lt-scroll {

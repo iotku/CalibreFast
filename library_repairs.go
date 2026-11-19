@@ -24,7 +24,7 @@ import (
 func registerLibraryRepairRoutes() {
 	http.HandleFunc("GET /admin/repairs", requireWrites(libraryRepairsPage))
 	http.HandleFunc("GET /api/admin/repairs", requireWrites(libraryRepairsCheck))
-	http.HandleFunc("POST /api/admin/repairs/format-names", requireWrites(repairFormatNamesHandler))
+	http.HandleFunc("POST /api/admin/repairs/format-names", requireWrites(afterBulkEdits(repairFormatNamesHandler)))
 }
 
 func libraryRepairsPage(w http.ResponseWriter, r *http.Request) {

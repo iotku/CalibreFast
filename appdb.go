@@ -386,6 +386,19 @@ var migrations = []string{
 		PRIMARY KEY (user_id, book_uuid, field)
 	) WITHOUT ROWID;
 	`,
+	// 23: bulk editor changes waiting to be written to the library
+	// (bulk_queue.go), so a stop or crash doesn't lose them. A row goes when
+	// its change has been made to every book. done: books already written.
+	`
+	CREATE TABLE bulk_edit_queue (
+		id         INTEGER PRIMARY KEY,
+		uuids      TEXT    NOT NULL,              -- JSON array
+		edit       TEXT    NOT NULL,              -- JSON bulkEdit
+		user_id    INTEGER REFERENCES users(id) ON DELETE SET NULL,
+		done       INTEGER NOT NULL DEFAULT 0,
+		created_at INTEGER NOT NULL
+	);
+	`,
 }
 
 // openAppDB opens (creating if needed) and migrates the app database.

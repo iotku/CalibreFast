@@ -31,6 +31,7 @@ func setupRecycleLibrary(t *testing.T) *sql.DB {
 	})
 	t.Chdir(t.TempDir()) // pages/*.json
 	setupTestAppDB(t)
+	t.Cleanup(waitBulkEdits) // queued changes are made before the databases go
 	if _, err := db.Exec(`
 	CREATE TABLE custom_column_1 (id INTEGER PRIMARY KEY, value TEXT NOT NULL, UNIQUE(value));
 	CREATE TABLE books_custom_column_1_link (id INTEGER PRIMARY KEY, book INTEGER NOT NULL, value INTEGER NOT NULL, UNIQUE(book, value));

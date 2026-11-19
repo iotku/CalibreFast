@@ -140,7 +140,7 @@ func TestBulkEditHTTP(t *testing.T) {
 	}
 	rec = post(`{"uuids":["` + a.uuid + `","00000000-0000-0000-0000-000000000000"],"edit":{"add_tags":["x"]}}`)
 	var res bulkResult
-	if err := json.Unmarshal(rec.Body.Bytes(), &res); err != nil || rec.Code != 200 {
+	if err := json.Unmarshal(rec.Body.Bytes(), &res); err != nil || rec.Code != http.StatusAccepted || res.Job == 0 {
 		t.Fatalf("%d %s", rec.Code, rec.Body)
 	}
 	if res.Changed != 1 || len(res.Failed) != 1 || res.Failed[0].UUID != "00000000-0000-0000-0000-000000000000" {
