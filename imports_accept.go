@@ -3,8 +3,10 @@ package main
 // Mass import (/import, admins only): every waiting book is added with the
 // metadata its files offered, unreviewed. The admin fixes what's wrong
 // later. Covers: the page has already given each book without one its
-// EPUB's cover or its PDF's first page (web/imports.ts), and the server
-// tries its own files once more (import_covers.go).
+// EPUB's cover or its PDF's first page (web/imports.ts), finding the next
+// books' covers while the server adds one, and the server tries the files
+// itself unless its cover worker already has (import_covers.go: reading a
+// large PDF again would only find nothing again).
 //
 // Nothing is forced: a book the library may already have (an identical
 // file, or the same title and authors), new files for a library book
@@ -93,7 +95,7 @@ func acceptImport(it *pendingImport, by *User) (uuid, reason string) {
 	if _, _, err := opf.CleanSeries(meta.Series, meta.SeriesIndex); err != nil {
 		return "", err.Error()
 	}
-	extractImportCover(imports.itemDir(it.ID), it.Files)
+	imports.coverFromFiles(it) // the page found none either (or it would be there)
 	uuid, err := imports.approve(it.ID, meta, false)
 	if errors.Is(err, fs.ErrNotExist) {
 		return "", ""

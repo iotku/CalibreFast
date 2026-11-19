@@ -193,6 +193,11 @@ declare namespace PdfJS {
         /** The whole file, once it has all arrived. */
         getData(): Promise<Uint8Array>;
     }
+    /** pdf.js asks for bytes [begin, end) with requestDataRange; they're handed over with onDataRange. */
+    interface RangeTransport {
+        requestDataRange(begin: number, end: number): void;
+        onDataRange(begin: number, chunk: Uint8Array): void;
+    }
     interface LoadOptions {
         /** Fetch only what's asked for, not the rest in the background. */
         disableAutoFetch?: boolean;
@@ -209,8 +214,11 @@ declare namespace PdfJS {
             src: LoadOptions & {
                 /** Where to read it from (in ranges, while the rest streams in), or… */
                 url?: string;
-                /** …the whole file, already in memory (pdf.js takes it over). */
+                /** …the whole file, already in memory (pdf.js takes it over), or… */
                 data?: Uint8Array;
+                /** …parts of it, as pdf.js asks for them (openPdfRanges). */
+                range?: RangeTransport;
+                rangeChunkSize?: number;
                 wasmUrl?: string;
                 cMapUrl?: string;
                 cMapPacked?: boolean;
@@ -221,7 +229,11 @@ declare namespace PdfJS {
             promise: Promise<Document>;
             /** Called as the file arrives: bytes so far, and in all (0 when unknown). */
             onProgress?: (p: { loaded: number; total: number }) => void;
+            /** Stops loading: the promise rejects. */
+            destroy(): Promise<void>;
         };
+        /** A PDF of length bytes whose start (initialData) is known; the rest is asked for. */
+        PDFDataRangeTransport: new (length: number, initialData: Uint8Array | null) => RangeTransport;
         TextLayer: new (options: { textContentSource: ReadableStream; container: HTMLElement; viewport: Viewport }) => TextLayer;
     }
 }

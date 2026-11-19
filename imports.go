@@ -107,9 +107,10 @@ type importInbox struct {
 	mu    sync.Mutex
 	items map[string]*pendingImport
 
-	coverMu   sync.Mutex
-	coverIDs  []string      // waiting for extractImportCover (coverSoon)
-	coverWake chan struct{} // nil: no cover worker (tests), covers are taken at once
+	coverMu    sync.Mutex
+	coverIDs   []string        // waiting for extractImportCover (coverSoon)
+	coverWake  chan struct{}   // nil: no cover worker (tests), covers are taken at once
+	coverTried map[string]bool // books whose files were looked at for a cover since the server started
 
 	dupMu      sync.Mutex
 	dups       map[string]dupResult // duplicates, by id: the list's last check
@@ -343,6 +344,10 @@ func (b *importInbox) discard(id string) error {
 	return nil
 }
 
+// slowAdd: an add that takes longer is logged with how long each step
+// took (approve).
+const slowAdd = time.Second
+
 // approve adds a waiting book to the library with the metadata the admin
 // settled on, its chosen cover and all its files, and removes it from the
 // queue. If the book can't be added, it stays in the queue as it was.
@@ -357,7 +362,9 @@ func (b *importInbox) approve(id string, meta OPFMetadata, override bool) (bookU
 	}
 	dir := b.itemDir(id)
 
+	start := time.Now()
 	check, err := findDuplicates(calibreDB, baseDir, meta.Title, meta.Creators, b.dupFiles(it), "")
+	dupTime := time.Since(start)
 	if err != nil {
 		b.put(it)
 		return "", fmt.Errorf("checking for duplicates: %w", err)
@@ -385,7 +392,8 @@ func (b *importInbox) approve(id string, meta OPFMetadata, override bool) (bookU
 	// The cover and the editor's metadata go in with the book, and the
 	// queue folder is removed once it's in (add_journal.go: finishAdd), so
 	// even a crash part way through leaves the book here or there, whole.
-	opts := addOptions{Import: &addJournalImport{Dir: dir, Meta: book.OPFMetadata, SeriesSet: book.SeriesSet}}
+	var timing addTiming
+	opts := addOptions{Import: &addJournalImport{Dir: dir, Meta: book.OPFMetadata, SeriesSet: book.SeriesSet}, Timing: &timing}
 	if _, err := os.Stat(filepath.Join(dir, "cover.jpg")); err == nil {
 		opts.Cover = filepath.Join(dir, "cover.jpg")
 	}
@@ -393,6 +401,15 @@ func (b *importInbox) approve(id string, meta OPFMetadata, override bool) (bookU
 	if err != nil {
 		b.put(it)
 		return "", err
+	}
+	if took := time.Since(start); took >= slowAdd {
+		var size int64
+		for _, f := range it.Files {
+			size += f.Size
+		}
+		log.Printf("imports: adding %q took %v: duplicate check %v, files %v (%.1f MB into the library), database %v, last steps %v",
+			meta.Title, took.Round(time.Millisecond), dupTime.Round(time.Millisecond), timing.Files.Round(time.Millisecond),
+			float64(size)/1e6, timing.Database.Round(time.Millisecond), timing.Finish.Round(time.Millisecond))
 	}
 	// What each file said stays on offer in the editor, as after an upload.
 	bookMetadataCache.Store(bookUUID, it.Sources)

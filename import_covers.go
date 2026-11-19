@@ -88,6 +88,7 @@ func (b *importInbox) startCoverWorker() {
 				b.coverMu.Unlock()
 				if it := b.get(id); it != nil { // not added or discarded meanwhile
 					extractImportCover(b.itemDir(id), it.Files)
+					b.triedCover(id)
 				}
 			}
 		}
@@ -106,6 +107,7 @@ func (b *importInbox) coverSoon(id string) {
 	if wake == nil {
 		if it := b.get(id); it != nil {
 			extractImportCover(b.itemDir(id), it.Files)
+			b.triedCover(id)
 		}
 		return
 	}
@@ -113,6 +115,33 @@ func (b *importInbox) coverSoon(id string) {
 	case wake <- struct{}{}:
 	default: // already woken: it looks at coverIDs before sleeping
 	}
+}
+
+// triedCover notes that the book's files were looked at for a cover, so
+// Mass Import doesn't read them again (a large PDF is read whole) when there
+// was none: the files haven't changed.
+func (b *importInbox) triedCover(id string) {
+	b.coverMu.Lock()
+	defer b.coverMu.Unlock()
+	if b.coverTried == nil {
+		b.coverTried = map[string]bool{}
+	}
+	b.coverTried[id] = true
+}
+
+// coverFromFiles is extractImportCover for a book about to be added,
+// unless its files were already looked at: then whether it has a cover.
+func (b *importInbox) coverFromFiles(it *pendingImport) bool {
+	b.coverMu.Lock()
+	tried := b.coverTried[it.ID]
+	b.coverMu.Unlock()
+	if tried {
+		has, _ := coverFilesIn(b.itemDir(it.ID))
+		return has
+	}
+	ok := extractImportCover(b.itemDir(it.ID), it.Files)
+	b.triedCover(it.ID)
+	return ok
 }
 
 // writeNewCover saves data (from coverJPEG) as dir/cover.jpg, only if there
