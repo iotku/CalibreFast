@@ -111,8 +111,9 @@ func importTableRow(it *pendingImport) tableBook {
 var errNotWaiting = errors.New("no longer in the queue: added or discarded meanwhile")
 
 // editMerged makes the edit to each waiting book's Merged metadata. Each is
-// changed on a copy, written to its item.json, and the copy put in place
-// of the old one, all under b.mu, so a book being added or discarded (taken
+// changed on a copy, saved (saveEdit: to calibrefast.db at once, its
+// item.json in the background), and the copy put in place of the old one,
+// all under b.mu, so a book being added or discarded (taken
 // out of items first) is never edited, and whoever holds the old one (Mass
 // Import reading it) reads it whole. b.mu is let go between books, so the
 // queue's list answers during a long edit.
@@ -163,9 +164,7 @@ func (b *importInbox) editOne(id string, edit *bulkEdit) (*pendingImport, bool, 
 		// approve takes the series from Meta (SeriesSet isn't stored).
 		m.SyncSeriesMeta()
 	}
-	// The folder of the item found, by its own id: never a path made from
-	// the request's (which validate checked, and which named a queued book).
-	if err := writeItemJSON(b.itemDir(it.ID), next); err != nil {
+	if err := b.saveEdit(next); err != nil {
 		log.Printf("imports: editing %s: %v", id, err)
 		return nil, false, err
 	}

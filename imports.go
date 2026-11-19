@@ -114,6 +114,14 @@ type importInbox struct {
 	mu    sync.Mutex
 	items map[string]*pendingImport
 
+	// Quick edits' item.json writes (imports_edit_queue.go). flushMu is
+	// held while an item.json is written from items or a book is taken;
+	// lock it before mu, never while holding mu.
+	flushMu   sync.Mutex
+	dirty     map[string]int64 // under mu: books whose item.json is behind items, by journal version
+	editSeq   int64            // under mu: the last journal version
+	flushWake chan struct{}    // nil: no writer (tests), item.json is written at once
+
 	coverMu    sync.Mutex
 	coverIDs   []string        // waiting for extractImportCover (coverSoon)
 	coverWake  chan struct{}   // nil: no cover worker (tests), covers are taken at once
@@ -131,7 +139,7 @@ func openInbox(dir string) (*importInbox, error) {
 	if err := os.MkdirAll(dir, 0o700); err != nil {
 		return nil, err
 	}
-	b := &importInbox{dir: dir, items: map[string]*pendingImport{}}
+	b := &importInbox{dir: dir, items: map[string]*pendingImport{}, dirty: map[string]int64{}}
 	entries, err := os.ReadDir(dir)
 	if err != nil {
 		return nil, err
@@ -212,6 +220,14 @@ func (b *importInbox) get(id string) *pendingImport {
 // take removes a book from the queue for approving or discarding, so two
 // requests can't both act on it; put returns it if that fails.
 func (b *importInbox) take(id string) *pendingImport {
+	// No item.json write of it is under way once it's taken, and none starts.
+	b.flushMu.Lock()
+	defer b.flushMu.Unlock()
+	return b.takeLocked(id)
+}
+
+// takeLocked is take for a caller holding b.flushMu.
+func (b *importInbox) takeLocked(id string) *pendingImport {
 	b.mu.Lock()
 	it := b.items[id]
 	delete(b.items, id)
@@ -343,10 +359,19 @@ func waitingIn(dir string) int {
 
 // discard takes a waiting book out of the queue, to discardedDir.
 func (b *importInbox) discard(id string) error {
-	it := b.take(id)
+	b.flushMu.Lock()
+	it := b.takeLocked(id)
 	if it == nil {
+		b.flushMu.Unlock()
 		return fs.ErrNotExist
 	}
+	// Quick edits not yet in its item.json go with it (it can be restored).
+	if err := b.flushTaken(it); err != nil {
+		b.flushMu.Unlock()
+		b.put(it)
+		return fmt.Errorf("saving its edits first: %w", err)
+	}
+	b.flushMu.Unlock()
 	// Kept, not deleted: it may be someone's only copy, and the discard can
 	// be undone (editlog.go). Nothing on the web empties the folder.
 	if err := os.MkdirAll(b.discardedDir(), 0o700); err != nil {
@@ -429,6 +454,7 @@ func (b *importInbox) approve(id string, meta OPFMetadata, override bool) (bookU
 	}
 	// What each file said stays on offer in the editor, as after an upload.
 	bookMetadataCache.Store(bookUUID, it.Sources)
+	b.dropPending(id) // it's in the library: its quick edits went in with it
 	return bookUUID, nil
 }
 
@@ -853,6 +879,12 @@ func startImports() {
 	if imports, err = openInbox(dir); err != nil {
 		log.Fatal("import queue: ", err)
 	}
+	// Before anything reads the waiting books: edits not yet in their
+	// item.json (imports_edit_queue.go).
+	if err := imports.replayImportEdits(); err != nil {
+		log.Fatal("import queue: edits saved in the app database: ", err)
+	}
+	imports.startItemWriter()
 	if importDir != "" {
 		log.Printf("import queue: %s", dir)
 		// Books left in the old folder aren't moved (a copy across drives,

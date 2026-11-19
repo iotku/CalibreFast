@@ -288,6 +288,7 @@ func addFormatApplyHandler(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, err.Error(), status)
 		return
 	}
+	imports.dropPending(it.ID)
 	if rmErr := os.RemoveAll(imports.itemDir(it.ID)); rmErr != nil {
 		log.Printf("add format: couldn't remove %s: %v", imports.itemDir(it.ID), rmErr)
 	}

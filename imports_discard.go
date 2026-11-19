@@ -163,7 +163,10 @@ func fileNames(files []importFile) string {
 // files for library book into, unless into is "". Both keep their metadata
 // as their files say it.
 func (b *importInbox) splitOff(id string, names map[string]bool, into string) (*pendingImport, error) {
-	it := b.take(id)
+	// Held throughout: both item.json files are written here.
+	b.flushMu.Lock()
+	defer b.flushMu.Unlock()
+	it := b.takeLocked(id)
 	if it == nil {
 		return nil, fs.ErrNotExist
 	}
@@ -234,6 +237,9 @@ func (b *importInbox) splitOff(id string, names map[string]bool, into string) (*
 	}
 	b.put(&keep)
 	b.put(off)
+	// Both start again from what their files say: quick edits made before
+	// aren't replayed over them.
+	b.dropPendingLocked(id)
 	return off, nil
 }
 
