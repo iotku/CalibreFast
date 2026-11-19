@@ -1,5 +1,8 @@
 /* The bulk metadata editor (templates/library-edit.html, web/library-edit.ts).
-   The page doesn't scroll: the table does, both ways, under its sticky head. */
+   The page doesn't scroll: the table does, both ways, under its sticky head.
+   It runs edge to edge at every width: no side margins, borders or corners,
+   so the table gets the whole window (a phone scrolls sideways for the rest).
+   The toolbar keeps the page's spacing so its boxes don't touch the edges. */
 
 .lt-body {
     overflow: hidden;
@@ -9,7 +12,7 @@
 .lt-main {
     box-sizing: border-box;
     height: 100dvh;
-    padding: calc(var(--topbar-total) + 10px) var(--page-padding) 0;
+    padding: calc(var(--topbar-total) + 10px) 0 0;
     display: flex;
     flex-direction: column;
     gap: 8px;
@@ -20,6 +23,7 @@
     flex-wrap: wrap;
     align-items: center;
     gap: 8px 14px;
+    padding: 0 var(--page-padding);
 }
 
 .lt-toolbar .lt-search {
@@ -52,8 +56,7 @@
     font: inherit;
 }
 
-.lt-tool[hidden],
-#lt-split[hidden] {
+.lt-tool[hidden] {
     display: none;
 }
 
@@ -134,8 +137,8 @@
     /* Sideways swipes scroll the table, not the page or browser history */
     touch-action: pan-x pan-y;
     overscroll-behavior-x: contain;
-    border: 1px solid var(--border-light);
-    border-radius: var(--radius-small);
+    border-top: 1px solid var(--border-light);
+    border-bottom: 1px solid var(--border-light);
     background: var(--bg-secondary);
 }
 
@@ -144,9 +147,11 @@
 }
 
 .lt-table {
-    /* actions (Edit and a group's Merge or Not Dupe), tick box, then the columns */
+    /* actions (Edit and a group's Merge or Not Dupe), tick box, then the
+       columns. web/library-edit.ts (GRID) sets these, with any column a
+       drag has resized. */
     --lt-cols: 136px 34px minmax(220px, 2.2fr) minmax(150px, 1.4fr) 140px 150px 112px 170px minmax(180px, 2fr) 110px 96px;
-    min-width: 1526px;
+    min-width: 1498px;
 }
 
 .lt-row {
@@ -732,23 +737,142 @@
     margin: 0;
 }
 
-/* Below the width the whole table fits in (its min-width plus margins),
-   it runs edge to edge: no side margins, borders or corners, so a phone
-   shows as much of it as it can and scrolls sideways for the rest. The
-   toolbar keeps a little room so its boxes don't touch the edges. */
-@media (max-width: 1585px) {
-    .lt-main {
-        padding-left: 0;
-        padding-right: 0;
-    }
+/* A column's name: its right edge resizes the column (resizeHandle) */
+.lt-head-row .lt-head-cell {
+    position: relative;
+    padding-right: 12px;
+}
 
-    .lt-toolbar {
-        padding: 0 8px;
-    }
+.lt-resize {
+    position: absolute;
+    top: 0;
+    right: 0;
+    bottom: 0;
+    width: 10px;
+    cursor: col-resize;
+    touch-action: none;
+}
 
-    .lt-scroll {
-        border-left: 0;
-        border-right: 0;
-        border-radius: 0;
-    }
+.lt-resize::after {
+    content: "";
+    position: absolute;
+    top: 7px;
+    bottom: 7px;
+    right: 3px;
+    width: 2px;
+    border-radius: 1px;
+    background: var(--border-medium);
+}
+
+.lt-resize:hover::after,
+.lt-resize:focus-visible::after,
+.lt-resize.lt-resizing::after {
+    background: var(--status-reading);
+}
+
+.lt-resize:focus-visible {
+    outline: none;
+}
+
+.lt-resizing,
+body:has(.lt-resizing) {
+    cursor: col-resize;
+    user-select: none;
+}
+
+/* A tag in a row: its name filters, its ✕ removes it from the book */
+.lt-chip.lt-chip-tag {
+    display: inline-flex;
+    align-items: center;
+    padding: 0 0 0 7px;
+    cursor: default;
+}
+
+.lt-chip-label,
+.lt-chip-x {
+    all: unset;
+    line-height: 1.5;
+}
+
+.lt-chip-label {
+    min-width: 0;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+    cursor: pointer;
+}
+
+.lt-chip-x {
+    flex: none;
+    padding: 0 6px 0 4px;
+    font-size: 0.62rem;
+    color: var(--text-muted);
+    cursor: pointer;
+}
+
+.lt-chip-label:focus-visible,
+.lt-chip-x:focus-visible {
+    outline: 2px solid var(--status-reading);
+    outline-offset: -1px;
+    border-radius: var(--radius-round);
+}
+
+.lt-chip-x:hover,
+.lt-chip-x:focus-visible {
+    color: #e59999;
+}
+
+/* Removed with its ✕: struck through, with Undo */
+.lt-chip.lt-chip-removed {
+    border-style: dashed;
+    border-color: #ba7a7a;
+    background: rgba(186, 122, 122, 0.12);
+}
+
+.lt-chip-removed .lt-chip-label {
+    text-decoration: line-through;
+    color: #e59999;
+    cursor: default;
+}
+
+.lt-chip-x.lt-chip-undo,
+.lt-chip-x.lt-chip-undo:hover {
+    font-size: 0.7rem;
+    color: var(--status-reading);
+}
+
+.lt-chip-x.lt-chip-undo:hover {
+    text-decoration: underline;
+}
+
+.lt-rows .lt-list-cell > .lt-chip-tag:first-child,
+.lt-rows .lt-list-cell > .lt-cell-edit + .lt-chip-tag {
+    min-width: 4.5em;
+}
+
+/* The status line's Undo (the last tag change) */
+.lt-undo[hidden] {
+    display: none;
+}
+
+/* The edit dialog's tags and languages: ✕ to remove, Undo to keep */
+.lt-chip-count .lt-chip-mark {
+    margin-left: 6px;
+    font-size: 0.65rem;
+}
+
+.lt-chip-count[aria-pressed="true"] .lt-chip-mark {
+    color: var(--status-reading);
+    text-decoration: none;
+    display: inline-block;
+}
+
+.lt-dialog-small {
+    width: min(440px, calc(100vw - 32px));
+}
+
+.lt-split-summary {
+    min-height: 2.4em;
+    margin-top: 8px;
+    overflow-wrap: anywhere;
 }
