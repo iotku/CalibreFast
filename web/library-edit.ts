@@ -57,6 +57,28 @@ const COLUMNS: Column[] = [
     { key: "added", label: "Added", text: (b) => b.added, blank: (b) => !b.added },
 ];
 
+/**
+ * The grid's columns, in order, with their usual widths (as --lt-cols in
+ * library-edit.css) and the least each takes. A column dragged wider or
+ * narrower gets a width of its own (colWidths), kept in localStorage.
+ */
+const GRID: { key: "actions" | "check" | ColKey; def: string; min: number }[] = [
+    { key: "actions", def: "136px", min: 136 },
+    { key: "check", def: "34px", min: 34 },
+    { key: "title", def: "minmax(220px, 2.2fr)", min: 220 },
+    { key: "authors", def: "minmax(150px, 1.4fr)", min: 150 },
+    { key: "series", def: "140px", min: 140 },
+    { key: "publisher", def: "150px", min: 150 },
+    { key: "pubdate", def: "112px", min: 112 },
+    { key: "languages", def: "170px", min: 170 },
+    { key: "tags", def: "minmax(180px, 2fr)", min: 180 },
+    { key: "formats", def: "110px", min: 110 },
+    { key: "added", def: "96px", min: 96 },
+];
+const COL_MIN = 56;
+const COL_MAX = 2000;
+const COL_WIDTHS_KEY = "cf-bulk-col-widths";
+
 /** What the Formats filter matches for files only in a book's folder, not in metadata.db. */
 const FOLDER_ONLY = "folder only";
 
@@ -186,7 +208,7 @@ let tagCheck: TagCheck = "";
 const TAG_LEN_DEFAULT = 40;
 /** "long": tags longer than this many characters. */
 let tagLen = TAG_LEN_DEFAULT;
-/** The tag separator "Split tags on ;" splits on (Go: bulkEdit.SplitTags). */
+/** The tag separator "Split on ;" splits on (Go: bulkEdit.SplitTags). */
 const SPLIT_SEP = ";";
 let sortKey: ColKey = "title";
 let sortDesc = false;
@@ -209,11 +231,34 @@ const bar = byId("lt-bar");
 const selectedEl = byId("lt-selected");
 const mergeBtn = byId("lt-merge", HTMLButtonElement);
 
+const undoBtn = byId("lt-undo", HTMLButtonElement);
+/** What the status line's Undo does: the last tag change, until something else is said. */
+let undoAction: (() => Promise<void>) | null = null;
+
 function say(text: string, kind: "ok" | "error" | "" = ""): void {
+    undoAction = null;
+    undoBtn.hidden = true;
     statusEl.hidden = !text;
     statusEl.textContent = statusEl.title = text;
     statusEl.className = `lt-status${kind ? ` ${kind}` : ""}`;
 }
+
+function offerUndo(text: string, action: () => Promise<void>): void {
+    say(text, "ok");
+    undoAction = action;
+    undoBtn.hidden = false;
+}
+
+undoBtn.addEventListener("click", async () => {
+    const action = undoAction;
+    if (!action) return;
+    undoBtn.disabled = true;
+    try {
+        await action();
+    } finally {
+        undoBtn.disabled = false;
+    }
+});
 
 const n = (k: number): string => k.toLocaleString();
 const plural = (k: number, one: string, many = `${one}s`): string => `${n(k)} ${k === 1 ? one : many}`;
@@ -242,6 +287,95 @@ function clearable(input: HTMLInputElement, label: string): HTMLElement {
     return el("span", { className: "lt-clearable" }, input, x);
 }
 
+// ---------------------------------------------------------------------------
+// Column widths: drag the edge of a column's name (or use ←/→ on it)
+// ---------------------------------------------------------------------------
+
+const colWidths: Partial<Record<string, number>> = {};
+try {
+    const saved = JSON.parse(localStorage.getItem(COL_WIDTHS_KEY) ?? "{}") as unknown;
+    if (saved && typeof saved === "object") {
+        for (const g of GRID) {
+            const w = (saved as Record<string, unknown>)[g.key];
+            if (typeof w === "number" && w >= COL_MIN && w <= COL_MAX) colWidths[g.key] = Math.round(w);
+        }
+    }
+} catch {
+    /* no storage: the usual widths */
+}
+
+function saveColWidths(): void {
+    try {
+        if (Object.keys(colWidths).length) localStorage.setItem(COL_WIDTHS_KEY, JSON.stringify(colWidths));
+        else localStorage.removeItem(COL_WIDTHS_KEY);
+    } catch {
+        /* this page's widths only */
+    }
+}
+
+/** The grid's columns, with any widths set here; the table is at least as wide as they need. */
+function applyColWidths(): void {
+    table.style.setProperty("--lt-cols", GRID.map((g) => (colWidths[g.key] ? `${colWidths[g.key]}px` : g.def)).join(" "));
+    table.style.minWidth = `${GRID.reduce((t, g) => t + (colWidths[g.key] ?? g.min), 0)}px`;
+}
+
+/** The handle on the right edge of a column's name. */
+function resizeHandle(c: Column): HTMLElement {
+    const grip = el("span", {
+        className: "lt-resize",
+        role: "separator",
+        tabIndex: 0,
+        title: "Drag to resize; double-click for the usual width",
+        ariaLabel: `Resize the ${c.label.toLowerCase()} column`,
+    });
+    grip.setAttribute("aria-orientation", "vertical");
+    const width = (): number => grip.parentElement!.getBoundingClientRect().width;
+    const set = (w: number): void => {
+        colWidths[c.key] = Math.round(Math.min(COL_MAX, Math.max(COL_MIN, w)));
+        applyColWidths();
+    };
+    const done = (): void => {
+        saveColWidths();
+        draw(true); // chips that fit (or don't) now
+    };
+    grip.addEventListener("pointerdown", (e) => {
+        if (e.button !== 0) return;
+        e.preventDefault();
+        const x0 = e.clientX;
+        const w0 = width();
+        grip.setPointerCapture(e.pointerId);
+        grip.classList.add("lt-resizing");
+        let frame = 0;
+        const move = (ev: PointerEvent): void => {
+            cancelAnimationFrame(frame);
+            frame = requestAnimationFrame(() => set(w0 + ev.clientX - x0));
+        };
+        const up = (): void => {
+            cancelAnimationFrame(frame);
+            grip.removeEventListener("pointermove", move);
+            grip.removeEventListener("pointerup", up);
+            grip.removeEventListener("pointercancel", up);
+            grip.classList.remove("lt-resizing");
+            done();
+        };
+        grip.addEventListener("pointermove", move);
+        grip.addEventListener("pointerup", up);
+        grip.addEventListener("pointercancel", up);
+    });
+    grip.addEventListener("dblclick", () => {
+        delete colWidths[c.key];
+        applyColWidths();
+        done();
+    });
+    grip.addEventListener("keydown", (e) => {
+        if (e.key !== "ArrowLeft" && e.key !== "ArrowRight") return;
+        e.preventDefault();
+        set(width() + (e.key === "ArrowRight" ? 16 : -16));
+        done();
+    });
+    return grip;
+}
+
 function buildHead(): void {
     const titles = el("div", { className: "lt-row lt-head-row", role: "row" }, el("span", { className: "lt-cell lt-check" }, allBox));
     const boxes = el("div", { className: "lt-row lt-filter-row", role: "row" }, el("span", { className: "lt-cell lt-check" }));
@@ -267,7 +401,7 @@ function buildHead(): void {
             refresh();
         });
         blankBoxes.set(c.key, blank);
-        titles.append(el("span", { className: `lt-cell lt-col-${c.key} lt-head-cell`, role: "columnheader" }, btn, blank));
+        titles.append(el("span", { className: `lt-cell lt-col-${c.key} lt-head-cell`, role: "columnheader" }, btn, blank, resizeHandle(c)));
 
         const input = el("input", {
             type: "search",
@@ -465,7 +599,10 @@ function draw(force = false): void {
  */
 function addMore(cell: HTMLElement): void {
     const chips = [...cell.querySelectorAll<HTMLElement>(".lt-chip")];
-    const cut = (c: HTMLElement): boolean => c.scrollWidth > c.clientWidth + 1;
+    const cut = (c: HTMLElement): boolean => {
+        const t = c.querySelector<HTMLElement>(".lt-chip-label") ?? c;
+        return t.scrollWidth > t.clientWidth + 1;
+    };
     if (chips.length === 0 || (cell.scrollWidth <= cell.clientWidth + 1 && !chips.some(cut))) return;
     cell.classList.add("lt-has-more"); // room for the button
     const limit = cell.getBoundingClientRect().right - parseFloat(getComputedStyle(cell).paddingRight);
@@ -526,6 +663,38 @@ function chip(col: ColKey, value: string): HTMLElement {
     );
 }
 
+/**
+ * Tags removed with a chip's ✕, by book: shown struck through at the end of
+ * the book's tags, with Undo, as in the metadata editor (while the book
+ * doesn't have them again).
+ */
+const removedTags = new Map<string, string[]>();
+const sameTag = (a: string, b: string): boolean => a.toLowerCase() === b.toLowerCase();
+
+/** A tag in a row: its name filters by it, its ✕ removes it from the book. */
+function tagChip(value: string): HTMLElement {
+    const c = el(
+        "span",
+        { className: "lt-chip lt-chip-tag" },
+        el("button", { type: "button", className: "lt-chip-label", title: `Show only books with ${value}` }, value),
+        el("button", { type: "button", className: "lt-chip-x", title: `Remove ${value} from this book`, ariaLabel: `Remove the tag ${value}` }, "✕"),
+    );
+    c.dataset["value"] = value;
+    return c;
+}
+
+/** A tag removed with its ✕: Undo puts it back. */
+function removedChip(value: string): HTMLElement {
+    const c = el(
+        "span",
+        { className: "lt-chip lt-chip-tag lt-chip-removed", title: `Removed from this book` },
+        el("span", { className: "lt-chip-label" }, value),
+        el("button", { type: "button", className: "lt-chip-x lt-chip-undo", title: `Put ${value} back`, ariaLabel: `Put the tag ${value} back` }, "Undo"),
+    );
+    c.dataset["value"] = value;
+    return c;
+}
+
 function rowElement(r: Row, i: number): HTMLElement {
     const b = r.b;
     const on = selected.has(b.uuid);
@@ -553,10 +722,13 @@ function rowElement(r: Row, i: number): HTMLElement {
                 cell.append(pen);
             }
             for (const v of values) {
-                const ch = chip(c.key, v);
+                const ch = c.key === "tags" ? tagChip(v) : chip(c.key, v);
                 ch.dataset["value"] = v;
                 if (unlisted) ch.classList.add("lt-chip-unlisted");
                 cell.append(ch);
+            }
+            if (c.key === "tags") {
+                for (const t of removedTags.get(b.uuid) ?? []) if (!values.some((v) => sameTag(v, t))) cell.append(removedChip(t));
             }
             cell.title = unlisted
                 ? `${values.join(", ")}: in the book's folder, but metadata.db lists no files for this book, so Calibre doesn't show them (CalibreFast reads the folder). Filter Formats by “folder” to find these books.`
@@ -619,7 +791,16 @@ function selectionChanged(): void {
     bar.hidden = k === 0;
     selectedEl.textContent = `${plural(k, "book")} selected`;
     mergeBtn.disabled = k < 2 || k > MERGE_MAX;
-    splitBtn.hidden = !rows.some((r) => selected.has(r.b.uuid) && r.b.tags.some((t) => t.includes(SPLIT_SEP)));
+    const books = selectedBooks();
+    if (tagCheck === "semicolon") {
+        splitBtn.textContent = `Split on ${SPLIT_SEP}`;
+        splitBtn.title = `Make each tag with a ${SPLIT_SEP} in it the tags it lists (Undo puts them back)`;
+        splitBtn.disabled = !books.some((b) => b.tags.some((t) => t.includes(SPLIT_SEP)));
+    } else {
+        splitBtn.textContent = "Split tags…";
+        splitBtn.title = "Split the selected books' tags on a separator you choose (Undo puts them back)";
+        splitBtn.disabled = !books.some((b) => b.tags.length > 0);
+    }
     mergeBtn.title = k > MERGE_MAX ? `At most ${MERGE_MAX} books at a time` : "Make the selected books one book, with every format";
     const shownSelected = shown.reduce((t, r) => t + (selected.has(r.b.uuid) ? 1 : 0), 0);
     allBox.checked = shown.length > 0 && shownSelected === shown.length;
@@ -691,7 +872,14 @@ body.addEventListener("click", (e) => {
         void unmarkNotDuplicates(Number(un.dataset["set"]));
         return;
     }
+    const x = target.closest<HTMLElement>(".lt-chip-x");
+    if (x) {
+        const tag = x.closest<HTMLElement>(".lt-chip")?.dataset["value"];
+        if (tag !== undefined) void (x.classList.contains("lt-chip-undo") ? putTagBack(uuid, tag) : removeTag(uuid, tag));
+        return;
+    }
     const ch = target.closest<HTMLElement>(".lt-chip");
+    if (ch?.classList.contains("lt-chip-removed")) return;
     if (ch) {
         const col = ch.closest<HTMLElement>("[data-col]")?.dataset["col"] as ColKey | undefined;
         const input = col && filterInputs.get(col);
@@ -768,12 +956,148 @@ byId("lt-remove").addEventListener("click", async () => {
 async function sendEdit(uuids: string[], edit: BulkEdit): Promise<BulkResult> {
     const res = await api<BulkResult>("POST", "/api/library/bulk", { uuids, edit });
     const fresh = new Map(res.books.map((b) => [b.uuid, b]));
-    rows = rows.map((r) => {
+    // In the rows shown too, in place: a change needn't move or hide its row.
+    const made = new Map<string, Row>();
+    const swap = (r: Row): Row => {
         const b = fresh.get(r.b.uuid);
-        return b ? makeRow(b) : r;
-    });
+        if (!b) return r;
+        let x = made.get(b.uuid);
+        if (!x) {
+            x = makeRow(b);
+            x.dupKey = r.dupKey;
+            x.group = r.group;
+            made.set(b.uuid, x);
+        }
+        return x;
+    };
+    rows = rows.map(swap);
+    shown = shown.map(swap);
     changedHere++;
     return res;
+}
+
+// ---------------------------------------------------------------------------
+// Tag changes that can be undone: a tag's ✕, and splitting tags
+// ---------------------------------------------------------------------------
+
+interface TagChange {
+    uuid: string;
+    before: string[];
+    after: string[];
+}
+
+/**
+ * After a tag change: filter and sort again, or (refilter false) only redraw,
+ * so the rows stay where they are (and a removed tag's Undo in reach), with
+ * the cell whose chips were open opened again.
+ */
+function settle(refilter: boolean): void {
+    const open = expanded ? { uuid: expanded.closest<HTMLElement>(".lt-row")?.dataset["uuid"], col: expanded.dataset["col"] } : null;
+    fillDatalists();
+    if (refilter) refresh();
+    else {
+        draw(true);
+        selectionChanged();
+    }
+    if (!open) return;
+    const cell = [...body.querySelectorAll<HTMLElement>(".lt-row")]
+        .find((row) => row.dataset["uuid"] === open.uuid)
+        ?.querySelector<HTMLElement>(`.lt-list-cell[data-col="${open.col}"]`);
+    if (cell) expand(cell);
+}
+
+/** Make a change to the books' tags; the books whose tags changed, or null if it failed. */
+async function tagEdit(books: TableBook[], edit: BulkEdit, refilter: boolean): Promise<TagChange[] | null> {
+    const before = new Map(books.map((b) => [b.uuid, b.tags]));
+    try {
+        const res = await sendEdit([...before.keys()], edit);
+        const changes = res.books
+            .filter((b) => before.has(b.uuid))
+            .map((b) => ({ uuid: b.uuid, before: before.get(b.uuid)!, after: b.tags }))
+            .filter((c) => c.before.join("\n") !== c.after.join("\n"));
+        settle(refilter);
+        if (res.failed.length) say(resultText(res), "error");
+        return changes;
+    } catch (err) {
+        say(`Couldn't change the tags: ${errorMessage(err)}`, "error");
+        settle(refilter);
+        return null;
+    }
+}
+
+/**
+ * Put the books' tags back as they were: take away the tags each change
+ * added and add back the ones it took away. Books needing the same edit
+ * share a request.
+ */
+async function undoTags(changes: TagChange[], refilter: boolean): Promise<void> {
+    const has = (list: string[], t: string): boolean => list.some((x) => sameTag(x, t));
+    const edits = new Map<string, { edit: BulkEdit; uuids: string[] }>();
+    for (const c of changes) {
+        const edit: BulkEdit = {};
+        const remove = c.after.filter((t) => !has(c.before, t));
+        const add = c.before.filter((t) => !has(c.after, t));
+        if (!remove.length && !add.length) continue;
+        // Untouched since (as this page knows it): the tags as they were, in
+        // their order. A tag with a comma can't go in that list.
+        const now = rows.find((r) => r.b.uuid === c.uuid)?.b.tags;
+        if (now && now.join("\n") === c.after.join("\n") && !c.before.some((t) => t.includes(","))) edit.tags = c.before.join(", ");
+        else {
+            if (remove.length) edit.remove_tags = remove;
+            if (add.length) edit.add_tags = add;
+        }
+        const key = JSON.stringify(edit);
+        const e = edits.get(key) ?? { edit, uuids: [] };
+        e.uuids.push(c.uuid);
+        edits.set(key, e);
+    }
+    say("Undoing…");
+    let changed = 0;
+    const failed: string[] = [];
+    try {
+        for (const { edit, uuids } of edits.values()) {
+            const res = await sendEdit(uuids, edit);
+            changed += res.changed;
+            failed.push(...res.failed.map((f) => f.error));
+        }
+        say(failed.length ? `Undone for ${plural(changed, "book")}; ${n(failed.length)} failed: ${failed.slice(0, 2).join("; ")}` : `Undone: ${plural(changed, "book")} as before.`, failed.length ? "error" : "ok");
+    } catch (err) {
+        say(`Couldn't undo: ${errorMessage(err)}`, "error");
+    }
+    settle(refilter);
+}
+
+/** A tag's ✕: the tag goes from that book now; the chip stays, struck through, with Undo. */
+async function removeTag(uuid: string, tag: string): Promise<void> {
+    const r = rows.find((x) => x.b.uuid === uuid);
+    if (!r) return;
+    const parked = removedTags.get(uuid) ?? [];
+    if (!parked.some((t) => sameTag(t, tag))) removedTags.set(uuid, [...parked, tag]);
+    const changes = await tagEdit([r.b], { remove_tags: [tag] }, false);
+    if (changes?.length) offerUndo(`Removed “${tag}” from “${r.b.title}”.`, () => undoTags(changes, false));
+}
+
+/** A removed tag's Undo. */
+async function putTagBack(uuid: string, tag: string): Promise<void> {
+    const r = rows.find((x) => x.b.uuid === uuid);
+    if (!r) return;
+    const changes = await tagEdit([r.b], { add_tags: [tag] }, false);
+    if (changes) say(`Put “${tag}” back on “${r.b.title}”.`, "ok");
+}
+
+/** Split the selected books' tags on sep, with Undo. */
+async function splitTags(sep: string): Promise<void> {
+    const books = selectedBooks().filter((b) => b.tags.some((t) => t.includes(sep)));
+    if (!books.length) {
+        say(`No selected book has a tag with “${sep}” in it.`);
+        return;
+    }
+    splitBtn.disabled = true;
+    say(`Splitting the tags of ${plural(books.length, "book")}…`);
+    const changes = await tagEdit(books, { split_tags: sep }, true);
+    if (changes?.length) offerUndo(`Split the tags of ${plural(changes.length, "book")} on “${sep}”.`, () => undoTags(changes, true));
+    else if (changes) say("No tags changed.");
+    selectionChanged();
 }
 
 function resultText(res: BulkResult): string {
@@ -923,13 +1247,19 @@ function presentChips(box: HTMLElement, values: Map<string, number>, marked: Set
     box.replaceChildren(
         ...(sorted.length
             ? sorted.map(([v, k]) => {
-                  const b = el("button", { type: "button", className: "lt-chip lt-chip-count" }, label(v), el("span", {}, String(k)));
-                  b.setAttribute("aria-pressed", String(marked.has(v)));
-                  b.title = `Remove from ${plural(k, "book")}`;
+                  const mark = el("span", { className: "lt-chip-mark" });
+                  const b = el("button", { type: "button", className: "lt-chip lt-chip-count" }, label(v), el("span", {}, String(k)), mark);
+                  const show = (): void => {
+                      const on = marked.has(v);
+                      b.setAttribute("aria-pressed", String(on));
+                      mark.textContent = on ? "Undo" : "✕";
+                      b.title = on ? `Keep it on ${plural(k, "book")}` : `Remove from ${plural(k, "book")}`;
+                  };
+                  show();
                   b.addEventListener("click", () => {
                       if (marked.has(v)) marked.delete(v);
                       else marked.add(v);
-                      b.setAttribute("aria-pressed", String(marked.has(v)));
+                      show();
                       updateSummary();
                   });
                   return b;
@@ -1059,23 +1389,46 @@ tagLenInput.addEventListener("input", () => {
     tagLen = v;
     scheduleRefresh();
 });
-splitBtn.addEventListener("click", async () => {
-    const uuids = selectedBooks()
-        .filter((b) => b.tags.some((t) => t.includes(SPLIT_SEP)))
-        .map((b) => b.uuid);
-    if (!uuids.length) return;
-    splitBtn.disabled = true;
-    say(`Splitting the tags of ${plural(uuids.length, "book")}…`);
-    try {
-        const res = await sendEdit(uuids, { split_tags: SPLIT_SEP });
-        say(resultText(res), res.failed.length ? "error" : "ok");
-        fillDatalists();
-        refresh();
-    } catch (err) {
-        say(`Couldn't split the tags: ${errorMessage(err)}`, "error");
-    } finally {
-        splitBtn.disabled = false;
-    }
+// Filtering by tags with ";": Split on ; at once. Otherwise: ask for the separator.
+splitBtn.addEventListener("click", () => {
+    if (tagCheck === "semicolon") void splitTags(SPLIT_SEP);
+    else openSplitDialog();
+});
+const splitDialog = byId("split-dialog", HTMLDialogElement);
+const splitForm = byId("split-form", HTMLFormElement);
+const splitSepInput = byId("split-sep", HTMLInputElement);
+const splitSummary = byId("split-summary");
+const splitApply = byId("split-apply", HTMLButtonElement);
+closeOnBackdropClick(splitDialog);
+let lastSep = SPLIT_SEP;
+
+function splitPreview(): void {
+    const sep = splitSepInput.value;
+    const books = sep ? selectedBooks().filter((b) => b.tags.some((t) => t.includes(sep))) : [];
+    const tags = [...new Set(books.flatMap((b) => b.tags.filter((t) => t.includes(sep))))];
+    splitSummary.textContent = !sep
+        ? "Type the separator."
+        : books.length
+          ? `Splits ${plural(tags.length, "tag")} in ${plural(books.length, "book")}: ${tags.slice(0, 3).map((t) => `“${t}”`).join(", ")}${tags.length > 3 ? "…" : ""}`
+          : `No selected book has a tag with “${sep}” in it.`;
+    splitApply.disabled = books.length === 0;
+}
+
+function openSplitDialog(): void {
+    splitSepInput.value = lastSep;
+    splitPreview();
+    splitDialog.showModal();
+    splitSepInput.select();
+}
+splitSepInput.addEventListener("input", splitPreview);
+byId("split-cancel").addEventListener("click", () => splitDialog.close());
+splitForm.addEventListener("submit", (e) => {
+    e.preventDefault();
+    const sep = splitSepInput.value;
+    if (!sep || splitApply.disabled) return;
+    lastSep = sep;
+    splitDialog.close();
+    void splitTags(sep);
 });
 onlySelectedBox.addEventListener("change", () => {
     onlySelected = onlySelectedBox.checked;
@@ -1152,6 +1505,7 @@ function loadView(): void {
 }
 
 async function start(): Promise<void> {
+    applyColWidths();
     loadView();
     buildHead();
     try {
