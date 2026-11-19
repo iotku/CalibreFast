@@ -1682,7 +1682,9 @@ function startChipEdit(chipEl: HTMLElement, uuid: string, key: "tags" | "languag
             key === "tags" ? { remove_tags: [before], ...(value ? { add_tags: [value] } : {}) } : { remove_languages: [before], ...(value ? { add_languages: [value] } : {}) };
         try {
             const res = await sendEdit([uuid], edit);
-            say(res.failed.length ? resultText(res) : `Saved “${res.books[0]?.title ?? r.b.title}”.`, res.failed.length ? "error" : "ok");
+            const what = key === "tags" ? "Tag" : "Language";
+            const text = value ? `${what} changed from ${quoted(before)} to ${quoted(value)} on “${shortText(r.b.title)}”.` : `${what} ${quoted(before)} removed from “${shortText(r.b.title)}”.`;
+            savedWithUndo(res, r.b, key === "tags" ? "tags" : "languages", key === "tags" ? "Tags" : "Languages", text);
         } catch (err) {
             say(`Couldn't save: ${errorMessage(err)}`, "error");
         }
@@ -1694,6 +1696,49 @@ function startChipEdit(chipEl: HTMLElement, uuid: string, key: "tags" | "languag
     input.select();
     wireEditKeys(input, finish);
     return true;
+}
+
+/** A value in a message: quoted (cut short if long), or "nothing". */
+const quoted = (v: string): string => (v.trim() ? `“${shortText(v.trim())}”` : "nothing");
+
+/** What a cell edit changed, for the status line: Authors changed from “A” to “B” on “Title”. */
+/** A column's field, in a message. */
+const fieldName = (col: Column): string => (col.key === "pubdate" ? "Published date" : col.label);
+
+function changeText(col: Column, before: string, after: string, title: string): string {
+    const what = fieldName(col);
+    const on = col.key === "title" ? "" : ` on “${shortText(title)}”`;
+    if (!before.trim()) return `${what} set to ${quoted(after)}${on}.`;
+    if (!after.trim()) return `${what} cleared${on} (was ${quoted(before)}).`;
+    return `${what} changed from ${quoted(before)} to ${quoted(after)}${on}.`;
+}
+
+/**
+ * After an edit to one book's field: say what changed (text), with Undo,
+ * which puts the field back as it was in was (the book before the edit).
+ */
+function savedWithUndo(res: BulkResult, was: TableBook, field: EditField, what: string, text: string): void {
+    const now = res.books[0];
+    if (res.failed.length || !now) {
+        say(res.failed.length ? resultText(res) : "Nothing changed.", res.failed.length ? "error" : "ok");
+        return;
+    }
+    if (field === "tags") {
+        const changes: TagChange[] = [{ uuid: was.uuid, before: was.tags, after: now.tags }];
+        offerUndo(text, () => undoTags(changes, true));
+        return;
+    }
+    offerUndo(text, async () => {
+        const value = cellValue(was, field);
+        say("Undoing…");
+        try {
+            const back = await sendEdit([was.uuid], field === "series" ? seriesEdit(value) : { [field]: value });
+            say(back.failed.length ? resultText(back) : value.trim() ? `Undone: ${what} back to ${quoted(value)}.` : `Undone: ${what} empty again.`, back.failed.length ? "error" : "ok");
+        } catch (err) {
+            say(`Couldn't undo: ${errorMessage(err)}`, "error");
+        }
+        refresh();
+    });
 }
 
 /** Edit a cell in place, with item (a tag or language) selected; false if it can't be edited (now). */
@@ -1739,7 +1784,8 @@ function startEdit(cell: HTMLElement, item?: string): boolean {
         input.disabled = true;
         try {
             const res = await sendEdit([uuid], field === "series" ? seriesEdit(value) : { [field]: value });
-            say(res.failed.length ? resultText(res) : `Saved “${res.books[0]?.title ?? r.b.title}”.`, res.failed.length ? "error" : "ok");
+            const after = res.books[0] ? cellValue(res.books[0], field) : value;
+            savedWithUndo(res, r.b, field, fieldName(col), changeText(col, before, after, r.b.title));
         } catch (err) {
             say(`Couldn't save: ${errorMessage(err)}`, "error");
         }
