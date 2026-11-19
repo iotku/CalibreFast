@@ -848,6 +848,7 @@ function mergeLink(uuids: string[]): string {
 body.addEventListener("click", (e) => {
     const target = e.target as HTMLElement;
     if (cellMenu?.contains(target)) return; // its items handle themselves
+    const openFor = cellMenu ? menuFor : "";
     closeCellMenu();
     const row = target.closest<HTMLElement>(".lt-row");
     const uuid = row?.dataset["uuid"];
@@ -906,9 +907,15 @@ body.addEventListener("click", (e) => {
         if (col.edit) clickTimer = window.setTimeout(fn, CLICK_WAIT);
         else fn();
     };
+    // The cell or chip whose menu is open: the click closes it.
+    const value = ch?.dataset["value"];
+    if (openFor && openFor === menuKey(uuid, col.key, value)) {
+        clearTimeout(clickTimer);
+        deselectCell();
+        return;
+    }
     if (ch) {
-        const value = ch.dataset["value"] ?? "";
-        run(() => selectChip(uuid, col.key, value, ch));
+        run(() => selectChip(uuid, col.key, value ?? "", ch));
         return;
     }
     if (target.closest(".lt-expanded")) return;
@@ -925,6 +932,10 @@ const CLICK_WAIT = 250;
 let clickTimer = 0;
 let selectedCell: { uuid: string; col: ColKey } | null = null;
 let cellMenu: HTMLElement | null = null;
+/** What the open menu is for (menuKey). */
+let menuFor = "";
+/** A cell's menu, or (with value) a chip's. */
+const menuKey = (uuid: string, col: ColKey, value?: string): string => JSON.stringify([uuid, col, value ?? null]);
 
 function setFilter(key: ColKey, value: string): void {
     const input = filterInputs.get(key);
@@ -937,6 +948,7 @@ function closeCellMenu(): void {
     cellMenu?.closest(".lt-row")?.classList.remove("lt-row-open");
     cellMenu?.remove();
     cellMenu = null;
+    menuFor = "";
 }
 
 function deselectCell(): void {
@@ -948,7 +960,7 @@ function deselectCell(): void {
 type MenuItem = [label: string, run: () => void];
 
 /** A menu under (or above) an item in a row, at left (px from the row's left). */
-function openMenu(row: HTMLElement, left: number, label: string, items: MenuItem[]): void {
+function openMenu(row: HTMLElement, left: number, label: string, items: MenuItem[], key: string): void {
     if (!items.length) return;
     const buttons = items.map(([text, run]) => {
         const btn = el("button", { type: "button", className: "lt-menu-item", role: "menuitem", title: text }, text);
@@ -963,6 +975,7 @@ function openMenu(row: HTMLElement, left: number, label: string, items: MenuItem
     row.classList.add("lt-row-open");
     row.append(menu);
     cellMenu = menu;
+    menuFor = key;
     // Up, if it would go past the bottom of the table.
     if (menu.getBoundingClientRect().bottom > scroller.getBoundingClientRect().bottom) menu.classList.add("lt-menu-up");
 }
@@ -1018,7 +1031,7 @@ function selectChip(uuid: string, key: ColKey, value: string, chipEl: HTMLElemen
     }
     items.push(copyItem(value));
     const left = chipEl.getBoundingClientRect().left - row.getBoundingClientRect().left;
-    openMenu(row, left, `${col.label}: ${value}, of “${r.b.title}”`, items);
+    openMenu(row, left, `${col.label}: ${value}, of “${r.b.title}”`, items, menuKey(uuid, key, value));
 }
 
 const shortText = (s: string): string => (s.length > 40 ? `${s.slice(0, 39)}…` : s);
@@ -1058,7 +1071,7 @@ function selectCell(uuid: string, key: ColKey): void {
     }
     if (col.edit) items.push([blank && !text ? "Add… (double-click)" : "Edit… (double-click)", () => editCell(uuid, key)]);
     if (text) items.push(copyItem(text));
-    openMenu(row, cell.offsetLeft, `${col.label} of “${b.title}”`, items);
+    openMenu(row, cell.offsetLeft, `${col.label} of “${b.title}”`, items, menuKey(uuid, key));
 }
 
 document.addEventListener("click", (e) => {
