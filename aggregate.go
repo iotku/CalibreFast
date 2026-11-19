@@ -133,6 +133,7 @@ type FilteredPageData struct {
 	NewPlaceholder string
 	TotalBooks     int
 	EmptyText      string         // shown when there are no books (default: "No books found.")
+	Series         []AuthorSeries // an author's series, shown above the books
 	Extra          map[string]any // page-specific extras (e.g. shelf controls)
 }
 
@@ -578,6 +579,9 @@ func filteredPageHandler(c *category) http.HandlerFunc {
 				q.Set("authors", name)
 			}
 			data.NewPlaceholder = "/missing/new?" + q.Encode()
+		}
+		if c.Key == "author" {
+			data.Series = authorSeries(members)
 		}
 		if m, ok := aggregateMetaFor(c.Key, name); ok {
 			data.Description, data.ImageURL = m.Description, m.imageURL()

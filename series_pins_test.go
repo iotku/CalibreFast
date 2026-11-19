@@ -278,3 +278,43 @@ func TestSavedBooksOnDeck(t *testing.T) {
 		t.Errorf("limit 1: %+v", got)
 	}
 }
+
+func TestAuthorSeries(t *testing.T) {
+	db, wheel, _ := seriesFixture(t)
+	solo := addTestBook(t, db, "Standalone", []string{"Writer"}, nil, "", "epub")
+	elsewhere := addTestBook(t, db, "Elsewhere", []string{"Someone Else"}, nil, "Third", "epub")
+	catalogChanged(solo, elsewhere)
+	if err := catalogFlush(); err != nil {
+		t.Fatal(err)
+	}
+	want := []AuthorSeries{
+		{Name: "Wheel", Href: "/series/Wheel", Count: 4},
+		{Name: "Other", Href: "/series/Other", Count: 2},
+	}
+	if got := authorSeries([]string{"writer"}); !slices.Equal(got, want) {
+		t.Errorf("authorSeries = %+v, want %+v (most books first, other authors' series left out)", got, want)
+	}
+	if got := authorSeries([]string{"Nobody"}); len(got) != 0 {
+		t.Errorf("unknown author: %+v", got)
+	}
+
+	// Cached per catalog: the same index until a book changes.
+	ix := currentAuthorSeriesIndex()
+	if currentAuthorSeriesIndex() != ix {
+		t.Error("index rebuilt without a change")
+	}
+	// Moving a book out of Wheel, as an edit does (catalogChanged), shows
+	// on the next page.
+	mustExec(t, db, `DELETE FROM books_series_link WHERE book = (SELECT id FROM books WHERE uuid = ?)`, wheel[0])
+	catalogChanged(wheel[0])
+	if err := catalogFlush(); err != nil {
+		t.Fatal(err)
+	}
+	if currentAuthorSeriesIndex() == ix {
+		t.Error("index not rebuilt after a change")
+	}
+	want[0].Count = 3
+	if got := authorSeries([]string{"Writer"}); !slices.Equal(got, want) {
+		t.Errorf("after the edit: %+v, want %+v", got, want)
+	}
+}

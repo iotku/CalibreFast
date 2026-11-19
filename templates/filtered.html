@@ -150,10 +150,17 @@
     </ul>
 </section>
 {{ end }}
-{{ if or .Description .ImageURL }}
+{{ if or .Description .ImageURL .Series }}
 <header class="agg-header">
     {{ if .ImageURL }}<img class="agg-header-img" src="{{ .ImageURL }}" alt="">{{ end }}
+    <div class="agg-header-body">
     {{ if .Description }}<p class="agg-header-desc">{{ .Description }}</p>{{ end }}
+    {{ with .Series }}
+    <nav class="agg-header-series" aria-label="Series">
+        {{ range . }}<a class="agg-chip" href="{{ .Href }}">{{ .Name }}<span class="agg-count">{{ .Count }}</span></a>{{ end }}
+    </nav>
+    {{ end }}
+    </div>
 </header>
 {{ end }}
 <div id="books" data-page-url="{{ .PageURL }}&page={n}" data-page-size="{{ booksPerPage }}" data-total-books="{{ .TotalBooks }}"{{ if .EmptyText }} data-empty-text="{{ .EmptyText }}"{{ end }}></div>
