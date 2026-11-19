@@ -903,6 +903,11 @@ body:has(.lt-resizing) {
 }
 
 /* A clicked cell, and its menu (selectCell) */
+.lt-rows .lt-chip.lt-chip-selected {
+    border-color: var(--status-reading);
+    box-shadow: 0 0 0 1px var(--status-reading);
+}
+
 .lt-rows .lt-cell.lt-cell-selected {
     box-shadow: inset 0 0 0 2px var(--status-reading);
     border-radius: 2px;
