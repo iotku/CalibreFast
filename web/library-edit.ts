@@ -583,6 +583,7 @@ function draw(force = false): void {
     const out: HTMLElement[] = [];
     for (let i = from; i < to; i++) out.push(rowElement(shown[i]!, i));
     closeExpanded();
+    closeCellMenu();
     body.replaceChildren(...out);
     for (const cell of body.querySelectorAll<HTMLElement>(".lt-list-cell")) addMore(cell);
 }
@@ -676,7 +677,7 @@ function tagChip(value: string): HTMLElement {
     const c = el(
         "span",
         { className: "lt-chip lt-chip-tag" },
-        el("button", { type: "button", className: "lt-chip-label", title: `Show only books with ${value}` }, value),
+        el("button", { type: "button", className: "lt-chip-label", title: `Show only books with ${value}; double-click to edit it` }, value),
         el("button", { type: "button", className: "lt-chip-x", title: `Remove ${value} from this book`, ariaLabel: `Remove the tag ${value}` }, "✕"),
     );
     c.dataset["value"] = value;
@@ -739,6 +740,7 @@ function rowElement(r: Row, i: number): HTMLElement {
             cell.title = text;
         }
         if (c.edit) cell.classList.add("lt-editable");
+        if (selectedCell?.uuid === b.uuid && selectedCell.col === c.key) cell.classList.add("lt-cell-selected");
         row.append(cell);
     }
     const actions = el("span", { className: "lt-cell lt-actions" });
@@ -845,6 +847,8 @@ function mergeLink(uuids: string[]): string {
 
 body.addEventListener("click", (e) => {
     const target = e.target as HTMLElement;
+    if (cellMenu?.contains(target)) return; // its items handle themselves
+    closeCellMenu();
     const row = target.closest<HTMLElement>(".lt-row");
     const uuid = row?.dataset["uuid"];
     if (!row || !uuid) return;
@@ -878,24 +882,137 @@ body.addEventListener("click", (e) => {
         if (tag !== undefined) void (x.classList.contains("lt-chip-undo") ? putTagBack(uuid, tag) : removeTag(uuid, tag));
         return;
     }
-    const ch = target.closest<HTMLElement>(".lt-chip");
-    if (ch?.classList.contains("lt-chip-removed")) return;
-    if (ch) {
-        const col = ch.closest<HTMLElement>("[data-col]")?.dataset["col"] as ColKey | undefined;
-        const input = col && filterInputs.get(col);
-        if (col && input) {
-            input.value = filters[col] = `=${ch.dataset["value"] ?? ""}`;
-            refresh();
-        }
-        return;
-    }
     const more = target.closest<HTMLElement>(".lt-more");
     if (more) {
         const cell = more.closest<HTMLElement>(".lt-cell");
         const open = expanded !== null && expanded.dataset["col"] === cell?.dataset["col"] && expanded.closest(".lt-row") === row;
         if (open) closeExpanded();
         else if (cell) expand(cell);
+        return;
     }
+    // A chip or a cell: the second click of a double-click edits (dblclick), so
+    // in a column that can be edited the first one waits to see if it's one.
+    if (e.detail > 1) {
+        clearTimeout(clickTimer);
+        return;
+    }
+    const ch = target.closest<HTMLElement>(".lt-chip");
+    if (ch?.classList.contains("lt-chip-removed")) return;
+    const key = target.closest<HTMLElement>("[data-col]")?.dataset["col"];
+    const col = COLUMNS.find((c) => c.key === key);
+    if (!col) return;
+    const run = (fn: () => void): void => {
+        clearTimeout(clickTimer);
+        if (col.edit) clickTimer = window.setTimeout(fn, CLICK_WAIT);
+        else fn();
+    };
+    if (ch) {
+        // Filter by it.
+        const value = ch.dataset["value"] ?? "";
+        run(() => setFilter(col.key, `=${value}`));
+        return;
+    }
+    if (target.closest(".lt-expanded")) return;
+    run(() => selectCell(uuid, col.key));
+});
+
+// ---------------------------------------------------------------------------
+// A clicked cell: selected, with a menu (filter by it, hide it, edit, copy)
+// ---------------------------------------------------------------------------
+
+/** How long a click waits for a second one (a double-click edits), in ms. */
+const CLICK_WAIT = 250;
+let clickTimer = 0;
+let selectedCell: { uuid: string; col: ColKey } | null = null;
+let cellMenu: HTMLElement | null = null;
+
+function setFilter(key: ColKey, value: string): void {
+    const input = filterInputs.get(key);
+    if (!input) return;
+    input.value = filters[key] = value;
+    refresh();
+}
+
+function closeCellMenu(): void {
+    cellMenu?.closest(".lt-row")?.classList.remove("lt-row-open");
+    cellMenu?.remove();
+    cellMenu = null;
+}
+
+function deselectCell(): void {
+    closeCellMenu();
+    selectedCell = null;
+    for (const c of body.querySelectorAll(".lt-cell-selected")) c.classList.remove("lt-cell-selected");
+}
+
+const shortText = (s: string): string => (s.length > 40 ? `${s.slice(0, 39)}…` : s);
+
+function selectCell(uuid: string, key: ColKey): void {
+    deselectCell();
+    closeExpanded();
+    const row = [...body.querySelectorAll<HTMLElement>(".lt-row")].find((x) => x.dataset["uuid"] === uuid);
+    const cell = row?.querySelector<HTMLElement>(`.lt-cell[data-col="${key}"]`);
+    const r = rows.find((x) => x.b.uuid === uuid);
+    const col = COLUMNS.find((c) => c.key === key);
+    if (!row || !cell || !r || !col) return;
+    selectedCell = { uuid, col: key };
+    cell.classList.add("lt-cell-selected");
+
+    const b = r.b;
+    const text = col.text(b);
+    const blank = col.blank(b);
+    const items: HTMLButtonElement[] = [];
+    const item = (label: string, run: () => void): void => {
+        const btn = el("button", { type: "button", className: "lt-menu-item", role: "menuitem", title: label }, label);
+        btn.addEventListener("click", () => {
+            deselectCell();
+            run();
+        });
+        items.push(btn);
+    };
+    // A list's values are filtered by clicking them; | separates alternatives in a filter.
+    if (!col.list && !blank && !text.includes("|")) {
+        // A series: every book in it, whatever its number.
+        const value = col.key === "series" ? b.series : text;
+        const exact = col.key === "series" ? value : `=${value}`;
+        item(`Only “${shortText(value)}”`, () => setFilter(key, exact));
+        item(`Hide “${shortText(value)}”`, () => setFilter(key, col.key === "series" ? `!${value}` : `!${exact}`));
+    }
+    if (blank) {
+        item(`Only books with no ${col.label.toLowerCase()}`, () => {
+            blankOnly.add(key);
+            blankBoxes.get(key)!.checked = true;
+            refresh();
+        });
+    }
+    if (col.edit) {
+        item(blank && !text ? "Add… (double-click)" : "Edit… (double-click)", () => {
+            const c = [...body.querySelectorAll<HTMLElement>(".lt-row")]
+                .find((x) => x.dataset["uuid"] === uuid)
+                ?.querySelector<HTMLElement>(`.lt-editable[data-col="${key}"]`);
+            if (c) startEdit(c);
+        });
+    }
+    if (text) {
+        item("Copy", () => {
+            navigator.clipboard?.writeText(text).then(
+                () => say("Copied.", "ok"),
+                () => say("Couldn't copy: the browser didn't allow it.", "error"),
+            );
+        });
+    }
+    if (!items.length) return;
+    const menu = el("div", { className: "lt-cell-menu", role: "menu", ariaLabel: `${col.label} of “${b.title}”` }, ...items);
+    menu.style.left = `${cell.offsetLeft}px`;
+    row.classList.add("lt-row-open");
+    row.append(menu);
+    cellMenu = menu;
+    // Up, if it would go past the bottom of the table.
+    if (menu.getBoundingClientRect().bottom > scroller.getBoundingClientRect().bottom) menu.classList.add("lt-menu-up");
+}
+
+document.addEventListener("click", (e) => {
+    if (selectedCell && !body.contains(e.target as Node)) deselectCell();
 });
 
 async function markNotDuplicates(uuids: string[]): Promise<void> {
@@ -1136,13 +1253,25 @@ function seriesEdit(value: string): BulkEdit {
 
 let editing: { cell: HTMLElement; input: HTMLInputElement } | null = null;
 
+// Double-click: edit the cell; on a tag or language, with that one picked out.
 body.addEventListener("dblclick", (e) => {
-    const cell = (e.target as HTMLElement).closest<HTMLElement>(".lt-editable");
-    if (cell && startEdit(cell)) e.preventDefault();
+    clearTimeout(clickTimer);
+    const target = e.target as HTMLElement;
+    if (target.closest(".lt-chip-x, .lt-cell-edit, .lt-more, .lt-action, .lt-cell-menu, input, a")) return;
+    const row = target.closest<HTMLElement>(".lt-row");
+    const key = target.closest<HTMLElement>("[data-col]")?.dataset["col"];
+    const col = COLUMNS.find((c) => c.key === key);
+    if (!row || !col?.edit) return;
+    const ch = target.closest<HTMLElement>(".lt-chip:not(.lt-chip-removed)");
+    // In the row, or in its expanded panel: the row's cell for that column.
+    const cell = row.querySelector<HTMLElement>(`.lt-editable[data-col="${col.key}"]`);
+    deselectCell();
+    closeExpanded();
+    if (cell && startEdit(cell, ch?.dataset["value"])) e.preventDefault();
 });
 
-/** Edit a cell in place; false if it can't be edited (now). */
-function startEdit(cell: HTMLElement): boolean {
+/** Edit a cell in place, with item (a tag or language) selected; false if it can't be edited (now). */
+function startEdit(cell: HTMLElement, item?: string): boolean {
     const uuid = cell.closest<HTMLElement>(".lt-row")?.dataset["uuid"];
     const col = COLUMNS.find((c) => c.key === cell.dataset["col"]);
     const r = rows.find((x) => x.b.uuid === uuid);
@@ -1163,7 +1292,13 @@ function startEdit(cell: HTMLElement): boolean {
     cell.classList.add("lt-editing");
     editing = { cell, input };
     input.focus();
-    input.select();
+    // That tag or language picked out ("a, b, c" is how cellValue joins them): typing replaces it.
+    const items = field === "tags" ? r.b.tags : field === "languages" ? r.b.languages : [];
+    const at = item === undefined ? -1 : items.indexOf(item);
+    if (at >= 0) {
+        const start = items.slice(0, at).reduce((t, v) => t + v.length + 2, 0);
+        input.setSelectionRange(start, start + item!.length);
+    } else input.select();
 
     let done = false;
     const finish = async (save: boolean): Promise<void> => {
@@ -1450,6 +1585,10 @@ byId("lt-clear").addEventListener("click", () => {
     refresh();
 });
 document.addEventListener("keydown", (e) => {
+    if (e.key === "Escape" && selectedCell && !editing && !modalOpen()) {
+        deselectCell();
+        return;
+    }
     if (e.key === "Escape" && expanded) {
         closeExpanded();
         return;

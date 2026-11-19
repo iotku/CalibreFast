@@ -240,6 +240,31 @@
     cursor: text;
 }
 
+/* The row's full height, not just its text's: an empty cell (no publisher,
+   say) is then still there to double-click. 33px: the row less its border. */
+.lt-rows .lt-editable:not(.lt-list-cell) {
+    align-self: stretch;
+    line-height: 33px;
+}
+
+/* Being edited: its box (and suggestions) centered, at their own line height */
+.lt-rows .lt-editable.lt-editing {
+    display: flex;
+    align-items: center;
+    line-height: normal;
+}
+
+.lt-rows .lt-editable.lt-editing > * {
+    flex: 1;
+    min-width: 0;
+}
+
+.lt-rows .lt-editable:empty:hover::after {
+    content: "Double-click to add";
+    font-size: 0.75rem;
+    color: var(--text-muted);
+}
+
 .lt-sort {
     all: unset;
     cursor: pointer;
@@ -875,4 +900,48 @@ body:has(.lt-resizing) {
     min-height: 2.4em;
     margin-top: 8px;
     overflow-wrap: anywhere;
+}
+
+/* A clicked cell, and its menu (selectCell) */
+.lt-rows .lt-cell.lt-cell-selected {
+    box-shadow: inset 0 0 0 2px var(--status-reading);
+    border-radius: 2px;
+}
+
+.lt-cell-menu {
+    position: absolute;
+    top: calc(100% - 2px);
+    z-index: 6;
+    box-sizing: border-box;
+    min-width: 200px;
+    max-width: 360px;
+    display: flex;
+    flex-direction: column;
+    padding: 4px;
+    background: var(--bg-elevated);
+    border: 1px solid var(--status-reading);
+    border-radius: var(--radius-medium);
+    box-shadow: var(--shadow-medium);
+}
+
+.lt-cell-menu.lt-menu-up {
+    top: auto;
+    bottom: calc(100% - 2px);
+}
+
+.lt-menu-item {
+    all: unset;
+    padding: 6px 10px;
+    border-radius: 4px;
+    font-size: 0.85rem;
+    color: var(--text-primary);
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    cursor: pointer;
+}
+
+.lt-menu-item:hover,
+.lt-menu-item:focus-visible {
+    background: rgba(200, 169, 110, 0.14);
 }
