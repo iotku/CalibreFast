@@ -11,6 +11,7 @@
 
 import { api, byId, closeOnBackdropClick, el, errorMessage, icon, lineIcon, modalOpen } from "./dom.js";
 import { attachSuggest } from "./suggest.js";
+import { joinAuthors, splitAuthors, tidyAuthors } from "./authors.js";
 import { deleteBooks } from "./delete-books.js";
 import { languageChipLabel, languageKey, loadLanguageCodes } from "./languages.js";
 import type { BulkEdit, BulkResult, FormatRepair, NotDuplicateSet, TableBook } from "./types.js";
@@ -1070,6 +1071,7 @@ function selectCell(uuid: string, key: ColKey): void {
         ]);
     }
     if (col.edit) items.push([blank && !text ? "Add… (double-click)" : "Edit… (double-click)", () => editCell(uuid, key)]);
+    if (key === "authors") items.push(...authorItems(b));
     if (text) items.push(copyItem(text));
     openMenu(row, cell.offsetLeft, `${col.label} of “${b.title}”`, items, menuKey(uuid, key));
 }
@@ -1263,6 +1265,81 @@ async function putTagBack(uuid: string, tag: string): Promise<void> {
     if (!r) return;
     const changes = await tagEdit([r.b], { add_tags: [tag] }, false);
     if (changes) say(`Put “${tag}” back on “${r.b.title}”.`, "ok");
+}
+
+// ---------------------------------------------------------------------------
+// Authors written another way ("Last, First", "A; B"): what the metadata
+// editor's Split button does (tidyAuthors in authors.ts), with Undo
+// ---------------------------------------------------------------------------
+
+interface AuthorChange {
+    uuid: string;
+    from: string;
+    to: string;
+}
+
+/** A book's authors as Split would write them, or null if they're fine as they are. */
+function tidiedAuthors(b: TableBook): string | null {
+    const tidy = joinAuthors(tidyAuthors(b.authors));
+    return tidy && tidy !== joinAuthors(splitAuthors(b.authors)) ? tidy : null;
+}
+
+/** The Authors menu's items: tidy this book's authors, and the selected books' too. */
+function authorItems(b: TableBook): MenuItem[] {
+    const items: MenuItem[] = [];
+    const tidy = tidiedAuthors(b);
+    if (tidy) {
+        const more = tidyAuthors(b.authors).length > splitAuthors(b.authors).length;
+        items.push([`${more ? `Split into ${tidyAuthors(b.authors).length} authors` : "First name first"}: ${shortText(tidy)}`, () => void tidyBooksAuthors([b])]);
+    }
+    // Every selected book this one is among: the same for each.
+    if (selected.has(b.uuid) && selected.size > 1) {
+        const fixable = selectedBooks().filter((x) => tidiedAuthors(x) !== null);
+        if (fixable.length) items.push([`Split / first name first: ${plural(fixable.length, "selected book")}`, () => void tidyBooksAuthors(fixable)]);
+    }
+    return items;
+}
+
+/** Set the books' authors (books getting the same authors share a request); null if it failed. */
+async function setAuthors(changes: AuthorChange[], value: (c: AuthorChange) => string): Promise<{ changed: number; failed: string[] } | null> {
+    const groups = new Map<string, string[]>();
+    for (const c of changes) groups.set(value(c), [...(groups.get(value(c)) ?? []), c.uuid]);
+    let changed = 0;
+    const failed: string[] = [];
+    try {
+        for (const [authors, uuids] of groups) {
+            const res = await sendEdit(uuids, { authors });
+            changed += res.changed;
+            failed.push(...res.failed.map((f) => f.error));
+        }
+    } catch (err) {
+        say(`Couldn't change the authors: ${errorMessage(err)}`, "error");
+        settle(false);
+        return null;
+    }
+    settle(false);
+    return { changed, failed };
+}
+
+async function tidyBooksAuthors(books: TableBook[]): Promise<void> {
+    const changes = books.flatMap((b): AuthorChange[] => {
+        const to = tidiedAuthors(b);
+        return to ? [{ uuid: b.uuid, from: b.authors, to }] : [];
+    });
+    if (!changes.length) return;
+    say(`Changing the authors of ${plural(changes.length, "book")}…`);
+    const res = await setAuthors(changes, (c) => c.to);
+    if (!res) return;
+    if (res.failed.length) {
+        say(`Changed ${plural(res.changed, "book")}; ${n(res.failed.length)} failed: ${res.failed.slice(0, 2).join("; ")}`, "error");
+        return;
+    }
+    const what = changes.length === 1 ? `“${changes[0]!.from}” is now “${changes[0]!.to}”.` : `Changed the authors of ${plural(res.changed, "book")}.`;
+    offerUndo(what, async () => {
+        say("Undoing…");
+        const back = await setAuthors(changes, (c) => c.from);
+        if (back) say(back.failed.length ? `Undone for ${plural(back.changed, "book")}; ${n(back.failed.length)} failed.` : `Undone: ${plural(back.changed, "book")} as before.`, back.failed.length ? "error" : "ok");
+    });
 }
 
 /** Split one of a book's tags on sep, with Undo. */
