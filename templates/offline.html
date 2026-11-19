@@ -23,9 +23,23 @@
         <span id="offline-status-text">Offline. Books on this device can be read; the rest of the library is back when the connection is.</span>
         <button type="button" class="btn-standard" id="offline-retry">Try again</button>
     </p>
+    {{/* Each list shows the books kept here first; the rest fold away
+         under a summary, and open a popup that waits for the server. */}}
     <section id="offline-reading" hidden>
         <h2 class="offline-heading">Reading</h2>
         <div class="offline-grid" id="offline-reading-books"></div>
+        <details class="offline-more" id="offline-reading-more" hidden>
+            <summary></summary>
+            <div class="offline-grid"></div>
+        </details>
+    </section>
+    <section id="offline-saved" hidden>
+        <h2 class="offline-heading">On deck / Saved for later</h2>
+        <div class="offline-grid" id="offline-saved-books"></div>
+        <details class="offline-more" id="offline-saved-more" hidden>
+            <summary></summary>
+            <div class="offline-grid"></div>
+        </details>
     </section>
     <section id="offline-kept" hidden>
         <h2 class="offline-heading">Also on this device</h2>
@@ -33,6 +47,20 @@
     </section>
     <p class="auth-muted offline-none" id="offline-none" hidden>No books are kept on this device yet. Books you open in the EPUB reader are kept for a week after you last open them, to read with no connection.</p>
 </main>
+{{/* A book not kept here: waits for the server, then the page asked for
+     opens with the book's popup (#book/<uuid>, modal.ts). */}}
+<div id="book-modal" class="modal-overlay">
+    <div class="modal-content" role="dialog" aria-modal="true" aria-labelledby="offline-wait-title">
+        <button type="button" id="modal-close" aria-label="Close">✕</button>
+        <div id="modal-body">
+            <div class="modal-failed">
+                <p class="modal-failed-title" id="offline-wait-title"></p>
+                <p>This book isn't saved on this device. It opens here once the server is back.</p>
+                <p class="modal-failed-wait" role="status"><span class="throbber" aria-hidden="true"><span class="throbber-dot"></span><span class="throbber-dot"></span><span class="throbber-dot"></span></span>Checking for the server…</p>
+            </div>
+        </div>
+    </div>
+</div>
 <script type="module" src="{{ asset "offline.js" }}"></script>
 </body>
 </html>
