@@ -240,6 +240,31 @@
     cursor: text;
 }
 
+/* The row's full height, not just its text's: an empty cell (no publisher,
+   say) is then still there to double-click. 33px: the row less its border. */
+.lt-rows .lt-editable:not(.lt-list-cell) {
+    align-self: stretch;
+    line-height: 33px;
+}
+
+/* Being edited: its box (and suggestions) centered, at their own line height */
+.lt-rows .lt-editable.lt-editing {
+    display: flex;
+    align-items: center;
+    line-height: normal;
+}
+
+.lt-rows .lt-editable.lt-editing > * {
+    flex: 1;
+    min-width: 0;
+}
+
+.lt-rows .lt-editable:empty:hover::after {
+    content: "Double-click to add";
+    font-size: 0.75rem;
+    color: var(--text-muted);
+}
+
 .lt-sort {
     all: unset;
     cursor: pointer;
