@@ -67,7 +67,8 @@ func serve(addr string, h http.Handler) {
 	if err := <-served; err != nil && !errors.Is(err, http.ErrServerClosed) {
 		log.Printf("server: %v", err)
 	}
-	stopBulkEdits(time.Now().Add(shutdownTimeout)) // bulk_queue.go
+	stopBulkEdits(time.Now().Add(shutdownTimeout))          // bulk_queue.go
+	imports.stopItemWriter(time.Now().Add(shutdownTimeout)) // imports_edit_queue.go
 	closeDatabases()
 	log.Println("stopped")
 }

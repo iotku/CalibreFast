@@ -440,6 +440,19 @@ var migrations = []string{
 		at      INTEGER NOT NULL
 	);
 	`,
+	// 25: quick edits of waiting books (imports_edit_queue.go), saved here
+	// before their item.json (which may be on a slow -import-dir) is
+	// written: the book's Merged metadata as the edit left it. A row goes
+	// once its item.json says the same, or the book has left the queue.
+	`
+	CREATE TABLE import_edit_journal (
+		item_id    TEXT    PRIMARY KEY,
+		dir        TEXT    NOT NULL,              -- the queue folder it's in
+		version    INTEGER NOT NULL,
+		merged     TEXT    NOT NULL,              -- JSON UploadedBookMeta
+		updated_at INTEGER NOT NULL
+	);
+	`,
 }
 
 // openAppDB opens (creating if needed) and migrates the app database.
