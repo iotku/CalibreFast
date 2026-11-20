@@ -440,6 +440,10 @@ func processUploadGroup(files []*multipart.FileHeader, override bool) UploadResu
 	}
 
 	merged := mergeMeta(metas)
+	// No series in the files: a placeholder for the book says which.
+	if p := fillFromPlaceholder(&merged.OPFMetadata); p != nil {
+		log.Printf("upload: %q: series %s #%s from its placeholder", merged.Title, merged.Series, merged.SeriesIndex)
+	}
 	formats := make([]string, 0, len(entries))
 	dupFiles := make([]dupFile, 0, len(entries))
 	for _, e := range entries {

@@ -301,6 +301,11 @@ func (b *importInbox) stageFiles(paths []string, from, into string, coverNow boo
 	}
 	it.Merged = *mergeMeta(it.Sources)
 	it.Merged.Format, it.Merged.FileName = "current", ""
+	// No series in the files: a placeholder for the book says which, so
+	// the review (or an automatic add) starts with it. The placeholder is
+	// deleted only once the book is added (resolvePlaceholders), so one the
+	// reviewer decides isn't this book stays.
+	fillFromPlaceholder(&it.Merged.OPFMetadata)
 
 	if err := writeItemJSON(dir, it); err != nil {
 		return fail(err)
