@@ -149,6 +149,26 @@ func TestDeviceSignIn(t *testing.T) {
 	}
 }
 
+func TestOAuthRefusesRedirects(t *testing.T) {
+	var elsewhere atomic.Int32
+	other := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) { elsewhere.Add(1) }))
+	defer other.Close()
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		http.Redirect(w, r, other.URL+"/steal", http.StatusTemporaryRedirect)
+	}))
+	defer srv.Close()
+	o := &OAuth{ClientID: "cid", TokenURL: srv.URL, RevokeURL: srv.URL, HTTPClient: &http.Client{}}
+	if _, err := o.Refresh(context.Background(), "hc_rt_secret"); err == nil || strings.Contains(err.Error(), "hc_rt_") {
+		t.Errorf("refresh through a redirect: %v", err)
+	}
+	if err := o.Revoke(context.Background(), "hc_rt_secret"); err == nil {
+		t.Error("revoke through a redirect succeeded")
+	}
+	if elsewhere.Load() != 0 {
+		t.Error("a token was sent on to the redirect's target")
+	}
+}
+
 func TestVerificationLink(t *testing.T) {
 	for u, want := range map[string]bool{
 		"https://hardcover.app/link?code=ABCD-1234": true,

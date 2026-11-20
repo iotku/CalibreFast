@@ -44,6 +44,10 @@ var (
 	noHardcoverSync bool
 	// hcOAuth signs users in to Hardcover; nil when sync is off.
 	hcOAuth *hardcover.OAuth
+	// hcRevoker ends sign-ins when users unlink, even with sync turned off
+	// (nil only with no client id at all): a user can always take back
+	// the access they gave.
+	hcRevoker *hardcover.OAuth
 	// hcUserBudget is a user's plan limits (Hardcover's are per token).
 	hcUserBudget = hardcover.FreePlan
 	// hcSyncURL is the GraphQL endpoint for users' clients ("": Hardcover's;
@@ -65,10 +69,13 @@ const (
 )
 
 func configureHardcoverSync() {
-	hcOAuth = nil
+	hcOAuth, hcRevoker = nil, nil
 	id := strings.TrimSpace(os.Getenv("CF_HARDCOVER_CLIENT_ID"))
 	if id == "" {
 		id = defaultHardcoverClientID
+	}
+	if id != "" {
+		hcRevoker = &hardcover.OAuth{ClientID: id, UserAgent: lookupUserAgent}
 	}
 	switch {
 	case noHardcover || noHardcoverSync:
@@ -210,9 +217,11 @@ func hcSaveTokens(userID int64, t *hardcover.Token) error {
 }
 
 // hcMarkBroken records that a user's link no longer works: nothing more is
-// sent for them until they link again.
+// sent for them until they link again, and its tokens (refused, spent or
+// unreadable) are deleted. The username and why stay, for the account page.
 func hcMarkBroken(userID int64, why string) {
-	if _, err := appDB.Exec(`UPDATE hardcover_links SET broken = ? WHERE user_id = ?`, why, userID); err != nil {
+	if _, err := appDB.Exec(`UPDATE hardcover_links SET broken = ?, access_token = '', refresh_token = '', access_expires = 0 WHERE user_id = ?`,
+		why, userID); err != nil {
 		log.Println("hardcover sync:", err)
 	}
 	hcSetLinked(userID, false)

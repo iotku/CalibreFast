@@ -147,9 +147,19 @@ func hcRunLink(ctx context.Context, userID int64, d *hardcover.DeviceAuth, p *hc
 	}
 }
 
-// hcUnlink ends userID's link: the sign-in is revoked on Hardcover (when
-// it answers), and the tokens and waiting changes are deleted here.
-func hcUnlinkAccount(userID int64) error {
+// hcRevoke is what became of a sign-in on Hardcover when a link ended.
+type hcRevoke int
+
+const (
+	hcRevokeNone   hcRevoke = iota // no usable sign-in was kept: nothing to revoke
+	hcRevoked                      // Hardcover ended it
+	hcRevokeFailed                 // Hardcover couldn't be asked, or refused
+)
+
+// hcUnlinkAccount ends userID's link: the sign-in is revoked on Hardcover
+// (when it answers), and the tokens, waiting changes and sharing choices
+// are deleted here whatever it answers.
+func hcUnlinkAccount(userID int64) (hcRevoke, error) {
 	hcSync.Lock()
 	if p := hcSync.pending[userID]; p != nil {
 		p.cancel()
@@ -158,30 +168,39 @@ func hcUnlinkAccount(userID int64) error {
 	hcSync.Unlock()
 	l, err := hcLoadAccount(userID)
 	if err != nil {
-		return err
+		return hcRevokeNone, err
 	}
-	if l != nil && hcOAuth != nil {
-		if ref, err := openSecret(hcSealContext("refresh_token", userID), l.refresh); err == nil {
+	revoke := hcRevokeNone
+	if l != nil && l.refresh != "" {
+		revoke = hcRevokeFailed
+		ref, err := openSecret(hcSealContext("refresh_token", userID), l.refresh)
+		switch {
+		case err != nil:
+			log.Printf("hardcover unlink: user %d: the sign-in can't be read, so it can't be revoked", userID)
+		case hcRevoker == nil:
+			log.Printf("hardcover unlink: user %d: no Hardcover client id, so the sign-in can't be revoked", userID)
+		default:
 			ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
-			if err := hcOAuth.Revoke(ctx, ref); err != nil {
+			if err := hcRevoker.Revoke(ctx, ref); err != nil {
 				log.Println("hardcover unlink:", err)
+			} else {
+				revoke = hcRevoked
 			}
 			cancel()
 		}
 	}
 	hcSetLinked(userID, false)
-	for _, table := range []string{"hardcover_sync", "hardcover_shared"} {
+	for _, table := range []string{"hardcover_sync", "hardcover_shared", "hardcover_links"} {
 		if _, err := appDB.Exec(`DELETE FROM `+table+` WHERE user_id = ?`, userID); err != nil {
-			return err
+			return revoke, err
 		}
 	}
-	_, err = appDB.Exec(`DELETE FROM hardcover_links WHERE user_id = ?`, userID)
-	return err
+	return revoke, nil
 }
 
 // hcAccountView is the account page's Hardcover section.
 type hcAccountView struct {
-	State     string // "unlinked", "pending", "linked" or "broken"; "off" (admins only): not set up on this server
+	State     string // "unlinked", "pending", "linked" or "broken"; "off" (admins only): not set up on this server; "disabled": off, but this user is still linked
 	Username  string
 	LinkedAt  string
 	Broken    string
@@ -238,8 +257,15 @@ type hcStatus struct {
 // (admins get State "off", saying how to turn it on).
 func hcView(u *User, notice string) *hcAccountView {
 	if !hardcoverSyncEnabled() {
-		if u.IsAdmin && !noHardcover && !noHardcoverSync {
-			return &hcAccountView{State: "off"}
+		// Still linked from before: they can see it and unlink.
+		if l, err := hcLoadAccount(u.ID); err == nil && l != nil {
+			return &hcAccountView{State: "disabled", Notice: notice, Username: l.Username, LinkedAt: formatDay(l.LinkedAt.Unix())}
+		}
+		if u.IsAdmin && !noHardcover && !noHardcoverSync && hcRevoker == nil {
+			return &hcAccountView{State: "off", Notice: notice}
+		}
+		if notice != "" {
+			return &hcAccountView{State: "gone", Notice: notice}
 		}
 		return nil
 	}
@@ -276,7 +302,7 @@ func hcView(u *User, notice string) *hcAccountView {
 func hardcoverStatusHandler(w http.ResponseWriter, r *http.Request) {
 	u := currentUser(r)
 	v := hcView(u, "")
-	if v == nil || v.State == "off" {
+	if v == nil || v.State == "off" || v.State == "gone" {
 		writeJSON(w, http.StatusOK, hcStatus{State: "off"})
 		return
 	}
@@ -291,7 +317,10 @@ func hardcoverStatusHandler(w http.ResponseWriter, r *http.Request) {
 // (action=link|cancel|unlink|settings|backfill).
 func hardcoverAccountHandler(w http.ResponseWriter, r *http.Request) {
 	u := currentUser(r)
-	if !hardcoverSyncEnabled() {
+	action := r.FormValue("action")
+	// Taking back access always works; starting or changing sharing only
+	// while sync is on.
+	if !hardcoverSyncEnabled() && action != "unlink" && action != "cancel" {
 		http.Error(w, "Hardcover sync is off on this server.", http.StatusForbidden)
 		return
 	}
@@ -302,7 +331,7 @@ func hardcoverAccountHandler(w http.ResponseWriter, r *http.Request) {
 		}
 		http.Redirect(w, r, "/account"+q+"#hardcover", http.StatusSeeOther)
 	}
-	switch r.FormValue("action") {
+	switch action {
 	case "link":
 		if _, err := hcStartLink(u.ID); err != nil {
 			log.Println("hardcover link:", err)
@@ -319,13 +348,19 @@ func hardcoverAccountHandler(w http.ResponseWriter, r *http.Request) {
 		hcSync.Unlock()
 		back("")
 	case "unlink":
-		if err := hcUnlinkAccount(u.ID); err != nil {
+		revoke, err := hcUnlinkAccount(u.ID)
+		if err != nil {
 			log.Println("hardcover unlink:", err)
 			http.Error(w, "could not unlink Hardcover", http.StatusInternalServerError)
 			return
 		}
 		log.Printf("user %s unlinked Hardcover", u.Username)
-		back("Hardcover unlinked. Nothing more will be sent there.")
+		switch revoke {
+		case hcRevokeFailed:
+			back("Unlinked, and your Hardcover sign-in is deleted here. Hardcover couldn't be told to end it, though: to be sure, remove CalibreFast under Authorized Apps in Hardcover's settings.")
+		default:
+			back("Hardcover unlinked: CalibreFast is signed out of your Hardcover account and nothing more will be sent there.")
+		}
 	case "settings":
 		if !hcIsLinked(u.ID) {
 			back("Link Hardcover first.")

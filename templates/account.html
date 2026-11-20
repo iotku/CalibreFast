@@ -83,7 +83,18 @@
         {{ if .Notice }}<p class="auth-notice" role="status">{{ .Notice }}</p>{{ end }}
         {{ if .Error }}<p class="auth-error" role="alert">{{ .Error }}</p>{{ end }}
 
-        {{ if eq .State "off" }}
+        {{ if eq .State "gone" }}
+        {{/* just unlinked, with sync off on this server: only the notice */}}
+
+        {{ else if eq .State "disabled" }}
+        <p class="sync-intro">Your Hardcover account <b>{{ .Username }}</b> is still linked (since {{ .LinkedAt }}), but Hardcover sync is turned off on this server, so nothing is being sent.</p>
+        <p class="sync-intro">CalibreFast still holds its sign-in to your Hardcover account. Unlink to end that sign-in on Hardcover and delete it here.</p>
+        <form method="post" action="/account/hardcover#hardcover">
+            <input type="hidden" name="action" value="unlink">
+            <button type="submit" class="btn-standard">Unlink</button>
+        </form>
+
+        {{ else if eq .State "off" }}
         <p class="sync-intro">Users can link their own <a href="https://hardcover.app" target="_blank" rel="noopener noreferrer">Hardcover</a> accounts here, so what they read is tracked there too. It isn't set up on this server.</p>
         <ol class="sync-steps">
             <li>On Hardcover, open <b>Settings → Hardcover API → Developer Apps</b> and create an app of type <b>Mobile, desktop, or CLI</b>.</li>
@@ -174,12 +185,12 @@
                 <button type="submit" class="btn-standard">Unlink</button>
             </form>
         </div>
-        <p class="auth-muted">Unlinking stops all sending, signs CalibreFast out of Hardcover, and forgets your choices here; what was sent stays on Hardcover. You can also remove CalibreFast under <b>Authorized Apps</b> in Hardcover's settings.</p>
+        <p class="auth-muted">Unlinking stops all sending, signs CalibreFast out of Hardcover, and deletes its sign-in and your choices here; what was sent stays on Hardcover. You can also remove CalibreFast under <b>Authorized Apps</b> in Hardcover's settings. The sign-in kept here is encrypted, but whoever runs this server could use it.</p>
 
         {{ else }}
         {{ if eq .State "broken" }}
         <p class="auth-error" role="alert">Nothing is being sent to {{ .Username }} on Hardcover: {{ .Broken }}</p>
-        <p class="sync-intro">Link again to carry on. Changes made meanwhile are sent once you have.</p>
+        <p class="sync-intro">Link again to carry on. Changes made meanwhile are sent once you have. The old sign-in has been deleted here.</p>
         {{ else }}
         <p class="sync-intro">Track books you read here on your <a href="https://hardcover.app" target="_blank" rel="noopener noreferrer">Hardcover</a> account: whether you want to read, are reading or have finished them, and, if you choose, how far along you are and when you started and finished.</p>
         <ol class="sync-steps">
@@ -188,6 +199,7 @@
             <li>Choose which books to share: tick <b>Track on Hardcover</b> on a book's page. Or, here, choose to share every book.</li>
         </ol>
         <p class="auth-muted">Linking shares nothing by itself: no book is sent until you choose it. You need a Hardcover account (it's free). You never give CalibreFast your Hardcover password, and you can unlink at any time.</p>
+        <p class="auth-muted">What you allow: CalibreFast may see who you are on Hardcover, and read and change your Hardcover library. It keeps that sign-in encrypted on this server, but whoever runs this server could use it, so link only if you trust them. Unlinking ends it.</p>
         {{ end }}
         <div class="sync-actions">
             <form method="post" action="/account/hardcover#hardcover">

@@ -761,6 +761,10 @@ func adminDeleteUser(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "can't delete the last admin", http.StatusConflict)
 		return
 	}
+	// Their Hardcover sign-in is ended there too, not just deleted here.
+	if revoke, err := hcUnlinkAccount(id); err != nil || revoke == hcRevokeFailed {
+		log.Printf("deleting user %s: their Hardcover sign-in couldn't be revoked (it's deleted here): %v", target.Username, err)
+	}
 	if _, err := appDB.Exec(`DELETE FROM users WHERE id = ?`, id); err != nil {
 		http.Error(w, err.Error(), http.StatusInternalServerError)
 		return

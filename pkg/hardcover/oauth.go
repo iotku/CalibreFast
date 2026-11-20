@@ -87,11 +87,15 @@ func (o *OAuth) now() time.Time {
 	return time.Now()
 }
 
+// client never follows redirects: a 307 or 308 would send the form, and
+// the token or code in it, again to wherever it points.
 func (o *OAuth) client() *http.Client {
+	c := http.Client{Timeout: 30 * time.Second}
 	if o.HTTPClient != nil {
-		return o.HTTPClient
+		c = *o.HTTPClient
 	}
-	return &http.Client{Timeout: 30 * time.Second}
+	c.CheckRedirect = func(*http.Request, []*http.Request) error { return http.ErrUseLastResponse }
+	return &c
 }
 
 func orDefault(s, d string) string {

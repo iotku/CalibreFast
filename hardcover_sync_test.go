@@ -229,15 +229,16 @@ func setupHardcoverSync(t *testing.T) (*User, []string, *fakeHardcoverAccount) {
 	u, books := setupLibraryAndUser(t, 2)
 	useTestSecretKey(t)
 	f := newFakeHardcoverAccount(t)
-	origOAuth, origURL, origClient, origPoll, origBudget := hcOAuth, hcSyncURL, hcClient, hcPollInterval, hcUserBudget
+	origOAuth, origRevoker, origURL, origClient, origPoll, origBudget := hcOAuth, hcRevoker, hcSyncURL, hcClient, hcPollInterval, hcUserBudget
 	hcUserBudget = func() *hardcover.Budget { return hardcover.NewBudget(600, 100, 10000) }
 	hcOAuth = &hardcover.OAuth{ClientID: "cid", DeviceURL: f.srv.URL + "/device", TokenURL: f.srv.URL + "/token",
 		RevokeURL: f.srv.URL + "/revoke", UserAgent: "CalibreFast/test"}
+	hcRevoker = hcOAuth
 	hcSyncURL, hcClient = f.srv.URL+"/graphql", nil
 	hcPollInterval = func(time.Duration) time.Duration { return 5 * time.Millisecond }
 	t.Cleanup(func() {
 		stopHardcoverSync(time.Now().Add(time.Second))
-		hcOAuth, hcSyncURL, hcClient, hcPollInterval, hcUserBudget = origOAuth, origURL, origClient, origPoll, origBudget
+		hcOAuth, hcRevoker, hcSyncURL, hcClient, hcPollInterval, hcUserBudget = origOAuth, origRevoker, origURL, origClient, origPoll, origBudget
 		hcLoadLinked()
 		hcSync.Lock()
 		hcSync.pending, hcSync.tokens = map[int64]*hcPendingLink{}, map[int64]*sync.Mutex{}
@@ -432,7 +433,7 @@ func TestHardcoverSyncLinkAndSend(t *testing.T) {
 
 	// Unlinking forgets the choices too.
 	_ = hcSetBookShared(u.ID, books[0], true)
-	if err := hcUnlinkAccount(u.ID); err != nil {
+	if _, err := hcUnlinkAccount(u.ID); err != nil {
 		t.Fatal(err)
 	}
 	_ = appDB.QueryRow(`SELECT COUNT(*) FROM hardcover_shared`).Scan(&n)
@@ -510,22 +511,45 @@ func TestHardcoverSyncTokens(t *testing.T) {
 	if v := hcView(u, ""); v.State != "broken" || hcIsLinked(u.ID) {
 		t.Errorf("after refusal: %+v", v)
 	}
+	var acc, ref string
+	_ = appDB.QueryRow(`SELECT access_token, refresh_token FROM hardcover_links WHERE user_id = ?`, u.ID).Scan(&acc, &ref)
+	if acc != "" || ref != "" {
+		t.Errorf("a broken link kept its tokens")
+	}
 	ops := len(f.ops)
 	if ran, _ := hcSyncStep(context.Background()); ran || len(f.opsSince(ops)) != 0 {
 		t.Error("a broken link was tried again")
 	}
 
 	// Unlinking revokes the sign-in and forgets everything.
+	// Unlinking a broken link: nothing kept to revoke, and it's gone.
 	f.mu.Lock()
 	f.refuseRefresh = false
 	f.mu.Unlock()
-	if err := hcUnlinkAccount(u.ID); err != nil {
-		t.Fatal(err)
+	if revoke, err := hcUnlinkAccount(u.ID); err != nil || revoke != hcRevokeNone {
+		t.Fatal(revoke, err)
 	}
 	var n int
 	_ = appDB.QueryRow(`SELECT (SELECT COUNT(*) FROM hardcover_links) + (SELECT COUNT(*) FROM hardcover_sync)`).Scan(&n)
-	if n != 0 || len(f.revoked) != 1 {
+	if n != 0 || len(f.revoked) != 0 {
 		t.Errorf("after unlink: %d rows, revoked %v", n, f.revoked)
+	}
+
+	// A working link is revoked on Hardcover when unlinked.
+	linkHardcover(t, u)
+	if revoke, err := hcUnlinkAccount(u.ID); err != nil || revoke != hcRevoked || len(f.revoked) != 1 {
+		t.Errorf("unlink: %v %v, revoked %v", revoke, err, f.revoked)
+	}
+
+	// Hardcover unreachable: it's still deleted here, and the user is told.
+	linkHardcover(t, u)
+	f.srv.Config.Handler = http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) { w.WriteHeader(503) })
+	if revoke, err := hcUnlinkAccount(u.ID); err != nil || revoke != hcRevokeFailed {
+		t.Errorf("unlink, Hardcover down: %v %v", revoke, err)
+	}
+	_ = appDB.QueryRow(`SELECT COUNT(*) FROM hardcover_links`).Scan(&n)
+	if n != 0 {
+		t.Error("the sign-in was kept because Hardcover didn't answer")
 	}
 }
 
@@ -567,6 +591,22 @@ func TestHardcoverSyncChangeWhileSending(t *testing.T) {
 	}
 }
 
+func TestDeletingUserRevokesHardcover(t *testing.T) {
+	u, _, f := setupHardcoverSync(t)
+	linkHardcover(t, u)
+	admin, err := createUser("boss", "longenough-pw", true)
+	if err != nil {
+		t.Fatal(err)
+	}
+	req := httptest.NewRequest("DELETE", "/api/admin/users/"+itoa(u.ID), nil)
+	req.SetPathValue("id", itoa(u.ID))
+	rec := httptest.NewRecorder()
+	adminDeleteUser(rec, asUser(req, admin))
+	if rec.Code != http.StatusNoContent || len(f.revoked) != 1 {
+		t.Errorf("delete: %d, revoked %v", rec.Code, f.revoked)
+	}
+}
+
 func TestHardcoverRoutes(t *testing.T) {
 	u, _, _ := setupHardcoverSync(t)
 	mux := http.NewServeMux()
@@ -591,13 +631,30 @@ func TestHardcoverRoutes(t *testing.T) {
 	if rec.Code != http.StatusUnauthorized {
 		t.Errorf("status signed out: %d", rec.Code)
 	}
-	// Off on the server: refused.
-	hcOAuth = nil
-	rec = httptest.NewRecorder()
-	req = httptest.NewRequest("POST", "/account/hardcover", strings.NewReader("action=link"))
-	req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
-	hardcoverAccountHandler(rec, asUser(req, u))
-	if rec.Code != http.StatusForbidden {
-		t.Errorf("sync off: %d", rec.Code)
+	// Off on the server: linking is refused, but a user linked from
+	// before still sees it and can unlink, which revokes it.
+	linkHardcover(t, u)
+	hcOAuth = nil // hcRevoker stays: the client id is still known
+	post := func(action string) *httptest.ResponseRecorder {
+		rec := httptest.NewRecorder()
+		req := httptest.NewRequest("POST", "/account/hardcover", strings.NewReader("action="+action))
+		req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
+		hardcoverAccountHandler(rec, asUser(req, u))
+		return rec
+	}
+	if rec := post("link"); rec.Code != http.StatusForbidden {
+		t.Errorf("link with sync off: %d", rec.Code)
+	}
+	if rec := post("settings"); rec.Code != http.StatusForbidden {
+		t.Errorf("settings with sync off: %d", rec.Code)
+	}
+	if v := hcView(u, ""); v == nil || v.State != "disabled" {
+		t.Errorf("linked user, sync off: %+v", v)
+	}
+	if rec := post("unlink"); rec.Code != http.StatusSeeOther || !strings.Contains(rec.Header().Get("Location"), "signed+out") {
+		t.Errorf("unlink with sync off: %d %s", rec.Code, rec.Header().Get("Location"))
+	}
+	if l, _ := hcLoadAccount(u.ID); l != nil {
+		t.Error("still linked")
 	}
 }
