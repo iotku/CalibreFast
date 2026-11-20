@@ -25,7 +25,7 @@ export interface Stats {
     today_seconds: number;
     week_pages: number;
     week_seconds: number;
-    goal: { daily_pages: number; yearly_books: number };
+    goal: { daily_pages: number; yearly_books: number; notice: boolean };
     year: { year: number; started: number; finished: number; books: Book[] };
     totals: { pages: number; seconds: number; finished: number };
 }

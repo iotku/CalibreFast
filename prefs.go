@@ -26,6 +26,9 @@ type userPrefs struct {
 	// page and the home page.
 	DailyPages  int `json:"daily_pages"`
 	YearlyBooks int `json:"yearly_books"`
+	// GoalNotice: say so in the reader when the daily goal is reached. Off
+	// unless asked for: nothing pops up while reading by default.
+	GoalNotice bool `json:"goal_notice"`
 }
 
 var prefFormats = []string{"last", "epub", "pdf"}

@@ -44,6 +44,7 @@ interface AccountFields {
     track_reading?: boolean;
     daily_pages?: number;
     yearly_books?: number;
+    goal_notice?: boolean;
 }
 
 const goal = (n: unknown): number => (typeof n === "number" && Number.isInteger(n) && n >= 0 && n <= 1000 ? n : 0);
@@ -58,6 +59,7 @@ function account(given: object | null | undefined): AccountFields {
         track_reading: typeof track === "boolean" ? track : true,
         daily_pages: goal(v?.["daily_pages"]),
         yearly_books: goal(v?.["yearly_books"]),
+        goal_notice: v?.["goal_notice"] === true,
     };
 }
 

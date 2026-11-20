@@ -137,7 +137,8 @@ const noTracker: ActivityTracker = { pagesRead() {}, touch() {} };
 
 /**
  * Records reading of book uuid for user. onGoal: today's pages just
- * reached the account's daily goal.
+ * reached the account's daily goal; called only when the user asked to be
+ * told (goal_notice): by default nothing interrupts reading.
  */
 export function createActivityTracker(user: Owner, uuid: string, onGoal?: (pages: number) => void): ActivityTracker {
     if (user === null) return noTracker;
@@ -199,7 +200,7 @@ export function createActivityTracker(user: Owner, uuid: string, onGoal?: (pages
             if (n <= 0) return;
             lastInput = Date.now();
             rollDay();
-            const goal = prefs.daily_pages;
+            const goal = prefs.goal_notice ? prefs.daily_pages : 0;
             const before = goal > 0 ? todayPages(read(key)) + pages : 0;
             pages += n;
             save();

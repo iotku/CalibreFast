@@ -5933,6 +5933,16 @@ body.selecting .book.selected .cover-wrapper {
     font: inherit;
 }
 
+.stats-goals .stats-check {
+    flex-direction: row;
+    color: var(--text-secondary);
+}
+.stats-goals .stats-check span {
+    display: flex;
+    align-items: center;
+    gap: var(--gap-medium);
+}
+
 /* The home page's card, in the greeting. */
 .greeting-stats-slot[hidden] {
     display: none;

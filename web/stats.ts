@@ -206,7 +206,7 @@ form.addEventListener("submit", (e) => {
         return;
     }
     goalsStatus.textContent = "Saving…";
-    setAccountPrefs({ daily_pages: daily, yearly_books: yearly }, lastKnownUser())
+    setAccountPrefs({ daily_pages: daily, yearly_books: yearly, goal_notice: input("goal_notice").checked }, lastKnownUser())
         .then(async () => {
             goalsStatus.textContent = "Saved.";
             await load();
@@ -227,6 +227,7 @@ async function load(): Promise<void> {
             : "Reading stats are turned off in Preferences: nothing new is recorded.";
         input("daily_pages").value = s.goal.daily_pages ? String(s.goal.daily_pages) : "";
         input("yearly_books").value = s.goal.yearly_books ? String(s.goal.yearly_books) : "";
+        input("goal_notice").checked = s.goal.notice;
         showTiles(s);
         showHeatmap(s);
         showYear(s);

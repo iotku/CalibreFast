@@ -135,6 +135,23 @@ func TestActivityOptOut(t *testing.T) {
 	}
 }
 
+// Nothing pops up in the reader unless asked for.
+func TestGoalNoticeOffByDefault(t *testing.T) {
+	if defaultPrefs().GoalNotice {
+		t.Fatal("goal_notice on by default")
+	}
+	u, _ := setupLibraryAndUser(t, 1)
+	mux := statsMux()
+	call(t, mux, u, "PUT", "/api/me/prefs", `{"daily_pages":10}`)
+	if s := getStats(t, mux, u, time.Now().Format(dayLayout)); s.Goal.Notice || s.Goal.DailyPages != 10 {
+		t.Errorf("goal %+v", s.Goal)
+	}
+	call(t, mux, u, "PUT", "/api/me/prefs", `{"goal_notice":true}`)
+	if s := getStats(t, mux, u, time.Now().Format(dayLayout)); !s.Goal.Notice || s.Goal.DailyPages != 10 {
+		t.Errorf("goal %+v after opting in", s.Goal)
+	}
+}
+
 func TestStatusEvents(t *testing.T) {
 	u, books := setupLibraryAndUser(t, 2)
 	b := books[0]

@@ -241,8 +241,9 @@ type statsAnswer struct {
 	WeekPages    int `json:"week_pages"`
 	WeekSeconds  int `json:"week_seconds"`
 	Goal         struct {
-		DailyPages  int `json:"daily_pages"`
-		YearlyBooks int `json:"yearly_books"`
+		DailyPages  int  `json:"daily_pages"`
+		YearlyBooks int  `json:"yearly_books"`
+		Notice      bool `json:"notice"` // goal_notice: told in the reader
 	} `json:"goal"`
 	Year struct {
 		Year     int    `json:"year"`
@@ -289,7 +290,7 @@ func userStats(u *User, today time.Time, tzOffsetMin int) (*statsAnswer, error) 
 		return nil, err
 	}
 	ans := &statsAnswer{Tracking: prefs.TrackReading, Today: today.Format(dayLayout), Days: []dayActivity{}}
-	ans.Goal.DailyPages, ans.Goal.YearlyBooks = prefs.DailyPages, prefs.YearlyBooks
+	ans.Goal.DailyPages, ans.Goal.YearlyBooks, ans.Goal.Notice = prefs.DailyPages, prefs.YearlyBooks, prefs.GoalNotice
 	from := heatmapStart(today)
 	ans.From = from.Format(dayLayout)
 	weekFrom := today.AddDate(0, 0, -6).Format(dayLayout)
