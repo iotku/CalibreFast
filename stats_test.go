@@ -174,6 +174,14 @@ func TestStatusEvents(t *testing.T) {
 	if events("started") != 2 || events("finished") != 2 {
 		t.Errorf("re-read: started %d finished %d, want 2 and 2", events("started"), events("finished"))
 	}
+	// Taken off Finished (not to read again): the last finish is withdrawn,
+	// the earlier one stays.
+	if _, err := setManualStatus(u.ID, b, "", nowMilli()); err != nil {
+		t.Fatal(err)
+	}
+	if events("finished") != 1 || events("started") != 2 {
+		t.Errorf("un-finished: started %d finished %d, want 2 and 1", events("started"), events("finished"))
+	}
 	// Straight to finished (opened at the end): started too.
 	_ = setStatus(u.ID, books[1], "finished", "auto")
 	if n := count(t, appDB, `SELECT COUNT(*) FROM reading_events WHERE book_uuid = ?`, books[1]); n != 2 {
@@ -182,6 +190,50 @@ func TestStatusEvents(t *testing.T) {
 	s := getStats(t, statsMux(), u, time.Now().Format(dayLayout))
 	if s.Year.Finished != 2 || s.Totals.Finished != 2 || len(s.Year.Books) != 2 || s.Year.Started != 2 {
 		t.Errorf("year %+v totals %+v: want 2 books started and finished, counted once each", s.Year, s.Totals)
+	}
+}
+
+// A book marked finished by mistake and cleared leaves this year's list.
+func TestUnfinishLeavesYear(t *testing.T) {
+	u, books := setupLibraryAndUser(t, 1)
+	mux := statsMux()
+	today := time.Now().Format(dayLayout)
+	if _, err := setManualStatus(u.ID, books[0], "finished", nowMilli()); err != nil {
+		t.Fatal(err)
+	}
+	if s := getStats(t, mux, u, today); s.Year.Finished != 1 {
+		t.Fatalf("finished %d, want 1", s.Year.Finished)
+	}
+	for _, next := range []string{"", "wanted"} {
+		if _, err := setManualStatus(u.ID, books[0], "finished", nowMilli()); err != nil {
+			t.Fatal(err)
+		}
+		if _, err := setManualStatus(u.ID, books[0], next, nowMilli()); err != nil {
+			t.Fatal(err)
+		}
+		if s := getStats(t, mux, u, today); s.Year.Finished != 0 || len(s.Year.Books) != 0 || s.Totals.Finished != 0 {
+			t.Errorf("finished -> %q: year %d books %d total %d, want 0", next, s.Year.Finished, len(s.Year.Books), s.Totals.Finished)
+		}
+	}
+}
+
+// A finish from an earlier year is settled: saving the book to read again
+// doesn't take it off that year.
+func TestUnfinishKeepsEarlierYears(t *testing.T) {
+	u, books := setupLibraryAndUser(t, 1)
+	b := books[0]
+	if _, err := setManualStatus(u.ID, b, "finished", nowMilli()); err != nil {
+		t.Fatal(err)
+	}
+	lastYear := time.Date(time.Now().Year()-1, 6, 1, 12, 0, 0, 0, time.Local).Unix()
+	if _, err := appDB.Exec(`UPDATE reading_events SET at = ? WHERE book_uuid = ?`, lastYear, b); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := setManualStatus(u.ID, b, "wanted", nowMilli()); err != nil {
+		t.Fatal(err)
+	}
+	if n := count(t, appDB, `SELECT COUNT(*) FROM reading_events WHERE book_uuid = ? AND kind = 'finished'`, b); n != 1 {
+		t.Errorf("last year's finish: %d events, want 1", n)
 	}
 }
 
