@@ -1,6 +1,7 @@
 package main
 
 import (
+	"net/http"
 	"testing"
 )
 
@@ -83,6 +84,29 @@ func TestPlaceholderResolvedByEdit(t *testing.T) {
 	flush(d)
 	if !there(kept) {
 		t.Error("series and number alone replaced a placeholder")
+	}
+
+	// Their pages lead to the book that replaced them; a placeholder removed
+	// by hand has none.
+	mux := placeholderMux()
+	for p, book := range map[*placeholder]string{byAuthor: a, byISBN: b, bySeries: c} {
+		rec := call(t, mux, nil, "GET", "/missing/"+p.UUID, "")
+		if rec.Code != http.StatusSeeOther || rec.Header().Get("Location") != "/book/get/"+book {
+			t.Errorf("%q: %d %q", p.Meta.Title, rec.Code, rec.Header().Get("Location"))
+		}
+	}
+	if err := deletePlaceholder(kept.UUID); err != nil {
+		t.Fatal(err)
+	}
+	if rec := call(t, mux, nil, "GET", "/missing/"+kept.UUID, ""); rec.Code != http.StatusNotFound {
+		t.Errorf("removed by hand: %d", rec.Code)
+	}
+	// Restored (an undo): its own page again.
+	if err := putPlaceholder(byAuthor.UUID, snapPlaceholder(byAuthor)); err != nil {
+		t.Fatal(err)
+	}
+	if rec := call(t, mux, nil, "GET", "/missing/"+byAuthor.UUID, ""); rec.Code != http.StatusOK {
+		t.Errorf("restored: %d", rec.Code)
 	}
 
 	// It's in the edit log, so it can be undone.

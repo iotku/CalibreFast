@@ -50,6 +50,7 @@ func placeholdersCatalogChanged(next *catalog, uuids []string) {
 		return
 	}
 	var books []placeholderEditedBook
+	var bookUUIDs []string
 	byID := map[int64]int{}
 	for _, u := range uuids {
 		cb, ok := next.lookup(u)
@@ -66,6 +67,7 @@ func placeholdersCatalogChanged(next *catalog, uuids []string) {
 		}
 		byID[cb.ID] = len(books)
 		books = append(books, b)
+		bookUUIDs = append(bookUUIDs, u)
 	}
 	if len(books) == 0 {
 		return
@@ -93,12 +95,12 @@ func placeholdersCatalogChanged(next *catalog, uuids []string) {
 		}
 	}
 	for _, p := range phs {
-		for _, b := range books {
+		for i, b := range books {
 			if !placeholderMatchesEdited(p, b) {
 				continue
 			}
 			before := snapPlaceholder(p)
-			if err := deletePlaceholder(p.UUID); err != nil {
+			if err := replacePlaceholder(p.UUID, bookUUIDs[i]); err != nil {
 				log.Printf("placeholder %s: %v", p.UUID, err)
 			} else {
 				log.Printf("placeholder %q: a book in the library is it now", p.Meta.Title)
