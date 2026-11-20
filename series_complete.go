@@ -3,9 +3,11 @@ package main
 // Which series are complete: every numbered book (1, 2, 3…) in the
 // library. Two sources, and neither needs the other:
 //
-//   - verified: an editor checked the series by hand and said how many
-//     numbered books it has (series_verified). Works with no online
-//     service at all.
+//   - verified: an editor checked the series by hand and said its highest
+//     number (every whole number up to it is needed), how many books it
+//     has whatever their numbers (for a series whose books aren't
+//     numbered: all #1, or #0), or both (series_verified). Works with no
+//     online service at all.
 //   - hardcover: the series is linked to Hardcover and every numbered book
 //     on its list, less those dismissed, is here (hardcover.go).
 //
@@ -33,11 +35,22 @@ const (
 
 // seriesStatus is how much of a series the library has.
 type seriesStatus struct {
-	Numbered int    `json:"numbered"` // numbered books the series has
+	Numbered int    `json:"numbered"` // numbered books the series has (0: not counted by number)
 	Have     int    `json:"have"`     // how many of them are here, in the series
-	Complete bool   `json:"complete"` // all of them
+	Complete bool   `json:"complete"` // all of them (and Books)
 	Source   string `json:"source"`   // statusVerified or statusHardcover
-	Total    int    `json:"total"`    // verified: the number the editor gave
+	Total    int    `json:"total"`    // verified: the highest number the editor gave
+	// Books: verified, how many books the series has, whatever their
+	// numbers (0: not counted); BooksHave: how many are in the library.
+	// Placeholders don't count: they're books it lacks.
+	Books     int `json:"books,omitempty"`
+	BooksHave int `json:"booksHave,omitempty"`
+}
+
+// seriesCount is what an editor said of a series; 0 is not given.
+type seriesCount struct {
+	Total int // its highest number
+	Books int // how many books, whatever their numbers
 }
 
 // Label: the source, as the pages say it.
@@ -58,7 +71,7 @@ var (
 		cat      *catalog
 		gen, ver uint64
 		hc       map[string]seriesStatus // lower-cased series name ->
-		verified map[string]int          // lower-cased name -> total
+		verified map[string]seriesCount  // lower-cased name ->
 		merged   map[string]seriesStatus
 	}
 )
@@ -72,7 +85,7 @@ func seriesStatusesLocked() {
 	if c.merged != nil && c.cat == cat && c.gen == gen && c.ver == ver {
 		return
 	}
-	c.hc, c.verified = nil, map[string]int{}
+	c.hc, c.verified = nil, map[string]seriesCount{}
 	if hardcoverEnabled() && appDB != nil {
 		c.hc = hcStatuses()
 	}
@@ -81,14 +94,14 @@ func seriesStatusesLocked() {
 		merged[k] = st
 	}
 	if appDB != nil {
-		if rows, err := appDB.Query(`SELECT name, total FROM series_verified`); err != nil {
+		if rows, err := appDB.Query(`SELECT name, total, books FROM series_verified`); err != nil {
 			log.Println("series status:", err)
 		} else {
 			for rows.Next() {
 				var name string
-				var total int
-				if rows.Scan(&name, &total) == nil {
-					c.verified[strings.ToLower(name)] = total
+				var n seriesCount
+				if rows.Scan(&name, &n.Total, &n.Books) == nil {
+					c.verified[strings.ToLower(name)] = n
 				}
 			}
 			rows.Close()
@@ -129,9 +142,9 @@ func hcStatusOf(name string) (seriesStatus, bool) {
 	return st, ok
 }
 
-// seriesVerifiedTotal: the number of numbered books an editor gave the
-// series (as browsed), 0 for none.
-func seriesVerifiedTotal(name string) int {
+// seriesVerified: what an editor said of the series (as browsed); zero
+// for nothing.
+func seriesVerified(name string) seriesCount {
 	c := &seriesStatusCache
 	c.Lock()
 	defer c.Unlock()
@@ -140,37 +153,51 @@ func seriesVerifiedTotal(name string) int {
 	return c.verified[strings.ToLower(g)]
 }
 
-// seriesTopNumber: the highest whole number of the series' books (members
-// of a group), 0 for none.
-func seriesTopNumber(members []string) int {
+// seriesShape: the series' books (members of a group): how many, their
+// highest whole number, and whether any is numbered past 1 (if none is,
+// the series looks unnumbered: Calibre gives a book #1 by default).
+func seriesShape(members []string) (books, top int, numbered bool) {
 	cat := currentCatalog()
-	top := 0
 	for i := range cat.books {
 		b := &cat.books[i]
-		if b.Removed || b.Series == 0 || b.SeriesIndex != math.Trunc(b.SeriesIndex) || b.SeriesIndex > seriesVerifiedMax {
+		if b.Removed || b.Series == 0 || !hcInMembers(cat.seriesNames[b.Series], members) {
 			continue
 		}
-		if hcInMembers(cat.seriesNames[b.Series], members) {
+		books++
+		if b.SeriesIndex > 1 {
+			numbered = true
+		}
+		if b.SeriesIndex == math.Trunc(b.SeriesIndex) && b.SeriesIndex <= seriesVerifiedMax {
 			top = max(top, int(b.SeriesIndex))
 		}
 	}
-	return top
+	return books, top, numbered
 }
 
 // verifiedStatuses works out the verified series' statuses from the
-// catalog: the whole numbers 1…total their books have. A book numbered
-// past total raises it: the series grew, and it's complete again when
-// the library has the new ones too.
-func verifiedStatuses(cat *catalog, totals map[string]int) map[string]seriesStatus {
+// catalog.
+//   - By number: the whole numbers 1…total its books have. A book numbered
+//     past total raises it: the series grew, and it's complete again when
+//     the library has the new ones too.
+//   - By count: how many books it has, whatever their numbers; more than
+//     the count is complete too.
+//
+// Complete needs both, of those given.
+func verifiedStatuses(cat *catalog, counts map[string]seriesCount) map[string]seriesStatus {
 	have := map[string]map[int]bool{} // lower-cased name as browsed -> numbers
+	books := map[string]int{}         // lower-cased name as browsed -> books
 	for i := range cat.books {
 		b := &cat.books[i]
-		if b.Removed || b.Series == 0 || b.SeriesIndex != math.Trunc(b.SeriesIndex) || b.SeriesIndex < 1 || b.SeriesIndex > seriesVerifiedMax {
+		if b.Removed || b.Series == 0 {
 			continue
 		}
 		g, _, _ := groups.resolve("series", cat.seriesNames[b.Series])
 		k := strings.ToLower(g)
-		if _, ok := totals[k]; !ok {
+		if _, ok := counts[k]; !ok {
+			continue
+		}
+		books[k]++
+		if b.SeriesIndex != math.Trunc(b.SeriesIndex) || b.SeriesIndex < 1 || b.SeriesIndex > seriesVerifiedMax {
 			continue
 		}
 		if have[k] == nil {
@@ -178,18 +205,28 @@ func verifiedStatuses(cat *catalog, totals map[string]int) map[string]seriesStat
 		}
 		have[k][int(b.SeriesIndex)] = true
 	}
-	out := make(map[string]seriesStatus, len(totals))
-	for k, total := range totals {
-		st := seriesStatus{Source: statusVerified, Total: total, Numbered: total}
-		for n := range have[k] {
-			st.Numbered = max(st.Numbered, n)
+	out := make(map[string]seriesStatus, len(counts))
+	for k, n := range counts {
+		if n.Total <= 0 && n.Books <= 0 {
+			continue
 		}
-		for n := 1; n <= st.Numbered; n++ {
-			if have[k][n] {
-				st.Have++
+		st := seriesStatus{Source: statusVerified, Total: n.Total, Complete: true}
+		if n.Total > 0 {
+			st.Numbered = n.Total
+			for x := range have[k] {
+				st.Numbered = max(st.Numbered, x)
 			}
+			for x := 1; x <= st.Numbered; x++ {
+				if have[k][x] {
+					st.Have++
+				}
+			}
+			st.Complete = st.Have == st.Numbered
 		}
-		st.Complete = st.Numbered > 0 && st.Have == st.Numbered
+		if n.Books > 0 {
+			st.Books, st.BooksHave = max(n.Books, books[k]), books[k]
+			st.Complete = st.Complete && st.BooksHave >= st.Books
+		}
 		out[k] = st
 	}
 	return out
@@ -199,18 +236,20 @@ func verifiedStatuses(cat *catalog, totals map[string]int) map[string]seriesStat
 // API
 // ---------------------------------------------------------------------------
 
-// seriesVerifyHandler: POST /api/series/verified {series, total}: an
-// editor says the series has total numbered books.
+// seriesVerifyHandler: POST /api/series/verified {series, total, books}:
+// an editor gives the series' highest number, its number of books, or
+// both.
 func seriesVerifyHandler(w http.ResponseWriter, r *http.Request) {
 	var req struct {
 		Series string `json:"series"`
-		Total  int    `json:"total"`
+		Total  int    `json:"total"` // highest number, 0 for none
+		Books  int    `json:"books"` // how many books, 0 for none
 	}
 	if !hcDecode(w, r, &req) {
 		return
 	}
-	if req.Total < 1 || req.Total > seriesVerifiedMax {
-		http.Error(w, "the number of books must be between 1 and 10000", http.StatusBadRequest)
+	if req.Total < 0 || req.Total > seriesVerifiedMax || req.Books < 0 || req.Books > seriesVerifiedMax || req.Total+req.Books == 0 {
+		http.Error(w, "give the highest number, the number of books, or both: whole numbers from 1 to 10000", http.StatusBadRequest)
 		return
 	}
 	s, ok := hcSeries(req.Series)
@@ -222,9 +261,9 @@ func seriesVerifyHandler(w http.ResponseWriter, r *http.Request) {
 	if u := currentUser(r); u != nil {
 		uid = u.ID
 	}
-	_, err := appDB.Exec(`INSERT INTO series_verified (name, total, verified_by, verified_at) VALUES (?, ?, ?, ?)
-		ON CONFLICT(name) DO UPDATE SET total = excluded.total, verified_by = excluded.verified_by, verified_at = excluded.verified_at`,
-		s.Name, req.Total, uid, time.Now().Unix())
+	_, err := appDB.Exec(`INSERT INTO series_verified (name, total, books, verified_by, verified_at) VALUES (?, ?, ?, ?, ?)
+		ON CONFLICT(name) DO UPDATE SET total = excluded.total, books = excluded.books, verified_by = excluded.verified_by, verified_at = excluded.verified_at`,
+		s.Name, req.Total, req.Books, uid, time.Now().Unix())
 	if err != nil {
 		log.Println("series verify:", err)
 		http.Error(w, "couldn't save", http.StatusInternalServerError)

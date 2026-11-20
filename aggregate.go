@@ -143,16 +143,17 @@ type FilteredPageData struct {
 	// series, on Hardcover (hardcover.go); "" when it isn't set up.
 	Hardcover string
 	// A series: how much of it is here (series_complete.go), and for
-	// editors, the number of books they gave it (0: none) and the number
-	// to offer when they do.
-	SeriesStatus  *seriesStatus
-	CanVerify     bool
-	VerifiedTotal int
-	SuggestTotal  int
-	TotalBooks    int
-	EmptyText     string         // shown when there are no books (default: "No books found.")
-	Series        []AuthorSeries // an author's series, shown above the books
-	Extra         map[string]any // page-specific extras (e.g. shelf controls)
+	// editors,
+	SeriesStatus *seriesStatus
+	CanVerify    bool
+	// the highest number and number of books they gave it (0: none), and
+	// the ones to offer.
+	VerifiedTotal, VerifiedBooks int
+	SuggestTotal, SuggestBooks   int
+	TotalBooks                   int
+	EmptyText                    string         // shown when there are no books (default: "No books found.")
+	Series                       []AuthorSeries // an author's series, shown above the books
+	Extra                        map[string]any // page-specific extras (e.g. shelf controls)
 }
 
 // SearchPageData is passed to search.html.
@@ -618,10 +619,18 @@ func filteredPageHandler(c *category) http.HandlerFunc {
 				data.SeriesStatus = &st
 			}
 			if data.CanVerify = canEditLibrary(r) && inLibrary > 0; data.CanVerify {
-				data.VerifiedTotal = seriesVerifiedTotal(name)
-				data.SuggestTotal = data.VerifiedTotal
-				if data.SuggestTotal == 0 {
-					data.SuggestTotal = seriesTopNumber(members)
+				v := seriesVerified(name)
+				data.VerifiedTotal, data.VerifiedBooks = v.Total, v.Books
+				data.SuggestTotal, data.SuggestBooks = v.Total, v.Books
+				if v.Total == 0 && v.Books == 0 {
+					// Nothing said yet: offer what the library has. A series
+					// with no book numbered past #1 is counted by its books.
+					books, top, numbered := seriesShape(members)
+					if numbered {
+						data.SuggestTotal = top
+					} else {
+						data.SuggestBooks = books
+					}
 				}
 			}
 		}
