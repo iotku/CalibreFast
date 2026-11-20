@@ -158,6 +158,7 @@ type hcReviewRow struct {
 	Dismiss  bool   // can be dismissed
 	Restore  bool   // was dismissed: can be shown again
 	NotMatch bool   // matched to a library book that may not be it
+	Refused  bool   // a "Not a match" (dismissed): Restore undoes it
 	// Lib: the library book matched to a Hardcover book, shown under it
 	// (its title and author may not be the same: a match by title alone).
 	Lib *hcLibView
@@ -250,7 +251,10 @@ func hcReviewRowsFor(rev hcReview, write string) hcReviewRows {
 	for _, s := range rev.Dismissed {
 		r := hcRow(s, write)
 		r.Kind, r.Restore = "info", true
-		if s.Book != nil {
+		switch {
+		case s.Refused:
+			r.Refused, r.Note = true, "" // the library book is on its own line
+		case s.Book != nil:
 			r.Note = "matched " + s.Book.Title
 		}
 		rows.Dismissed = append(rows.Dismissed, r)
@@ -749,12 +753,17 @@ func hardcoverNotMatchHandler(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, http.StatusOK, res)
 }
 
-// POST /api/hardcover/undismiss {series, ids}: show dismissed suggestions
-// again; all of the series' when ids is empty.
+// POST /api/hardcover/undismiss {series, ids, notMatch}: show dismissed
+// suggestions again, and undo "Not a match"es ({uuid, hcBookId}); all of
+// the series' when both are empty.
 func hardcoverUndismissHandler(w http.ResponseWriter, r *http.Request) {
 	var req struct {
-		Series string  `json:"series"`
-		IDs    []int64 `json:"ids"`
+		Series   string  `json:"series"`
+		IDs      []int64 `json:"ids"`
+		NotMatch []struct {
+			UUID     string `json:"uuid"`
+			HCBookID int64  `json:"hcBookId"`
+		} `json:"notMatch"`
 	}
 	if !hcDecode(w, r, &req) {
 		return
@@ -764,10 +773,31 @@ func hardcoverUndismissHandler(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "no such series in the library", http.StatusNotFound)
 		return
 	}
-	if err := hcRestore(s.Name, req.IDs); err != nil {
-		log.Println("hardcover:", err)
-		http.Error(w, "couldn't save", http.StatusInternalServerError)
-		return
+	if len(req.IDs) > 0 || len(req.NotMatch) == 0 {
+		if err := hcRestore(s.Name, req.IDs); err != nil {
+			log.Println("hardcover:", err)
+			http.Error(w, "couldn't save", http.StatusInternalServerError)
+			return
+		}
+	}
+	var entries []hardcover.Entry
+	if l, err := hcLinkFor(s.Name); err == nil && l != nil && l.Snapshot != nil {
+		entries = l.Snapshot.Entries
+	}
+	for _, m := range req.NotMatch {
+		// The refusal may be kept against another book merged into the entry.
+		ids := []int64{m.HCBookID}
+		for i := range entries {
+			if slices.Contains(entries[i].IDs(), m.HCBookID) {
+				ids = entries[i].IDs()
+				break
+			}
+		}
+		if err := hcRestoreMatch(s.Name, m.UUID, ids); err != nil {
+			log.Println("hardcover:", err)
+			http.Error(w, "couldn't save", http.StatusInternalServerError)
+			return
+		}
 	}
 	w.WriteHeader(http.StatusNoContent)
 }

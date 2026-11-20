@@ -258,6 +258,22 @@ review?.addEventListener("click", (e) => {
         });
 });
 
+// A dismissed "Not a match": "Restore match".
+review?.addEventListener("click", (e) => {
+    const btn = (e.target as Element).closest<HTMLButtonElement>("button[data-unrefuse]");
+    if (!btn) return;
+    const hcBookId = Number(btn.dataset["unrefuse"] ?? "0");
+    const uuid = btn.dataset["uuid"] ?? "";
+    if (!(hcBookId > 0) || !uuid) return;
+    btn.disabled = true;
+    api("POST", "/api/hardcover/undismiss", { series, ids: [], notMatch: [{ uuid, hcBookId }] })
+        .then(() => location.reload())
+        .catch((err: unknown) => {
+            sayApply(errorMessage(err), true);
+            btn.disabled = false;
+        });
+});
+
 // One row's "Not in this series" / "Dismiss", or a dismissed row's "Restore".
 review?.addEventListener("click", (e) => {
     const btn = (e.target as Element).closest<HTMLButtonElement>("button[data-dismiss], button[data-restore]");

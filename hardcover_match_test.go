@@ -247,6 +247,20 @@ func TestHCRefused(t *testing.T) {
 	if rev := hcMatchSeries(d, lib, nil, nil); len(rev.Missing) != 1 || len(rev.Untagged) != 0 {
 		t.Errorf("both refused: %+v", rev)
 	}
+	// Listed with the dismissed (to undo), once each, under the entry.
+	lib.book = func(u string) (hcLibBook, bool) {
+		for _, b := range books {
+			if b.UUID == u {
+				return b, true
+			}
+		}
+		return hcLibBook{}, false
+	}
+	rev := hcMatchSeries(d, lib, nil, nil)
+	if len(rev.Dismissed) != 2 || !rev.Dismissed[0].Refused || rev.Dismissed[0].Book.UUID != "aaron" || rev.Dismissed[1].Book.UUID != "other" ||
+		rev.Dismissed[0].Entry.BookID != 27 || rev.complete() != false {
+		t.Errorf("dismissed %+v", rev.Dismissed)
+	}
 }
 
 func TestHCKeys(t *testing.T) {

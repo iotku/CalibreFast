@@ -334,6 +334,7 @@ func TestHardcoverNotAMatch(t *testing.T) {
 	wrap := func(h http.HandlerFunc) http.HandlerFunc { return requireEditor(requireLookups(requireHardcover(h))) }
 	mux.HandleFunc("POST /api/hardcover/notmatch", wrap(hardcoverNotMatchHandler))
 	mux.HandleFunc("GET /missing/hardcover", wrap(hardcoverReviewPage))
+	mux.HandleFunc("POST /api/hardcover/undismiss", wrap(hardcoverUndismissHandler))
 	do := func(u *User, method, path, body string, want int) string {
 		t.Helper()
 		rec := call(t, mux, u, method, path, body)
@@ -378,4 +379,28 @@ func TestHardcoverNotAMatch(t *testing.T) {
 	}
 	// Again: the match isn't suggested any more.
 	do(admin, "POST", "/api/hardcover/notmatch", body, http.StatusConflict)
+
+	// It's listed with the dismissed, and Restore match undoes it: the book
+	// is matched again (its placeholder stays).
+	if len(rev.Dismissed) != 1 || !rev.Dismissed[0].Refused || rev.Dismissed[0].Book.UUID != aaron || rev.Dismissed[0].Entry.BookID != 27 {
+		t.Fatalf("dismissed %+v", rev.Dismissed)
+	}
+	if page := do(admin, "GET", "/missing/hardcover?series=Discworld", "", http.StatusOK); !strings.Contains(page, `data-unrefuse="27"`) {
+		t.Error("no Restore match")
+	}
+	undo := `{"series":"Discworld","ids":[],"notMatch":[{"uuid":"` + aaron + `","hcBookId":27}]}`
+	do(alice, "POST", "/api/hardcover/undismiss", undo, http.StatusNotFound)
+	do(admin, "POST", "/api/hardcover/undismiss", undo, http.StatusNoContent)
+	if rev := review(); len(rev.Untagged) != 1 || rev.Untagged[0].Book.UUID != aaron || len(rev.Dismissed) != 0 {
+		t.Fatalf("after restoring: untagged %+v dismissed %+v", rev.Untagged, rev.Dismissed)
+	}
+	if placeholderByUUID(res.Placeholder) == nil {
+		t.Error("restoring removed the placeholder")
+	}
+	// Restore all undoes them too.
+	do(admin, "POST", "/api/hardcover/notmatch", body, http.StatusOK)
+	do(admin, "POST", "/api/hardcover/undismiss", `{"series":"Discworld","ids":[]}`, http.StatusNoContent)
+	if rev := review(); len(rev.Untagged) != 1 || len(rev.Dismissed) != 0 {
+		t.Fatalf("after Restore all: untagged %+v dismissed %+v", rev.Untagged, rev.Dismissed)
+	}
 }

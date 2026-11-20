@@ -102,7 +102,7 @@
     <section class="auth-card">
         <details class="hc-dismissed">
             <summary>Dismissed ({{ len . }})</summary>
-            <p class="auth-muted">Left out of the review and of the series' completion, whenever the list is fetched again.</p>
+            <p class="auth-muted">Left out of the review and of the series' completion, whenever the list is fetched again. A “Not a match” keeps that library book from being matched to that one; restoring it doesn't remove a placeholder made for it.</p>
             <ul class="ph-list">{{ range . }}{{ template "hc-row" . }}{{ end }}</ul>
             <div class="ph-actions ph-actions-start">
                 <button type="button" id="hc-undismiss" class="btn-standard">Restore all</button>
@@ -131,13 +131,15 @@
         {{ with .Strength }}<span class="hc-badge">{{ . }}</span>{{ end }}
         {{ with .Note }}<span class="ph-sub hc-note">{{ . }}</span>{{ end }}
         {{ with .Action }}<span class="ph-sub hc-action">{{ . }}</span>{{ end }}
-        {{ with .Lib }}<span class="hc-lib">In the library: <a href="{{ .Href }}">{{ .Title }}</a>{{ with .Authors }} by {{ . }}{{ end }}{{ with .Series }} · {{ . }}{{ end }}</span>{{ end }}
+        {{ with .Lib }}<span class="hc-lib">{{ if $.Refused }}Not a match:{{ else }}In the library:{{ end }} <a href="{{ .Href }}">{{ .Title }}</a>{{ with .Authors }} by {{ . }}{{ end }}{{ with .Series }} · {{ . }}{{ end }}</span>{{ end }}
     </span>
     {{ if or .Dismiss .NotMatch }}<span class="hc-row-btns">
     {{ if .NotMatch }}<button type="button" class="btn-standard hc-row-btn" data-notmatch="{{ .HCBookID }}" data-uuid="{{ .UUID }}"
             title="The library book isn't this one: never match them again, and add this one as a placeholder in the series">Not a match, create placeholder</button>{{ end }}
     {{ if .Dismiss }}<button type="button" class="btn-standard hc-row-btn" data-dismiss="{{ .HCBookID }}">{{ if eq .Kind "placeholder" }}Not in this series{{ else }}Dismiss{{ end }}</button>{{ end }}
     </span>{{ end }}
-    {{ if .Restore }}<button type="button" class="btn-standard hc-row-btn" data-restore="{{ .HCBookID }}">Restore</button>{{ end }}
+    {{ if .Refused }}<button type="button" class="btn-standard hc-row-btn" data-unrefuse="{{ .HCBookID }}" data-uuid="{{ .UUID }}"
+            title="Let this library book match this one again. A placeholder made for it stays.">Restore match</button>
+    {{ else if .Restore }}<button type="button" class="btn-standard hc-row-btn" data-restore="{{ .HCBookID }}">Restore</button>{{ end }}
 </li>
 {{ end }}
