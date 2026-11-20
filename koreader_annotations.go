@@ -84,7 +84,7 @@ func koreaderExportHandler(w http.ResponseWriter, r *http.Request) {
 	}
 	format := r.URL.Query().Get("format")
 	file, err := bookFilePath(uuid, format)
-	if !validFormat(format) || err != nil {
+	if !koreaderFormat(format) || err != nil {
 		http.Error(w, "this book has no such format", http.StatusNotFound)
 		return
 	}
@@ -126,7 +126,7 @@ func koreaderImportHandler(w http.ResponseWriter, r *http.Request) {
 	}
 	format := r.URL.Query().Get("format")
 	file, err := bookFilePath(uuid, format)
-	if !validFormat(format) || err != nil {
+	if !koreaderFormat(format) || err != nil {
 		http.Error(w, "this book has no such format", http.StatusNotFound)
 		return
 	}

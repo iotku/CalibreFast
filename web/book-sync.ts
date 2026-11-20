@@ -20,6 +20,7 @@
  * tried again (backingOff).
  */
 
+import { isConvertedFormat, readerFormat } from "./formats.js";
 import {
     currentUser,
     deletePartial,
@@ -473,6 +474,8 @@ async function runSync({ marks, force = false, fresh = false }: SyncOptions): Pr
     if (prefs.readingKeepDays !== -1 && prefs.keepReadingN) {
         for (const b of (await readingOrder(m)).slice(0, prefs.keepReadingN)) {
             if (kept.has(b.uuid) || queued(b.uuid) || offlinePref(b.uuid) === "never") continue;
+            // Read converted from a Kindle format (formats.ts): no file is kept for it.
+            if (isConvertedFormat(readerFormat(m.resume.get(b.uuid) ?? ""))) continue;
             jobs.push({ uuid: b.uuid, title: b.title, authors: b.authors, formats: formatsFor(b.uuid), status: "reading" });
         }
     }

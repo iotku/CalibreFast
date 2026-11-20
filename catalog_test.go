@@ -251,7 +251,7 @@ func TestResumeURLFromCatalog(t *testing.T) {
 	libraryCatalog.Store(c)
 
 	before := libraryIO.Load()
-	for uuid, want := range map[string]string{both: "/read?uuid=" + both, pdf: "/read-pdf?uuid=" + pdf, mobi: ""} {
+	for uuid, want := range map[string]string{both: "/read?uuid=" + both, pdf: "/read-pdf?uuid=" + pdf, mobi: "/read?uuid=" + mobi + "&format=mobi"} {
 		if got := resumeURL(uuid, ""); got != want {
 			t.Errorf("resumeURL(%s) = %q, want %q", uuid, got, want)
 		}

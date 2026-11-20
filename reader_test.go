@@ -73,7 +73,10 @@ func TestPreviewReadLink(t *testing.T) {
 		{"uuid", "abc-1", []string{"pdf", "EPUB"}, "/read?uuid=abc-1&preview=1"},
 		{"uuid", "abc-1", []string{"mobi", "pdf"}, "/read-pdf?uuid=abc-1&preview=1"},
 		{"import", "x y", []string{"epub"}, "/read?import=x+y&preview=1"},
-		{"uuid", "abc-1", []string{"mobi"}, ""},
+		{"uuid", "abc-1", []string{"mobi"}, "/read?uuid=abc-1&format=mobi&preview=1"},
+		{"uuid", "abc-1", []string{"mobi", "AZW3"}, "/read?uuid=abc-1&format=azw3&preview=1"},
+		{"import", "x", []string{"azw3"}, ""}, // the import queue reads EPUB and PDF only
+		{"uuid", "abc-1", []string{"djvu"}, ""},
 		{"uuid", "abc-1", nil, ""},
 	} {
 		if got := previewReadLink(tc.param, tc.id, tc.formats); got != tc.want {

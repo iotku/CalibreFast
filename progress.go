@@ -39,7 +39,11 @@ type bookmarkRec struct {
 	CreatedAt int64  `json:"created_at"` // ms
 }
 
-func validFormat(f string) bool { return f == "epub" || f == "pdf" }
+// validFormat: a format the web readers save places in (convert_read.go).
+func validFormat(f string) bool { return f == "epub" || f == "pdf" || isConvertedFormat(f) }
+
+// koreaderFormat: a format whose places KOReader shares with the web readers.
+func koreaderFormat(f string) bool { return f == "epub" || f == "pdf" }
 
 func getProgress(userID int64, uuid, format string) (*progressRec, error) {
 	p := progressRec{Format: format}
@@ -57,7 +61,7 @@ func progressGetHandler(w http.ResponseWriter, r *http.Request) {
 	u := currentUser(r)
 	format := r.URL.Query().Get("format")
 	if !validFormat(format) {
-		http.Error(w, "format must be epub or pdf", http.StatusBadRequest)
+		http.Error(w, "format must be one a reader opens", http.StatusBadRequest)
 		return
 	}
 	uuid := r.PathValue("uuid")

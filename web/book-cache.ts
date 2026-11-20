@@ -29,10 +29,8 @@ const STORES = { epub: "books", pdf: "pdfs" } as const;
 export type KeptFormat = keyof typeof STORES;
 export const KEPT_FORMATS = Object.keys(STORES) as KeptFormat[];
 
-/** The reader for a book's format. */
-export function readerUrl(uuid: string, format: KeptFormat): string {
-    return `${format === "pdf" ? "/read-pdf" : "/read"}?uuid=${encodeURIComponent(uuid)}`;
-}
+/** The reader for a book's format (formats.ts). */
+export { readerUrl } from "./formats.js";
 
 export interface CachedBook {
     uuid: string;

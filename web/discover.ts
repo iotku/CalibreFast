@@ -63,6 +63,7 @@ import {
     type StoredMarks,
 } from "./reading.js";
 import { forgetLocalReading, localReading, LOCAL_FINISHED } from "./local-reading.js";
+import { readerUrl } from "./formats.js";
 import { maxCovers } from "./cover-limits.js";
 import { setupDragScroll, setupPageDragScroll } from "./drag-scroll.js";
 import "./offline-marks.js"; // the "on this device" badge on cards
@@ -528,7 +529,7 @@ function guestMarks(): Marks {
         if (e.percent >= LOCAL_FINISHED) finished.add(uuid);
         else {
             reading.set(uuid, e.percent);
-            resume.set(uuid, (e.format === "pdf" ? "/read-pdf?uuid=" : "/read?uuid=") + encodeURIComponent(uuid));
+            resume.set(uuid, readerUrl(uuid, e.format));
         }
     }
     return { user: null, signedIn: false, reading, resume, wanted: new Set(), finished, favorites: new Set() };

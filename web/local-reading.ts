@@ -9,7 +9,9 @@
  * read, it's built from the positions already there.
  */
 
-export type LocalFormat = "epub" | "pdf";
+import type { BookFormat } from "./formats.js";
+
+export type LocalFormat = BookFormat;
 
 export interface LocalReadingEntry {
     format: LocalFormat;
@@ -21,7 +23,7 @@ export interface LocalReadingEntry {
 export const LOCAL_FINISHED = 0.97; // as the server (finishedPercent in progress.go)
 
 const KEY = "cf-local-reading";
-const PROGRESS = /^cf-progress-(.+)-(epub|pdf)$/;
+const PROGRESS = /^cf-progress-(.+)-(epub|pdf|azw3|azw|mobi)$/;
 
 type Index = Record<string, LocalReadingEntry>;
 

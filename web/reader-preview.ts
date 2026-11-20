@@ -7,13 +7,19 @@
 // highlights, no copy kept in this browser. Books in the import queue
 // (?import=<id>) are always previews: they aren't in the library yet.
 
+import { isConvertedFormat, type BookFormat } from "./formats.js";
 import type { ReadingSync } from "./reading-sync.js";
 
 export interface ReaderBook {
     /** The library book's uuid, or a waiting book's id in the import queue. */
     id: string;
     preview: boolean;
-    /** The book's file in a format. */
+    /**
+     * The format read: "epub", or a Kindle format the server converts to
+     * EPUB (?format=azw3, formats.ts). Not used by the PDF reader.
+     */
+    format: BookFormat;
+    /** The book's file in a format (a Kindle format: converted to EPUB). */
     file(format: string): string;
     /** Its metadata editor, where a preview's Back goes when it has nowhere else. */
     editor: string;
@@ -25,15 +31,17 @@ export function readerBook(): ReaderBook | null {
     const importId = params.get("import");
     if (importId) {
         const base = `/import/${encodeURIComponent(importId)}`;
-        return { id: importId, preview: true, file: (format) => `${base}/file/${format}`, editor: base };
+        return { id: importId, preview: true, format: "epub", file: (format) => `${base}/file/${format}`, editor: base };
     }
     const uuid = params.get("uuid");
     if (!uuid) return null;
     const id = encodeURIComponent(uuid);
+    const format = params.get("format");
     return {
         id: uuid,
         preview: !!params.get("preview"),
-        file: (format) => `/download/${id}/${format}`,
+        format: isConvertedFormat(format) ? format : "epub",
+        file: (f) => (isConvertedFormat(f) ? `/book/as-epub/${id}/${f}` : `/download/${id}/${encodeURIComponent(f)}`),
         editor: `/book/edit/${id}`,
     };
 }
