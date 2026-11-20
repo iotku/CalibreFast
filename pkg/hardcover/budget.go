@@ -162,6 +162,10 @@ type Usage struct {
 	Remote      int       `json:"remote"` // Hardcover's own count of what's left; -1 not known
 	PausedUntil time.Time `json:"pausedUntil"`
 	ResetsAt    time.Time `json:"resetsAt"`
+	// The bucket, for a status page (not kept across restarts).
+	Tokens    float64 `json:"-"`
+	Burst     float64 `json:"-"`
+	PerMinute float64 `json:"-"`
 }
 
 // Usage reports the day's use at now.
@@ -169,7 +173,8 @@ func (b *Budget) Usage(now time.Time) Usage {
 	b.mu.Lock()
 	defer b.mu.Unlock()
 	b.rollLocked(now)
-	u := Usage{Day: b.day, Used: b.used, Limit: b.daily, Remote: b.remote, ResetsAt: nextReset(now)}
+	u := Usage{Day: b.day, Used: b.used, Limit: b.daily, Remote: b.remote, ResetsAt: nextReset(now),
+		Tokens: b.tokens, Burst: b.burst, PerMinute: b.perMinute}
 	if now.Before(b.pausedTil) {
 		u.PausedUntil = b.pausedTil
 	}

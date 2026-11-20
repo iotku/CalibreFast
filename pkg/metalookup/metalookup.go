@@ -103,6 +103,16 @@ func New(cfg Config) *Client {
 	return c
 }
 
+// Usage reports a source's limits at now (OpenLibrary, GoogleBooks); false
+// for a source it doesn't know.
+func (c *Client) Usage(source string, now time.Time) (Usage, bool) {
+	l := c.limits[source]
+	if l == nil {
+		return Usage{}, false
+	}
+	return l.Usage(now), true
+}
+
 // Query is what's sent: an ISBN-13, or a title and an author.
 type Query struct {
 	ISBN, Title, Author string

@@ -5503,6 +5503,18 @@ body.selecting .book.selected .cover-wrapper {
 .server-storage .auth-error {
     margin-bottom: var(--gap-medium);
 }
+.server-budgets {
+    margin-bottom: var(--gap-xlarge);
+}
+.server-budgets .prefs-bar {
+    margin-bottom: var(--gap-medium);
+}
+.server-budgets .auth-error {
+    margin-bottom: var(--gap-medium);
+}
+.server-budget-line {
+    font-size: 0.85rem;
+}
 .server-path {
     overflow-wrap: anywhere;
 }

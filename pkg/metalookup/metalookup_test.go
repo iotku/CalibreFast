@@ -343,3 +343,35 @@ func TestGoogleBooksLookup(t *testing.T) {
 		t.Fatalf("Google Books: %+v", res)
 	}
 }
+
+// Usage reports without taking: the bucket refills, a new day starts over,
+// and a pause shows until it ends.
+func TestLimiterUsage(t *testing.T) {
+	l := NewLimiter(1, 5, 100)
+	now := time.Date(2026, 11, 20, 23, 0, 0, 0, time.UTC)
+	for range 3 {
+		if err := l.Take(now); err != nil {
+			t.Fatal(err)
+		}
+	}
+	u := l.Usage(now)
+	if u.Used != 3 || u.Daily != 100 || u.Tokens != 2 || u.Burst != 5 {
+		t.Fatalf("after 3: %+v", u)
+	}
+	if again := l.Usage(now); again != u {
+		t.Fatalf("Usage changed the limiter: %+v then %+v", u, again)
+	}
+	if u := l.Usage(now.Add(2 * time.Second)); u.Tokens != 4 {
+		t.Errorf("2 s later: %v tokens, want 4", u.Tokens)
+	}
+	if !u.ResetsAt.Equal(time.Date(2026, 11, 21, 0, 0, 0, 0, time.UTC)) {
+		t.Errorf("resets at %v", u.ResetsAt)
+	}
+	l.Pause(now.Add(time.Minute))
+	if u := l.Usage(now); u.PausedUntil.IsZero() {
+		t.Error("pause not shown")
+	}
+	if u := l.Usage(now.Add(2 * time.Hour)); u.Used != 0 || !u.PausedUntil.IsZero() {
+		t.Errorf("next day: %+v", u)
+	}
+}
