@@ -228,7 +228,8 @@ function fieldDiffToggle(
   const el = document.createElement("div");
   el.className = "field-diff";
   const render = (): void => {
-    const changes = computeChanges(current, collectValues(form)).filter((c) => c.key === key);
+    // The series' diff has its number's too (the number has no pills).
+    const changes = computeChanges(current, collectValues(form)).filter((c) => c.key === key || (key === "series" && c.key === "series_index"));
     el.replaceChildren(...renderChanges(changes, { compact: true }));
   };
   (buttonRow.closest("fieldset") ?? buttonRow).append(el);
@@ -261,10 +262,35 @@ function populateField(
   const buttonRow = form.querySelector<HTMLElement>(`.meta-source-buttons[data-field="${key}"]`);
   if (!input || !buttonRow) return null;
 
+  // The series and its number are offered together, under the series
+  // ("Discworld #13"): a pill sets both. The number has no pills of its own.
+  if (key === "series_index") {
+    buttonRow.replaceChildren();
+    buttonRow.hidden = true;
+    if (current) input.value = fieldValue(current, key, kind);
+    return null;
+  }
+  const indexInput = key === "series" ? form.querySelector<HTMLInputElement>('[name="series_index"]') : null;
+  /** What a pill offers: the field's value, or for the series "Name #n". */
+  const offered = (meta: MetaSource): { value: string; index: string } => {
+    const value = fieldValue(meta, key, kind);
+    return { value, index: indexInput && value ? fieldValue(meta, "series_index", "string") : "" };
+  };
+  const shown = (value: string, index: string): string => (index ? `${value} #${index}` : value);
+  /** What the field holds now, as a pill would show it. */
+  const showing = (): string => {
+    const v = input.value.trim();
+    return indexInput && v ? shown(v, indexInput.value.trim()) : v;
+  };
+
   let applying = false; // true while we set the value programmatically
-  const setValue = (v: string): void => {
+  const setValue = (v: string, index?: string): void => {
     applying = true;
     input.value = v;
+    if (indexInput && index !== undefined) {
+      indexInput.value = index;
+      indexInput.dispatchEvent(new Event("input", { bubbles: true }));
+    }
     input.dispatchEvent(new Event("input", { bubbles: true }));
     applying = false;
   };
@@ -274,9 +300,9 @@ function populateField(
 
   // green if a source's value matches what's in the field, gold otherwise
   const updateHighlights = (): void => {
-    const currentVal = input.value.trim();
+    const currentVal = showing();
     for (const btn of buttons) {
-      const matches = (btn.dataset["value"] ?? "").trim() === currentVal;
+      const matches = (btn.dataset["shown"] ?? btn.dataset["value"] ?? "").trim() === currentVal;
       btn.classList.toggle("meta-source-match", matches);
       btn.classList.toggle("meta-source-diff", !matches);
     }
@@ -284,15 +310,16 @@ function populateField(
 
   const addSource: AddSource = (meta) => {
     dropOldLookup(buttons, meta);
-    const value = fieldValue(meta, key, kind);
+    const { value, index } = offered(meta);
     if (!value) return; // nothing to offer from this source
-    if (meta.External && joinLookupPill(buttons, meta, (b) => b.dataset["value"] === value)) return updateHighlights();
+    const label = shown(value, index);
+    if (meta.External && joinLookupPill(buttons, meta, (b) => b.dataset["shown"] === label)) return updateHighlights();
 
-    const btn = sourceButton(meta, `Click to use from ${meta.Format}: "${value}"`);
+    const btn = sourceButton(meta, `Click to use from ${meta.Format}: "${label}"`);
     btn.dataset["value"] = value;
-    btn.dataset["shown"] = value;
+    btn.dataset["shown"] = label;
     btn.addEventListener("click", () => {
-      setValue(value);
+      setValue(value, indexInput && index ? index : undefined); // no number: the field's stays
       if (input.type !== "hidden") input.focus();
     });
     buttonRow.appendChild(btn);
@@ -302,26 +329,31 @@ function populateField(
   metas.forEach(addSource);
 
   let editedBtn: HTMLButtonElement | null = null;
-  input.addEventListener("input", () => {
+  const onEdit = (): void => {
     if (!applying) {
       if (!editedBtn) {
         const btn = makeEditedButton(() => {
           const edited = btn.dataset["value"] ?? "";
-          const showing = input.value === edited;
-          if (!showing) setValue(edited);
-          fieldDiffToggle(form, current, key, buttonRow, { alreadyShowingEdits: showing });
+          const editedIndex = btn.dataset["index"];
+          const same = input.value === edited && (!indexInput || indexInput.value === editedIndex);
+          if (!same) setValue(edited, editedIndex);
+          fieldDiffToggle(form, current, key, buttonRow, { alreadyShowingEdits: same });
         });
         editedBtn = btn;
         insertEditedButton(buttonRow, btn);
         buttons.push(btn);
       }
       editedBtn.dataset["value"] = input.value;
-      editedBtn.title = `Your changes: "${input.value}" (click to restore)`;
+      if (indexInput) editedBtn.dataset["index"] = indexInput.value;
+      editedBtn.dataset["shown"] = showing();
+      editedBtn.title = `Your changes: "${showing()}" (click to restore)`;
     }
     updateHighlights();
-  });
+  };
+  input.addEventListener("input", onEdit);
+  indexInput?.addEventListener("input", onEdit); // the number is part of the series' pill
 
-  if (current) setValue(fieldValue(current, key, kind));
+  if (current) setValue(fieldValue(current, key, kind), indexInput ? fieldValue(current, "series_index", "string") : undefined);
   updateHighlights();
   return addSource;
 }
