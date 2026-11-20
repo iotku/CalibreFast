@@ -43,6 +43,8 @@ type hcLibrary struct {
 	// refused: Hardcover book id -> library uuids an editor said aren't
 	// that book ("Not a match").
 	refused map[int64]map[string]bool
+	// book: a library book by uuid, for listing the refused ones.
+	book func(uuid string) (hcLibBook, bool)
 }
 
 // refuses: an editor said the library book isn't e (any of its books).
@@ -71,6 +73,9 @@ type hcSuggestion struct {
 	Note    string `json:"note,omitempty"`
 	// Fix: a present book whose number differs from Hardcover's position.
 	Fix bool `json:"fix,omitempty"`
+	// Refused: an editor said Book isn't Entry ("Not a match"); listed
+	// with the dismissed, to undo.
+	Refused bool `json:"refused,omitempty"`
 	// Placeholder: a missing book that already has one (nothing to do).
 	Placeholder string `json:"placeholder,omitempty"`
 }
@@ -409,6 +414,26 @@ func hcMatchSeries(d *hardcover.SeriesDetail, lib hcLibrary, placeholders []*pla
 		if !used[b.UUID] {
 			cp := b
 			rev.Extra = append(rev.Extra, hcSuggestion{Book: &cp})
+		}
+	}
+	// The "Not a match"es, each under the entry it was refused for.
+	if len(lib.refused) > 0 && lib.book != nil {
+		for i := range d.Entries {
+			e := &d.Entries[i]
+			var uuids []string
+			for _, id := range e.IDs() {
+				for u := range lib.refused[id] {
+					if !slices.Contains(uuids, u) {
+						uuids = append(uuids, u)
+					}
+				}
+			}
+			slices.Sort(uuids)
+			for _, u := range uuids {
+				if b, ok := lib.book(u); ok {
+					rev.Dismissed = append(rev.Dismissed, hcSuggestion{Entry: e, Book: &b, Refused: true, Note: "not a match"})
+				}
+			}
 		}
 	}
 	return rev

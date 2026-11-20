@@ -143,6 +143,7 @@ type hcTitleIndex struct {
 	cat     *catalog
 	byTitle map[string][]int32
 	byID    map[int64]int32
+	byUUID  map[string]int32
 }
 
 var hcTitleIndexCache struct {
@@ -157,7 +158,7 @@ func currentHCTitleIndex() *hcTitleIndex {
 	if idx := hcTitleIndexCache.idx; idx != nil && idx.cat == cat {
 		return idx
 	}
-	idx := &hcTitleIndex{cat: cat, byTitle: map[string][]int32{}, byID: map[int64]int32{}}
+	idx := &hcTitleIndex{cat: cat, byTitle: map[string][]int32{}, byID: map[int64]int32{}, byUUID: map[string]int32{}}
 	for i := range cat.books {
 		b := &cat.books[i]
 		if b.Removed || b.UUID == "" {
@@ -169,6 +170,7 @@ func currentHCTitleIndex() *hcTitleIndex {
 			idx.byTitle[short] = append(idx.byTitle[short], int32(i))
 		}
 		idx.byID[b.ID] = int32(i)
+		idx.byUUID[b.UUID] = int32(i)
 	}
 	hcTitleIndexCache.idx = idx
 	return idx
@@ -190,6 +192,12 @@ func (x *hcTitleIndex) libBook(slot int32) hcLibBook {
 func hcLibraryFor(s hcSeriesInfo, d *hardcover.SeriesDetail) (hcLibrary, error) {
 	x := currentHCTitleIndex()
 	lib := hcLibrary{members: s.Members, byISBN: map[string][]hcLibBook{}, refused: hcRefused(s.Name)}
+	lib.book = func(uuid string) (hcLibBook, bool) {
+		if slot, ok := x.byUUID[uuid]; ok {
+			return x.libBook(slot), true
+		}
+		return hcLibBook{}, false
+	}
 	for i := range x.cat.books {
 		b := &x.cat.books[i]
 		if !b.Removed && b.Series != 0 && hcInMembers(x.cat.seriesNames[b.Series], s.Members) {
@@ -493,11 +501,26 @@ func hcDismiss(name string, ids []int64) (int, error) {
 func hcRestore(name string, ids []int64) error {
 	defer seriesStatusChanged()
 	if len(ids) == 0 {
+		if _, err := appDB.Exec(`DELETE FROM hardcover_not_match WHERE name = ?`, name); err != nil {
+			return err
+		}
 		_, err := appDB.Exec(`DELETE FROM hardcover_dismissed WHERE name = ?`, name)
 		return err
 	}
 	for _, id := range ids {
 		if _, err := appDB.Exec(`DELETE FROM hardcover_dismissed WHERE name = ? AND hc_book_id = ?`, name, id); err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
+// hcRestoreMatch undoes a "Not a match": the library book may be matched
+// to the Hardcover book (ids: it and the books merged with it) again.
+func hcRestoreMatch(name, uuid string, ids []int64) error {
+	defer seriesStatusChanged()
+	for _, id := range ids {
+		if _, err := appDB.Exec(`DELETE FROM hardcover_not_match WHERE name = ? AND hc_book_id = ? AND uuid = ?`, name, id, uuid); err != nil {
 			return err
 		}
 	}
