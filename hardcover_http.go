@@ -226,7 +226,7 @@ func hcReviewRowsFor(rev hcReview, write string) hcReviewRows {
 	}
 	for _, s := range rev.Untagged {
 		r := hcRow(s, write)
-		r.Kind, r.Dismiss, r.NotMatch = "tag", true, true
+		r.Kind, r.NotMatch = "tag", true // "Not a match" says it; no Dismiss too
 		if r.Position != "" {
 			r.Action = "Set series to " + write + " #" + r.Position
 		} else {
