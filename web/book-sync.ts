@@ -17,7 +17,8 @@
  * never starts a book over. Pinning a book (offline-control.ts) downloads
  * it the same way, at once, paused or not; one cut off is finished here,
  * before the rest (pinDownloads). A download that fails waits before it's
- * tried again (backingOff).
+ * tried again (backingOff); a book with no file the readers open, or too
+ * big for this device, isn't tried on every page (Skip).
  */
 
 import { isConvertedFormat, readerFormat } from "./formats.js";
@@ -315,6 +316,75 @@ function noteResult(user: string, uuid: string, failed: boolean): void {
     writeFailures(user, all);
 }
 
+/* ------------------------------------------------------------------ */
+/* Downloads that can't be kept: not asked for again on every page     */
+/* ------------------------------------------------------------------ */
+
+/**
+ * A book with no file the readers open (only CHM, MOBI, …: every format
+ * 404s), or one over this device's size limit. Trying again only fetches
+ * the same answer, so it's skipped: a book with no file for a week (one
+ * may be added or converted), one too big while the limit is no larger
+ * than when it was found too big (and for a month at most, in case the
+ * file is replaced by a smaller one).
+ */
+type Skip = { why: "missing" | "too-big"; at: number; limit?: number };
+type Skips = Record<string, Skip>;
+const SKIP_MISSING_MS = 7 * 24 * 3600_000;
+const SKIP_TOO_BIG_MS = 30 * 24 * 3600_000;
+const skipsKey = (user: string): string => localKey(user, "download-skips");
+
+function skipLive(s: Skip, maxBytes: number, now = Date.now()): boolean {
+    if (s.why === "missing") return now - s.at < SKIP_MISSING_MS;
+    // A limit raised (or turned off) since: tried again.
+    return now - s.at < SKIP_TOO_BIG_MS && !!maxBytes && maxBytes <= (s.limit ?? 0);
+}
+
+function readSkips(user: string): Skips {
+    try {
+        return (JSON.parse(localStorage.getItem(skipsKey(user)) ?? "null") as Skips | null) ?? {};
+    } catch {
+        return {};
+    }
+}
+
+function writeSkips(user: string, all: Skips): void {
+    try {
+        if (Object.keys(all).length) localStorage.setItem(skipsKey(user), JSON.stringify(all));
+        else localStorage.removeItem(skipsKey(user));
+    } catch {
+        /* storage full or blocked: tried again on every page */
+    }
+}
+
+/** Jobs not worth trying (see Skip). A pinned book is kept whatever its size, so only a missing file skips it. */
+function skipped(user: string, job: Job): boolean {
+    const s = readSkips(user)[job.uuid];
+    if (!s || (job.status === "pinned" && s.why === "too-big")) return false;
+    return skipLive(s, devicePrefs(user).maxBookBytes);
+}
+
+/** Remember (or forget) why a book's download can't be kept; entries no longer live are dropped. */
+function noteSkip(user: string, uuid: string, why: Skip["why"] | null): void {
+    const all = readSkips(user);
+    const maxBytes = devicePrefs(user).maxBookBytes;
+    let changed = false;
+    for (const [u, s] of Object.entries(all)) {
+        if (u !== uuid && !skipLive(s, maxBytes)) {
+            delete all[u];
+            changed = true;
+        }
+    }
+    if (why) {
+        all[uuid] = { why, at: Date.now(), ...(why === "too-big" ? { limit: maxBytes } : {}) };
+        changed = true;
+    } else if (all[uuid]) {
+        delete all[uuid];
+        changed = true;
+    }
+    if (changed) writeSkips(user, all);
+}
+
 /** The formats to try for a book, the one it's read in (or the preferred) first. */
 function formatsFor(uuid: string): KeptFormat[] {
     const first = preferredFormat(uuid, ["epub", "pdf"]) ?? (formatPref() === "pdf" ? "pdf" : "epub");
@@ -405,6 +475,7 @@ async function runJobs(user: string, jobs: Job[]): Promise<void> {
             }
             // Offline, a failure says nothing about the book: not held back for it.
             if (result === "failed" ? navigator.onLine : result !== "paused" && result !== "yielded") noteResult(user, job.uuid, result === "failed");
+            if (result === "ok" || result === "missing" || result === "too-big") noteSkip(user, job.uuid, result === "ok" ? null : result);
             if (result === "ok") void keepCover(job.uuid).catch(() => {});
             if (result === "paused") {
                 left++; // that one is still to come
@@ -508,8 +579,10 @@ async function runSync({ marks, force = false, fresh = false }: SyncOptions): Pr
         await sweep((u) => (listed.has(u) ? "wanted" : statusOf(marks, u)));
     } else if (force || fresh) await sweepFresh();
 
-    if (jobs.length && !paused()) await runJobs(user, jobs);
-    else writeSync(user, { active: null, waiting: jobs.length && paused() ? jobs.length : 0 });
+    // Books found to have no file to keep, or too big: not tried on every page (Skip).
+    const todo = jobs.filter((j) => !skipped(user, j));
+    if (todo.length && !paused()) await runJobs(user, todo);
+    else writeSync(user, { active: null, waiting: todo.length && paused() ? todo.length : 0 });
     if (!pagesChecked() && navigator.onLine) {
         // Once a visit: books kept before their popups (or reader pages) were
         // kept with them get theirs (the worker skips those it has).
