@@ -686,6 +686,8 @@ var hcQueue = struct {
 	waiters map[int64][]chan struct{}
 	cancel  context.CancelFunc
 	done    chan struct{}
+	// nextAuthor: no author lookup runs before it (hcAuthorSpacing).
+	nextAuthor time.Time
 }{wake: make(chan struct{}, 1), waiters: map[int64][]chan struct{}{}}
 
 const hcJobCols = `id, kind, series, batch, state, not_before, created_at, finished_at, result, error, payload`
@@ -783,15 +785,30 @@ func hcFinish(j *hcJob, state string, result any, msg string) {
 	hcNotify(j.ID)
 }
 
-// hcStep runs the oldest job that may run at now. ran: it ran one (or
-// held it); next: when the next held one may run (zero: none waiting).
+// hcStep runs the oldest job that may run at now: editors' requests
+// first, then author lookups (hardcover_authors.go), one at most every
+// hcAuthorSpacing. ran: it ran one (or held it); next: when the next
+// waiting one may run (zero: none waiting).
 func hcStep(ctx context.Context) (ran bool, next time.Time) {
 	now := hcNow()
+	hcQueue.Lock()
+	nextAuthor := hcQueue.nextAuthor
+	hcQueue.Unlock()
+	authorsMay := !now.Before(nextAuthor)
 	j, err := scanHCJob(appDB.QueryRow(`SELECT `+hcJobCols+` FROM hardcover_jobs
-		WHERE state IN ('queued', 'held') AND not_before <= ? ORDER BY id LIMIT 1`, now.Unix()))
+		WHERE state IN ('queued', 'held') AND not_before <= ? AND (kind != ? OR ?)
+		ORDER BY kind = ?, id LIMIT 1`, now.Unix(), hcJobAuthor, authorsMay, hcJobAuthor))
 	if errors.Is(err, sql.ErrNoRows) {
 		var nb sql.NullInt64
 		_ = appDB.QueryRow(`SELECT MIN(not_before) FROM hardcover_jobs WHERE state = 'held'`).Scan(&nb)
+		if !authorsMay {
+			var n int
+			_ = appDB.QueryRow(`SELECT COUNT(*) FROM hardcover_jobs WHERE kind = ? AND state IN ('queued', 'held') AND not_before <= ?`,
+				hcJobAuthor, now.Unix()).Scan(&n)
+			if n > 0 && (!nb.Valid || nextAuthor.Unix() < nb.Int64) {
+				return false, nextAuthor
+			}
+		}
 		if nb.Valid {
 			return false, time.Unix(nb.Int64, 0)
 		}
@@ -806,12 +823,23 @@ func hcStep(ctx context.Context) (ran bool, next time.Time) {
 		return false, now.Add(time.Minute)
 	}
 	hcNotify(j.ID)
+	if j.Kind == hcJobAuthor {
+		hcQueue.Lock()
+		hcQueue.nextAuthor = now.Add(hcAuthorSpacing)
+		hcQueue.Unlock()
+	}
 	result, err := hcRun(ctx, j)
 	defer hcSaveUsage()
 	var wait *hardcover.WaitError
+	var authorHeld *hcAuthorHeld
 	switch {
 	case ctx.Err() != nil:
 		_, _ = appDB.Exec(`UPDATE hardcover_jobs SET state = 'queued' WHERE id = ?`, j.ID)
+	case errors.As(err, &authorHeld):
+		// Held, with every author lookup: editors' requests still run.
+		_, _ = appDB.Exec(`UPDATE hardcover_jobs SET state = 'held', not_before = ?, error = ? WHERE kind = ? AND state IN ('queued', 'held') AND not_before < ? OR id = ?`,
+			authorHeld.until.Unix(), err.Error(), hcJobAuthor, authorHeld.until.Unix(), j.ID)
+		hcNotifyHeld()
 	case errors.As(err, &wait):
 		// Held, as is every job waiting behind it: none could run before.
 		_, _ = appDB.Exec(`UPDATE hardcover_jobs SET state = 'held', not_before = ?, error = ? WHERE state IN ('queued', 'held') AND not_before < ? OR id = ?`,
@@ -841,6 +869,11 @@ func hcNotifyHeld() {
 func hcRun(ctx context.Context, j *hcJob) (any, error) {
 	if hcClient == nil {
 		return nil, errors.New("Hardcover isn't set up on this server")
+	}
+	if j.Kind == hcJobAuthor {
+		ctx, cancel := context.WithTimeout(ctx, 2*time.Minute)
+		defer cancel()
+		return hcLookupAuthor(ctx, j.Series)
 	}
 	var p hcPayload
 	_ = json.Unmarshal([]byte(j.payload), &p)

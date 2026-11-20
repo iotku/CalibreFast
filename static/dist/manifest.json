@@ -7,6 +7,7 @@
   "aggregate.js": "aggregate-UKXSVMSV.js",
   "app-htmx.js": "app-htmx-V7IWD42E.js",
   "auth.css": "auth-V7KPARBN.css",
+  "author-profile.js": "author-profile-GJZCB44E.js",
   "book-edit.css": "book-edit-M3J63KDS.css",
   "book-target.js": "book-target-5OH7M36F.js",
   "cover-dialog.js": "cover-dialog-Z7FQAJBZ.js",
@@ -32,7 +33,7 @@
   "series-verify.js": "series-verify-WHHURVYJ.js",
   "shelf-page.js": "shelf-page-74LESUPK.js",
   "shelves.js": "shelves-WV2C7THI.js",
-  "style.css": "style-MIK2VKRU.css",
+  "style.css": "style-6I2ITFT3.css",
   "sw.js": "sw-A2X4WNOD.js",
   "user.js": "user-TXCN35QI.js"
 }

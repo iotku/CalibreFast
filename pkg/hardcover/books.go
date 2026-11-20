@@ -415,6 +415,13 @@ func (c *Client) FetchCover(ctx context.Context, bookID int64) ([]byte, string, 
 	c.lookups.mu.Lock()
 	u := c.lookups.covers[bookID]
 	c.lookups.mu.Unlock()
+	return c.FetchImage(ctx, u)
+}
+
+// FetchImage fetches an image Hardcover named (a cover, an author's
+// picture): only an https URL on hardcover.app, sent without the API
+// token, and only a raster image of at most 10 MiB.
+func (c *Client) FetchImage(ctx context.Context, u string) ([]byte, string, error) {
 	if u == "" || !coverHostOK(u) {
 		return nil, "", ErrNoCover
 	}
