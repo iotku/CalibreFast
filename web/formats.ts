@@ -36,3 +36,24 @@ export function readerFormat(url: string): BookFormat | null {
     const f = u.searchParams.get("format");
     return isConvertedFormat(f) ? f : "epub";
 }
+
+/** Every format a reader opens, in the order one is picked (as readerFormats in Go). */
+const READER_FORMATS: readonly BookFormat[] = ["epub", "pdf", ...CONVERTED_FORMATS];
+
+/**
+ * A book's reader in preview mode (nothing saved, reader-preview.ts), as
+ * previewReadLink in Go: EPUB when it has one, else PDF, else a Kindle
+ * format, else null. A book in the import queue (`importQueue`, id is its
+ * waiting id) reads EPUB and PDF only.
+ */
+export function previewUrl(id: string, formats: readonly string[], importQueue = false): string | null {
+    const have = new Set(formats.map((f) => f.toLowerCase()));
+    const param = `${importQueue ? "import" : "uuid"}=${encodeURIComponent(id)}`;
+    for (const f of READER_FORMATS) {
+        if (!have.has(f)) continue;
+        if (f === "pdf") return `/read-pdf?${param}&preview=1`;
+        if (f === "epub") return `/read?${param}&preview=1`;
+        if (!importQueue) return `/read?${param}&format=${f}&preview=1`;
+    }
+    return null;
+}

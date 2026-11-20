@@ -19,6 +19,7 @@ import { api, byId, closeOnBackdropClick, el, errorMessage, icon, lineIcon, moda
 import { attachSuggest } from "./suggest.js";
 import { joinAuthors, splitAuthors, tidyAuthors } from "./authors.js";
 import { deleteBooks } from "./delete-books.js";
+import { previewUrl } from "./formats.js";
 import { languageChipLabel, languageKey, loadLanguageCodes } from "./languages.js";
 import type { BulkEdit, BulkFailureKept, BulkJob, BulkResult, FormatRepair, NotDuplicateSet, TableBook } from "./types.js";
 
@@ -860,6 +861,16 @@ function rowElement(r: Row, i: number, pin = false): HTMLElement {
     // filter leaves only one of them shown.
     const first = !QUEUE && dup !== "" && (i === 0 || shown[i - 1]!.dupKey !== r.dupKey);
     const second = !QUEUE && dup !== "" && !first && (i === 1 || shown[i - 2]!.dupKey !== r.dupKey);
+    // Nothing acts on a group outside the duplicates view: the space the
+    // group buttons take there opens the book in the reader instead.
+    if (!dup) {
+        const href = previewUrl(b.uuid, b.formats, QUEUE);
+        if (href) {
+            actions.append(
+                el("a", { href, target: "_blank", className: "lt-action", title: "Open it in the reader to look something up; nothing is saved (new tab)", ariaLabel: `Preview “${b.title}”` }, "Preview"),
+            );
+        }
+    }
     if (dup === MARKED && first) {
         const un = el("button", { type: "button", className: "lt-action lt-unmark", title: "They may be duplicates after all: show them in the duplicates view again" }, "Unmark");
         un.dataset["set"] = r.dupKey.replace(/^set:/, "");
