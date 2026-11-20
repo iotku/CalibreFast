@@ -34,6 +34,12 @@
     --status-wanted: #6aa7e8;
     --status-reading: #c8a96e;
     --status-finished: #5fbf7f;
+    /* Reading stats heatmap (stats.ts): none, then more and more pages read. */
+    --heat-0: #2c2c2c;
+    --heat-1: #1e4a2c;
+    --heat-2: #2a7240;
+    --heat-3: #3f9d5a;
+    --heat-4: #6fd08c;
 
     /* Colors - Borders */
     --border-subtle: rgba(255, 255, 255, 0.08);
@@ -5805,4 +5811,172 @@ body.selecting .book.selected .cover-wrapper {
 
 .series-verify .ph-actions {
     justify-content: flex-end;
+}
+
+/* ------------------------------------------------------------------ */
+/* Reading stats (/me/stats, stats.ts; the home card, stats-data.ts)  */
+/* ------------------------------------------------------------------ */
+
+.stats-tiles {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(130px, 1fr));
+    gap: var(--gap-large);
+    margin-top: var(--gap-large);
+}
+.stats-tile {
+    display: flex;
+    flex-direction: column;
+    gap: 2px;
+    padding: var(--gap-large);
+    background: var(--bg-elevated);
+    border: 1px solid var(--border-subtle);
+    border-radius: var(--radius-medium);
+}
+.stats-tile-label {
+    font-size: var(--font-size-small);
+    color: var(--text-muted);
+}
+.stats-tile-value {
+    font-size: 1.3rem;
+    font-weight: 600;
+    color: var(--text-primary);
+    font-variant-numeric: tabular-nums;
+}
+.stats-tile-detail {
+    font-size: var(--font-size-small);
+    color: var(--text-secondary);
+}
+.stats-bar {
+    height: 6px;
+    margin-top: var(--gap-medium);
+    background: var(--heat-0);
+    border-radius: var(--radius-round);
+    overflow: hidden;
+}
+.stats-bar-fill {
+    display: block;
+    height: 100%;
+    background: var(--status-reading);
+    border-radius: var(--radius-round);
+}
+.stats-bar-done .stats-bar-fill {
+    background: var(--status-finished);
+}
+.stats-heat {
+    overflow-x: auto;
+    padding-bottom: var(--gap-small);
+    scrollbar-color: var(--border-medium) transparent;
+}
+/* The card's width on a wide screen; on a phone, readable cells and a scroll. */
+.stats-heatmap {
+    display: block;
+    width: 100%;
+    min-width: 600px;
+    height: auto;
+}
+.stats-heat-cell {
+    stroke: rgba(255, 255, 255, 0.04);
+    stroke-width: 1;
+}
+.stats-heat-cell:hover {
+    stroke: var(--text-primary);
+}
+.stats-heat-0 { fill: var(--heat-0); }
+.stats-heat-1 { fill: var(--heat-1); }
+.stats-heat-2 { fill: var(--heat-2); }
+.stats-heat-3 { fill: var(--heat-3); }
+.stats-heat-4 { fill: var(--heat-4); }
+.stats-heat-label {
+    font-size: 9px;
+    fill: var(--text-muted);
+}
+.stats-heat-legend {
+    display: flex;
+    align-items: center;
+    justify-content: flex-end;
+    gap: 3px;
+    margin-top: var(--gap-medium);
+    font-size: var(--font-size-small);
+    color: var(--text-muted);
+}
+.stats-heat-legend span {
+    margin: 0 var(--gap-small);
+}
+.stats-covers {
+    display: flex;
+    flex-wrap: wrap;
+    gap: var(--gap-medium);
+    margin-top: var(--gap-large);
+}
+.stats-cover-link {
+    display: block;
+    width: 64px;
+    aspect-ratio: 2 / 3;
+    border-radius: var(--radius-small);
+    overflow: hidden;
+    background: var(--bg-elevated);
+}
+.stats-cover {
+    width: 100%;
+    height: 100%;
+    object-fit: cover;
+    display: block;
+}
+.stats-goals input {
+    max-width: 10rem;
+    min-height: var(--touch-target);
+    padding: var(--input-padding);
+    color: var(--text-primary);
+    background: var(--bg-elevated);
+    border: 1px solid var(--border-medium);
+    border-radius: var(--radius-small);
+    font: inherit;
+}
+
+/* The home page's card, in the greeting. */
+.greeting-stats-slot[hidden] {
+    display: none;
+}
+.greeting-stats {
+    display: inline-flex;
+    align-items: center;
+    gap: var(--gap-large);
+    margin-top: var(--gap-medium);
+    padding: var(--gap-medium) var(--gap-large);
+    color: var(--text-primary);
+    text-decoration: none;
+    background: var(--bg-surface);
+    border: 1px solid var(--border-light);
+    border-radius: var(--radius-medium);
+}
+.greeting-stats:hover,
+.greeting-stats:focus-visible {
+    border-color: var(--border-medium);
+    background: var(--bg-elevated);
+}
+.greeting-stats-text {
+    display: flex;
+    flex-direction: column;
+    font-size: var(--font-size-small);
+    color: var(--text-secondary);
+}
+.greeting-stats-text strong {
+    font-size: var(--font-size-normal);
+    font-weight: 600;
+    color: var(--text-primary);
+}
+.stats-ring-track,
+.stats-ring-fill {
+    fill: none;
+    stroke-width: 4;
+}
+.stats-ring-track {
+    stroke: var(--heat-0);
+}
+.stats-ring-fill {
+    stroke: var(--status-reading);
+    stroke-linecap: round;
+}
+.stats-ring-done {
+    stroke: var(--status-finished);
 }

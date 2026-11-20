@@ -14,6 +14,7 @@ import { keepCover } from "./offline-books.js";
 import { offerSignIn, setupChrome } from "./reader-chrome.js";
 import { keepsHistory, leaveReader, previewSync, readerBook, type ReaderBook } from "./reader-preview.js";
 import { getSettings, onSettingsChange, setSettings, type ReaderSettings } from "./reader-settings.js";
+import { createActivityTracker } from "./activity.js";
 import { createReadingSync, renderBookmarks, type Bookmark, type BookmarkHandlers } from "./reading-sync.js";
 import { loadPdfJs, openPdf } from "./vendor.js";
 
@@ -149,7 +150,25 @@ const state = (): PdfState => (history.state as PdfState | null) ?? {};
 // saved (and marks the book as being read).
 let openingPage: number | null = null;
 
+// ---- reading stats (activity.ts): pages read by turning, not jumped to -------
+
+const activity = preview
+    ? null
+    : createActivityTracker(sync.user, uuid, (n) => chrome.toast(`Daily goal reached: ${n} pages read today 🎉`));
+/** The page shown last, and whether the move to the next one is a turn. */
+let lastShown: number | null = null;
+let turning = false;
+
+function countPages(first: number, last: number): void {
+    // Forward by a turn: the pages now on screen that come after those before.
+    if (turning && lastShown !== null && first > lastShown && first - lastShown <= 5) activity?.pagesRead(last - lastShown);
+    else activity?.touch();
+    lastShown = last;
+    turning = false;
+}
+
 function onShown(first: number, last: number): void {
+    countPages(first, last);
     const n = numPages();
     chrome.setPosition(last > first ? `Pages ${first}–${last} of ${n}` : `Page ${first} of ${n}`, n > 1 ? (first - 1) / (n - 1) : 0);
     showZoom();
@@ -170,6 +189,7 @@ function onShown(first: number, last: number): void {
 function turn(dir: 1 | -1, fromPage = true): void {
     if (fromPage) chrome.hideBars();
     const to = view?.neighbour(dir);
+    turning = !!to;
     if (to) void view?.show(to);
 }
 /** A turn towards the right (1) or left (-1) side of the screen. */

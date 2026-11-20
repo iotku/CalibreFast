@@ -805,9 +805,23 @@ func mergeReaderData(keep string, others []string, same map[string][]string) (in
 			WHERE excluded.updated_at > reading_progress.updated_at`,
 		`INSERT OR IGNORE INTO shelf_books (shelf_id, book_uuid, added_at)
 			SELECT shelf_id, ?, MIN(added_at) FROM shelf_books WHERE ` + in + ` GROUP BY shelf_id`,
+		// Reading activity and events move to the kept book (stats.go):
+		// left on the merged ones too, they would count twice.
+		`INSERT INTO reading_activity (user_id, day, book_uuid, client_id, pages, seconds, updated_at)
+			SELECT user_id, day, ?, client_id, SUM(pages), SUM(seconds), MAX(updated_at) FROM reading_activity
+			WHERE ` + in + ` AND true GROUP BY user_id, day, client_id
+			ON CONFLICT (user_id, day, book_uuid, client_id) DO UPDATE SET pages = pages + excluded.pages,
+				seconds = seconds + excluded.seconds, updated_at = MAX(updated_at, excluded.updated_at)`,
+		`INSERT OR IGNORE INTO reading_events (user_id, book_uuid, kind, at)
+			SELECT user_id, ?, kind, at FROM reading_events WHERE ` + in,
 	}
 	for _, s := range stmts {
 		if _, err := tx.Exec(s, args...); err != nil {
+			return 0, err
+		}
+	}
+	for _, table := range []string{"reading_activity", "reading_events"} {
+		if _, err := tx.Exec(`DELETE FROM `+table+` WHERE `+in, toArgs(others)...); err != nil {
 			return 0, err
 		}
 	}

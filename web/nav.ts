@@ -387,6 +387,7 @@ function init(bar: HTMLElement): void {
                 mark(el("a", { href: "/me/saved", textContent: "Saved" }), "saved"),
                 mark(el("a", { href: "/me/reading", textContent: "Reading" }), "reading"),
                 mark(el("a", { href: "/me/finished", textContent: "Finished" }), "finished"),
+                mark(el("a", { href: "/me/stats", textContent: "Reading stats" }), "stats"),
             ],
             [
                 ...(st.canEdit ? [mark(el("a", { href: "/upload", textContent: "Upload books" }), "upload")] : []),

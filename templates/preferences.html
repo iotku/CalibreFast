@@ -31,6 +31,18 @@
         <p class="prefs-status" id="prefs-format-status" role="status"></p>
     </section>
 
+    <section class="auth-card prefs-signed-in" aria-labelledby="prefs-stats-title" hidden>
+        <h2 id="prefs-stats-title">Reading stats</h2>
+        <p class="auth-muted">The pages you read each day and the time spent reading, for your <a href="/me/stats" class="meta-link">reading stats</a>, streaks and goals. Only you can see them.</p>
+        <div class="prefs-radios">
+            <label><input type="checkbox" id="prefs-track"> Keep reading stats</label>
+        </div>
+        <div class="import-actions">
+            <button type="button" class="btn-standard btn-danger" id="prefs-stats-delete">Delete reading stats</button>
+        </div>
+        <p class="prefs-status" id="prefs-stats-status" role="status"></p>
+    </section>
+
     <section class="auth-card" aria-labelledby="prefs-device-title" id="prefs-device">
         <h2 id="prefs-device-title">Books on this device</h2>
         <p class="auth-muted">Books you read are kept in this browser, so they open at once and can be read with no connection. These settings are for this device only.</p>

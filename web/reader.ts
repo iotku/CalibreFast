@@ -14,6 +14,7 @@ import { offerSignIn, pageColors, setupChrome } from "./reader-chrome.js";
 import { keepsHistory, leaveReader, previewSync, readerBook, type ReaderBook } from "./reader-preview.js";
 import { getSettings, onSettingsChange, type ReaderSettings } from "./reader-settings.js";
 import { noteFormatOpened } from "./last-format.js";
+import { createActivityTracker } from "./activity.js";
 import { createReadingSync, renderBookmarks, type Bookmark, type BookmarkHandlers } from "./reading-sync.js";
 
 const found = readerBook();
@@ -416,11 +417,17 @@ function percentFor(loc: EpubJS.Location): number {
  */
 const CHARS_PER_PAGE = 1600;
 function pageText(cfi: string): string {
+    const page = pageAt(cfi);
+    if (!page) return "";
+    return `p. ${page.n} of ${page.of}`;
+}
+/** The page (1-based) cfi is on, of how many: as pageText shows it; null until locations are ready. */
+function pageAt(cfi: string): { n: number; of: number | string } | null {
     const pl = book.pageList;
     const printed = pl?.pages.length ? pl.pageFromCfi(cfi) : -1;
-    if (printed > 0) return `p. ${printed} of ${pl?.lastPage}`;
-    if (!locationsReady) return "";
-    return `p. ${book.locations.locationFromCfi(cfi) + 1} of ${book.locations.length()}`;
+    if (printed > 0) return { n: printed, of: pl?.lastPage ?? "" };
+    if (!locationsReady) return null;
+    return { n: book.locations.locationFromCfi(cfi) + 1, of: book.locations.length() };
 }
 function positionText(cfi: string, percent: number): string {
     const page = pageText(cfi);
@@ -433,10 +440,41 @@ function showPosition(): void {
     chrome.setChapter(currentTocEntry()?.label ?? "");
 }
 
+// ---- reading stats (activity.ts): pages read forward, not jumped to -------
+
+const activity = preview
+    ? null
+    : createActivityTracker(sync.user, uuid, (n) => chrome.toast(`Daily goal reached: ${n} pages read today 🎉`));
+/** The page the reader was last on (pageAt); null: unknown, or after a jump. */
+let lastPage: number | null = null;
+/** The next "relocated" comes from going somewhere (display), not from reading on. */
+let jumped = true;
+const display = rendition.display.bind(rendition);
+rendition.display = (target?: string): Promise<void> => {
+    jumped = true;
+    return display(target);
+};
+// Using the chapter itself (its own document) is reading too.
+rendition.on("rendered", (_section, view) => {
+    for (const ev of ["keydown", "pointerdown", "wheel", "touchstart"]) {
+        view.document.addEventListener(ev, () => activity?.touch(), { passive: true });
+    }
+});
+
+function countPages(cfi: string): void {
+    const n = pageAt(cfi)?.n ?? null;
+    // A few pages on at most: a turn shows one or two, scrolling a few.
+    if (!jumped && n !== null && lastPage !== null && n > lastPage && n - lastPage <= 5) activity?.pagesRead(n - lastPage);
+    else activity?.touch();
+    lastPage = n;
+    jumped = false;
+}
+
 rendition.on("relocated", (loc) => {
     if (!loc?.start?.cfi) return;
     currentCfi = loc.start.cfi;
     currentPercent = percentFor(loc);
+    countPages(currentCfi);
     showPosition();
     markCurrentChapter();
     if (openingCfi === null) {

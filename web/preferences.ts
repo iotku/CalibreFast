@@ -11,8 +11,9 @@
 
 import { deleteBook, deletePartial, listBooks, listPartials, offlinePref, setOfflinePref, type CachedBook, type PartialInfo } from "./book-cache.js";
 import { prefsSettled } from "./account-prefs.js";
-import { byId, el, errorMessage } from "./dom.js";
-import { lastKnownUser } from "./local-keys.js";
+import { ACTIVITY_RECORD } from "./activity.js";
+import { api, byId, el, errorMessage } from "./dom.js";
+import { lastKnownUser, localKey } from "./local-keys.js";
 import { meRequest } from "./me.js";
 import {
     accountPrefs,
@@ -361,6 +362,40 @@ function showDownloads(): void {
 onSyncChange(user, showDownloads);
 
 /* ------------------------------------------------------------------ */
+/* Reading stats (the account's; stats.go)                            */
+/* ------------------------------------------------------------------ */
+
+const track = byId<HTMLInputElement>("prefs-track");
+const statsStatus = byId("prefs-stats-status");
+
+function showTracking(): void {
+    track.checked = accountPrefs(user).track_reading;
+}
+
+track.addEventListener("change", () => {
+    statsStatus.textContent = "Saving…";
+    setAccountPrefs({ track_reading: track.checked }, user)
+        .then(() => (statsStatus.textContent = track.checked ? "Reading stats are kept." : "Reading stats are no longer kept. What's recorded stays until you delete it."))
+        .catch((err: unknown) => {
+            statsStatus.textContent = `Couldn't save: ${errorMessage(err)}`;
+            showTracking();
+        });
+});
+
+byId("prefs-stats-delete").addEventListener("click", () => {
+    if (!user || !confirm("Delete all your reading stats: pages and time read each day, and when you started and finished books? This can't be undone.")) return;
+    statsStatus.textContent = "Deleting…";
+    try {
+        localStorage.removeItem(localKey(user, ACTIVITY_RECORD)); // not sent later
+    } catch {
+        /* storage blocked: nothing kept here either */
+    }
+    api("DELETE", "/api/me/activity")
+        .then(() => (statsStatus.textContent = "Reading stats deleted."))
+        .catch((err: unknown) => (statsStatus.textContent = `Couldn't delete: ${errorMessage(err)}`));
+});
+
+/* ------------------------------------------------------------------ */
 /* Start                                                              */
 /* ------------------------------------------------------------------ */
 
@@ -373,6 +408,7 @@ function showSignedIn(): void {
 
 showSignedIn();
 showFormat();
+showTracking();
 showDevice();
 void render();
 void meRequest()
@@ -382,6 +418,7 @@ void meRequest()
         await prefsSettled(); // nav.ts: the account's, or the guest's for an account just made
         showSignedIn();
         showFormat();
+        showTracking();
         showDevice();
         if (user) {
             const fresh = await fetchMarks();

@@ -835,6 +835,7 @@ func registerAuthRoutes() {
 	registerLinkRoutes()
 	registerKosyncRoutes(http.DefaultServeMux)
 	registerPrefsRoutes()
+	registerStatsRoutes()
 }
 
 func withUserCtx(r *http.Request, u *User) context.Context {
