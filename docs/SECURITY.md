@@ -109,6 +109,10 @@ With `CF_HARDCOVER_TOKEN` set, editors can link a series to Hardcover and review
 - **Hardcover's data is untrusted.** Titles, names and dates go through `cleanPlaceholderMeta` before becoming placeholders, and are shown through `html/template` or `textContent`. Only links to `https://hardcover.app/` with a checked slug are made. Applying a review sends only ids from the browser. The server rebuilds what it writes from the list it stored. Tagging books goes through the bulk edit queue, in the edit log, like any other edit.
 - **`-no-hardcover`** (or `-no-lookups`, or no token) turns it off.
 
+### Hardcover author profiles
+
+With `CF_HARDCOVER_TOKEN` set, the first time a signed-in user opens an author's page, the server looks the author up on Hardcover once (`hardcover_authors.go`) and keeps the answer. This tells Hardcover the names of authors in your library. Only the author's name (or their group's member names) is sent, and only for authors with books in the library, through the same queue and limits as series, after editors' requests and never past 80% of the day's limit. The picture is fetched from `https://…hardcover.app` only, without the token, re-encoded as JPEG and served from our origin. The bio is reduced to plain text and escaped by `html/template`. `-no-hardcover` turns it off too.
+
 ## Writes can conflict with Calibre itself
 
 CalibreFast writes to the same `metadata.db` and book folders that the Calibre desktop app uses. Editing in both at once can lose changes or confuse Calibre. **Close Calibre while editing through CalibreFast.**

@@ -1,0 +1,32 @@
+{{/* The top of an entry's filtered page: its picture and description, an
+     author's series and Hardcover profile (hardcover_authors.go), a series'
+     status. In filtered.html, and alone from POST /api/authors/profile. */}}
+{{ define "agg-header" }}
+{{ if or .Description .ImageURL .Series .SeriesStatus (and .Profile .Profile.Shows) }}
+<header class="agg-header">
+    {{ if .ImageURL }}<img class="agg-header-img" src="{{ .ImageURL }}" alt="">{{ end }}
+    <div class="agg-header-body">
+    {{ with .SeriesStatus }}<p class="agg-header-status" id="series-status">
+        {{ if .Complete }}<span class="hc-complete">Complete</span> Every book is in the library ({{ .Label }}).
+        {{ else }}{{ if .Numbered }}{{ .Have }} of {{ .Numbered }} numbered books{{ if .Books }};{{ end }}{{ end }}
+        {{ if .Books }}{{ .BooksHave }} of {{ .Books }} books{{ end }} in the library ({{ .Label }}).{{ end }}
+    </p>{{ end }}
+    {{ with .Profile }}{{ with .Years }}<p class="agg-header-years">{{ . }}</p>{{ end }}{{ end }}
+    {{ if .Description }}<div class="agg-header-desc">
+        <p>{{ .DescLead }}</p>
+        {{ with .DescMore }}<details class="agg-header-more"><summary>More</summary><p>{{ . }}</p></details>{{ end }}
+    </div>{{ end }}
+    {{ with .Profile }}{{ if or .FromHardcover .HardcoverURL .Refresh }}<p class="agg-header-source">
+        {{ if .FromHardcover }}{{ if .HardcoverURL }}From <a href="{{ .HardcoverURL }}" rel="noopener noreferrer" target="_blank">Hardcover</a>{{ else }}From Hardcover{{ end }}
+        {{ else if .HardcoverURL }}<a href="{{ .HardcoverURL }}" rel="noopener noreferrer" target="_blank">On Hardcover</a>{{ end }}
+        {{ with .Refresh }}<button type="button" class="btn-link" data-profile-refresh="{{ . }}">Look up again</button>{{ end }}
+    </p>{{ end }}{{ end }}
+    {{ with .Series }}
+    <nav class="agg-header-series" aria-label="Series">
+        {{ range . }}<a class="agg-chip" href="{{ .Href }}">{{ .Name }}{{ if .Complete }}{{ template "agg-complete" }}{{ end }}<span class="agg-count">{{ .Count }}</span></a>{{ end }}
+    </nav>
+    {{ end }}
+    </div>
+</header>
+{{ end }}
+{{ end }}

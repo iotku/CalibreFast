@@ -153,6 +153,7 @@ type FilteredPageData struct {
 	TotalBooks                   int
 	EmptyText                    string         // shown when there are no books (default: "No books found.")
 	Series                       []AuthorSeries // an author's series, shown above the books
+	Profile                      *AuthorProfile // an author's, from Hardcover (hardcover_authors.go)
 	Extra                        map[string]any // page-specific extras (e.g. shelf controls)
 }
 
@@ -636,6 +637,10 @@ func filteredPageHandler(c *category) http.HandlerFunc {
 		}
 		if m, ok := aggregateMetaFor(c.Key, name); ok {
 			data.Description, data.ImageURL = m.Description, m.imageURL()
+		}
+		hcFillAuthorProfile(r, &data)
+		if data.Profile != nil && (data.Profile.Lookup != "" || data.Profile.Refresh != "") {
+			w.Header().Set("Cache-Control", "private, no-cache")
 		}
 		if data.Writable {
 			data.Featured = isFeaturedAggregate(c.Key, name)

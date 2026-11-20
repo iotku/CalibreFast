@@ -96,8 +96,8 @@ func hcJobView(j *hcJob) HardcoverJobView {
 
 // hcOpenJobs: the jobs waiting or running (for one series, when given).
 func hcOpenJobs(series string) []HardcoverJobView {
-	q := `SELECT ` + hcJobCols + ` FROM hardcover_jobs WHERE state IN ('queued', 'held', 'running')`
-	var args []any
+	q := `SELECT ` + hcJobCols + ` FROM hardcover_jobs WHERE state IN ('queued', 'held', 'running') AND kind != ?`
+	args := []any{hcJobAuthor}
 	if series != "" {
 		q += ` AND series = ?`
 		args = append(args, series)
