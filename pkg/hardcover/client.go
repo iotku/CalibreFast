@@ -137,12 +137,23 @@ var (
   }
 }`, 1}
 
-	qSeriesBooks = query{`query SeriesBooks($id: Int!) {
-  series(where: {id: {_eq: $id}}, limit: 1) {
+	qSeriesByName = query{`query SeriesByName($names: [String!]!) {
+  series(where: {name: {_in: $names}, canonical_id: {_is_null: true}, books_count: {_gt: 0}}, order_by: {books_count: desc}, limit: 60) {
     id
     name
     slug
     books_count
+    author { name }
+  }
+}`, 1}
+
+	qSeriesBooks = query{`query SeriesBooks($ids: [Int!]!) {
+  series(where: {id: {_in: $ids}}, limit: 60) {
+    id
+    name
+    slug
+    books_count
+    author { name }
     book_series(
       distinct_on: position
       order_by: [{position: asc}, {book: {users_count: desc}}]
@@ -150,7 +161,7 @@ var (
     ) {
       position
       details
-      book { id slug title subtitle release_date }
+      book { id slug title subtitle release_date users_count }
     }
   }
 }`, 1}
@@ -166,7 +177,7 @@ var (
 
 // allQueries lists every query (tests check their depth and cost).
 var allQueries = map[string]query{
-	"SearchSeries": qSearchSeries, "EditionsByISBN": qEditionsByISBN, "SeriesOfBooks": qSeriesOfBooks,
+	"SearchSeries": qSearchSeries, "EditionsByISBN": qEditionsByISBN, "SeriesOfBooks": qSeriesOfBooks, "SeriesByName": qSeriesByName,
 	"SeriesBooks": qSeriesBooks, "BookDetails": qBookDetails,
 }
 
@@ -314,6 +325,9 @@ type Series struct {
 	BooksCount int    `json:"booksCount"`
 	// Primary: books with a whole-number position (search only).
 	Primary int `json:"primary,omitempty"`
+	// Books: titles of some of its books (search only), for telling
+	// same-named series apart.
+	Books []string `json:"-"`
 }
 
 // SearchSeries searches Hardcover's series by name, best first. Answers
@@ -341,12 +355,13 @@ func (c *Client) SearchSeries(ctx context.Context, name string) ([]Series, error
 	var results struct {
 		Hits []struct {
 			Document struct {
-				ID                flexInt `json:"id"`
-				Name              string  `json:"name"`
-				Slug              string  `json:"slug"`
-				AuthorName        string  `json:"author_name"`
-				BooksCount        int     `json:"books_count"`
-				PrimaryBooksCount int     `json:"primary_books_count"`
+				ID                flexInt         `json:"id"`
+				Name              string          `json:"name"`
+				Slug              string          `json:"slug"`
+				AuthorName        string          `json:"author_name"`
+				BooksCount        int             `json:"books_count"`
+				PrimaryBooksCount int             `json:"primary_books_count"`
+				Books             json.RawMessage `json:"books"`
 			} `json:"document"`
 		} `json:"hits"`
 	}
@@ -368,7 +383,7 @@ func (c *Client) SearchSeries(ctx context.Context, name string) ([]Series, error
 			continue
 		}
 		out = append(out, Series{ID: int64(d.ID), Name: d.Name, Slug: cleanSlug(d.Slug), Author: d.AuthorName,
-			BooksCount: d.BooksCount, Primary: d.PrimaryBooksCount})
+			BooksCount: d.BooksCount, Primary: d.PrimaryBooksCount, Books: bookTitles(d.Books)})
 	}
 	c.mu.Lock()
 	if len(c.search) >= 500 {
@@ -452,9 +467,68 @@ func (c *Client) SeriesByISBNs(ctx context.Context, isbns []string) ([]ISBNCandi
 	return out, nil
 }
 
+// bookTitles reads a search document's "books": titles, or objects with one.
+func bookTitles(raw json.RawMessage) []string {
+	var titles []string
+	if json.Unmarshal(raw, &titles) == nil {
+		return titles
+	}
+	var objs []struct {
+		Title string `json:"title"`
+	}
+	if json.Unmarshal(raw, &objs) == nil {
+		for _, o := range objs {
+			if o.Title != "" {
+				titles = append(titles, o.Title)
+			}
+		}
+	}
+	return titles
+}
+
+// SeriesByName finds the series with exactly these names. Hardcover
+// sometimes splits one series into several of the same name, one per
+// author ("Doctor Who: Target Books"); this finds all of them. One request.
+func (c *Client) SeriesByName(ctx context.Context, names []string) ([]Series, error) {
+	names = slices.Compact(slices.Sorted(slices.Values(names)))
+	if len(names) == 0 {
+		return nil, nil
+	}
+	if len(names) > 10 {
+		names = names[:10]
+	}
+	var data struct {
+		Series []struct {
+			ID         flexInt `json:"id"`
+			Name       string  `json:"name"`
+			Slug       string  `json:"slug"`
+			BooksCount int     `json:"books_count"`
+			Author     *struct {
+				Name string `json:"name"`
+			} `json:"author"`
+		} `json:"series"`
+	}
+	if err := c.post(ctx, qSeriesByName, map[string]any{"names": names}, &data); err != nil {
+		return nil, err
+	}
+	var out []Series
+	for _, x := range data.Series {
+		if x.ID <= 0 || strings.TrimSpace(x.Name) == "" {
+			continue
+		}
+		s := Series{ID: int64(x.ID), Name: x.Name, Slug: cleanSlug(x.Slug), BooksCount: x.BooksCount}
+		if x.Author != nil {
+			s.Author = x.Author.Name
+		}
+		out = append(out, s)
+	}
+	return out, nil
+}
+
 // Entry is one book of a series.
 type Entry struct {
 	BookID   int64    `json:"bookId"`
+	SeriesID int64    `json:"seriesId,omitempty"` // the part it came from
 	Slug     string   `json:"slug,omitempty"`
 	Title    string   `json:"title"`
 	Subtitle string   `json:"subtitle,omitempty"`
@@ -463,107 +537,212 @@ type Entry struct {
 	Released string   `json:"released,omitempty"` // YYYY-MM-DD, or less
 	Authors  []string `json:"authors,omitempty"`
 	ISBNs    []string `json:"isbns,omitempty"` // ISBN-13s of its editions
+	// AltTitles: other Hardcover books at the same position in another
+	// part of the series (the same work, entered twice).
+	AltTitles  []string `json:"altTitles,omitempty"`
+	users      int
+	altAuthors []string
 }
 
 // SeriesDetail is a series and its books in order (compilations and
-// partial books left out, one book per position: its most read).
+// partial books left out, one book per position: its most read). A
+// series Hardcover splits into parts (same name, one per author) is all
+// its parts' books together; Series is the part with the most books.
 type SeriesDetail struct {
 	Series
+	Parts   []Series  `json:"parts,omitempty"`
 	Entries []Entry   `json:"entries"`
 	Fetched time.Time `json:"fetched"`
+}
+
+// AllParts is the series' parts (the series itself when it has one).
+func (d *SeriesDetail) AllParts() []Series {
+	if len(d.Parts) > 0 {
+		return d.Parts
+	}
+	return []Series{d.Series}
 }
 
 // ErrNoSeries: Hardcover has no series with that id (any more).
 var ErrNoSeries = errors.New("Hardcover has no such series (it may have been merged or removed)")
 
-// SeriesBooks fetches a series' books, with their authors and ISBNs. Two
-// requests; not cached.
-func (c *Client) SeriesBooks(ctx context.Context, id int64) (*SeriesDetail, error) {
-	var data struct {
-		Series []struct {
-			ID         flexInt `json:"id"`
-			Name       string  `json:"name"`
-			Slug       string  `json:"slug"`
-			BooksCount int     `json:"books_count"`
-			BookSeries []struct {
-				Position *float64 `json:"position"`
-				Details  *string  `json:"details"`
-				Book     *struct {
-					ID          flexInt `json:"id"`
-					Slug        string  `json:"slug"`
-					Title       string  `json:"title"`
-					Subtitle    *string `json:"subtitle"`
-					ReleaseDate *string `json:"release_date"`
-				} `json:"book"`
-			} `json:"book_series"`
-		} `json:"series"`
+// maxParts: the most parts one library series is linked to.
+const maxParts = 60
+
+type seriesBooksRow struct {
+	ID         flexInt `json:"id"`
+	Name       string  `json:"name"`
+	Slug       string  `json:"slug"`
+	BooksCount int     `json:"books_count"`
+	Author     *struct {
+		Name string `json:"name"`
+	} `json:"author"`
+	BookSeries []struct {
+		Position *float64 `json:"position"`
+		Details  *string  `json:"details"`
+		Book     *struct {
+			ID          flexInt `json:"id"`
+			Slug        string  `json:"slug"`
+			Title       string  `json:"title"`
+			Subtitle    *string `json:"subtitle"`
+			ReleaseDate *string `json:"release_date"`
+			UsersCount  int     `json:"users_count"`
+		} `json:"book"`
+	} `json:"book_series"`
+}
+
+// SeriesBooks fetches the books of a series, or of all the parts of one
+// (several ids), with their authors and ISBNs. Books at the same position
+// in two parts are taken as one: the most read is shown, the others' titles
+// and ISBNs count for matching. Two requests (one more per 300 books
+// beyond the first 300); not cached.
+func (c *Client) SeriesBooks(ctx context.Context, ids ...int64) (*SeriesDetail, error) {
+	ids = slices.Compact(slices.Sorted(slices.Values(ids)))
+	if len(ids) == 0 {
+		return nil, ErrNoSeries
 	}
-	if err := c.post(ctx, qSeriesBooks, map[string]any{"id": id}, &data); err != nil {
+	if len(ids) > maxParts {
+		ids = ids[:maxParts]
+	}
+	var data struct {
+		Series []seriesBooksRow `json:"series"`
+	}
+	if err := c.post(ctx, qSeriesBooks, map[string]any{"ids": ids}, &data); err != nil {
 		return nil, err
 	}
 	if len(data.Series) == 0 {
 		return nil, ErrNoSeries
 	}
-	s := data.Series[0]
-	d := &SeriesDetail{Series: Series{ID: int64(s.ID), Name: s.Name, Slug: cleanSlug(s.Slug), BooksCount: s.BooksCount}, Fetched: c.now().UTC()}
-	byID := map[int64]int{}
-	for _, bs := range s.BookSeries {
-		b := bs.Book
-		if b == nil || b.ID <= 0 || strings.TrimSpace(b.Title) == "" || byID[int64(b.ID)] > 0 {
-			continue
+	// The biggest part first: it names the whole.
+	slices.SortStableFunc(data.Series, func(a, b seriesBooksRow) int { return b.BooksCount - a.BooksCount })
+	d := &SeriesDetail{Fetched: c.now().UTC()}
+	owner := map[int64]int{} // any book id -> its entry's index
+	byPos := map[float64]int{}
+	for _, s := range data.Series {
+		part := Series{ID: int64(s.ID), Name: s.Name, Slug: cleanSlug(s.Slug), BooksCount: s.BooksCount}
+		if s.Author != nil {
+			part.Author = s.Author.Name
 		}
-		e := Entry{BookID: int64(b.ID), Slug: cleanSlug(b.Slug), Title: b.Title, Position: bs.Position}
-		if bs.Details != nil {
-			e.Details = *bs.Details
-		}
-		if b.Subtitle != nil {
-			e.Subtitle = *b.Subtitle
-		}
-		if b.ReleaseDate != nil {
-			e.Released = *b.ReleaseDate
-		}
-		d.Entries = append(d.Entries, e)
-		byID[e.BookID] = len(d.Entries)
-	}
-	if len(d.Entries) == 0 {
-		return d, nil
-	}
-	ids := make([]int64, 0, len(d.Entries))
-	for _, e := range d.Entries {
-		ids = append(ids, e.BookID)
-	}
-	var books struct {
-		Books []struct {
-			ID            flexInt `json:"id"`
-			Contributions []struct {
-				Author *struct {
-					Name string `json:"name"`
-				} `json:"author"`
-			} `json:"contributions"`
-			Editions []struct {
-				ISBN13 *string `json:"isbn_13"`
-			} `json:"editions"`
-		} `json:"books"`
-	}
-	if err := c.post(ctx, qBookDetails, map[string]any{"ids": ids}, &books); err != nil {
-		return nil, err
-	}
-	for _, b := range books.Books {
-		i := byID[int64(b.ID)]
-		if i == 0 {
-			continue
-		}
-		e := &d.Entries[i-1]
-		for _, c := range b.Contributions {
-			if c.Author != nil && strings.TrimSpace(c.Author.Name) != "" && !slices.Contains(e.Authors, c.Author.Name) {
-				e.Authors = append(e.Authors, c.Author.Name)
+		d.Parts = append(d.Parts, part)
+		for _, bs := range s.BookSeries {
+			b := bs.Book
+			if b == nil || b.ID <= 0 || strings.TrimSpace(b.Title) == "" {
+				continue
 			}
-		}
-		for _, ed := range b.Editions {
-			if ed.ISBN13 != nil && *ed.ISBN13 != "" && !slices.Contains(e.ISBNs, *ed.ISBN13) {
-				e.ISBNs = append(e.ISBNs, *ed.ISBN13)
+			if _, seen := owner[int64(b.ID)]; seen {
+				continue
 			}
+			e := Entry{BookID: int64(b.ID), SeriesID: part.ID, Slug: cleanSlug(b.Slug), Title: b.Title, Position: bs.Position, users: b.UsersCount}
+			if bs.Details != nil {
+				e.Details = *bs.Details
+			}
+			if b.Subtitle != nil {
+				e.Subtitle = *b.Subtitle
+			}
+			if b.ReleaseDate != nil {
+				e.Released = *b.ReleaseDate
+			}
+			if e.Position != nil {
+				if i, ok := byPos[*e.Position]; ok {
+					old := &d.Entries[i]
+					if e.users > old.users { // the most read one is shown
+						e.AltTitles = append(old.AltTitles, old.Title)
+						*old = e
+					} else if e.Title != old.Title && !slices.Contains(old.AltTitles, e.Title) {
+						old.AltTitles = append(old.AltTitles, e.Title)
+					}
+					owner[int64(b.ID)] = i
+					continue
+				}
+				byPos[*e.Position] = len(d.Entries)
+			}
+			owner[e.BookID] = len(d.Entries)
+			d.Entries = append(d.Entries, e)
 		}
 	}
+	d.Series = d.Parts[0]
+	if len(d.Parts) == 1 {
+		d.Parts = nil
+	}
+	if len(d.Entries) > 0 {
+		if err := c.fillBookDetails(ctx, d, owner); err != nil {
+			return nil, err
+		}
+	}
+	// In order; unnumbered last.
+	slices.SortStableFunc(d.Entries, func(a, b Entry) int {
+		switch {
+		case a.Position == nil && b.Position == nil:
+			return 0
+		case a.Position == nil:
+			return 1
+		case b.Position == nil:
+			return -1
+		case *a.Position < *b.Position:
+			return -1
+		case *a.Position > *b.Position:
+			return 1
+		}
+		return 0
+	})
 	return d, nil
+}
+
+// fillBookDetails adds the authors and ISBNs of every book (merged ones
+// too: owner maps each book id to its entry).
+func (c *Client) fillBookDetails(ctx context.Context, d *SeriesDetail, owner map[int64]int) error {
+	ids := make([]int64, 0, len(owner))
+	for id := range owner {
+		ids = append(ids, id)
+	}
+	slices.Sort(ids)
+	for chunk := range slices.Chunk(ids, 300) {
+		var books struct {
+			Books []struct {
+				ID            flexInt `json:"id"`
+				Contributions []struct {
+					Author *struct {
+						Name string `json:"name"`
+					} `json:"author"`
+				} `json:"contributions"`
+				Editions []struct {
+					ISBN13 *string `json:"isbn_13"`
+				} `json:"editions"`
+			} `json:"books"`
+		}
+		if err := c.post(ctx, qBookDetails, map[string]any{"ids": chunk}, &books); err != nil {
+			return err
+		}
+		for _, b := range books.Books {
+			i, ok := owner[int64(b.ID)]
+			if !ok {
+				continue
+			}
+			e := &d.Entries[i]
+			for _, c := range b.Contributions {
+				if c.Author == nil || strings.TrimSpace(c.Author.Name) == "" {
+					continue
+				}
+				if int64(b.ID) == e.BookID {
+					if !slices.Contains(e.Authors, c.Author.Name) {
+						e.Authors = append(e.Authors, c.Author.Name)
+					}
+				} else if !slices.Contains(e.altAuthors, c.Author.Name) {
+					e.altAuthors = append(e.altAuthors, c.Author.Name)
+				}
+			}
+			for _, ed := range b.Editions {
+				if ed.ISBN13 != nil && *ed.ISBN13 != "" && !slices.Contains(e.ISBNs, *ed.ISBN13) {
+					e.ISBNs = append(e.ISBNs, *ed.ISBN13)
+				}
+			}
+		}
+	}
+	// A merged duplicate's authors count only when the shown book has none.
+	for i := range d.Entries {
+		if e := &d.Entries[i]; len(e.Authors) == 0 {
+			e.Authors = e.altAuthors
+		}
+	}
+	return nil
 }

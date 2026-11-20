@@ -138,3 +138,114 @@ func TestHCMatchSeries(t *testing.T) {
 		t.Errorf("dismissed renumbering: %+v", rev.Present)
 	}
 }
+
+func TestHCKeys(t *testing.T) {
+	if hcSeriesKey("Doctor Who: Target Books") == hcSeriesKey("Doctor Who: BBC Radio Collection") {
+		t.Error("series names differing after a colon are the same")
+	}
+	if hcSeriesKey("The Expanse") != hcSeriesKey("expanse") {
+		t.Error("a leading The counts in a series name")
+	}
+	for _, n := range []string{"Corey, James S. A.", "James S.A. Corey", "james s a corey"} {
+		if hcNameKey(n) != hcNameKey("James S. A. Corey") {
+			t.Errorf("%q isn't James S. A. Corey", n)
+		}
+	}
+	// A short title shared by several books doesn't name any of them.
+	common := map[string]bool{"doctor who": true}
+	if k := hcTitleKeys("Doctor Who: The Myth Makers", common); len(k) != 1 || k[0] != "doctor who the myth makers" {
+		t.Errorf("keys %q", k)
+	}
+	if k := hcTitleKeys("Caliban's War: The Expanse Book Two", nil); len(k) != 2 || k[1] != "calibans war" {
+		t.Errorf("keys %q", k)
+	}
+}
+
+func TestHCMatchSharedPrefix(t *testing.T) {
+	who := []string{"Terrance Dicks"}
+	d := &hardcover.SeriesDetail{Entries: []hardcover.Entry{
+		{BookID: 1, Title: "Doctor Who: The Myth Makers", Position: pos(19), Authors: []string{"Donald Cotton"}},
+		{BookID: 2, Title: "Doctor Who and the Daleks", Position: pos(2), Authors: []string{"David Whitaker"}, AltTitles: []string{"Dr. Who - The Daleks"}},
+		{BookID: 3, Title: "Doctor Who: Shada", Position: pos(110), Authors: who},
+	}}
+	lib := hcLibrary{
+		members: []string{"Doctor Who: Target"},
+		inSeries: []hcLibBook{
+			{UUID: "shada", Title: "Doctor Who: Shada", Series: "Doctor Who: Target", Index: 110},
+			{UUID: "daleks", Title: "Dr. Who - The Daleks", Series: "Doctor Who: Target", Index: 2},
+		},
+	}
+	rev := hcMatchSeries(d, lib, nil, nil)
+	got := map[int64]string{}
+	for _, s := range rev.Present {
+		got[s.Entry.BookID] = s.Book.UUID
+	}
+	if got[3] != "shada" || got[2] != "daleks" || len(got) != 2 {
+		t.Errorf("present %v", got)
+	}
+	if len(rev.Missing) != 1 || rev.Missing[0].Entry.BookID != 1 {
+		t.Errorf("The Myth Makers isn't missing: %+v", rev.Missing)
+	}
+}
+
+func TestHCRankCandidates(t *testing.T) {
+	cand := func(id int64, name, author string, hits int, books ...string) hcCandidate {
+		return hcCandidate{Series: hardcover.Series{ID: id, Name: name, Author: author, Books: books}, Hits: hits}
+	}
+	picked := func(cs []hcCandidate) (ids []int64, sure bool) {
+		for _, c := range cs {
+			if c.Pick {
+				ids = append(ids, c.ID)
+				sure = c.Sure
+			}
+		}
+		return ids, sure
+	}
+	// Hardcover's split series: a library series of another name; the
+	// group holding its ISBNs is picked whole, parts without hits too.
+	cs := hcRankCandidates([]hcCandidate{
+		cand(10, "Doctor Who: BBC Radio Collection", "", 1),
+		cand(1, "Doctor Who: Target Books", "Gerry Davis", 6),
+		cand(2, "Doctor Who: Target Books", "Terrance Dicks", 3),
+		cand(3, "Doctor Who: Target Books", "Malcolm Hulke", 0),
+	}, map[string]bool{hcSeriesKey("Doctor Who: Target"): true}, nil, nil)
+	ids, sure := picked(cs)
+	if len(ids) != 3 || !sure || cs[0].ID != 1 || cs[3].ID != 10 {
+		t.Errorf("split series: picked %v sure %v, order %v", ids, sure, cs)
+	}
+	// Same name, by the library's author: picked and sure; other authors'
+	// same-named series are another group only if their name differs.
+	cs = hcRankCandidates([]hcCandidate{
+		cand(5, "Sherlock Holmes", "Val Andrews", 0),
+		cand(6, "Sherlock Holmes", "Arthur Conan Doyle", 0),
+		cand(7, "Sherlock Holmes Novels", "Arthur Conan Doyle", 0),
+	}, map[string]bool{hcSeriesKey("Sherlock Holmes"): true}, []string{"Doyle, Arthur Conan"}, nil)
+	if ids, sure := picked(cs); len(ids) != 2 || !sure {
+		t.Errorf("same name: picked %v sure %v", ids, sure)
+	}
+	// Evidence by titles only, under another name: picked, not sure.
+	cs = hcRankCandidates([]hcCandidate{cand(8, "Barsoom Novels", "", 0, "A Princess of Mars")},
+		map[string]bool{hcSeriesKey("Barsoom"): true}, nil, nil)
+	if ids, _ := picked(cs); len(ids) != 0 || cs[0].Evidence != "" {
+		t.Errorf("no ISBNs, other name: picked %v", ids)
+	}
+	cs = hcRankCandidates([]hcCandidate{cand(8, "Barsoom", "", 0, "A Princess of Mars")},
+		map[string]bool{hcSeriesKey("Barsoom"): true}, nil, map[string]bool{hcFullTitleKey("A Princess of Mars"): true})
+	if ids, sure := picked(cs); len(ids) != 1 || !sure || cs[0].Evidence != "title" {
+		t.Errorf("titles: picked %v sure %v %+v", ids, sure, cs[0])
+	}
+	// Titles only, under another name: the whole group ticked, not linked by a batch.
+	cs = hcRankCandidates([]hcCandidate{
+		cand(11, "Doctor Who: Target Books", "Gerry Davis", 0, "Doctor Who: Shada"),
+		cand(12, "Doctor Who: Target Books", "Ian Briggs", 0),
+		cand(13, "Doctor Who: Novels", "", 0),
+	}, map[string]bool{hcSeriesKey("Doctor Who: Target"): true}, nil, map[string]bool{hcFullTitleKey("Doctor Who: Shada"): true})
+	if ids, sure := picked(cs); len(ids) != 2 || sure {
+		t.Errorf("titles, other name: picked %v sure %v", ids, sure)
+	}
+	// A weak lead (1 ISBN, another name) is ticked but not linked by a batch.
+	cs = hcRankCandidates([]hcCandidate{cand(9, "Something Else", "", 1)}, map[string]bool{"x": true}, nil, nil)
+	if ids, sure := picked(cs); len(ids) != 1 || sure {
+		t.Errorf("weak lead: picked %v sure %v", ids, sure)
+	}
+}

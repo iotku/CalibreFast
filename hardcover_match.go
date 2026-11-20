@@ -33,7 +33,8 @@ type hcLibBook struct {
 type hcLibrary struct {
 	// inSeries: the books tagged with the series (any member of its group).
 	inSeries []hcLibBook
-	// byTitle: library books whose hcTitleKey is key.
+	// byTitle: library books with a title key (hcTitleKey or
+	// hcFullTitleKey) of key.
 	byTitle func(key string) []hcLibBook
 	// byISBN: library books with this ISBN-13.
 	byISBN map[string][]hcLibBook
@@ -90,9 +91,33 @@ func (r *hcReview) pending() int {
 
 // hcTitleKey is a title for matching: case, accents, punctuation, a
 // leading article, a subtitle and a trailing "(Series #3)" don't count.
+// Where titles share what comes before their colon ("Doctor Who: Shada",
+// "Doctor Who: The Ark") the subtitle is the title: hcFullTitleKey.
 func hcTitleKey(title string) string {
+	t := hcTrimTitle(title)
+	if i := strings.IndexAny(t, ":"); i > 0 {
+		t = t[:i]
+	}
+	return hcFoldTitle(t)
+}
+
+// hcFullTitleKey is hcTitleKey with the subtitle kept.
+func hcFullTitleKey(title string) string { return hcFoldTitle(hcTrimTitle(title)) }
+
+// hcTitleKeys: the keys a title is found by: its full key, and its key
+// without the subtitle unless that is common (see hcMatchSeries).
+func hcTitleKeys(title string, common map[string]bool) []string {
+	keys := []string{hcFullTitleKey(title)}
+	if k := hcTitleKey(title); k != keys[0] && !common[k] {
+		keys = append(keys, k)
+	}
+	return keys
+}
+
+// hcTrimTitle drops a trailing parenthesized or bracketed part:
+// "(The Expanse #1)".
+func hcTrimTitle(title string) string {
 	t := strings.TrimSpace(title)
-	// A trailing parenthesized or bracketed part: "(The Expanse #1)".
 	for _, p := range [][2]string{{"(", ")"}, {"[", "]"}} {
 		if strings.HasSuffix(t, p[1]) {
 			if i := strings.LastIndex(t, p[0]); i > 0 {
@@ -100,9 +125,10 @@ func hcTitleKey(title string) string {
 			}
 		}
 	}
-	if i := strings.IndexAny(t, ":"); i > 0 {
-		t = t[:i]
-	}
+	return t
+}
+
+func hcFoldTitle(t string) string {
 	k := foldWords(t)
 	for _, a := range []string{"the ", "a ", "an "} {
 		if strings.HasPrefix(k, a) && len(k) > len(a) {
@@ -113,9 +139,24 @@ func hcTitleKey(title string) string {
 	return k
 }
 
-// hcNameKey is an author's name for matching: "James S.A. Corey" and
-// "james s. a. corey" are the same.
-func hcNameKey(name string) string { return strings.ReplaceAll(foldWords(name), " ", "") }
+// hcNameKey is an author's name for matching: "James S.A. Corey",
+// "james s. a. corey" and "Corey, James S. A." are the same.
+func hcNameKey(name string) string {
+	words := strings.Fields(foldWords(strings.ReplaceAll(name, ".", " ")))
+	slices.Sort(words)
+	return strings.Join(words, " ")
+}
+
+// hcSeriesKey is a series' name for comparing: case, accents, punctuation
+// and a leading "The" don't count. Unlike a title, what follows a colon
+// does ("Doctor Who: Target Books" isn't "Doctor Who: BBC Radio").
+func hcSeriesKey(name string) string {
+	k := foldWords(name)
+	if strings.HasPrefix(k, "the ") && len(k) > 4 {
+		k = k[4:]
+	}
+	return k
+}
 
 // foldWords lower-cases s, drops accents and punctuation ("&" is "and")
 // and collapses spaces.
@@ -186,17 +227,47 @@ func hcMatchSeries(d *hardcover.SeriesDetail, lib hcLibrary, placeholders []*pla
 	if byTitle == nil {
 		byTitle = func(string) []hcLibBook { return nil }
 	}
+	// A short title shared by two of the list's books ("Doctor Who" in
+	// "Doctor Who: Shada") or two of the series' books here names none.
+	common := map[string]bool{}
+	seen := map[string]bool{}
+	note := func(t string) {
+		if k := hcTitleKey(t); k != hcFullTitleKey(t) {
+			common[k] = common[k] || seen[k]
+			seen[k] = true
+		}
+	}
+	for _, e := range d.Entries {
+		note(e.Title)
+	}
+	clear(seen)
+	for _, b := range lib.inSeries {
+		note(b.Title)
+	}
 	inSeriesByKey := map[string][]int{}
 	for i, b := range lib.inSeries {
-		k := hcTitleKey(b.Title)
-		inSeriesByKey[k] = append(inSeriesByKey[k], i)
+		for _, k := range hcTitleKeys(b.Title, common) {
+			inSeriesByKey[k] = append(inSeriesByKey[k], i)
+		}
 	}
 
 	for i := range d.Entries {
 		e := &d.Entries[i]
-		keys := []string{hcTitleKey(e.Title)}
+		var keys []string
+		addKeys := func(t string) {
+			for _, k := range hcTitleKeys(t, common) {
+				if k != "" && !slices.Contains(keys, k) {
+					keys = append(keys, k)
+				}
+			}
+		}
+		addKeys(e.Title)
 		if e.Subtitle != "" {
-			keys = append(keys, hcTitleKey(e.Title+" "+e.Subtitle))
+			addKeys(e.Title + ": " + e.Subtitle)
+		}
+		// The same book entered in another part of the series.
+		for _, t := range e.AltTitles {
+			addKeys(t)
 		}
 		var book *hcLibBook
 		strength := ""
@@ -321,7 +392,7 @@ func boolInt(b bool) int {
 // one of its authors.
 func hcPlaceholderFor(e *hardcover.Entry, members []string, phs []*placeholder) *placeholder {
 	id := strconv.FormatInt(e.BookID, 10)
-	key := hcTitleKey(e.Title)
+	key := hcFullTitleKey(e.Title)
 	for _, p := range phs {
 		for _, x := range p.Meta.Identifiers {
 			if strings.EqualFold(x.Scheme, hcIdentifierScheme) && x.Value == id {
@@ -331,7 +402,7 @@ func hcPlaceholderFor(e *hardcover.Entry, members []string, phs []*placeholder) 
 		if e.Position != nil && hcInMembers(p.Meta.Series, members) && p.index() == *e.Position {
 			return p
 		}
-		if hcTitleKey(p.Meta.Title) == key && hcSharesAuthor(p.Meta.Creators, e.Authors) {
+		if hcFullTitleKey(p.Meta.Title) == key && hcSharesAuthor(p.Meta.Creators, e.Authors) {
 			return p
 		}
 	}

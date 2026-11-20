@@ -75,37 +75,92 @@ async function request(kind: "candidates" | "link" | "refresh", body: object): P
 const page = maybeId("hc-page");
 const series = page?.dataset["series"] ?? "";
 
+/** A candidate's line: a box to tick, what it is, and a link to it. */
 function candidateItem(c: HardcoverCandidate): HTMLLIElement {
-    const pick = el("button", { type: "button", className: "btn-standard" + (c.sure ? " btn-primary" : "") }, "Link");
-    pick.addEventListener("click", () => {
-        for (const b of document.querySelectorAll<HTMLButtonElement>("#hc-candidates button")) b.disabled = true;
-        request("link", { series, hcId: c.id })
-            .then((job) => go(job.result?.review))
-            .catch((err: unknown) => {
-                say(errorMessage(err), true);
-                for (const b of document.querySelectorAll<HTMLButtonElement>("#hc-candidates button")) b.disabled = false;
-            });
-    });
+    const box = el("input", { type: "checkbox", className: "hc-tick", checked: c.pick === true, value: String(c.id) });
+    box.dataset["group"] = c.group;
+    box.setAttribute("aria-label", `Link to ${c.name}${c.author ? ` (${c.author})` : ""}`);
     const details: (Node | string)[] = [el("span", { className: "ph-title" }, c.name)];
     if (c.author) details.push(el("span", { className: "ph-sub" }, c.author));
     details.push(el("span", { className: "ph-sub" }, `${c.booksCount} book${c.booksCount === 1 ? "" : "s"}`));
     if (c.hits) details.push(el("span", { className: "hc-badge" }, `${c.hits} of your books`));
-    if (c.sure) details.push(el("span", { className: "hc-badge" }, "likely"));
+    else if (c.evidence === "author") details.push(el("span", { className: "hc-badge" }, "same author"));
+    else if (c.evidence === "title") details.push(el("span", { className: "hc-badge" }, "has your titles"));
     details.push(hardcoverLink(c.url, "View on Hardcover"));
-    return el("li", {}, ...details, pick);
+    return el("li", { className: "hc-row" }, box, el("span", { className: "hc-body" }, ...details));
 }
+
+/** A heading for several Hardcover series of one name, with a box ticking them all. */
+function groupItem(name: string, members: HardcoverCandidate[]): HTMLLIElement {
+    const all = el("input", { type: "checkbox", className: "hc-tick", checked: members.every((c) => c.pick === true) });
+    all.setAttribute("aria-label", `Tick all ${members.length} named ${name}`);
+    all.addEventListener("change", () => {
+        for (const b of document.querySelectorAll<HTMLInputElement>("#hc-candidates input[data-group]")) {
+            if (b.dataset["group"] === members[0]?.group) b.checked = all.checked;
+        }
+    });
+    const hits = members.reduce((n, c) => n + (c.hits ?? 0), 0);
+    const body: (Node | string)[] = [
+        el("strong", {}, name),
+        el("span", { className: "ph-sub" }, `${members.length} series of this name on Hardcover (one per author)`),
+    ];
+    if (hits) body.push(el("span", { className: "hc-badge" }, `${hits} of your books`));
+    return el("li", { className: "hc-row hc-group" }, all, el("span", { className: "hc-body" }, ...body));
+}
+
+function showCandidates(cands: HardcoverCandidate[]): void {
+    const list = maybeId("hc-candidates");
+    const row = maybeId("hc-link-row");
+    if (!list) return;
+    const items: HTMLLIElement[] = [];
+    const groups = new Map<string, HardcoverCandidate[]>();
+    for (const c of cands) groups.set(c.group, [...(groups.get(c.group) ?? []), c]);
+    for (const members of groups.values()) {
+        const first = members[0];
+        if (!first) continue;
+        if (members.length > 1) items.push(groupItem(first.name, members));
+        for (const c of members) {
+            const li = candidateItem(c);
+            if (members.length > 1) li.classList.add("hc-member");
+            items.push(li);
+        }
+    }
+    list.replaceChildren(...items);
+    list.hidden = cands.length === 0;
+    if (row) row.hidden = cands.length === 0;
+    const picked = cands.filter((c) => c.pick).length;
+    say(
+        !cands.length
+            ? "Hardcover has no series like this one."
+            : picked > 1
+              ? `Hardcover splits this series into ${picked} parts; they're ticked. Check them, then link.`
+              : picked
+                ? "The likeliest is ticked. Check it, then link."
+                : "Tick the Hardcover series this is, then link.",
+    );
+}
+
+maybeId("hc-link", HTMLButtonElement)?.addEventListener("click", (e) => {
+    const btn = e.currentTarget as HTMLButtonElement;
+    const ids = [...document.querySelectorAll<HTMLInputElement>("#hc-candidates input[data-group]:checked")].map((b) => Number(b.value));
+    if (!ids.length) {
+        say("Tick at least one.", true);
+        return;
+    }
+    btn.disabled = true;
+    request("link", { series, hcIds: ids })
+        .then((job) => go(job.result?.review))
+        .catch((err: unknown) => {
+            say(errorMessage(err), true);
+            btn.disabled = false;
+        });
+});
 
 maybeId("hc-find", HTMLButtonElement)?.addEventListener("click", (e) => {
     const btn = e.currentTarget as HTMLButtonElement;
     btn.disabled = true;
-    const list = maybeId("hc-candidates");
     request("candidates", { series })
-        .then((job) => {
-            const cands = job.result?.candidates ?? [];
-            say(cands.length ? "Pick the Hardcover series this is:" : "Hardcover has no series like this one.");
-            list?.replaceChildren(...cands.map(candidateItem));
-            if (list) list.hidden = cands.length === 0;
-        })
+        .then((job) => showCandidates(job.result?.candidates ?? []))
         .catch((err: unknown) => say(errorMessage(err), true))
         .finally(() => (btn.disabled = false));
 });
@@ -223,7 +278,7 @@ function describe(j: HardcoverJob): string {
             return `failed: ${j.error ?? ""}`;
     }
     const r = j.result;
-    if (r?.linked) return `linked to ${r.hcName ?? "?"} (${r.books ?? 0} books)`;
+    if (r?.linked) return `linked to ${r.hcName ?? "?"} (${r.books ?? 0} books${r.parts && r.parts > 1 ? ` in ${r.parts} parts` : ""})`;
     if (r?.needsChoice) return "more than one match: choose on its review page";
     return "done";
 }

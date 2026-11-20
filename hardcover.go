@@ -54,6 +54,9 @@ var (
 // hcBatchMax: the most series one batch may hold.
 const hcBatchMax = 25
 
+// hcMaxParts: the most Hardcover series one series may be linked to.
+const hcMaxParts = 60
+
 // hcStaleAfter: a series' list is shown as stale after this.
 const hcStaleAfter = 30 * 24 * time.Hour
 
@@ -133,7 +136,8 @@ func hcSeries(name string) (hcSeriesInfo, bool) {
 	return info, true
 }
 
-// hcTitleIndex: the catalog's books by hcTitleKey, and by book id; built
+// hcTitleIndex: the catalog's books by title key (with and without the
+// subtitle), and by book id; built
 // again when the catalog changes.
 type hcTitleIndex struct {
 	cat     *catalog
@@ -159,8 +163,11 @@ func currentHCTitleIndex() *hcTitleIndex {
 		if b.Removed || b.UUID == "" {
 			continue
 		}
-		k := hcTitleKey(b.Title)
-		idx.byTitle[k] = append(idx.byTitle[k], int32(i))
+		full, short := hcFullTitleKey(b.Title), hcTitleKey(b.Title)
+		idx.byTitle[full] = append(idx.byTitle[full], int32(i))
+		if short != full {
+			idx.byTitle[short] = append(idx.byTitle[short], int32(i))
+		}
 		idx.byID[b.ID] = int32(i)
 	}
 	hcTitleIndexCache.idx = idx
@@ -278,14 +285,62 @@ func hcSeriesISBNs(s hcSeriesInfo) ([]string, error) {
 // Links
 // ---------------------------------------------------------------------------
 
-// hcLink is a series linked to Hardcover.
+// hcLink is a series linked to Hardcover: to one series there, or to
+// several parts of one (hardcover_series_parts).
 type hcLink struct {
 	Name         string
-	HCID         int64
+	HCID         int64 // the first part
 	Slug, HCName string
 	IdentifiedAt int64
 	CheckedAt    int64
 	Snapshot     *hardcover.SeriesDetail
+	Parts        []hcPart
+}
+
+// hcPart is one Hardcover series a library series is linked to.
+type hcPart struct {
+	ID     int64
+	Slug   string
+	Name   string
+	Author string
+	Books  int
+}
+
+func (p hcPart) url() string {
+	if !hardcover.ValidSlug(p.Slug) {
+		return ""
+	}
+	return "https://hardcover.app/series/" + p.Slug
+}
+
+// ids: the Hardcover series to fetch.
+func (l *hcLink) ids() []int64 {
+	var ids []int64
+	for _, p := range l.Parts {
+		ids = append(ids, p.ID)
+	}
+	if len(ids) == 0 && l.HCID > 0 {
+		ids = []int64{l.HCID}
+	}
+	return ids
+}
+
+// loadParts reads the link's parts.
+func (l *hcLink) loadParts() error {
+	rows, err := appDB.Query(`SELECT hc_id, hc_slug, hc_name, author, books FROM hardcover_series_parts WHERE name = ? ORDER BY books DESC, hc_id`, l.Name)
+	if err != nil {
+		return err
+	}
+	defer rows.Close()
+	l.Parts = nil
+	for rows.Next() {
+		var p hcPart
+		if err := rows.Scan(&p.ID, &p.Slug, &p.Name, &p.Author, &p.Books); err != nil {
+			return err
+		}
+		l.Parts = append(l.Parts, p)
+	}
+	return rows.Err()
 }
 
 func (l *hcLink) hardcoverURL() string {
@@ -322,7 +377,10 @@ func hcLinkFor(name string) (*hcLink, error) {
 	if errors.Is(err, sql.ErrNoRows) {
 		return nil, nil
 	}
-	return l, err
+	if err != nil {
+		return nil, err
+	}
+	return l, l.loadParts()
 }
 
 func hcAllLinks() ([]*hcLink, error) {
@@ -342,8 +400,8 @@ func hcAllLinks() ([]*hcLink, error) {
 	return out, rows.Err()
 }
 
-// hcSaveLink links name to d's series with d as its list. Linking to
-// another series forgets what was turned down for the old one.
+// hcSaveLink links name to d's series (all its parts) with d as its list.
+// Linking to other series forgets what was turned down for the old ones.
 func hcSaveLink(name string, d *hardcover.SeriesDetail, by *User) error {
 	snap, err := json.Marshal(d)
 	if err != nil {
@@ -359,6 +417,18 @@ func hcSaveLink(name string, d *hardcover.SeriesDetail, by *User) error {
 		return err
 	}
 	defer tx.Rollback()
+	parts := d.AllParts()
+	var oldIDs []int64
+	if rows, qerr := tx.Query(`SELECT hc_id FROM hardcover_series_parts WHERE name = ?`, name); qerr == nil {
+		for rows.Next() {
+			var id int64
+			if rows.Scan(&id) == nil {
+				oldIDs = append(oldIDs, id)
+			}
+		}
+		rows.Close()
+	}
+	same := len(oldIDs) > 0 && slices.ContainsFunc(parts, func(p hardcover.Series) bool { return slices.Contains(oldIDs, p.ID) })
 	var old int64
 	err = tx.QueryRow(`SELECT hc_id FROM hardcover_series WHERE name = ?`, name).Scan(&old)
 	switch {
@@ -366,14 +436,24 @@ func hcSaveLink(name string, d *hardcover.SeriesDetail, by *User) error {
 		_, err = tx.Exec(`INSERT INTO hardcover_series (name, hc_id, hc_slug, hc_name, identified_by, identified_at, checked_at, snapshot)
 			VALUES (?, ?, ?, ?, ?, ?, ?, ?)`, name, d.ID, d.Slug, d.Name, uid, now, now, string(snap))
 	case err != nil:
-	case old != d.ID:
+	case !same && old != d.ID:
 		if _, err = tx.Exec(`DELETE FROM hardcover_dismissed WHERE name = ?`, name); err == nil {
 			_, err = tx.Exec(`UPDATE hardcover_series SET hc_id = ?, hc_slug = ?, hc_name = ?, identified_by = ?, identified_at = ?, checked_at = ?, snapshot = ? WHERE name = ?`,
 				d.ID, d.Slug, d.Name, uid, now, now, string(snap), name)
 		}
 	default:
-		_, err = tx.Exec(`UPDATE hardcover_series SET hc_slug = ?, hc_name = ?, checked_at = ?, snapshot = ? WHERE name = ?`,
-			d.Slug, d.Name, now, string(snap), name)
+		_, err = tx.Exec(`UPDATE hardcover_series SET hc_id = ?, hc_slug = ?, hc_name = ?, checked_at = ?, snapshot = ? WHERE name = ?`,
+			d.ID, d.Slug, d.Name, now, string(snap), name)
+	}
+	if err == nil {
+		_, err = tx.Exec(`DELETE FROM hardcover_series_parts WHERE name = ?`, name)
+	}
+	for _, p := range parts {
+		if err != nil {
+			break
+		}
+		_, err = tx.Exec(`INSERT INTO hardcover_series_parts (name, hc_id, hc_slug, hc_name, author, books) VALUES (?, ?, ?, ?, ?, ?)`,
+			name, p.ID, p.Slug, p.Name, p.Author, p.BooksCount)
 	}
 	if err != nil {
 		return err
@@ -383,6 +463,9 @@ func hcSaveLink(name string, d *hardcover.SeriesDetail, by *User) error {
 
 func hcUnlink(name string) error {
 	if _, err := appDB.Exec(`DELETE FROM hardcover_dismissed WHERE name = ?`, name); err != nil {
+		return err
+	}
+	if _, err := appDB.Exec(`DELETE FROM hardcover_series_parts WHERE name = ?`, name); err != nil {
 		return err
 	}
 	_, err := appDB.Exec(`DELETE FROM hardcover_series WHERE name = ?`, name)
@@ -446,7 +529,18 @@ type hcJob struct {
 }
 
 type hcPayload struct {
-	HCID int64 `json:"hcId,omitempty"`
+	HCID  int64   `json:"hcId,omitempty"`  // one series (queued before parts were)
+	HCIDs []int64 `json:"hcIds,omitempty"` // a series, or several parts of one
+}
+
+func (p hcPayload) ids() []int64 {
+	if len(p.HCIDs) > 0 {
+		return p.HCIDs
+	}
+	if p.HCID > 0 {
+		return []int64{p.HCID}
+	}
+	return nil
 }
 
 // hcCandidates is a candidates job's result.
@@ -458,7 +552,15 @@ type hcCandidate struct {
 	hardcover.Series
 	Hits int    `json:"hits,omitempty"` // library ISBNs found in it
 	URL  string `json:"url,omitempty"`
-	Sure bool   `json:"sure,omitempty"` // the batch would link it
+	// Group: candidates with the same name (folded) share it: Hardcover
+	// splits some series into one per author.
+	Group string `json:"group"`
+	// Pick: in the group that looks like this series (ticked in the picker).
+	Pick bool `json:"pick,omitempty"`
+	// Sure: a batch links Pick's group on its own.
+	Sure bool `json:"sure,omitempty"`
+	// Evidence: what ties it to the library's series.
+	Evidence string `json:"evidence,omitempty"`
 }
 
 // hcLinkResult is a link, refresh or batch job's result.
@@ -466,6 +568,7 @@ type hcLinkResult struct {
 	Linked      bool          `json:"linked"`
 	HCName      string        `json:"hcName,omitempty"`
 	Books       int           `json:"books,omitempty"`
+	Parts       int           `json:"parts,omitempty"`  // Hardcover series it is linked to
 	Review      string        `json:"review,omitempty"` // the review page
 	NeedsChoice bool          `json:"needsChoice,omitempty"`
 	Candidates  []hcCandidate `json:"candidates,omitempty"`
@@ -649,14 +752,14 @@ func hcRun(ctx context.Context, j *hcJob) (any, error) {
 		}
 		return hcCandidates{Candidates: cands}, nil
 	case hcJobLink:
-		return hcFetchAndLink(ctx, s, p.HCID, j)
+		return hcFetchAndLink(ctx, s, p.ids(), j)
 	case hcJobRefresh, hcJobBatch:
 		l, err := hcLinkFor(s.Name)
 		if err != nil {
 			return nil, err
 		}
 		if l != nil {
-			return hcFetchAndLink(ctx, s, l.HCID, j)
+			return hcFetchAndLink(ctx, s, l.ids(), j)
 		}
 		if j.Kind == hcJobRefresh {
 			return nil, errors.New("the series isn't linked to Hardcover")
@@ -665,25 +768,25 @@ func hcRun(ctx context.Context, j *hcJob) (any, error) {
 		if err != nil {
 			return nil, err
 		}
-		var sure []hcCandidate
+		var sure []int64
 		for _, c := range cands {
 			if c.Sure {
-				sure = append(sure, c)
+				sure = append(sure, c.ID)
 			}
 		}
-		if len(sure) != 1 {
+		if len(sure) == 0 {
 			return hcLinkResult{NeedsChoice: true, Candidates: cands, Review: hcReviewURL(s.Name)}, nil
 		}
-		return hcFetchAndLink(ctx, s, sure[0].ID, j)
+		return hcFetchAndLink(ctx, s, sure, j)
 	}
 	return nil, fmt.Errorf("unknown job %q", j.Kind)
 }
 
-func hcFetchAndLink(ctx context.Context, s hcSeriesInfo, id int64, j *hcJob) (any, error) {
-	if id <= 0 {
+func hcFetchAndLink(ctx context.Context, s hcSeriesInfo, ids []int64, j *hcJob) (any, error) {
+	if len(ids) == 0 {
 		return nil, errors.New("no Hardcover series given")
 	}
-	d, err := hcClient.SeriesBooks(ctx, id)
+	d, err := hcClient.SeriesBooks(ctx, ids...)
 	if err != nil {
 		return nil, err
 	}
@@ -695,12 +798,23 @@ func hcFetchAndLink(ctx context.Context, s hcSeriesInfo, id int64, j *hcJob) (an
 	if err := hcSaveLink(s.Name, d, by); err != nil {
 		return nil, err
 	}
-	return hcLinkResult{Linked: true, HCName: d.Name, Books: len(d.Entries), Review: hcReviewURL(s.Name)}, nil
+	return hcLinkResult{Linked: true, HCName: d.Name, Books: len(d.Entries), Parts: len(d.AllParts()), Review: hcReviewURL(s.Name)}, nil
 }
 
-// hcFindCandidates: Hardcover series by the name, and those the series'
-// library ISBNs are in, best first. Sure: the name is the same and an ISBN
-// or an author agrees (what a batch links on its own).
+// hcFindCandidates: Hardcover series that may be this one, best first,
+// grouped by name: Hardcover splits some series into one per author, all of
+// the same name and numbered as one, so a library series may be several
+// Hardcover series.
+//
+// They come from a search by name, from the series the library's ISBNs
+// are in, and from every series named like the likeliest ones (which finds
+// the parts a search's ten results leave out). A candidate has evidence
+// when the library's ISBNs are in it, its author wrote the series' books
+// here, or the search lists one of their titles. The group of the same
+// name as the library's series with evidence, else the group holding the
+// most library ISBNs, is ticked (Pick). A batch links it on its own (Sure)
+// only when its name is the library's, or when it holds at least 3 of the
+// library's ISBNs and more than twice as many as any other group.
 func hcFindCandidates(ctx context.Context, s hcSeriesInfo) ([]hcCandidate, error) {
 	isbns, err := hcSeriesISBNs(s)
 	if err != nil {
@@ -721,19 +835,24 @@ func hcFindCandidates(ctx context.Context, s hcSeriesInfo) ([]hcCandidate, error
 			break
 		}
 	}
-	authors := hcSeriesAuthors(s)
 	names := map[string]bool{}
 	for _, m := range append([]string{s.Name}, s.Members...) {
-		names[hcTitleKey(m)] = true
+		names[hcSeriesKey(m)] = true
 	}
+
 	var out []hcCandidate
 	index := map[int64]int{}
 	add := func(c hcCandidate) {
 		if i, ok := index[c.ID]; ok {
-			out[i].Hits = max(out[i].Hits, c.Hits)
-			if out[i].Author == "" {
-				out[i].Author = c.Author
+			o := &out[i]
+			o.Hits = max(o.Hits, c.Hits)
+			if o.Author == "" {
+				o.Author = c.Author
 			}
+			if len(o.Books) == 0 {
+				o.Books = c.Books
+			}
+			o.BooksCount = max(o.BooksCount, c.BooksCount)
 			return
 		}
 		index[c.ID] = len(out)
@@ -745,21 +864,137 @@ func hcFindCandidates(ctx context.Context, s hcSeriesInfo) ([]hcCandidate, error
 	for _, c := range search {
 		add(hcCandidate{Series: c})
 	}
+
+	titles := map[string]bool{}
+	for _, t := range hcSeriesTitles(s) {
+		titles[hcFullTitleKey(t)] = true
+	}
+	authors := hcSeriesAuthors(s)
+
+	// Every series named like the library's, or like one with evidence.
+	var lookup []string
+	for _, c := range out {
+		if (names[hcSeriesKey(c.Name)] || hcEvidence(c, authors, titles) != "") && !slices.Contains(lookup, c.Name) && len(lookup) < 5 {
+			lookup = append(lookup, c.Name)
+		}
+	}
+	if len(lookup) > 0 {
+		same, err := hcClient.SeriesByName(ctx, lookup)
+		if err != nil {
+			return nil, err
+		}
+		for _, c := range same {
+			add(hcCandidate{Series: c})
+		}
+	}
+
+	return hcRankCandidates(out, names, authors, titles), nil
+}
+
+// hcEvidence: what ties c to the library's series: its ISBNs ("isbn"), its
+// author ("author"), or one of its books' titles ("title"); "" for nothing.
+func hcEvidence(c hcCandidate, authors []string, titles map[string]bool) string {
+	switch {
+	case c.Hits > 0:
+		return "isbn"
+	case c.Author != "" && hcSharesAuthor([]string{c.Author}, authors):
+		return "author"
+	case slices.ContainsFunc(c.Books, func(t string) bool { return titles[hcFullTitleKey(t)] }):
+		return "title"
+	}
+	return ""
+}
+
+// hcRankCandidates marks out's evidence, groups, Pick and Sure, and sorts
+// them (see hcFindCandidates). names and titles are keys (hcSeriesKey,
+// hcFullTitleKey) of the library series' names and its books' titles.
+func hcRankCandidates(out []hcCandidate, names map[string]bool, authors []string, titles map[string]bool) []hcCandidate {
+	type group struct {
+		hits     int
+		evidence bool
+		score    int  // members with evidence
+		named    bool // the library's name
+	}
+	groups := map[string]*group{}
 	for i := range out {
 		c := &out[i]
 		c.URL = (&hcLink{Slug: c.Slug}).hardcoverURL()
-		c.Sure = names[hcTitleKey(c.Name)] && (c.Hits > 0 || (c.Author != "" && hcSharesAuthor([]string{c.Author}, authors)))
-	}
-	slices.SortStableFunc(out, func(a, b hcCandidate) int {
-		if a.Sure != b.Sure {
-			return boolInt(b.Sure) - boolInt(a.Sure)
+		c.Group = hcSeriesKey(c.Name)
+		c.Evidence = hcEvidence(*c, authors, titles)
+		g := groups[c.Group]
+		if g == nil {
+			g = &group{named: names[c.Group]}
+			groups[c.Group] = g
 		}
-		return b.Hits - a.Hits
-	})
-	if len(out) > 15 {
-		out = out[:15]
+		g.hits += c.Hits
+		if c.Evidence != "" {
+			g.evidence = true
+			g.score++
+		}
 	}
-	return out, nil
+	pick, sure := "", false
+	for k, g := range groups {
+		if g.named && g.evidence {
+			pick, sure = k, true
+		}
+	}
+	if pick == "" {
+		// Else the group with the most library ISBNs, then the most members
+		// with evidence (an author or a title). Only ISBNs make it sure.
+		rank := func(g *group) int { return g.hits*1000 + g.score }
+		best, second := "", 0
+		for k, g := range groups {
+			if best == "" || rank(g) > rank(groups[best]) || (rank(g) == rank(groups[best]) && k < best) {
+				if best != "" {
+					second = max(second, groups[best].hits)
+				}
+				best = k
+			} else {
+				second = max(second, g.hits)
+			}
+		}
+		if best != "" && groups[best].evidence {
+			pick = best
+			sure = groups[best].hits >= 3 && groups[best].hits > 2*second
+		}
+	}
+	for i := range out {
+		out[i].Pick = pick != "" && out[i].Group == pick
+		out[i].Sure = out[i].Pick && sure
+	}
+	// The picked group first, then by ISBNs found and size.
+	slices.SortStableFunc(out, func(a, b hcCandidate) int {
+		if a.Pick != b.Pick {
+			return boolInt(b.Pick) - boolInt(a.Pick)
+		}
+		if ga, gb := groups[a.Group].hits, groups[b.Group].hits; ga != gb {
+			return gb - ga
+		}
+		if a.Group != b.Group {
+			return strings.Compare(a.Group, b.Group)
+		}
+		if a.Hits != b.Hits {
+			return b.Hits - a.Hits
+		}
+		return b.BooksCount - a.BooksCount
+	})
+	if len(out) > 60 {
+		out = out[:60]
+	}
+	return out
+}
+
+// hcSeriesTitles: the titles of the series' books in the library.
+func hcSeriesTitles(s hcSeriesInfo) []string {
+	c := currentCatalog()
+	var out []string
+	for i := range c.books {
+		b := &c.books[i]
+		if !b.Removed && b.Series != 0 && hcInMembers(c.seriesNames[b.Series], s.Members) {
+			out = append(out, b.Title)
+		}
+	}
+	return out
 }
 
 func hcSeriesAuthors(s hcSeriesInfo) []string {

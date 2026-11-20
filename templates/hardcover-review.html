@@ -22,23 +22,44 @@
         {{ template "hc-usage" .Usage }}
         {{ with .Error }}<p class="auth-error">{{ . }}</p>{{ end }}
         {{ if .Linked }}
+        {{ if .Parts }}
+        <p>Linked to <strong>{{ len .Parts }}</strong> Hardcover series: Hardcover splits this one into parts. Their lists are taken as one, numbered together.
+            The lists were fetched <strong>{{ .Checked }}</strong>{{ if .Stale }} <span class="hc-held">(they may be out of date)</span>{{ end }}.
+        </p>
+        <details class="hc-parts">
+            <summary>The {{ len .Parts }} parts</summary>
+            <ul class="ph-list">
+                {{ range .Parts }}
+                <li class="hc-row"><span class="hc-body">
+                    {{ if .URL }}<a href="{{ .URL }}" rel="noopener noreferrer" target="_blank" class="ph-title">{{ .Name }}</a>{{ else }}<span class="ph-title">{{ .Name }}</span>{{ end }}
+                    {{ with .Author }}<span class="ph-sub">{{ . }}</span>{{ end }}
+                    <span class="ph-sub">{{ .Books }} book{{ if ne .Books 1 }}s{{ end }}</span>
+                </span></li>
+                {{ end }}
+            </ul>
+        </details>
+        {{ else }}
         <p>Linked to
             {{ if .HCURL }}<a href="{{ .HCURL }}" rel="noopener noreferrer" target="_blank">{{ .HCName }}</a>{{ else }}{{ .HCName }}{{ end }}.
             Its book list was fetched <strong>{{ .Checked }}</strong>{{ if .Stale }} <span class="hc-held">(it may be out of date)</span>{{ end }}.
         </p>
+        {{ end }}
         <div class="ph-actions ph-actions-start">
             <button type="button" id="hc-refresh" class="btn-standard btn-primary">Fetch the list again</button>
-            <button type="button" id="hc-find" class="btn-standard">Link to another series…</button>
+            <button type="button" id="hc-find" class="btn-standard">Change the link…</button>
             <button type="button" id="hc-unlink" class="btn-standard btn-danger">Unlink</button>
         </div>
         {{ else }}
-        <p>This series isn't linked to Hardcover yet. Find it there by its name and the ISBNs of its books in the library; pick the right one to fetch its book list.</p>
+        <p>This series isn't linked to Hardcover yet. Find it there by its name and the ISBNs of its books in the library, then tick the right one. When Hardcover splits it into one series per author, tick them all: their lists are merged.</p>
         <div class="ph-actions ph-actions-start">
             <button type="button" id="hc-find" class="btn-standard btn-primary">Find on Hardcover</button>
         </div>
         {{ end }}
         <p id="hc-status" class="auth-notice" role="status" hidden></p>
         <ul id="hc-candidates" class="ph-list hc-candidates" hidden></ul>
+        <div id="hc-link-row" class="ph-actions ph-actions-start" hidden>
+            <button type="button" id="hc-link" class="btn-standard btn-primary">Link ticked</button>
+        </div>
         {{ template "hc-jobs" .Jobs }}
     </section>
 
