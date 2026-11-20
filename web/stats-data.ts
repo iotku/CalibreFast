@@ -6,6 +6,7 @@
 
 import { localDay } from "./activity.js";
 import { api, el, svgEl } from "./dom.js";
+import { localKey } from "./local-keys.js";
 import type { Book } from "./types.js";
 
 export interface Day {
@@ -76,6 +77,7 @@ export function statsSummary(s: Stats): HTMLElement | null {
             class: `stats-ring-fill${goal && done >= 1 ? " stats-ring-done" : ""}`,
             "stroke-dasharray": `${(done * C).toFixed(1)} ${C.toFixed(1)}`,
             transform: "rotate(-90 18 18)",
+            "data-len": (done * C).toFixed(1), // how far the reveal winds it (revealStats)
         }),
     );
     const today = goal
@@ -93,7 +95,9 @@ export function statsSummary(s: Stats): HTMLElement | null {
     recent.forEach((day, i) => {
         const p = byDay.get(day)?.pages ?? 0;
         const level = p <= 0 ? 0 : Math.min(4, 1 + Math.floor(((p - 1) / most) * 4));
-        strip.append(svgEl("rect", { x: i * 12, y: 0, width: 10, height: 10, rx: 2, class: `stats-heat-cell stats-heat-${level}` }));
+        const cell = svgEl("rect", { x: i * 12, y: 0, width: 10, height: 10, rx: 2, class: `stats-heat-cell stats-heat-${level}` });
+        cell.style.setProperty("--i", String(i)); // the reveal's stagger (revealStats)
+        strip.append(cell);
     });
 
     const yearly = s.goal.yearly_books;
@@ -113,4 +117,73 @@ export function statsSummary(s: Stats): HTMLElement | null {
     );
     card.setAttribute("aria-label", `Reading stats: ${today}. ${streak}. ${s.week_pages} pages in the last 7 days, ${s.year.finished} books finished this year.`);
     return card;
+}
+
+/*
+ * The home page draws the summary's frame at once, as a skeleton, and fills
+ * it in when /api/me/stats answers, so nothing moves when it does. The
+ * skeleton is the last answer's card (kept per user, so it's the same
+ * size), with its text and marks blanked; the first time, a typical one.
+ */
+
+const CACHE = "stats-summary";
+
+/** The parts of an answer the summary uses: today, the last two weeks. */
+export function keepStats(user: string, s: Stats): void {
+    const recent = s.tracking ? daysBefore(s.today, 13) : s.today;
+    const kept: Stats = { ...s, days: s.days.filter((d) => d.day >= recent), year: { ...s.year, books: [] } };
+    try {
+        localStorage.setItem(localKey(user, CACHE), JSON.stringify(kept));
+    } catch {
+        /* storage full or blocked: the typical skeleton next time */
+    }
+}
+
+function keptStats(user: string): Stats | null {
+    try {
+        const s = JSON.parse(localStorage.getItem(localKey(user, CACHE)) ?? "null") as Stats | null;
+        return s && typeof s === "object" && Array.isArray(s.days) && s.goal && s.streak && s.year ? s : null;
+    } catch {
+        return null;
+    }
+}
+
+/** What a summary usually says, for its size before the first answer. */
+function typicalStats(): Stats {
+    const today = localDay();
+    return {
+        tracking: true,
+        today,
+        from: today,
+        days: [],
+        streak: { current: 3, longest: 3 },
+        today_pages: 10,
+        today_seconds: 0,
+        week_pages: 120,
+        week_seconds: 0,
+        goal: { daily_pages: 20, yearly_books: 0, notice: false },
+        year: { year: new Date().getFullYear(), started: 0, finished: 5, books: [] },
+        totals: { pages: 0, seconds: 0, finished: 0 },
+    };
+}
+
+/**
+ * The summary's skeleton for user: the last card's shape with nothing in
+ * it. Null when they had stats turned off last time (no box to take away).
+ */
+export function statsSkeleton(user: string): HTMLElement | null {
+    const card = statsSummary(keptStats(user) ?? typicalStats());
+    if (!card) return null;
+    card.removeAttribute("href");
+    card.removeAttribute("aria-label");
+    card.setAttribute("aria-hidden", "true");
+    card.classList.add("greeting-stats-skeleton");
+    return card;
+}
+
+/** The fresh card, just put where the skeleton was: its text fades in, the ring winds round, the days light up (style.css; not with reduced motion). */
+export function revealStats(card: HTMLElement): void {
+    const fill = card.querySelector<SVGElement>(".stats-ring-fill");
+    fill?.style.setProperty("--len", fill.getAttribute("data-len") ?? "0");
+    card.classList.add("greeting-stats-reveal");
 }
