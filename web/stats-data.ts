@@ -67,7 +67,7 @@ export function statsSummary(s: Stats): HTMLElement | null {
     const done = goal ? Math.min(1, s.today_pages / goal) : s.today_pages > 0 ? 1 : 0;
     const ring = svgEl(
         "svg",
-        { viewBox: "0 0 36 36", width: 40, height: 40, class: "stats-ring", "aria-hidden": "true" },
+        { viewBox: "0 0 36 36", width: 34, height: 34, class: "stats-ring", "aria-hidden": "true" },
         svgEl("circle", { cx: 18, cy: 18, r: R, class: "stats-ring-track" }),
         svgEl("circle", {
             cx: 18,
