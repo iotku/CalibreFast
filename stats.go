@@ -62,12 +62,14 @@ type queryExecer interface {
 // from prev to next, unless the user doesn't keep reading stats. Reading
 // again after finishing is starting again. A finished book taken off
 // Finished other than to read it again (no status, or Saved) wasn't
-// finished after all: its last finish no longer counts.
+// finished after all: its last finish no longer counts, if it was this
+// year. Earlier years are settled: a book read last year and saved to read
+// again stays read last year.
 func recordStatusEvents(q queryExecer, userID int64, uuid, prev, next string) error {
 	if prev == "finished" && (next == "" || next == "wanted") {
-		_, err := q.Exec(`DELETE FROM reading_events WHERE user_id = ? AND book_uuid = ? AND kind = 'finished'
+		_, err := q.Exec(`DELETE FROM reading_events WHERE user_id = ? AND book_uuid = ? AND kind = 'finished' AND at >= ?
 			AND at = (SELECT MAX(at) FROM reading_events WHERE user_id = ? AND book_uuid = ? AND kind = 'finished')`,
-			userID, uuid, userID, uuid)
+			userID, uuid, yearStartUnix(time.Now()), userID, uuid)
 		return err
 	}
 	started := next == "reading" && prev != "reading" ||
@@ -93,6 +95,12 @@ func recordStatusEvents(q queryExecer, userID int64, uuid, prev, next string) er
 		}
 	}
 	return nil
+}
+
+// yearStartUnix: when now's year began, in the server's time zone (the
+// readers' own isn't known here; it differs only around New Year).
+func yearStartUnix(now time.Time) int64 {
+	return time.Date(now.Year(), 1, 1, 0, 0, 0, 0, now.Location()).Unix()
 }
 
 type activityEntry struct {

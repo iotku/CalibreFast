@@ -217,6 +217,26 @@ func TestUnfinishLeavesYear(t *testing.T) {
 	}
 }
 
+// A finish from an earlier year is settled: saving the book to read again
+// doesn't take it off that year.
+func TestUnfinishKeepsEarlierYears(t *testing.T) {
+	u, books := setupLibraryAndUser(t, 1)
+	b := books[0]
+	if _, err := setManualStatus(u.ID, b, "finished", nowMilli()); err != nil {
+		t.Fatal(err)
+	}
+	lastYear := time.Date(time.Now().Year()-1, 6, 1, 12, 0, 0, 0, time.Local).Unix()
+	if _, err := appDB.Exec(`UPDATE reading_events SET at = ? WHERE book_uuid = ?`, lastYear, b); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := setManualStatus(u.ID, b, "wanted", nowMilli()); err != nil {
+		t.Fatal(err)
+	}
+	if n := count(t, appDB, `SELECT COUNT(*) FROM reading_events WHERE book_uuid = ? AND kind = 'finished'`, b); n != 1 {
+		t.Errorf("last year's finish: %d events, want 1", n)
+	}
+}
+
 func TestMergeMovesActivity(t *testing.T) {
 	u, books := setupLibraryAndUser(t, 2)
 	mux := statsMux()
