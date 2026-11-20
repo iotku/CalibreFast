@@ -27,7 +27,10 @@ type seriesGap struct {
 	Href    string // the series page
 	Numbers []int  // missing, at most gapsShown
 	More    int    // missing beyond those
-	Authors string // of one of its books, to start a placeholder with
+	// BooksMissing: how many books short of the number an editor gave the
+	// series (series_complete.go), placeholders in it counting as books.
+	BooksMissing int
+	Authors      string // of one of its books, to start a placeholder with
 }
 
 const (
@@ -179,6 +182,26 @@ func gapsOf(s *seriesNumbers, phs []*placeholder) (seriesGap, bool) {
 	if s == nil {
 		return seriesGap{}, false
 	}
+	// What an editor said of the series (its highest number, its number of
+	// books). Not for a group's members, each only part of the series.
+	_, members, _ := groups.resolve("series", s.name)
+	count := seriesCount{}
+	if len(members) <= 1 {
+		count = seriesVerified(s.name)
+	}
+	g := seriesGap{Series: s.name, Href: categoryByKey("series").href(s.name), Authors: s.authors}
+	if count.Books > 0 {
+		n := 0
+		for _, k := range s.have {
+			n += k
+		}
+		for _, p := range phs {
+			if strings.EqualFold(p.Meta.Series, s.name) {
+				n++
+			}
+		}
+		g.BooksMissing = max(0, count.Books-n)
+	}
 	have := map[int]bool{}
 	top := 0.0
 	for n := range s.have {
@@ -198,14 +221,11 @@ func gapsOf(s *seriesNumbers, phs []*placeholder) (seriesGap, bool) {
 		top = max(top, n)
 	}
 	// A series an editor said has more books than its highest here: the
-	// rest are missing too. Not for a group's members, each only part of it.
-	if _, members, _ := groups.resolve("series", s.name); len(members) <= 1 {
-		top = max(top, float64(seriesVerifiedTotal(s.name)))
-	}
+	// rest are missing too.
+	top = max(top, float64(count.Total))
 	if top > gapsMaxIndex {
-		return seriesGap{}, false
+		return g, g.BooksMissing > 0
 	}
-	g := seriesGap{Series: s.name, Href: categoryByKey("series").href(s.name), Authors: s.authors}
 	for n := 1; n <= int(top); n++ {
 		if have[n] {
 			continue
@@ -216,5 +236,5 @@ func gapsOf(s *seriesNumbers, phs []*placeholder) (seriesGap, bool) {
 			g.More++
 		}
 	}
-	return g, len(g.Numbers) > 0
+	return g, len(g.Numbers) > 0 || g.BooksMissing > 0
 }

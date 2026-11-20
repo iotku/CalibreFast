@@ -5767,6 +5767,16 @@ body.selecting .book.selected .cover-wrapper {
     width: 7rem;
 }
 
+.series-verify label {
+    justify-content: space-between;
+    margin-bottom: 0.2rem;
+}
+
+.series-verify-hint {
+    margin: 0 0 0.75rem;
+    font-size: 0.85rem;
+}
+
 .series-verify .ph-actions {
     justify-content: flex-end;
 }

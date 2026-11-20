@@ -60,13 +60,14 @@
     {{ end }}
     <section class="auth-card">
         <h2>Gaps in series</h2>
-        <p class="auth-muted">Numbers no book or placeholder has, below a series' highest or up to the number of books an editor gave it (Mark complete on the series page). Pick one to make a placeholder for it.</p>
+        <p class="auth-muted">Numbers no book or placeholder has, below a series' highest or up to the number of books an editor gave it (Mark complete on the series page), and books short of the number of books an editor gave it (placeholders count). Pick one to make a placeholder for it.</p>
         {{ if not .Gaps }}<p class="auth-muted"><em>No gaps.</em></p>{{ end }}
         <ul class="ph-list">
             {{ range .Gaps }}{{ $g := . }}
             <li class="ph-gap">
                 <a href="{{ .Href }}" class="ph-title">{{ .Series }}</a>
                 <span class="ph-gap-nums">
+                    {{ with .BooksMissing }}<a class="ph-gap-num" href="/missing/new?series={{ $g.Series | urlquery }}&amp;authors={{ $g.Authors | urlquery }}" title="New placeholder in {{ $g.Series }}">{{ . }} book{{ if ne . 1 }}s{{ end }} missing</a>{{ end }}
                     {{ range .Numbers }}<a class="ph-gap-num" href="/missing/new?series={{ $g.Series | urlquery }}&amp;index={{ . }}&amp;authors={{ $g.Authors | urlquery }}" title="New placeholder: {{ $g.Series }} #{{ . }}">#{{ . }}</a>{{ end }}
                     {{ if .More }}<span class="ph-sub">and {{ .More }} more</span>{{ end }}
                 </span>

@@ -57,10 +57,10 @@
         </a>
 {{ end }}
 {{ if .CanVerify }}
-        <button type="button" id="series-verify-btn" class="btn-group-toggle" aria-pressed="{{ if .VerifiedTotal }}true{{ else }}false{{ end }}"
-                title="Say how many numbered books this series has, to mark it complete when the library has them all">
+        <button type="button" id="series-verify-btn" class="btn-group-toggle" aria-pressed="{{ if or .VerifiedTotal .VerifiedBooks }}true{{ else }}false{{ end }}"
+                title="Say how many books this series has (its highest number, its number of books, or both), to mark it complete when the library has them all">
             <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="9"/><path d="m8 12 3 3 5-6"/></svg>
-            <span class="tb-label">{{ if .VerifiedTotal }}Checked{{ else }}Mark complete{{ end }}</span>
+            <span class="tb-label">{{ if or .VerifiedTotal .VerifiedBooks }}Checked{{ else }}Mark complete{{ end }}</span>
         </button>
 {{ end }}
 {{ with .Hardcover }}
@@ -168,8 +168,9 @@
     {{ if .ImageURL }}<img class="agg-header-img" src="{{ .ImageURL }}" alt="">{{ end }}
     <div class="agg-header-body">
     {{ with .SeriesStatus }}<p class="agg-header-status" id="series-status">
-        {{ if .Complete }}<span class="hc-complete">Complete</span> Every numbered book is in the library ({{ .Label }}).
-        {{ else }}{{ .Have }} of {{ .Numbered }} numbered books in the library ({{ .Label }}).{{ end }}
+        {{ if .Complete }}<span class="hc-complete">Complete</span> Every book is in the library ({{ .Label }}).
+        {{ else }}{{ if .Numbered }}{{ .Have }} of {{ .Numbered }} numbered books{{ if .Books }};{{ end }}{{ end }}
+        {{ if .Books }}{{ .BooksHave }} of {{ .Books }} books{{ end }} in the library ({{ .Label }}).{{ end }}
     </p>{{ end }}
     {{ if .Description }}<p class="agg-header-desc">{{ .Description }}</p>{{ end }}
     {{ with .Series }}
@@ -181,15 +182,18 @@
 </header>
 {{ end }}
 {{ if .CanVerify }}
-{{/* An editor's own count of the series' numbered books (series_complete.go, web/series-verify.ts). */}}
+{{/* What an editor says of the series: its highest number, its number of books, or both (series_complete.go, web/series-verify.ts). */}}
 <dialog id="series-verify" class="series-verify" data-series="{{ .Name }}">
     <form method="dialog" class="series-verify-form">
-        <h2>Numbered books in {{ .Display }}</h2>
-        <p class="auth-muted">How many numbered books (1, 2, 3…) the series has. It shows as complete while the library has every one of them; any it lacks are listed on Missing books. Novellas (1.5) don't count.</p>
-        <label>Books <input type="number" id="series-verify-total" min="1" max="10000" step="1" required value="{{ if .SuggestTotal }}{{ .SuggestTotal }}{{ end }}"></label>
+        <h2>Books in {{ .Display }}</h2>
+        <p class="auth-muted">Give either or both. The series shows as complete while the library has them all, and what it lacks is listed on Missing books.</p>
+        <label>Highest number <input type="number" id="series-verify-total" min="0" max="10000" step="1" value="{{ if .SuggestTotal }}{{ .SuggestTotal }}{{ end }}"></label>
+        <p class="auth-muted series-verify-hint">Every number from 1 up to it is needed. Novellas like 1.5 don't count.</p>
+        <label>Number of books <input type="number" id="series-verify-books" min="0" max="10000" step="1" value="{{ if .SuggestBooks }}{{ .SuggestBooks }}{{ end }}"></label>
+        <p class="auth-muted series-verify-hint">However they're numbered: for a series whose books aren't (all #1, or #0). Placeholders stand in for missing books, but don't count as books the library has.</p>
         <p id="series-verify-status" class="auth-error" role="status" hidden></p>
         <div class="ph-actions">
-            {{ if .VerifiedTotal }}<button type="button" id="series-verify-remove" class="btn-standard btn-danger">Forget the count</button>{{ end }}
+            {{ if or .VerifiedTotal .VerifiedBooks }}<button type="button" id="series-verify-remove" class="btn-standard btn-danger">Forget</button>{{ end }}
             <button type="button" id="series-verify-cancel" class="btn-standard">Cancel</button>
             <button type="submit" class="btn-standard btn-primary">Save</button>
         </div>

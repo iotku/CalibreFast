@@ -532,6 +532,10 @@ var migrations = []string{
 		PRIMARY KEY (name, hc_book_id, uuid)
 	);
 	`,
+	// 30: how many books an editor says a series has, whatever their
+	// numbers (0: not given), beside total, its highest number (0: not
+	// given). Series whose books aren't numbered (all #1, or #0) need it.
+	`ALTER TABLE series_verified ADD COLUMN books INTEGER NOT NULL DEFAULT 0;`,
 }
 
 // openAppDB opens (creating if needed) and migrates the app database.
