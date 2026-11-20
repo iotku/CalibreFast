@@ -9,7 +9,7 @@
  * Everything is built with DOM calls (el()); titles and authors are text.
  */
 
-import { deleteBook, listBooks, offlinePref, setOfflinePref, type CachedBook } from "./book-cache.js";
+import { deleteBook, deletePartial, listBooks, listPartials, offlinePref, setOfflinePref, type CachedBook, type PartialInfo } from "./book-cache.js";
 import { prefsSettled } from "./account-prefs.js";
 import { byId, el, errorMessage } from "./dom.js";
 import { lastKnownUser } from "./local-keys.js";
@@ -19,6 +19,7 @@ import {
     AUTO_LIMIT,
     DEVICE_CHOICES,
     devicePrefs,
+    FALLBACK_LIMIT,
     FORMAT_PREFS,
     setAccountPrefs,
     setDevicePref,
@@ -88,7 +89,8 @@ function showDevice(): void {
         for (const o of s.options) {
             const v = Number(o.value);
             // The default says what it comes to here.
-            if (v === AUTO_LIMIT) o.textContent = `Half of what the browser allows${quota ? ` (${size(Math.floor(quota / 2))})` : ""}`;
+            // When the browser doesn't say what it allows, it's FALLBACK_LIMIT (retention.ts).
+            if (v === AUTO_LIMIT) o.textContent = quota ? `Half of what the browser allows (${size(Math.floor(quota / 2))})` : `Default (${size(FALLBACK_LIMIT)})`;
             // A limit the browser wouldn't allow anyway.
             else o.disabled = !!quota && v > quota;
         }
@@ -186,6 +188,8 @@ const removeAll = byId("prefs-remove-all", HTMLButtonElement);
 
 async function render(): Promise<void> {
     const books = await listBooks().catch(() => [] as CachedBook[]);
+    // Downloads cut off part way: they count against the limit too (retention.ts).
+    const partials = await listPartials().catch(() => [] as PartialInfo[]);
     const covers = await coversSize();
     const p = devicePrefs(user);
     const est = await navigator.storage?.estimate?.().catch(() => null);
@@ -197,8 +201,12 @@ async function render(): Promise<void> {
     const byGroup = new Map<Group, CachedBook[]>(GROUPS.map((g) => [g.key, []]));
     for (const b of books) byGroup.get(groupOf(b))!.push(b);
     const sum = (bs: CachedBook[]): number => bs.reduce((n, b) => n + b.size, 0);
-    const booksTotal = sum(books);
-    const segs: Segment[] = GROUPS.map((g) => ({ label: g.label, bytes: sum(byGroup.get(g.key)!), cls: `seg-${g.key}` }));
+    const partialTotal = partials.reduce((n, p) => n + p.got, 0);
+    const booksTotal = sum(books) + partialTotal;
+    const segs: Segment[] = [
+        ...GROUPS.map((g) => ({ label: g.label, bytes: sum(byGroup.get(g.key)!), cls: `seg-${g.key}` })),
+        { label: "Partly downloaded", bytes: partialTotal, cls: "seg-partial" },
+    ];
 
     // 1. Books against the limit (or, with none, against what the browser allows).
     const limit = limitInForce || quota;
@@ -249,9 +257,15 @@ async function render(): Promise<void> {
             el("ul", { className: "prefs-book-list" }, ...bs.map(bookRow)),
         );
     }
+    if (partials.length) {
+        lists.push(
+            el("h3", { className: "prefs-group", textContent: `Partly downloaded (${size(partialTotal)})` }),
+            el("ul", { className: "prefs-book-list" }, ...partials.sort((a, b) => b.got - a.got).map(partialRow)),
+        );
+    }
     if (!lists.length) lists.push(el("p", { className: "auth-muted", textContent: "No books are kept on this device." }));
     byId("prefs-books").replaceChildren(...lists);
-    removeAll.hidden = books.length === 0;
+    removeAll.hidden = books.length === 0 && partials.length === 0;
     removeAllArmed = false;
     removeAll.textContent = "Remove all books from this device";
 }
@@ -283,6 +297,35 @@ function bookRow(b: CachedBook): HTMLElement {
     );
 }
 
+/** A download cut off part way: it goes on from there next time, unless removed. */
+function partialRow(p: PartialInfo): HTMLElement {
+    const title = p.title || "A book";
+    const remove = el("button", { type: "button", className: "btn-standard", textContent: "Remove" });
+    remove.title = "Remove what's downloaded so far, and don't download it again";
+    remove.setAttribute("aria-label", `Remove the part of ${title} downloaded so far, and don't download it again`);
+    remove.addEventListener("click", () => {
+        remove.disabled = true;
+        // As for a whole book: removed by hand, it isn't downloaded again.
+        void setOfflinePref(p.uuid, "never").finally(() => void render());
+    });
+    const details = [
+        p.format.toUpperCase(),
+        p.total ? `${size(p.got)} of ${size(p.total)}` : size(p.got),
+        ...(offlinePref(p.uuid) === "keep" ? ["always kept"] : []),
+    ].join(" · ");
+    return el(
+        "li",
+        { className: "prefs-book" },
+        el(
+            "div",
+            { className: "prefs-book-text" },
+            el("a", { className: "prefs-book-title", href: `/book/get/${encodeURIComponent(p.uuid)}`, textContent: title }),
+            el("span", { className: "prefs-book-line", textContent: [p.authors, details].filter(Boolean).join(" — ") }),
+        ),
+        remove,
+    );
+}
+
 removeAll.addEventListener("click", () => {
     if (!removeAllArmed) {
         removeAllArmed = true;
@@ -294,6 +337,10 @@ removeAll.addEventListener("click", () => {
         for (const b of await listBooks()) {
             if (offlinePref(b.uuid) === "keep") await setOfflinePref(b.uuid, "auto");
             await deleteBook(b.uuid, b.format);
+        }
+        for (const p of await listPartials()) {
+            if (offlinePref(p.uuid) === "keep") await setOfflinePref(p.uuid, "auto");
+            await deletePartial(p.uuid, p.format);
         }
     })().finally(() => {
         removeAll.disabled = false;

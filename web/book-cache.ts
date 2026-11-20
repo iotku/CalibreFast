@@ -18,6 +18,7 @@
  * nothing). The choice is per user and per device, in localStorage.
  */
 
+import { localKey } from "./local-keys.js";
 import { scriptUrl } from "./trusted.js";
 
 const DB = "cf-books";
@@ -62,13 +63,18 @@ function db(): Promise<IDBDatabase> {
     // (the readers read from the server) instead of waiting.
     if (blocked) return Promise.reject(new Error("the book cache is in use by an older page"));
     dbPromise ??= new Promise((resolve, reject) => {
-        const req = indexedDB.open(DB, 3);
-        req.onupgradeneeded = () => {
-            // Version 1 had only "books" (EPUBs); 2 adds "pdfs"; 3 "partials".
+        const req = indexedDB.open(DB, 4);
+        req.onupgradeneeded = (e) => {
+            // Version 1 had only "books" (EPUBs); 2 adds "pdfs"; 3 "partials";
+            // 4 keeps a partial's bytes in "partial-chunks", a record per piece.
+            const d = req.result;
             for (const name of Object.values(STORES)) {
-                if (!req.result.objectStoreNames.contains(name)) req.result.createObjectStore(name, { keyPath: "uuid" });
+                if (!d.objectStoreNames.contains(name)) d.createObjectStore(name, { keyPath: "uuid" });
             }
-            if (!req.result.objectStoreNames.contains(PARTIALS)) req.result.createObjectStore(PARTIALS, { keyPath: "key" });
+            if (!d.objectStoreNames.contains(PARTIALS)) d.createObjectStore(PARTIALS, { keyPath: "key" });
+            // Version 3's partials held their bytes in one record: start those over.
+            else if (e.oldVersion < 4) req.transaction?.objectStore(PARTIALS).clear();
+            if (!d.objectStoreNames.contains(CHUNKS)) d.createObjectStore(CHUNKS); // keys: [partial key, piece number]
         };
         req.onsuccess = () => {
             const d = req.result;
@@ -140,6 +146,7 @@ export async function putBook(book: CachedBook): Promise<void> {
     const format = book.format ?? "epub";
     await tx(format, "readwrite", (s) => s.put({ ...book, format }));
     await deletePartial(book.uuid, format).catch(() => {}); // whole now, however it arrived
+    forgetPinDownload(book.uuid);
     changed(book.uuid);
 }
 
@@ -148,39 +155,105 @@ export async function putBook(book: CachedBook): Promise<void> {
 /* ------------------------------------------------------------------ */
 
 const PARTIALS = "partials";
+/**
+ * A partial's bytes, a record per piece as it arrived (keyed [partial key,
+ * piece number]): saving what arrived writes only the new piece, not the
+ * whole file so far again.
+ */
+const CHUNKS = "partial-chunks";
 
-/** The first got bytes of a book's file, and what's needed to ask for the rest. */
-export interface PartialBook {
+/** What's kept of a download cut off part way, and what's needed to ask for the rest. */
+export interface PartialInfo {
     key: string;
     uuid: string;
     format: KeptFormat;
     user: string | null;
-    bytes: Blob;
+    /** For the preferences page (none on partials from before they were kept). */
+    title?: string;
+    authors?: string;
+    /** Bytes kept (the pieces' sizes added up), and how many pieces. */
     got: number;
+    chunks: number;
     /** The whole file's size, and its Last-Modified (If-Range: the rest only if it's the same file). */
     total: number;
     lastModified: string;
 }
 
-const partialKey = (uuid: string, format: KeptFormat): string => `${format}:${uuid}`;
-
-/** This user's partial download of a book's file, if any. */
-export async function getPartial(uuid: string, format: KeptFormat): Promise<PartialBook | null> {
-    const p = await txIn<PartialBook>(PARTIALS, "readonly", (s) => s.get(partialKey(uuid, format)));
-    return p && p.user === currentUser() ? p : null;
+/** A partial with its bytes, to go on from. */
+export interface PartialBook extends PartialInfo {
+    bytes: Blob;
 }
 
-export async function putPartial(p: Omit<PartialBook, "key">): Promise<void> {
-    await txIn(PARTIALS, "readwrite", (s) => s.put({ ...p, key: partialKey(p.uuid, p.format) }));
+const partialKey = (uuid: string, format: KeptFormat): string => `${format}:${uuid}`;
+const chunkRange = (key: string): IDBKeyRange => IDBKeyRange.bound([key, 0], [key, Infinity]);
+
+/** Run one transaction over the partial stores. */
+async function partialTx<T>(mode: IDBTransactionMode, run: (parts: IDBObjectStore, chunks: IDBObjectStore) => IDBRequest<T> | void): Promise<T | undefined> {
+    const d = await db();
+    return new Promise((resolve, reject) => {
+        const t = d.transaction([PARTIALS, CHUNKS], mode);
+        const req = run(t.objectStore(PARTIALS), t.objectStore(CHUNKS));
+        t.oncomplete = () => resolve(req ? req.result : undefined);
+        t.onerror = () => reject(t.error);
+        t.onabort = () => reject(t.error);
+    });
+}
+
+/** This user's partial download of a book's file, with its bytes, if any. */
+export async function getPartial(uuid: string, format: KeptFormat): Promise<PartialBook | null> {
+    const key = partialKey(uuid, format);
+    let info: PartialInfo | undefined;
+    let pieces: Blob[] = [];
+    await partialTx("readonly", (parts, chunks) => {
+        const a = parts.get(key);
+        a.onsuccess = () => (info = a.result as PartialInfo | undefined);
+        const b = chunks.getAll(chunkRange(key));
+        b.onsuccess = () => (pieces = b.result as Blob[]);
+    });
+    if (!info || info.user !== currentUser()) return null;
+    const bytes = new Blob(pieces);
+    // Pieces missing (or more than the record says): not to be trusted.
+    if (pieces.length !== info.chunks || bytes.size !== info.got) {
+        await deletePartial(uuid, format).catch(() => {});
+        return null;
+    }
+    return { ...info, bytes };
+}
+
+/**
+ * Start a partial over: drop what's kept and record the new download
+ * (nothing of it yet).
+ */
+export async function startPartial(p: Omit<PartialInfo, "key" | "got" | "chunks">): Promise<PartialInfo> {
+    const info: PartialInfo = { ...p, key: partialKey(p.uuid, p.format), got: 0, chunks: 0 };
+    await partialTx("readwrite", (parts, chunks) => {
+        chunks.delete(chunkRange(info.key));
+        parts.put(info);
+    });
+    return info;
+}
+
+/** Keep the next piece of a partial (the record and the piece together, or neither). */
+export async function appendPartial(info: PartialInfo, piece: Blob): Promise<PartialInfo> {
+    const next = { ...info, got: info.got + piece.size, chunks: info.chunks + 1 };
+    await partialTx("readwrite", (parts, chunks) => {
+        chunks.put(piece, [info.key, info.chunks]);
+        parts.put(next);
+    });
+    return next;
 }
 
 export async function deletePartial(uuid: string, format: KeptFormat): Promise<void> {
-    await txIn(PARTIALS, "readwrite", (s) => s.delete(partialKey(uuid, format)));
+    const key = partialKey(uuid, format);
+    await partialTx("readwrite", (parts, chunks) => {
+        parts.delete(key);
+        chunks.delete(chunkRange(key));
+    });
 }
 
-/** All of this user's partial downloads (their bytes count against the storage limit). */
-export async function listPartials(): Promise<PartialBook[]> {
-    const all = (await txIn<PartialBook[]>(PARTIALS, "readonly", (s) => s.getAll())) ?? [];
+/** All of this user's partial downloads, without their bytes (which count against the storage limit). */
+export async function listPartials(): Promise<PartialInfo[]> {
+    const all = (await txIn<PartialInfo[]>(PARTIALS, "readonly", (s) => s.getAll())) ?? [];
     return all.filter((p) => p.user === currentUser());
 }
 
@@ -233,8 +306,53 @@ export async function setOfflinePref(uuid: string, pref: OfflinePref): Promise<v
     } catch {
         /* storage full or blocked */
     }
+    if (pref !== "keep") forgetPinDownload(uuid);
     if (pref === "never") await deleteBook(uuid);
     changed(uuid);
+}
+
+/**
+ * A pinned book still to download, with what the queue needs to show it
+ * (book-sync.ts downloads these first, until one is kept): a pin whose
+ * download was cut off (the page closed, the connection lost) is finished
+ * later, not left half there.
+ */
+export interface PinDownload {
+    uuid: string;
+    title: string;
+    authors: string;
+    format: KeptFormat;
+    /** The status it was pinned with (retention.ts drops it once taken off every list). */
+    status?: string;
+}
+
+const pinKey = (): string => localKey(currentUser(), "pin-downloads");
+
+export function pinDownloads(): PinDownload[] {
+    try {
+        const list = JSON.parse(localStorage.getItem(pinKey()) ?? "[]") as PinDownload[] | null;
+        return Array.isArray(list) ? list : [];
+    } catch {
+        return [];
+    }
+}
+
+function writePinDownloads(list: PinDownload[]): void {
+    try {
+        if (list.length) localStorage.setItem(pinKey(), JSON.stringify(list));
+        else localStorage.removeItem(pinKey());
+    } catch {
+        /* storage full or blocked: the pin is downloaded again only when chosen again */
+    }
+}
+
+export function addPinDownload(pin: PinDownload): void {
+    writePinDownloads([...pinDownloads().filter((p) => p.uuid !== pin.uuid), pin]);
+}
+
+function forgetPinDownload(uuid: string): void {
+    const list = pinDownloads();
+    if (list.some((p) => p.uuid === uuid)) writePinDownloads(list.filter((p) => p.uuid !== uuid));
 }
 
 /** The uuids of this user's kept books (for the cards' "on this device" mark). */
@@ -268,8 +386,8 @@ export async function keepOnlyUser(user: string | null): Promise<void> {
         for (const b of others) await tx(format, "readwrite", (s) => s.delete(b.uuid));
         dropped += others.length;
     }
-    const parts = (await txIn<PartialBook[]>(PARTIALS, "readonly", (s) => s.getAll()).catch(() => [])) ?? [];
-    for (const p of parts.filter((x) => x.user !== user)) await txIn(PARTIALS, "readwrite", (s) => s.delete(p.key));
+    const parts = (await txIn<PartialInfo[]>(PARTIALS, "readonly", (s) => s.getAll()).catch(() => [])) ?? [];
+    for (const p of parts.filter((x) => x.user !== user)) await deletePartial(p.uuid, p.format).catch(() => {});
     if (dropped) tellWorker({ type: "clear-books" });
 }
 

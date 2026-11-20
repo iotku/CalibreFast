@@ -12,6 +12,7 @@ import { api, random } from "./dom.js";
 import { localKey, type Owner } from "./local-keys.js";
 import { isUnreachable, onServerBack, serverDown } from "./server-watch.js";
 import type { BookFormat } from "./reading-sync.js";
+import { SYNC_EVENT } from "./sync-state.js";
 
 /** Colours the readers offer, by KOReader's names for them. */
 export const COLORS = ["yellow", "green", "cyan", "purple", "red", "orange"] as const;
@@ -89,6 +90,7 @@ export function createAnnotationStore(uuid: string, format: BookFormat, owner: O
         } catch {
             /* storage full or blocked: this visit only */
         }
+        window.dispatchEvent(new CustomEvent(SYNC_EVENT)); // the sync buttons count what's unsent
     };
 
     let flushing: Promise<void> | null = null;

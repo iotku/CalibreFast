@@ -19,7 +19,8 @@
  *
  * On top of that, all kept books stay under the storage limit (storageLimit:
  * the user's, else half of what the browser allows): room is
- * made by dropping Finished books (oldest opened first), then Saved copies
+ * made by dropping Finished books (oldest opened first), then downloads cut
+ * off part way (largest first; not a pinned book's), then Saved copies
  * never opened here (most recently saved first), then other books not being read
  * (oldest opened first). Books being read, pinned ones and the one being
  * opened are never dropped for room. And no file over maxBookBytes is kept
@@ -39,6 +40,7 @@
 import {
     currentUser,
     deleteBook,
+    deletePartial,
     getBook,
     getPartial,
     keepReaderPage,
@@ -258,10 +260,10 @@ export async function sweep(statusOf?: (uuid: string) => string, protect?: strin
 
 /**
  * Drop kept books until need more bytes fit under the storage limit:
- * Finished ones first (oldest opened first), then Saved ones never opened
- * here (oldest saved first), then others not being read (oldest opened
- * first). Never pinned books, books being read, or protect. Returns whether
- * it fits now.
+ * Finished ones first (oldest opened first), then downloads cut off part
+ * way (largest first), then Saved ones never opened here (most recently
+ * saved first), then others not being read (oldest opened first). Never
+ * pinned books, books being read, or protect. Returns whether it fits now.
  */
 export async function makeRoom(need: number, protect?: string): Promise<boolean> {
     const prefs = devicePrefs();
@@ -277,6 +279,12 @@ export async function makeRoom(need: number, protect?: string): Promise<boolean>
     const candidates = books.filter((b) => b.uuid !== protect && offlinePref(b.uuid) !== "keep" && !recent.has(b.uuid));
     const byOpened = (a: CachedBook, b: CachedBook): number => a.lastOpened - b.lastOpened;
     const finished = candidates.filter((b) => status(b.uuid) === "finished").sort(byOpened);
+    // Downloads cut off part way: only room until they finish, and they come
+    // back from where they are. A pinned book's (it'll be kept) and the one
+    // being opened stay.
+    const partials = (await listPartials().catch(() => []))
+        .filter((p) => p.uuid !== protect && offlinePref(p.uuid) !== "keep")
+        .sort((a, b) => b.got - a.got);
     // Saved copies never opened here next, most recently saved first: the oldest Saved
     // are the ones chosen to keep (book-sync.ts), so these would only come back.
     // One opened is someone's reading, with the rest.
@@ -289,14 +297,25 @@ export async function makeRoom(need: number, protect?: string): Promise<boolean>
         .sort(byOpened);
     // A guest's books have no status: the least recently opened go.
     const guest = currentUser() === null ? [...candidates].sort(byOpened) : [];
-    const dropped: string[] = [];
-    for (const b of [...finished, ...savedFirst, ...notReading, ...guest]) {
-        if (total <= limit) break;
-        await deleteBook(b.uuid, b.format);
-        dropped.push(b.title);
-        total -= b.size;
+    interface Droppable {
+        name: string;
+        size: number;
+        drop: () => Promise<void>;
     }
-    if (dropped.length) console.info(`retention: dropped ${dropped.length} kept book(s) to stay under the ${mb(limit)} storage limit:`, dropped);
+    const asBook = (b: CachedBook): Droppable => ({ name: b.title, size: b.size, drop: () => deleteBook(b.uuid, b.format) });
+    const order: Droppable[] = [
+        ...finished.map(asBook),
+        ...partials.map((p) => ({ name: `part of ${p.uuid} (${p.format})`, size: p.got, drop: () => deletePartial(p.uuid, p.format) })),
+        ...[...savedFirst, ...notReading, ...guest].map(asBook),
+    ];
+    const dropped: string[] = [];
+    for (const d of order) {
+        if (total <= limit) break;
+        await d.drop();
+        dropped.push(d.name);
+        total -= d.size;
+    }
+    if (dropped.length) console.info(`retention: dropped ${dropped.length} kept file(s) to stay under the ${mb(limit)} storage limit:`, dropped);
     if (total > limit) {
         console.warn(
             `retention: kept books use ${mb(total)}, over the ${mb(limit)} storage limit, ` +

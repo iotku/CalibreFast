@@ -66,15 +66,27 @@ const end = (id: number): void => void inFlight.delete(id);
 /** fetch as it was, for the downloads' own requests (they don't make the page busy). */
 export let quietFetch: typeof fetch = (...args) => fetch(...args);
 
+/** When each cover still loading was first seen loading: one that never finishes stops counting after GIVE_UP_MS. */
+const loadingSince = new WeakMap<HTMLImageElement, { src: string; at: number }>();
+
 /** Covers on screen or about to be (a screen above or below) still loading. */
 function coversLoading(): boolean {
     const h = window.innerHeight;
+    const now = Date.now();
+    let loading = false;
     for (const img of Array.from(document.images)) {
         if (img.complete) continue;
         const r = img.getBoundingClientRect();
-        if (r.width && r.bottom > -h && r.top < 2 * h) return true;
+        if (!r.width || r.bottom <= -h || r.top >= 2 * h) continue;
+        // A new src starts its own wait.
+        let seen = loadingSince.get(img);
+        if (!seen || seen.src !== img.currentSrc + img.src) {
+            seen = { src: img.currentSrc + img.src, at: now };
+            loadingSince.set(img, seen);
+        }
+        if (now - seen.at <= GIVE_UP_MS) loading = true;
     }
-    return false;
+    return loading;
 }
 
 /** This page is loading something the reader waits for (a hidden page isn't: nobody's waiting). */
@@ -94,7 +106,7 @@ let watching = false;
 
 /**
  * Watch this page's own loading (book-sync.ts calls it on library pages):
- * its fetches and htmx requests (the book popup, the grid's next page) and
+ * its fetches, htmx's among them (the book popup, the grid's next page), and
  * covers near the screen. While any are going, other tabs are told too.
  */
 export function watchPage(): void {
@@ -106,14 +118,9 @@ export function watchPage(): void {
         const id = begin();
         return original(...args).finally(() => end(id));
     };
-    const htmxIds = new WeakMap<EventTarget, number>();
-    document.addEventListener("htmx:beforeRequest", (e) => {
-        if (e.target) htmxIds.set(e.target, begin());
-    });
-    document.addEventListener("htmx:afterRequest", (e) => {
-        const id = e.target ? htmxIds.get(e.target) : undefined;
-        if (id !== undefined) end(id);
-    });
+    // htmx (4) requests go through window.fetch, looked up on each request,
+    // so the wrapper above counts them too: each its own, however many one
+    // element sends at once.
     setInterval(() => {
         if (busyHere()) sayBusy();
     }, BEAT_MS);
