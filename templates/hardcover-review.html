@@ -133,7 +133,11 @@
         {{ with .Action }}<span class="ph-sub hc-action">{{ . }}</span>{{ end }}
         {{ with .Lib }}<span class="hc-lib">In the library: <a href="{{ .Href }}">{{ .Title }}</a>{{ with .Authors }} by {{ . }}{{ end }}{{ with .Series }} · {{ . }}{{ end }}</span>{{ end }}
     </span>
+    {{ if or .Dismiss .NotMatch }}<span class="hc-row-btns">
+    {{ if .NotMatch }}<button type="button" class="btn-standard hc-row-btn" data-notmatch="{{ .HCBookID }}" data-uuid="{{ .UUID }}"
+            title="The library book isn't this one: never match them again, and add this one as a placeholder in the series">Not a match, create placeholder</button>{{ end }}
     {{ if .Dismiss }}<button type="button" class="btn-standard hc-row-btn" data-dismiss="{{ .HCBookID }}">{{ if eq .Kind "placeholder" }}Not in this series{{ else }}Dismiss{{ end }}</button>{{ end }}
+    </span>{{ end }}
     {{ if .Restore }}<button type="button" class="btn-standard hc-row-btn" data-restore="{{ .HCBookID }}">Restore</button>{{ end }}
 </li>
 {{ end }}

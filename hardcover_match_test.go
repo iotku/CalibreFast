@@ -212,6 +212,43 @@ func TestHCReviewRowsLib(t *testing.T) {
 	}
 }
 
+// A library book an editor said isn't a Hardcover book is passed over:
+// the next one with the title is matched, else the book is missing. It
+// holds for any book merged into the entry.
+func TestHCRefused(t *testing.T) {
+	d := &hardcover.SeriesDetail{Entries: []hardcover.Entry{
+		{BookID: 27, Title: "The Last Hero", Position: pos(27), Authors: []string{"Terry Pratchett"}, AltIDs: []int64{270}},
+	}}
+	books := []hcLibBook{
+		{UUID: "aaron", Title: "The Last Hero: A Life of Henry Aaron", Authors: []string{"Howard Bryant"}},
+		{UUID: "other", Title: "The Last Hero", Authors: []string{"Somebody"}},
+	}
+	lib := hcLibrary{members: []string{"Discworld"}, byTitle: func(k string) []hcLibBook {
+		if k == "last hero" {
+			return books
+		}
+		return nil
+	}}
+	pick := func() string {
+		rev := hcMatchSeries(d, lib, nil, nil)
+		if len(rev.Untagged) == 1 {
+			return rev.Untagged[0].Book.UUID
+		}
+		return ""
+	}
+	if got := pick(); got != "aaron" {
+		t.Fatalf("matched %q", got)
+	}
+	lib.refused = map[int64]map[string]bool{270: {"aaron": true}}
+	if got := pick(); got != "other" {
+		t.Errorf("after refusing aaron: %q", got)
+	}
+	lib.refused[27] = map[string]bool{"other": true}
+	if rev := hcMatchSeries(d, lib, nil, nil); len(rev.Missing) != 1 || len(rev.Untagged) != 0 {
+		t.Errorf("both refused: %+v", rev)
+	}
+}
+
 func TestHCKeys(t *testing.T) {
 	if hcSeriesKey("Doctor Who: Target Books") == hcSeriesKey("Doctor Who: BBC Radio Collection") {
 		t.Error("series names differing after a colon are the same")

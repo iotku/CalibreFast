@@ -189,7 +189,7 @@ func (x *hcTitleIndex) libBook(slot int32) hcLibBook {
 // hcLibraryFor: the library for matching d against series s.
 func hcLibraryFor(s hcSeriesInfo, d *hardcover.SeriesDetail) (hcLibrary, error) {
 	x := currentHCTitleIndex()
-	lib := hcLibrary{members: s.Members, byISBN: map[string][]hcLibBook{}}
+	lib := hcLibrary{members: s.Members, byISBN: map[string][]hcLibBook{}, refused: hcRefused(s.Name)}
 	for i := range x.cat.books {
 		b := &x.cat.books[i]
 		if !b.Removed && b.Series != 0 && hcInMembers(x.cat.seriesNames[b.Series], s.Members) {
@@ -541,6 +541,31 @@ func hcDismissed(name string) map[int64]bool {
 		var id int64
 		if rows.Scan(&id) == nil {
 			out[id] = true
+		}
+	}
+	return out
+}
+
+// hcRefused: the series' "Not a match"es, Hardcover book id -> uuids.
+func hcRefused(name string) map[int64]map[string]bool {
+	out := map[int64]map[string]bool{}
+	if appDB == nil {
+		return out
+	}
+	rows, err := appDB.Query(`SELECT hc_book_id, uuid FROM hardcover_not_match WHERE name = ?`, name)
+	if err != nil {
+		log.Println("hardcover:", err)
+		return out
+	}
+	defer rows.Close()
+	for rows.Next() {
+		var id int64
+		var uuid string
+		if rows.Scan(&id, &uuid) == nil {
+			if out[id] == nil {
+				out[id] = map[string]bool{}
+			}
+			out[id][uuid] = true
 		}
 	}
 	return out

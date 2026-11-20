@@ -40,6 +40,17 @@ type hcLibrary struct {
 	byISBN map[string][]hcLibBook
 	// members: the series' names (its group's members), any case.
 	members []string
+	// refused: Hardcover book id -> library uuids an editor said aren't
+	// that book ("Not a match").
+	refused map[int64]map[string]bool
+}
+
+// refuses: an editor said the library book isn't e (any of its books).
+func (l *hcLibrary) refuses(e *hardcover.Entry, uuid string) bool {
+	if len(l.refused) == 0 {
+		return false
+	}
+	return slices.ContainsFunc(e.IDs(), func(id int64) bool { return l.refused[id][uuid] })
 }
 
 // Match strengths.
@@ -293,7 +304,7 @@ func hcMatchSeries(d *hardcover.SeriesDetail, lib hcLibrary, placeholders []*pla
 		var byISBN []hcLibBook
 		for _, n := range e.ISBNs {
 			for _, b := range lib.byISBN[isbn.Normalize(n)] {
-				if !used[b.UUID] && !slices.ContainsFunc(byISBN, func(x hcLibBook) bool { return x.UUID == b.UUID }) {
+				if !used[b.UUID] && !lib.refuses(e, b.UUID) && !slices.ContainsFunc(byISBN, func(x hcLibBook) bool { return x.UUID == b.UUID }) {
 					byISBN = append(byISBN, b)
 				}
 			}
@@ -308,7 +319,7 @@ func hcMatchSeries(d *hardcover.SeriesDetail, lib hcLibrary, placeholders []*pla
 		if book == nil {
 			for _, k := range keys {
 				for _, j := range inSeriesByKey[k] {
-					if b := lib.inSeries[j]; !used[b.UUID] {
+					if b := lib.inSeries[j]; !used[b.UUID] && !lib.refuses(e, b.UUID) {
 						take(b, hcBySeries)
 						break
 					}
@@ -323,7 +334,7 @@ func hcMatchSeries(d *hardcover.SeriesDetail, lib hcLibrary, placeholders []*pla
 			var weak *hcLibBook
 			for _, k := range keys {
 				for _, b := range byTitle(k) {
-					if used[b.UUID] {
+					if used[b.UUID] || lib.refuses(e, b.UUID) {
 						continue
 					}
 					if hcSharesAuthor(b.Authors, e.Authors) {

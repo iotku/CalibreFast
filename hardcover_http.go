@@ -157,6 +157,7 @@ type hcReviewRow struct {
 	Action   string // what ticking it does
 	Dismiss  bool   // can be dismissed
 	Restore  bool   // was dismissed: can be shown again
+	NotMatch bool   // matched to a library book that may not be it
 	// Lib: the library book matched to a Hardcover book, shown under it
 	// (its title and author may not be the same: a match by title alone).
 	Lib *hcLibView
@@ -224,7 +225,7 @@ func hcReviewRowsFor(rev hcReview, write string) hcReviewRows {
 	}
 	for _, s := range rev.Untagged {
 		r := hcRow(s, write)
-		r.Kind, r.Dismiss = "tag", true
+		r.Kind, r.Dismiss, r.NotMatch = "tag", true, true
 		if r.Position != "" {
 			r.Action = "Set series to " + write + " #" + r.Position
 		} else {
@@ -612,18 +613,10 @@ func hardcoverApplyHandler(w http.ResponseWriter, r *http.Request) {
 		if e == nil {
 			continue
 		}
-		m, err := cleanPlaceholderMeta(hcPlaceholderMeta(e, s.Write))
-		if err != nil {
-			res.Errors = append(res.Errors, fmt.Sprintf("%q: %v", e.Title, err))
+		if _, err := hcMakePlaceholder(e, s, u); err != nil {
+			res.Errors = append(res.Errors, err.Error())
 			continue
 		}
-		p := &placeholder{Meta: m, Source: "hardcover"}
-		if err := savePlaceholder(p, u); err != nil {
-			log.Println("hardcover placeholder:", err)
-			res.Errors = append(res.Errors, fmt.Sprintf("%q: couldn't save", e.Title))
-			continue
-		}
-		logEdit(u, "add placeholder", logKindPlaceholder, p.UUID, p.Meta.Title, nil, snapPlaceholder(p))
 		res.Placeholders++
 	}
 
@@ -679,6 +672,83 @@ func hardcoverApplyHandler(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, http.StatusOK, res)
 }
 
+// hcMakePlaceholder makes a placeholder for e, a book of series s, from
+// what Hardcover says about it. Errors are fit to show.
+func hcMakePlaceholder(e *hardcover.Entry, s hcSeriesInfo, u *User) (*placeholder, error) {
+	m, err := cleanPlaceholderMeta(hcPlaceholderMeta(e, s.Write))
+	if err != nil {
+		return nil, fmt.Errorf("%q: %v", e.Title, err)
+	}
+	p := &placeholder{Meta: m, Source: "hardcover"}
+	if err := savePlaceholder(p, u); err != nil {
+		log.Println("hardcover placeholder:", err)
+		return nil, fmt.Errorf("%q: couldn't save", e.Title)
+	}
+	logEdit(u, "add placeholder", logKindPlaceholder, p.UUID, p.Meta.Title, nil, snapPlaceholder(p))
+	return p, nil
+}
+
+// POST /api/hardcover/notmatch {series, uuid, hcBookId}: the library book
+// the review matched to a Hardcover book isn't it. It's never matched to
+// that book again, and the Hardcover book gets a placeholder (unless it
+// has one), so it shows as missing from the series.
+func hardcoverNotMatchHandler(w http.ResponseWriter, r *http.Request) {
+	var req struct {
+		Series   string `json:"series"`
+		UUID     string `json:"uuid"`
+		HCBookID int64  `json:"hcBookId"`
+	}
+	if !hcDecode(w, r, &req) {
+		return
+	}
+	s, ok := hcSeries(req.Series)
+	if !ok {
+		http.Error(w, "no such series in the library", http.StatusNotFound)
+		return
+	}
+	l, err := hcLinkFor(s.Name)
+	if err != nil || l == nil || l.Snapshot == nil {
+		http.Error(w, "the series isn't linked to Hardcover", http.StatusConflict)
+		return
+	}
+	rev, err := hcReviewFor(s, l)
+	if err != nil {
+		log.Println("hardcover not a match:", err)
+		http.Error(w, "couldn't match the list against the library", http.StatusInternalServerError)
+		return
+	}
+	// Only a match the review suggests now: the client sends ids, never metadata.
+	var e *hardcover.Entry
+	for _, sg := range rev.Untagged {
+		if sg.Entry != nil && sg.Book != nil && sg.Book.UUID == req.UUID && sg.Entry.BookID == req.HCBookID {
+			e = sg.Entry
+			break
+		}
+	}
+	if e == nil {
+		http.Error(w, "that match isn't suggested any more: reload the page", http.StatusConflict)
+		return
+	}
+	if _, err := appDB.Exec(`INSERT OR IGNORE INTO hardcover_not_match (name, hc_book_id, uuid) VALUES (?, ?, ?)`, s.Name, e.BookID, req.UUID); err != nil {
+		log.Println("hardcover not a match:", err)
+		http.Error(w, "couldn't save", http.StatusInternalServerError)
+		return
+	}
+	seriesStatusChanged()
+	var res struct {
+		Placeholder string `json:"placeholder,omitempty"`
+		Error       string `json:"error,omitempty"`
+	}
+	if ph := hcPlaceholderFor(e, s.Members, allPlaceholders()); ph != nil {
+		res.Placeholder = ph.UUID
+	} else if p, err := hcMakePlaceholder(e, s, currentUser(r)); err != nil {
+		res.Error = err.Error()
+	} else {
+		res.Placeholder = p.UUID
+	}
+	writeJSON(w, http.StatusOK, res)
+}
+
 // POST /api/hardcover/undismiss {series, ids}: show dismissed suggestions
 // again; all of the series' when ids is empty.
 func hardcoverUndismissHandler(w http.ResponseWriter, r *http.Request) {
@@ -729,4 +799,5 @@ func registerHardcoverRoutes() {
 	http.HandleFunc("DELETE /api/hardcover/jobs/{id}", wrap(hardcoverCancelJobHandler))
 	http.HandleFunc("POST /api/hardcover/apply", wrap(hardcoverApplyHandler))
 	http.HandleFunc("POST /api/hardcover/undismiss", wrap(hardcoverUndismissHandler))
+	http.HandleFunc("POST /api/hardcover/notmatch", wrap(hardcoverNotMatchHandler))
 }

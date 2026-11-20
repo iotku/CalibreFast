@@ -522,6 +522,16 @@ var migrations = []string{
 		verified_at INTEGER NOT NULL
 	);
 	`,
+	// 29: library books an editor said aren't a Hardcover book of the
+	// series (hardcover.go): never matched to it again.
+	`
+	CREATE TABLE hardcover_not_match (
+		name       TEXT    NOT NULL COLLATE NOCASE,
+		hc_book_id INTEGER NOT NULL,
+		uuid       TEXT    NOT NULL,
+		PRIMARY KEY (name, hc_book_id, uuid)
+	);
+	`,
 }
 
 // openAppDB opens (creating if needed) and migrates the app database.
