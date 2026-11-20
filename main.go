@@ -323,6 +323,7 @@ func main() {
 	flag.BoolVar(&trustedTypesReportOnly, "trusted-types-report-only", false, "only report Trusted Types violations instead of refusing them (a stopgap if a browser feature breaks; see docs/SECURITY.md)")
 	flag.BoolVar(&noLookups, "no-lookups", false, "never look books up online (hides the metadata editor's lookup bar)")
 	flag.BoolVar(&noGoogleBooks, "no-google-books", false, "never offer Google Books in the metadata editor (Open Library only)")
+	flag.BoolVar(&noHardcoverSync, "no-hardcover-sync", false, "don't let users link their Hardcover accounts to send their reading status and progress there")
 	flag.BoolVar(&noHardcover, "no-hardcover", false, "never ask Hardcover: series on Missing books, or Try Hardcover in the metadata editor (even with CF_HARDCOVER_TOKEN set)")
 	flag.StringVar(&publicURL, "public-url", "", "external base URL, e.g. https://books.example.com (needed for GitHub/Google sign-in)")
 	flag.StringVar(&watchDir, "watch-dir", "", "folder to watch for new books; they wait in the import queue for an admin to review (needs -allow-writes)")
@@ -427,6 +428,7 @@ func main() {
 	if allowWrites {
 		startHardcover() // requests to Hardcover left from the last run (hardcover.go)
 	}
+	startHardcoverSync() // users' reading, to their Hardcover accounts (hardcover_sync.go)
 	serveLibraryHTTP()
 }
 

@@ -453,6 +453,7 @@ type AuthPageData struct {
 	SyncKey      *syncKeyInfo // nil: no sync key
 	NewSyncKey   string       // shown once, right after it is generated
 	SyncNotice   string
+	Hardcover    *hcAccountView // reading sync to Hardcover (hardcover_link.go); nil: off on this server
 }
 
 // safeNext returns next if it is a path on this site, otherwise "/". It is

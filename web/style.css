@@ -3991,6 +3991,69 @@ label.group-row span {
     padding-left: 1.25rem;
 }
 
+.sync-intro a,
+.sync-steps a {
+    color: var(--text-link);
+}
+
+.sync-steps li + li {
+    margin-top: 0.35rem;
+}
+
+.sync-steps .sync-key {
+    margin: 0.4rem 0;
+}
+
+.book-hardcover {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.4rem;
+    margin-top: 0.5rem;
+    font-size: 0.85rem;
+    cursor: pointer;
+}
+
+.book-hardcover-note {
+    display: block;
+    color: var(--text-muted);
+    font-size: 0.8rem;
+}
+
+.sync-share fieldset {
+    margin: 0 0 0.75rem;
+    padding: 0;
+    border: 0;
+    font-size: 0.9rem;
+}
+
+.sync-share legend {
+    margin-bottom: 0.3rem;
+    font-weight: 600;
+}
+
+.sync-share label {
+    display: flex;
+    gap: 0.5rem;
+    align-items: baseline;
+    margin: 0.25rem 0;
+}
+
+.sync-shared {
+    margin: 0.5rem 0;
+    padding-left: 1.25rem;
+    line-height: 1.6;
+}
+
+.sync-details {
+    margin: 0 0 1rem;
+    font-size: 0.9rem;
+}
+
+.sync-details summary {
+    cursor: pointer;
+    color: var(--text-muted);
+}
+
 .sync-facts {
     display: grid;
     grid-template-columns: max-content 1fr;

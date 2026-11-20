@@ -389,8 +389,11 @@ func setStatus(userID int64, uuid, status, source string) error {
 	if err := recordStatusEvents(appDB, userID, uuid, cur, status); err != nil {
 		return err
 	}
-	_, err = claimMarkChange(appDB, userID, uuid, "status", nowMilli())
-	return err
+	if _, err = claimMarkChange(appDB, userID, uuid, "status", nowMilli()); err != nil {
+		return err
+	}
+	hcSyncStatus(userID, uuid, status) // hardcover_sync.go
+	return nil
 }
 
 // setManualStatus applies a status the user chose at `at` (unix ms), unless
@@ -423,7 +426,11 @@ func setManualStatus(userID int64, uuid, status string, at int64) (bool, error) 
 	if err != nil {
 		return false, err
 	}
-	return true, tx.Commit()
+	if err := tx.Commit(); err != nil {
+		return false, err
+	}
+	hcSyncStatus(userID, uuid, status) // hardcover_sync.go
+	return true, nil
 }
 
 func setStatusHandler(w http.ResponseWriter, r *http.Request) {
@@ -473,6 +480,14 @@ type BookUserActionsData struct {
 	Series          string
 	SeriesShelves   []shelfMark
 	SeriesOnShelves int
+	// Hardcover: whether the book is sent to the user's Hardcover account
+	// (hardcover_sync.go); nil when they haven't linked one.
+	Hardcover *bookHardcover
+}
+
+type bookHardcover struct {
+	Shared bool // this book, chosen
+	All    bool // every book is shared
 }
 
 // bookUserActionsHandler: GET /book/me/{uuid} — the favorite / status /
@@ -489,6 +504,9 @@ func bookUserActionsHandler(w http.ResponseWriter, r *http.Request) {
 		data.Status, data.StatusSource = readStatus(u.ID, uuid)
 		if p, ok := latestProgress(u.ID, uuid)[uuid]; ok {
 			data.Progress = progressNote(uuid, p, time.Now())
+		}
+		if hardcoverSyncEnabled() && hcIsLinked(u.ID) {
+			data.Hardcover = &bookHardcover{Shared: hcIsBookShared(u.ID, uuid), All: hcLoadShare(u.ID).All}
 		}
 		data.Shelves = shelfMarks(u, uuid)
 		for _, s := range data.Shelves {
