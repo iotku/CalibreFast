@@ -61,3 +61,35 @@ func (s *Limiter) Pause(until time.Time) {
 		s.pausedTil = until
 	}
 }
+
+// Usage is a Limiter's state, for a status page.
+type Usage struct {
+	Used      int     // requests taken today
+	Daily     int     // the day's cap
+	Tokens    float64 // what the bucket holds now
+	Burst     float64
+	PerSecond float64
+	// ResetsAt is the next local midnight, when the day's count starts over.
+	ResetsAt time.Time
+	// PausedUntil is when a 429's pause ends; zero when not paused.
+	PausedUntil time.Time
+}
+
+// Usage reports the state at now without taking anything or changing it.
+func (s *Limiter) Usage(now time.Time) Usage {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	u := Usage{Daily: s.daily, Burst: s.burst, PerSecond: s.perSecond, Tokens: s.tokens}
+	if s.day == now.Format(time.DateOnly) {
+		u.Used = s.today
+	}
+	if !s.last.IsZero() && now.After(s.last) {
+		u.Tokens = min(s.burst, s.tokens+now.Sub(s.last).Seconds()*s.perSecond)
+	}
+	y, m, d := now.Date()
+	u.ResetsAt = time.Date(y, m, d+1, 0, 0, 0, 0, now.Location())
+	if now.Before(s.pausedTil) {
+		u.PausedUntil = s.pausedTil
+	}
+	return u
+}

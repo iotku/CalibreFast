@@ -126,26 +126,50 @@ type serverPageData struct {
 	Systemd   bool
 	GoVersion string
 	Storage   []storageMeter
+	Budgets   []apiBudget
+	RefreshMS int64 // how often the page asks for serverLive
 }
 
-// GET /admin/server: what's running, and the Stop button.
-func serverPage(w http.ResponseWriter, r *http.Request) {
+// serverData is what the Server page shows. Cheap enough to build every
+// few seconds: build info and the limiters' counts are in memory, and
+// serverStorage measures the disks at most every storageTTL.
+func serverData() serverPageData {
+	now := time.Now()
 	started := time.Unix(0, serverStarted)
 	info, _ := debug.ReadBuildInfo()
 	goVersion := ""
 	if info != nil {
 		goVersion = info.GoVersion
 	}
-	w.Header().Set("Cache-Control", "no-store")
-	logErr(templates.ExecuteTemplate(w, "admin-server.html", serverPageData{
+	return serverPageData{
 		Title:     SiteTitle,
 		Revision:  buildRevision(),
 		Started:   started.Format("2006-01-02 15:04:05"),
-		Uptime:    time.Since(started).Round(time.Second).String(),
+		Uptime:    now.Sub(started).Round(time.Second).String(),
 		Systemd:   underSystemd(),
 		GoVersion: goVersion,
 		Storage:   serverStorage(),
-	}), "render admin-server")
+		Budgets:   apiBudgets(now),
+		RefreshMS: serverRefresh.Milliseconds(),
+	}
+}
+
+// serverRefresh is how often the Server page asks for serverLive.
+const serverRefresh = 5 * time.Second
+
+// GET /admin/server: what's running, and the Stop button.
+func serverPage(w http.ResponseWriter, r *http.Request) {
+	w.Header().Set("Cache-Control", "no-store")
+	logErr(templates.ExecuteTemplate(w, "admin-server.html", serverData()), "render admin-server")
+}
+
+// GET /admin/server/live: the page's sections that change on their own
+// (uptime, API budgets, storage), for the page to swap in every
+// serverRefresh (web/admin-server.ts).
+func serverLive(w http.ResponseWriter, r *http.Request) {
+	w.Header().Set("Cache-Control", "no-store")
+	w.Header().Set("Content-Type", "text/html; charset=utf-8")
+	logErr(templates.ExecuteTemplate(w, "server-live", serverData()), "render server-live")
 }
 
 // POST /api/admin/server/stop: stop the server cleanly. Admins only: the
@@ -162,5 +186,6 @@ func serverStopHandler(w http.ResponseWriter, r *http.Request) {
 
 func registerServerRoutes() {
 	http.HandleFunc("GET /admin/server", requireAdminUser(serverPage))
+	http.HandleFunc("GET /admin/server/live", requireAdminUser(serverLive))
 	http.HandleFunc("POST /api/admin/server/stop", requireAdminUser(serverStopHandler))
 }
