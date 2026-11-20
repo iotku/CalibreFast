@@ -2660,12 +2660,29 @@ body.book-standalone {
     text-decoration: none;
 }
 
-/* A series complete on Hardcover (hcStatuses) */
+/* How much of a series is here (seriesStatuses): ✓ when all of it, else a ring */
 .agg-complete {
     margin-left: 0.3em;
     font-size: 0.8em;
     font-weight: 700;
     color: #6fae6f;
+}
+
+.agg-ring {
+    width: 0.75em;
+    height: 0.75em;
+    margin-left: 0.35em;
+    vertical-align: -0.05em;
+    flex: none;
+}
+
+.agg-ring-track {
+    stroke: currentColor;
+    opacity: 0.3;
+}
+
+.agg-ring-fill {
+    stroke: #6fae6f;
 }
 
 .agg-header-status {

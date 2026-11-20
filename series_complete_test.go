@@ -81,6 +81,10 @@ func TestSeriesVerified(t *testing.T) {
 	if g := seriesGaps(); len(g) != 1 || !slices.Equal(g[0].Numbers, []int{4, 5}) {
 		t.Errorf("gaps %+v", g)
 	}
+	// …and a ring three-fifths full, not a ✓, on the series list.
+	if page := do(alice, "GET", "/series", "", http.StatusOK); !strings.Contains(page, `aria-label="3 of 5 books"`) || !strings.Contains(page, `stroke-dasharray="60 100"`) || strings.Contains(page, `data-complete`) {
+		t.Error("/series doesn't show Saga's ring")
+	}
 
 	// Forgotten: no status, no gaps.
 	do(admin, "DELETE", "/api/series/verified?series=Saga", "", http.StatusNoContent)
@@ -178,5 +182,36 @@ func TestSeriesBookCount(t *testing.T) {
 	do("POST", "/api/series/verified", `{"series":"Tales","total":2,"books":8}`, http.StatusOK)
 	if st, _ := seriesStatusOf("Tales"); st.Complete || st.Numbered != 2 || st.Have != 1 || st.BooksHave != 8 {
 		t.Errorf("both: %+v", st)
+	}
+}
+
+// The ring's share: by number, by count, or the lower of the two; full
+// only when complete.
+func TestSeriesCoverage(t *testing.T) {
+	for _, c := range []struct {
+		st            seriesStatus
+		have, of, pct int
+		text          string
+	}{
+		{seriesStatus{Numbered: 7, Have: 3}, 3, 7, 42, "3 of 7 books"},
+		{seriesStatus{Books: 4, BooksHave: 1}, 1, 4, 25, "1 of 4 books"},
+		{seriesStatus{Numbered: 5, Have: 4, Books: 10, BooksHave: 2}, 2, 10, 20, "2 of 10 books"},
+		{seriesStatus{Numbered: 5, Have: 1, Books: 10, BooksHave: 9}, 1, 5, 20, "1 of 5 books"},
+		{seriesStatus{Numbered: 3}, 0, 3, 0, "0 of 3 books"},
+		{seriesStatus{Numbered: 1}, 0, 1, 0, "0 of 1 book"},
+		{seriesStatus{Numbered: 200, Have: 199}, 199, 200, 99, "199 of 200 books"},
+		{seriesStatus{Numbered: 2, Have: 2, Complete: true}, 2, 2, 100, "2 of 2 books"},
+		{seriesStatus{}, 0, 0, 0, "0 of 0 books"},
+	} {
+		have, of := c.st.Coverage()
+		if have != c.have || of != c.of || c.st.Percent() != c.pct || c.st.CoverageText() != c.text {
+			t.Errorf("%+v: %d/%d %d%% %q", c.st, have, of, c.st.Percent(), c.st.CoverageText())
+		}
+	}
+	if statusPtr(map[string]seriesStatus{"a": {Source: statusHardcover}}, "A") != nil {
+		t.Error("a ring for a series counted by nothing")
+	}
+	if p := statusPtr(map[string]seriesStatus{"a": {Numbered: 2}}, "A"); p == nil || p.Numbered != 2 {
+		t.Error("no status for a counted series")
 	}
 }

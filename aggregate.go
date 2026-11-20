@@ -94,9 +94,9 @@ type AggregateDisplayItem struct {
 	Grouped bool
 	Tier    int    // 1–5, the cloud's text size (aggregateTiers)
 	Sort    string // A–Z key, "" for Name
-	// Complete: a series with every numbered book (seriesStatuses); set
-	// per request, never cached.
-	Complete bool
+	// Status: how much of a series is here (seriesStatuses), nil when it
+	// isn't counted; set per request, never cached.
+	Status *seriesStatus
 }
 
 // AggregatePageData is passed to aggregate.html for server-side rendering.
@@ -610,7 +610,7 @@ func filteredPageHandler(c *category) http.HandlerFunc {
 			data.Series = authorSeries(members)
 			if st := seriesStatuses(); len(st) > 0 {
 				for i := range data.Series {
-					data.Series[i].Complete = st[strings.ToLower(data.Series[i].Name)].Complete
+					data.Series[i].Status = statusPtr(st, data.Series[i].Name)
 				}
 			}
 		}
@@ -689,10 +689,10 @@ func aggregatePageHandler(c *category) http.HandlerFunc {
 				items = slices.Clone(items)
 			}
 			for i := range items {
-				items[i].Complete = complete(items[i].Name)
+				items[i].Status = statusPtr(st, items[i].Name)
 			}
 			for i := range discover {
-				discover[i].Complete = complete(discover[i].Name)
+				discover[i].Status = statusPtr(st, discover[i].Name)
 			}
 			completeCount = len(all)
 		}

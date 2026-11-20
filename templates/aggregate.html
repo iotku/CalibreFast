@@ -85,7 +85,11 @@
 </html>
 {{/* One entry of the cloud or Discover (AggregateDisplayItem as .E); web/aggregate.ts builds the same. */}}
 {{ define "agg-entry" }}{{ with .E -}}
-<a class="{{ $.Class }}{{ if .Grouped }} agg-group{{ end }}" href="{{ .Href }}" data-count="{{ .Count }}"{{ if .Sort }} data-sort="{{ .Sort }}"{{ end }}{{ if .Complete }} data-complete{{ end }}>{{ .Name }}{{ if .Sub }} <span class="agg-sub">{{ .Sub }}</span>{{ end }}{{ if .Complete }}{{ template "agg-complete" }}{{ end }}<span class="agg-count">{{ .Count }}</span></a>
+<a class="{{ $.Class }}{{ if .Grouped }} agg-group{{ end }}" href="{{ .Href }}" data-count="{{ .Count }}"{{ if .Sort }} data-sort="{{ .Sort }}"{{ end }}{{ with .Status }} data-coverage{{ if .Complete }} data-complete{{ end }}{{ end }}>{{ .Name }}{{ if .Sub }} <span class="agg-sub">{{ .Sub }}</span>{{ end }}{{ with .Status }}{{ template "agg-coverage" . }}{{ end }}<span class="agg-count">{{ .Count }}</span></a>
 {{- end }}{{ end }}
-{{/* A series with every numbered book of its Hardcover list (hcStatuses); web/aggregate.ts copies it. */}}
-{{ define "agg-complete" }}<span class="agg-complete" role="img" aria-label="complete" title="Complete: every numbered book is here">✓</span>{{ end }}
+{{/* How much of a series is here (a seriesStatus): a ✓ when all of it, else a ring filled to its share. web/aggregate.ts copies it. */}}
+{{ define "agg-coverage" }}{{ if .Complete -}}
+<span class="agg-complete agg-coverage" role="img" aria-label="complete" title="Complete: every book is here ({{ .Label }})">✓</span>
+{{- else -}}
+<svg class="agg-ring agg-coverage" viewBox="0 0 36 36" width="12" height="12" role="img" aria-label="{{ .CoverageText }}"><title>{{ .CoverageText }} in the library ({{ .Label }})</title><circle class="agg-ring-track" cx="18" cy="18" r="15" fill="none" stroke-width="6"/>{{ with .Percent }}<circle class="agg-ring-fill" cx="18" cy="18" r="15" fill="none" stroke-width="6" pathLength="100" stroke-dasharray="{{ . }} 100" transform="rotate(-90 18 18)"/>{{ end }}</svg>
+{{- end }}{{ end }}
