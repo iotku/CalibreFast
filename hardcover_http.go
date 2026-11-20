@@ -157,6 +157,14 @@ type hcReviewRow struct {
 	Action   string // what ticking it does
 	Dismiss  bool   // can be dismissed
 	Restore  bool   // was dismissed: can be shown again
+	// Lib: the library book matched to a Hardcover book, shown under it
+	// (its title and author may not be the same: a match by title alone).
+	Lib *hcLibView
+}
+
+// hcLibView is a library book as a review row shows it.
+type hcLibView struct {
+	Title, Authors, Href, Series string
 }
 
 type hcReviewRows struct {
@@ -181,15 +189,31 @@ func hcRow(s hcSuggestion, write string) hcReviewRow {
 		if s.Entry == nil {
 			r.Title, r.Authors = b.Title, strings.Join(b.Authors, " & ")
 			r.Position = strconv.FormatFloat(b.Index, 'f', -1, 64)
+		} else {
+			r.Lib = &hcLibView{Title: b.Title, Authors: strings.Join(b.Authors, " & "), Href: r.BookHref}
+			if b.Series != "" {
+				r.Lib.Series = b.Series + " #" + strconv.FormatFloat(b.Index, 'f', -1, 64)
+			}
+			r.BookHref = "" // the link is on the library book's line
 		}
 	}
 	return r
+}
+
+// hcSameBook: the library book has the Hardcover book's title and one of
+// its authors, so the row needn't show it again.
+func hcSameBook(s hcSuggestion) bool {
+	return s.Book != nil && s.Entry != nil && hcFullTitleKey(s.Book.Title) == hcFullTitleKey(s.Entry.Title) &&
+		hcSharesAuthor(s.Book.Authors, s.Entry.Authors)
 }
 
 func hcReviewRowsFor(rev hcReview, write string) hcReviewRows {
 	var rows hcReviewRows
 	for _, s := range rev.Present {
 		r := hcRow(s, write)
+		if r.Lib != nil && hcSameBook(s) {
+			r.BookHref, r.Lib = r.Lib.Href, nil
+		}
 		if s.Fix {
 			r.Kind, r.Dismiss = "tag", true
 			r.Action = "Renumber to " + r.Position

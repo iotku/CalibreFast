@@ -5631,6 +5631,17 @@ body.selecting .book.selected .cover-wrapper {
     overflow-wrap: anywhere;
 }
 
+/* The library book a Hardcover book was matched to, under it */
+.hc-lib {
+    flex-basis: 100%;
+    font-size: 0.85rem;
+    color: var(--text-muted);
+}
+
+.hc-lib a {
+    color: var(--text-primary);
+}
+
 .hc-badge {
     font-size: 0.8em;
     padding: 0.05rem 0.4rem;
