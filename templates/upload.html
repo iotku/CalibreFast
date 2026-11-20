@@ -510,6 +510,12 @@
             opacity: 1;
         }
 
+        .result-links {
+            display: flex;
+            gap: 0.9rem;
+            align-self: center;
+        }
+
         /* ── Upload again link ── */
         #upload-again {
             display: none;
@@ -1000,11 +1006,18 @@
                     const body = h("div", "result-body",
                         h("div", "result-title", item.title || "Untitled"),
                         h("div", "result-meta", (item.authors || []).join(", ")),
+                        item.seriesFromPlaceholder
+                            ? h("div", "result-meta", `${item.seriesFromPlaceholder}, from its placeholder`)
+                            : "",
                         h("div", "result-formats", ...fmtBadges));
                     let view = h("span", "");
                     if (id) {
-                        view = h("a", "result-link", "View →");
-                        view.href = `/book/get/${id}`;
+                        const edit = h("a", "result-link", "Edit");
+                        edit.href = `/book/edit/${id}`;
+                        edit.title = "Edit its metadata (each file's, and its placeholder's, are offered)";
+                        const show = h("a", "result-link", "View →");
+                        show.href = `/book/get/${id}`;
+                        view = h("span", "result-links", edit, show);
                     }
                     const div = h("div", "result-item success",
                         h("div", "result-item-container", h("span", "result-status-icon", "✓"), thumbImg),

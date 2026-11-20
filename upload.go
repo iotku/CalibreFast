@@ -321,6 +321,9 @@ type UploadResult struct {
 	// (duplicates.go). Sending it again with override=1 adds it, unless
 	// Duplicate says the library holds one of its files byte for byte.
 	Duplicate *duplicateCheck `json:"duplicate,omitempty"`
+	// SeriesFromPlaceholder: "Series #n", when the files had no series and
+	// the placeholder for the book gave it.
+	SeriesFromPlaceholder string `json:"seriesFromPlaceholder,omitempty"`
 }
 
 func uploadHandler(w http.ResponseWriter, r *http.Request) {
@@ -441,12 +444,23 @@ func processUploadGroup(files []*multipart.FileHeader, override bool) UploadResu
 
 	merged := mergeMeta(metas)
 	formats := make([]string, 0, len(entries))
-	dupFiles := make([]dupFile, 0, len(entries))
 	for _, e := range entries {
 		formats = append(formats, e.Ext)
-		dupFiles = append(dupFiles, dupFile{e.TempPath, e.Ext})
 	}
 	result := UploadResult{Title: merged.Title, Authors: merged.Creators, Formats: formats, Files: names}
+	// The placeholder this book stands for, if any: before it's added,
+	// which deletes it. With no series in the files, its says which.
+	ph := fillFromPlaceholder(&merged.OPFMetadata)
+	if ph != nil {
+		log.Printf("upload: %q: series %s #%s from its placeholder", merged.Title, merged.Series, merged.SeriesIndex)
+		result.SeriesFromPlaceholder = merged.Series + " #" + merged.SeriesIndex
+	} else {
+		ph = matchingPlaceholder(&merged.OPFMetadata)
+	}
+	dupFiles := make([]dupFile, 0, len(entries))
+	for _, e := range entries {
+		dupFiles = append(dupFiles, dupFile{e.TempPath, e.Ext})
+	}
 
 	// Already in the library? Then not added, unless the admin says so.
 	check, err := findDuplicates(calibreDB, baseDir, merged.Title, merged.Creators, dupFiles, "")
@@ -468,7 +482,11 @@ func processUploadGroup(files []*multipart.FileHeader, override bool) UploadResu
 		return result
 	}
 
-	// Store all the metadatas for each format so we can retrieve them later to present to the user to select
+	// Store all the metadatas for each format so we can retrieve them later to present to the user to select,
+	// and the placeholder's, now deleted.
+	if ph != nil {
+		metas = append(metas, placeholderSource(ph))
+	}
 	bookMetadataCache.Store(bookUUID, metas)
 
 	result.UUID = bookUUID

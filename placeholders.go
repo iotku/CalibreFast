@@ -17,7 +17,9 @@ package main
 // sees. Adding files there sends them to the import queue with the
 // placeholder's metadata; approving the book deletes the placeholder. So does
 // adding any book that matches one (same series and number, or same title
-// and author): resolvePlaceholders.
+// and author): resolvePlaceholders. A book uploaded or queued for import
+// with no series of its own takes the series and number of the placeholder
+// with its title and author first (fillFromPlaceholder): ebooks rarely say.
 
 import (
 	"cmp"
@@ -236,9 +238,113 @@ func removeUnusedPlaceholderCover(name string) {
 	}
 }
 
+// placeholderTitleMatch: placeholder p is the book with this title and
+// these authors: the same title (case, punctuation and a trailing
+// "(Series #n)" aside; a subtitle on one side only is allowed) by one of
+// the same authors ("Pratchett, Terry" is "Terry Pratchett").
+func placeholderTitleMatch(p *placeholder, title string, authors []string) bool {
+	pt, bt := hcFullTitleKey(p.Meta.Title), hcFullTitleKey(title)
+	if pt == "" || bt == "" {
+		return false
+	}
+	if pt != bt && hcTitleKey(title) != pt && hcTitleKey(p.Meta.Title) != bt {
+		return false
+	}
+	return hcSharesAuthor(p.Meta.Creators, authors)
+}
+
+// placeholderForNewBook: the placeholder a book about to be added stands
+// for, by its title and authors; nil when none, or when several in
+// different series could be it.
+func placeholderForNewBook(m *OPFMetadata) *placeholder {
+	if appDB == nil || m == nil {
+		return nil
+	}
+	var found *placeholder
+	for _, p := range allPlaceholders() {
+		if !placeholderTitleMatch(p, m.Title, m.Creators) {
+			continue
+		}
+		if found != nil && !strings.EqualFold(found.Meta.Series, p.Meta.Series) {
+			return nil // ambiguous
+		}
+		if found == nil {
+			found = p
+		}
+	}
+	return found
+}
+
+// matchingPlaceholder: the placeholder a book about to be added stands
+// for: the one at its series and number, else the one with its title by
+// one of its authors (placeholderForNewBook). nil when none.
+func matchingPlaceholder(m *OPFMetadata) *placeholder {
+	if appDB == nil || m == nil {
+		return nil
+	}
+	c := *m
+	c.FillSeries()
+	if series, index, err := opf.CleanSeries(c.Series, c.SeriesIndex); err == nil && series != "" {
+		for _, p := range allPlaceholders() {
+			if strings.EqualFold(p.Meta.Series, series) && p.index() == index {
+				return p
+			}
+		}
+	}
+	return placeholderForNewBook(&c)
+}
+
+// placeholderSourceFormat names a placeholder's metadata among the
+// editor's sources.
+const placeholderSourceFormat = "Placeholder"
+
+// placeholderSource: p's metadata as a source in the editor (the import
+// review's, or the added book's), for picking its values field by field.
+func placeholderSource(p *placeholder) *UploadedBookMeta {
+	m := p.Meta
+	m.Creators = slices.Clone(m.Creators)
+	m.Subjects = slices.Clone(m.Subjects)
+	m.Languages = slices.Clone(m.Languages)
+	m.Identifiers = slices.Clone(m.Identifiers)
+	m.Meta = nil
+	m.SyncSeriesMeta()
+	return &UploadedBookMeta{OPFMetadata: m, Format: placeholderSourceFormat}
+}
+
+// fillFromPlaceholder: a book about to be added (uploaded, or put in the
+// import queue) that has no series takes the series and number of the
+// placeholder it stands for. Ebooks rarely say what series they're in; the
+// placeholder (made by hand, or from a series on Hardcover) does. Its
+// Hardcover identifiers come too, where the book has none. Nothing else is
+// taken: the files' own metadata is kept. It returns the placeholder, or
+// nil when it changed nothing.
+func fillFromPlaceholder(m *OPFMetadata) *placeholder {
+	if m == nil {
+		return nil
+	}
+	m.FillSeries()
+	if strings.TrimSpace(m.Series) != "" {
+		return nil
+	}
+	p := placeholderForNewBook(m)
+	if p == nil || strings.TrimSpace(p.Meta.Series) == "" {
+		return nil
+	}
+	m.Series, m.SeriesIndex = p.Meta.Series, p.Meta.SeriesIndex
+	m.SyncSeriesMeta()
+	var add []opfIdentifier
+	for _, id := range hcIdentifiers(p.Meta) {
+		if identifierValue(*m, id.Scheme) == "" {
+			add = append(add, id)
+		}
+	}
+	m.Identifiers = append(m.Identifiers, add...)
+	return p
+}
+
 // resolvePlaceholders deletes the placeholders a book just added to the
-// library stands for: same series and number, or same title by one of the
-// same authors.
+// library stands for: same series and number, or the same title by one of
+// the same authors (placeholderTitleMatch).
 func resolvePlaceholders(m *OPFMetadata) {
 	if appDB == nil || m == nil {
 		return
@@ -247,16 +353,10 @@ func resolvePlaceholders(m *OPFMetadata) {
 	if err != nil {
 		series = ""
 	}
-	title := strings.TrimSpace(m.Title)
 	for _, p := range allPlaceholders() {
 		same := series != "" && strings.EqualFold(p.Meta.Series, series) && p.index() == index
-		if !same && strings.EqualFold(strings.TrimSpace(p.Meta.Title), title) {
-			for _, a := range p.Meta.Creators {
-				if slices.ContainsFunc(m.Creators, func(b string) bool { return strings.EqualFold(a, b) }) {
-					same = true
-					break
-				}
-			}
+		if !same {
+			same = placeholderTitleMatch(p, m.Title, m.Creators)
 		}
 		if same {
 			if err := deletePlaceholder(p.UUID); err != nil {
