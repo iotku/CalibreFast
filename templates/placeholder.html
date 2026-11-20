@@ -29,6 +29,7 @@
                 {{ if .PublisherHref }}<dt>Publisher</dt><dd><a href="{{ .PublisherHref }}">{{ .Meta.Publisher }}</a></dd>{{ end }}
                 {{ if .Meta.Date }}<dt>Published</dt><dd>{{ .Meta.Date }}</dd>{{ end }}
                 {{ if .ISBN }}<dt>ISBN</dt><dd>{{ .ISBN }}</dd>{{ end }}
+                {{ if .HardcoverURL }}<dt>Hardcover</dt><dd><a href="{{ .HardcoverURL }}" target="_blank" rel="noopener noreferrer">View on Hardcover</a></dd>{{ end }}
                 {{ if .Tags }}<dt>Tags</dt><dd>{{ .Tags }}</dd>{{ end }}
             </dl>
             {{ if .Meta.Description }}<p class="placeholder-desc">{{ .Meta.Description }}</p>{{ end }}
@@ -138,6 +139,7 @@
         <div class="meta-row">Published on {{ .Meta.Date }}</div>
         {{ end }}
         {{ if .ISBN }}<div class="meta-row">ISBN {{ .ISBN }}</div>{{ end }}
+        {{ if .HardcoverURL }}<div class="meta-row"><a href="{{ .HardcoverURL }}" class="meta-link" target="_blank" rel="noopener noreferrer">View on Hardcover</a></div>{{ end }}
         {{ if .Meta.Subjects }}<div class="meta-row">{{ range .Meta.Subjects }}<span class="tag">{{ . }}</span> {{ end }}</div>{{ end }}
         {{ if .Meta.Description }}<div class="description placeholder-desc">{{ .Meta.Description }}</div>{{ end }}
     </div>

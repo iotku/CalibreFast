@@ -810,6 +810,9 @@ func hcPlaceholderMeta(e *hardcover.Entry, series string) OPFMetadata {
 		m.Date = e.Released
 	}
 	m.Identifiers = []opfIdentifier{{Scheme: hcIdentifierScheme, Value: strconv.FormatInt(e.BookID, 10)}}
+	if hardcover.ValidSlug(e.Slug) { // for a link to its page
+		m.Identifiers = append(m.Identifiers, opfIdentifier{Scheme: hcSlugScheme, Value: e.Slug})
+	}
 	if len(e.ISBNs) > 0 {
 		m.Identifiers = append(m.Identifiers, opfIdentifier{Scheme: "ISBN", Value: e.ISBNs[0]})
 	}

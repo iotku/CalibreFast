@@ -410,18 +410,20 @@ func nextPlaceholder(name string, after, before float64, held map[float64]bool) 
 // PlaceholderPageData is for placeholder.html: one placeholder, or a new
 // one (New) with what the link said to start with.
 type PlaceholderPageData struct {
-	Title    string
-	New      bool
-	UUID     string
-	Meta     OPFMetadata
-	Index    string // its number, as typed
-	Authors  string // "A & B"
-	Tags     string // "a, b"
-	ISBN     string
-	CoverURL string
-	CoverHue int
-	Source   string
-	Writable bool
+	Title   string
+	New     bool
+	UUID    string
+	Meta    OPFMetadata
+	Index   string // its number, as typed
+	Authors string // "A & B"
+	Tags    string // "a, b"
+	ISBN    string
+	// HardcoverURL: its page on Hardcover (hardcover_ids.go), or "".
+	HardcoverURL string
+	CoverURL     string
+	CoverHue     int
+	Source       string
+	Writable     bool
 	// Links for the metadata shown.
 	SeriesHref    string
 	AuthorLinks   []placeholderLink
@@ -463,17 +465,18 @@ func placeholderISBN(m OPFMetadata) string {
 
 func placeholderPageData(p *placeholder, r *http.Request) PlaceholderPageData {
 	d := PlaceholderPageData{
-		Title:    p.Meta.Title + " — " + SiteTitle,
-		UUID:     p.UUID,
-		Meta:     p.Meta,
-		Index:    p.Meta.SeriesIndex,
-		Authors:  p.authors(),
-		Tags:     strings.Join(p.Meta.Subjects, ", "),
-		ISBN:     placeholderISBN(p.Meta),
-		CoverURL: p.coverURL(),
-		CoverHue: coverHue(p.UUID),
-		Source:   p.Source,
-		Writable: canEditLibrary(r),
+		Title:        p.Meta.Title + " — " + SiteTitle,
+		UUID:         p.UUID,
+		Meta:         p.Meta,
+		Index:        p.Meta.SeriesIndex,
+		Authors:      p.authors(),
+		Tags:         strings.Join(p.Meta.Subjects, ", "),
+		ISBN:         placeholderISBN(p.Meta),
+		HardcoverURL: hcMetaURL(p.Meta),
+		CoverURL:     p.coverURL(),
+		CoverHue:     coverHue(p.UUID),
+		Source:       p.Source,
+		Writable:     canEditLibrary(r),
 	}
 	if p.Meta.Series != "" {
 		d.SeriesHref = categoryByKey("series").href(p.Meta.Series)
@@ -631,6 +634,14 @@ func placeholderUpdateHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	before := snapPlaceholder(p)
+	// The form has only the ISBN: the other identifiers (Hardcover's) stay.
+	var kept []opfIdentifier
+	for _, id := range p.Meta.Identifiers {
+		if !strings.EqualFold(id.Scheme, "isbn") {
+			kept = append(kept, id)
+		}
+	}
+	m.Identifiers = append(kept, m.Identifiers...)
 	p.Meta = m
 	if err := savePlaceholder(p, nil); err != nil {
 		log.Println("placeholder:", err)
@@ -796,6 +807,10 @@ func withPlaceholder(m OPFMetadata, p *placeholder) OPFMetadata {
 			}
 		}
 		m.Identifiers = append(ids, opfIdentifier{Scheme: "ISBN", Value: isbn})
+	}
+	// Where it is on Hardcover, so the book links there too.
+	if ids := hcIdentifiers(pm); len(ids) > 0 {
+		m.Identifiers = withIdentifiers(m.Identifiers, ids)
 	}
 	if pm.Series != "" {
 		m.Series, m.SeriesIndex = pm.Series, pm.SeriesIndex
