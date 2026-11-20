@@ -31,17 +31,36 @@ export const STALE_MS = 10_000;
 
 export const SYNC_EVENT = "cf:sync";
 
+/**
+ * paused is a key of its own: the downloading tab writes its progress
+ * (read, merge, write) every half second, and with paused in the same
+ * record, a pause set in another tab in between would be written over.
+ */
+const pausedKey = (owner: Owner): string => localKey(owner, "sync-paused");
+
 export function readSync(owner: Owner): SyncState {
+    let s: SyncState = {};
     try {
-        return (JSON.parse(localStorage.getItem(localKey(owner, "sync")) ?? "null") as SyncState | null) ?? {};
+        s = (JSON.parse(localStorage.getItem(localKey(owner, "sync")) ?? "null") as SyncState | null) ?? {};
+        delete s.paused; // from before it had its own key
+        if (localStorage.getItem(pausedKey(owner)) === "1") s.paused = true;
     } catch {
-        return {};
+        /* blocked: nothing known */
     }
+    return s;
 }
 
 export function writeSync(owner: Owner, change: Partial<SyncState>): void {
+    const { paused, ...rest } = change;
     try {
-        localStorage.setItem(localKey(owner, "sync"), JSON.stringify({ ...readSync(owner), ...change }));
+        if (paused !== undefined) {
+            if (paused) localStorage.setItem(pausedKey(owner), "1");
+            else localStorage.removeItem(pausedKey(owner));
+        }
+        if (Object.keys(rest).length) {
+            const { paused: _, ...was } = readSync(owner);
+            localStorage.setItem(localKey(owner, "sync"), JSON.stringify({ ...was, ...rest }));
+        }
     } catch (err) {
         console.warn("sync: couldn't save the download status in localStorage (storage full, or blocked by the browser):", err);
     }
@@ -51,9 +70,9 @@ export function writeSync(owner: Owner, change: Partial<SyncState>): void {
 /** Call fn when the sync state changes, here or in another tab. */
 export function onSyncChange(owner: Owner, fn: () => void): void {
     window.addEventListener(SYNC_EVENT, fn);
-    const key = localKey(owner, "sync");
+    const keys = [localKey(owner, "sync"), pausedKey(owner)];
     window.addEventListener("storage", (e) => {
-        if (e.key === key) fn();
+        if (e.key !== null && keys.includes(e.key)) fn();
     });
 }
 

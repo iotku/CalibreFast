@@ -19,6 +19,7 @@ import { noteLocalReading } from "./local-reading.js";
 import { noteReadingHere } from "./offline-books.js";
 import { refusedForGood } from "./send-pending.js";
 import { isServerDown, isUnreachable, onServerBack, serverDown } from "./server-watch.js";
+import { SYNC_EVENT } from "./sync-state.js";
 import type { MeResponse } from "./types.js";
 
 export type BookFormat = "epub" | "pdf";
@@ -76,6 +77,7 @@ const LS = {
         } catch {
             /* storage full or blocked: in-memory only */
         }
+        window.dispatchEvent(new CustomEvent(SYNC_EVENT)); // the sync buttons count what's unsent
     },
 };
 

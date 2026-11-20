@@ -15,7 +15,9 @@
  * download cut off (the page left, paused) keeps what arrived and goes on
  * from there next time (HTTP Range with If-Range), so a slow connection
  * never starts a book over. Pinning a book (offline-control.ts) downloads
- * it the same way, at once, paused or not.
+ * it the same way, at once, paused or not; one cut off is finished here,
+ * before the rest (pinDownloads). A download that fails waits before it's
+ * tried again (backingOff).
  */
 
 import {
@@ -23,16 +25,20 @@ import {
     deletePartial,
     getBook,
     getBookFiles,
+    appendPartial,
     getPartial,
     keepReaderPage,
     listBooks,
     listPartials,
     offlinePref,
-    putPartial,
+    pinDownloads,
+    startPartial,
     updateBook,
     type KeptFormat,
+    type PartialInfo,
 } from "./book-cache.js";
 import { preferredFormat } from "./last-format.js";
+import { localKey } from "./local-keys.js";
 import { keepCover, readingSnapshot, refreshOfflineReading } from "./offline-books.js";
 import { devicePrefs, formatPref } from "./prefs.js";
 import { cachedMarks, statusOf, type Marks } from "./reading.js";
@@ -59,6 +65,8 @@ export interface DownloadOptions {
     auto?: boolean;
     /** Ahead of time (Saved): stop rather than drop anything for room. */
     noEvict?: boolean;
+    /** Pinned ("Always keep"): kept whatever its size. */
+    pinned?: boolean;
     savedAt?: number;
     statusSeen?: string;
 }
@@ -77,16 +85,36 @@ const REPORT_MS = 500;
 
 const paused = (): boolean => !!readSync(currentUser()).paused;
 
-let reportedAt = 0;
-function report(book: { uuid: string; title: string; authors: string; format: string }, got: number, total: number, force = false): void {
-    if (!force && Date.now() - reportedAt < REPORT_MS) return;
-    reportedAt = Date.now();
-    writeSync(currentUser(), { active: { ...book, got, total, at: reportedAt } });
+interface Shown {
+    uuid: string;
+    title: string;
+    authors: string;
+    format: string;
+}
+
+/** Tells the top bar of one download's progress, at most every REPORT_MS (each download its own). */
+function reporter(book: Shown): (got: number, total: number) => void {
+    let at = 0;
+    return (got, total) => {
+        if (Date.now() - at < REPORT_MS) return;
+        at = Date.now();
+        writeSync(currentUser(), { active: { ...book, got, total, at } });
+    };
+}
+
+/** "bytes start-end/size" (Content-Range of a 206); null if it isn't one. */
+function contentRange(v: string | null): { start: number; size: number } | null {
+    const m = /^bytes (\d+)-(\d+)\/(\d+|\*)$/.exec(v?.trim() ?? "");
+    return m ? { start: Number(m[1]), size: m[3] === "*" ? 0 : Number(m[3]) } : null;
 }
 
 /**
  * Download a book's file and keep it, going on from a download cut off
  * before when there is one. "missing": the book has no such file.
+ *
+ * One download of a book at a time, in every tab (a Web Lock per book): a
+ * pin and the queue (runJobs) asking for the same book don't both fetch it
+ * or write over each other's partial. The second finds it kept.
  */
 export async function downloadForOffline(
     uuid: string,
@@ -95,10 +123,16 @@ export async function downloadForOffline(
     authors: string,
     opts: DownloadOptions = {},
 ): Promise<DownloadResult> {
-    if (opts.auto) return download(uuid, format, title, authors, opts); // the queue clears what it reported (runJobs)
+    const once = async (): Promise<DownloadResult> => {
+        if (await getBook(uuid, format).catch(() => null)) return "ok"; // another download got it first
+        return download(uuid, format, title, authors, opts);
+    };
+    const locked = (): Promise<DownloadResult> =>
+        navigator.locks ? navigator.locks.request(`cf-book-download:${uuid}`, once) : once();
+    if (opts.auto) return locked(); // the queue clears what it reported (runJobs)
     // Asked for (a pinned book): shown in the top bar while it goes, cleared after, however it ends.
     try {
-        return await download(uuid, format, title, authors, opts);
+        return await locked();
     } finally {
         writeSync(currentUser(), { active: null });
     }
@@ -121,16 +155,21 @@ async function download(uuid: string, format: KeptFormat, title: string, authors
         throw new Error("the kept part no longer matches the file");
     }
     if (!res.ok || !res.body) throw new Error(`HTTP ${res.status}`);
-    const ranged = res.status === 206 && resume !== null;
-    let kept: Blob = ranged ? resume.bytes : new Blob([]);
-    let got = ranged ? resume.got : 0;
-    const total = ranged ? resume.total : Number(res.headers.get("content-length")) || 0;
+    // A 206 is only the rest of the file kept, from exactly where it stopped.
+    const range = res.status === 206 ? contentRange(res.headers.get("content-range")) : null;
+    if (res.status === 206 && (!resume || !range || range.start !== resume.got || (range.size && resume.total && range.size !== resume.total))) {
+        await res.body.cancel().catch(() => {});
+        await deletePartial(uuid, format).catch(() => {});
+        throw new Error(`the server sent another part of the file than the rest asked for (${res.headers.get("content-range") ?? "no Content-Range"})`);
+    }
+    const ranged = resume !== null && range !== null;
+    const total = ranged ? range.size || resume.total : Number(res.headers.get("content-length")) || 0;
     const lastModified = ranged ? resume.lastModified : (res.headers.get("last-modified") ?? "");
 
     if (opts.auto && total) {
         const { used, limit } = await usage();
-        const more = total - (resume?.got ?? 0); // the part kept is counted already
-        const why: DownloadResult | null = !fitsBookLimit(total) ? "too-big" : opts.noEvict && limit && used + more > limit ? "no-room" : null;
+        const more = total - (part?.got ?? 0); // the part kept is counted already (and replaced, if it starts over)
+        const why: DownloadResult | null = !opts.pinned && !fitsBookLimit(total) ? "too-big" : opts.noEvict && limit && used + more > limit ? "no-room" : null;
         if (why) {
             await res.body.cancel().catch(() => {});
             if (why === "too-big") await deletePartial(uuid, format).catch(() => {});
@@ -138,20 +177,35 @@ async function download(uuid: string, format: KeptFormat, title: string, authors
         }
     }
 
-    const savePart = async (): Promise<void> => {
-        if (!lastModified) return; // couldn't be resumed safely: nothing to keep
-        await putPartial({ uuid, format, user, bytes: kept, got, total, lastModified }).catch((err: unknown) =>
-            console.warn(`book-sync: couldn't keep the part of "${title}" downloaded so far (storage full, or blocked); it starts over next time:`, err),
-        );
-    };
+    // What arrived: the part kept before (resumed), then a piece per SAVE_EVERY bytes.
+    const pieces: Blob[] = ranged ? [resume.bytes] : [];
+    let got = ranged ? resume.got : 0;
+    // The partial record pieces are added to; none when it can't be resumed safely (no validator), or saving failed.
+    let info: PartialInfo | null = null;
+    if (ranged) info = resume;
+    else if (lastModified) info = await startPartial({ uuid, format, user, title, authors, total, lastModified }).catch(() => null);
+    else if (part) await deletePartial(uuid, format).catch(() => {}); // starting over, and this one can't be kept
     let pending: Uint8Array[] = [];
     let pendingBytes = 0;
+    const flush = async (): Promise<void> => {
+        if (!pendingBytes) return;
+        const piece = new Blob(pending as BlobPart[]);
+        pieces.push(piece);
+        pending = [];
+        pendingBytes = 0;
+        if (!info) return;
+        try {
+            info = await appendPartial(info, piece);
+        } catch (err) {
+            info = null;
+            console.warn(`book-sync: couldn't keep the part of "${title}" downloaded so far (storage full, or blocked); it goes on from what was kept before:`, err);
+        }
+    };
+    const report = reporter({ uuid, title, authors, format });
     const reader = res.body.getReader();
     const stop = async (why: "paused" | "yielded"): Promise<DownloadResult> => {
         await reader.cancel().catch(() => {});
-        kept = new Blob([kept, ...(pending as BlobPart[])]);
-        pending = [];
-        await savePart();
+        await flush();
         return why;
     };
     for (;;) {
@@ -164,26 +218,34 @@ async function download(uuid: string, format: KeptFormat, title: string, authors
             if (paused()) return stop("paused");
             if (pageBusy()) return stop("yielded");
         }
-        const { done, value } = await reader.read();
-        if (done) break;
-        pending.push(value);
-        pendingBytes += value.length;
-        got += value.length;
-        if (total) opts.onProgress?.(got / total);
-        report({ uuid, title, authors, format }, got, total);
-        if (pendingBytes >= SAVE_EVERY) {
-            kept = new Blob([kept, ...(pending as BlobPart[])]);
-            pending = [];
-            pendingBytes = 0;
-            await savePart();
+        let chunk: ReadableStreamReadResult<Uint8Array>;
+        try {
+            chunk = await reader.read();
+        } catch (err) {
+            await flush(); // cut off: keep what arrived, to go on from next time
+            throw err;
         }
+        if (chunk.done) break;
+        pending.push(chunk.value);
+        pendingBytes += chunk.value.length;
+        got += chunk.value.length;
+        if (total) opts.onProgress?.(got / total);
+        report(got, total);
+        if (pendingBytes >= SAVE_EVERY) await flush();
+    }
+    // The connection closed without an error before the whole file came (a
+    // proxy, a server restart): never keep a short file as the book.
+    if (total && got !== total) {
+        if (got < total) await flush();
+        else await deletePartial(uuid, format).catch(() => {}); // more than the file: what's kept is wrong
+        throw new Error(`the download ended at ${got} of ${total} bytes`);
     }
     const had = await getBook(uuid, format).catch(() => null);
     await storeBook({
         uuid,
         format,
         user,
-        bytes: new Blob([kept, ...(pending as BlobPart[])], { type: format === "pdf" ? "application/pdf" : "application/epub+zip" }),
+        bytes: new Blob([...pieces, ...(pending as BlobPart[])], { type: format === "pdf" ? "application/pdf" : "application/epub+zip" }),
         lastModified,
         size: got,
         title,
@@ -206,8 +268,50 @@ interface Job {
     title: string;
     authors: string;
     formats: KeptFormat[];
-    status: "reading" | "wanted";
+    status: "reading" | "wanted" | "pinned";
+    /** The status a pinned book was pinned with. */
+    statusSeen?: string;
     savedAt?: number;
+}
+
+/* ------------------------------------------------------------------ */
+/* Downloads that failed: tried again later, less often each time      */
+/* ------------------------------------------------------------------ */
+
+type Failures = Record<string, { n: number; at: number }>;
+const RETRY_FIRST_MS = 60_000;
+const RETRY_MAX_MS = 24 * 3600_000;
+const failuresKey = (user: string): string => localKey(user, "download-failures");
+
+function readFailures(user: string): Failures {
+    try {
+        return (JSON.parse(localStorage.getItem(failuresKey(user)) ?? "null") as Failures | null) ?? {};
+    } catch {
+        return {};
+    }
+}
+
+function writeFailures(user: string, f: Failures): void {
+    try {
+        if (Object.keys(f).length) localStorage.setItem(failuresKey(user), JSON.stringify(f));
+        else localStorage.removeItem(failuresKey(user));
+    } catch {
+        /* storage full or blocked: tried again on every page */
+    }
+}
+
+/** A book whose download failed recently: not tried again yet (1 minute, then 4 times as long each time, up to a day). */
+function backingOff(user: string, uuid: string): boolean {
+    const f = readFailures(user)[uuid];
+    return !!f && Date.now() - f.at < Math.min(RETRY_FIRST_MS * 4 ** (f.n - 1), RETRY_MAX_MS);
+}
+
+function noteResult(user: string, uuid: string, failed: boolean): void {
+    const all = readFailures(user);
+    if (failed) all[uuid] = { n: (all[uuid]?.n ?? 0) + 1, at: Date.now() };
+    else if (all[uuid]) delete all[uuid];
+    else return;
+    writeFailures(user, all);
 }
 
 /** The formats to try for a book, the one it's read in (or the preferred) first. */
@@ -264,6 +368,7 @@ async function runJobs(user: string, jobs: Job[]): Promise<void> {
             if (paused() || currentUser() !== user) break;
             left--;
             if (savedStopped && job.status === "wanted") continue;
+            if (backingOff(user, job.uuid)) continue;
             // Another tab may have got it while this one waited for its turn.
             if ((await getBookFiles(job.uuid).catch(() => [])).length) continue;
             const next = jobs.slice(i + 1, i + 4).map((j) => j.title);
@@ -278,14 +383,15 @@ async function runJobs(user: string, jobs: Job[]): Promise<void> {
                     result = "paused";
                     break;
                 }
-                report({ uuid: job.uuid, title: job.title, authors: job.authors, format: job.formats[0] ?? "epub" }, 0, 0, true);
+                writeSync(user, { active: { uuid: job.uuid, title: job.title, authors: job.authors, format: job.formats[0] ?? "epub", got: 0, total: 0, at: Date.now() } });
                 for (const f of job.formats) {
                     try {
                         result = await downloadForOffline(job.uuid, f, job.title, job.authors, {
                             auto: true,
                             noEvict: job.status === "wanted",
+                            pinned: job.status === "pinned",
                             savedAt: job.savedAt,
-                            statusSeen: job.status,
+                            statusSeen: job.status === "pinned" ? job.statusSeen : job.status,
                         });
                     } catch (err) {
                         console.warn(`book-sync: downloading "${job.title}" failed; it's tried again on a later page:`, err);
@@ -296,6 +402,8 @@ async function runJobs(user: string, jobs: Job[]): Promise<void> {
                 }
                 if (result !== "yielded") break;
             }
+            // Offline, a failure says nothing about the book: not held back for it.
+            if (result === "failed" ? navigator.onLine : result !== "paused" && result !== "yielded") noteResult(user, job.uuid, result === "failed");
             if (result === "ok") void keepCover(job.uuid).catch(() => {});
             if (result === "paused") {
                 left++; // that one is still to come
@@ -320,53 +428,68 @@ export interface SyncOptions {
     marks?: Marks;
     /** Fetch the Saved list now, however recently it was (a book just saved, the setting changed). */
     force?: boolean;
+    /** Tidy kept books with statuses fetched now (a run asked for with marks that are no longer fresh). */
+    fresh?: boolean;
 }
 
 /** Download what this device should have (see the top), then tidy up. One run at a time. */
 export function syncBooks(opts: SyncOptions = {}): Promise<void> {
     if (running) {
-        again = { ...again, ...opts, force: !!(again?.force || opts.force) };
+        // Not the marks themselves: by the time this runs (after a download
+        // or a few) they may be out of date, and tidying by an old status
+        // could drop a book started since. Fetched fresh then instead.
+        again = { force: !!(again?.force || opts.force), fresh: !!(again?.fresh || opts.fresh || opts.marks) };
         return running;
     }
-    running = runSync(opts).finally(() => {
-        running = null;
-        const next = again;
-        again = null;
-        if (next) void syncBooks(next).catch(() => {});
-    });
+    running = runSync(opts)
+        .catch((err: unknown) => console.warn("book-sync: the download run stopped; it's tried again on a later page:", err))
+        .finally(() => {
+            running = null;
+            const next = again;
+            again = null;
+            if (next) void syncBooks(next);
+        });
     return running;
 }
 
-async function runSync({ marks, force = false }: SyncOptions): Promise<void> {
+async function runSync({ marks, force = false, fresh = false }: SyncOptions): Promise<void> {
     const user = currentUser();
     if (user === null) return;
     const prefs = devicePrefs(user);
     const m = marks ?? cachedMarks();
     // The Reading list, newest first: at most every 10 minutes, and an empty 304 when unchanged.
     if (prefs.keepReadingN) await refreshOfflineReading().catch(() => {});
-    const kept = new Set((await listBooks().catch(() => [])).map((b) => b.uuid));
+    const keptBooks = await listBooks().catch(() => []);
+    const kept = new Map(keptBooks.map((b) => [b.uuid, b]));
     const jobs: Job[] = [];
 
+    // Pinned books not here yet (a pin's download cut off): first, asked for as they were.
+    for (const p of pinDownloads()) {
+        if (kept.has(p.uuid) || offlinePref(p.uuid) !== "keep") continue;
+        const formats: KeptFormat[] = p.format === "pdf" ? ["pdf", "epub"] : ["epub", "pdf"];
+        jobs.push({ uuid: p.uuid, title: p.title, authors: p.authors, formats, status: "pinned", ...(p.status ? { statusSeen: p.status } : {}) });
+    }
+    const queued = (uuid: string): boolean => jobs.some((j) => j.uuid === uuid);
     if (prefs.readingKeepDays !== -1 && prefs.keepReadingN) {
         for (const b of (await readingOrder(m)).slice(0, prefs.keepReadingN)) {
-            if (kept.has(b.uuid) || offlinePref(b.uuid) === "never") continue;
+            if (kept.has(b.uuid) || queued(b.uuid) || offlinePref(b.uuid) === "never") continue;
             jobs.push({ uuid: b.uuid, title: b.title, authors: b.authors, formats: formatsFor(b.uuid), status: "reading" });
         }
     }
     const saved = await savedToFetch(user, prefs.prefetchSavedN, force);
     for (const b of saved ?? []) {
-        if (kept.has(b.uuid)) {
-            const have = (await listBooks()).find((k) => k.uuid === b.uuid);
-            if (have && have.savedAt !== b.saved_at) await updateBook(b.uuid, have.format ?? "epub", { savedAt: b.saved_at });
+        const have = kept.get(b.uuid);
+        if (have) {
+            if (have.savedAt !== b.saved_at) await updateBook(b.uuid, have.format ?? "epub", { savedAt: b.saved_at }).catch(() => {});
             continue;
         }
-        if (offlinePref(b.uuid) === "never") continue;
+        if (queued(b.uuid) || offlinePref(b.uuid) === "never") continue;
         jobs.push({ uuid: b.uuid, title: b.title, authors: b.authors, formats: formatsFor(b.uuid), status: "wanted", savedAt: b.saved_at });
     }
 
     // Downloads cut off for books no longer wanted here (out of Reading or
     // Saved, a smaller count, never) would hold their space for good: drop
-    // them. A pinned book's (offline-control.ts) goes on next time it's pinned.
+    // them. A pinned book's goes on (it's queued above).
     // Only when both lists are known (offline, the Saved list may not be).
     const listsKnown = saved !== null && (!prefs.keepReadingN || readingSnapshot() !== null);
     const wanted = new Set(jobs.map((j) => j.uuid));
@@ -380,14 +503,14 @@ async function runSync({ marks, force = false }: SyncOptions): Promise<void> {
         // The marks may predate a book saved since: the list just fetched says it's Saved.
         const listed = new Set((saved ?? []).map((b) => b.uuid));
         await sweep((u) => (listed.has(u) ? "wanted" : statusOf(marks, u)));
-    } else if (force) await sweepFresh();
+    } else if (force || fresh) await sweepFresh();
 
     if (jobs.length && !paused()) await runJobs(user, jobs);
     else writeSync(user, { active: null, waiting: jobs.length && paused() ? jobs.length : 0 });
-    if (!pagesChecked && navigator.onLine) {
-        // Once a page: books kept before their popups (or reader pages) were
+    if (!pagesChecked() && navigator.onLine) {
+        // Once a visit: books kept before their popups (or reader pages) were
         // kept with them get theirs (the worker skips those it has).
-        pagesChecked = true;
+        markPagesChecked();
         for (const b of await listBooks().catch(() => [])) {
             keepReaderPage(b.uuid, b.format ?? "epub");
             await keepCover(b.uuid).catch(() => {});
@@ -395,7 +518,25 @@ async function runSync({ marks, force = false }: SyncOptions): Promise<void> {
     }
 }
 
-let pagesChecked = false;
+/** Once a browser session, not every page load (sessionStorage; every page when it's blocked). */
+const PAGES_CHECKED = "cf-book-pages-checked";
+let pagesCheckedHere = false;
+function pagesChecked(): boolean {
+    try {
+        return pagesCheckedHere || sessionStorage.getItem(PAGES_CHECKED) === "1";
+    } catch {
+        return pagesCheckedHere;
+    }
+}
+function markPagesChecked(): void {
+    pagesCheckedHere = true;
+    try {
+        sessionStorage.setItem(PAGES_CHECKED, "1");
+    } catch {
+        /* blocked */
+    }
+}
+
 
 /* ------------------------------------------------------------------ */
 /* On library pages                                                   */
@@ -409,7 +550,7 @@ let started = false;
  * the page's fresh reading marks, if it has them (the grid).
  */
 export function startBookSync(marks?: Marks): void {
-    const go = (opts: SyncOptions = {}): void => void syncBooks(opts).catch(() => {});
+    const go = (opts: SyncOptions = {}): void => void syncBooks(opts);
     if (!started) {
         started = true;
         watchPage(); // downloads give way to this page's own loading (page-busy.ts)

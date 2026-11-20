@@ -110,6 +110,7 @@ try {
     }
     chrome.setPosition("—");
 } catch (err) {
+    releaseDownloads(); // nothing more is loading: background downloads needn't wait
     chrome.setPosition("Failed to load");
     container.className = "reader-message";
     container.textContent = `Couldn't load this book (${errorMessage(err)}).`;
@@ -693,7 +694,10 @@ try {
 } catch {
     startCfi = null; // stale/invalid CFI (e.g. the book file changed)
     openingCfi = null;
-    await rendition.display();
+    await rendition.display().catch((err: unknown) => {
+        releaseDownloads(); // the book won't show: background downloads needn't wait
+        throw err;
+    });
 }
 
 // Larger books read in parts: the rest comes once the first page is up.

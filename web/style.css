@@ -5469,6 +5469,7 @@ body.selecting .book.selected .cover-wrapper {
 .seg-books { background: var(--status-reading); }
 .seg-covers { background: #a58bd6; }
 .seg-other-data { background: #777; }
+.seg-partial { background: repeating-linear-gradient(135deg, var(--status-wanted) 0 4px, transparent 4px 8px); }
 .seg-free { background: transparent; }
 .prefs-swatch.seg-free { border: 1px solid var(--border-medium); box-sizing: border-box; }
 .prefs-group {

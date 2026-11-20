@@ -14,7 +14,7 @@
  * Loaded with user.ts, which runs wherever a book page or popup can show.
  */
 
-import { currentUser, getBookFiles, offlinePref, setOfflinePref, updateBook, type KeptFormat, type OfflinePref } from "./book-cache.js";
+import { addPinDownload, currentUser, getBookFiles, offlinePref, setOfflinePref, updateBook, type KeptFormat, type OfflinePref } from "./book-cache.js";
 import { api } from "./dom.js";
 import { preferredFormat } from "./last-format.js";
 import { keepCover } from "./offline-books.js";
@@ -121,8 +121,13 @@ async function choose(box: HTMLElement, pref: OfflinePref): Promise<void> {
     if (pref === "keep" && !(await getBookFiles(uuid).catch(() => [])).length && !downloading.has(uuid)) {
         downloading.set(uuid, 0);
         void show(box);
+        const format = formatToKeep(box, uuid);
+        const title = box.dataset["title"] ?? "";
+        const authors = box.dataset["authors"] ?? "";
+        // Until it's kept: a download cut off (the page closed) is finished from a library page (book-sync.ts).
+        addPinDownload({ uuid, title, authors, format, ...(status ? { status } : {}) });
         try {
-            await downloadForOffline(uuid, formatToKeep(box, uuid), box.dataset["title"] ?? "", box.dataset["authors"] ?? "", {
+            await downloadForOffline(uuid, format, title, authors, {
                 onProgress: (f) => {
                     downloading.set(uuid, f);
                     for (const b of boxesFor(uuid)) void show(b);
@@ -134,7 +139,7 @@ async function choose(box: HTMLElement, pref: OfflinePref): Promise<void> {
             downloading.delete(uuid);
             for (const b of boxesFor(uuid)) {
                 const state = b.querySelector<HTMLElement>(".book-offline-state");
-                if (state) state.textContent = "Couldn't download it. It'll be kept next time it's opened.";
+                if (state) state.textContent = "Couldn't download it yet. It's tried again while a library page is open, or kept when you next open it.";
             }
             return;
         }

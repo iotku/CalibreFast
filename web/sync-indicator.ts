@@ -9,15 +9,17 @@
  * Pressing it shows both in words.
  *
  * Reads the same records the sync code writes (localStorage, IndexedDB),
- * so it needs no hooks into it: looked at again every couple of seconds
- * while shown, and at once when something it hears of changes.
+ * looked at again when they change: the readers' stores say so here
+ * (SYNC_EVENT), other tabs by storage events, kept copies by
+ * cf:offline-changed. The kept copy (IndexedDB) is read only for that.
  */
 
 import { currentUser, getBook, offlinePref, type KeptFormat } from "./book-cache.js";
 import { maybeId } from "./dom.js";
 import { devicePrefs } from "./prefs.js";
 import { isServerDown, onServerBack } from "./server-watch.js";
-import { unsentFor, type UnsentBook } from "./sync-state.js";
+import { localKey } from "./local-keys.js";
+import { SYNC_EVENT, unsentFor, type UnsentBook } from "./sync-state.js";
 
 export interface SyncIndicator {
     /** The reader is downloading the whole file to keep: 0..1, null (size unknown), or false (done). */
@@ -55,9 +57,9 @@ export function createSyncIndicator(uuid: string, format: KeptFormat): SyncIndic
     let size = 0;
     let kept: { size: number } | null = null;
 
-    async function paint(): Promise<void> {
+    async function paint(copyChanged: boolean): Promise<void> {
         const user = currentUser();
-        kept = await getBook(uuid, format).catch(() => null);
+        if (copyChanged) kept = await getBook(uuid, format).catch(() => null);
         const pref = offlinePref(uuid);
         const prefs = devicePrefs();
 
@@ -107,13 +109,14 @@ export function createSyncIndicator(uuid: string, format: KeptFormat): SyncIndic
         if (copyLine!.textContent !== copy) copyLine!.textContent = copy;
         if (syncLine!.textContent !== sync) syncLine!.textContent = sync;
     }
-    const refresh = (): void => void paint();
+    const refresh = (): void => void paint(false);
+    const refreshCopy = (): void => void paint(true);
 
     // The popup.
     const setOpen = (open: boolean): void => {
         pop.classList.toggle("open", open);
         btn.setAttribute("aria-expanded", String(open));
-        if (open) refresh();
+        if (open) refreshCopy();
     };
     btn.addEventListener("click", (e) => {
         e.stopPropagation();
@@ -129,21 +132,30 @@ export function createSyncIndicator(uuid: string, format: KeptFormat): SyncIndic
         }
     });
 
-    window.addEventListener("cf:offline-changed", refresh);
+    window.addEventListener("cf:offline-changed", refreshCopy);
     window.addEventListener("online", refresh);
     window.addEventListener("offline", refresh);
     onServerBack(refresh);
-    // The sync code writes as it goes; sends follow a moment later.
-    setInterval(() => {
-        if (document.visibilityState === "visible") refresh();
-    }, 2000);
+    // This tab's readers' stores (positions, bookmarks, highlights) as they write and as the server confirms.
+    window.addEventListener(SYNC_EVENT, refresh);
+    // Another tab: its sends, and its copy of this book.
+    const prefix = localKey(currentUser(), "");
+    window.addEventListener("storage", (e) => {
+        if (e.key === null || e.key.startsWith(prefix)) refresh();
+    });
+    // Back to this tab: a copy kept or dropped by another tab meanwhile.
+    document.addEventListener("visibilitychange", () => {
+        if (document.visibilityState === "visible") refreshCopy();
+    });
     btn.hidden = false;
-    refresh();
+    refreshCopy();
 
     return {
         downloading(p) {
+            const done = progress !== false && p === false;
             progress = p;
-            refresh();
+            if (done) refreshCopy();
+            else refresh();
         },
         setSize(bytes) {
             size = bytes;
