@@ -68,7 +68,7 @@ import { maxCovers } from "./cover-limits.js";
 import { setupDragScroll, setupPageDragScroll } from "./drag-scroll.js";
 import "./offline-marks.js"; // the "on this device" badge on cards
 import { startBookSync, syncBooks } from "./book-sync.js";
-import { fetchStats, statsSummary } from "./stats-data.js";
+import { fetchStats, keepStats, revealStats, statsSkeleton, statsSummary } from "./stats-data.js";
 
 const STRIP = 12; // books in a row
 const PIN_STRIP = 24; // books in a pinned tag's row (Go: shelfRowBooks)
@@ -616,21 +616,41 @@ async function refreshHome(): Promise<void> {
     showAccountLine();
 }
 
+/**
+ * The reading stats summary's frame, before the server answers: a skeleton
+ * the size of the last card, for whoever the top bar says is signed in
+ * (none if they had stats off), so the card doesn't push the page about.
+ */
+function showStatsSkeleton(): void {
+    const user = topBarMe()?.username;
+    const card = user ? statsSkeleton(user) : null;
+    const slot = byId("greeting-stats");
+    slot.replaceChildren(...(card ? [card] : []));
+    slot.hidden = !card;
+}
+
 /** The reading stats summary in the greeting (stats-data.ts): signed in, keeping stats. */
 async function showStatsCard(): Promise<void> {
     const slot = byId("greeting-stats");
     try {
-        const card = statsSummary(await fetchStats());
+        const stats = await fetchStats();
+        if (marks.user) keepStats(marks.user, stats);
+        const card = statsSummary(stats);
+        // Filled in once, where the skeleton was (or nothing was): later answers just replace it.
+        const first = !slot.querySelector(".greeting-stats:not(.greeting-stats-skeleton)");
+        if (card && first) revealStats(card);
         slot.replaceChildren(...(card ? [card] : []));
         slot.hidden = !card;
     } catch {
-        /* offline, or signed out meanwhile: as it was */
+        /* offline, or signed out meanwhile: as it was (a skeleton goes) */
+        if (slot.querySelector(".greeting-stats-skeleton")) slot.hidden = true;
     }
 }
 
 /** Paints from what's known at once; resolves once the server has answered. */
 function setupHome(): Promise<void> {
     const cached = cachedHome();
+    if (signedIn() === true) showStatsSkeleton();
     if (cached) showHome(cached);
     else if (signedIn() === false) {
         marks = guestMarks();
