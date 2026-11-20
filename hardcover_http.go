@@ -129,7 +129,7 @@ type HardcoverReviewData struct {
 	HCName     string
 	HCURL      string
 	Parts      []hcPartView // when it is linked to several
-	Checked    string // "3 days ago"
+	Checked    string       // "3 days ago"
 	Stale      bool
 	Review     hcReview
 	Rows       hcReviewRows
