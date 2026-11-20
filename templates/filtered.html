@@ -175,7 +175,7 @@
     {{ if .Description }}<p class="agg-header-desc">{{ .Description }}</p>{{ end }}
     {{ with .Series }}
     <nav class="agg-header-series" aria-label="Series">
-        {{ range . }}<a class="agg-chip" href="{{ .Href }}">{{ .Name }}{{ if .Complete }}{{ template "agg-complete" }}{{ end }}<span class="agg-count">{{ .Count }}</span></a>{{ end }}
+        {{ range . }}<a class="agg-chip" href="{{ .Href }}">{{ .Name }}{{ with .Status }}{{ template "agg-coverage" . }}{{ end }}<span class="agg-count">{{ .Count }}</span></a>{{ end }}
     </nav>
     {{ end }}
     </div>
