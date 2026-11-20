@@ -237,6 +237,27 @@ maybeId("hc-undismiss")?.addEventListener("click", () => {
         .catch((err: unknown) => sayApply(errorMessage(err), true));
 });
 
+// "Not a match, create placeholder": the library book isn't this one.
+review?.addEventListener("click", (e) => {
+    const btn = (e.target as Element).closest<HTMLButtonElement>("button[data-notmatch]");
+    if (!btn) return;
+    const hcBookId = Number(btn.dataset["notmatch"] ?? "0");
+    const uuid = btn.dataset["uuid"] ?? "";
+    if (!(hcBookId > 0) || !uuid) return;
+    btn.disabled = true;
+    api<{ placeholder?: string; error?: string }>("POST", "/api/hardcover/notmatch", { series, uuid, hcBookId })
+        .then((res) => {
+            if (res.error) {
+                sayApply(`Not matched again, but no placeholder was made: ${res.error}`, true);
+                setTimeout(() => location.reload(), 2500);
+            } else location.reload();
+        })
+        .catch((err: unknown) => {
+            sayApply(errorMessage(err), true);
+            btn.disabled = false;
+        });
+});
+
 // One row's "Not in this series" / "Dismiss", or a dismissed row's "Restore".
 review?.addEventListener("click", (e) => {
     const btn = (e.target as Element).closest<HTMLButtonElement>("button[data-dismiss], button[data-restore]");

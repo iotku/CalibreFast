@@ -303,3 +303,79 @@ func TestHardcoverSeries(t *testing.T) {
 		t.Error("author page")
 	}
 }
+
+// "Not a match, create placeholder": a library book the review matched
+// by title alone isn't the Hardcover book. It's never matched to it
+// again, and the Hardcover book gets a placeholder in the series.
+func TestHardcoverNotAMatch(t *testing.T) {
+	db := catalogFixture(t)
+	setupTestAppDB(t)
+	t.Chdir(t.TempDir())
+	placeholdersChanged()
+	mort := addTestBook(t, db, "Mort", []string{"Terry Pratchett"}, nil, "Discworld", "epub")
+	aaron := addTestBook(t, db, "The Last Hero: A Life of Henry Aaron", []string{"Howard Bryant"}, nil, "", "epub")
+	if err := writeLibraryPages(); err != nil {
+		t.Fatal(err)
+	}
+	origClient, origWrites := hcClient, allowWrites
+	hcClient, allowWrites = hardcover.New(hardcover.Config{URL: "https://127.0.0.1:1/", Token: "test-token"}), true
+	t.Cleanup(func() { hcClient, allowWrites = origClient, origWrites; placeholdersChanged() })
+	pratchett := []string{"Terry Pratchett"}
+	if err := hcSaveLink("Discworld", &hardcover.SeriesDetail{Series: hardcover.Series{ID: 9, Name: "Discworld", Slug: "discworld"},
+		Entries: []hardcover.Entry{
+			{BookID: 1, Title: "Mort", Position: pos(1), Authors: pratchett},
+			{BookID: 27, Title: "The Last Hero", Position: pos(27), Authors: pratchett, Released: "2001-01-01"},
+		}}, nil); err != nil {
+		t.Fatal(err)
+	}
+	admin, _ := createUser("boss", "a long enough password", true)
+	alice, _ := createUser("alice", "a long enough password", false)
+	mux := http.NewServeMux()
+	wrap := func(h http.HandlerFunc) http.HandlerFunc { return requireEditor(requireLookups(requireHardcover(h))) }
+	mux.HandleFunc("POST /api/hardcover/notmatch", wrap(hardcoverNotMatchHandler))
+	mux.HandleFunc("GET /missing/hardcover", wrap(hardcoverReviewPage))
+	do := func(u *User, method, path, body string, want int) string {
+		t.Helper()
+		rec := call(t, mux, u, method, path, body)
+		if rec.Code != want {
+			t.Fatalf("%s %s: %d %s (want %d)", method, path, rec.Code, rec.Body, want)
+		}
+		return rec.Body.String()
+	}
+	review := func() hcReview {
+		t.Helper()
+		s, _ := hcSeries("Discworld")
+		l, _ := hcLinkFor("Discworld")
+		rev, err := hcReviewFor(s, l)
+		if err != nil {
+			t.Fatal(err)
+		}
+		return rev
+	}
+	if rev := review(); len(rev.Untagged) != 1 || rev.Untagged[0].Book.UUID != aaron || rev.Untagged[0].Strength != hcWeak {
+		t.Fatalf("before: %+v", rev.Untagged)
+	}
+	if !strings.Contains(do(admin, "GET", "/missing/hardcover?series=Discworld", "", http.StatusOK), `data-notmatch="27"`) {
+		t.Error("no Not a match button")
+	}
+
+	body := `{"series":"Discworld","uuid":"` + aaron + `","hcBookId":27}`
+	do(alice, "POST", "/api/hardcover/notmatch", body, http.StatusNotFound)
+	do(admin, "GET", "/api/hardcover/notmatch", "", http.StatusMethodNotAllowed)
+	// Only a match the review suggests: not Mort, which is present.
+	do(admin, "POST", "/api/hardcover/notmatch", `{"series":"Discworld","uuid":"`+mort+`","hcBookId":1}`, http.StatusConflict)
+	var res struct{ Placeholder, Error string }
+	if err := json.Unmarshal([]byte(do(admin, "POST", "/api/hardcover/notmatch", body, http.StatusOK)), &res); err != nil || res.Placeholder == "" || res.Error != "" {
+		t.Fatalf("not a match: %+v %v", res, err)
+	}
+	p := placeholderByUUID(res.Placeholder)
+	if p == nil || p.Meta.Title != "The Last Hero" || p.Meta.Series != "Discworld" || p.Meta.SeriesIndex != "27" || p.Source != "hardcover" {
+		t.Fatalf("placeholder %+v", p)
+	}
+	rev := review()
+	if len(rev.Untagged) != 0 || len(rev.Missing) != 1 || rev.Missing[0].Placeholder != res.Placeholder {
+		t.Fatalf("after: untagged %+v missing %+v", rev.Untagged, rev.Missing)
+	}
+	// Again: the match isn't suggested any more.
+	do(admin, "POST", "/api/hardcover/notmatch", body, http.StatusConflict)
+}
