@@ -156,14 +156,15 @@
     </ul>
 </section>
 {{ end }}
-{{ if or .Description .ImageURL .Series }}
+{{ if or .Description .ImageURL .Series .HCComplete }}
 <header class="agg-header">
     {{ if .ImageURL }}<img class="agg-header-img" src="{{ .ImageURL }}" alt="">{{ end }}
     <div class="agg-header-body">
+    {{ if .HCComplete }}<p class="agg-header-status"><span class="hc-complete">Complete</span> Every numbered book on Hardcover's list is in the library.</p>{{ end }}
     {{ if .Description }}<p class="agg-header-desc">{{ .Description }}</p>{{ end }}
     {{ with .Series }}
     <nav class="agg-header-series" aria-label="Series">
-        {{ range . }}<a class="agg-chip" href="{{ .Href }}">{{ .Name }}<span class="agg-count">{{ .Count }}</span></a>{{ end }}
+        {{ range . }}<a class="agg-chip" href="{{ .Href }}">{{ .Name }}{{ if .Complete }}{{ template "agg-complete" }}{{ end }}<span class="agg-count">{{ .Count }}</span></a>{{ end }}
     </nav>
     {{ end }}
     </div>

@@ -18,6 +18,9 @@ type AuthorSeries struct {
 	Name  string // series, or its group's name
 	Href  string // its filtered page
 	Count int    // the author's books in it
+	// Complete: every numbered book on its Hardcover list is here
+	// (hcStatuses); set by the page, not cached.
+	Complete bool
 }
 
 type authorSeriesIndex struct {

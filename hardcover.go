@@ -36,6 +36,7 @@ import (
 	"slices"
 	"strings"
 	"sync"
+	"sync/atomic"
 	"time"
 
 	"github.com/iotku/CalibreFast/pkg/hardcover"
@@ -401,7 +402,8 @@ func hcAllLinks() ([]*hcLink, error) {
 }
 
 // hcSaveLink links name to d's series (all its parts) with d as its list.
-// Linking to other series forgets what was turned down for the old ones.
+// What was dismissed stays dismissed: Hardcover's book ids are its own,
+// whichever of its series lists them.
 func hcSaveLink(name string, d *hardcover.SeriesDetail, by *User) error {
 	snap, err := json.Marshal(d)
 	if err != nil {
@@ -437,10 +439,8 @@ func hcSaveLink(name string, d *hardcover.SeriesDetail, by *User) error {
 			VALUES (?, ?, ?, ?, ?, ?, ?, ?)`, name, d.ID, d.Slug, d.Name, uid, now, now, string(snap))
 	case err != nil:
 	case !same && old != d.ID:
-		if _, err = tx.Exec(`DELETE FROM hardcover_dismissed WHERE name = ?`, name); err == nil {
-			_, err = tx.Exec(`UPDATE hardcover_series SET hc_id = ?, hc_slug = ?, hc_name = ?, identified_by = ?, identified_at = ?, checked_at = ?, snapshot = ? WHERE name = ?`,
-				d.ID, d.Slug, d.Name, uid, now, now, string(snap), name)
-		}
+		_, err = tx.Exec(`UPDATE hardcover_series SET hc_id = ?, hc_slug = ?, hc_name = ?, identified_by = ?, identified_at = ?, checked_at = ?, snapshot = ? WHERE name = ?`,
+			d.ID, d.Slug, d.Name, uid, now, now, string(snap), name)
 	default:
 		_, err = tx.Exec(`UPDATE hardcover_series SET hc_id = ?, hc_slug = ?, hc_name = ?, checked_at = ?, snapshot = ? WHERE name = ?`,
 			d.ID, d.Slug, d.Name, now, string(snap), name)
@@ -458,18 +458,115 @@ func hcSaveLink(name string, d *hardcover.SeriesDetail, by *User) error {
 	if err != nil {
 		return err
 	}
+	defer hcChanged()
 	return tx.Commit()
 }
 
+// hcUnlink forgets the series' link. Its dismissals stay, for when it's
+// linked again.
 func hcUnlink(name string) error {
-	if _, err := appDB.Exec(`DELETE FROM hardcover_dismissed WHERE name = ?`, name); err != nil {
-		return err
-	}
+	defer hcChanged()
 	if _, err := appDB.Exec(`DELETE FROM hardcover_series_parts WHERE name = ?`, name); err != nil {
 		return err
 	}
 	_, err := appDB.Exec(`DELETE FROM hardcover_series WHERE name = ?`, name)
 	return err
+}
+
+// hcDismiss turns down the list's book ids for the series, for good (until
+// an editor restores them); hcRestore brings them back, all when ids is
+// empty.
+func hcDismiss(name string, ids []int64) (int, error) {
+	defer hcChanged()
+	n := 0
+	for _, id := range ids {
+		res, err := appDB.Exec(`INSERT OR IGNORE INTO hardcover_dismissed (name, hc_book_id) VALUES (?, ?)`, name, id)
+		if err != nil {
+			return n, err
+		}
+		if k, _ := res.RowsAffected(); k > 0 {
+			n++
+		}
+	}
+	return n, nil
+}
+
+func hcRestore(name string, ids []int64) error {
+	defer hcChanged()
+	if len(ids) == 0 {
+		_, err := appDB.Exec(`DELETE FROM hardcover_dismissed WHERE name = ?`, name)
+		return err
+	}
+	for _, id := range ids {
+		if _, err := appDB.Exec(`DELETE FROM hardcover_dismissed WHERE name = ? AND hc_book_id = ?`, name, id); err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
+// ---------------------------------------------------------------------------
+// Completion: which linked series have every numbered book
+// ---------------------------------------------------------------------------
+
+// hcStatus is how much of its Hardcover list a linked series has.
+type hcStatus struct {
+	Numbered, Have int
+	Complete       bool
+}
+
+var (
+	hcVersion     atomic.Uint64 // bumped when a link or dismissal changes
+	hcStatusCache struct {
+		sync.Mutex
+		cat      *catalog
+		gen, ver uint64
+		m        map[string]hcStatus // lower-cased series name ->
+	}
+)
+
+func hcChanged() { hcVersion.Add(1) }
+
+// hcStatuses: every linked series' status, by lower-cased name. Matched
+// again only after the library, its groups, a link or a dismissal changes.
+func hcStatuses() map[string]hcStatus {
+	if !hardcoverEnabled() || appDB == nil {
+		return nil
+	}
+	cat, gen, ver := currentCatalog(), aggregateGen.Load(), hcVersion.Load()
+	c := &hcStatusCache
+	c.Lock()
+	defer c.Unlock()
+	if c.m != nil && c.cat == cat && c.gen == gen && c.ver == ver {
+		return c.m
+	}
+	links, err := hcAllLinks()
+	if err != nil {
+		log.Println("hardcover status:", err)
+		return c.m
+	}
+	m := make(map[string]hcStatus, len(links))
+	for _, l := range links {
+		s, ok := hcSeries(l.Name)
+		if !ok || l.Snapshot == nil {
+			continue
+		}
+		lib, err := hcLibraryFor(s, l.Snapshot)
+		if err != nil {
+			log.Println("hardcover status:", err)
+			continue
+		}
+		rev := hcMatchSeries(l.Snapshot, lib, nil, hcDismissed(s.Name))
+		m[strings.ToLower(s.Name)] = hcStatus{Numbered: rev.Numbered, Have: rev.Have, Complete: rev.complete()}
+	}
+	c.m, c.cat, c.gen, c.ver = m, cat, gen, ver
+	return m
+}
+
+// hcStatusOf: the series' status; ok is false when it isn't linked.
+func hcStatusOf(name string) (hcStatus, bool) {
+	st, ok := hcStatuses()[strings.ToLower(name)]
+	return st, ok
 }
 
 func hcDismissed(name string) map[int64]bool {

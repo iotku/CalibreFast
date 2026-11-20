@@ -54,7 +54,14 @@
         {{ end }}
         <section class="agg-all" aria-labelledby="agg-all-h">
             <div class="agg-section-head">
-                <h2 class="agg-heading" id="agg-all-h">All {{ .Title }}</h2>
+                <h2 class="agg-heading" id="agg-all-h">{{ if .CompleteOnly }}Complete {{ .Title }}{{ else }}All {{ .Title }}{{ end }}</h2>
+                {{ if .CompleteCount }}
+                {{/* Series complete on Hardcover (hcStatuses): a filter of the page, by link. */}}
+                <nav class="agg-filter" aria-label="Filter">
+                    <a class="agg-pill" href="?"{{ if not .CompleteOnly }} aria-current="page"{{ end }}>All</a>
+                    <a class="agg-pill" href="?complete=1"{{ if .CompleteOnly }} aria-current="page"{{ end }}>Complete ({{ .CompleteCount }})</a>
+                </nav>
+                {{ end }}
                 <div id="agg-order" class="agg-order" role="group" aria-label="Order" hidden>
                     <button type="button" class="agg-pill" data-order="count" aria-pressed="true">Most books</button>
                     <button type="button" class="agg-pill" data-order="az" aria-pressed="false">A–Z</button>
@@ -66,7 +73,7 @@
                 {{- range .Items }}
                 {{ template "agg-entry" (dict "E" . "Class" (printf "agg-item agg-t%d" .Tier)) }}
                 {{- else }}
-                <p class="status-message">Nothing with more than one book. Search to find the rest.</p>
+                <p class="status-message">{{ if .CompleteOnly }}No complete series.{{ else }}Nothing with more than one book. Search to find the rest.{{ end }}</p>
                 {{- end }}
             </div>
         </section>
@@ -78,5 +85,7 @@
 </html>
 {{/* One entry of the cloud or Discover (AggregateDisplayItem as .E); web/aggregate.ts builds the same. */}}
 {{ define "agg-entry" }}{{ with .E -}}
-<a class="{{ $.Class }}{{ if .Grouped }} agg-group{{ end }}" href="{{ .Href }}" data-count="{{ .Count }}"{{ if .Sort }} data-sort="{{ .Sort }}"{{ end }}>{{ .Name }}{{ if .Sub }} <span class="agg-sub">{{ .Sub }}</span>{{ end }}<span class="agg-count">{{ .Count }}</span></a>
+<a class="{{ $.Class }}{{ if .Grouped }} agg-group{{ end }}" href="{{ .Href }}" data-count="{{ .Count }}"{{ if .Sort }} data-sort="{{ .Sort }}"{{ end }}{{ if .Complete }} data-complete{{ end }}>{{ .Name }}{{ if .Sub }} <span class="agg-sub">{{ .Sub }}</span>{{ end }}{{ if .Complete }}{{ template "agg-complete" }}{{ end }}<span class="agg-count">{{ .Count }}</span></a>
 {{- end }}{{ end }}
+{{/* A series with every numbered book of its Hardcover list (hcStatuses); web/aggregate.ts copies it. */}}
+{{ define "agg-complete" }}<span class="agg-complete" role="img" aria-label="complete" title="Complete: every numbered book on Hardcover's list is here">✓</span>{{ end }}

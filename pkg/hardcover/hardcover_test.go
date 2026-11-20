@@ -400,4 +400,7 @@ func TestSeriesBooksParts(t *testing.T) {
 		len(daleks.ISBNs) != 2 || len(daleks.Authors) != 1 || daleks.Authors[0] != "David Whitaker" {
 		t.Errorf("merged position 2: %+v", daleks)
 	}
+	if ids := daleks.IDs(); len(ids) != 2 || ids[0] != 20 {
+		t.Errorf("merged position 2 ids %v", ids)
+	}
 }

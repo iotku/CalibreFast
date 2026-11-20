@@ -70,8 +70,15 @@ type hcReview struct {
 	Untagged []hcSuggestion `json:"untagged"` // here, not tagged with the series
 	Missing  []hcSuggestion `json:"missing"`  // not here
 	Extra    []hcSuggestion `json:"extra"`    // here, tagged, not on Hardcover
-	Hidden   int            `json:"hidden"`   // dismissed suggestions left out
+	// Dismissed: suggestions an editor turned down, left out of the rest.
+	Dismissed []hcSuggestion `json:"dismissed"`
+	// Numbered: the list's whole-numbered books (1, 2, 3…), less those
+	// dismissed; Have: how many of them are here, tagged with the series.
+	Numbered, Have int
 }
+
+// complete: every whole-numbered book on the list is here and tagged.
+func (r *hcReview) complete() bool { return r.Numbered > 0 && r.Have == r.Numbered }
 
 // pending: suggestions waiting for a decision (the count shown on /missing).
 func (r *hcReview) pending() int {
@@ -222,6 +229,9 @@ func hcWhole(p *float64) bool { return p != nil && *p >= 1 && *p == math.Trunc(*
 // Hardcover book ids an editor turned down.
 func hcMatchSeries(d *hardcover.SeriesDetail, lib hcLibrary, placeholders []*placeholder, dismissed map[int64]bool) hcReview {
 	var rev hcReview
+	isDismissed := func(e *hardcover.Entry) bool {
+		return slices.ContainsFunc(e.IDs(), func(id int64) bool { return dismissed[id] })
+	}
 	used := map[string]bool{} // library uuids matched to an entry
 	byTitle := lib.byTitle
 	if byTitle == nil {
@@ -330,13 +340,18 @@ func hcMatchSeries(d *hardcover.SeriesDetail, lib hcLibrary, placeholders []*pla
 			}
 		}
 
+		gone := isDismissed(e)
 		if book == nil {
 			s := hcSuggestion{Entry: e, Checked: hcWhole(e.Position)}
 			if ph := hcPlaceholderFor(e, lib.members, placeholders); ph != nil {
 				s.Placeholder, s.Checked = ph.UUID, false
-			} else if dismissed[e.BookID] {
-				rev.Hidden++
+			} else if gone {
+				s.Checked = false
+				rev.Dismissed = append(rev.Dismissed, s)
 				continue
+			}
+			if hcWhole(e.Position) {
+				rev.Numbered++
 			}
 			switch {
 			case e.Position == nil:
@@ -350,8 +365,12 @@ func hcMatchSeries(d *hardcover.SeriesDetail, lib hcLibrary, placeholders []*pla
 		used[book.UUID] = true
 		s := hcSuggestion{Entry: e, Book: book, Strength: strength}
 		if hcInMembers(book.Series, lib.members) {
+			if hcWhole(e.Position) {
+				rev.Numbered++
+				rev.Have++
+			}
 			if e.Position != nil && *e.Position != book.Index {
-				if dismissed[e.BookID] {
+				if gone {
 					s.Note = "numbered " + strconv.FormatFloat(book.Index, 'f', -1, 64) + " here"
 				} else {
 					s.Fix = true
@@ -361,9 +380,12 @@ func hcMatchSeries(d *hardcover.SeriesDetail, lib hcLibrary, placeholders []*pla
 			rev.Present = append(rev.Present, s)
 			continue
 		}
-		if dismissed[e.BookID] {
-			rev.Hidden++
+		if gone {
+			rev.Dismissed = append(rev.Dismissed, s)
 			continue
+		}
+		if hcWhole(e.Position) {
+			rev.Numbered++
 		}
 		if book.Series != "" {
 			s.Note = "in " + book.Series + " #" + strconv.FormatFloat(book.Index, 'f', -1, 64)

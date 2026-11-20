@@ -125,8 +125,10 @@ func TestHCMatchSeries(t *testing.T) {
 		{entry: 10},           // not numbered
 	})
 	check("extra", rev.Extra, []row{{book: "fan"}})
-	if rev.Hidden != 1 {
-		t.Errorf("hidden %d, want 1 (Persepolis Rising)", rev.Hidden)
+	check("dismissed", rev.Dismissed, []row{{book: "pr", entry: 8, str: hcByTitle}})
+	// Whole numbers 1–8 less the dismissed 7; 1 and 2 are here, tagged.
+	if rev.Numbered != 7 || rev.Have != 2 || rev.complete() {
+		t.Errorf("numbered %d, have %d", rev.Numbered, rev.Have)
 	}
 	// Untagged 3, the renumbering, novella and unnumbered: 6 decisions.
 	if n := rev.pending(); n != 6 {
@@ -136,6 +138,53 @@ func TestHCMatchSeries(t *testing.T) {
 	rev = hcMatchSeries(d, lib, phs, map[int64]bool{2: true})
 	if !(len(rev.Present) == 2 && !rev.Present[1].Fix) {
 		t.Errorf("dismissed renumbering: %+v", rev.Present)
+	}
+}
+
+// A series is complete when every whole-numbered book on the list is here
+// and tagged; novellas, unnumbered books and dismissed ones don't count.
+// A dismissal holds for any of the books merged into an entry.
+func TestHCComplete(t *testing.T) {
+	d := &hardcover.SeriesDetail{Entries: []hardcover.Entry{
+		{BookID: 1, Title: "One", Position: pos(1)},
+		{BookID: 2, Title: "Two", Position: pos(2)},
+		{BookID: 3, Title: "Two and a Half", Position: pos(2.5)},
+		{BookID: 4, Title: "Omnibus", Position: pos(3), AltIDs: []int64{40}},
+		{BookID: 5, Title: "Extra"},
+	}}
+	lib := hcLibrary{members: []string{"S"}, inSeries: []hcLibBook{
+		{UUID: "a", Title: "One", Series: "S", Index: 1},
+		{UUID: "b", Title: "Two", Series: "S", Index: 2},
+	}}
+	rev := hcMatchSeries(d, lib, nil, nil)
+	if rev.Numbered != 3 || rev.Have != 2 || rev.complete() {
+		t.Errorf("numbered %d, have %d, complete %v", rev.Numbered, rev.Have, rev.complete())
+	}
+	// "Omnibus" turned down when another of its books was shown.
+	rev = hcMatchSeries(d, lib, nil, map[int64]bool{40: true})
+	if rev.Numbered != 2 || rev.Have != 2 || !rev.complete() || len(rev.Dismissed) != 1 {
+		t.Errorf("numbered %d, have %d, complete %v, dismissed %d", rev.Numbered, rev.Have, rev.complete(), len(rev.Dismissed))
+	}
+	// A placeholder is still a missing book.
+	ph := []*placeholder{{UUID: "p", Meta: OPFMetadata{Title: "Omnibus", Series: "S", SeriesIndex: "3"}}}
+	if rev = hcMatchSeries(d, lib, ph, nil); rev.complete() {
+		t.Error("complete with a placeholder")
+	}
+	// Here, but not tagged: not complete.
+	two := lib.inSeries[1]
+	two.Series = ""
+	lib.byTitle = func(k string) []hcLibBook {
+		if k == "two" {
+			return []hcLibBook{two}
+		}
+		return nil
+	}
+	lib.inSeries = lib.inSeries[:1]
+	if rev = hcMatchSeries(d, lib, nil, map[int64]bool{4: true}); rev.complete() || rev.Numbered != 2 || rev.Have != 1 {
+		t.Errorf("untagged: numbered %d, have %d", rev.Numbered, rev.Have)
+	}
+	if (&hcReview{}).complete() {
+		t.Error("an empty list is complete")
 	}
 }
 

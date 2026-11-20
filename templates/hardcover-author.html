@@ -29,7 +29,7 @@
                 <span class="hc-body">
                     <a href="{{ .Href }}" class="ph-title">{{ .Name }}</a>
                     <span class="ph-sub">{{ .Count }} book{{ if ne .Count 1 }}s{{ end }}</span>
-                    {{ if .Linked }}<span class="ph-sub">linked to {{ .HCName }}, fetched {{ .Checked }}</span>{{ else }}<span class="ph-sub">not linked</span>{{ end }}
+                    {{ if .Linked }}{{ template "hc-status" .Status }}<span class="ph-sub">linked to {{ .HCName }}, fetched {{ .Checked }}</span>{{ else }}<span class="ph-sub">not linked</span>{{ end }}
                     <a class="ph-sub" href="{{ .Review }}">Review</a>
                     <span class="hc-state" data-state></span>
                 </span>
