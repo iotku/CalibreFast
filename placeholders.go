@@ -487,7 +487,8 @@ func placeholderPageData(p *placeholder, r *http.Request) PlaceholderPageData {
 	return d
 }
 
-// GET /missing/{uuid}: a placeholder's page (an editor for admins).
+// GET /missing/{uuid}: a placeholder's page (an editor for admins), or for
+// an htmx request its view in the book popup.
 func placeholderPageHandler(w http.ResponseWriter, r *http.Request) {
 	p := placeholderByUUID(r.PathValue("uuid"))
 	if p == nil {
@@ -496,6 +497,12 @@ func placeholderPageHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	w.Header().Set("Cache-Control", "no-cache")
+	w.Header().Set("Vary", "HX-Request")
+	if r.Header.Get("HX-Request") != "" {
+		// The book popup, stepping onto it from a book beside it (modal.ts).
+		logErr(templates.ExecuteTemplate(w, "placeholder-popup", placeholderPageData(p, r)), "placeholder popup")
+		return
+	}
 	logErr(templates.ExecuteTemplate(w, "placeholder.html", placeholderPageData(p, r)), "placeholder page")
 }
 

@@ -5081,6 +5081,31 @@ body.selecting .book.selected .cover-wrapper {
     border-radius: inherit;
 }
 
+/* A placeholder in the book popup (placeholder.html "placeholder-popup"):
+   the banner and dashed edge over its cover, as on its card. */
+.placeholder-stack {
+    position: relative;
+    width: 100%;
+    max-width: 280px; /* the cover placeholder's */
+    overflow: hidden;
+    border-radius: var(--radius-large);
+    container-type: inline-size;
+}
+
+.placeholder-stack > img {
+    filter: grayscale(0.6) brightness(0.75);
+}
+
+.placeholder-stack::after {
+    content: "";
+    position: absolute;
+    inset: 0;
+    z-index: 2;
+    pointer-events: none;
+    border: 2px dashed rgba(255, 255, 255, 0.35);
+    border-radius: inherit;
+}
+
 .placeholder-view {
     display: flex;
     gap: 1.5rem;
