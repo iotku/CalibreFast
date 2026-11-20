@@ -10,7 +10,9 @@
  *   others" draws another few from the same list the search box uses.
  * - The cloud can be ordered as served (by book count; series complete
  *   ones first), A–Z (with a letter bar to jump by), or shuffled. The
- *   choice is remembered.
+ *   choice is remembered. The letter bar marks the section in view; on a
+ *   touch screen, dragging along it picks a letter (shown in a bubble above
+ *   the finger) and lifting the finger jumps there.
  * - Hovering an entry (or focusing it from the keyboard) previews a few of
  *   its books' covers.
  */
@@ -238,6 +240,7 @@ function setOrder(order: Order): void {
     grid.replaceChildren(...nodes);
     letters.replaceChildren(...jump);
     letters.hidden = order !== "az" || jump.length < 2;
+    queueSpy();
     for (const b of orderBar.querySelectorAll<HTMLButtonElement>("button")) {
         b.setAttribute("aria-pressed", String(b.dataset["order"] === order));
     }
@@ -247,6 +250,122 @@ function setOrder(order: Order): void {
         // private window or blocked storage: the order just isn't remembered
     }
 }
+
+// ---------------------------------------------------------------------------
+// The letter bar: marks the section in view, and on touch is a scrubber
+// ---------------------------------------------------------------------------
+
+// Headings and their links are built in the same order: index i of one is index i of the other.
+const heads = (): HTMLElement[] => [...grid.querySelectorAll<HTMLElement>(".agg-letter")];
+const jumps = (): HTMLAnchorElement[] => [...letters.querySelectorAll<HTMLAnchorElement>("a")];
+
+/** Where the bar's bottom edge sits once it's stuck under the top bar (it may wrap to two rows). */
+function barBottom(): number {
+    return (parseFloat(getComputedStyle(letters).top) || 0) + letters.offsetHeight;
+}
+
+function markCurrent(i: number): void {
+    jumps().forEach((a, j) => {
+        if (i === j) a.setAttribute("aria-current", "true");
+        else a.removeAttribute("aria-current");
+    });
+}
+
+/** Puts section i's heading just below the stuck bar. */
+function jumpTo(i: number): void {
+    const h = heads()[i];
+    if (h) window.scrollTo({ top: window.scrollY + h.getBoundingClientRect().top - barBottom() - 4 });
+}
+
+let scrub: { pointer: number; index: number } | null = null;
+let scrubEnded = -Infinity;
+let spyQueued = false;
+
+/** Marks the last section whose heading has passed under the bar (the first before any has). */
+function spy(): void {
+    spyQueued = false;
+    if (letters.hidden || browse.hidden || scrub) return;
+    const line = barBottom() + 8; // jumpTo leaves a heading 4px below the bar: that counts as passed
+    let current = 0;
+    for (const [i, h] of heads().entries()) {
+        if (h.getBoundingClientRect().top > line) break;
+        current = i;
+    }
+    markCurrent(current);
+}
+
+function queueSpy(): void {
+    if (spyQueued) return;
+    spyQueued = true;
+    requestAnimationFrame(spy);
+}
+
+window.addEventListener("scroll", queueSpy, { passive: true });
+window.addEventListener("resize", queueSpy, { passive: true });
+
+letters.addEventListener("click", (e) => {
+    e.preventDefault(); // jumpTo instead of the #fragment, which doesn't know how tall the bar is
+    if (performance.now() - scrubEnded < 500) return; // the click a scrub's lift may leave behind
+    const a = (e.target as Element).closest("a");
+    if (a) jumpTo(jumps().indexOf(a));
+});
+
+const bubble = el("div", { className: "agg-letter-bubble", hidden: true });
+bubble.setAttribute("aria-hidden", "true");
+document.body.append(bubble);
+
+/** The link nearest a point: the finger may wander off the bar, or between its rows. */
+function nearest(x: number, y: number): number {
+    let best = -1;
+    let bestD = Infinity;
+    jumps().forEach((a, i) => {
+        const r = a.getBoundingClientRect();
+        const dx = Math.max(r.left - x, 0, x - r.right);
+        const dy = Math.max(r.top - y, 0, y - r.bottom);
+        const d = dx * dx + dy * dy;
+        if (d < bestD) {
+            bestD = d;
+            best = i;
+        }
+    });
+    return best;
+}
+
+function scrubTo(e: PointerEvent): void {
+    if (!scrub) return;
+    const i = nearest(e.clientX, e.clientY);
+    const a = jumps()[i];
+    if (!a) return;
+    scrub.index = i;
+    markCurrent(i);
+    bubble.textContent = a.textContent;
+    bubble.style.left = `${e.clientX}px`;
+    bubble.style.top = `${e.clientY}px`;
+    bubble.hidden = false;
+}
+
+function endScrub(e: PointerEvent, jump: boolean): void {
+    if (scrub?.pointer !== e.pointerId) return;
+    const i = scrub.index;
+    scrub = null;
+    bubble.hidden = true;
+    scrubEnded = performance.now();
+    if (jump) jumpTo(i);
+    queueSpy();
+}
+
+// touch-action: none on the bar (style.css) keeps the page from scrolling under the drag.
+letters.addEventListener("pointerdown", (e) => {
+    if (e.pointerType !== "touch" || scrub) return;
+    scrub = { pointer: e.pointerId, index: -1 };
+    letters.setPointerCapture(e.pointerId);
+    scrubTo(e);
+});
+letters.addEventListener("pointermove", (e) => {
+    if (scrub?.pointer === e.pointerId) scrubTo(e);
+});
+letters.addEventListener("pointerup", (e) => endScrub(e, true));
+letters.addEventListener("pointercancel", (e) => endScrub(e, false));
 
 // A dozen or more: fewer read at a glance in any order.
 if (items.length >= 12) {
