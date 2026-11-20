@@ -46,3 +46,6 @@ port = 8080
 
 # Never look books up online.
 # no-lookups
+
+# Never identify series on Hardcover, even with CF_HARDCOVER_TOKEN set.
+# no-hardcover

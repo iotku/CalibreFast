@@ -453,6 +453,49 @@ var migrations = []string{
 		updated_at INTEGER NOT NULL
 	);
 	`,
+	// 26: series linked to Hardcover (hardcover.go): the Hardcover series a
+	// series (as browsed, after groups) is, and its book list as last
+	// fetched; suggestions an editor turned down; the queue of requests to
+	// Hardcover, held while its plan's limits are used up; and the day's
+	// use of those limits, so a restart doesn't forget it.
+	`
+	CREATE TABLE hardcover_series (
+		name          TEXT    PRIMARY KEY COLLATE NOCASE,
+		hc_id         INTEGER NOT NULL,
+		hc_slug       TEXT    NOT NULL DEFAULT '',
+		hc_name       TEXT    NOT NULL DEFAULT '',
+		identified_by INTEGER REFERENCES users(id) ON DELETE SET NULL,
+		identified_at INTEGER NOT NULL,
+		checked_at    INTEGER NOT NULL DEFAULT 0,
+		snapshot      TEXT    NOT NULL DEFAULT ''  -- JSON hardcover.SeriesDetail
+	);
+	CREATE TABLE hardcover_dismissed (
+		name       TEXT    NOT NULL COLLATE NOCASE,
+		hc_book_id INTEGER NOT NULL,
+		PRIMARY KEY (name, hc_book_id)
+	);
+	CREATE TABLE hardcover_jobs (
+		id         INTEGER PRIMARY KEY AUTOINCREMENT,
+		kind       TEXT    NOT NULL,               -- candidates, link, refresh, batch
+		series     TEXT    NOT NULL,
+		payload    TEXT    NOT NULL DEFAULT '{}',
+		state      TEXT    NOT NULL DEFAULT 'queued', -- queued, held, running, done, failed
+		batch      TEXT    NOT NULL DEFAULT '',    -- jobs started together share it
+		created_by INTEGER REFERENCES users(id) ON DELETE SET NULL,
+		created_at INTEGER NOT NULL,
+		not_before INTEGER NOT NULL DEFAULT 0,
+		finished_at INTEGER NOT NULL DEFAULT 0,
+		result     TEXT    NOT NULL DEFAULT '',
+		error      TEXT    NOT NULL DEFAULT ''
+	);
+	CREATE INDEX hardcover_jobs_state ON hardcover_jobs (state, id);
+	CREATE TABLE hardcover_usage (
+		day          TEXT    PRIMARY KEY,           -- UTC date
+		used         INTEGER NOT NULL,
+		remote       INTEGER NOT NULL DEFAULT -1,
+		paused_until INTEGER NOT NULL DEFAULT 0
+	);
+	`,
 }
 
 // openAppDB opens (creating if needed) and migrates the app database.

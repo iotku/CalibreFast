@@ -1,0 +1,22 @@
+{{/* Shared by the Hardcover pages (hardcover_http.go): the plan's use today,
+     and the requests waiting for it. */}}
+{{ define "hc-usage" }}
+<p class="hc-usage auth-muted" id="hc-usage">
+    Hardcover today: <strong>{{ .Used }}</strong> of {{ .Limit }} requests · resets in {{ .ResetsIn }}
+    {{ if .Paused }}· <span class="hc-held">paused until {{ .Paused }}</span>{{ end }}
+</p>
+{{ end }}
+{{ define "hc-jobs" }}
+{{ if . }}
+<ul class="ph-list hc-jobs" id="hc-jobs">
+    {{ range . }}
+    <li class="hc-job" data-job="{{ .ID }}" data-state="{{ .State }}">
+        <a href="{{ .Review }}" class="ph-title">{{ .Series }}</a>
+        <span class="ph-sub">{{ .Kind }}</span>
+        <span class="hc-state hc-state-{{ .State }}">{{ .State }}{{ with .Until }} until {{ . }}{{ end }}</span>
+        {{ if ne .State "running" }}<button type="button" class="btn-standard hc-cancel" data-job="{{ .ID }}">Cancel</button>{{ end }}
+    </li>
+    {{ end }}
+</ul>
+{{ end }}
+{{ end }}

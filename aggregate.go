@@ -131,10 +131,13 @@ type FilteredPageData struct {
 	// TotalBooks. NewPlaceholder: where admins start one for this page.
 	Missing        int
 	NewPlaceholder string
-	TotalBooks     int
-	EmptyText      string         // shown when there are no books (default: "No books found.")
-	Series         []AuthorSeries // an author's series, shown above the books
-	Extra          map[string]any // page-specific extras (e.g. shelf controls)
+	// Hardcover: where editors identify this series, or this author's
+	// series, on Hardcover (hardcover.go); "" when it isn't set up.
+	Hardcover  string
+	TotalBooks int
+	EmptyText  string         // shown when there are no books (default: "No books found.")
+	Series     []AuthorSeries // an author's series, shown above the books
+	Extra      map[string]any // page-specific extras (e.g. shelf controls)
 }
 
 // SearchPageData is passed to search.html.
@@ -579,6 +582,13 @@ func filteredPageHandler(c *category) http.HandlerFunc {
 				q.Set("authors", name)
 			}
 			data.NewPlaceholder = "/missing/new?" + q.Encode()
+			if hardcoverEnabled() {
+				if c.Key == "series" {
+					data.Hardcover = hcReviewURL(name)
+				} else {
+					data.Hardcover = "/missing/hardcover/author?" + url.Values{"author": {name}}.Encode()
+				}
+			}
 		}
 		if c.Key == "author" {
 			data.Series = authorSeries(members)

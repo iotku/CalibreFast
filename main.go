@@ -321,6 +321,7 @@ func main() {
 	flag.BoolVar(&trustedTypesReportOnly, "trusted-types-report-only", false, "only report Trusted Types violations instead of refusing them (a stopgap if a browser feature breaks; see docs/SECURITY.md)")
 	flag.BoolVar(&noLookups, "no-lookups", false, "never look books up online (hides the metadata editor's lookup bar)")
 	flag.BoolVar(&noGoogleBooks, "no-google-books", false, "never offer Google Books in the metadata editor (Open Library only)")
+	flag.BoolVar(&noHardcover, "no-hardcover", false, "never identify series on Hardcover (even with CF_HARDCOVER_TOKEN set)")
 	flag.StringVar(&publicURL, "public-url", "", "external base URL, e.g. https://books.example.com (needed for GitHub/Google sign-in)")
 	flag.StringVar(&watchDir, "watch-dir", "", "folder to watch for new books; they wait in the import queue for an admin to review (needs -allow-writes)")
 	flag.BoolVar(&watchForcePolling, "watch-dir-force-polling", false, "check -watch-dir every 30 seconds instead of relying on the system to report changes (for network and container mounts where it doesn't)")
@@ -421,6 +422,9 @@ func main() {
 		loadBulkQueue() // bulk editor changes not yet made when it stopped
 	}
 	startImports()
+	if allowWrites {
+		startHardcover() // requests to Hardcover left from the last run (hardcover.go)
+	}
 	serveLibraryHTTP()
 }
 
@@ -673,6 +677,7 @@ func serveLibraryHTTP() {
 	registerMergeRoutes()
 	registerAddFormatRoutes()
 	registerPlaceholderRoutes()
+	registerHardcoverRoutes()
 	registerBulkEditRoutes()
 	registerLibraryRepairRoutes()
 	registerNotDuplicateRoutes()

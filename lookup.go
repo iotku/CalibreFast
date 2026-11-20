@@ -25,6 +25,11 @@ package main
 //     when the admin asks
 //   - -no-lookups turns everything off; -no-google-books turns off Google,
 //     as does having no CF_GOOGLE_BOOKS_KEY
+//
+// Series on Hardcover (hardcover.go) are the exception to "one book": an
+// editor links a whole series, or ticks some of an author's series, and the
+// requests wait in a queue for Hardcover's limits. They too run only after a
+// click, and never for the whole library.
 
 import (
 	"context"
@@ -107,6 +112,7 @@ func appVersion() string {
 func configureLookups() {
 	googleBooksKey = os.Getenv("CF_GOOGLE_BOOKS_KEY")
 	bookLookups = newBookLookups(googleBooksKey)
+	configureHardcover()
 	switch {
 	case noLookups:
 		log.Println("-no-lookups: the metadata editor won't look books up online")
