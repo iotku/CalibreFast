@@ -20,6 +20,8 @@ package main
 // and author): resolvePlaceholders. A book uploaded or queued for import
 // with no series of its own takes the series and number of the placeholder
 // with its title and author first (fillFromPlaceholder): ebooks rarely say.
+// A library book edited to be a placeholder's book replaces it too
+// (placeholder_resolve.go).
 
 import (
 	"cmp"
