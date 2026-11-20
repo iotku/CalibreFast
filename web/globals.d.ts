@@ -37,7 +37,7 @@ declare namespace EpubJS {
     interface Location {
         /** index: the spine item (chapter); displayed: the screen within it. */
         start: { cfi: string; index: number; percentage?: number; displayed?: { page: number; total: number } };
-        end: { cfi: string };
+        end: { cfi: string; index?: number; displayed?: { page: number; total: number } };
         atStart?: boolean;
         atEnd?: boolean;
     }
@@ -84,6 +84,8 @@ declare namespace EpubJS {
         /** "paginated" or "scrolled-doc". */
         flow(flow: string): void;
         getContents(): Contents[];
+        /** epub.js internal: divisor is columns per screen (2 in a spread); displayed pages count columns. */
+        _layout?: { divisor?: number };
         /** The chapters on screen: the manager's collection, or [] before there is one. */
         views(): { all(): View[] } | View[];
         hooks: { content: { register(fn: (contents: Contents) => void): void } };
