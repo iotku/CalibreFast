@@ -131,6 +131,7 @@
         {{ with .Strength }}<span class="hc-badge">{{ . }}</span>{{ end }}
         {{ with .Note }}<span class="ph-sub hc-note">{{ . }}</span>{{ end }}
         {{ with .Action }}<span class="ph-sub hc-action">{{ . }}</span>{{ end }}
+        {{ with .Lib }}<span class="hc-lib">In the library: <a href="{{ .Href }}">{{ .Title }}</a>{{ with .Authors }} by {{ . }}{{ end }}{{ with .Series }} · {{ . }}{{ end }}</span>{{ end }}
     </span>
     {{ if .Dismiss }}<button type="button" class="btn-standard hc-row-btn" data-dismiss="{{ .HCBookID }}">{{ if eq .Kind "placeholder" }}Not in this series{{ else }}Dismiss{{ end }}</button>{{ end }}
     {{ if .Restore }}<button type="button" class="btn-standard hc-row-btn" data-restore="{{ .HCBookID }}">Restore</button>{{ end }}

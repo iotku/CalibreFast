@@ -188,6 +188,30 @@ func TestHCComplete(t *testing.T) {
 	}
 }
 
+// A row matched to a library book shows that book under it, unless it's
+// plainly the same one (same title, an author in common) and already in
+// the series.
+func TestHCReviewRowsLib(t *testing.T) {
+	hero := &hardcover.Entry{BookID: 1, Title: "The Last Hero", Position: pos(27), Authors: []string{"Terry Pratchett"}}
+	aaron := &hcLibBook{UUID: "u1", Title: "The Last Hero: A Life of Henry Aaron", Authors: []string{"Howard Bryant"}}
+	same := &hcLibBook{UUID: "u2", Title: "The Last Hero", Authors: []string{"Pratchett, Terry"}, Series: "Discworld", Index: 27}
+	renamed := &hcLibBook{UUID: "u3", Title: "The Last Hero: A Discworld Fable", Authors: []string{"Terry Pratchett"}, Series: "Discworld", Index: 27}
+	rows := hcReviewRowsFor(hcReview{
+		Untagged: []hcSuggestion{{Entry: hero, Book: aaron, Strength: hcWeak}},
+		Present:  []hcSuggestion{{Entry: hero, Book: same}, {Entry: hero, Book: renamed}},
+	}, "Discworld")
+	u := rows.Untagged[0]
+	if u.Lib == nil || u.Lib.Title != aaron.Title || u.Lib.Authors != "Howard Bryant" || u.Lib.Href != "/book/get/u1" || u.BookHref != "" {
+		t.Errorf("untagged row %+v lib %+v", u, u.Lib)
+	}
+	if p := rows.Present[0]; p.Lib != nil || p.BookHref != "/book/get/u2" {
+		t.Errorf("same book: %+v", p)
+	}
+	if p := rows.Present[1]; p.Lib == nil || p.Lib.Series != "Discworld #27" {
+		t.Errorf("renamed book: %+v", p)
+	}
+}
+
 func TestHCKeys(t *testing.T) {
 	if hcSeriesKey("Doctor Who: Target Books") == hcSeriesKey("Doctor Who: BBC Radio Collection") {
 		t.Error("series names differing after a colon are the same")

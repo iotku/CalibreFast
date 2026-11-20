@@ -391,9 +391,6 @@ func hcMatchSeries(d *hardcover.SeriesDetail, lib hcLibrary, placeholders []*pla
 		if hcWhole(e.Position) {
 			rev.Numbered++
 		}
-		if book.Series != "" {
-			s.Note = "in " + book.Series + " #" + strconv.FormatFloat(book.Index, 'f', -1, 64)
-		}
 		s.Checked = strength != hcWeak && book.Series == "" && e.Position != nil
 		rev.Untagged = append(rev.Untagged, s)
 	}
