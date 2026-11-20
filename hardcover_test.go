@@ -191,7 +191,8 @@ func TestHardcoverSeries(t *testing.T) {
 		t.Fatalf("link %+v", l)
 	}
 	page := string(do(admin, "GET", "/missing/hardcover?series=Other", "", http.StatusOK))
-	for _, want := range []string{"Other Three", "Other Novella", "Set series to Other #4", "https://hardcover.app/books/other-three"} {
+	for _, want := range []string{"Other Three", "Other Novella", "Set series to Other #4", "https://hardcover.app/books/other-three",
+		`href="/book/get/` + four + `"`, `href="/book/get/` + other[0] + `"`} {
 		if !strings.Contains(page, want) {
 			t.Errorf("review page lacks %q", want)
 		}
