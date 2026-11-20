@@ -12,6 +12,7 @@ Self-contained code lives in packages under `pkg/`, each with a README. The app 
 - [`pkg/langcodes`](../pkg/langcodes): language names and canonical codes.
 - [`pkg/isbn`](../pkg/isbn): checking ISBNs and finding them in EPUB, MOBI/AZW3 and PDF text.
 - [`pkg/metalookup`](../pkg/metalookup): Open Library and Google Books clients, with limits and a cache.
+- [`pkg/hardcover`](../pkg/hardcover): Hardcover's GraphQL API for series and their books, with a budget that holds work over the plan's limits instead of refusing it.
 - [`pkg/kosync`](../pkg/kosync): KOReader progress sync protocol pieces (document ids, keys, errors).
 - [`pkg/koreader`](../pkg/koreader): KOReader's XPointers ↔ EPUB CFIs, its annotations file, its Lua files. `pkg/koreader/koreadertest` has EPUB fixtures.
 - [`pkg/imageutil`](../pkg/imageutil): covers, thumbnails, a PDF's first-page picture.
@@ -216,6 +217,15 @@ Both are behind `requireWrites` and only add options to the metadata editor (`we
   - **Limits** (`metalookup.Limiter`, one per site): a token bucket and a daily cap (Open Library 20 then 1/s, 1,000 a day; Google 5 then 1 per 10s, 100 a day). A 429 pauses that site for its `Retry-After`. Over a limit, requests are refused with a message, not queued.
   - Requests carry `User-Agent: CalibreFast/<version> (+https://github.com/iotku/CalibreFast)` and nothing about the library or user. `-no-lookups` refuses both endpoints and hides the lookup; `-no-google-books`, or no `CF_GOOGLE_BOOKS_KEY`, refuses Google and hides **Try Google Books**.
 - **`/metadata/lookup/cover?src=openlibrary&id=…`** fetches a lookup's cover for the editor's cover dialog (`web/cover-dialog.ts`), only when the admin clicks **Look up cover online**. That button asks `/metadata/lookup?source=openlibrary` for the ISBN in the form's ISBN field (cached, so a later lookup of it is free) and adds the covers of the ticked matches. The server builds the URL from a cover id it checks, so it can't be pointed elsewhere. The browser never contacts the third party.
+
+### Hardcover series
+
+`hardcover.go`, `hardcover_match.go`, `hardcover_http.go`; client in `pkg/hardcover`. Off unless `CF_HARDCOVER_TOKEN` is set (and not `-no-hardcover` / `-no-lookups`). Editors only.
+
+- **Links:** `hardcover_series` maps a series as browsed (its group's name, so a group links once) to a Hardcover series id. It keeps the last fetched list (`snapshot`, JSON `hardcover.SeriesDetail`) and `checked_at`. Linking to another series clears `hardcover_dismissed` for it.
+- **Queue:** every request to Hardcover is a row of `hardcover_jobs` (`candidates`, `link`, `refresh`, `batch`), run one at a time by one worker (`hcStep`). When `hardcover.Budget` says to wait (plan limits, or a 429), the job and every job behind it become `held` with `not_before`. Nothing fails for lack of budget. The budget's day is saved in `hardcover_usage` and restored at start; a job left `running` is queued again. Clicks wait up to 5 s for their job, then the page polls `/api/hardcover/jobs`.
+- **Review:** `hcMatchSeries` matches the list against the catalog (ISBN via metadata.db `identifiers`, then the same title in the series, then title plus a shared author, then title only as weak) and against placeholders (`hardcover-id` identifier, series and number, or title and author). It sorts entries into *in the library*, *in the library without the series* (tag via `queueBulkEdit`, one book per job), *not in the library* (placeholders with `source = 'hardcover'`) and *not on Hardcover's list*. Whole-number positions are ticked; novellas (1.5) and unnumbered books are not.
+- **Pages:** `/missing/hardcover?series=` (link, refresh, review, apply), `/missing/hardcover/author?author=` (a batch of that author's series, at most 25), and a card on `/missing`. Series and author pages link to them (`FilteredPageData.Hardcover`).
 
 ## Accounts and per-user data
 

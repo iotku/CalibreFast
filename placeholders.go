@@ -46,7 +46,7 @@ type placeholder struct {
 	UUID      string
 	Meta      OPFMetadata // Series and SeriesIndex hold its series
 	Cover     string      // file in placeholderCoversDir, "" for none
-	Source    string      // "manual"
+	Source    string      // "manual", or "hardcover" (hardcover.go)
 	CreatedAt int64
 	UpdatedAt int64
 }
@@ -432,11 +432,13 @@ type placeholderLink struct{ Name, Href string }
 
 // MissingPageData is for missing.html.
 type MissingPageData struct {
-	Title    string
-	Series   []missingSeries // placeholders by series, those with none last
-	Gaps     []seriesGap
-	Count    int
-	Writable bool
+	Title  string
+	Series []missingSeries // placeholders by series, those with none last
+	Gaps   []seriesGap
+	// Hardcover: series linked to Hardcover, when it is set up (hardcover.go).
+	Hardcover *MissingHardcover
+	Count     int
+	Writable  bool
 }
 
 type missingSeries struct {
@@ -514,7 +516,7 @@ func newPlaceholderPageHandler(w http.ResponseWriter, r *http.Request) {
 // GET /missing: every placeholder, and the gaps in the library's series.
 func missingPageHandler(w http.ResponseWriter, r *http.Request) {
 	phs := allPlaceholders()
-	d := MissingPageData{Title: "Missing books — " + SiteTitle, Count: len(phs), Writable: true, Gaps: seriesGaps()}
+	d := MissingPageData{Title: "Missing books — " + SiteTitle, Count: len(phs), Writable: true, Gaps: seriesGaps(), Hardcover: missingHardcover()}
 	by := map[string]*missingSeries{}
 	for _, p := range phs {
 		k := strings.ToLower(p.Meta.Series)

@@ -1,0 +1,50 @@
+<!doctype html>
+<html lang="en">
+<head>
+    <meta charset="utf-8">
+    {{ robotsMeta }}
+    {{ appHead }}
+    <title>{{ .Title }}</title>
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <link rel="stylesheet" href="{{ asset "style.css" }}">
+</head>
+<body class="auth-body">
+{{ $tb := topbar "Active" "missing" "Title" .Author }}
+{{ template "topbar-start" $tb }}
+{{ template "topbar-end" $tb }}
+<!-- An author's series, identified or refreshed on Hardcover together (hardcover_http.go, web/hardcover.ts) -->
+<main class="auth-main auth-wide hc-page" id="hc-author" data-author="{{ .Author }}" data-max="{{ .Max }}">
+    <section class="auth-card">
+        <div class="ph-head">
+            <h1><a href="{{ .AuthorHref }}">{{ .Author }}</a>'s series on Hardcover</h1>
+            <a class="btn-standard" href="/missing">Missing books</a>
+        </div>
+        {{ template "hc-usage" .Usage }}
+        <p class="auth-muted">Tick the series to check (at most {{ .Max }}). A linked series has its list fetched again; one that isn't is linked only when Hardcover has exactly one series of that name holding its books or by its author, and is otherwise left for you to choose. Requests wait in a queue when Hardcover's daily limit is used up.</p>
+        {{ if not .Series }}<p class="auth-muted"><em>No series by this author in the library.</em></p>{{ end }}
+        <ul class="ph-list hc-series">
+            {{ range .Series }}
+            <li class="hc-row" data-series="{{ .Name }}">
+                <input type="checkbox" class="hc-tick" value="{{ .Name }}" aria-label="Check {{ .Name }}"{{ if or (not .Linked) .Stale }} checked{{ end }}>
+                <span class="hc-body">
+                    <a href="{{ .Href }}" class="ph-title">{{ .Name }}</a>
+                    <span class="ph-sub">{{ .Count }} book{{ if ne .Count 1 }}s{{ end }}</span>
+                    {{ if .Linked }}<span class="ph-sub">linked to {{ .HCName }}, fetched {{ .Checked }}</span>{{ else }}<span class="ph-sub">not linked</span>{{ end }}
+                    <a class="ph-sub" href="{{ .Review }}">Review</a>
+                    <span class="hc-state" data-state></span>
+                </span>
+            </li>
+            {{ end }}
+        </ul>
+        {{ if .Series }}
+        <div class="ph-actions ph-actions-start">
+            <button type="button" id="hc-batch" class="btn-standard btn-primary">Check ticked series</button>
+        </div>
+        {{ end }}
+        <p id="hc-status" class="auth-notice" role="status" hidden></p>
+        {{ template "hc-jobs" .Jobs }}
+    </section>
+</main>
+<script type="module" src="{{ asset "hardcover.js" }}"></script>
+</body>
+</html>

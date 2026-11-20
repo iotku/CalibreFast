@@ -98,6 +98,17 @@ The metadata editor's lookup bar sends a book's ISBN (**Search ISBN**) or its ti
 - **Limits:** each site has a rate and daily limit, and CalibreFast backs off when a site says to (HTTP 429).
 - **`-no-lookups`** turns lookups off entirely; **`-no-google-books`** (or leaving `CF_GOOGLE_BOOKS_KEY` unset) turns off Google only.
 
+### Hardcover series
+
+With `CF_HARDCOVER_TOKEN` set, editors can link a series to Hardcover and review its book list (`hardcover.go`, `/missing/hardcover`). This tells Hardcover what series are in your library.
+
+- **What is sent:** the series' name (and its group's member names), up to 50 ISBNs of its books in the library, and Hardcover ids. Nothing about other books, users or the library. Requests go only to `api.hardcover.app`, with the generic User-Agent.
+- **Only on a click:** one series, or the series of one author that the editor ticks (at most 25). The whole library is never scanned, and nothing runs on page load. Lists are fetched again only when asked; each shows when it was fetched.
+- **Limits:** every request goes through one queue that stays inside Hardcover's free plan: 60 a minute, a burst of 10, and 4,500 of the 5,000 a day (UTC), following Hardcover's own `RateLimit` header. Over a limit, requests wait in `hardcover_jobs` and run when it resets. They are not sent anyway or dropped. The day's use survives restarts.
+- **The token** is a personal Hardcover API token. It is read from the environment and sent only in the `Authorization` header. It is never logged, put in an error, stored in a database or sent to the browser. Give it the `read:catalog` scope only.
+- **Hardcover's data is untrusted.** Titles, names and dates go through `cleanPlaceholderMeta` before becoming placeholders, and are shown through `html/template` or `textContent`. Only links to `https://hardcover.app/` with a checked slug are made. Applying a review sends only ids from the browser. The server rebuilds what it writes from the list it stored. Tagging books goes through the bulk edit queue, in the edit log, like any other edit.
+- **`-no-hardcover`** (or `-no-lookups`, or no token) turns it off.
+
 ## Writes can conflict with Calibre itself
 
 CalibreFast writes to the same `metadata.db` and book folders that the Calibre desktop app uses. Editing in both at once can lose changes or confuse Calibre. **Close Calibre while editing through CalibreFast.**

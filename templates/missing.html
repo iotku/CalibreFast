@@ -31,12 +31,32 @@
                     <span class="ph-title">{{ .Title }}</span>
                     {{ if .Authors }}<span class="ph-sub">{{ .Authors }}</span>{{ end }}
                     {{ if .Date }}<span class="ph-sub">{{ .Date }}</span>{{ end }}
+                    {{ if eq .Source "hardcover" }}<span class="hc-badge">from Hardcover</span>{{ end }}
                 </a>
             </li>
             {{ end }}
         </ul>
         {{ end }}
     </section>
+    {{ with .Hardcover }}
+    <section class="auth-card" id="hc-missing">
+        <h2>Series on Hardcover</h2>
+        {{ template "hc-usage" .Usage }}
+        <p class="auth-muted">Series linked to Hardcover, and what their lists suggest. Link a series from its page (Hardcover in its menu), or an author's series from the author's page.</p>
+        {{ if not .Series }}<p class="auth-muted"><em>No series linked yet.</em></p>{{ end }}
+        <ul class="ph-list">
+            {{ range .Series }}
+            <li class="ph-gap">
+                <a href="{{ .Review }}" class="ph-title">{{ .Name }}</a>
+                <span class="ph-sub">{{ if .Pending }}<strong>{{ .Pending }} suggestion{{ if ne .Pending 1 }}s{{ end }}</strong>{{ else }}nothing to do{{ end }}</span>
+                <span class="ph-sub">fetched {{ .Checked }}{{ if .Stale }} <span class="hc-held">(old)</span>{{ end }}</span>
+            </li>
+            {{ end }}
+        </ul>
+        {{ with .Jobs }}<h3>Waiting for Hardcover</h3>{{ end }}
+        {{ template "hc-jobs" .Jobs }}
+    </section>
+    {{ end }}
     <section class="auth-card">
         <h2>Gaps in series</h2>
         <p class="auth-muted">Numbers below a series' highest that no book or placeholder has. Pick one to make a placeholder for it.</p>
@@ -54,5 +74,6 @@
         </ul>
     </section>
 </main>
+{{ if .Hardcover }}<script type="module" src="{{ asset "hardcover.js" }}"></script>{{ end }}
 </body>
 </html>

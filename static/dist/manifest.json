@@ -13,6 +13,7 @@
   "cover-picker.js": "cover-picker-3YHL7A6H.js",
   "discover.js": "discover-4QG5XCM2.js",
   "groups.js": "groups-X47J6DPV.js",
+  "hardcover.js": "hardcover-2CKCBFBE.js",
   "imports.js": "imports-SKHBOMDE.js",
   "library-edit.css": "library-edit-P6XBC357.css",
   "library-edit.js": "library-edit-5JN7A4MJ.js",
@@ -30,7 +31,7 @@
   "recycle-bin.js": "recycle-bin-HB733WMT.js",
   "shelf-page.js": "shelf-page-74LESUPK.js",
   "shelves.js": "shelves-HZTY4ZZT.js",
-  "style.css": "style-7RP75UUP.css",
+  "style.css": "style-CPVNB5AV.css",
   "sw.js": "sw-A2X4WNOD.js",
   "user.js": "user-22NJGYHX.js"
 }

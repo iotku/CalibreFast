@@ -1,0 +1,104 @@
+<!doctype html>
+<html lang="en">
+<head>
+    <meta charset="utf-8">
+    {{ robotsMeta }}
+    {{ appHead }}
+    <title>{{ .Title }}</title>
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <link rel="stylesheet" href="{{ asset "style.css" }}">
+</head>
+<body class="auth-body">
+{{ $tb := topbar "Active" "missing" "Title" .Series }}
+{{ template "topbar-start" $tb }}
+{{ template "topbar-end" $tb }}
+<!-- A series on Hardcover: its link and the review of its books (hardcover_http.go, web/hardcover.ts) -->
+<main class="auth-main auth-wide hc-page" id="hc-page" data-series="{{ .Series }}" data-linked="{{ .Linked }}">
+    <section class="auth-card">
+        <div class="ph-head">
+            <h1><a href="{{ .SeriesHref }}">{{ .Series }}</a> on Hardcover</h1>
+            <a class="btn-standard" href="/missing">Missing books</a>
+        </div>
+        {{ template "hc-usage" .Usage }}
+        {{ with .Error }}<p class="auth-error">{{ . }}</p>{{ end }}
+        {{ if .Linked }}
+        <p>Linked to
+            {{ if .HCURL }}<a href="{{ .HCURL }}" rel="noopener noreferrer" target="_blank">{{ .HCName }}</a>{{ else }}{{ .HCName }}{{ end }}.
+            Its book list was fetched <strong>{{ .Checked }}</strong>{{ if .Stale }} <span class="hc-held">(it may be out of date)</span>{{ end }}.
+        </p>
+        <div class="ph-actions ph-actions-start">
+            <button type="button" id="hc-refresh" class="btn-standard btn-primary">Fetch the list again</button>
+            <button type="button" id="hc-find" class="btn-standard">Link to another series…</button>
+            <button type="button" id="hc-unlink" class="btn-standard btn-danger">Unlink</button>
+        </div>
+        {{ else }}
+        <p>This series isn't linked to Hardcover yet. Find it there by its name and the ISBNs of its books in the library; pick the right one to fetch its book list.</p>
+        <div class="ph-actions ph-actions-start">
+            <button type="button" id="hc-find" class="btn-standard btn-primary">Find on Hardcover</button>
+        </div>
+        {{ end }}
+        <p id="hc-status" class="auth-notice" role="status" hidden></p>
+        <ul id="hc-candidates" class="ph-list hc-candidates" hidden></ul>
+        {{ template "hc-jobs" .Jobs }}
+    </section>
+
+    {{ if .Linked }}
+    <form id="hc-review" class="hc-review">
+    {{ with .Rows.Missing }}
+    <section class="auth-card">
+        <h2>Not in the library</h2>
+        <p class="auth-muted">Tick the ones to add as placeholders. Novellas and unnumbered books aren't ticked.</p>
+        <ul class="ph-list">{{ range . }}{{ template "hc-row" . }}{{ end }}</ul>
+    </section>
+    {{ end }}
+    {{ with .Rows.Untagged }}
+    <section class="auth-card">
+        <h2>In the library without this series</h2>
+        <p class="auth-muted">Books that look like these, but aren't tagged with the series. Tick the ones to tag (the change goes through the bulk edit queue).</p>
+        <ul class="ph-list">{{ range . }}{{ template "hc-row" . }}{{ end }}</ul>
+    </section>
+    {{ end }}
+    {{ with .Rows.Present }}
+    <section class="auth-card">
+        <h2>In the library</h2>
+        <ul class="ph-list">{{ range . }}{{ template "hc-row" . }}{{ end }}</ul>
+    </section>
+    {{ end }}
+    {{ with .Rows.Extra }}
+    <section class="auth-card">
+        <h2>In the series here, not on Hardcover's list</h2>
+        <ul class="ph-list">{{ range . }}{{ template "hc-row" . }}{{ end }}</ul>
+    </section>
+    {{ end }}
+    <section class="auth-card">
+        <div class="ph-actions ph-actions-start">
+            <button type="submit" class="btn-standard btn-primary">Apply ticked</button>
+            <button type="button" id="hc-dismiss" class="btn-standard">Dismiss ticked</button>
+            {{ if .Review.Hidden }}<button type="button" id="hc-undismiss" class="btn-standard">Show {{ .Review.Hidden }} dismissed</button>{{ end }}
+        </div>
+        <p id="hc-apply-status" class="auth-notice" role="status" hidden></p>
+    </section>
+    </form>
+    {{ end }}
+</main>
+<script type="module" src="{{ asset "hardcover.js" }}"></script>
+</body>
+</html>
+{{ define "hc-row" }}
+<li class="hc-row">
+    {{ if eq .Kind "info" }}<span class="hc-tick"></span>{{ else }}
+    <input type="checkbox" class="hc-tick" data-kind="{{ .Kind }}" data-hc="{{ .HCBookID }}" data-uuid="{{ .UUID }}"
+           aria-label="{{ .Action }}: {{ .Title }}"{{ if .Checked }} checked{{ end }}>
+    {{ end }}
+    <span class="ph-index">{{ with .Position }}#{{ . }}{{ end }}</span>
+    <span class="hc-body">
+        {{ if .BookHref }}<a href="{{ .BookHref }}" class="ph-title">{{ .Title }}</a>{{ else }}<span class="ph-title">{{ .Title }}</span>{{ end }}
+        {{ with .Authors }}<span class="ph-sub">{{ . }}</span>{{ end }}
+        {{ with .Released }}<span class="ph-sub">{{ . }}</span>{{ end }}
+        {{ with .HCURL }}<a class="ph-sub" href="{{ . }}" rel="noopener noreferrer" target="_blank">Hardcover</a>{{ end }}
+        {{ with .Strength }}<span class="hc-badge">{{ . }}</span>{{ end }}
+        {{ with .Note }}<span class="ph-sub hc-note">{{ . }}</span>{{ end }}
+        {{ with .Action }}<span class="ph-sub hc-action">{{ . }}</span>{{ end }}
+    </span>
+</li>
+{{ end }}

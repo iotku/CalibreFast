@@ -68,6 +68,7 @@ func serve(addr string, h http.Handler) {
 		log.Printf("server: %v", err)
 	}
 	stopBulkEdits(time.Now().Add(shutdownTimeout))          // bulk_queue.go
+	stopHardcover(time.Now().Add(5 * time.Second))          // hardcover.go
 	imports.stopItemWriter(time.Now().Add(shutdownTimeout)) // imports_edit_queue.go
 	closeDatabases()
 	log.Println("stopped")

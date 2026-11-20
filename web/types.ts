@@ -429,3 +429,51 @@ export interface FeaturedResponse {
     featured: boolean;
     name: string;
 }
+
+/** The day's use of Hardcover's plan (Go: HardcoverUsage in hardcover_http.go). */
+export interface HardcoverUsage {
+    used: number;
+    limit: number;
+    resetsIn: string;
+    paused?: string;
+}
+
+/** A Hardcover series offered for a library series (Go: hcCandidate). */
+export interface HardcoverCandidate {
+    id: number;
+    name: string;
+    slug?: string;
+    author?: string;
+    booksCount: number;
+    primary?: number;
+    hits?: number;
+    url?: string;
+    sure?: boolean;
+}
+
+/** A queued request to Hardcover (Go: hcJob in hardcover.go). */
+export interface HardcoverJob {
+    id: number;
+    kind: "candidates" | "link" | "refresh" | "batch";
+    series: string;
+    batch?: string;
+    state: "queued" | "held" | "running" | "done" | "failed";
+    notBefore?: number;
+    error?: string;
+    /** candidates: {candidates}; link, refresh, batch: hcLinkResult. */
+    result?: {
+        candidates?: HardcoverCandidate[];
+        linked?: boolean;
+        hcName?: string;
+        books?: number;
+        review?: string;
+        needsChoice?: boolean;
+    };
+}
+
+/** POST /api/hardcover/{candidates,link,refresh} (Go: hcJobAnswer). */
+export interface HardcoverJobAnswer {
+    job: HardcoverJob;
+    until?: string;
+    usage: HardcoverUsage;
+}
