@@ -154,14 +154,15 @@ let openingPage: number | null = null;
 
 const activity = preview
     ? null
-    : createActivityTracker(sync.user, uuid, (n) => chrome.toast(`Daily goal reached: ${n} pages read today 🎉`));
+    : createActivityTracker(sync.user, uuid, "pdf", (n) => chrome.toast(`Daily goal reached: ${n} pages read today 🎉`));
 /** The page shown last, and whether the move to the next one is a turn. */
 let lastShown: number | null = null;
 let turning = false;
 
 function countPages(first: number, last: number): void {
-    // Forward by a turn: the pages now on screen that come after those before.
-    if (turning && lastShown !== null && first > lastShown && first - lastShown <= 5) activity?.pagesRead(last - lastShown);
+    // Forward by a turn: the pages now on screen that come after those before
+    // (each counts once, however often it's turned to).
+    if (turning && lastShown !== null && first > lastShown && first - lastShown <= 5) activity?.pagesRead(lastShown + 1, last);
     else activity?.touch();
     lastShown = last;
     turning = false;

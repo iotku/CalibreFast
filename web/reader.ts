@@ -480,7 +480,7 @@ function screenInChapter(loc: EpubJS.Location): string {
 
 const activity = preview
     ? null
-    : createActivityTracker(sync.user, uuid, (n) => chrome.toast(`Daily goal reached: ${n} pages read today 🎉`));
+    : createActivityTracker(sync.user, uuid, format, (n) => chrome.toast(`Daily goal reached: ${n} pages read today 🎉`));
 /** The page the reader was last on (pageAt); null: unknown, or after a jump. */
 let lastPage: number | null = null;
 /** How many pages that screen showed: a turn moves on about that many. */
@@ -499,14 +499,17 @@ rendition.on("rendered", (_section, view) => {
     }
 });
 
-function countPages(cfi: string, endCfi: string | null): void {
+function countPages(cfi: string, endCfi: string | null, atEnd: boolean): void {
     const n = pageAt(cfi)?.n ?? null;
-    // A screen's worth on at most (a wide screen shows several pages), or a
-    // few for scrolling.
-    const most = Math.max(5, lastSpan + 1);
-    if (!jumped && n !== null && lastPage !== null && n > lastPage && n - lastPage <= most) activity?.pagesRead(n - lastPage);
-    else activity?.touch();
     const e = endCfi ? (pageAt(endCfi)?.n ?? null) : null;
+    // Reading on: a screen's worth at most (a wide screen shows several
+    // pages), or a few for scrolling. More than that skipped pages unread.
+    const most = Math.max(5, lastSpan + 1);
+    if (!jumped && n !== null && lastPage !== null && n > lastPage && n - lastPage <= most) {
+        // The pages left behind were read; the one now at the top isn't done yet,
+        // unless this is the end of the book.
+        activity?.pagesRead(lastPage, atEnd && e !== null && e >= n ? e : n - 1);
+    } else activity?.touch();
     lastSpan = n !== null && e !== null && e >= n ? Math.min(20, e - n + 1) : 1;
     lastPage = n;
     jumped = false;
@@ -518,7 +521,7 @@ rendition.on("relocated", (loc) => {
     currentEndCfi = loc.end?.cfi ?? null;
     currentScreen = screenInChapter(loc);
     currentPercent = percentFor(loc);
-    countPages(currentCfi, currentEndCfi);
+    countPages(currentCfi, currentEndCfi, !!loc.atEnd);
     showPosition();
     markCurrentChapter();
     if (openingCfi === null) {
