@@ -2759,7 +2759,7 @@ body.book-standalone {
     font-size: 0.85rem;
     color: var(--text-secondary);
     text-decoration: none;
-    border-radius: var(--radius-small, 4px);
+    border-radius: var(--radius-small);
 }
 
 .agg-letters a:hover,
@@ -3051,7 +3051,7 @@ body.book-standalone {
     padding: 3px 8px;
     color: var(--text-primary, #eee);
     text-decoration: none;
-    border-radius: var(--radius-small, 4px);
+    border-radius: var(--radius-small);
     transition: background-color 0.15s, color 0.15s;
 }
 
@@ -4799,7 +4799,7 @@ label.group-row span {
     padding: 0.5rem 0.75rem 0.5rem 1.75rem;
     background: var(--bg-primary);
     border: 1px solid var(--border-light);
-    border-radius: var(--radius-small, 4px);
+    border-radius: var(--radius-small);
     font-size: 0.9rem;
     overflow-wrap: anywhere;
 }
@@ -6126,4 +6126,61 @@ body.selecting .book.selected .cover-wrapper {
 }
 .stats-ring-done {
     stroke: var(--status-finished);
+}
+/* Before /api/me/stats answers: the last card's shape (discover.ts), its
+   words and marks blanked to bars, so the real one takes the same space. */
+.greeting-stats-skeleton,
+.greeting-stats-skeleton:hover {
+    pointer-events: none;
+    border-color: var(--border-light);
+    background: var(--bg-surface);
+}
+.greeting-stats-skeleton strong,
+.greeting-stats-skeleton .greeting-stats-text > span,
+.greeting-stats-skeleton .greeting-stat > span {
+    color: transparent;
+    background: var(--heat-0);
+    border-radius: var(--radius-small);
+    width: fit-content;
+}
+.greeting-stats-skeleton .stats-ring-fill {
+    visibility: hidden;
+}
+.greeting-stats-skeleton .stats-heat-cell {
+    fill: var(--heat-0);
+}
+@media (prefers-reduced-motion: no-preference) {
+    .greeting-stats-skeleton strong,
+    .greeting-stats-skeleton .greeting-stats-text > span,
+    .greeting-stats-skeleton .greeting-stat > span,
+    .greeting-stats-skeleton .stats-strip {
+        animation: stats-skeleton-pulse 1.4s ease-in-out infinite;
+    }
+    /* The answer, where the skeleton was: words fade in, the ring winds
+       round to today's pages, the last two weeks light up left to right. */
+    .greeting-stats-reveal strong,
+    .greeting-stats-reveal .greeting-stats-text > span,
+    .greeting-stats-reveal .greeting-stat > span {
+        animation: stats-reveal-text 0.4s ease-out both;
+    }
+    .greeting-stats-reveal .stats-ring-fill {
+        animation: stats-reveal-ring 0.7s cubic-bezier(0.3, 0.7, 0.3, 1) 0.1s both;
+    }
+    .greeting-stats-reveal .stats-heat-cell {
+        animation: stats-reveal-cell 0.3s ease-out both;
+        animation-delay: calc(var(--i, 0) * 25ms + 0.1s);
+    }
+}
+@keyframes stats-skeleton-pulse {
+    50% { opacity: 0.55; }
+}
+@keyframes stats-reveal-text {
+    from { opacity: 0; transform: translateY(3px); }
+}
+@keyframes stats-reveal-ring {
+    from { stroke-dashoffset: var(--len, 0); }
+    to { stroke-dashoffset: 0; }
+}
+@keyframes stats-reveal-cell {
+    from { opacity: 0; }
 }
