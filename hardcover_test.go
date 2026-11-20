@@ -45,7 +45,7 @@ func fakeHardcoverAPI(t *testing.T) *httptest.Server {
 		case "EditionsByISBN":
 			io.WriteString(w, `{"data":{"editions":[]}}`)
 		case "SeriesBooks":
-			io.WriteString(w, `{"data":{"series":[{"id":77,"name":"Other","slug":"other","books_count":5,"book_series":[
+			io.WriteString(w, `{"data":{"series":[{"id":77,"name":"Other","slug":"other","books_count":5,"description":"Hardcover's <script>alert(1)</script>tale & more","book_series":[
 				{"position":1,"details":"1","book":{"id":1,"slug":"other-one","title":"Other One"}},
 				{"position":2,"details":"2","book":{"id":2,"slug":"other-two","title":"Other Two"}},
 				{"position":3,"details":"3","book":{"id":3,"slug":"other-three","title":"Other Three","release_date":"2010-03-04"}},
@@ -91,6 +91,7 @@ func hardcoverMux() *http.ServeMux {
 	mux.HandleFunc("DELETE /api/hardcover/jobs/{id}", wrap(hardcoverCancelJobHandler))
 	mux.HandleFunc("POST /api/hardcover/apply", wrap(hardcoverApplyHandler))
 	mux.HandleFunc("GET /missing", requireEditor(missingPageHandler))
+	mux.HandleFunc("GET /series/", filteredPageHandler(categoryByKey("series")))
 	return mux
 }
 
@@ -189,6 +190,15 @@ func TestHardcoverSeries(t *testing.T) {
 	l, _ := hcLinkFor("other")
 	if l == nil || l.HCID != 77 || l.Snapshot == nil || len(l.Snapshot.Entries) != 5 || l.CheckedAt != clock.now().Unix() {
 		t.Fatalf("link %+v", l)
+	}
+	// The series' page shows Hardcover's description (plain text, escaped)
+	// while it has none of its own.
+	if l.Snapshot.Description != "Hardcover's alert(1)tale & more" {
+		t.Errorf("description %q", l.Snapshot.Description)
+	}
+	if page := string(do(admin, "GET", "/series/Other", "", http.StatusOK)); !strings.Contains(page, "Hardcover&#39;s alert(1)tale &amp; more") ||
+		!strings.Contains(page, `From <a href="https://hardcover.app/series/other"`) || strings.Contains(page, "<script>alert") {
+		t.Errorf("series page lacks Hardcover's description")
 	}
 	page := string(do(admin, "GET", "/missing/hardcover?series=Other", "", http.StatusOK))
 	for _, want := range []string{"Other Three", "Other Novella", "Set series to Other #4", "https://hardcover.app/books/other-three",

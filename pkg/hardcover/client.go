@@ -165,6 +165,7 @@ var (
     id
     name
     slug
+    description
     books_count
     author { name }
     book_series(
@@ -570,9 +571,12 @@ func (e *Entry) IDs() []int64 { return append([]int64{e.BookID}, e.AltIDs...) }
 // its parts' books together; Series is the part with the most books.
 type SeriesDetail struct {
 	Series
-	Parts   []Series  `json:"parts,omitempty"`
-	Entries []Entry   `json:"entries"`
-	Fetched time.Time `json:"fetched"`
+	// Description: Hardcover's, as plain text (the biggest part's that
+	// has one); "" for none.
+	Description string    `json:"description,omitempty"`
+	Parts       []Series  `json:"parts,omitempty"`
+	Entries     []Entry   `json:"entries"`
+	Fetched     time.Time `json:"fetched"`
 }
 
 // AllParts is the series' parts (the series itself when it has one).
@@ -590,11 +594,12 @@ var ErrNoSeries = errors.New("Hardcover has no such series (it may have been mer
 const maxParts = 60
 
 type seriesBooksRow struct {
-	ID         flexInt `json:"id"`
-	Name       string  `json:"name"`
-	Slug       string  `json:"slug"`
-	BooksCount int     `json:"books_count"`
-	Author     *struct {
+	ID          flexInt `json:"id"`
+	Name        string  `json:"name"`
+	Slug        string  `json:"slug"`
+	BooksCount  int     `json:"books_count"`
+	Description *string `json:"description"`
+	Author      *struct {
 		Name string `json:"name"`
 	} `json:"author"`
 	BookSeries []struct {
@@ -644,6 +649,9 @@ func (c *Client) SeriesBooks(ctx context.Context, ids ...int64) (*SeriesDetail, 
 			part.Author = s.Author.Name
 		}
 		d.Parts = append(d.Parts, part)
+		if d.Description == "" && s.Description != nil {
+			d.Description = cleanBio(*s.Description)
+		}
 		for _, bs := range s.BookSeries {
 			b := bs.Book
 			if b == nil || b.ID <= 0 || strings.TrimSpace(b.Title) == "" {
