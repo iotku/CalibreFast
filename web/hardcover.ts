@@ -192,6 +192,41 @@ function ticked(): HTMLInputElement[] {
 
 const idOf = (box: HTMLInputElement): number => Number(box.dataset["hc"] ?? "0");
 
+// A row's own button (Not a match, Not in this series, Restore…) reloads
+// the page; the ticks the editor changed but hasn't applied are kept
+// across it.
+const ticksKey = `hc-ticks:${series}`;
+const boxKey = (b: HTMLInputElement): string => `${b.dataset["kind"] ?? ""}|${b.dataset["hc"] ?? ""}|${b.dataset["uuid"] ?? ""}`;
+
+function reloadKeepingTicks(): void {
+    if (review) {
+        const boxes: Record<string, boolean> = {};
+        for (const b of review.querySelectorAll<HTMLInputElement>("input.hc-tick")) boxes[boxKey(b)] = b.checked;
+        try {
+            sessionStorage.setItem(ticksKey, JSON.stringify({ at: Date.now(), boxes }));
+        } catch {
+            // No storage: the ticks start over.
+        }
+    }
+    location.reload();
+}
+
+if (review) {
+    try {
+        const saved = sessionStorage.getItem(ticksKey);
+        sessionStorage.removeItem(ticksKey);
+        const { at, boxes } = saved ? (JSON.parse(saved) as { at: number; boxes: Record<string, boolean> }) : { at: 0, boxes: {} };
+        if (Date.now() - at < 60_000) {
+            for (const b of review.querySelectorAll<HTMLInputElement>("input.hc-tick")) {
+                const was = boxes[boxKey(b)];
+                if (typeof was === "boolean") b.checked = was;
+            }
+        }
+    } catch {
+        // Nothing kept.
+    }
+}
+
 review?.addEventListener("submit", (e) => {
     e.preventDefault();
     const boxes = ticked();
@@ -237,7 +272,7 @@ maybeId("hc-undismiss")?.addEventListener("click", () => {
         .catch((err: unknown) => sayApply(errorMessage(err), true));
 });
 
-// "Not a match, create placeholder": the library book isn't this one.
+// "Not a match": the library book isn't this one; a placeholder is made: the library book isn't this one.
 review?.addEventListener("click", (e) => {
     const btn = (e.target as Element).closest<HTMLButtonElement>("button[data-notmatch]");
     if (!btn) return;
@@ -249,8 +284,8 @@ review?.addEventListener("click", (e) => {
         .then((res) => {
             if (res.error) {
                 sayApply(`Not matched again, but no placeholder was made: ${res.error}`, true);
-                setTimeout(() => location.reload(), 2500);
-            } else location.reload();
+                setTimeout(() => reloadKeepingTicks(), 2500);
+            } else reloadKeepingTicks();
         })
         .catch((err: unknown) => {
             sayApply(errorMessage(err), true);
@@ -267,7 +302,7 @@ review?.addEventListener("click", (e) => {
     if (!(hcBookId > 0) || !uuid) return;
     btn.disabled = true;
     api("POST", "/api/hardcover/undismiss", { series, ids: [], notMatch: [{ uuid, hcBookId }] })
-        .then(() => location.reload())
+        .then(() => reloadKeepingTicks())
         .catch((err: unknown) => {
             sayApply(errorMessage(err), true);
             btn.disabled = false;
@@ -286,7 +321,7 @@ review?.addEventListener("click", (e) => {
         dismiss !== undefined
             ? api("POST", "/api/hardcover/apply", { series, placeholders: [], tag: [], dismiss: [id] })
             : api("POST", "/api/hardcover/undismiss", { series, ids: [id] });
-    done.then(() => location.reload()).catch((err: unknown) => {
+    done.then(() => reloadKeepingTicks()).catch((err: unknown) => {
         sayApply(errorMessage(err), true);
         btn.disabled = false;
     });

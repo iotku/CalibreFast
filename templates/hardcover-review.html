@@ -135,7 +135,7 @@
     </span>
     {{ if or .Dismiss .NotMatch }}<span class="hc-row-btns">
     {{ if .NotMatch }}<button type="button" class="btn-standard hc-row-btn" data-notmatch="{{ .HCBookID }}" data-uuid="{{ .UUID }}"
-            title="The library book isn't this one: never match them again, and add this one as a placeholder in the series">Not a match, create placeholder</button>{{ end }}
+            title="The library book isn't this one: never match them again, and add this one as a placeholder in the series">Not a match</button>{{ end }}
     {{ if .Dismiss }}<button type="button" class="btn-standard hc-row-btn" data-dismiss="{{ .HCBookID }}">{{ if eq .Kind "placeholder" }}Not in this series{{ else }}Dismiss{{ end }}</button>{{ end }}
     </span>{{ end }}
     {{ if .Refused }}<button type="button" class="btn-standard hc-row-btn" data-unrefuse="{{ .HCBookID }}" data-uuid="{{ .UUID }}"

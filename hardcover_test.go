@@ -304,7 +304,7 @@ func TestHardcoverSeries(t *testing.T) {
 	}
 }
 
-// "Not a match, create placeholder": a library book the review matched
+// "Not a match": a library book the review matched
 // by title alone isn't the Hardcover book. It's never matched to it
 // again, and the Hardcover book gets a placeholder in the series.
 func TestHardcoverNotAMatch(t *testing.T) {

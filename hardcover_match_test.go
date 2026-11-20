@@ -204,6 +204,10 @@ func TestHCReviewRowsLib(t *testing.T) {
 	if u.Lib == nil || u.Lib.Title != aaron.Title || u.Lib.Authors != "Howard Bryant" || u.Lib.Href != "/book/get/u1" || u.BookHref != "" {
 		t.Errorf("untagged row %+v lib %+v", u, u.Lib)
 	}
+	// "Not a match" is its only button: a Dismiss there would say the same.
+	if !u.NotMatch || u.Dismiss {
+		t.Errorf("untagged row buttons: not a match %v, dismiss %v", u.NotMatch, u.Dismiss)
+	}
 	if p := rows.Present[0]; p.Lib != nil || p.BookHref != "/book/get/u2" {
 		t.Errorf("same book: %+v", p)
 	}
