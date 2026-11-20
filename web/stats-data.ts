@@ -46,40 +46,71 @@ export function duration(seconds: number): string {
     return h ? `${h} h${m % 60 ? ` ${m % 60} min` : ""}` : `${m} min`;
 }
 
+/** The local day n days before day (YYYY-MM-DD). */
+function daysBefore(day: string, n: number): string {
+    const [y, m, d] = day.split("-").map(Number);
+    return localDay(new Date(y!, m! - 1, d! - n));
+}
+
 /**
- * The home page's card: a ring for today's pages against the daily goal (a
- * book without one), the streak, and a link to the stats page. Null when
- * there's nothing to show yet (no reading recorded and no goal).
+ * The home page's summary, beside the quote of the day: today's pages
+ * (a ring against the daily goal), the streak, the last 7 days, the books
+ * finished this year (against the yearly goal), and the last two weeks as
+ * a strip of the stats page's heatmap. A link to the stats page. Null
+ * when the user doesn't keep stats.
  */
-export function statsCard(s: Stats): HTMLElement | null {
-    if (!s.tracking || (s.totals.pages === 0 && s.totals.seconds === 0 && !s.goal.daily_pages && !s.goal.yearly_books)) return null;
+export function statsSummary(s: Stats): HTMLElement | null {
+    if (!s.tracking) return null;
     const goal = s.goal.daily_pages;
     const R = 15;
     const C = 2 * Math.PI * R;
-    const done = goal ? Math.min(1, s.today_pages / goal) : 0;
+    const done = goal ? Math.min(1, s.today_pages / goal) : s.today_pages > 0 ? 1 : 0;
     const ring = svgEl(
         "svg",
-        { viewBox: "0 0 36 36", width: 36, height: 36, class: "stats-ring", "aria-hidden": "true" },
+        { viewBox: "0 0 36 36", width: 40, height: 40, class: "stats-ring", "aria-hidden": "true" },
         svgEl("circle", { cx: 18, cy: 18, r: R, class: "stats-ring-track" }),
         svgEl("circle", {
             cx: 18,
             cy: 18,
             r: R,
-            class: `stats-ring-fill${done >= 1 ? " stats-ring-done" : ""}`,
+            class: `stats-ring-fill${goal && done >= 1 ? " stats-ring-done" : ""}`,
             "stroke-dasharray": `${(done * C).toFixed(1)} ${C.toFixed(1)}`,
             transform: "rotate(-90 18 18)",
         }),
     );
     const today = goal
         ? s.today_pages >= goal
-            ? `Daily goal reached: ${plural(s.today_pages, "page")} today`
+            ? `Daily goal reached: ${plural(s.today_pages, "page")}`
             : `${s.today_pages} of ${plural(goal, "page")} today`
         : `${plural(s.today_pages, "page")} today`;
-    const streak = s.streak.current ? `🔥 ${plural(s.streak.current, "day")} in a row` : "Read today to start a streak";
-    return el(
+    const streak = s.streak.current ? `🔥 ${plural(s.streak.current, "day")} in a row` : s.streak.longest ? `Longest streak: ${plural(s.streak.longest, "day")}` : "Read a page to start a streak";
+
+    // The last 14 days, oldest first, shaded like the heatmap (by pages, against the busiest of them).
+    const byDay = new Map(s.days.map((d) => [d.day, d]));
+    const recent = Array.from({ length: 14 }, (_, i) => daysBefore(s.today, 13 - i));
+    const most = Math.max(1, ...recent.map((d) => byDay.get(d)?.pages ?? 0));
+    const strip = svgEl("svg", { viewBox: `0 0 ${14 * 12 - 2} 10`, class: "stats-strip", "aria-hidden": "true" });
+    recent.forEach((day, i) => {
+        const p = byDay.get(day)?.pages ?? 0;
+        const level = p <= 0 ? 0 : Math.min(4, 1 + Math.floor(((p - 1) / most) * 4));
+        strip.append(svgEl("rect", { x: i * 12, y: 0, width: 10, height: 10, rx: 2, class: `stats-heat-cell stats-heat-${level}` }));
+    });
+
+    const yearly = s.goal.yearly_books;
+    const stat = (value: string, label: string): HTMLElement =>
+        el("span", { className: "greeting-stat" }, el("strong", {}, value), el("span", {}, label));
+    const card = el(
         "a",
         { className: "greeting-stats", href: "/me/stats" },
-        ring,
-        el("span", { className: "greeting-stats-text" }, el("strong", {}, today), el("span", {}, streak)),
+        el("span", { className: "greeting-stats-today" }, ring, el("span", { className: "greeting-stats-text" }, el("strong", {}, today), el("span", {}, streak))),
+        el(
+            "span",
+            { className: "greeting-stats-row" },
+            stat(plural(s.week_pages, "page"), "last 7 days"),
+            stat(yearly ? `${s.year.finished} / ${yearly}` : String(s.year.finished), `${s.year.finished === 1 && !yearly ? "book" : "books"} in ${s.year.year}`),
+        ),
+        strip,
     );
+    card.setAttribute("aria-label", `Reading stats: ${today}. ${streak}. ${s.week_pages} pages in the last 7 days, ${s.year.finished} books finished this year.`);
+    return card;
 }

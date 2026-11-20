@@ -28,7 +28,8 @@ import (
 // can't be). Keep in step with web/discover.ts.
 // "wanted" is the "On deck / Saved for later" row (On deck was a row of its
 // own; a layout that hid it doesn't hide the combined one).
-var homeSections = []string{"greeting", "wanted", "recommended", "shuffle", "latest", "tags"}
+// "stats" is the reading stats summary in the greeting (stats-data.ts).
+var homeSections = []string{"greeting", "stats", "wanted", "recommended", "shuffle", "latest", "tags"}
 
 const maxLayoutID = 300 // bytes: "t:" and a tag name (or "r:" and a series')
 
