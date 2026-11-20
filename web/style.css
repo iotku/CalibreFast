@@ -2120,7 +2120,8 @@ body.book-standalone {
     position: fixed;
     inset: 0;
     background: var(--bg-modal-overlay);
-    z-index: 1000;
+    /* Above the top bar (1000): with a tie, only DOM order decides. */
+    z-index: 1010;
     align-items: center;
     justify-content: center;
     /* Clear the top bar; otherwise the popup may run to near the bottom. */
@@ -2144,7 +2145,7 @@ body.book-standalone {
     position: fixed;
     top: 50%;
     transform: translateY(-50%);
-    z-index: 1001;
+    z-index: 1011;
     width: 44px;
     height: 44px;
     display: flex;
@@ -2237,7 +2238,7 @@ body.book-standalone {
     top: max(1rem, env(safe-area-inset-top));
     left: 50%;
     transform: translateX(-50%);
-    z-index: 1002;
+    z-index: 1012;
     padding: 8px 12px;
     border-radius: 999px;
     background: rgba(20, 20, 20, 0.85);
@@ -2389,7 +2390,7 @@ body.book-standalone {
         position: fixed;
         top: max(0.75rem, env(safe-area-inset-top));
         right: max(0.75rem, env(safe-area-inset-right));
-        z-index: 1001;
+        z-index: 1011;
         width: 44px;
         height: 44px;
         font-size: 1.3rem;
