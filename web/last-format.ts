@@ -18,6 +18,7 @@
  */
 
 import type { KeptFormat } from "./book-cache.js";
+import { readerFormat } from "./formats.js";
 import { lastKnownUser, localKey, type Owner } from "./local-keys.js";
 import { formatPref } from "./prefs.js";
 import { cachedMarks } from "./reading.js";
@@ -71,7 +72,6 @@ export function preferredFormat(uuid: string, has: readonly string[], owner: Own
     if (newest) return newest.f;
 
     const resume = cachedMarks().resume.get(uuid);
-    if (resume?.startsWith("/read-pdf?")) return "pdf";
-    if (resume?.startsWith("/read?")) return "epub";
-    return null;
+    const f = resume ? readerFormat(resume) : null;
+    return f === "epub" || f === "pdf" ? (available.includes(f) ? f : null) : null;
 }

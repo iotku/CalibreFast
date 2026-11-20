@@ -2666,12 +2666,29 @@ body.book-standalone {
     text-decoration: none;
 }
 
-/* A series complete on Hardcover (hcStatuses) */
+/* How much of a series is here (seriesStatuses): ✓ when all of it, else a ring */
 .agg-complete {
     margin-left: 0.3em;
     font-size: 0.8em;
     font-weight: 700;
     color: #6fae6f;
+}
+
+.agg-ring {
+    width: 0.75em;
+    height: 0.75em;
+    margin-left: 0.35em;
+    vertical-align: -0.05em;
+    flex: none;
+}
+
+.agg-ring-track {
+    stroke: currentColor;
+    opacity: 0.3;
+}
+
+.agg-ring-fill {
+    stroke: #6fae6f;
 }
 
 .agg-header-status {
@@ -2919,7 +2936,8 @@ body.book-standalone {
     padding: 0 var(--page-padding, 16px);
 }
 
-.agg-header + #books {
+.agg-header + #books,
+.agg-header-wrap:has(> .agg-header) + #books {
     margin-top: 0;
 }
 
@@ -2948,8 +2966,61 @@ body.book-standalone {
     margin: 0;
     line-height: 1.5;
     color: var(--text-secondary);
-    white-space: pre-line;
     overflow-wrap: anywhere;
+    max-width: 75ch;
+}
+
+.agg-header-desc p {
+    margin: 0;
+    white-space: pre-line;
+}
+
+.agg-header-more > summary {
+    cursor: pointer;
+    color: var(--text-primary, #eee);
+    font-size: 0.9em;
+    margin-top: 0.35rem;
+    white-space: normal;
+}
+
+.agg-header-more[open] > summary {
+    margin-bottom: 0.5rem;
+}
+
+/* An author's years and where their profile came from (hardcover_authors.go) */
+.agg-header-years {
+    margin: 0;
+    color: var(--text-secondary);
+    font-variant-numeric: tabular-nums;
+}
+
+.agg-header-source {
+    margin: 0;
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 0.75rem;
+    font-size: 0.85em;
+    color: var(--text-secondary);
+}
+
+.agg-header-source a {
+    color: inherit;
+}
+
+.agg-header-source button {
+    background: none;
+    border: none;
+    padding: 0;
+    font: inherit;
+    color: inherit;
+    text-decoration: underline;
+    cursor: pointer;
+}
+
+.agg-header-source button:disabled {
+    cursor: progress;
+    opacity: 0.6;
 }
 
 @media (max-width: 640px) {

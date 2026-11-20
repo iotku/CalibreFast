@@ -22,7 +22,8 @@ import { isServerDown, isUnreachable, onServerBack, serverDown } from "./server-
 import { SYNC_EVENT } from "./sync-state.js";
 import type { MeResponse } from "./types.js";
 
-export type BookFormat = "epub" | "pdf";
+export type { BookFormat } from "./formats.js";
+import type { BookFormat } from "./formats.js";
 
 /** Position as kept locally. */
 interface LocalProgress {

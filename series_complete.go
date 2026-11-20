@@ -18,6 +18,7 @@ package main
 import (
 	"database/sql"
 	"errors"
+	"fmt"
 	"log"
 	"math"
 	"net/http"
@@ -59,6 +60,41 @@ func (s seriesStatus) Label() string {
 		return "checked by an editor"
 	}
 	return "on Hardcover's list"
+}
+
+// Coverage: how many of the series' books are here, for its progress
+// ring. By number, by count of books, or (both given) whichever is
+// further from complete. of is 0 when the series isn't counted at all.
+func (s seriesStatus) Coverage() (have, of int) {
+	if s.Numbered > 0 {
+		have, of = s.Have, s.Numbered
+	}
+	if s.Books > 0 && (of == 0 || s.BooksHave*of < have*s.Books) {
+		have, of = s.BooksHave, s.Books
+	}
+	return min(have, of), of
+}
+
+// Percent: Coverage as 0–100, 100 only when Complete, so a nearly full
+// ring never reads as done.
+func (s seriesStatus) Percent() int {
+	if s.Complete {
+		return 100
+	}
+	have, of := s.Coverage()
+	if of == 0 {
+		return 0
+	}
+	return min(99, have*100/of)
+}
+
+// CoverageText: "3 of 7 books", what the ring says to screen readers.
+func (s seriesStatus) CoverageText() string {
+	have, of := s.Coverage()
+	if of == 1 {
+		return fmt.Sprintf("%d of 1 book", have)
+	}
+	return fmt.Sprintf("%d of %d books", have, of)
 }
 
 // seriesVerifiedMax: more numbered books than this is a typo.
@@ -129,6 +165,16 @@ func seriesStatuses() map[string]seriesStatus {
 func seriesStatusOf(name string) (seriesStatus, bool) {
 	st, ok := seriesStatuses()[strings.ToLower(name)]
 	return st, ok
+}
+
+// statusPtr: the named series' status in st, nil when it has none or
+// isn't counted (so has nothing to show).
+func statusPtr(st map[string]seriesStatus, name string) *seriesStatus {
+	s, ok := st[strings.ToLower(name)]
+	if _, of := s.Coverage(); !ok || (of == 0 && !s.Complete) {
+		return nil
+	}
+	return &s
 }
 
 // hcStatusOf: the series' share of its Hardcover list, whatever an editor

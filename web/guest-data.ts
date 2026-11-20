@@ -8,8 +8,10 @@
  * account already has as such, and they're cleared.
  */
 
+import type { BookFormat } from "./formats.js";
+
 export interface GuestPosition {
-    format: "epub" | "pdf";
+    format: BookFormat;
     position: string;
     percent: number;
     updated_at: number;
@@ -22,7 +24,7 @@ export interface GuestBook {
     bookmarks: Record<string, unknown>[]; // reading-sync.ts's Bookmark
 }
 
-const PROGRESS = /^cf-progress-(.+)-(epub|pdf)$/;
+const PROGRESS = /^cf-progress-(.+)-(epub|pdf|azw3|azw|mobi)$/;
 const ANNOTATIONS = /^cf-annotations-(.+)$/;
 const BOOKMARKS = /^cf-bookmarks-(?!deleted-)(.+)$/;
 
@@ -56,7 +58,7 @@ export function collectGuestData(): GuestBook[] {
             const v = read(key) as { position?: string; percent?: number; updatedAt?: number } | null;
             if (v?.position) {
                 book(m[1]!).positions.push({
-                    format: m[2] as "epub" | "pdf",
+                    format: m[2] as BookFormat,
                     position: String(v.position),
                     percent: Number(v.percent) || 0,
                     updated_at: Number(v.updatedAt) || 0,

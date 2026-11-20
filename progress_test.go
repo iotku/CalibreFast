@@ -83,7 +83,7 @@ func TestProgressSync(t *testing.T) {
 	if got.Progress != nil {
 		t.Fatal("pdf progress should be empty")
 	}
-	if rec := call(t, mux, u, "PUT", "/api/me/progress/"+b, `{"format":"mobi","position":"x"}`); rec.Code != 400 {
+	if rec := call(t, mux, u, "PUT", "/api/me/progress/"+b, `{"format":"djvu","position":"x"}`); rec.Code != 400 {
 		t.Fatalf("bad format: %d", rec.Code)
 	}
 }

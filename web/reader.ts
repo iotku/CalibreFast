@@ -26,6 +26,13 @@ const target: ReaderBook = found;
 const uuid: string = target.id;
 /** Opened from the metadata editor: nothing is kept or saved (reader-preview.ts). */
 const preview = target.preview;
+/**
+ * "epub", or a Kindle format read converted to EPUB (formats.ts): places are
+ * saved under it. A converted book isn't kept in this browser (there is no
+ * store for it): it is read from the server each time, as with "never keep".
+ */
+const format = target.format;
+const keeps = !preview && format === "epub";
 
 const container = byId("reader-container");
 const settings = getSettings;
@@ -53,14 +60,16 @@ if (!preview) registerWorker();
 // Background book downloads in other tabs wait while this book loads (page-busy.ts).
 const releaseDownloads = preview ? (): void => {} : holdBackgroundDownloads();
 // The top bar's sync button: saved offline, and synced with the server (sync-indicator.ts).
-const syncButton = preview ? null : createSyncIndicator(uuid, "epub");
-const downloadUrl = target.file("epub");
+const syncButton = keeps ? createSyncIndicator(uuid, "epub") : null;
+const downloadUrl = target.file(format);
 /** Below this the whole file is fetched at once: it usually beats the ranges. */
 const SMALL_BOOK = 3 << 20;
 
 /** The whole .epub, streamed; onProgress gets the text to show, and the fraction (null: size unknown). */
 async function downloadBook(onProgress?: (text: string, fraction: number | null) => void): Promise<{ buf: Uint8Array; lastModified: string }> {
     const res = await fetch(downloadUrl, { credentials: "same-origin" });
+    // 422: a Kindle book that can't be converted (DRM); the server says which (convert_read.go).
+    if (res.status === 422) throw new Error((await res.text()).trim().slice(0, 200));
     if (!res.ok || !res.body) throw new Error(`HTTP ${res.status}`);
     const total = Number(res.headers.get("content-length")) || 0;
     const chunks: Uint8Array[] = [];
@@ -88,7 +97,7 @@ let book: EpubJS.Book;
 /** A file's path inside the book from a URL epub.js made. */
 let pathOf = (url: string): string => decodeURIComponent(url.replace(/^\/+/, "").split("#")[0] ?? "");
 try {
-    cached = preview ? null : await getBook(uuid).catch(() => null);
+    cached = keeps ? await getBook(uuid).catch(() => null) : null;
     if (cached && canInflate) {
         source = openBuffer(new Uint8Array(await cached.bytes.arrayBuffer()), cached.lastModified);
     } else if (canInflate) {
@@ -121,7 +130,7 @@ try {
 /** Keep the whole file in this browser, with the book's title for the offline page. */
 async function keepCopy(buf: Uint8Array, lastModified: string, locations?: string): Promise<void> {
     // The book's own choice (offline-control.ts), then the device's (prefs.ts, retention.ts).
-    if (preview || !shouldKeep(uuid, buf.length)) return;
+    if (!keeps || !shouldKeep(uuid, buf.length)) return;
     await book.ready;
     const meta = book.packaging?.metadata;
     await storeBook({
@@ -385,8 +394,12 @@ const bookTitle = (): string => document.getElementById("book-title")?.textConte
 
 const sync = preview
     ? previewSync(chrome.setStatus)
-    : await createReadingSync(uuid, "epub", { legacyKey: `reader-cfi-${uuid}`, onStatus: chrome.setStatus, title: bookTitle });
-if (!preview) noteFormatOpened(sync.user, uuid, "epub"); // the book's cover opens this format next time (last-format.ts)
+    : await createReadingSync(uuid, format, {
+          legacyKey: format === "epub" ? `reader-cfi-${uuid}` : undefined,
+          onStatus: chrome.setStatus,
+          title: bookTitle,
+      });
+if (keeps) noteFormatOpened(sync.user, uuid, "epub"); // the book's cover opens this format next time (last-format.ts)
 // Just signed in from this page: what was read here signed out goes to the
 // account first, so the place below is the synced one.
 if (sync.signedIn && !preview) await syncGuestBook(uuid, chrome.setStatus);
@@ -753,7 +766,7 @@ void book.ready
         await wholeDone;
         await book.locations.generate(CHARS_PER_PAGE);
         const saved = book.locations.save();
-        if (!preview) void updateBook(uuid, "epub", { locations: saved }).catch(() => {});
+        if (keeps) void updateBook(uuid, "epub", { locations: saved }).catch(() => {});
     })
     .then(() => {
         locationsReady = true;
@@ -903,7 +916,7 @@ function highlightAt(doc: Document, x: number, y: number): { annotation: Annotat
     return null;
 }
 
-const store = createAnnotationStore(uuid, "epub", sync.user, () => {
+const store = createAnnotationStore(uuid, format, sync.user, () => {
     drawHighlights();
     notesUI.renderList();
 });
@@ -916,7 +929,8 @@ const notesUI = setupAnnotationUI({
     },
     compare: (a, b) => a.page - b.page || a.created_at - b.created_at,
     toast: chrome.toast,
-    koreader: sync.signedIn ? { uuid, format: "epub", sync: () => store.load() } : undefined,
+    // KOReader's places in a Kindle file don't map onto the converted EPUB (convert_read.go).
+    koreader: sync.signedIn && format === "epub" ? { uuid, format: "epub", sync: () => store.load() } : undefined,
 });
 // A preview shows no highlights and makes none (selecting text still copies).
 if (!preview) void store.load();

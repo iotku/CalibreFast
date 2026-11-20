@@ -122,7 +122,7 @@ func TestAnnotationsSync(t *testing.T) {
 	}
 
 	for name, bad := range map[string]annotationRec{
-		"format":  {Format: "mobi", Anchor: "x"},
+		"format":  {Format: "djvu", Anchor: "x"},
 		"anchor":  {Format: "epub"},
 		"colour":  {Format: "epub", Anchor: "x", Color: "chartreuse"},
 		"text":    {Format: "epub", Anchor: "x", Text: strings.Repeat("x", maxAnnotationText+1)},

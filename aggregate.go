@@ -94,9 +94,25 @@ type AggregateDisplayItem struct {
 	Grouped bool
 	Tier    int    // 1–5, the cloud's text size (aggregateTiers)
 	Sort    string // A–Z key, "" for Name
-	// Complete: a series with every numbered book (seriesStatuses); set
-	// per request, never cached.
-	Complete bool
+	// Status: how much of a series is here (seriesStatuses), nil when it
+	// isn't counted; set per request, never cached.
+	Status *seriesStatus
+}
+
+// sortByCoverage orders series complete first, then those counted but
+// not complete, then those nobody has counted, keeping the order within
+// each (most books first, as served), so the best-kept series lead.
+func sortByCoverage(items []AggregateDisplayItem) {
+	rank := func(it AggregateDisplayItem) int {
+		switch {
+		case it.Status == nil:
+			return 2
+		case it.Status.Complete:
+			return 0
+		}
+		return 1
+	}
+	slices.SortStableFunc(items, func(a, b AggregateDisplayItem) int { return rank(a) - rank(b) })
 }
 
 // AggregatePageData is passed to aggregate.html for server-side rendering.
@@ -114,6 +130,9 @@ type AggregatePageData struct {
 	// page lists only those (?complete=1).
 	CompleteCount int
 	CompleteOnly  bool
+	// CoverageOrder: Items are served complete series first, then
+	// counted ones, then the rest (sortByCoverage), not by count alone.
+	CoverageOrder bool
 }
 
 // FilteredPageData is passed to filtered.html.
@@ -153,6 +172,7 @@ type FilteredPageData struct {
 	TotalBooks                   int
 	EmptyText                    string         // shown when there are no books (default: "No books found.")
 	Series                       []AuthorSeries // an author's series, shown above the books
+	Profile                      *AuthorProfile // an author's, from Hardcover (hardcover_authors.go)
 	Extra                        map[string]any // page-specific extras (e.g. shelf controls)
 }
 
@@ -610,7 +630,7 @@ func filteredPageHandler(c *category) http.HandlerFunc {
 			data.Series = authorSeries(members)
 			if st := seriesStatuses(); len(st) > 0 {
 				for i := range data.Series {
-					data.Series[i].Complete = st[strings.ToLower(data.Series[i].Name)].Complete
+					data.Series[i].Status = statusPtr(st, data.Series[i].Name)
 				}
 			}
 		}
@@ -636,6 +656,10 @@ func filteredPageHandler(c *category) http.HandlerFunc {
 		}
 		if m, ok := aggregateMetaFor(c.Key, name); ok {
 			data.Description, data.ImageURL = m.Description, m.imageURL()
+		}
+		hcFillAuthorProfile(r, &data)
+		if data.Profile != nil && (data.Profile.Lookup != "" || data.Profile.Refresh != "") {
+			w.Header().Set("Cache-Control", "private, no-cache")
 		}
 		if data.Writable {
 			data.Featured = isFeaturedAggregate(c.Key, name)
@@ -674,7 +698,7 @@ func aggregatePageHandler(c *category) http.HandlerFunc {
 			tiers[i] = strconv.Itoa(t)
 		}
 		items, featured, discover := d.Items, featuredCards(c), discoverSample(c, d, discoverCount)
-		completeOnly, completeCount := false, 0
+		completeOnly, completeCount, coverageOrder := false, 0, false
 		if st := seriesStatuses(); c.Key == "series" && len(st) > 0 {
 			complete := func(name string) bool { return st[strings.ToLower(name)].Complete }
 			var all []AggregateDisplayItem
@@ -689,10 +713,12 @@ func aggregatePageHandler(c *category) http.HandlerFunc {
 				items = slices.Clone(items)
 			}
 			for i := range items {
-				items[i].Complete = complete(items[i].Name)
+				items[i].Status = statusPtr(st, items[i].Name)
 			}
+			sortByCoverage(items)
+			coverageOrder = true
 			for i := range discover {
-				discover[i].Complete = complete(discover[i].Name)
+				discover[i].Status = statusPtr(st, discover[i].Name)
 			}
 			completeCount = len(all)
 		}
@@ -709,6 +735,7 @@ func aggregatePageHandler(c *category) http.HandlerFunc {
 
 			CompleteCount: completeCount,
 			CompleteOnly:  completeOnly,
+			CoverageOrder: coverageOrder,
 		}
 		w.Header().Set("Cache-Control", "no-cache")
 		if err := templates.ExecuteTemplate(w, "aggregate.html", data); err != nil {
