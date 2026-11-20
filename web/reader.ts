@@ -411,6 +411,10 @@ if (!sync.signedIn && !preview) {
 
 let locationsReady = false;
 let currentCfi: string | null = null;
+/** The last place on screen: with currentCfi, the pages the screen shows. */
+let currentEndCfi: string | null = null;
+/** This screen within its chapter ("3 of 12"); "" when scrolled or the chapter is one screen. */
+let currentScreen = "";
 let currentPercent = 0;
 // The first "relocated" is just the book opening (epub.js may normalise the
 // saved CFI to the page start). Only moving away from it is saved — and that
@@ -426,12 +430,16 @@ function percentFor(loc: EpubJS.Location): number {
 /**
  * "p. N of M": the print edition's page numbers when the book has a page
  * list, otherwise synthetic pages (~1600 characters, roughly a printed page;
- * the same on every device and font size).
+ * the same on every device and font size). Given where the screen ends too,
+ * "pp. N–E of M": a wide screen or small font shows several pages at once,
+ * and a range says so instead of seeming to skip pages on every turn.
  */
 const CHARS_PER_PAGE = 1600;
-function pageText(cfi: string): string {
+function pageText(cfi: string, endCfi?: string | null): string {
     const page = pageAt(cfi);
     if (!page) return "";
+    const end = endCfi ? pageAt(endCfi) : null;
+    if (end && end.of === page.of && end.n > page.n) return `pp. ${page.n}–${end.n} of ${page.of}`;
     return `p. ${page.n} of ${page.of}`;
 }
 /** The page (1-based) cfi is on, of how many: as pageText shows it; null until locations are ready. */
@@ -442,24 +450,41 @@ function pageAt(cfi: string): { n: number; of: number | string } | null {
     if (!locationsReady) return null;
     return { n: book.locations.locationFromCfi(cfi) + 1, of: book.locations.length() };
 }
-function positionText(cfi: string, percent: number): string {
-    const page = pageText(cfi);
+function positionText(cfi: string, percent: number, endCfi?: string | null): string {
+    const page = pageText(cfi, endCfi);
     if (!page) return "—";
     return locationsReady ? `${page} · ${Math.round(percent * 100)}%` : page;
 }
 function showPosition(): void {
     if (!currentCfi) return;
-    chrome.setPosition(positionText(currentCfi, currentPercent), currentPercent);
-    chrome.setChapter(currentTocEntry()?.label ?? "");
+    chrome.setPosition(positionText(currentCfi, currentPercent, currentEndCfi), currentPercent);
+    const label = currentTocEntry()?.label ?? "";
+    chrome.setChapter(currentScreen ? (label ? `${label} · ${currentScreen}` : `${currentScreen} in this chapter`) : label);
+}
+
+/**
+ * The screen within its chapter, from epub.js: "3 of 12", moving on by one
+ * each turn whatever the screen or font size. epub.js counts columns, two to
+ * a screen in a spread.
+ */
+function screenInChapter(loc: EpubJS.Location): string {
+    const d = loc.start.displayed;
+    if (!d || settings().flow === "scrolled") return "";
+    const per = Math.max(1, rendition._layout?.divisor ?? 1);
+    const total = Math.ceil(d.total / per);
+    if (total <= 1) return "";
+    return `${Math.min(total, Math.ceil(d.page / per))} of ${total}`;
 }
 
 // ---- reading stats (activity.ts): pages read forward, not jumped to -------
 
 const activity = preview
     ? null
-    : createActivityTracker(sync.user, uuid, (n) => chrome.toast(`Daily goal reached: ${n} pages read today 🎉`));
+    : createActivityTracker(sync.user, uuid, format, (n) => chrome.toast(`Daily goal reached: ${n} pages read today 🎉`));
 /** The page the reader was last on (pageAt); null: unknown, or after a jump. */
 let lastPage: number | null = null;
+/** How many pages that screen showed: a turn moves on about that many. */
+let lastSpan = 1;
 /** The next "relocated" comes from going somewhere (display), not from reading on. */
 let jumped = true;
 const display = rendition.display.bind(rendition);
@@ -474,11 +499,18 @@ rendition.on("rendered", (_section, view) => {
     }
 });
 
-function countPages(cfi: string): void {
+function countPages(cfi: string, endCfi: string | null, atEnd: boolean): void {
     const n = pageAt(cfi)?.n ?? null;
-    // A few pages on at most: a turn shows one or two, scrolling a few.
-    if (!jumped && n !== null && lastPage !== null && n > lastPage && n - lastPage <= 5) activity?.pagesRead(n - lastPage);
-    else activity?.touch();
+    const e = endCfi ? (pageAt(endCfi)?.n ?? null) : null;
+    // Reading on: a screen's worth at most (a wide screen shows several
+    // pages), or a few for scrolling. More than that skipped pages unread.
+    const most = Math.max(5, lastSpan + 1);
+    if (!jumped && n !== null && lastPage !== null && n > lastPage && n - lastPage <= most) {
+        // The pages left behind were read; the one now at the top isn't done yet,
+        // unless this is the end of the book.
+        activity?.pagesRead(lastPage, atEnd && e !== null && e >= n ? e : n - 1);
+    } else activity?.touch();
+    lastSpan = n !== null && e !== null && e >= n ? Math.min(20, e - n + 1) : 1;
     lastPage = n;
     jumped = false;
 }
@@ -486,8 +518,10 @@ function countPages(cfi: string): void {
 rendition.on("relocated", (loc) => {
     if (!loc?.start?.cfi) return;
     currentCfi = loc.start.cfi;
+    currentEndCfi = loc.end?.cfi ?? null;
+    currentScreen = screenInChapter(loc);
     currentPercent = percentFor(loc);
-    countPages(currentCfi);
+    countPages(currentCfi, currentEndCfi, !!loc.atEnd);
     showPosition();
     markCurrentChapter();
     if (openingCfi === null) {
