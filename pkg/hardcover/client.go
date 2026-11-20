@@ -52,6 +52,9 @@ type Client struct {
 
 	mu     sync.Mutex
 	search map[string]searchEntry // cached SearchSeries answers
+
+	lookups lookups      // cached LookupBooks answers (books.go)
+	images  *http.Client // for covers: no token, only hardcover.app
 }
 
 type searchEntry struct {
@@ -77,6 +80,16 @@ func New(cfg Config) *Client {
 	}
 	if c.http == nil {
 		c.http = &http.Client{Timeout: 35 * time.Second}
+	}
+	c.images = &http.Client{
+		Transport: c.http.Transport,
+		Timeout:   20 * time.Second,
+		CheckRedirect: func(req *http.Request, via []*http.Request) error {
+			if len(via) >= 3 || !coverHostOK(req.URL.String()) {
+				return http.ErrUseLastResponse
+			}
+			return nil
+		},
 	}
 	if c.Budget == nil {
 		c.Budget = FreePlan()

@@ -220,6 +220,7 @@ func addFormatPage(w http.ResponseWriter, r *http.Request) {
 		ReadLink:     previewReadLink("uuid", keep.UUID, keep.FormatList()),
 		Lookups:      !noLookups,
 		GoogleBooks:  googleBooksEnabled(),
+		Hardcover:    hardcoverEnabled(),
 		Merge:        d,
 		Duplicates:   incomingDuplicates(it, keep.UUID),
 	}

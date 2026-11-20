@@ -252,6 +252,7 @@ type EditBookPageData struct { // TODO I Hate this, these page structs are all o
 	ReadLink     string          // the book in a reader's preview mode, to look things up ("" without an EPUB or PDF)
 	Lookups      bool            // show the online lookup (Open Library); off with -no-lookups
 	GoogleBooks  bool            // offer Google Books: only with CF_GOOGLE_BOOKS_KEY, and not -no-google-books
+	Hardcover    bool            // offer Hardcover: only with CF_HARDCOVER_TOKEN, and not -no-hardcover
 	// Duplicates: books in the library this one may duplicate (duplicates.go).
 	Duplicates *duplicateCheck
 	// Merge: merging books into one (merge.go); UUID is the one kept.
@@ -321,7 +322,7 @@ func main() {
 	flag.BoolVar(&trustedTypesReportOnly, "trusted-types-report-only", false, "only report Trusted Types violations instead of refusing them (a stopgap if a browser feature breaks; see docs/SECURITY.md)")
 	flag.BoolVar(&noLookups, "no-lookups", false, "never look books up online (hides the metadata editor's lookup bar)")
 	flag.BoolVar(&noGoogleBooks, "no-google-books", false, "never offer Google Books in the metadata editor (Open Library only)")
-	flag.BoolVar(&noHardcover, "no-hardcover", false, "never identify series on Hardcover (even with CF_HARDCOVER_TOKEN set)")
+	flag.BoolVar(&noHardcover, "no-hardcover", false, "never ask Hardcover: series on Missing books, or Try Hardcover in the metadata editor (even with CF_HARDCOVER_TOKEN set)")
 	flag.StringVar(&publicURL, "public-url", "", "external base URL, e.g. https://books.example.com (needed for GitHub/Google sign-in)")
 	flag.StringVar(&watchDir, "watch-dir", "", "folder to watch for new books; they wait in the import queue for an admin to review (needs -allow-writes)")
 	flag.BoolVar(&watchForcePolling, "watch-dir-force-polling", false, "check -watch-dir every 30 seconds instead of relying on the system to report changes (for network and container mounts where it doesn't)")
@@ -780,6 +781,7 @@ func registerBookEditRoutes() {
 			ReadLink:     previewReadLink("uuid", uuid, extractFormats(resolveFormats(uuid, baseDir, bookPath.(string)))),
 			Lookups:      !noLookups,
 			GoogleBooks:  googleBooksEnabled(),
+			Hardcover:    hardcoverEnabled(),
 		}
 		if dup, err := libraryBookDuplicates(calibreDB, baseDir, uuid); err != nil {
 			log.Printf("edit %s: duplicate check: %v", uuid, err)

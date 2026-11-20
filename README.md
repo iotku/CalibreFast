@@ -29,7 +29,7 @@ CalibreFast reads directly from your Calibre `metadata.db` and serves your libra
 - **Search** by title or author.
 - **Browse by author, publisher, tag or language,** with language codes shown as names (`eng` → English).
 - **Groups** merge values that mean the same thing, like `en`/`eng`/`en-US` → English, without editing any books.
-- **Metadata editor:** tag and language chips, autocomplete from your library, a formatted description editor, side-by-side comparison of your changes, and safeguards so curated metadata isn't lost. It can find ISBNs in the book's own files and look books up on Open Library by ISBN or by title and author (Google Books on request, with an API key), offering the matches you tick to pick values from (identical values share one pill), or accepting one in one go.
+- **Metadata editor:** tag and language chips, autocomplete from your library, a formatted description editor, side-by-side comparison of your changes, and safeguards so curated metadata isn't lost. It can find ISBNs in the book's own files and look books up on Open Library by ISBN or by title and author (Google Books or Hardcover on request, with an API key), offering the matches you tick to pick values from (identical values share one pill), or accepting one in one go.
 - **Uploads:** EPUB/PDF metadata is read automatically, and multiple formats of one book are combined.
 - **Watch folder:** books dropped into a folder wait in a review queue. An admin checks the metadata (with ISBN lookups), chooses the cover, then adds each one to the library.
 - **Accounts:** username/password, or GitHub/Google sign-in. Admins manage users, and can send someone a one-time sign-in or invite link (e.g. over Discord).
@@ -95,6 +95,7 @@ Then open [http://localhost:8080](http://localhost:8080) and sign in. Add more u
 | `-trusted-types-report-only` | Report Trusted Types violations instead of refusing them (docs/SECURITY.md). Only as a stopgap if something in the browser breaks. |
 | `-no-lookups` | Never look books up online: hides the metadata editor's ISBN lookup. Lookups are on by default but only happen when an admin clicks **Look up**. |
 | `-no-google-books` | Never offer Google Books in the metadata editor, even with `CF_GOOGLE_BOOKS_KEY`. Open Library still works. |
+| `-no-hardcover` | Never ask Hardcover (series on Missing books, and **Try Hardcover** in the metadata editor), even with `CF_HARDCOVER_TOKEN`. |
 | `-recycle-bin DIR` | Where books removed from the library are kept until you empty it (default `<datadir>/recycle-bin`). On the library's filesystem, removing and restoring are instant; elsewhere the files are copied. |
 | `-empty-recycle-bin AGE` | Permanently delete what was removed from the library more than `AGE` ago (`30d`, `12h`; `0` for everything) and exit. The only way to empty the Recycling Bin: it can't be done from the web. |
 | `-create-user NAME` | Create a user (or reset their password) and exit; add `-admin` to make them an admin |
@@ -104,7 +105,7 @@ To run it as a service that updates itself (systemd: pull, rebuild, restart), wi
 
 GitHub and Google sign-in are optional: see [OAUTH.md](docs/OAUTH.md) for step-by-step setup.
 
-Google Books is offered only when `CF_GOOGLE_BOOKS_KEY` is set (an API key with the Books API enabled, as an environment variable), and only asked when an admin clicks **Try Google Books**. Without a key it isn't offered: Google's shared quota is usually used up, and Open Library is the main source.
+Google Books is offered only when `CF_GOOGLE_BOOKS_KEY` is set (an API key with the Books API enabled, as an environment variable), and only asked when an admin clicks **Try Google Books**. Without a key it isn't offered: Google's shared quota is usually used up, and Open Library is the main source. Hardcover is offered the same way (**Try Hardcover**) when `CF_HARDCOVER_TOKEN` is set, the token that also identifies series on Hardcover.
 
 ### Working on the browser code
 

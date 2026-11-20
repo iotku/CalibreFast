@@ -204,14 +204,14 @@
             {{ if .Lookups }}
             <!-- Online lookup (web/isbn-tools.ts): Open Library by ISBN, or by title
                  and author; the matches, to tick as sources -->
-            <section id="lookup-bar" class="lookup-bar" aria-label="Look up online" data-google="{{ if .GoogleBooks }}1{{ end }}">
+            <section id="lookup-bar" class="lookup-bar" aria-label="Look up online" data-google="{{ if .GoogleBooks }}1{{ end }}" data-hardcover="{{ if .Hardcover }}1{{ end }}">
                 <div class="lookup-head">
                     <div class="lookup-status-row">
                         <p id="lookup-status" class="lookup-status" role="status">Look up on Open Library</p>
                         <details class="info-tip">
                             <summary class="info-tip-btn" title="How looking up works"><svg class="info-tip-i" viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" aria-hidden="true"><circle cx="12" cy="12" r="10"/><path d="M12 11v6"/><circle cx="12" cy="7.5" r="0.6" fill="currentColor"/></svg><span class="sr-only">How looking up works</span></summary>
                             <div class="info-tip-body">
-                                <p>Search Open Library by the book's ISBN (the likeliest match) or by its title and author. Nothing is sent until you click a search.</p>
+                                <p>Search Open Library by the book's ISBN (the likeliest match) or by its title and author. Nothing is sent until you click a search.{{ if or .GoogleBooks .Hardcover }} After a search, {{ if .GoogleBooks }}<strong>Try Google Books</strong>{{ end }}{{ if and .GoogleBooks .Hardcover }} and {{ end }}{{ if .Hardcover }}<strong>Try Hardcover</strong>{{ end }} {{ if and .GoogleBooks .Hardcover }}ask{{ else }}asks{{ end }} there for the same book.{{ end }}</p>
                                 <p>Matches are listed here: tick one to offer its values as pills under each field, or open it to compare it with the current metadata and accept all of it.</p>
                             </div>
                         </details>
