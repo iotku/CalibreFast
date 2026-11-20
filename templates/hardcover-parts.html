@@ -8,7 +8,7 @@
 {{ end }}
 {{/* A linked series' share of its numbered books (hcStatus). */}}
 {{ define "hc-status" }}
-{{ if .Complete }}<span class="hc-complete" title="Every numbered book on Hardcover's list is in the library, in the series">Complete</span>
+{{ if .Complete }}<span class="hc-complete" title="Every numbered book is in the library, in the series ({{ .Label }})">Complete</span>
 {{ else if .Numbered }}<span class="ph-sub">{{ .Have }} of {{ .Numbered }} numbered books</span>{{ end }}
 {{ end }}
 {{ define "hc-jobs" }}

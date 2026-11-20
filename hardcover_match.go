@@ -80,6 +80,10 @@ type hcReview struct {
 // complete: every whole-numbered book on the list is here and tagged.
 func (r *hcReview) complete() bool { return r.Numbered > 0 && r.Have == r.Numbered }
 
+func (r *hcReview) status() seriesStatus {
+	return seriesStatus{Numbered: r.Numbered, Have: r.Have, Complete: r.complete(), Source: statusHardcover}
+}
+
 // pending: suggestions waiting for a decision (the count shown on /missing).
 func (r *hcReview) pending() int {
 	n := len(r.Untagged)

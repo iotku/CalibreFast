@@ -292,7 +292,7 @@ type hcAuthorSeriesRow struct {
 	HCName             string
 	Checked            string
 	Stale              bool
-	Status             hcStatus
+	Status             seriesStatus
 }
 
 // GET /missing/hardcover/author?author=: an author's series, to identify
@@ -333,7 +333,7 @@ type hcMissingRow struct {
 	Name, Review, HCName, Checked string
 	Stale                         bool
 	Pending                       int
-	Status                        hcStatus
+	Status                        seriesStatus
 }
 
 func missingHardcover() *MissingHardcover {
@@ -350,7 +350,7 @@ func missingHardcover() *MissingHardcover {
 		if s, ok := hcSeries(l.Name); ok {
 			if rev, err := hcReviewFor(s, l); err == nil {
 				row.Pending = rev.pending()
-				row.Status = hcStatus{Numbered: rev.Numbered, Have: rev.Have, Complete: rev.complete()}
+				row.Status = rev.status()
 			}
 		}
 		m.Series = append(m.Series, row)

@@ -36,7 +36,6 @@ import (
 	"slices"
 	"strings"
 	"sync"
-	"sync/atomic"
 	"time"
 
 	"github.com/iotku/CalibreFast/pkg/hardcover"
@@ -458,14 +457,14 @@ func hcSaveLink(name string, d *hardcover.SeriesDetail, by *User) error {
 	if err != nil {
 		return err
 	}
-	defer hcChanged()
+	defer seriesStatusChanged()
 	return tx.Commit()
 }
 
 // hcUnlink forgets the series' link. Its dismissals stay, for when it's
 // linked again.
 func hcUnlink(name string) error {
-	defer hcChanged()
+	defer seriesStatusChanged()
 	if _, err := appDB.Exec(`DELETE FROM hardcover_series_parts WHERE name = ?`, name); err != nil {
 		return err
 	}
@@ -477,7 +476,7 @@ func hcUnlink(name string) error {
 // an editor restores them); hcRestore brings them back, all when ids is
 // empty.
 func hcDismiss(name string, ids []int64) (int, error) {
-	defer hcChanged()
+	defer seriesStatusChanged()
 	n := 0
 	for _, id := range ids {
 		res, err := appDB.Exec(`INSERT OR IGNORE INTO hardcover_dismissed (name, hc_book_id) VALUES (?, ?)`, name, id)
@@ -492,7 +491,7 @@ func hcDismiss(name string, ids []int64) (int, error) {
 }
 
 func hcRestore(name string, ids []int64) error {
-	defer hcChanged()
+	defer seriesStatusChanged()
 	if len(ids) == 0 {
 		_, err := appDB.Exec(`DELETE FROM hardcover_dismissed WHERE name = ?`, name)
 		return err
@@ -505,47 +504,15 @@ func hcRestore(name string, ids []int64) error {
 	return nil
 }
 
-// ---------------------------------------------------------------------------
-// Completion: which linked series have every numbered book
-// ---------------------------------------------------------------------------
-
-// hcStatus is how much of its Hardcover list a linked series has.
-type hcStatus struct {
-	Numbered, Have int
-	Complete       bool
-}
-
-var (
-	hcVersion     atomic.Uint64 // bumped when a link or dismissal changes
-	hcStatusCache struct {
-		sync.Mutex
-		cat      *catalog
-		gen, ver uint64
-		m        map[string]hcStatus // lower-cased series name ->
-	}
-)
-
-func hcChanged() { hcVersion.Add(1) }
-
-// hcStatuses: every linked series' status, by lower-cased name. Matched
-// again only after the library, its groups, a link or a dismissal changes.
-func hcStatuses() map[string]hcStatus {
-	if !hardcoverEnabled() || appDB == nil {
-		return nil
-	}
-	cat, gen, ver := currentCatalog(), aggregateGen.Load(), hcVersion.Load()
-	c := &hcStatusCache
-	c.Lock()
-	defer c.Unlock()
-	if c.m != nil && c.cat == cat && c.gen == gen && c.ver == ver {
-		return c.m
-	}
+// hcStatuses: every linked series' share of its Hardcover list, by
+// lower-cased name (seriesStatuses caches it).
+func hcStatuses() map[string]seriesStatus {
 	links, err := hcAllLinks()
 	if err != nil {
 		log.Println("hardcover status:", err)
-		return c.m
+		return nil
 	}
-	m := make(map[string]hcStatus, len(links))
+	m := make(map[string]seriesStatus, len(links))
 	for _, l := range links {
 		s, ok := hcSeries(l.Name)
 		if !ok || l.Snapshot == nil {
@@ -557,16 +524,9 @@ func hcStatuses() map[string]hcStatus {
 			continue
 		}
 		rev := hcMatchSeries(l.Snapshot, lib, nil, hcDismissed(s.Name))
-		m[strings.ToLower(s.Name)] = hcStatus{Numbered: rev.Numbered, Have: rev.Have, Complete: rev.complete()}
+		m[strings.ToLower(s.Name)] = rev.status()
 	}
-	c.m, c.cat, c.gen, c.ver = m, cat, gen, ver
 	return m
-}
-
-// hcStatusOf: the series' status; ok is false when it isn't linked.
-func hcStatusOf(name string) (hcStatus, bool) {
-	st, ok := hcStatuses()[strings.ToLower(name)]
-	return st, ok
 }
 
 func hcDismissed(name string) map[int64]bool {

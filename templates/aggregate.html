@@ -88,4 +88,4 @@
 <a class="{{ $.Class }}{{ if .Grouped }} agg-group{{ end }}" href="{{ .Href }}" data-count="{{ .Count }}"{{ if .Sort }} data-sort="{{ .Sort }}"{{ end }}{{ if .Complete }} data-complete{{ end }}>{{ .Name }}{{ if .Sub }} <span class="agg-sub">{{ .Sub }}</span>{{ end }}{{ if .Complete }}{{ template "agg-complete" }}{{ end }}<span class="agg-count">{{ .Count }}</span></a>
 {{- end }}{{ end }}
 {{/* A series with every numbered book of its Hardcover list (hcStatuses); web/aggregate.ts copies it. */}}
-{{ define "agg-complete" }}<span class="agg-complete" role="img" aria-label="complete" title="Complete: every numbered book on Hardcover's list is here">✓</span>{{ end }}
+{{ define "agg-complete" }}<span class="agg-complete" role="img" aria-label="complete" title="Complete: every numbered book is here">✓</span>{{ end }}

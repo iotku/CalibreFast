@@ -5709,3 +5709,39 @@ body.selecting .book.selected .cover-wrapper {
 #hc-link-row[hidden] {
     display: none;
 }
+
+/* A series page: an editor's count of the series' numbered books (series-verify.ts) */
+.series-verify {
+    width: min(460px, calc(100vw - 32px));
+    padding: 1.25rem 1.5rem;
+    background: var(--bg-surface);
+    color: var(--text-primary);
+    border: 1px solid var(--border-medium);
+    border-radius: var(--radius-medium, 8px);
+    box-shadow: var(--shadow-medium);
+}
+
+.series-verify::backdrop {
+    background: var(--bg-modal-overlay);
+}
+
+.series-verify h2 {
+    margin: 0 0 0.75rem;
+    font-size: 1.15rem;
+    overflow-wrap: anywhere;
+}
+
+.series-verify label {
+    display: flex;
+    gap: 0.6rem;
+    align-items: center;
+    margin: 0.75rem 0;
+}
+
+.series-verify input[type="number"] {
+    width: 7rem;
+}
+
+.series-verify .ph-actions {
+    justify-content: flex-end;
+}
