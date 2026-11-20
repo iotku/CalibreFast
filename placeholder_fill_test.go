@@ -108,3 +108,51 @@ func TestPlaceholderSeriesOnImport(t *testing.T) {
 		t.Error("queuing deleted the placeholder")
 	}
 }
+
+// The placeholder's metadata is a source in the editor: in the import
+// review, and for the book an upload added (though the placeholder is gone).
+func TestPlaceholderAsSource(t *testing.T) {
+	withTestLibrary(t)
+	setupTestAppDB(t)
+	origData := dataDir
+	dataDir = t.TempDir()
+	placeholdersChanged()
+	t.Cleanup(func() { dataDir = origData; placeholdersChanged() })
+	save := func(title, series, index, desc string) *placeholder {
+		t.Helper()
+		p := &placeholder{Meta: OPFMetadata{Title: title, Creators: []string{"Terry Pratchett"}, Series: series, SeriesIndex: index, Description: desc}}
+		if err := savePlaceholder(p, nil); err != nil {
+			t.Fatal(err)
+		}
+		return p
+	}
+	save("Small Gods", "Discworld", "13", "Om, as a tortoise.")
+	save("Eric", "Discworld", "9", "Faust, briefly.")
+
+	// The import review.
+	w, dir := newTestWatcher(t)
+	writeTestFile(t, filepath.Join(dir, "Small Gods.epub"), titledEPUB(t, "Small Gods", "Terry Pratchett", "z"))
+	w.scan()
+	w.scan()
+	it := w.inbox.list()[0]
+	srcs := importSources(it)
+	last := srcs[len(srcs)-1]
+	if last.Format != "Placeholder" || last.Description != "Om, as a tortoise." || last.Series != "Discworld" || last.SeriesIndex != "13" {
+		t.Errorf("review sources end with %+v", last)
+	}
+
+	// An upload: the book's editor offers it, the placeholder deleted.
+	res := uploadFiles(t, "eric.epub", titledEPUB(t, "Eric", "Terry Pratchett", "e"), false)
+	if res.UUID == "" || res.SeriesFromPlaceholder != "Discworld #9" {
+		t.Fatalf("upload: %+v", res)
+	}
+	v, _ := bookMetadataCache.Load(res.UUID)
+	cached, _ := v.([]*UploadedBookMeta)
+	var found bool
+	for _, m := range cached {
+		found = found || m.Format == "Placeholder" && m.Description == "Faust, briefly."
+	}
+	if !found {
+		t.Errorf("editor sources %+v", cached)
+	}
+}

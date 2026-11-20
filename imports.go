@@ -443,6 +443,8 @@ func (b *importInbox) approve(id string, meta OPFMetadata, override bool) (bookU
 	if _, err := os.Stat(filepath.Join(dir, "cover.jpg")); err == nil {
 		opts.Cover = filepath.Join(dir, "cover.jpg")
 	}
+	// The placeholder it stands for, before adding it deletes it.
+	ph := importPlaceholder(it)
 	bookUUID, _, err = addBook(book, entries, opts)
 	if err != nil {
 		b.put(it)
@@ -457,8 +459,13 @@ func (b *importInbox) approve(id string, meta OPFMetadata, override bool) (bookU
 			meta.Title, took.Round(time.Millisecond), dupTime.Round(time.Millisecond), timing.Files.Round(time.Millisecond),
 			float64(size)/1e6, timing.Database.Round(time.Millisecond), timing.Finish.Round(time.Millisecond))
 	}
-	// What each file said stays on offer in the editor, as after an upload.
-	bookMetadataCache.Store(bookUUID, it.Sources)
+	// What each file said stays on offer in the editor, as after an upload,
+	// and what its placeholder said.
+	sources := slices.Clone(it.Sources)
+	if ph != nil {
+		sources = append(sources, placeholderSource(ph))
+	}
+	bookMetadataCache.Store(bookUUID, sources)
 	b.dropPending(id) // it's in the library: its quick edits went in with it
 	return bookUUID, nil
 }
@@ -1088,15 +1095,31 @@ func importReviewPage(w http.ResponseWriter, r *http.Request) {
 	}), "render import review")
 }
 
+// importPlaceholder: the placeholder a waiting book stands for: the one
+// its files were added for, else the one it matches (looked for now, so
+// it holds for books queued before the placeholder was made).
+func importPlaceholder(it *pendingImport) *placeholder {
+	if it.Placeholder != "" {
+		if p := placeholderByUUID(it.Placeholder); p != nil {
+			return p
+		}
+	}
+	return matchingPlaceholder(&it.Merged.OPFMetadata)
+}
+
 // importSources is what the editor offers for a waiting book: the merged
-// metadata as "current", then what each file says. As for a book in the
+// metadata as "current", then what each file says, then its placeholder's. As for a book in the
 // library, library identifiers aren't shown, and dates are the day only
 // (the editor's date field). The "no date" placeholder is shown as none.
 func importSources(it *pendingImport) []UploadedBookMeta {
-	out := make([]UploadedBookMeta, 0, len(it.Sources)+1)
+	out := make([]UploadedBookMeta, 0, len(it.Sources)+2)
 	out = append(out, it.Merged)
 	for _, s := range it.Sources {
 		out = append(out, *s)
+	}
+	// The placeholder it stands for, if any, to pick its values from.
+	if p := importPlaceholder(it); p != nil {
+		out = append(out, *placeholderSource(p))
 	}
 	noDate := normalizeDateOnly(normalizeDate(""))
 	for i := range out {

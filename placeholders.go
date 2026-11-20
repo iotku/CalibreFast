@@ -275,6 +275,42 @@ func placeholderForNewBook(m *OPFMetadata) *placeholder {
 	return found
 }
 
+// matchingPlaceholder: the placeholder a book about to be added stands
+// for: the one at its series and number, else the one with its title by
+// one of its authors (placeholderForNewBook). nil when none.
+func matchingPlaceholder(m *OPFMetadata) *placeholder {
+	if appDB == nil || m == nil {
+		return nil
+	}
+	c := *m
+	c.FillSeries()
+	if series, index, err := opf.CleanSeries(c.Series, c.SeriesIndex); err == nil && series != "" {
+		for _, p := range allPlaceholders() {
+			if strings.EqualFold(p.Meta.Series, series) && p.index() == index {
+				return p
+			}
+		}
+	}
+	return placeholderForNewBook(&c)
+}
+
+// placeholderSourceFormat names a placeholder's metadata among the
+// editor's sources.
+const placeholderSourceFormat = "Placeholder"
+
+// placeholderSource: p's metadata as a source in the editor (the import
+// review's, or the added book's), for picking its values field by field.
+func placeholderSource(p *placeholder) *UploadedBookMeta {
+	m := p.Meta
+	m.Creators = slices.Clone(m.Creators)
+	m.Subjects = slices.Clone(m.Subjects)
+	m.Languages = slices.Clone(m.Languages)
+	m.Identifiers = slices.Clone(m.Identifiers)
+	m.Meta = nil
+	m.SyncSeriesMeta()
+	return &UploadedBookMeta{OPFMetadata: m, Format: placeholderSourceFormat}
+}
+
 // fillFromPlaceholder: a book about to be added (uploaded, or put in the
 // import queue) that has no series takes the series and number of the
 // placeholder it stands for. Ebooks rarely say what series they're in; the
