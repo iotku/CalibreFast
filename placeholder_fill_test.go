@@ -55,6 +55,9 @@ func TestPlaceholderSeriesOnUpload(t *testing.T) {
 	if placeholderByUUID(hero.UUID) != nil {
 		t.Error("the placeholder is still there")
 	}
+	if u := placeholderReplacedBy(hero.UUID); u != res.UUID {
+		t.Errorf("the placeholder's page leads to %q, want %q", u, res.UUID)
+	}
 	if placeholderByUUID(other.UUID) == nil {
 		t.Error("another placeholder went")
 	}

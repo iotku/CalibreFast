@@ -1184,7 +1184,7 @@ func importApplyHandler(w http.ResponseWriter, r *http.Request) {
 	logBookEdit(currentUser(r), "import", bookUUID, nil)
 	if it.Placeholder != "" {
 		p := placeholderByUUID(it.Placeholder)
-		if err := deletePlaceholder(it.Placeholder); err != nil && !errors.Is(err, sql.ErrNoRows) {
+		if err := replacePlaceholder(it.Placeholder, bookUUID); err != nil && !errors.Is(err, sql.ErrNoRows) {
 			log.Printf("imports: placeholder %s: %v", it.Placeholder, err)
 		} else if p != nil {
 			logEdit(currentUser(r), "placeholder added", logKindPlaceholder, p.UUID, p.Meta.Title, snapPlaceholder(p), nil)

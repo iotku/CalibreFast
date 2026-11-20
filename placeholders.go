@@ -20,6 +20,8 @@ package main
 // and author): resolvePlaceholders. A book uploaded or queued for import
 // with no series of its own takes the series and number of the placeholder
 // with its title and author first (fillFromPlaceholder): ebooks rarely say.
+// A library book edited to be a placeholder's book replaces it too
+// (placeholder_resolve.go).
 
 import (
 	"cmp"
@@ -208,12 +210,16 @@ func savePlaceholder(p *placeholder, by *User) error {
 
 // deletePlaceholder removes one. It is only marked removed (deleted_at),
 // cover and all, so the removal can be undone (editlog.go).
-func deletePlaceholder(id string) error {
+func deletePlaceholder(id string) error { return replacePlaceholder(id, "") }
+
+// replacePlaceholder removes one that library book bookUUID is ("": none,
+// removed by hand); its page then leads to that book.
+func replacePlaceholder(id, bookUUID string) error {
 	p := placeholderByUUID(id)
 	if p == nil {
 		return sql.ErrNoRows
 	}
-	if _, err := appDB.Exec(`UPDATE placeholders SET deleted_at = ? WHERE uuid = ?`, nowUnix(), id); err != nil {
+	if _, err := appDB.Exec(`UPDATE placeholders SET deleted_at = ?, replaced_by = ? WHERE uuid = ?`, nowUnix(), bookUUID, id); err != nil {
 		return err
 	}
 	placeholdersChanged()
@@ -345,7 +351,7 @@ func fillFromPlaceholder(m *OPFMetadata) *placeholder {
 // resolvePlaceholders deletes the placeholders a book just added to the
 // library stands for: same series and number, or the same title by one of
 // the same authors (placeholderTitleMatch).
-func resolvePlaceholders(m *OPFMetadata) {
+func resolvePlaceholders(m *OPFMetadata, bookUUID string) {
 	if appDB == nil || m == nil {
 		return
 	}
@@ -359,7 +365,7 @@ func resolvePlaceholders(m *OPFMetadata) {
 			same = placeholderTitleMatch(p, m.Title, m.Creators)
 		}
 		if same {
-			if err := deletePlaceholder(p.UUID); err != nil {
+			if err := replacePlaceholder(p.UUID, bookUUID); err != nil {
 				log.Printf("placeholder %s: %v", p.UUID, err)
 			} else {
 				log.Printf("placeholder %q is in the library now", p.Meta.Title)
@@ -590,12 +596,34 @@ func placeholderPageData(p *placeholder, r *http.Request) PlaceholderPageData {
 	return d
 }
 
+// placeholderReplacedBy: the library book that replaced removed placeholder
+// id, if it's still in the library; else "".
+func placeholderReplacedBy(id string) string {
+	if appDB == nil || id == "" {
+		return ""
+	}
+	var u string
+	if appDB.QueryRow(`SELECT replaced_by FROM placeholders WHERE uuid = ? AND deleted_at IS NOT NULL`, id).Scan(&u) != nil || u == "" {
+		return ""
+	}
+	// metadata.db, not the catalog, which may not have the book yet.
+	var one int
+	if calibreDB == nil || calibreDB.QueryRow(`SELECT 1 FROM books WHERE uuid = ?`, u).Scan(&one) != nil {
+		return ""
+	}
+	return u
+}
+
 // GET /missing/{uuid}: a placeholder's page (an editor for admins), or for
 // an htmx request its view in the book popup.
 func placeholderPageHandler(w http.ResponseWriter, r *http.Request) {
 	p := placeholderByUUID(r.PathValue("uuid"))
 	if p == nil {
 		// Added to the library since: its book's page, if it's there.
+		if u := placeholderReplacedBy(r.PathValue("uuid")); u != "" {
+			http.Redirect(w, r, "/book/get/"+url.PathEscape(u), http.StatusSeeOther)
+			return
+		}
 		http.NotFound(w, r)
 		return
 	}

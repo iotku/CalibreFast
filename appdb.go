@@ -536,6 +536,9 @@ var migrations = []string{
 	// numbers (0: not given), beside total, its highest number (0: not
 	// given). Series whose books aren't numbered (all #1, or #0) need it.
 	`ALTER TABLE series_verified ADD COLUMN books INTEGER NOT NULL DEFAULT 0;`,
+	// 31: the library book that replaced a removed placeholder (its uuid;
+	// '' when removed by hand), so the placeholder's page leads to it.
+	`ALTER TABLE placeholders ADD COLUMN replaced_by TEXT NOT NULL DEFAULT '';`,
 }
 
 // openAppDB opens (creating if needed) and migrates the app database.

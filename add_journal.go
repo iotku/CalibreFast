@@ -312,7 +312,7 @@ func addBook(meta *UploadedBookMeta, entries []formatEntry, opts addOptions) (bo
 	if added.Series == "" {
 		added.FillSeries()
 	}
-	resolvePlaceholders(&added)
+	resolvePlaceholders(&added, bookUUID)
 	return bookUUID, bookPath, nil
 }
 

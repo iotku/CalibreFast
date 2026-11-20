@@ -110,7 +110,7 @@ func acceptImport(it *pendingImport, by *User) (uuid, reason string) {
 	logBookEdit(by, "import", uuid, nil)
 	if it.Placeholder != "" {
 		p := placeholderByUUID(it.Placeholder)
-		if err := deletePlaceholder(it.Placeholder); err != nil && !errors.Is(err, sql.ErrNoRows) {
+		if err := replacePlaceholder(it.Placeholder, uuid); err != nil && !errors.Is(err, sql.ErrNoRows) {
 			log.Printf("imports: placeholder %s: %v", it.Placeholder, err)
 		} else if p != nil {
 			logEdit(by, "placeholder added", logKindPlaceholder, p.UUID, p.Meta.Title, snapPlaceholder(p), nil)
