@@ -10,7 +10,6 @@ import (
 	"fmt"
 	"math"
 	"net/http"
-	"net/url"
 	"os"
 	"path/filepath"
 	"slices"
@@ -175,23 +174,26 @@ func readingHandler(w http.ResponseWriter, r *http.Request) {
 }
 
 // resumeURL is the web reader for a book, in the format last read when there
-// is one (format: "epub", "pdf", or a KOReader device's format), else EPUB,
-// else PDF. "" when the book has neither.
+// is one (format: "epub", "pdf", "azw3", …, or a KOReader device's format),
+// else the first of readerFormats it has. "" when no reader opens it.
 func resumeURL(uuid, format string) string {
-	readers := map[string]string{"epub": "/read?uuid=", "pdf": "/read-pdf?uuid="}
-	q := url.QueryEscape(uuid)
-	if r, ok := readers[strings.ToLower(format)]; ok {
-		return r + q
+	if format != "" {
+		if link := readerLink("uuid", uuid, format, ""); link != "" {
+			return link
+		}
+	}
+	first := func(has func(ext string) bool) string {
+		for _, ext := range readerFormats {
+			if has(ext) {
+				return readerLink("uuid", uuid, ext, "")
+			}
+		}
+		return ""
 	}
 	// The catalog knows the formats from metadata.db; the book's folder (on
 	// the library's storage) is only listed for books with no data rows.
 	if b, ok := currentCatalog().lookup(uuid); ok && len(b.Formats) > 0 {
-		for _, ext := range []string{"epub", "pdf"} {
-			if slices.Contains(b.Formats, ext) {
-				return readers[ext] + q
-			}
-		}
-		return ""
+		return first(func(ext string) bool { return slices.Contains(b.Formats, ext) })
 	}
 	path, ok := uuidPathIndex.Load(uuid)
 	if !ok {
@@ -201,14 +203,14 @@ func resumeURL(uuid, format string) string {
 		}
 	}
 	files := resolveFormats(uuid, baseDir, path.(string))
-	for _, ext := range []string{"epub", "pdf"} {
+	return first(func(ext string) bool {
 		for _, f := range files {
 			if strings.EqualFold(filepath.Ext(f), "."+ext) {
-				return readers[ext] + q
+				return true
 			}
 		}
-	}
-	return ""
+		return false
+	})
 }
 
 // progressNote describes a position for the book popup, e.g. "Page 5 of 25 ·

@@ -662,6 +662,7 @@ func serveLibraryHTTP() {
 
 	// Downloads
 	http.HandleFunc("/download/", requireReader(downloadHandler))
+	registerConvertedReadRoutes() // AZW3 and MOBI as EPUB, for the reader (convert_read.go)
 
 	// Uploads, covers and the metadata editor (editors and admins)
 	registerBookEditRoutes()
@@ -1299,13 +1300,16 @@ func formatsHandler(w http.ResponseWriter, r *http.Request) {
 }
 
 // previewReadLink is a book's reader in preview mode (ReaderPageData.Preview),
-// for the metadata editor: EPUB when there is one, else PDF, else "". param
-// names the book: "uuid" in the library, "import" in the import queue.
+// for the metadata editor: EPUB when there is one, else PDF, else a Kindle
+// format (convert_read.go), else "". param names the book: "uuid" in the
+// library, "import" in the import queue (EPUB and PDF only).
 func previewReadLink(param, id string, formats []string) string {
-	for _, want := range []string{"epub", "pdf"} {
+	for _, want := range readerFormats {
 		for _, f := range formats {
 			if strings.EqualFold(f, want) {
-				return previewFormatLink(param, id, f)
+				if link := previewFormatLink(param, id, f); link != "" {
+					return link
+				}
 			}
 		}
 	}
@@ -1313,16 +1317,9 @@ func previewReadLink(param, id string, formats []string) string {
 }
 
 // previewFormatLink is the reader's preview mode for one format of a book,
-// "" for a format no reader opens (only EPUB and PDF have one).
+// "" for a format no reader opens.
 func previewFormatLink(param, id, format string) string {
-	q := param + "=" + url.QueryEscape(id) + "&preview=1"
-	switch strings.ToLower(format) {
-	case "epub":
-		return "/read?" + q
-	case "pdf":
-		return "/read-pdf?" + q
-	}
-	return ""
+	return readerLink(param, id, format, "preview=1")
 }
 
 func extractFormats(files []string) []string {

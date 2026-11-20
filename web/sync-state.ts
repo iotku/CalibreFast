@@ -11,6 +11,7 @@
  * Kept small and with no imports but local-keys.ts: nav.ts is on every page.
  */
 
+import { CONVERTED_FORMATS } from "./formats.js";
 import { localKey, type Owner } from "./local-keys.js";
 
 export interface SyncState {
@@ -127,7 +128,7 @@ export function unsentFor(owner: string, uuid: string): UnsentBook {
     const unsynced = (v: unknown): number => (Array.isArray(v) ? v.filter((x: { synced?: boolean } | null) => x && !x.synced).length : 0);
     const deleted = read(`bookmarks-deleted-${uuid}`);
     return {
-        position: ["epub", "pdf"].some((f) => !!(read(`progress-${uuid}-${f}`) as { pending?: boolean } | null)?.pending),
+        position: ["epub", "pdf", ...CONVERTED_FORMATS].some((f) => !!(read(`progress-${uuid}-${f}`) as { pending?: boolean } | null)?.pending),
         bookmarks: unsynced(read(`bookmarks-${uuid}`)) + (Array.isArray(deleted) ? deleted.length : 0),
         highlights: unsynced(read(`annotations-${uuid}`)),
     };
