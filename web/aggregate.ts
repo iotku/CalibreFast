@@ -8,8 +8,9 @@
  *   page as it was.
  * - Discover shows a random few (the server picks the first ones); "Show
  *   others" draws another few from the same list the search box uses.
- * - The cloud can be ordered by book count (as served), A–Z (with a letter
- *   bar to jump by), or shuffled. The choice is remembered.
+ * - The cloud can be ordered as served (by book count; series complete
+ *   ones first), A–Z (with a letter bar to jump by), or shuffled. The
+ *   choice is remembered.
  * - Hovering an entry (or focusing it from the keyboard) previews a few of
  *   its books' covers.
  */
@@ -216,7 +217,7 @@ function setOrder(order: Order): void {
     } else if (order === "shuffle") {
         sorted = sample(items, items.length, () => false);
     } else {
-        sorted = items; // as served: most books first
+        sorted = items; // as served: most books first (series: complete ones first, sortByCoverage)
     }
 
     const nodes: Node[] = [];

@@ -215,3 +215,26 @@ func TestSeriesCoverage(t *testing.T) {
 		t.Error("no status for a counted series")
 	}
 }
+
+// The series list leads with complete series, then counted ones, then
+// the rest, most books first within each.
+func TestSortByCoverage(t *testing.T) {
+	done, part := &seriesStatus{Complete: true}, &seriesStatus{Numbered: 9, Have: 8}
+	items := []AggregateDisplayItem{
+		{Name: "big", Count: 30},
+		{Name: "partBig", Count: 20, Status: part},
+		{Name: "doneSmall", Count: 3, Status: done},
+		{Name: "partSmall", Count: 2, Status: part},
+		{Name: "small", Count: 2},
+		{Name: "doneBig", Count: 25, Status: done},
+	}
+	slices.SortStableFunc(items, func(a, b AggregateDisplayItem) int { return b.Count - a.Count }) // as served
+	sortByCoverage(items)
+	var got []string
+	for _, it := range items {
+		got = append(got, it.Name)
+	}
+	if want := []string{"doneBig", "doneSmall", "partBig", "partSmall", "big", "small"}; !slices.Equal(got, want) {
+		t.Errorf("order %v, want %v", got, want)
+	}
+}

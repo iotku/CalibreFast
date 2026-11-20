@@ -99,6 +99,22 @@ type AggregateDisplayItem struct {
 	Status *seriesStatus
 }
 
+// sortByCoverage orders series complete first, then those counted but
+// not complete, then those nobody has counted, keeping the order within
+// each (most books first, as served), so the best-kept series lead.
+func sortByCoverage(items []AggregateDisplayItem) {
+	rank := func(it AggregateDisplayItem) int {
+		switch {
+		case it.Status == nil:
+			return 2
+		case it.Status.Complete:
+			return 0
+		}
+		return 1
+	}
+	slices.SortStableFunc(items, func(a, b AggregateDisplayItem) int { return rank(a) - rank(b) })
+}
+
 // AggregatePageData is passed to aggregate.html for server-side rendering.
 type AggregatePageData struct {
 	Title    string
@@ -114,6 +130,9 @@ type AggregatePageData struct {
 	// page lists only those (?complete=1).
 	CompleteCount int
 	CompleteOnly  bool
+	// CoverageOrder: Items are served complete series first, then
+	// counted ones, then the rest (sortByCoverage), not by count alone.
+	CoverageOrder bool
 }
 
 // FilteredPageData is passed to filtered.html.
@@ -674,7 +693,7 @@ func aggregatePageHandler(c *category) http.HandlerFunc {
 			tiers[i] = strconv.Itoa(t)
 		}
 		items, featured, discover := d.Items, featuredCards(c), discoverSample(c, d, discoverCount)
-		completeOnly, completeCount := false, 0
+		completeOnly, completeCount, coverageOrder := false, 0, false
 		if st := seriesStatuses(); c.Key == "series" && len(st) > 0 {
 			complete := func(name string) bool { return st[strings.ToLower(name)].Complete }
 			var all []AggregateDisplayItem
@@ -691,6 +710,8 @@ func aggregatePageHandler(c *category) http.HandlerFunc {
 			for i := range items {
 				items[i].Status = statusPtr(st, items[i].Name)
 			}
+			sortByCoverage(items)
+			coverageOrder = true
 			for i := range discover {
 				discover[i].Status = statusPtr(st, discover[i].Name)
 			}
@@ -709,6 +730,7 @@ func aggregatePageHandler(c *category) http.HandlerFunc {
 
 			CompleteCount: completeCount,
 			CompleteOnly:  completeOnly,
+			CoverageOrder: coverageOrder,
 		}
 		w.Header().Set("Cache-Control", "no-cache")
 		if err := templates.ExecuteTemplate(w, "aggregate.html", data); err != nil {

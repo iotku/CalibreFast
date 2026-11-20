@@ -63,7 +63,7 @@
                 </nav>
                 {{ end }}
                 <div id="agg-order" class="agg-order" role="group" aria-label="Order" hidden>
-                    <button type="button" class="agg-pill" data-order="count" aria-pressed="true">Most books</button>
+                    <button type="button" class="agg-pill" data-order="count" aria-pressed="true"{{ if .CoverageOrder }} title="Complete series first, then partly collected ones, then the rest; most books first within each"{{ end }}>{{ if .CoverageOrder }}Most complete{{ else }}Most books{{ end }}</button>
                     <button type="button" class="agg-pill" data-order="az" aria-pressed="false">A–Z</button>
                     <button type="button" class="agg-pill" data-order="shuffle" aria-pressed="false" title="A new random order each time">Shuffle</button>
                 </div>
