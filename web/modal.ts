@@ -270,7 +270,21 @@ function hideModal(): void {
     document.dispatchEvent(new Event("cf:modal-closed"));
 }
 
-const bookUrl = (uuid: string): string => `/book/get/${encodeURIComponent(uuid)}`;
+/**
+ * What the popup loads for a card: a book's popup, or a placeholder's (a
+ * book not in the library yet: placeholders.go answers an htmx request with
+ * its popup view). With no card on the page (a deep link), /book/get/
+ * sends a placeholder's on to it.
+ */
+const bookUrl = (uuid: string, card: HTMLElement | null = cardFor(uuid)): string =>
+    card?.dataset["placeholder"] === uuid ? `/missing/${encodeURIComponent(uuid)}` : `/book/get/${encodeURIComponent(uuid)}`;
+
+/** A card's id: a book's uuid, or a placeholder's (utils.ts placeholderCard). */
+const cardId = (card: HTMLElement | null | undefined): string | undefined =>
+    card?.dataset["uuid"] ?? card?.dataset["placeholder"];
+
+/** Placeholders have no per-user controls (favorite, status, shelves). */
+const isPlaceholder = (card: HTMLElement | null): boolean => !!card?.dataset["placeholder"];
 
 /** Path and query of a request URL, as htmx may have resolved it. */
 function samePath(a: string, b: string): boolean {
@@ -292,12 +306,12 @@ export function loadBook(uuid: string): void {
         setBodyText("htmx not loaded.");
         return;
     }
-    const url = bookUrl(uuid);
+    const url = bookUrl(uuid, card);
     loadingUrl = url;
     showModal();
     watchGrid(card);
     updateNavButtons(); // the arrows follow the book asked for, not the one still showing
-    prefetchControls(uuid); // in parallel with the book, not after it
+    if (!isPlaceholder(card)) prefetchControls(uuid); // in parallel with the book, not after it
     const hit = takePrefetch(uuid);
     // Otherwise the book's card (if on the page) as the source: htmx then
     // uses the card's hx-preload response, even one still in flight.
@@ -324,13 +338,15 @@ const prefetched = new Map<string, { res: Promise<Response>; expires: number }>(
 
 /** The book's card: the one it was opened from, else the first on the page. */
 function cardFor(uuid: string): HTMLElement | null {
-    if (shownCard?.isConnected && shownCard.dataset["uuid"] === uuid) return shownCard;
-    return document.querySelector<HTMLElement>(`.book[data-uuid="${CSS.escape(uuid)}"]`);
+    if (shownCard?.isConnected && cardId(shownCard) === uuid) return shownCard;
+    const id = CSS.escape(uuid);
+    return document.querySelector<HTMLElement>(`.book[data-uuid="${id}"], .book[data-placeholder="${id}"]`);
 }
 
 /**
  * The card next to the shown one (dir 1) or before it (-1), in its grid or
- * row: a book, or a skeleton whose page hasn't arrived yet. Null at the end.
+ * row: a book, a placeholder, or a skeleton whose page hasn't arrived yet.
+ * Null at the end.
  */
 function adjacent(dir: 1 | -1): HTMLElement | null {
     const card = shownUuid ? cardFor(shownUuid) : null;
@@ -340,10 +356,10 @@ function adjacent(dir: 1 | -1): HTMLElement | null {
     return null;
 }
 
-/** The book next to the shown one, if it's there yet (not a skeleton). */
+/** The book (or placeholder) next to the shown one, if it's there yet (not a skeleton). */
 function neighbour(dir: 1 | -1): HTMLElement | null {
     const el = adjacent(dir);
-    return el?.dataset["uuid"] ? el : null;
+    return cardId(el) ? el : null;
 }
 
 /** A step asked for while that way was still a skeleton: taken once it's a book. */
@@ -378,11 +394,11 @@ function watchGrid(card: HTMLElement | null): void {
 }
 
 /** Fetch a book's popup ahead of time, with its cover images. */
-function prefetchBook(uuid: string): void {
+function prefetchBook(uuid: string, card: HTMLElement): void {
     const now = Date.now();
     for (const [k, v] of prefetched) if (v.expires <= now) prefetched.delete(k);
     if (prefetched.has(uuid)) return;
-    const res = fetch(bookUrl(uuid), {
+    const res = fetch(bookUrl(uuid, card), {
         headers: { "HX-Request": "true", "HX-Request-Type": "partial" },
         credentials: "same-origin",
     }).then((r) => {
@@ -417,10 +433,11 @@ function preloadCovers(html: string): void {
 /** Once the shown book has settled, get the ones either side ready. */
 function prefetchNeighbours(): void {
     for (const dir of [1, -1] as const) {
-        const uuid = neighbour(dir)?.dataset["uuid"];
-        if (!uuid) continue;
-        prefetchBook(uuid);
-        prefetchControls(uuid);
+        const card = neighbour(dir);
+        const uuid = cardId(card);
+        if (!card || !uuid) continue;
+        prefetchBook(uuid, card);
+        if (!isPlaceholder(card)) prefetchControls(uuid);
     }
 }
 
@@ -466,7 +483,7 @@ function updateNavButtons(): void {
         // so a quick run of taps never finds it gone.
         const next = adjacent(btn.dataset["step"] === "1" ? 1 : -1);
         btn.hidden = !next;
-        btn.classList.toggle("waiting", !!next && !next.dataset["uuid"]);
+        btn.classList.toggle("waiting", !!next && !cardId(next));
     }
 }
 
@@ -518,7 +535,7 @@ function setupSwipe(content: HTMLElement): void {
 function step(dir: 1 | -1): void {
     queuedStep = null;
     const card = neighbour(dir);
-    const uuid = card?.dataset["uuid"];
+    const uuid = cardId(card);
     if (!card || !uuid) {
         const pending = adjacent(dir);
         if (pending) {

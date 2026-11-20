@@ -76,3 +76,69 @@
 {{ if .Writable }}<script type="module" src="{{ asset "placeholder.js" }}"></script>{{ end }}
 </body>
 </html>
+
+{{/* The book popup's view of a placeholder (modal.ts loads it, as an htmx
+     request, when the arrows step onto a placeholder's card): laid out like
+     a book's (book.html), so the cover and arrows stay put. */}}
+{{ define "placeholder-popup" }}<title>{{ .Meta.Title }}</title>
+<div class="book-page placeholder-popup">
+    <div class="book-header">
+        <div class="title-row">
+            <h1>{{ .Meta.Title }} <a href="/missing/{{ .UUID }}" class="icon-link" title="{{ if .Writable }}Open its page to edit or add files{{ else }}Open its page{{ end }}"
+                    aria-label="{{ if .Writable }}Edit placeholder{{ else }}Permalink{{ end }}">
+                    {{ if .Writable }}<svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor"
+                        stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                        <path d="M12 20h9" />
+                        <path d="M16.5 3.5a2.121 2.121 0 0 1 3 3L7 19l-4 1 1-4Z" />
+                    </svg>{{ else }}<svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor"
+                        stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                        <path d="M10 13a5 5 0 0 0 7.07 0l2.83-2.83a5 5 0 0 0-7.07-7.07l-1.5 1.5" />
+                        <path d="M14 11a5 5 0 0 0-7.07 0l-2.83 2.83a5 5 0 0 0 7.07 7.07l1.5-1.5" />
+                    </svg>{{ end }}
+                </a></h1>
+        </div>
+        {{ if .AuthorLinks }}
+        <div class="book-authors">
+            by {{ range $i, $a := .AuthorLinks }}{{ if $i }}, {{ end }}<a href="{{ $a.Href }}" class="meta-link author-link">{{ $a.Name }}</a>{{ end }}
+        </div>
+        {{ end }}
+    </div>
+    <div class="book-page-side">
+        <div class="book-page-cover">
+            <span class="cover-stack placeholder-stack">
+                <span class="cover-placeholder" style="--cover-hue: {{ .CoverHue }}"{{ if .CoverURL }} aria-hidden="true"{{ end }}>
+                    <span class="cover-placeholder-title">{{ .Meta.Title }}</span>
+                    {{ if .Authors }}<span class="cover-placeholder-author">{{ .Authors }}</span>{{ end }}
+                </span>
+                {{ if .CoverURL }}<img class="cover-full" alt="" src="{{ .CoverURL }}" onload="this.classList.add('loaded')" onerror="this.remove()" />{{ end }}
+                <span class="placeholder-banner">Not in library</span>
+            </span>
+        </div>
+        {{ if .Writable }}
+        <div class="book-actions">
+            <a class="btn-action" href="/missing/{{ .UUID }}">
+                <svg class="action-icon" viewBox="0 0 24 24" width="16" height="16" fill="none"
+                    stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                    <path d="M12 5v14" />
+                    <path d="M5 12h14" />
+                </svg>
+                <span>Add formats or edit</span>
+            </a>
+        </div>
+        {{ end }}
+    </div>
+    <div class="book-page-info">
+        <p class="meta-row auth-muted">This book isn't in the library yet.</p>
+        {{ if .SeriesHref }}<div class="meta-row">Book {{ .Index }} in <a href="{{ .SeriesHref }}" class="meta-link">{{ .Meta.Series }}</a></div>{{ end }}
+        {{ if and .PublisherHref .Meta.Date }}
+        <div class="meta-row">Published by <a href="{{ .PublisherHref }}" class="meta-link">{{ .Meta.Publisher }}</a> on {{ .Meta.Date }}</div>
+        {{ else if .PublisherHref }}
+        <div class="meta-row">Published by <a href="{{ .PublisherHref }}" class="meta-link">{{ .Meta.Publisher }}</a></div>
+        {{ else if .Meta.Date }}
+        <div class="meta-row">Published on {{ .Meta.Date }}</div>
+        {{ end }}
+        {{ if .ISBN }}<div class="meta-row">ISBN {{ .ISBN }}</div>{{ end }}
+        {{ if .Meta.Subjects }}<div class="meta-row">{{ range .Meta.Subjects }}<span class="tag">{{ . }}</span> {{ end }}</div>{{ end }}
+        {{ if .Meta.Description }}<div class="description placeholder-desc">{{ .Meta.Description }}</div>{{ end }}
+    </div>
+</div>{{ end }}

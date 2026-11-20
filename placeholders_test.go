@@ -3,6 +3,7 @@ package main
 import (
 	"encoding/json"
 	"net/http"
+	"net/http/httptest"
 	"slices"
 	"strings"
 	"testing"
@@ -96,6 +97,29 @@ func TestPlaceholders(t *testing.T) {
 		t.Error("a reader's view of the placeholder page")
 	}
 	do(alice, "GET", "/missing", "", http.StatusNotFound)
+
+	// The book popup steps onto it (modal.ts): an htmx request gets the
+	// popup's fragment, and its #book/ link (/book/get/) leads there.
+	req := asUser(httptest.NewRequest("GET", "/missing/"+third, nil), alice)
+	req.Header.Set("HX-Request", "true")
+	rec := httptest.NewRecorder()
+	mux.ServeHTTP(rec, req)
+	if body := rec.Body.String(); rec.Code != http.StatusOK || !strings.Contains(body, `class="book-page placeholder-popup"`) ||
+		!strings.Contains(body, "Other Three") || strings.Contains(body, "<html") || strings.Contains(body, "Add formats") {
+		t.Errorf("popup: %d %s", rec.Code, body)
+	}
+	req = asUser(httptest.NewRequest("GET", "/missing/"+third, nil), admin)
+	req.Header.Set("HX-Request", "true")
+	rec = httptest.NewRecorder()
+	mux.ServeHTTP(rec, req)
+	if !strings.Contains(rec.Body.String(), "Add formats") {
+		t.Error("an admin's popup has no link to add formats")
+	}
+	rec = httptest.NewRecorder()
+	bookHandler(rec, asUser(httptest.NewRequest("GET", "/book/get/"+third, nil), alice))
+	if rec.Code != http.StatusFound || rec.Header().Get("Location") != "/missing/"+third {
+		t.Errorf("/book/get/ of a placeholder: %d %q", rec.Code, rec.Header().Get("Location"))
+	}
 
 	// On deck: after book 2, the missing book 3; after book 1, a missing
 	// 1.5 comes before the library's book 2.

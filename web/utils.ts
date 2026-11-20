@@ -166,8 +166,9 @@ function seriesCard(book: Book, s: NonNullable<Book["series_card"]>, coverReady:
 /**
  * A book not in the library yet (Book.placeholder): its picture, or its
  * title and author on the card's colour, under a "Not in library" banner,
- * linking to its page. No data-uuid, so reading marks, selection and the
- * popup pass it by; data-placeholder names it (On deck's ✕).
+ * linking to its page. No data-uuid, so reading marks and selection pass it
+ * by; data-placeholder names it (On deck's ✕, and the popup's arrows, which
+ * step onto it: modal.ts).
  */
 function placeholderCard(book: Book, p: NonNullable<Book["placeholder"]>): HTMLElement {
     const title = book.title || "Untitled";

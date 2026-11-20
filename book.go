@@ -89,9 +89,16 @@ func bookHandler(w http.ResponseWriter, r *http.Request) {
 
 	path, err := resolveBookPath(uuid)
 	if err != nil {
-		if !redirectMerged(w, r, uuid) {
-			http.NotFound(w, r)
+		if redirectMerged(w, r, uuid) {
+			return
 		}
+		// A placeholder's #book/ link (the popup steps onto placeholders).
+		if p := placeholderByUUID(uuid); p != nil {
+			w.Header().Set("Cache-Control", "no-store")
+			http.Redirect(w, r, p.href(), http.StatusFound)
+			return
+		}
+		http.NotFound(w, r)
 		return
 	}
 
