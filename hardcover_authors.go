@@ -454,6 +454,21 @@ func hcFillAuthorProfile(r *http.Request, data *FilteredPageData) {
 	}
 }
 
+// hcFillSeriesDescription adds the description Hardcover gave a linked
+// series (fetched with its books, hardcover.go) where the page has none of
+// its own. Plain text, shown escaped like an author's bio.
+func hcFillSeriesDescription(data *FilteredPageData) {
+	if data.Category != "series" || data.Description != "" || appDB == nil {
+		return
+	}
+	l, err := hcLinkFor(data.Name)
+	if err != nil || l == nil || l.Snapshot == nil || l.Snapshot.Description == "" {
+		return
+	}
+	data.Description = l.Snapshot.Description
+	data.Profile = &AuthorProfile{FromHardcover: true, HardcoverURL: l.hardcoverURL()}
+}
+
 // authorHeaderData is what the top of the author's page shows, for
 // rendering it again once Hardcover has answered.
 func authorHeaderData(r *http.Request, value string) (FilteredPageData, bool) {

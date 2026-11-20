@@ -220,7 +220,7 @@ func newFakeHardcover(t *testing.T) *fakeHardcover {
 				{"book_id":2,"position":2,"series":{"id":42,"name":"The Expanse","slug":"the-expanse","books_count":12}},
 				{"book_id":2,"position":1,"series":{"id":99,"name":"Other","slug":"other","books_count":3}}]}}`)
 		case "SeriesBooks":
-			io.WriteString(w, `{"data":{"series":[{"id":42,"name":"The Expanse","slug":"the-expanse","books_count":12,"book_series":[
+			io.WriteString(w, `{"data":{"series":[{"id":42,"name":"The Expanse","slug":"the-expanse","books_count":12,"description":"A <b>space</b> opera.<br>Nine books.","book_series":[
 				{"position":1,"details":"1","book":{"id":1,"slug":"leviathan-wakes","title":"Leviathan Wakes","subtitle":null,"release_date":"2011-06-02"}},
 				{"position":1.5,"details":"1.5","book":{"id":3,"slug":"the-butcher","title":"The Butcher of Anderson Station","release_date":"2011-10-01"}},
 				{"position":2,"details":"2","book":{"id":2,"slug":"calibans-war","title":"Caliban's War","release_date":null}}]}]}}`)
@@ -271,6 +271,9 @@ func TestClientQueries(t *testing.T) {
 	if len(d.Entries) != 3 || d.Entries[0].Authors[0] != "James S. A. Corey" || d.Entries[0].ISBNs[0] != "9780316129084" ||
 		*d.Entries[1].Position != 1.5 || len(d.Entries[2].Authors) != 1 || d.Entries[2].Released != "" {
 		t.Fatalf("SeriesBooks = %+v", d.Entries)
+	}
+	if d.Description != "A space opera.\nNine books." {
+		t.Errorf("Description = %q", d.Description)
 	}
 	if f.bad.Load() != 0 {
 		t.Errorf("%d requests with wrong headers or cookies", f.bad.Load())

@@ -134,7 +134,7 @@ func (r rawAuthor) author() Author {
 	return a
 }
 
-// cleanBio: line ends made "\n", at most one blank line between
+// cleanBio (an author's bio, a series' description): line ends made "\n", at most one blank line between
 // paragraphs, trimmed, and cut to maxBio at a rune boundary.
 func cleanBio(s string) string {
 	// Plain text: some bios carry HTML ("<sup>[1]</sup>" footnote marks,

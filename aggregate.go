@@ -658,6 +658,7 @@ func filteredPageHandler(c *category) http.HandlerFunc {
 			data.Description, data.ImageURL = m.Description, m.imageURL()
 		}
 		hcFillAuthorProfile(r, &data)
+		hcFillSeriesDescription(&data)
 		if data.Profile != nil && (data.Profile.Lookup != "" || data.Profile.Refresh != "") {
 			w.Header().Set("Cache-Control", "private, no-cache")
 		}
