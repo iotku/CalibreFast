@@ -34,7 +34,7 @@ func TestDiscoverPage(t *testing.T) {
 	allowRegistrations, publicCatalog, publicRead = false, true, false
 	body := get("/").Body.String()
 	for _, want := range []string{
-		`id="greeting"`, `id="home-edit"`, `id="home-rows"`,
+		`id="greeting"`, `id="greeting-stats"`, `id="home-edit"`, `id="home-rows"`,
 		`data-total-books="3"`, `data-shuffle-total="3"`, `data-version="` + currentPagesVersion() + `"`,
 		`id="row-shuffle"`, `id="row-latest"`, `href="/latest"`, `href="/shuffle"`, `href="/me/reading"`, `href="/me/saved"`, `id="shuffle-next"`, `id="shuffle-back"`,
 		"Reading books here needs one too.", // -public without -public-read

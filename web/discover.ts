@@ -68,7 +68,7 @@ import { maxCovers } from "./cover-limits.js";
 import { setupDragScroll, setupPageDragScroll } from "./drag-scroll.js";
 import "./offline-marks.js"; // the "on this device" badge on cards
 import { startBookSync, syncBooks } from "./book-sync.js";
-import { fetchStats, statsCard } from "./stats-data.js";
+import { fetchStats, statsSummary } from "./stats-data.js";
 
 const STRIP = 12; // books in a row
 const PIN_STRIP = 24; // books in a pinned tag's row (Go: shelfRowBooks)
@@ -616,11 +616,11 @@ async function refreshHome(): Promise<void> {
     showAccountLine();
 }
 
-/** The reading stats card in the greeting (stats-data.ts): signed in, with anything to show. */
+/** The reading stats summary in the greeting (stats-data.ts): signed in, keeping stats. */
 async function showStatsCard(): Promise<void> {
     const slot = byId("greeting-stats");
     try {
-        const card = statsCard(await fetchStats());
+        const card = statsSummary(await fetchStats());
         slot.replaceChildren(...(card ? [card] : []));
         slot.hidden = !card;
     } catch {
@@ -793,7 +793,7 @@ interface Layout {
 /** The rows' order by default; "pins" stands for the pinned rows. */
 const DEFAULT_ORDER = ["k:reading", "k:wanted", "pins", "k:recommended", "k:shuffle", "k:latest", "k:tags"];
 /** Sections that can be turned off (Go: homeSections). */
-const TOGGLEABLE = ["greeting", "wanted", "recommended", "shuffle", "latest", "tags"];
+const TOGGLEABLE = ["greeting", "stats", "wanted", "recommended", "shuffle", "latest", "tags"];
 /** Rows only a signed-in user has. */
 const ACCOUNT_ROWS = ["row-wanted", "row-recommended"];
 
@@ -897,7 +897,7 @@ function applyLayout(): void {
         }
         prev = el;
     }
-    for (const el of [byId("greeting"), ...rows.values()]) {
+    for (const el of [byId("greeting"), byId("greeting-stats"), ...rows.values()]) {
         const key = el.dataset["key"];
         el.classList.toggle("row-off", !!key && layout.hidden.includes(key));
     }
@@ -928,16 +928,18 @@ function setTagHidden(name: string, hide: boolean): void {
 
 let editing: Reorderable | null = null;
 
-/** A section's Show switch, while editing. */
-function addToggle(row: HTMLElement): void {
+/**
+ * A section's Show switch, while editing: in its own heading, or in head
+ * (the reading stats summary's, in the greeting's) with its own text.
+ */
+function addToggle(row: HTMLElement, head = row.querySelector<HTMLElement>(":scope > .row-head"), text = "Show"): void {
     const key = row.dataset["key"];
-    const head = row.querySelector<HTMLElement>(":scope > .row-head");
     if (!key || !head || !TOGGLEABLE.includes(key) || row.classList.contains("row-na")) return;
     const label = document.createElement("label");
     label.className = "row-toggle";
     const box = el("input", { type: "checkbox" });
     box.setAttribute("role", "switch");
-    label.append(box, el("span", {}, "Show"));
+    label.append(box, el("span", {}, text));
     box.checked = !layout.hidden.includes(key);
     box.setAttribute("aria-label", `Show ${row.dataset["name"] ?? key}`);
     box.addEventListener("change", () => {
@@ -979,6 +981,9 @@ function setEditing(on: boolean): void {
             },
         });
         for (const el of [byId("greeting"), ...list.querySelectorAll<HTMLElement>(":scope > .home-row")]) addToggle(el);
+        // The reading stats summary: signed in only (it's empty for a guest).
+        const stats = byId("greeting-stats");
+        if (isOwn()) addToggle(stats, byId("greeting").querySelector<HTMLElement>(":scope > .row-head"), "Reading stats");
     } else {
         editing?.stop();
         editing = null;

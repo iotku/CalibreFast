@@ -36,14 +36,14 @@ func TestHomeLayout(t *testing.T) {
 			t.Errorf("%s: status %d, want 400", bad, code)
 		}
 	}
-	if code := put(`{"order": ["k:shuffle", "s:7", "t:Space Opera", "k:reading"], "hidden": ["tags", "recommended"]}`); code != http.StatusNoContent {
+	if code := put(`{"order": ["k:shuffle", "s:7", "t:Space Opera", "k:reading"], "hidden": ["tags", "recommended", "stats"]}`); code != http.StatusNoContent {
 		t.Fatalf("status %d", code)
 	}
 	l, err := userHomeLayout(u)
 	if err != nil {
 		t.Fatal(err)
 	}
-	if !slices.Equal(l.Order, []string{"k:shuffle", "s:7", "t:Space Opera", "k:reading"}) || !slices.Equal(l.Hidden, []string{"tags", "recommended"}) {
+	if !slices.Equal(l.Order, []string{"k:shuffle", "s:7", "t:Space Opera", "k:reading"}) || !slices.Equal(l.Hidden, []string{"tags", "recommended", "stats"}) {
 		t.Errorf("stored %+v", l)
 	}
 
@@ -84,7 +84,7 @@ func TestHomeLayout(t *testing.T) {
 	if err := json.Unmarshal(rec.Body.Bytes(), &h); err != nil {
 		t.Fatal(err)
 	}
-	if !slices.Equal(h.Layout.Hidden, []string{"tags", "recommended"}) || !slices.Equal(h.HiddenTags, []string{"Westerns"}) {
+	if !slices.Equal(h.Layout.Hidden, []string{"tags", "recommended", "stats"}) || !slices.Equal(h.HiddenTags, []string{"Westerns"}) {
 		t.Errorf("home answer layout %+v, hidden tags %v", h.Layout, h.HiddenTags)
 	}
 }

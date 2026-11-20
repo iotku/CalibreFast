@@ -29,12 +29,15 @@
                 <header class="row-head greeting-head">
                     <h1 class="greeting-hello" id="greeting-hello">Welcome!</h1>
                 </header>
-                <figure class="greeting-quote" id="greeting-quote" hidden>
-                    <blockquote><p></p></blockquote>
-                    <figcaption></figcaption>
-                </figure>
-                {{/* Today's reading against the daily goal, and the streak (stats-data.ts). */}}
-                <div class="greeting-stats-slot" id="greeting-stats" hidden></div>
+                <div class="greeting-body">
+                    <figure class="greeting-quote" id="greeting-quote" hidden>
+                        <blockquote><p></p></blockquote>
+                        <figcaption></figcaption>
+                    </figure>
+                    {{/* A summary of the user's reading stats (stats-data.ts), beside
+                         the quote; a section of its own to turn off (Edit). */}}
+                    <div class="greeting-stats-slot" id="greeting-stats" data-key="stats" data-name="Reading stats" hidden></div>
+                </div>
                 <p class="intro-account" id="intro-account" hidden>
                     An account keeps track of what you're reading on every device, a list of books saved for later, and suggestions from what you like.
                     {{ if .ReadNeedsAccount }}Reading books here needs one too.{{ end }}

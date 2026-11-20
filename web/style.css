@@ -631,8 +631,18 @@ button.row-icon:hover {
 }
 .home-editing .greeting .greeting-head {
     display: flex;
+    flex-wrap: wrap;
     align-items: center;
-    justify-content: space-between;
+    gap: var(--gap-small) var(--gap-large);
+}
+/* The greeting's switches together at the end: Show (the greeting) and
+   Reading stats (the summary beside the quote), each with its words, as
+   two bare switches side by side couldn't be told apart. */
+.home-editing .greeting .greeting-head .row-toggle:first-of-type {
+    margin-left: auto;
+}
+.home-editing .greeting .row-toggle span {
+    display: inline;
 }
 
 /* Drag to reorder (web/reorder.ts). */
@@ -6014,16 +6024,29 @@ body.selecting .book.selected .cover-wrapper {
     gap: var(--gap-medium);
 }
 
-/* The home page's card, in the greeting. */
+/* The home page's summary, beside the quote of the day (stats-data.ts). */
+.greeting-body {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: flex-start;
+    justify-content: space-between;
+    gap: var(--gap-large) var(--gap-xlarge);
+}
+.greeting-body .greeting-quote {
+    flex: 1 1 320px;
+}
+.greeting-stats-slot {
+    flex: 0 1 340px;
+    min-width: 0;
+}
 .greeting-stats-slot[hidden] {
     display: none;
 }
 .greeting-stats {
-    display: inline-flex;
-    align-items: center;
-    gap: var(--gap-large);
-    margin-top: var(--gap-medium);
-    padding: var(--gap-medium) var(--gap-large);
+    display: flex;
+    flex-direction: column;
+    gap: var(--gap-medium);
+    padding: var(--gap-large);
     color: var(--text-primary);
     text-decoration: none;
     background: var(--bg-surface);
@@ -6035,16 +6058,33 @@ body.selecting .book.selected .cover-wrapper {
     border-color: var(--border-medium);
     background: var(--bg-elevated);
 }
-.greeting-stats-text {
+.greeting-stats-today {
+    display: flex;
+    align-items: center;
+    gap: var(--gap-large);
+}
+.greeting-stats-text,
+.greeting-stat {
     display: flex;
     flex-direction: column;
     font-size: var(--font-size-small);
     color: var(--text-secondary);
 }
-.greeting-stats-text strong {
+.greeting-stats-text strong,
+.greeting-stat strong {
     font-size: var(--font-size-normal);
     font-weight: 600;
     color: var(--text-primary);
+    font-variant-numeric: tabular-nums;
+}
+.greeting-stats-row {
+    display: flex;
+    gap: var(--gap-xlarge);
+}
+.stats-strip {
+    display: block;
+    width: 100%;
+    height: auto;
 }
 .stats-ring-track,
 .stats-ring-fill {
