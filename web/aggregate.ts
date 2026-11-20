@@ -8,8 +8,9 @@
  *   page as it was.
  * - Discover shows a random few (the server picks the first ones); "Show
  *   others" draws another few from the same list the search box uses.
- * - The cloud can be ordered by book count (as served), A–Z (with a letter
- *   bar to jump by), or shuffled. The choice is remembered.
+ * - The cloud can be ordered as served (by book count; series complete
+ *   ones first), A–Z (with a letter bar to jump by), or shuffled. The
+ *   choice is remembered.
  * - Hovering an entry (or focusing it from the keyboard) previews a few of
  *   its books' covers.
  */
@@ -71,13 +72,13 @@ function plural(n: number): string {
     return `${n.toLocaleString("en-US")} ${n === 1 ? "book" : "books"}`;
 }
 
-/** Series the server marked complete on Hardcover: their badge, by name. */
-const completeBadges = new Map<string, Element>();
-for (const a of document.querySelectorAll<HTMLAnchorElement>("a[data-complete]")) {
-    const badge = a.querySelector(".agg-complete");
+/** Series the server drew coverage for (✓ or a ring): their badge, by name. */
+const coverageBadges = new Map<string, { badge: Element; complete: boolean }>();
+for (const a of document.querySelectorAll<HTMLAnchorElement>("a[data-coverage]")) {
+    const badge = a.querySelector(".agg-coverage");
     if (!badge || !a.pathname.startsWith(prefix)) continue;
     try {
-        completeBadges.set(decodeURIComponent(a.pathname.slice(prefix.length)), badge);
+        coverageBadges.set(decodeURIComponent(a.pathname.slice(prefix.length)), { badge, complete: "complete" in a.dataset });
     } catch {
         // a malformed path: no badge in search results
     }
@@ -90,10 +91,11 @@ function link(item: AggregateEntry, className: string): HTMLAnchorElement {
     if (item.members?.length) a.classList.add("agg-group");
     a.append(item.display || item.name);
     if (item.display && item.display !== item.name) a.append(" ", el("span", { className: "agg-sub" }, item.name));
-    const badge = completeBadges.get(item.name);
-    if (badge) {
-        a.dataset["complete"] = "";
-        a.append(badge.cloneNode(true));
+    const coverage = coverageBadges.get(item.name);
+    if (coverage) {
+        a.dataset["coverage"] = "";
+        if (coverage.complete) a.dataset["complete"] = "";
+        a.append(coverage.badge.cloneNode(true));
     }
     a.append(el("span", { className: "agg-count" }, String(item.count)));
     return a;
@@ -215,7 +217,7 @@ function setOrder(order: Order): void {
     } else if (order === "shuffle") {
         sorted = sample(items, items.length, () => false);
     } else {
-        sorted = items; // as served: most books first
+        sorted = items; // as served: most books first (series: complete ones first, sortByCoverage)
     }
 
     const nodes: Node[] = [];

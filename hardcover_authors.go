@@ -479,7 +479,7 @@ func authorHeaderData(r *http.Request, value string) (FilteredPageData, bool) {
 	data.Series = authorSeries(members)
 	if st := seriesStatuses(); len(st) > 0 {
 		for i := range data.Series {
-			data.Series[i].Complete = st[strings.ToLower(data.Series[i].Name)].Complete
+			data.Series[i].Status = statusPtr(st, data.Series[i].Name)
 		}
 	}
 	hcFillAuthorProfile(r, &data)
