@@ -60,8 +60,16 @@ type queryExecer interface {
 
 // recordStatusEvents notes a book started or finished, as a status changes
 // from prev to next, unless the user doesn't keep reading stats. Reading
-// again after finishing is starting again.
+// again after finishing is starting again. A finished book taken off
+// Finished other than to read it again (no status, or Saved) wasn't
+// finished after all: its last finish no longer counts.
 func recordStatusEvents(q queryExecer, userID int64, uuid, prev, next string) error {
+	if prev == "finished" && (next == "" || next == "wanted") {
+		_, err := q.Exec(`DELETE FROM reading_events WHERE user_id = ? AND book_uuid = ? AND kind = 'finished'
+			AND at = (SELECT MAX(at) FROM reading_events WHERE user_id = ? AND book_uuid = ? AND kind = 'finished')`,
+			userID, uuid, userID, uuid)
+		return err
+	}
 	started := next == "reading" && prev != "reading" ||
 		next == "finished" && prev != "reading" && prev != "finished"
 	finished := next == "finished" && prev != "finished"
