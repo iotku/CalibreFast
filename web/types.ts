@@ -448,7 +448,12 @@ export interface HardcoverCandidate {
     primary?: number;
     hits?: number;
     url?: string;
+    /** Same-named candidates share it (Hardcover splits some series by author). */
+    group: string;
+    /** In the likeliest group: ticked. */
+    pick?: boolean;
     sure?: boolean;
+    evidence?: "isbn" | "author" | "title";
 }
 
 /** A queued request to Hardcover (Go: hcJob in hardcover.go). */
@@ -466,6 +471,7 @@ export interface HardcoverJob {
         linked?: boolean;
         hcName?: string;
         books?: number;
+        parts?: number;
         review?: string;
         needsChoice?: boolean;
     };

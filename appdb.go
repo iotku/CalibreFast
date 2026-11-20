@@ -496,6 +496,22 @@ var migrations = []string{
 		paused_until INTEGER NOT NULL DEFAULT 0
 	);
 	`,
+	// 27: a series may be linked to several Hardcover series: Hardcover
+	// splits some into one per author, all of the same name ("Doctor Who:
+	// Target Books"), numbered as one. hardcover_series keeps its first
+	// (biggest) part in hc_id.
+	`
+	CREATE TABLE hardcover_series_parts (
+		name    TEXT    NOT NULL COLLATE NOCASE,
+		hc_id   INTEGER NOT NULL,
+		hc_slug TEXT    NOT NULL DEFAULT '',
+		hc_name TEXT    NOT NULL DEFAULT '',
+		author  TEXT    NOT NULL DEFAULT '',
+		books   INTEGER NOT NULL DEFAULT 0,
+		PRIMARY KEY (name, hc_id)
+	);
+	INSERT INTO hardcover_series_parts (name, hc_id, hc_slug, hc_name) SELECT name, hc_id, hc_slug, hc_name FROM hardcover_series;
+	`,
 }
 
 // openAppDB opens (creating if needed) and migrates the app database.

@@ -339,3 +339,65 @@ func TestAuthHeaderAndSlugs(t *testing.T) {
 		}
 	}
 }
+
+func TestSeriesBooksParts(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		var req struct {
+			Query     string         `json:"query"`
+			Variables map[string]any `json:"variables"`
+		}
+		_ = json.NewDecoder(r.Body).Decode(&req)
+		op, _, _ := strings.Cut(strings.Fields(req.Query)[1], "(")
+		switch op {
+		case "SeriesByName":
+			io.WriteString(w, `{"data":{"series":[
+				{"id":1,"name":"Target","slug":"target-a","books_count":2,"author":{"name":"A"}},
+				{"id":2,"name":"Target","slug":"target-b","books_count":3,"author":null}]}}`)
+		case "SeriesBooks":
+			if ids, _ := req.Variables["ids"].([]any); len(ids) != 2 {
+				t.Errorf("ids %v", req.Variables["ids"])
+			}
+			// Part 1 is smaller but lists position 2 with more readers.
+			io.WriteString(w, `{"data":{"series":[
+				{"id":1,"name":"Target","slug":"target-a","books_count":2,"author":{"name":"A"},"book_series":[
+					{"position":2,"book":{"id":20,"title":"The Daleks","users_count":50}},
+					{"position":5,"book":{"id":50,"title":"Five","users_count":1}}]},
+				{"id":2,"name":"Target","slug":"target-b","books_count":3,"author":{"name":"B"},"book_series":[
+					{"position":1,"book":{"id":10,"title":"One","users_count":3}},
+					{"position":2,"book":{"id":21,"title":"Dr Who - The Daleks","users_count":2}},
+					{"position":null,"book":{"id":99,"title":"Unnumbered","users_count":0}}]}]}}`)
+		case "BookDetails":
+			io.WriteString(w, `{"data":{"books":[
+				{"id":21,"contributions":[{"author":{"name":"Someone"}}],"editions":[{"isbn_13":"9780000000021"}]},
+				{"id":20,"contributions":[{"author":{"name":"David Whitaker"}}],"editions":[{"isbn_13":"9780000000020"}]}]}}`)
+		}
+	}))
+	defer srv.Close()
+	clock := &fakeClock{t: time.Date(2026, 11, 19, 12, 0, 0, 0, time.UTC)}
+	c := New(Config{URL: srv.URL, Token: "t", Now: clock.now, Budget: NewBudget(60, 10, 100)})
+	ctx := context.Background()
+
+	same, err := c.SeriesByName(ctx, []string{"Target", "Target"})
+	if err != nil || len(same) != 2 || same[0].Author != "A" || same[1].Author != "" {
+		t.Fatalf("SeriesByName = %+v, %v", same, err)
+	}
+	d, err := c.SeriesBooks(ctx, 2, 1, 1)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if d.ID != 2 || len(d.Parts) != 2 || len(d.AllParts()) != 2 {
+		t.Errorf("series %+v parts %+v", d.Series, d.Parts)
+	}
+	var titles []string
+	for _, e := range d.Entries {
+		titles = append(titles, e.Title)
+	}
+	if strings.Join(titles, "|") != "One|The Daleks|Five|Unnumbered" {
+		t.Fatalf("entries %q", titles)
+	}
+	daleks := d.Entries[1]
+	if daleks.BookID != 20 || len(daleks.AltTitles) != 1 || daleks.AltTitles[0] != "Dr Who - The Daleks" ||
+		len(daleks.ISBNs) != 2 || len(daleks.Authors) != 1 || daleks.Authors[0] != "David Whitaker" {
+		t.Errorf("merged position 2: %+v", daleks)
+	}
+}

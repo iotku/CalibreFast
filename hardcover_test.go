@@ -40,6 +40,8 @@ func fakeHardcoverAPI(t *testing.T) *httptest.Server {
 			io.WriteString(w, `{"data":{"search":{"results":{"hits":[
 				{"document":{"id":"90","name":"Wheel of Time","slug":"wot","author_name":"Robert Jordan","books_count":14}},
 				{"document":{"id":"91","name":"Wheels","slug":"wheels","author_name":"Someone","books_count":2}}]}}}}`)
+		case "SeriesByName":
+			io.WriteString(w, `{"data":{"series":[{"id":77,"name":"Other","slug":"other","books_count":5,"author":{"name":"Writer"}}]}}`)
 		case "EditionsByISBN":
 			io.WriteString(w, `{"data":{"editions":[]}}`)
 		case "SeriesBooks":
@@ -150,7 +152,7 @@ func TestHardcoverSeries(t *testing.T) {
 	hcClient = nil
 	do(admin, "GET", "/missing/hardcover?series=Other", "", http.StatusForbidden)
 	hcClient = hardcover.New(hardcover.Config{URL: srv.URL, Token: "test-token", UserAgent: "test", Now: clock.now,
-		Budget: hardcover.NewBudget(60, 10, 7)})
+		Budget: hardcover.NewBudget(60, 10, 8)})
 	// Editors only; no GET for changes; series must be in the library.
 	do(alice, "GET", "/missing/hardcover?series=Other", "", http.StatusNotFound)
 	do(alice, "POST", "/api/hardcover/candidates", `{"series":"Other"}`, http.StatusNotFound)
@@ -232,7 +234,7 @@ func TestHardcoverSeries(t *testing.T) {
 		t.Error("/missing doesn't mark placeholders from Hardcover")
 	}
 
-	// The daily limit (7; 3 used: a search, then a list and its books): refreshes are held, not failed, until
+	// The daily limit (8; 4 used: a search and a name lookup, then a list and its books): refreshes are held, not failed, until
 	// midnight UTC, and survive a restart.
 	for range 2 {
 		a = answer(do(admin, "POST", "/api/hardcover/refresh", `{"series":"Other"}`, http.StatusOK))
@@ -250,7 +252,7 @@ func TestHardcoverSeries(t *testing.T) {
 	}
 	hcSaveUsage()
 	hcClient = hardcover.New(hardcover.Config{URL: srv.URL, Token: "test-token", UserAgent: "test", Now: clock.now,
-		Budget: hardcover.NewBudget(60, 10, 7)})
+		Budget: hardcover.NewBudget(60, 10, 8)})
 	hcRestoreUsage() // as after a restart
 	step()
 	if j := job(a.Job.ID); j.State != "held" {

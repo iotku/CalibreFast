@@ -128,6 +128,7 @@ type HardcoverReviewData struct {
 	Linked     bool
 	HCName     string
 	HCURL      string
+	Parts      []hcPartView // when it is linked to several
 	Checked    string // "3 days ago"
 	Stale      bool
 	Review     hcReview
@@ -242,6 +243,11 @@ func hardcoverReviewPage(w http.ResponseWriter, r *http.Request) {
 	}
 	if l != nil {
 		d.Linked, d.HCName, d.HCURL, d.Checked, d.Stale = true, l.HCName, l.hardcoverURL(), hcAgo(l.CheckedAt), l.stale()
+		if len(l.Parts) > 1 {
+			for _, p := range l.Parts {
+				d.Parts = append(d.Parts, hcPartView{Name: p.Name, Author: p.Author, Books: p.Books, URL: p.url()})
+			}
+		}
 		if d.Review, err = hcReviewFor(s, l); err != nil {
 			log.Println("hardcover review:", err)
 			d.Error = "Couldn't match the list against the library."
@@ -250,6 +256,12 @@ func hardcoverReviewPage(w http.ResponseWriter, r *http.Request) {
 	}
 	w.Header().Set("Cache-Control", "no-store")
 	logErr(templates.ExecuteTemplate(w, "hardcover-review.html", d), "hardcover review page")
+}
+
+// hcPartView is one of the Hardcover series a series is linked to.
+type hcPartView struct {
+	Name, Author, URL string
+	Books             int
 }
 
 // HardcoverAuthorData is for hardcover-author.html.
@@ -368,8 +380,9 @@ func hcAnswerJob(w http.ResponseWriter, r *http.Request, id int64) {
 func hardcoverJobHandler(kind string) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		var req struct {
-			Series string `json:"series"`
-			HCID   int64  `json:"hcId"`
+			Series string  `json:"series"`
+			HCID   int64   `json:"hcId"`
+			HCIDs  []int64 `json:"hcIds"` // several parts of one series
 		}
 		if !hcDecode(w, r, &req) {
 			return
@@ -381,11 +394,20 @@ func hardcoverJobHandler(kind string) http.HandlerFunc {
 		}
 		p := hcPayload{}
 		if kind == hcJobLink {
-			if req.HCID <= 0 {
+			ids := req.HCIDs
+			if req.HCID > 0 {
+				ids = append(ids, req.HCID)
+			}
+			ids = slices.Compact(slices.Sorted(slices.Values(ids)))
+			if len(ids) == 0 || ids[0] <= 0 {
 				http.Error(w, "no Hardcover series given", http.StatusBadRequest)
 				return
 			}
-			p.HCID = req.HCID
+			if len(ids) > hcMaxParts {
+				http.Error(w, fmt.Sprintf("at most %d Hardcover series at once", hcMaxParts), http.StatusBadRequest)
+				return
+			}
+			p.HCIDs = ids
 		}
 		id, err := hcEnqueue(kind, s.Name, "", p, currentUser(r))
 		if err != nil {

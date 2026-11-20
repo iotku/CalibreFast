@@ -5639,6 +5639,19 @@ body.selecting .book.selected .cover-wrapper {
     padding: 0.45rem 0;
 }
 
-.hc-candidates .btn-standard {
-    margin-left: auto;
+.hc-candidates .hc-member {
+    padding-left: 1.6rem;
+}
+
+.hc-candidates .hc-group {
+    border-top: 1px solid var(--border-medium);
+}
+
+.hc-parts summary {
+    cursor: pointer;
+    margin-bottom: 0.5rem;
+}
+
+#hc-link-row[hidden] {
+    display: none;
 }
