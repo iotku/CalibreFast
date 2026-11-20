@@ -5,8 +5,9 @@ package main
 // the configuration, the handlers, and the editor's JSON.
 // Open Library: by ISBN when the book has one, else (or when the ISBN finds
 // nothing) by title and author, which can find several books. Google Books
-// (only with an API key, CF_GOOGLE_BOOKS_KEY)
-// only when the admin asks for it (it often has the best description). The
+// (only with an API key, CF_GOOGLE_BOOKS_KEY) and Hardcover (only with
+// CF_HARDCOVER_TOKEN; lookup_hardcover.go) only when the admin asks for
+// them (Google often has the best description, Hardcover the series). The
 // matches the admin picks become options in the editor, next to "current"
 // and the uploaded formats. Nothing is written until the admin applies
 // changes.
@@ -60,7 +61,10 @@ const (
 	googleBooksName = metalookup.GoogleBooks
 )
 
-var lookupSources = map[string]string{"openlibrary": openLibraryName, "google": googleBooksName}
+// hardcoverName is Hardcover as a lookup source (lookup_hardcover.go).
+const hardcoverName = "Hardcover"
+
+var lookupSources = map[string]string{"openlibrary": openLibraryName, "google": googleBooksName, "hardcover": hardcoverName}
 
 // googleBooksKey is CF_GOOGLE_BOOKS_KEY: Google Books is offered only with one.
 var googleBooksKey string
@@ -173,6 +177,10 @@ func lookupHandler(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "Google Books is turned off on this server (-no-google-books, or no CF_GOOGLE_BOOKS_KEY).", http.StatusForbidden)
 		return
 	}
+	if name == hardcoverName && !hardcoverEnabled() {
+		http.Error(w, "Hardcover is turned off on this server (-no-hardcover, or no CF_HARDCOVER_TOKEN).", http.StatusForbidden)
+		return
+	}
 	q := metalookup.Query{
 		Title:  strings.TrimSpace(r.URL.Query().Get("title")),
 		Author: strings.TrimSpace(r.URL.Query().Get("author")),
@@ -189,6 +197,10 @@ func lookupHandler(w http.ResponseWriter, r *http.Request) {
 	ctx, cancel := context.WithTimeout(r.Context(), 20*time.Second)
 	defer cancel()
 	w.Header().Set("Content-Type", "application/json")
+	if name == hardcoverName {
+		logErr(json.NewEncoder(w).Encode(hardcoverLookup(ctx, q)), "could not encode lookup result")
+		return
+	}
 	res := bookLookups.Lookup(ctx, name, q)
 	if want := isbn.Normalize(r.URL.Query().Get("match_isbn")); want != "" && q.ISBN == "" {
 		res = res.MarkISBN(want)
@@ -226,6 +238,10 @@ func olCoverURL(id int64) string {
 // and the browser never contacts Open Library.
 func lookupCoverHandler(w http.ResponseWriter, r *http.Request) {
 	q := r.URL.Query()
+	if q.Get("src") == "hardcover" && hardcoverEnabled() {
+		hardcoverCoverHandler(w, r)
+		return
+	}
 	if q.Get("src") != "openlibrary" {
 		http.Error(w, "unknown cover", http.StatusBadRequest)
 		return

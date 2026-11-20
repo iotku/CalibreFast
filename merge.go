@@ -399,6 +399,7 @@ func mergePage(w http.ResponseWriter, r *http.Request) {
 		ReadLink:     previewReadLink("uuid", keep, kb.FormatList()),
 		Lookups:      !noLookups,
 		GoogleBooks:  googleBooksEnabled(),
+		Hardcover:    hardcoverEnabled(),
 		Merge:        d,
 	}
 	w.Header().Set("Cache-Control", "no-store")

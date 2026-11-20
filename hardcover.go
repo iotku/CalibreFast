@@ -67,7 +67,7 @@ func configureHardcover() {
 	case noLookups:
 		return
 	case noHardcover:
-		log.Println("-no-hardcover: series won't be identified on Hardcover")
+		log.Println("-no-hardcover: series won't be identified on Hardcover, nor books looked up there")
 		return
 	case strings.TrimSpace(token) == "":
 		return
@@ -79,7 +79,8 @@ func configureHardcover() {
 	})
 }
 
-// hardcoverEnabled: series can be identified on Hardcover.
+// hardcoverEnabled: series can be identified on Hardcover, and books looked
+// up there (lookup_hardcover.go).
 func hardcoverEnabled() bool { return !noLookups && !noHardcover && hcClient != nil }
 
 func requireHardcover(h http.HandlerFunc) http.HandlerFunc {

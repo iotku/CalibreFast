@@ -52,3 +52,7 @@ func textToHTML(s string) string {
 	}
 	return b.String()
 }
+
+// TextToHTML turns a plain-text description into HTML paragraphs, for
+// another source's descriptions.
+func TextToHTML(s string) string { return textToHTML(s) }

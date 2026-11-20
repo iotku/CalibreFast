@@ -49,8 +49,8 @@ const FOUND_IN: Record<IsbnCandidate["source"], string> = {
 };
 
 /** Lookup sources (Go: lookupSources in lookup.go). */
-type Source = "openlibrary" | "google";
-const SOURCE_NAMES: Record<Source, string> = { openlibrary: "Open Library", google: "Google Books" };
+type Source = "openlibrary" | "google" | "hardcover";
+const SOURCE_NAMES: Record<Source, string> = { openlibrary: "Open Library", google: "Google Books", hardcover: "Hardcover" };
 
 /** "Opens in a new window": a box with an arrow out of its corner. */
 const EXTERNAL_ICON = () => icon(lineIcon(12), "M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6", "M15 3h6v6", "M10 14 21 3");
@@ -280,6 +280,7 @@ function mountLookup(host: IsbnToolsHost): { lookUpIsbn(isbn: string): void; sug
     const list: HTMLElement = listEl;
     const dialog: HTMLDialogElement = dialogEl;
     const googleAllowed = bar.dataset["google"] === "1";
+    const hardcoverAllowed = bar.dataset["hardcover"] === "1";
 
     // ---- Queries -----------------------------------------------------------
 
@@ -318,7 +319,7 @@ function mountLookup(host: IsbnToolsHost): { lookUpIsbn(isbn: string): void; sug
     const picked = (): Match[] => matches.filter((m) => m.label);
 
     const matchKey = (source: Source, meta: MetaSource): string => {
-        const id = meta.Identifiers?.find((i) => ["olid", "google", "isbn"].includes(i.Scheme.toLowerCase()));
+        const id = meta.Identifiers?.find((i) => ["olid", "google", "hardcover", "isbn"].includes(i.Scheme.toLowerCase()));
         return `${source}:${id ? `${id.Scheme}:${id.Value}` : `${meta.Title}\0${meta.Creators?.join(",") ?? ""}`}`.toLowerCase();
     };
 
@@ -391,7 +392,11 @@ function mountLookup(host: IsbnToolsHost): { lookUpIsbn(isbn: string): void; sug
         };
         if (googleAllowed && lastQuery && !asked.has("google")) {
             const g = lastQuery;
-            add("Try Google Books", `Sends ${describe(g)} to Google. Google Books often has a description.`, () => void askGoogle(g));
+            add("Try Google Books", `Sends ${describe(g)} to Google. Google Books often has a description.`, () => void askOther("google", g));
+        }
+        if (hardcoverAllowed && lastQuery && !asked.has("hardcover")) {
+            const h = lastQuery;
+            add("Try Hardcover", `Sends ${describe(h)} to Hardcover. Hardcover often has the series, genres and a cover.`, () => void askOther("hardcover", h));
         }
         more.replaceChildren(...buttons);
     }
@@ -403,6 +408,10 @@ function mountLookup(host: IsbnToolsHost): { lookUpIsbn(isbn: string): void; sug
         if (m.source === "google") {
             const g = id("google");
             return g ? `https://books.google.com/books?id=${encodeURIComponent(g)}` : "";
+        }
+        if (m.source === "hardcover") {
+            const slug = id("hardcover");
+            return /^[a-z0-9][a-z0-9-]{0,199}$/.test(slug) ? `https://hardcover.app/books/${slug}` : "";
         }
         // An edition (OL…M) when the ISBN found one, else the work (OL…W).
         const olid = id("olid");
@@ -552,12 +561,16 @@ function mountLookup(host: IsbnToolsHost): { lookUpIsbn(isbn: string): void; sug
         });
     }
 
-    async function askGoogle(q: Query): Promise<void> {
+    /** Asks Google Books or Hardcover; their matches go at the end of the list. */
+    async function askOther(source: Source, q: Query): Promise<void> {
+        const name = SOURCE_NAMES[source];
         await run(async () => {
-            say(`Asking Google Books for ${describe(q)}…`);
-            const r = await ask("google", q);
-            const n = show("google", r, { replace: false });
-            found = n ? `Google Books found ${describe(q)}; it's at the end of the list.` : `Google Books: ${r.error || "no match"}.`;
+            say(`Asking ${name} for ${describe(q)}…`);
+            const r = await ask(source, q);
+            const n = show(source, r, { replace: false }).length;
+            found = n
+                ? `${name} found ${n === 1 ? describe(q) : `${n} books for ${describe(q)}`}; ${n === 1 ? "it's" : "they're"} at the end of the list.`
+                : `${name}: ${r.error || "no match"}.`;
             say(found, !!r.error && !n);
         });
     }

@@ -152,7 +152,8 @@ Both only offer choices. Nothing is saved until **Apply Changes**.
   - **Matches** are listed with their authors, year, publisher, language and identifiers. **Tick** the right ones: each becomes a source under every field (**Open Library**, **Open Library 2**, …), so their values can be compared and picked one by one. Matches with the same value for a field share one pill there (**Open Library +2**; hover for which). Unticking one takes it away again. Ticked matches stay at the top of the list through a new search.
   - **Compare** shows one match against the current metadata. **Pick fields in the form** ticks it; **Accept all and apply** takes every value it has (never the cover), saves, and opens the book page.
   - **Try Google Books** asks Google for the same book, as one more match to tick. It's offered only when the server has a Google Books API key (`CF_GOOGLE_BOOKS_KEY`), and not with `-no-google-books`.
-  - A match's identifier pill adds identifiers (ISBN, `olid`, `google`) without crossing anything out.
+  - **Try Hardcover** asks Hardcover the same way. It often has the series and its number, genres and a cover. It's offered only when the server has a Hardcover API token (`CF_HARDCOVER_TOKEN`), and not with `-no-hardcover`.
+  - A match's identifier pill adds identifiers (ISBN, `olid`, `google`, `hardcover`) without crossing anything out.
   - Open Library's cover, when it has one, is fetched only when you click **Look up cover online** in the cover dialog.
   - **Only on a click:** nothing is sent when the editor opens, on upload, or when an ISBN is found, and each click asks one site at a time. Answers are cached, each site has rate and daily limits, and `-no-lookups` turns lookups off.
 

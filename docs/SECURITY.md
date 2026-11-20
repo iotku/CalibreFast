@@ -90,7 +90,7 @@ Every response carries `Content-Security-Policy: require-trusted-types-for 'scri
 
 ## Online lookups
 
-The metadata editor's lookup bar sends a book's ISBN (**Search ISBN**) or its title and first author (**Search title & author**) to Open Library. Google Books is asked only when an admin clicks **Try Google Books**, which is offered only when the server has a Google Books API key. The cover dialog's **Look up cover online** sends the ISBN to Open Library too. That tells those sites a book is in your library.
+The metadata editor's lookup bar sends a book's ISBN (**Search ISBN**) or its title and first author (**Search title & author**) to Open Library. Google Books is asked only when an admin clicks **Try Google Books**, which is offered only when the server has a Google Books API key; Hardcover likewise only on **Try Hardcover**, with `CF_HARDCOVER_TOKEN`. A Hardcover cover is fetched by the server from the URL Hardcover's answer gave (kept on the server; the browser sends only a book id), only from `https://…hardcover.app`, never as SVG, and without the token. The cover dialog's **Look up cover online** sends the ISBN to Open Library too. That tells those sites a book is in your library.
 
 - **Only on a click** by an admin, on a server with `-allow-writes`, one site at a time. Opening the editor, uploading, or finding ISBNs in a book's files sends nothing.
 - **Only the query** is sent, with a generic User-Agent. No account, library name or cookies.
