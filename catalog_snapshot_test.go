@@ -1,10 +1,13 @@
 package main
 
 import (
+	"bytes"
 	"database/sql"
+	"encoding/gob"
 	"os"
 	"path/filepath"
 	"reflect"
+	"strings"
 	"testing"
 	"time"
 )
@@ -166,5 +169,48 @@ func TestCatalogSnapshotTracksWriters(t *testing.T) {
 	}
 	if _, err := os.Stat(catalogSnapshotPath()); !os.IsNotExist(err) {
 		t.Error("a snapshot was saved again after an outside change")
+	}
+}
+
+// A snapshot from before author names were read with their commas (version
+// 2 kept metadata.db's "Pratchett| Terry") is ignored: the library is read
+// again and the names come back with the comma.
+func TestCatalogSnapshotOldAuthorNames(t *testing.T) {
+	db := snapshotFixture(t)
+	addTestBook(t, db, "Wyrd Sisters", []string{"Pratchett, Terry"}, nil, "Discworld", "epub")
+	if err := writeLibraryPages(); err != nil {
+		t.Fatal(err)
+	}
+	data, err := os.ReadFile(catalogSnapshotPath())
+	if err != nil {
+		t.Fatal(err)
+	}
+	var s catalogSnapshot
+	if err := gob.NewDecoder(bytes.NewReader(data)).Decode(&s); err != nil {
+		t.Fatal(err)
+	}
+	s.Version = 2
+	for id, n := range s.AuthorNames {
+		s.AuthorNames[id] = strings.ReplaceAll(n, ",", "|")
+	}
+	var buf bytes.Buffer
+	if err := gob.NewEncoder(&buf).Encode(&s); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(catalogSnapshotPath(), buf.Bytes(), 0o600); err != nil {
+		t.Fatal(err)
+	}
+
+	builds := catalogBuilds.Load()
+	if err := writeLibraryPages(); err != nil {
+		t.Fatal(err)
+	}
+	if catalogBuilds.Load() == builds {
+		t.Error("an old snapshot was used")
+	}
+	for _, n := range currentCatalog().authorNames {
+		if strings.Contains(n, "|") {
+			t.Errorf("author %q", n)
+		}
 	}
 }

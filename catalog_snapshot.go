@@ -32,8 +32,12 @@ import (
 )
 
 // catalogSnapshotVersion changes whenever catalogBook or the snapshot's
-// layout does: an older snapshot is then ignored.
-const catalogSnapshotVersion = 2
+// layout does, or what the catalog reads into them (a name read another
+// way): an older snapshot is then ignored.
+//
+// 3: author names with a comma, which metadata.db keeps as "|", are read
+// with the comma (authorNameSQL); a snapshot from before kept the "|".
+const catalogSnapshotVersion = 3
 
 type libraryKey struct {
 	Library     string // -basedir, absolute
