@@ -17,6 +17,7 @@ import (
 	"fmt"
 	"html/template"
 	"log"
+	"mime"
 	"net/http"
 	"net/url"
 	"os"
@@ -1221,7 +1222,7 @@ func resolveFormats(uuid, baseDir, path string) []string {
 	for _, e := range entries {
 		if e.IsDir() {
 			continue
-		} else if hasBookExt(e.Name()) {
+		} else if isCalibreFormat(e.Name()) {
 			formats = append(formats, e.Name())
 		}
 	}
@@ -1237,6 +1238,45 @@ func resolveFormats(uuid, baseDir, path string) []string {
 func hasBookExt(path string) bool {
 	ext := filepath.Ext(path)
 	return ext == ".epub" || ext == ".pdf" || ext == ".mobi" || ext == ".azw3" || ext == ".djvu"
+}
+
+// calibreFormats is every extension Calibre accepts as a book format
+// (BOOK_EXTENSIONS in calibre/ebooks/__init__.py). A book's folder holds only
+// its formats, cover.jpg and metadata.opf, so these are what a book can be
+// downloaded as. Uploads accept fewer (hasBookExt).
+var calibreFormats = map[string]bool{
+	"azw": true, "azw1": true, "azw3": true, "azw4": true, "book": true,
+	"cb7": true, "cbc": true, "cbr": true, "cbz": true, "chm": true,
+	"djv": true, "djvu": true, "doc": true, "docm": true, "docx": true,
+	"epub": true, "fb2": true, "fbz": true, "htm": true, "html": true,
+	"htmlz": true, "iba": true, "ibook": true, "ibooks": true, "imp": true,
+	"kepub": true, "kfx": true, "kpf": true, "lit": true, "lrf": true,
+	"lrx": true, "markdown": true, "mbp": true, "md": true, "mobi": true,
+	"odt": true, "oebzip": true, "oxps": true, "pdb": true, "pdf": true,
+	"pdr": true, "pml": true, "pmlz": true, "pobi": true, "prc": true,
+	"ps": true, "rar": true, "rb": true, "rtf": true, "snb": true,
+	"tan": true, "text": true, "textile": true, "tpz": true, "txt": true,
+	"txtz": true, "updb": true, "xhtm": true, "xhtml": true, "xps": true,
+	"zbf": true, "zip": true,
+}
+
+// isCalibreFormat reports whether name has the extension of a Calibre book
+// format (calibreFormats). Calibre names its files in lower case.
+func isCalibreFormat(name string) bool {
+	return calibreFormats[strings.TrimPrefix(filepath.Ext(name), ".")]
+}
+
+// downloadContentType is the Content-Type a format is downloaded with. Any
+// format but EPUB and PDF goes as plain bytes, so that a book's .html or
+// .htm format is saved, never shown as a page from our origin.
+func downloadContentType(format string) string {
+	switch format {
+	case "epub":
+		return "application/epub+zip"
+	case "pdf":
+		return "application/pdf"
+	}
+	return "application/octet-stream"
 }
 
 func formatsHandler(w http.ResponseWriter, r *http.Request) {
@@ -1347,10 +1387,9 @@ func downloadHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	w.Header().Set(
-		"Content-Disposition",
-		`attachment; filename="`+target+`"`,
-	)
+	w.Header().Set("Content-Type", downloadContentType(format))
+	w.Header().Set("X-Content-Type-Options", "nosniff")
+	w.Header().Set("Content-Disposition", mime.FormatMediaType("attachment", map[string]string{"filename": target}))
 
 	http.ServeFile(w, r, fullPath)
 	noteDownload(uuid, format) // for KOReader progress sync (kosync_digest.go)
