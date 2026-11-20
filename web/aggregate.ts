@@ -71,6 +71,18 @@ function plural(n: number): string {
     return `${n.toLocaleString("en-US")} ${n === 1 ? "book" : "books"}`;
 }
 
+/** Series the server marked complete on Hardcover: their badge, by name. */
+const completeBadges = new Map<string, Element>();
+for (const a of document.querySelectorAll<HTMLAnchorElement>("a[data-complete]")) {
+    const badge = a.querySelector(".agg-complete");
+    if (!badge || !a.pathname.startsWith(prefix)) continue;
+    try {
+        completeBadges.set(decodeURIComponent(a.pathname.slice(prefix.length)), badge);
+    } catch {
+        // a malformed path: no badge in search results
+    }
+}
+
 /** One entry, as the "agg-entry" template draws it. */
 function link(item: AggregateEntry, className: string): HTMLAnchorElement {
     const a = el("a", { className, href: prefix + encodeURIComponent(item.name) });
@@ -78,6 +90,11 @@ function link(item: AggregateEntry, className: string): HTMLAnchorElement {
     if (item.members?.length) a.classList.add("agg-group");
     a.append(item.display || item.name);
     if (item.display && item.display !== item.name) a.append(" ", el("span", { className: "agg-sub" }, item.name));
+    const badge = completeBadges.get(item.name);
+    if (badge) {
+        a.dataset["complete"] = "";
+        a.append(badge.cloneNode(true));
+    }
     a.append(el("span", { className: "agg-count" }, String(item.count)));
     return a;
 }

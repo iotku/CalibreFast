@@ -512,6 +512,16 @@ var migrations = []string{
 	);
 	INSERT INTO hardcover_series_parts (name, hc_id, hc_slug, hc_name) SELECT name, hc_id, hc_slug, hc_name FROM hardcover_series;
 	`,
+	// 28: series an editor checked by hand (series_complete.go): the
+	// number of numbered books they have, as browsed (a group's name).
+	`
+	CREATE TABLE series_verified (
+		name        TEXT    PRIMARY KEY COLLATE NOCASE,
+		total       INTEGER NOT NULL,
+		verified_by INTEGER REFERENCES users(id) ON DELETE SET NULL,
+		verified_at INTEGER NOT NULL
+	);
+	`,
 }
 
 // openAppDB opens (creating if needed) and migrates the app database.

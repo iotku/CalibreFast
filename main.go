@@ -678,6 +678,7 @@ func serveLibraryHTTP() {
 	registerAddFormatRoutes()
 	registerPlaceholderRoutes()
 	registerHardcoverRoutes()
+	registerSeriesStatusRoutes()
 	registerBulkEditRoutes()
 	registerLibraryRepairRoutes()
 	registerNotDuplicateRoutes()

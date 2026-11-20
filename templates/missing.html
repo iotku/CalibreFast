@@ -49,6 +49,7 @@
             <li class="ph-gap">
                 <a href="{{ .Review }}" class="ph-title">{{ .Name }}</a>
                 <span class="ph-sub">{{ if .Pending }}<strong>{{ .Pending }} suggestion{{ if ne .Pending 1 }}s{{ end }}</strong>{{ else }}nothing to do{{ end }}</span>
+                {{ template "hc-status" .Status }}
                 <span class="ph-sub">fetched {{ .Checked }}{{ if .Stale }} <span class="hc-held">(old)</span>{{ end }}</span>
             </li>
             {{ end }}
@@ -59,7 +60,7 @@
     {{ end }}
     <section class="auth-card">
         <h2>Gaps in series</h2>
-        <p class="auth-muted">Numbers below a series' highest that no book or placeholder has. Pick one to make a placeholder for it.</p>
+        <p class="auth-muted">Numbers no book or placeholder has, below a series' highest or up to the number of books an editor gave it (Mark complete on the series page). Pick one to make a placeholder for it.</p>
         {{ if not .Gaps }}<p class="auth-muted"><em>No gaps.</em></p>{{ end }}
         <ul class="ph-list">
             {{ range .Gaps }}{{ $g := . }}

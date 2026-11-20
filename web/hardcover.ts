@@ -232,9 +232,27 @@ maybeId("hc-dismiss")?.addEventListener("click", () => {
 });
 
 maybeId("hc-undismiss")?.addEventListener("click", () => {
-    api("POST", "/api/hardcover/undismiss", { series })
+    api("POST", "/api/hardcover/undismiss", { series, ids: [] })
         .then(() => location.reload())
         .catch((err: unknown) => sayApply(errorMessage(err), true));
+});
+
+// One row's "Not in this series" / "Dismiss", or a dismissed row's "Restore".
+review?.addEventListener("click", (e) => {
+    const btn = (e.target as Element).closest<HTMLButtonElement>("button[data-dismiss], button[data-restore]");
+    if (!btn) return;
+    const dismiss = btn.dataset["dismiss"];
+    const id = Number(dismiss ?? btn.dataset["restore"] ?? "0");
+    if (!(id > 0)) return;
+    btn.disabled = true;
+    const done =
+        dismiss !== undefined
+            ? api("POST", "/api/hardcover/apply", { series, placeholders: [], tag: [], dismiss: [id] })
+            : api("POST", "/api/hardcover/undismiss", { series, ids: [id] });
+    done.then(() => location.reload()).catch((err: unknown) => {
+        sayApply(errorMessage(err), true);
+        btn.disabled = false;
+    });
 });
 
 // A request for this series already waiting (from before): follow it.

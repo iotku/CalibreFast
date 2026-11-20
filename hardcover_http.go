@@ -133,6 +133,7 @@ type HardcoverReviewData struct {
 	Checked    string       // "3 days ago"
 	Stale      bool
 	Review     hcReview
+	Complete   bool
 	Rows       hcReviewRows
 	Usage      HardcoverUsage
 	Jobs       []HardcoverJobView
@@ -155,10 +156,11 @@ type hcReviewRow struct {
 	Checked  bool
 	Action   string // what ticking it does
 	Dismiss  bool   // can be dismissed
+	Restore  bool   // was dismissed: can be shown again
 }
 
 type hcReviewRows struct {
-	Present, Untagged, Missing, Extra []hcReviewRow
+	Present, Untagged, Missing, Extra, Dismissed []hcReviewRow
 }
 
 func hcBookURL(e *hardcover.Entry) string {
@@ -220,6 +222,14 @@ func hcReviewRowsFor(rev hcReview, write string) hcReviewRows {
 		r.Kind = "info"
 		rows.Extra = append(rows.Extra, r)
 	}
+	for _, s := range rev.Dismissed {
+		r := hcRow(s, write)
+		r.Kind, r.Restore = "info", true
+		if s.Book != nil {
+			r.Note = "matched " + s.Book.Title
+		}
+		rows.Dismissed = append(rows.Dismissed, r)
+	}
 	return rows
 }
 
@@ -254,6 +264,7 @@ func hardcoverReviewPage(w http.ResponseWriter, r *http.Request) {
 			d.Error = "Couldn't match the list against the library."
 		}
 		d.Rows = hcReviewRowsFor(d.Review, s.Write)
+		d.Complete = d.Review.complete()
 	}
 	w.Header().Set("Cache-Control", "no-store")
 	logErr(templates.ExecuteTemplate(w, "hardcover-review.html", d), "hardcover review page")
@@ -281,6 +292,7 @@ type hcAuthorSeriesRow struct {
 	HCName             string
 	Checked            string
 	Stale              bool
+	Status             seriesStatus
 }
 
 // GET /missing/hardcover/author?author=: an author's series, to identify
@@ -298,6 +310,7 @@ func hardcoverAuthorPage(w http.ResponseWriter, r *http.Request) {
 		row := hcAuthorSeriesRow{Name: s.Name, Href: s.Href, Count: s.Count, Review: hcReviewURL(s.Name)}
 		if l, err := hcLinkFor(s.Name); err == nil && l != nil {
 			row.Linked, row.HCName, row.Checked, row.Stale = true, l.HCName, hcAgo(l.CheckedAt), l.stale()
+			row.Status, _ = hcStatusOf(s.Name)
 		}
 		d.Series = append(d.Series, row)
 		for _, j := range hcOpenJobs(s.Name) {
@@ -320,6 +333,7 @@ type hcMissingRow struct {
 	Name, Review, HCName, Checked string
 	Stale                         bool
 	Pending                       int
+	Status                        seriesStatus
 }
 
 func missingHardcover() *MissingHardcover {
@@ -336,6 +350,7 @@ func missingHardcover() *MissingHardcover {
 		if s, ok := hcSeries(l.Name); ok {
 			if rev, err := hcReviewFor(s, l); err == nil {
 				row.Pending = rev.pending()
+				row.Status = rev.status()
 			}
 		}
 		m.Series = append(m.Series, row)
@@ -620,26 +635,32 @@ func hardcoverApplyHandler(w http.ResponseWriter, r *http.Request) {
 
 	// Dismissals: any of the list's books.
 	inList := map[int64]bool{}
-	for _, e := range l.Snapshot.Entries {
-		inList[e.BookID] = true
+	for i := range l.Snapshot.Entries {
+		for _, id := range l.Snapshot.Entries[i].IDs() {
+			inList[id] = true
+		}
 	}
+	var dismiss []int64
 	for _, id := range req.Dismiss {
-		if !inList[id] {
-			continue
+		if inList[id] {
+			dismiss = append(dismiss, id)
 		}
-		if _, err := appDB.Exec(`INSERT OR IGNORE INTO hardcover_dismissed (name, hc_book_id) VALUES (?, ?)`, s.Name, id); err != nil {
-			log.Println("hardcover dismiss:", err)
-			continue
-		}
-		res.Dismissed++
+	}
+	if n, err := hcDismiss(s.Name, dismiss); err != nil {
+		log.Println("hardcover dismiss:", err)
+		res.Errors = append(res.Errors, "couldn't save the dismissals")
+	} else {
+		res.Dismissed = n
 	}
 	writeJSON(w, http.StatusOK, res)
 }
 
-// POST /api/hardcover/undismiss {series}: show the dismissed suggestions again.
+// POST /api/hardcover/undismiss {series, ids}: show dismissed suggestions
+// again; all of the series' when ids is empty.
 func hardcoverUndismissHandler(w http.ResponseWriter, r *http.Request) {
 	var req struct {
-		Series string `json:"series"`
+		Series string  `json:"series"`
+		IDs    []int64 `json:"ids"`
 	}
 	if !hcDecode(w, r, &req) {
 		return
@@ -649,7 +670,7 @@ func hardcoverUndismissHandler(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "no such series in the library", http.StatusNotFound)
 		return
 	}
-	if _, err := appDB.Exec(`DELETE FROM hardcover_dismissed WHERE name = ?`, s.Name); err != nil {
+	if err := hcRestore(s.Name, req.IDs); err != nil {
 		log.Println("hardcover:", err)
 		http.Error(w, "couldn't save", http.StatusInternalServerError)
 		return

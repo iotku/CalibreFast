@@ -539,10 +539,17 @@ type Entry struct {
 	ISBNs    []string `json:"isbns,omitempty"` // ISBN-13s of its editions
 	// AltTitles: other Hardcover books at the same position in another
 	// part of the series (the same work, entered twice).
-	AltTitles  []string `json:"altTitles,omitempty"`
+	AltTitles []string `json:"altTitles,omitempty"`
+	// AltIDs: those books' ids. Which of them is shown can change from
+	// one fetch to the next, so a decision about the entry (a dismissal)
+	// is kept against any of them.
+	AltIDs     []int64 `json:"altIds,omitempty"`
 	users      int
 	altAuthors []string
 }
+
+// IDs: the entry's book id, then the ids of the books merged into it.
+func (e *Entry) IDs() []int64 { return append([]int64{e.BookID}, e.AltIDs...) }
 
 // SeriesDetail is a series and its books in order (compilations and
 // partial books left out, one book per position: its most read). A
@@ -647,9 +654,13 @@ func (c *Client) SeriesBooks(ctx context.Context, ids ...int64) (*SeriesDetail, 
 					old := &d.Entries[i]
 					if e.users > old.users { // the most read one is shown
 						e.AltTitles = append(old.AltTitles, old.Title)
+						e.AltIDs = append(old.AltIDs, old.BookID)
 						*old = e
-					} else if e.Title != old.Title && !slices.Contains(old.AltTitles, e.Title) {
-						old.AltTitles = append(old.AltTitles, e.Title)
+					} else {
+						old.AltIDs = append(old.AltIDs, e.BookID)
+						if e.Title != old.Title && !slices.Contains(old.AltTitles, e.Title) {
+							old.AltTitles = append(old.AltTitles, e.Title)
+						}
 					}
 					owner[int64(b.ID)] = i
 					continue

@@ -1,8 +1,9 @@
 package main
 
 // Gaps in the library's series, for /missing (placeholders.go): the whole
-// numbers from 1 to a series' highest (a book's or a placeholder's) that
-// neither a book nor a placeholder has.
+// numbers from 1 to a series' highest (a book's or a placeholder's, or the
+// number of books an editor gave it: series_complete.go) that neither a
+// book nor a placeholder has.
 //
 // Nothing runs in the background. The first /missing view after the
 // catalog is built (at startup) reads every book's series number once.
@@ -70,6 +71,10 @@ func gapsMarkLocked(name string) {
 	}
 	gaps.dirty[gapKey(name)] = name
 }
+
+// gapsSeriesChanged: the number of books an editor gave these series
+// changed (series_complete.go).
+func gapsSeriesChanged(series ...string) { gapsPlaceholderChanged(series...) }
 
 // gapsPlaceholderChanged: a placeholder in these series was made, edited or
 // deleted.
@@ -191,6 +196,11 @@ func gapsOf(s *seriesNumbers, phs []*placeholder) (seriesGap, bool) {
 			have[int(n)] = true
 		}
 		top = max(top, n)
+	}
+	// A series an editor said has more books than its highest here: the
+	// rest are missing too. Not for a group's members, each only part of it.
+	if _, members, _ := groups.resolve("series", s.name); len(members) <= 1 {
+		top = max(top, float64(seriesVerifiedTotal(s.name)))
 	}
 	if top > gapsMaxIndex {
 		return seriesGap{}, false

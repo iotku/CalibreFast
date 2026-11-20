@@ -9,6 +9,7 @@ import (
 	"math/rand/v2"
 	"net/http"
 	"net/url"
+	"slices"
 	"sort"
 	"strconv"
 	"strings"
@@ -93,6 +94,9 @@ type AggregateDisplayItem struct {
 	Grouped bool
 	Tier    int    // 1–5, the cloud's text size (aggregateTiers)
 	Sort    string // A–Z key, "" for Name
+	// Complete: a series with every numbered book (seriesStatuses); set
+	// per request, never cached.
+	Complete bool
 }
 
 // AggregatePageData is passed to aggregate.html for server-side rendering.
@@ -106,6 +110,10 @@ type AggregatePageData struct {
 	Featured []FeaturedCard
 	Discover []AggregateDisplayItem // a random few, single-book ones too
 	Tiers    string                 // tier thresholds, "3,5,9,20", for the search box's results
+	// Series only: how many are complete (seriesStatuses), and whether the
+	// page lists only those (?complete=1).
+	CompleteCount int
+	CompleteOnly  bool
 }
 
 // FilteredPageData is passed to filtered.html.
@@ -133,11 +141,18 @@ type FilteredPageData struct {
 	NewPlaceholder string
 	// Hardcover: where editors identify this series, or this author's
 	// series, on Hardcover (hardcover.go); "" when it isn't set up.
-	Hardcover  string
-	TotalBooks int
-	EmptyText  string         // shown when there are no books (default: "No books found.")
-	Series     []AuthorSeries // an author's series, shown above the books
-	Extra      map[string]any // page-specific extras (e.g. shelf controls)
+	Hardcover string
+	// A series: how much of it is here (series_complete.go), and for
+	// editors, the number of books they gave it (0: none) and the number
+	// to offer when they do.
+	SeriesStatus  *seriesStatus
+	CanVerify     bool
+	VerifiedTotal int
+	SuggestTotal  int
+	TotalBooks    int
+	EmptyText     string         // shown when there are no books (default: "No books found.")
+	Series        []AuthorSeries // an author's series, shown above the books
+	Extra         map[string]any // page-specific extras (e.g. shelf controls)
 }
 
 // SearchPageData is passed to search.html.
@@ -592,6 +607,23 @@ func filteredPageHandler(c *category) http.HandlerFunc {
 		}
 		if c.Key == "author" {
 			data.Series = authorSeries(members)
+			if st := seriesStatuses(); len(st) > 0 {
+				for i := range data.Series {
+					data.Series[i].Complete = st[strings.ToLower(data.Series[i].Name)].Complete
+				}
+			}
+		}
+		if c.Key == "series" {
+			if st, ok := seriesStatusOf(name); ok {
+				data.SeriesStatus = &st
+			}
+			if data.CanVerify = canEditLibrary(r) && inLibrary > 0; data.CanVerify {
+				data.VerifiedTotal = seriesVerifiedTotal(name)
+				data.SuggestTotal = data.VerifiedTotal
+				if data.SuggestTotal == 0 {
+					data.SuggestTotal = seriesTopNumber(members)
+				}
+			}
 		}
 		if m, ok := aggregateMetaFor(c.Key, name); ok {
 			data.Description, data.ImageURL = m.Description, m.imageURL()
@@ -632,16 +664,42 @@ func aggregatePageHandler(c *category) http.HandlerFunc {
 		for i, t := range d.Tiers {
 			tiers[i] = strconv.Itoa(t)
 		}
+		items, featured, discover := d.Items, featuredCards(c), discoverSample(c, d, discoverCount)
+		completeOnly, completeCount := false, 0
+		if st := seriesStatuses(); c.Key == "series" && len(st) > 0 {
+			complete := func(name string) bool { return st[strings.ToLower(name)].Complete }
+			var all []AggregateDisplayItem
+			for _, it := range d.All {
+				if complete(it.Name) {
+					all = append(all, displayItem(c, it, d.Tiers))
+				}
+			}
+			if completeOnly = r.URL.Query().Get("complete") == "1"; completeOnly {
+				items, featured, discover = all, nil, nil
+			} else {
+				items = slices.Clone(items)
+			}
+			for i := range items {
+				items[i].Complete = complete(items[i].Name)
+			}
+			for i := range discover {
+				discover[i].Complete = complete(discover[i].Name)
+			}
+			completeCount = len(all)
+		}
 		data := AggregatePageData{
 			Title:    c.Title,
 			Active:   c.Plural,
 			Label:    c.Label,
 			Prefix:   "/" + c.URLPrefix + "/",
 			DataURL:  fmt.Sprintf("/api/%s?v=%d", c.Plural, aggregateGen.Load()),
-			Items:    d.Items,
-			Featured: featuredCards(c),
-			Discover: discoverSample(c, d, discoverCount),
+			Items:    items,
+			Featured: featured,
+			Discover: discover,
 			Tiers:    strings.Join(tiers, ","),
+
+			CompleteCount: completeCount,
+			CompleteOnly:  completeOnly,
 		}
 		w.Header().Set("Cache-Control", "no-cache")
 		if err := templates.ExecuteTemplate(w, "aggregate.html", data); err != nil {

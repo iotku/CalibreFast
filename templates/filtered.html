@@ -56,6 +56,13 @@
             <span class="tb-label">Missing book</span>
         </a>
 {{ end }}
+{{ if .CanVerify }}
+        <button type="button" id="series-verify-btn" class="btn-group-toggle" aria-pressed="{{ if .VerifiedTotal }}true{{ else }}false{{ end }}"
+                title="Say how many numbered books this series has, to mark it complete when the library has them all">
+            <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="9"/><path d="m8 12 3 3 5-6"/></svg>
+            <span class="tb-label">{{ if .VerifiedTotal }}Checked{{ else }}Mark complete{{ end }}</span>
+        </button>
+{{ end }}
 {{ with .Hardcover }}
         <a class="btn-group-toggle" href="{{ . }}" title="{{ if eq $.Category "author" }}Check this author's series on Hardcover{{ else }}Check this series on Hardcover{{ end }}: books missing from the library, and books here without the series">
             <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M4 5a2 2 0 0 1 2-2h12v16H6a2 2 0 0 0-2 2z"/><path d="M4 21V5"/><circle cx="12" cy="10" r="3"/><path d="M14.2 12.2 16 14"/></svg>
@@ -156,18 +163,38 @@
     </ul>
 </section>
 {{ end }}
-{{ if or .Description .ImageURL .Series }}
+{{ if or .Description .ImageURL .Series .SeriesStatus }}
 <header class="agg-header">
     {{ if .ImageURL }}<img class="agg-header-img" src="{{ .ImageURL }}" alt="">{{ end }}
     <div class="agg-header-body">
+    {{ with .SeriesStatus }}<p class="agg-header-status" id="series-status">
+        {{ if .Complete }}<span class="hc-complete">Complete</span> Every numbered book is in the library ({{ .Label }}).
+        {{ else }}{{ .Have }} of {{ .Numbered }} numbered books in the library ({{ .Label }}).{{ end }}
+    </p>{{ end }}
     {{ if .Description }}<p class="agg-header-desc">{{ .Description }}</p>{{ end }}
     {{ with .Series }}
     <nav class="agg-header-series" aria-label="Series">
-        {{ range . }}<a class="agg-chip" href="{{ .Href }}">{{ .Name }}<span class="agg-count">{{ .Count }}</span></a>{{ end }}
+        {{ range . }}<a class="agg-chip" href="{{ .Href }}">{{ .Name }}{{ if .Complete }}{{ template "agg-complete" }}{{ end }}<span class="agg-count">{{ .Count }}</span></a>{{ end }}
     </nav>
     {{ end }}
     </div>
 </header>
+{{ end }}
+{{ if .CanVerify }}
+{{/* An editor's own count of the series' numbered books (series_complete.go, web/series-verify.ts). */}}
+<dialog id="series-verify" class="series-verify" data-series="{{ .Name }}">
+    <form method="dialog" class="series-verify-form">
+        <h2>Numbered books in {{ .Display }}</h2>
+        <p class="auth-muted">How many numbered books (1, 2, 3…) the series has. It shows as complete while the library has every one of them; any it lacks are listed on Missing books. Novellas (1.5) don't count.</p>
+        <label>Books <input type="number" id="series-verify-total" min="1" max="10000" step="1" required value="{{ if .SuggestTotal }}{{ .SuggestTotal }}{{ end }}"></label>
+        <p id="series-verify-status" class="auth-error" role="status" hidden></p>
+        <div class="ph-actions">
+            {{ if .VerifiedTotal }}<button type="button" id="series-verify-remove" class="btn-standard btn-danger">Forget the count</button>{{ end }}
+            <button type="button" id="series-verify-cancel" class="btn-standard">Cancel</button>
+            <button type="submit" class="btn-standard btn-primary">Save</button>
+        </div>
+    </form>
+</dialog>
 {{ end }}
 <div id="books" data-page-url="{{ .PageURL }}&page={n}" data-page-size="{{ booksPerPage }}" data-total-books="{{ .TotalBooks }}"{{ if .EmptyText }} data-empty-text="{{ .EmptyText }}"{{ end }}></div>
 <p id="status" class="status-message"></p>
@@ -180,6 +207,7 @@
 <div id="scroll-badge"></div>
 <script type="module" src="{{ asset "app-htmx.js" }}"></script>
 {{ if .Writable }}<script type="module" src="{{ asset "groups.js" }}"></script>{{ end }}
+{{ if .CanVerify }}<script type="module" src="{{ asset "series-verify.js" }}"></script>{{ end }}
 {{ with .Extra }}{{ if or .Shelf .TagPin .SeriesPin }}<script type="module" src="{{ asset "shelf-page.js" }}"></script>{{ end }}{{ end }}
 {{ with .Extra }}{{ if and .Arrange (gt $.TotalBooks 1) }}<script type="module" src="{{ asset "list-edit.js" }}"></script>{{ end }}{{ end }}
 </body>

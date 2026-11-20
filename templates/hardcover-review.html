@@ -16,7 +16,7 @@
 <main class="auth-main auth-wide hc-page" id="hc-page" data-series="{{ .Series }}" data-linked="{{ .Linked }}">
     <section class="auth-card">
         <div class="ph-head">
-            <h1><a href="{{ .SeriesHref }}">{{ .Series }}</a> on Hardcover</h1>
+            <h1><a href="{{ .SeriesHref }}">{{ .Series }}</a> on Hardcover{{ if .Complete }} <span class="hc-complete">Complete</span>{{ end }}</h1>
             <a class="btn-standard" href="/missing">Missing books</a>
         </div>
         {{ template "hc-usage" .Usage }}
@@ -68,7 +68,7 @@
     {{ with .Rows.Missing }}
     <section class="auth-card">
         <h2>Not in the library</h2>
-        <p class="auth-muted">Tick the ones to add as placeholders. Novellas and unnumbered books aren't ticked.</p>
+        <p class="auth-muted">Tick the ones to add as placeholders. Novellas and unnumbered books aren't ticked. “Not in this series” hides a book for good, on every later fetch, and leaves it out of the series' completion.</p>
         <ul class="ph-list">{{ range . }}{{ template "hc-row" . }}{{ end }}</ul>
     </section>
     {{ end }}
@@ -95,10 +95,21 @@
         <div class="ph-actions ph-actions-start">
             <button type="submit" class="btn-standard btn-primary">Apply ticked</button>
             <button type="button" id="hc-dismiss" class="btn-standard">Dismiss ticked</button>
-            {{ if .Review.Hidden }}<button type="button" id="hc-undismiss" class="btn-standard">Show {{ .Review.Hidden }} dismissed</button>{{ end }}
         </div>
         <p id="hc-apply-status" class="auth-notice" role="status" hidden></p>
     </section>
+    {{ with .Rows.Dismissed }}
+    <section class="auth-card">
+        <details class="hc-dismissed">
+            <summary>Dismissed ({{ len . }})</summary>
+            <p class="auth-muted">Left out of the review and of the series' completion, whenever the list is fetched again.</p>
+            <ul class="ph-list">{{ range . }}{{ template "hc-row" . }}{{ end }}</ul>
+            <div class="ph-actions ph-actions-start">
+                <button type="button" id="hc-undismiss" class="btn-standard">Restore all</button>
+            </div>
+        </details>
+    </section>
+    {{ end }}
     </form>
     {{ end }}
 </main>
@@ -121,5 +132,7 @@
         {{ with .Note }}<span class="ph-sub hc-note">{{ . }}</span>{{ end }}
         {{ with .Action }}<span class="ph-sub hc-action">{{ . }}</span>{{ end }}
     </span>
+    {{ if .Dismiss }}<button type="button" class="btn-standard hc-row-btn" data-dismiss="{{ .HCBookID }}">{{ if eq .Kind "placeholder" }}Not in this series{{ else }}Dismiss{{ end }}</button>{{ end }}
+    {{ if .Restore }}<button type="button" class="btn-standard hc-row-btn" data-restore="{{ .HCBookID }}">Restore</button>{{ end }}
 </li>
 {{ end }}
