@@ -169,7 +169,7 @@ var (
 	qBookDetails = query{`query BookDetails($ids: [Int!]!) {
   books(where: {id: {_in: $ids}}, limit: 300) {
     id
-    contributions(where: {contributor_role: {slug: {_eq: "author"}}}) { author { name } }
+    contributions(where: {contributor_role: {slug: {_eq: "author"}}}, order_by: {id: asc}) { author { name } }
     editions(where: {isbn_13: {_is_null: false}}, limit: 40) { isbn_13 }
   }
 }`, 1}
