@@ -33,6 +33,8 @@
                     <blockquote><p></p></blockquote>
                     <figcaption></figcaption>
                 </figure>
+                {{/* Today's reading against the daily goal, and the streak (stats-data.ts). */}}
+                <div class="greeting-stats-slot" id="greeting-stats" hidden></div>
                 <p class="intro-account" id="intro-account" hidden>
                     An account keeps track of what you're reading on every device, a list of books saved for later, and suggestions from what you like.
                     {{ if .ReadNeedsAccount }}Reading books here needs one too.{{ end }}

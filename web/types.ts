@@ -75,7 +75,7 @@ export interface MeResponse {
     /** The marks are those the browser has (?have=): not sent again. */
     reading_same?: boolean;
     /** The account's preferences (Go: userPrefs; prefs.ts). */
-    prefs?: { format: "last" | "epub" | "pdf" };
+    prefs?: { format: "last" | "epub" | "pdf"; track_reading?: boolean; daily_pages?: number; yearly_books?: number; goal_notice?: boolean };
 }
 
 /** A library value suggestion (Go: groupValuesHandler). */

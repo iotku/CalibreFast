@@ -554,6 +554,36 @@ var migrations = []string{
 		checked_at INTEGER NOT NULL
 	);
 	`,
+	// 33: reading activity (stats.go). reading_activity: pages turned and
+	// time spent reading per local day, book and browser (client_id), sent
+	// as running totals so a retry never counts twice. reading_events: when
+	// books were started and finished (reading_status keeps only the latest
+	// change), seeded from the statuses there are.
+	`
+	CREATE TABLE reading_activity (
+		user_id    INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+		day        TEXT    NOT NULL,
+		book_uuid  TEXT    NOT NULL,
+		client_id  TEXT    NOT NULL,
+		pages      INTEGER NOT NULL DEFAULT 0,
+		seconds    INTEGER NOT NULL DEFAULT 0,
+		updated_at INTEGER NOT NULL,
+		PRIMARY KEY (user_id, day, book_uuid, client_id)
+	);
+	CREATE INDEX reading_activity_user_day ON reading_activity(user_id, day);
+	CREATE TABLE reading_events (
+		user_id   INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+		book_uuid TEXT    NOT NULL,
+		kind      TEXT    NOT NULL CHECK (kind IN ('started', 'finished')),
+		at        INTEGER NOT NULL,
+		PRIMARY KEY (user_id, book_uuid, kind, at)
+	);
+	CREATE INDEX reading_events_user_at ON reading_events(user_id, at);
+	INSERT INTO reading_events (user_id, book_uuid, kind, at)
+		SELECT user_id, book_uuid, 'started', updated_at FROM reading_status WHERE status IN ('reading', 'finished');
+	INSERT INTO reading_events (user_id, book_uuid, kind, at)
+		SELECT user_id, book_uuid, 'finished', updated_at FROM reading_status WHERE status = 'finished';
+	`,
 }
 
 // openAppDB opens (creating if needed) and migrates the app database.

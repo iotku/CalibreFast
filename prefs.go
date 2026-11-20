@@ -20,21 +20,38 @@ type userPrefs struct {
 	// Format a book with both an EPUB and a PDF opens in: "last" (the one
 	// last read), "epub" or "pdf".
 	Format string `json:"format"`
+	// TrackReading: record pages and time read per day (stats.go).
+	TrackReading bool `json:"track_reading"`
+	// DailyPages, YearlyBooks: reading goals (0: none), shown on the stats
+	// page and the home page.
+	DailyPages  int `json:"daily_pages"`
+	YearlyBooks int `json:"yearly_books"`
+	// GoalNotice: say so in the reader when the daily goal is reached. Off
+	// unless asked for: nothing pops up while reading by default.
+	GoalNotice bool `json:"goal_notice"`
 }
 
 var prefFormats = []string{"last", "epub", "pdf"}
 
-func defaultPrefs() userPrefs { return userPrefs{Format: "last"} }
+// maxGoal: the highest daily pages or yearly books goal.
+const maxGoal = 1000
+
+func defaultPrefs() userPrefs { return userPrefs{Format: "last", TrackReading: true} }
 
 func validPrefs(p userPrefs) bool {
-	return slices.Contains(prefFormats, p.Format)
+	return slices.Contains(prefFormats, p.Format) &&
+		p.DailyPages >= 0 && p.DailyPages <= maxGoal && p.YearlyBooks >= 0 && p.YearlyBooks <= maxGoal
 }
 
 // userPrefsFor: u's preferences, the defaults where none are saved (or
 // saved ones are no longer valid).
-func userPrefsFor(u *User) (userPrefs, error) {
+func userPrefsFor(u *User) (userPrefs, error) { return prefsOf(appDB, u.ID) }
+
+// prefsOf: as userPrefsFor, by id and through q (a transaction's own
+// connection: the app DB has only one).
+func prefsOf(q rowQuerier, userID int64) (userPrefs, error) {
 	var raw string
-	err := appDB.QueryRow(`SELECT prefs FROM user_prefs WHERE user_id = ?`, u.ID).Scan(&raw)
+	err := q.QueryRow(`SELECT prefs FROM user_prefs WHERE user_id = ?`, userID).Scan(&raw)
 	if errors.Is(err, sql.ErrNoRows) {
 		return defaultPrefs(), nil
 	}
@@ -48,9 +65,15 @@ func userPrefsFor(u *User) (userPrefs, error) {
 	return p, nil
 }
 
-// PUT /api/me/prefs: replace the account's preferences.
+// PUT /api/me/prefs: change the account's preferences. Fields left out
+// keep their saved values (pages that know only some of them send only
+// those).
 func putPrefsHandler(w http.ResponseWriter, r *http.Request) {
-	p := defaultPrefs()
+	p, err := userPrefsFor(currentUser(r))
+	if err != nil {
+		http.Error(w, "query failed", http.StatusInternalServerError)
+		return
+	}
 	if err := json.NewDecoder(http.MaxBytesReader(w, r.Body, 4<<10)).Decode(&p); err != nil || !validPrefs(p) {
 		http.Error(w, "invalid preferences", http.StatusBadRequest)
 		return

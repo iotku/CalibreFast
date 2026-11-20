@@ -108,12 +108,27 @@ export const FORMAT_PREFS: readonly FormatPref[] = ["last", "epub", "pdf"];
 /** The account's preferences, as /api/me sends them (Go: userPrefs). */
 export interface AccountPrefs {
     format: FormatPref;
+    /** Record pages and time read (stats.go, activity.ts). */
+    track_reading: boolean;
+    /** Reading goals; 0: none. */
+    daily_pages: number;
+    yearly_books: number;
+    /** A notice in the reader when the daily goal is reached; off unless asked for. */
+    goal_notice: boolean;
 }
 
-const ACCOUNT_DEFAULTS: AccountPrefs = { format: "last" };
+const ACCOUNT_DEFAULTS: AccountPrefs = { format: "last", track_reading: true, daily_pages: 0, yearly_books: 0, goal_notice: false };
+
+const goal = (n: unknown): number => (typeof n === "number" && Number.isInteger(n) && n >= 0 && n <= 1000 ? n : 0);
 
 function validAccount(v: Partial<AccountPrefs> | null): AccountPrefs {
-    return { format: v?.format && FORMAT_PREFS.includes(v.format) ? v.format : ACCOUNT_DEFAULTS.format };
+    return {
+        format: v?.format && FORMAT_PREFS.includes(v.format) ? v.format : ACCOUNT_DEFAULTS.format,
+        track_reading: typeof v?.track_reading === "boolean" ? v.track_reading : ACCOUNT_DEFAULTS.track_reading,
+        daily_pages: goal(v?.daily_pages),
+        yearly_books: goal(v?.yearly_books),
+        goal_notice: v?.goal_notice === true,
+    };
 }
 
 /** The account's preferences as last known here (a guest's: only here). */

@@ -38,17 +38,36 @@ function write(key: string, v: unknown): void {
     }
 }
 
+/** The account's preferences that a guest has too (format); the others are the server's alone. */
+interface AccountFields {
+    format: string;
+    track_reading?: boolean;
+    daily_pages?: number;
+    yearly_books?: number;
+    goal_notice?: boolean;
+}
+
+const goal = (n: unknown): number => (typeof n === "number" && Number.isInteger(n) && n >= 0 && n <= 1000 ? n : 0);
+
 /** Only known values: the rest is the default (prefs.ts reads them the same way). */
-function account(v: Record<string, unknown> | null | undefined): { format: string } {
+function account(given: object | null | undefined): AccountFields {
+    const v = given as Record<string, unknown> | null | undefined;
     const f = v?.["format"];
-    return { format: typeof f === "string" && FORMATS.includes(f) ? f : "last" };
+    const track = v?.["track_reading"];
+    return {
+        format: typeof f === "string" && FORMATS.includes(f) ? f : "last",
+        track_reading: typeof track === "boolean" ? track : true,
+        daily_pages: goal(v?.["daily_pages"]),
+        yearly_books: goal(v?.["yearly_books"]),
+        goal_notice: v?.["goal_notice"] === true,
+    };
 }
 
 /**
  * Signed in (nav.ts, with /api/me's answer). True when the guest's
  * preferences were taken.
  */
-export function settleAccountPrefs(user: string, server: { format: string } | undefined): Promise<boolean> {
+export function settleAccountPrefs(user: string, server: AccountFields | undefined): Promise<boolean> {
     window.cfPrefsSettled = settle(user, server);
     return window.cfPrefsSettled;
 }
@@ -58,7 +77,7 @@ export function prefsSettled(): Promise<unknown> {
     return window.cfPrefsSettled ?? Promise.resolve();
 }
 
-async function settle(user: string, server: { format: string } | undefined): Promise<boolean> {
+async function settle(user: string, server: AccountFields | undefined): Promise<boolean> {
     const userAccount = localKey(user, "account-prefs");
     const isNew = document.cookie.split(";").some((c) => c.trim() === `${NEW_ACCOUNT_COOKIE}=1`);
     if (!isNew) {
@@ -73,7 +92,7 @@ async function settle(user: string, server: { format: string } | undefined): Pro
         if (server) write(userAccount, account(server));
         return true;
     }
-    const prefs = account(guest);
+    const prefs = { format: account(guest).format };
     try {
         const res = await fetch("/api/me/prefs", {
             method: "PUT",
@@ -82,7 +101,7 @@ async function settle(user: string, server: { format: string } | undefined): Pro
             body: JSON.stringify(prefs),
         });
         if (!res.ok) throw new Error(`HTTP ${res.status}`);
-        write(userAccount, prefs);
+        write(userAccount, { ...account(server), ...prefs });
     } catch {
         if (server) write(userAccount, account(server)); // not saved: the server's stand
     }

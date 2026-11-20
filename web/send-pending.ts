@@ -13,6 +13,7 @@
  * same book in another tab loses nothing (its sends are the same, by id).
  */
 
+import { ACTIVITY_RECORD, sendActivity } from "./activity.js";
 import { api } from "./dom.js";
 import { localKey } from "./local-keys.js";
 import { dropMark, sendMark } from "./pending-marks.js";
@@ -176,6 +177,15 @@ async function run(user: string): Promise<void> {
         return;
     }
     for (const key of keys) {
+        if (key.slice(prefix.length) === ACTIVITY_RECORD) {
+            try {
+                await sendActivity(user);
+            } catch {
+                watch(user); // unreachable: the rest when the server is back
+                return;
+            }
+            continue;
+        }
         const m = RECORD.exec(key.slice(prefix.length));
         if (!m) continue;
         const [, kind, uuid, format] = m;

@@ -1,0 +1,56 @@
+<!doctype html>
+<html lang="en">
+<head>
+    <meta charset="utf-8">
+    {{ robotsMeta }}
+    {{ appHead }}
+    <title>Reading stats · {{ .Title }}</title>
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <link rel="stylesheet" href="{{ asset "style.css" }}">
+</head>
+<body class="auth-body">
+{{ $tb := topbar "Title" "Reading stats" "Active" "stats" }}
+{{ template "topbar-start" $tb }}
+{{ template "topbar-end" $tb }}
+<!-- Filled in by web/stats.ts from /api/me/stats (stats.go). -->
+<main class="auth-main auth-wide stats-main">
+    <section class="auth-card">
+        <h1>Reading stats</h1>
+        <p class="auth-muted" id="stats-note" role="status">Loading…</p>
+        <div class="stats-tiles" id="stats-tiles"></div>
+    </section>
+
+    <section class="auth-card" aria-labelledby="stats-heat-title">
+        <h2 id="stats-heat-title">Pages read</h2>
+        <p class="auth-muted" id="stats-heat-sum"></p>
+        <div class="stats-heat" id="stats-heat"></div>
+        <div class="stats-heat-legend" id="stats-heat-legend"></div>
+    </section>
+
+    <section class="auth-card" aria-labelledby="stats-year-title">
+        <h2 id="stats-year-title">Finished this year</h2>
+        <div id="stats-year"></div>
+        <div class="stats-covers" id="stats-covers"></div>
+    </section>
+
+    <section class="auth-card" aria-labelledby="stats-goals-title">
+        <h2 id="stats-goals-title">Goals</h2>
+        <form class="prefs-fields stats-goals" id="stats-goals">
+            <label>Pages to read each day
+                <input type="number" name="daily_pages" min="0" max="1000" step="1" inputmode="numeric" placeholder="None">
+            </label>
+            <label>Books to finish this year
+                <input type="number" name="yearly_books" min="0" max="1000" step="1" inputmode="numeric" placeholder="None">
+            </label>
+            <label class="stats-check"><span><input type="checkbox" name="goal_notice"> Tell me in the reader when I reach the daily goal</span></label>
+            <div class="import-actions">
+                <button type="submit" class="btn-standard">Save goals</button>
+            </div>
+            <p class="prefs-status" id="stats-goals-status" role="status"></p>
+        </form>
+        <p class="auth-muted">Stats are recorded as you read in this site's readers: pages you turn forward (not jumps from the contents or search) and time with the book open in front of you. Only you can see them; turn them off in <a href="/preferences" class="meta-link">Preferences</a>.</p>
+    </section>
+</main>
+<script type="module" src="{{ asset "stats.js" }}"></script>
+</body>
+</html>

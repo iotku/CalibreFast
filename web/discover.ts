@@ -68,6 +68,7 @@ import { maxCovers } from "./cover-limits.js";
 import { setupDragScroll, setupPageDragScroll } from "./drag-scroll.js";
 import "./offline-marks.js"; // the "on this device" badge on cards
 import { startBookSync, syncBooks } from "./book-sync.js";
+import { fetchStats, statsCard } from "./stats-data.js";
 
 const STRIP = 12; // books in a row
 const PIN_STRIP = 24; // books in a pinned tag's row (Go: shelfRowBooks)
@@ -594,6 +595,7 @@ async function refreshHome(): Promise<void> {
         store.set(HOME_KEY, "null");
         marksFromAnswer(null);
         marks = guestMarks();
+        byId("greeting-stats").hidden = true;
         await showGuest();
     } else if (res.ok) {
         serverSignedIn = true;
@@ -601,6 +603,7 @@ async function refreshHome(): Promise<void> {
         store.set(HOME_KEY, JSON.stringify(h));
         marks = marksFromAnswer(h.marks);
         showHome(h);
+        void showStatsCard();
         // Books for offline reading, with these fresh statuses (book-sync.ts);
         // after a change here, with the download list asked for again now.
         if (listChanged) void syncBooks({ marks, force: true }).catch(() => {});
@@ -611,6 +614,18 @@ async function refreshHome(): Promise<void> {
     }
     repaintMarks();
     showAccountLine();
+}
+
+/** The reading stats card in the greeting (stats-data.ts): signed in, with anything to show. */
+async function showStatsCard(): Promise<void> {
+    const slot = byId("greeting-stats");
+    try {
+        const card = statsCard(await fetchStats());
+        slot.replaceChildren(...(card ? [card] : []));
+        slot.hidden = !card;
+    } catch {
+        /* offline, or signed out meanwhile: as it was */
+    }
 }
 
 /** Paints from what's known at once; resolves once the server has answered. */

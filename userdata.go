@@ -386,6 +386,9 @@ func setStatus(userID int64, uuid, status, source string) error {
 	if err != nil {
 		return err
 	}
+	if err := recordStatusEvents(appDB, userID, uuid, cur, status); err != nil {
+		return err
+	}
 	_, err = claimMarkChange(appDB, userID, uuid, "status", nowMilli())
 	return err
 }
@@ -402,6 +405,11 @@ func setManualStatus(userID int64, uuid, status string, at int64) (bool, error) 
 	}
 	defer tx.Rollback()
 	if ok, err := claimMarkChange(tx, userID, uuid, "status", at); err != nil || !ok {
+		return false, err
+	}
+	var cur string
+	_ = tx.QueryRow(`SELECT status FROM reading_status WHERE user_id = ? AND book_uuid = ?`, userID, uuid).Scan(&cur)
+	if err := recordStatusEvents(tx, userID, uuid, cur, status); err != nil {
 		return false, err
 	}
 	if status == "" {
