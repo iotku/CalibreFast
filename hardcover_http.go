@@ -11,6 +11,7 @@ import (
 	"fmt"
 	"log"
 	"net/http"
+	"net/url"
 	"slices"
 	"strconv"
 	"strings"
@@ -174,7 +175,7 @@ func hcRow(s hcSuggestion, write string) hcReviewRow {
 		r.Authors = strings.Join(e.Authors, " & ")
 	}
 	if b := s.Book; b != nil {
-		r.UUID, r.BookHref = b.UUID, "/book/"+b.UUID
+		r.UUID, r.BookHref = b.UUID, "/book/get/"+url.PathEscape(b.UUID)
 		if s.Entry == nil {
 			r.Title, r.Authors = b.Title, strings.Join(b.Authors, " & ")
 			r.Position = strconv.FormatFloat(b.Index, 'f', -1, 64)
