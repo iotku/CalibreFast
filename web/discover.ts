@@ -260,7 +260,7 @@ async function stripFrom(start: number): Promise<{ books: Book[]; end: number; f
         // every other page; the strip resumes from this spot next time.
         if (list === null) return { books, end: i, failed: true };
         const book = list[i - (page - 1) * pageSize];
-        if (book && !marks.finished.has(book.uuid)) books.push(book);
+        if (book && !marks.finished.has(book.uuid) && !marks.dropped.has(book.uuid)) books.push(book);
         i = (i + 1) % shuffleTotal;
     }
     // Went all the way round (a library smaller than a strip): start the
@@ -533,7 +533,7 @@ function guestMarks(): Marks {
             resume.set(uuid, readerUrl(uuid, e.format));
         }
     }
-    return { user: null, signedIn: false, reading, resume, wanted: new Set(), finished, favorites: new Set() };
+    return { user: null, signedIn: false, reading, resume, wanted: new Set(), paused: new Set(), finished, dropped: new Set(), favorites: new Set() };
 }
 
 /** Continue reading, for a signed-out visitor: this device's books, newest first. */
@@ -1031,8 +1031,8 @@ function finishedToggle(name: string, on: boolean, n: number): HTMLButtonElement
         {
             "data-act": "series-finished",
             "aria-pressed": String(on),
-            title: `Show the ${n} you’ve finished`,
-            "aria-label": `Show the books of ${name} you’ve finished`,
+            title: `Show the ${n} you’ve finished or dropped`,
+            "aria-label": `Show the books of ${name} you’ve finished or dropped`,
         },
         CHECK_ICON(),
         el("span", {}, "Show finished"),
@@ -1341,9 +1341,9 @@ async function showTagStrip(section: HTMLElement, w: TagWalker, start: number | 
     try {
         const s = await tagStrip(w.row.name, start, w.size);
         if (!s) return false;
-        // The server leaves out what the user finished; this also leaves
-        // out what was finished on this device.
-        const books = s.books.filter((b) => !marks.finished.has(b.uuid));
+        // The server leaves out what the user finished or dropped; this
+        // also leaves out what was finished on this device.
+        const books = s.books.filter((b) => !marks.finished.has(b.uuid) && !marks.dropped.has(b.uuid));
         if (!books.length && section.querySelector(".row-books .book")) return false;
         if (push) w.cur.starts = [...w.cur.starts, s.start].slice(-SHUFFLE_HISTORY);
         w.cur.next = s.next;

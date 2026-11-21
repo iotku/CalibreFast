@@ -60,7 +60,8 @@ type queryExecer interface {
 
 // recordStatusEvents notes a book started or finished, as a status changes
 // from prev to next, unless the user doesn't keep reading stats. Reading
-// again after finishing is starting again. A finished book taken off
+// again after finishing (or dropping) is starting again; after pausing, it
+// isn't. Dropping a book records nothing. A finished book taken off
 // Finished other than to read it again (no status, or Saved) wasn't
 // finished after all: its last finish no longer counts, if it was this
 // year. Earlier years are settled: a book read last year and saved to read
@@ -72,8 +73,10 @@ func recordStatusEvents(q queryExecer, userID int64, uuid, prev, next string) er
 			userID, uuid, yearStartUnix(time.Now()), userID, uuid)
 		return err
 	}
-	started := next == "reading" && prev != "reading" ||
-		next == "finished" && prev != "reading" && prev != "finished"
+	// Paused is still the same read: resuming it isn't starting again.
+	inRead := prev == "reading" || prev == "paused"
+	started := next == "reading" && !inRead ||
+		next == "finished" && !inRead && prev != "finished"
 	finished := next == "finished" && prev != "finished"
 	if !started && !finished {
 		return nil

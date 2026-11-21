@@ -803,3 +803,27 @@ func TestHardcoverBookMatch(t *testing.T) {
 		t.Error("a match outlived the link")
 	}
 }
+
+// Paused and Dropped are sent as Hardcover's Paused and Did Not Finish.
+func TestHardcoverSyncPausedDropped(t *testing.T) {
+	u, books, f := setupHardcoverSync(t)
+	linkHardcover(t, u)
+	if err := hcSetBookShared(u.ID, books[0], true); err != nil {
+		t.Fatal(err)
+	}
+	for _, c := range []struct {
+		status string
+		want   int64
+	}{{"reading", hardcover.StatusReading}, {"paused", hardcover.StatusPaused}, {"reading", hardcover.StatusReading}, {"dropped", hardcover.StatusDNF}} {
+		if err := setStatus(u.ID, books[0], c.status, "manual"); err != nil {
+			t.Fatal(err)
+		}
+		step(t)
+		f.mu.Lock()
+		b := f.books[50]
+		f.mu.Unlock()
+		if b == nil || b.status != c.want {
+			t.Fatalf("%s: sent as %+v, want status %d", c.status, b, c.want)
+		}
+	}
+}

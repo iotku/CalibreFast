@@ -388,16 +388,17 @@ func hcSyncMark(userID int64, uuid, status string, delay time.Duration) {
 	now := hcNow()
 	today := now.Format(time.DateOnly)
 	due := now.Add(delay).Unix()
-	// A new read (reading, after nothing or a finished read) starts today;
-	// finishing ends it today.
+	// A new read (reading, after nothing or a finished or dropped read)
+	// starts today; finishing or dropping ends it today (only a finish's
+	// date is sent). Pausing keeps the read going.
 	_, err := appDB.Exec(`INSERT INTO hardcover_sync (user_id, book_uuid, due_at, started_on, finished_on)
-		VALUES (?1, ?2, ?3, CASE WHEN ?4 = 'reading' THEN ?5 ELSE '' END, CASE WHEN ?4 = 'finished' THEN ?5 ELSE '' END)
+		VALUES (?1, ?2, ?3, CASE WHEN ?4 = 'reading' THEN ?5 ELSE '' END, CASE WHEN ?4 IN ('finished', 'dropped') THEN ?5 ELSE '' END)
 		ON CONFLICT (user_id, book_uuid) DO UPDATE SET
 			due_at = CASE WHEN due_at > 0 AND due_at < excluded.due_at THEN due_at ELSE excluded.due_at END,
 			attempts = 0,
 			changes = changes + 1,
 			started_on = CASE WHEN ?4 = 'reading' AND (started_on = '' OR finished_on != '') THEN ?5 ELSE started_on END,
-			finished_on = CASE WHEN ?4 = 'reading' THEN '' WHEN ?4 = 'finished' THEN ?5 ELSE finished_on END`,
+			finished_on = CASE WHEN ?4 = 'reading' THEN '' WHEN ?4 IN ('finished', 'dropped') THEN ?5 ELSE finished_on END`,
 		userID, uuid, due, status, today)
 	if err != nil {
 		log.Println("hardcover sync:", err)
@@ -406,12 +407,12 @@ func hcSyncMark(userID int64, uuid, status string, delay time.Duration) {
 	hcSyncWake()
 }
 
-// hcSyncBackfill queues a user's books being read and finished that they
-// share, for a first sync. How many.
+// hcSyncBackfill queues a user's books being read (or paused), finished
+// or dropped that they share, for a first sync. How many.
 func hcSyncBackfill(userID int64) (int, error) {
 	res, err := appDB.Exec(`INSERT INTO hardcover_sync (user_id, book_uuid, due_at, finished_on)
 		SELECT user_id, book_uuid, ?1, CASE WHEN status = 'finished' THEN date(updated_at, 'unixepoch', 'localtime') ELSE '' END
-		FROM reading_status r WHERE user_id = ?2 AND status IN ('reading', 'finished')
+		FROM reading_status r WHERE user_id = ?2 AND status IN ('reading', 'paused', 'finished', 'dropped')
 			AND ((SELECT share_all FROM hardcover_links WHERE user_id = ?2) = 1
 				OR book_uuid IN (SELECT book_uuid FROM hardcover_shared WHERE user_id = ?2))
 		ON CONFLICT (user_id, book_uuid) DO UPDATE SET due_at = excluded.due_at, attempts = 0, changes = changes + 1`,
@@ -560,6 +561,8 @@ func stopHardcoverSync(deadline time.Time) {
 
 var hcStatusIDs = map[string]int{
 	"wanted":   hardcover.StatusWantToRead,
+	"paused":   hardcover.StatusPaused,
+	"dropped":  hardcover.StatusDNF,
 	"reading":  hardcover.StatusReading,
 	"finished": hardcover.StatusRead,
 }
@@ -652,7 +655,8 @@ func hcPushBook(ctx context.Context, userID int64, uuid string) error {
 	if ub != nil && ub.ReadID > 0 {
 		var u hardcover.ReadUpdate
 		switch want {
-		case hardcover.StatusReading:
+		case hardcover.StatusReading, hardcover.StatusPaused, hardcover.StatusDNF:
+			// How far along: where they are, or where they stopped.
 			if ub.FinishedAt != "" {
 				break // no read in progress
 			}
@@ -669,7 +673,7 @@ func hcPushBook(ctx context.Context, userID int64, uuid string) error {
 					sentPages = n
 				}
 			}
-			if changed && row.StartedOn != "" && row.StartedOn != ub.StartedAt {
+			if changed && want == hardcover.StatusReading && row.StartedOn != "" && row.StartedOn != ub.StartedAt {
 				u.StartedAt = row.StartedOn
 			}
 		case hardcover.StatusRead:

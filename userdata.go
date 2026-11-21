@@ -214,8 +214,12 @@ func meListHandler(w http.ResponseWriter, r *http.Request) {
 		serveUUIDList(w, r, statusList(u, "wanted", "saved", "Saved", "Nothing here yet. Save a book (the bookmark on its cover, or Save in its page) to add it."))
 	case "reading":
 		serveUUIDList(w, r, statusList(u, "reading", "reading", "Reading", "Nothing in progress. Books you open in the reader, or mark as reading, appear here."))
+	case "paused":
+		serveUUIDList(w, r, statusList(u, "paused", "paused", "Paused", "Nothing paused. Set a book's status to Paused to set it aside for now."))
 	case "finished":
 		serveUUIDList(w, r, statusList(u, "finished", "finished", "Finished", "No finished books yet."))
+	case "dropped":
+		serveUUIDList(w, r, statusList(u, "dropped", "dropped", "Dropped", "Nothing dropped. Books you stop reading for good (Dropped) are listed here."))
 	case "wanted": // its old address
 		target := "/me/saved"
 		if r.URL.RawQuery != "" {
@@ -233,7 +237,7 @@ func meListHandler(w http.ResponseWriter, r *http.Request) {
 
 type bookState struct {
 	Favorite     bool        `json:"favorite"`
-	Status       string      `json:"status"`        // "", "wanted", "reading", "finished"
+	Status       string      `json:"status"`        // "", or a status (readingStatuses)
 	StatusSource string      `json:"status_source"` // "manual" | "auto"
 	Shelves      []shelfMark `json:"shelves"`
 }
@@ -353,17 +357,30 @@ func setFavorite(userID int64, uuid string, on bool, at int64) (bool, error) {
 	return true, tx.Commit()
 }
 
-var errBadStatus = errors.New(`status must be "", "wanted", "reading" or "finished"`)
+var errBadStatus = errors.New(`status must be "", "wanted", "reading", "paused", "finished" or "dropped"`)
+
+// readingStatuses: the statuses a book can have (reading_status). Paused and
+// Dropped are Hardcover's Paused and Did Not Finish.
+var readingStatuses = map[string]bool{"wanted": true, "reading": true, "paused": true, "finished": true, "dropped": true}
+
+func validStatus(status string) bool { return status == "" || readingStatuses[status] }
+
+// autoRank orders statuses for automatic changes (from reading): they only
+// move a book forward. Paused ranks with not started, so reading a paused
+// book resumes it. Dropped outranks them all: only the user takes a book
+// off Dropped, however much of it is read afterwards.
+var autoRank = map[string]int{"": 0, "wanted": 0, "paused": 0, "reading": 1, "finished": 2, "dropped": 3}
 
 // setStatus records a status. Manual changes always apply. Automatic ones
-// (from reader progress) only move forward: none or wanted → reading →
-// finished, and never override a status the user chose themselves for that
-// stage. Starting a wanted book takes it off Saved.
+// (from reader progress) only move forward: none, wanted or paused →
+// reading → finished (autoRank), never off Dropped, and never override a
+// status the user chose themselves for that stage. Starting a wanted book
+// takes it off Saved; reading a paused one resumes it.
 //
 // Every change is recorded as made now (mark_changes), so a manual change
 // made earlier on a device that was offline doesn't undo it (setManualStatus).
 func setStatus(userID int64, uuid, status, source string) error {
-	if status != "" && status != "wanted" && status != "reading" && status != "finished" {
+	if !validStatus(status) {
 		return errBadStatus
 	}
 	if source == "manual" {
@@ -371,8 +388,7 @@ func setStatus(userID int64, uuid, status, source string) error {
 		return err
 	}
 	cur, _ := readStatus(userID, uuid)
-	rank := map[string]int{"": 0, "wanted": 0, "reading": 1, "finished": 2}
-	if rank[status] <= rank[cur] {
+	if autoRank[status] <= autoRank[cur] {
 		// Not an advance. Still bump "reading" so recently read books sort first.
 		if status == "reading" && cur == "reading" {
 			_, _ = appDB.Exec(`UPDATE reading_status SET updated_at = ? WHERE user_id = ? AND book_uuid = ?`, nowUnix(), userID, uuid)
@@ -399,7 +415,7 @@ func setStatus(userID int64, uuid, status, source string) error {
 // setManualStatus applies a status the user chose at `at` (unix ms), unless
 // a later change is recorded (made elsewhere meanwhile). Whether it applied.
 func setManualStatus(userID int64, uuid, status string, at int64) (bool, error) {
-	if status != "" && status != "wanted" && status != "reading" && status != "finished" {
+	if !validStatus(status) {
 		return false, errBadStatus
 	}
 	tx, err := appDB.Begin()

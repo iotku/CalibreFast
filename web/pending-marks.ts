@@ -91,6 +91,24 @@ export function noteMark(user: string, uuid: string, change: MarkFields): void {
     window.dispatchEvent(new CustomEvent("cf:sync")); // the sync button counts what's left
 }
 
+/** Take a book off every status list in marks (in place), to set another. */
+export function clearStatus(m: Marks, uuid: string): void {
+    m.reading.delete(uuid);
+    m.resume.delete(uuid);
+    m.wanted.delete(uuid);
+    m.paused.delete(uuid);
+    m.finished.delete(uuid);
+    m.dropped.delete(uuid);
+}
+
+/** Put a book on a status's list in marks (in place); "reading" isn't one (it needs the server's position). */
+export function addStatus(m: Marks, uuid: string, status: string): void {
+    if (status === "wanted") m.wanted.add(uuid);
+    else if (status === "paused") m.paused.add(uuid);
+    else if (status === "finished") m.finished.add(uuid);
+    else if (status === "dropped") m.dropped.add(uuid);
+}
+
 /** Lay what waits over marks from the server (in place). */
 export function overlayPending(m: Marks): Marks {
     for (const [uuid, p] of pendingMarks(m.user)) {
@@ -99,14 +117,13 @@ export function overlayPending(m: Marks): Marks {
             else m.favorites.delete(uuid);
         }
         if (p.status === undefined) continue;
-        m.wanted.delete(uuid);
-        m.finished.delete(uuid);
-        if (p.status !== "reading") {
-            m.reading.delete(uuid);
-            m.resume.delete(uuid);
-        } else if (!m.reading.has(uuid)) m.reading.set(uuid, null);
-        if (p.status === "wanted") m.wanted.add(uuid);
-        else if (p.status === "finished") m.finished.add(uuid);
+        const wasReading = m.reading.get(uuid);
+        const resume = m.resume.get(uuid);
+        clearStatus(m, uuid);
+        if (p.status === "reading") {
+            m.reading.set(uuid, wasReading ?? null);
+            if (resume !== undefined) m.resume.set(uuid, resume);
+        } else addStatus(m, uuid, p.status);
     }
     return m;
 }

@@ -94,7 +94,7 @@ function showLocal(container: HTMLElement, uuid: string): void {
     paintStar(star, fav);
     const select = el("select", { className: "book-status", title: "Reading status" });
     select.setAttribute("aria-label", "Reading status");
-    for (const [value, label] of [["", "Not reading"], ["wanted", "Saved"], ["reading", "Reading"], ["finished", "Finished"]] as const) {
+    for (const [value, label] of STATUS_OPTIONS) {
         select.append(el("option", { value, textContent: label, selected: value === status }));
     }
     const read = m.reading.get(uuid);
@@ -187,12 +187,31 @@ function reportChange(change: BookChange): void {
     document.dispatchEvent(new CustomEvent<BookChange>("cf:status", { detail: change }));
 }
 
+/** The status menu's choices, as book-user-actions.html has them. */
+const STATUS_OPTIONS = [
+    ["", "Not reading"],
+    ["wanted", "Saved"],
+    ["reading", "Reading"],
+    ["paused", "Paused"],
+    ["finished", "Finished"],
+    ["dropped", "Dropped"],
+] as const;
+
+/** The Save button's look for a status that isn't Saved or none. */
+const STATUS_LOOK: Record<string, [() => SVGSVGElement, string]> = {
+    reading: [ICONS.read, "Reading"],
+    paused: [ICONS.paused, "Paused"],
+    finished: [ICONS.done, "Finished"],
+    dropped: [ICONS.dropped, "Dropped"],
+};
+
 /** Paint the Save button for a status ("wanted" is shown as Saved). */
 function paintWant(btn: HTMLButtonElement, status: string): void {
     const toggle = status === "" || status === "wanted";
     const on = status === "wanted";
-    const icon = status === "reading" ? ICONS.read : status === "finished" ? ICONS.done : on ? ICONS.wanted : ICONS.want;
-    const label = status === "reading" ? "Reading" : status === "finished" ? "Finished" : on ? "Saved" : "Save";
+    const look = STATUS_LOOK[status];
+    const icon = look ? look[0] : on ? ICONS.wanted : ICONS.want;
+    const label = look ? look[1] : on ? "Saved" : "Save";
     btn.replaceChildren(icon(), el("span", {}, label));
     btn.classList.toggle("is-on", status !== "");
     if (toggle) btn.setAttribute("aria-pressed", String(on));

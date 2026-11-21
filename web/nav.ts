@@ -386,7 +386,9 @@ function init(bar: HTMLElement): void {
                 mark(el("a", { href: "/me/favorites", textContent: "★ Favorites" }), "favorites"),
                 mark(el("a", { href: "/me/saved", textContent: "Saved" }), "saved"),
                 mark(el("a", { href: "/me/reading", textContent: "Reading" }), "reading"),
+                mark(el("a", { href: "/me/paused", textContent: "Paused" }), "paused"),
                 mark(el("a", { href: "/me/finished", textContent: "Finished" }), "finished"),
+                mark(el("a", { href: "/me/dropped", textContent: "Dropped" }), "dropped"),
                 mark(el("a", { href: "/me/stats", textContent: "Reading stats" }), "stats"),
             ],
             [

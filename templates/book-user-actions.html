@@ -17,7 +17,9 @@
                 <option value="" {{ if eq .Status "" }}selected{{ end }}>Not reading</option>
                 <option value="wanted" {{ if eq .Status "wanted" }}selected{{ end }}>Saved</option>
                 <option value="reading" {{ if eq .Status "reading" }}selected{{ end }}>Reading</option>
+                <option value="paused" {{ if eq .Status "paused" }}selected{{ end }}>Paused</option>
                 <option value="finished" {{ if eq .Status "finished" }}selected{{ end }}>Finished</option>
+                <option value="dropped" {{ if eq .Status "dropped" }}selected{{ end }}>Dropped</option>
             </select>
         </div>
     </div>

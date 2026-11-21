@@ -216,9 +216,14 @@ func rankRecs(m readingMarks, hide map[string]bool, rng *rand.Rand) (l recList, 
 	}
 	slices.Sort(reading)
 	add(reading, 2)
+	add(m.Paused, 2)
 	add(m.Finished, 2)
 	add(m.Favorites, 3)
 	add(m.Wanted, 1)
+	// Dropped: never suggested, but nothing to suggest more like.
+	for _, u := range m.Dropped {
+		marked[u] = true
+	}
 	if len(weight) == 0 {
 		return l, tags
 	}
@@ -244,6 +249,9 @@ func rankRecs(m readingMarks, hide map[string]bool, rng *rand.Rand) (l recList, 
 	// Next in series: the book after the furthest one read in each series.
 	progress := map[string]bool{}
 	for _, u := range reading {
+		progress[u] = true
+	}
+	for _, u := range m.Paused {
 		progress[u] = true
 	}
 	for _, u := range m.Finished {

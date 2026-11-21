@@ -89,6 +89,22 @@ func TestRecommend(t *testing.T) {
 	}
 	_ = other
 
+	// Paused and dropped books are marked too: never recommended. A paused
+	// one is still read so far (its series goes on after it); a dropped one
+	// isn't something to find more like.
+	recs, _, _ = recommend(readingMarks{Reading: map[string]*float64{}, Paused: []string{dune2}, Dropped: []string{arrakis}}, nil, rng, 0)
+	if len(recs) == 0 || recs[0].Book.UUID != dune3 {
+		t.Fatalf("after a paused book: %+v", recs)
+	}
+	for _, r := range recs {
+		if r.Book.UUID == dune2 || r.Book.UUID == arrakis {
+			t.Fatalf("recommended a paused or dropped book: %+v", r)
+		}
+	}
+	if recs, _, _ := recommend(readingMarks{Reading: map[string]*float64{}, Dropped: []string{dune1}}, nil, rng, 0); len(recs) != 0 {
+		t.Fatalf("a dropped book alone seeded suggestions: %+v", recs)
+	}
+
 	// An excluded tag doesn't count.
 	mustExecApp := func(q string, args ...any) {
 		if _, err := appDB.Exec(q, args...); err != nil {
