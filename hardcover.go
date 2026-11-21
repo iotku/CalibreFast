@@ -34,6 +34,7 @@ import (
 	"net/url"
 	"os"
 	"slices"
+	"strconv"
 	"strings"
 	"sync"
 	"time"
@@ -215,6 +216,9 @@ func hcLibraryFor(s hcSeriesInfo, d *hardcover.SeriesDetail) (hcLibrary, error) 
 	if d == nil || calibreDB == nil {
 		return lib, nil
 	}
+	if err := hcLibraryIdentifiers(&lib, x, d); err != nil {
+		return lib, err
+	}
 	var all []string
 	for _, e := range d.Entries {
 		all = append(all, e.ISBNs...)
@@ -250,6 +254,55 @@ func hcLibraryFor(s hcSeriesInfo, d *hardcover.SeriesDetail) (hcLibrary, error) 
 		}
 	}
 	return lib, nil
+}
+
+// hcLibraryIdentifiers fills lib's byHCSlug and byHCID: the library books
+// whose "hardcover" (slug) or "hardcover-id" identifier names one of d's
+// books, as an editor can set in the metadata editor.
+func hcLibraryIdentifiers(lib *hcLibrary, x *hcTitleIndex, d *hardcover.SeriesDetail) error {
+	lib.byHCSlug, lib.byHCID = map[string][]hcLibBook{}, map[int64][]hcLibBook{}
+	var vals []any
+	for i := range d.Entries {
+		e := &d.Entries[i]
+		if e.Slug != "" {
+			vals = append(vals, strings.ToLower(e.Slug))
+		}
+		for _, id := range e.IDs() {
+			vals = append(vals, strconv.FormatInt(id, 10))
+		}
+	}
+	for chunk := range slices.Chunk(vals, 400) {
+		args := append([]any{hcSlugScheme, hcIdentifierScheme}, chunk...)
+		rows, err := calibreDB.Query(`SELECT book, lower(type), trim(val) FROM identifiers WHERE lower(type) IN (?, ?) AND lower(trim(val)) IN (?`+
+			strings.Repeat(",?", len(chunk)-1)+`)`, args...)
+		if err != nil {
+			return err
+		}
+		for rows.Next() {
+			var id int64
+			var typ, val string
+			if err := rows.Scan(&id, &typ, &val); err != nil {
+				rows.Close()
+				return err
+			}
+			slot, ok := x.byID[id]
+			if !ok || x.cat.books[slot].Removed {
+				continue
+			}
+			b := x.libBook(slot)
+			if typ == hcSlugScheme {
+				k := strings.ToLower(val)
+				lib.byHCSlug[k] = append(lib.byHCSlug[k], b)
+			} else if n, err := strconv.ParseInt(val, 10, 64); err == nil && n > 0 {
+				lib.byHCID[n] = append(lib.byHCID[n], b)
+			}
+		}
+		rows.Close()
+		if err := rows.Err(); err != nil {
+			return err
+		}
+	}
+	return nil
 }
 
 // hcSeriesISBNs: the ISBN-13s of the series' library books (at most 50),
