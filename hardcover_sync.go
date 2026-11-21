@@ -443,11 +443,13 @@ func hcSyncStep(ctx context.Context) (ran bool, next time.Time) {
 	var attempts, changes int
 	err := appDB.QueryRow(`SELECT s.user_id, s.book_uuid, s.attempts, s.changes FROM hardcover_sync s
 		JOIN hardcover_links l ON l.user_id = s.user_id AND l.broken = ''
+		JOIN users u ON u.id = s.user_id AND u.deleted_at IS NULL
 		WHERE s.due_at > 0 AND s.due_at <= ? ORDER BY s.due_at LIMIT 1`, now.Unix()).Scan(&userID, &uuid, &attempts, &changes)
 	if errors.Is(err, sql.ErrNoRows) {
 		var nb sql.NullInt64
 		_ = appDB.QueryRow(`SELECT MIN(s.due_at) FROM hardcover_sync s
-			JOIN hardcover_links l ON l.user_id = s.user_id AND l.broken = '' WHERE s.due_at > 0`).Scan(&nb)
+			JOIN hardcover_links l ON l.user_id = s.user_id AND l.broken = ''
+			JOIN users u ON u.id = s.user_id AND u.deleted_at IS NULL WHERE s.due_at > 0`).Scan(&nb)
 		if nb.Valid {
 			return false, time.Unix(nb.Int64, 0)
 		}

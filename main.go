@@ -429,6 +429,7 @@ func main() {
 		startHardcover() // requests to Hardcover left from the last run (hardcover.go)
 	}
 	startHardcoverSync() // users' reading, to their Hardcover accounts (hardcover_sync.go)
+	startAccountPurge()  // accounts their owners deleted, once they can't be restored (account_delete.go)
 	serveLibraryHTTP()
 }
 

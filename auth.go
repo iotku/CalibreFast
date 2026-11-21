@@ -58,7 +58,15 @@ type User struct {
 	IsEditor bool `json:"is_editor"`
 	Disabled bool `json:"disabled"`
 	HasPass  bool `json:"has_password"`
+	// DeletedAt: when the user deleted their own account (unix seconds; 0:
+	// not deleted). Until it's purged (account_delete.go) it can't be used,
+	// but an admin can restore it with everything in it.
+	DeletedAt int64 `json:"deleted_at,omitempty"`
 }
+
+// Locked: the account can't be used: disabled by an admin, or deleted and
+// waiting to be purged.
+func (u *User) Locked() bool { return u.Disabled || u.DeletedAt != 0 }
 
 var (
 	errBadCredentials = errors.New("invalid username or password")
@@ -86,14 +94,16 @@ func hashPassword(pw string) (string, error) {
 func scanUser(row interface{ Scan(...any) error }) (*User, error) {
 	var u User
 	var hash sql.NullString
-	if err := row.Scan(&u.ID, &u.Username, &hash, &u.IsAdmin, &u.IsEditor, &u.Disabled); err != nil {
+	var deleted sql.NullInt64
+	if err := row.Scan(&u.ID, &u.Username, &hash, &u.IsAdmin, &u.IsEditor, &u.Disabled, &deleted); err != nil {
 		return nil, err
 	}
+	u.DeletedAt = deleted.Int64
 	u.HasPass = hash.Valid && hash.String != ""
 	return &u, nil
 }
 
-const userCols = `id, username, password_hash, is_admin, is_editor, disabled`
+const userCols = `id, username, password_hash, is_admin, is_editor, disabled, deleted_at`
 
 func getUserByID(id int64) (*User, error) {
 	return scanUser(appDB.QueryRow(`SELECT `+userCols+` FROM users WHERE id = ?`, id))
@@ -152,17 +162,20 @@ func setPassword(userID int64, password string) error {
 }
 
 // authenticate checks a username/password. Same error (and similar timing)
-// for unknown users, wrong passwords, OAuth-only and disabled accounts.
+// for unknown users, wrong passwords, OAuth-only, disabled and deleted
+// accounts.
 func authenticate(username, password string) (*User, error) {
 	var u User
 	var hash sql.NullString
+	var deleted sql.NullInt64
 	err := appDB.QueryRow(`SELECT `+userCols+` FROM users WHERE username = ?`, strings.TrimSpace(username)).
-		Scan(&u.ID, &u.Username, &hash, &u.IsAdmin, &u.IsEditor, &u.Disabled)
+		Scan(&u.ID, &u.Username, &hash, &u.IsAdmin, &u.IsEditor, &u.Disabled, &deleted)
 	if err != nil || !hash.Valid || hash.String == "" {
 		_ = bcrypt.CompareHashAndPassword(dummyHash, []byte(password))
 		return nil, errBadCredentials
 	}
-	if bcrypt.CompareHashAndPassword([]byte(hash.String), []byte(password)) != nil || u.Disabled {
+	u.DeletedAt = deleted.Int64
+	if bcrypt.CompareHashAndPassword([]byte(hash.String), []byte(password)) != nil || u.Locked() {
 		return nil, errBadCredentials
 	}
 	u.HasPass = true
@@ -172,7 +185,7 @@ func authenticate(username, password string) (*User, error) {
 // adminCount is used to stop the last admin demoting/deleting themselves.
 func adminCount() int {
 	var n int
-	_ = appDB.QueryRow(`SELECT COUNT(*) FROM users WHERE is_admin = 1 AND disabled = 0`).Scan(&n)
+	_ = appDB.QueryRow(`SELECT COUNT(*) FROM users WHERE is_admin = 1 AND disabled = 0 AND deleted_at IS NULL`).Scan(&n)
 	return n
 }
 
@@ -234,10 +247,10 @@ func userFromSession(r *http.Request) *User {
 		return nil
 	}
 	u, err := scanUser(appDB.QueryRow(`
-		SELECT u.id, u.username, u.password_hash, u.is_admin, u.is_editor, u.disabled
+		SELECT u.id, u.username, u.password_hash, u.is_admin, u.is_editor, u.disabled, u.deleted_at
 		FROM sessions s JOIN users u ON u.id = s.user_id
 		WHERE s.token_hash = ? AND s.expires_at > ?`, hashToken(c.Value), nowUnix()))
-	if err != nil || u.Disabled {
+	if err != nil || u.Locked() {
 		return nil
 	}
 	return u
@@ -454,6 +467,10 @@ type AuthPageData struct {
 	NewSyncKey   string       // shown once, right after it is generated
 	SyncNotice   string
 	Hardcover    *hcAccountView // reading sync to Hardcover (hardcover_link.go); nil: off on this server
+	// Deleting the account (account_delete.go): when it would be purged if
+	// deleted now, and whether the user is the only admin (who can't).
+	DeletePurgeDay string
+	LastAdmin      bool
 }
 
 // safeNext returns next if it is a path on this site, otherwise "/". It is
@@ -482,6 +499,10 @@ func renderAuthPage(w http.ResponseWriter, name string, data AuthPageData, statu
 	data.Title = SiteTitle
 	data.Providers = enabledProviders()
 	data.Registration = allowRegistrations
+	if data.User != nil {
+		data.DeletePurgeDay = time.Now().Add(accountRestoreWindow).Format("2 Jan 2006")
+		data.LastAdmin = data.User.IsAdmin && adminCount() <= 1
+	}
 	w.Header().Set("Content-Type", "text/html; charset=utf-8")
 	w.Header().Set("Cache-Control", "no-store")
 	w.WriteHeader(status)
@@ -660,9 +681,18 @@ func adminUsersPage(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, err.Error(), http.StatusInternalServerError)
 		return
 	}
+	var active []User
+	var deleted []deletedAccount
+	for _, u := range users {
+		if u.DeletedAt == 0 {
+			active = append(active, u)
+		} else {
+			deleted = append(deleted, deletedAccountView(u))
+		}
+	}
 	w.Header().Set("Cache-Control", "no-store")
 	logErr(templates.ExecuteTemplate(w, "admin-users.html", map[string]any{
-		"Title": SiteTitle, "Users": users, "Me": currentUser(r),
+		"Title": SiteTitle, "Users": active, "Deleted": deleted, "Me": currentUser(r),
 	}), "render admin-users")
 }
 
@@ -717,7 +747,7 @@ func adminUpdateUser(w http.ResponseWriter, r *http.Request) {
 		http.NotFound(w, r)
 		return
 	}
-	removingAdmin := target.IsAdmin && !target.Disabled &&
+	removingAdmin := target.IsAdmin && !target.Locked() &&
 		((req.Admin != nil && !*req.Admin) || (req.Disabled != nil && *req.Disabled))
 	if removingAdmin && adminCount() <= 1 {
 		http.Error(w, "can't remove the last admin", http.StatusConflict)
@@ -757,15 +787,11 @@ func adminDeleteUser(w http.ResponseWriter, r *http.Request) {
 		http.NotFound(w, r)
 		return
 	}
-	if target.IsAdmin && !target.Disabled && adminCount() <= 1 {
+	if target.IsAdmin && !target.Locked() && adminCount() <= 1 {
 		http.Error(w, "can't delete the last admin", http.StatusConflict)
 		return
 	}
-	// Their Hardcover sign-in is ended there too, not just deleted here.
-	if revoke, err := hcUnlinkAccount(id); err != nil || revoke == hcRevokeFailed {
-		log.Printf("deleting user %s: their Hardcover sign-in couldn't be revoked (it's deleted here): %v", target.Username, err)
-	}
-	if _, err := appDB.Exec(`DELETE FROM users WHERE id = ?`, id); err != nil {
+	if err := purgeUser(target); err != nil {
 		http.Error(w, err.Error(), http.StatusInternalServerError)
 		return
 	}
@@ -806,6 +832,13 @@ func runCreateUser(name string, admin bool) error {
 		if admin {
 			_, _ = appDB.Exec(`UPDATE users SET is_admin = 1 WHERE id = ?`, id)
 		}
+		// A deleted account not yet purged is restored: this is the way
+		// back in for an admin who deleted their own.
+		if res, _ := appDB.Exec(`UPDATE users SET deleted_at = NULL WHERE id = ? AND deleted_at IS NOT NULL`, id); res != nil {
+			if n, _ := res.RowsAffected(); n > 0 {
+				fmt.Fprintf(os.Stderr, "Restored deleted account %s.\n", name)
+			}
+		}
 		_, _ = appDB.Exec(`DELETE FROM sessions WHERE user_id = ?`, id)
 		fmt.Fprintf(os.Stderr, "Updated user %s (password reset%s).\n", name, map[bool]string{true: ", admin", false: ""}[admin])
 	case errors.Is(err, sql.ErrNoRows):
@@ -830,6 +863,8 @@ func registerAuthRoutes() {
 	http.HandleFunc("POST /api/admin/users", requireAdminUser(adminCreateUser))
 	http.HandleFunc("PATCH /api/admin/users/{id}", requireAdminUser(adminUpdateUser))
 	http.HandleFunc("DELETE /api/admin/users/{id}", requireAdminUser(adminDeleteUser))
+	http.HandleFunc("POST /api/admin/users/{id}/restore", requireAdminUser(adminRestoreUser))
+	http.HandleFunc("POST /account/delete", requireUser(deleteOwnAccountHandler))
 	registerOAuthRoutes()
 	registerUserDataRoutes()
 	registerProgressRoutes()

@@ -245,6 +245,30 @@
         </div>
     </section>
     {{ end }}
+
+    <section class="auth-card" id="delete-account">
+        <h2>Delete account</h2>
+        <details class="sync-details">
+            <summary>Delete your account and everything in it</summary>
+            <p class="sync-intro">Deleting your account signs you out everywhere, and in a week deletes for good:</p>
+            <ul class="sync-steps">
+                <li>your favorites, reading statuses, progress, bookmarks, highlights and notes;</li>
+                <li>your bookshelves and preferences;</li>
+                <li>your sync key (KOReader stops syncing) and linked sign-ins;</li>
+                <li>your link to Hardcover, if any (what was sent there stays there).</li>
+            </ul>
+            <p class="sync-intro">Books in the library aren't affected. Until {{ .DeletePurgeDay }}, an admin here can restore your account with everything in it, if you ask them; you can't sign in to it meanwhile. After that it can't be undone.</p>
+            {{ if and .User.IsAdmin .LastAdmin }}
+            <p class="auth-error">You're the only admin: make someone else an admin before deleting your account.</p>
+            {{ else }}
+            <form method="post" action="/account/delete" class="auth-form">
+                {{ if .User.HasPass }}<label>Your password <input name="current" type="password" autocomplete="current-password" required></label>{{ end }}
+                <label>Type your username, <b>{{ .User.Username }}</b>, to confirm <input name="confirm_username" type="text" autocomplete="off" autocapitalize="off" spellcheck="false" required></label>
+                <button type="submit" class="btn-standard btn-danger">Delete my account</button>
+            </form>
+            {{ end }}
+        </details>
+    </section>
 </main>
 {{ if .Hardcover }}<script type="module" src="{{ asset "hardcover-link.js" }}"></script>{{ end }}
 </body>

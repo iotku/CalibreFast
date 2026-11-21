@@ -36,6 +36,28 @@
             </tbody>
         </table>
     </section>
+    {{ if .Deleted }}
+    <section class="auth-card" id="deleted-accounts">
+        <h2>Deleted accounts</h2>
+        <p class="auth-muted">These users deleted their own accounts. Each is kept, unusable, for a week, in case it was a mistake or someone else using their sign-in: restoring it brings it back with everything in it. Then it's deleted for good. If it may have been someone else, reset their password after restoring it.</p>
+        <table id="deleted-table" class="admin-users">
+            <thead><tr><th>User</th><th>Deleted</th><th>Gone for good</th><th></th></tr></thead>
+            <tbody>
+            {{ range .Deleted }}
+            <tr data-id="{{ .ID }}" data-username="{{ .Username }}">
+                <td>{{ .Username }}</td>
+                <td>{{ .Deleted }}</td>
+                <td>{{ .Purge }}</td>
+                <td class="admin-actions">
+                    <button type="button" class="btn-standard" data-action="restore">Restore</button>
+                    <button type="button" class="btn-standard" data-action="delete">Delete now</button>
+                </td>
+            </tr>
+            {{ end }}
+            </tbody>
+        </table>
+    </section>
+    {{ end }}
     <section class="auth-card" id="links">
         <h2>One-time links</h2>
         <p class="auth-muted">Send someone a link (e.g. in a Discord DM). <strong>Sign-in links</strong> sign in as an existing user: use the button next to a user above. <strong>Invites</strong> let someone create an account, even with registration closed. Each link works once. Opening it in a chat preview doesn't use it up.</p>

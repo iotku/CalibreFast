@@ -213,6 +213,7 @@ func TestAdminRoutesLookMissing(t *testing.T) {
 		{"POST", "/admin/users"}, // wrong method: no 405 giving it away
 		{"POST", "/api/admin/users"},
 		{"DELETE", "/api/admin/users/1"},
+		{"POST", "/api/admin/users/1/restore"},
 		{"GET", "/api/admin/links"},
 		{"GET", "/admin/repairs"},
 		{"GET", "/api/admin/repairs"},

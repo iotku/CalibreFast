@@ -682,6 +682,12 @@ var migrations = []string{
 	DROP TABLE reading_status;
 	ALTER TABLE reading_status_new RENAME TO reading_status;
 	`,
+	// 38: users can delete their own accounts. Until deleted_at is a week
+	// old the account is kept, unusable, so an admin can restore it
+	// (account_delete.go); then it's deleted with everything in it.
+	`
+	ALTER TABLE users ADD COLUMN deleted_at INTEGER;
+	`,
 }
 
 // openAppDB opens (creating if needed) and migrates the app database.

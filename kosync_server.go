@@ -74,16 +74,18 @@ func revokeSyncKey(userID int64) error {
 
 // syncKeyUser checks a device's credentials: a CalibreFast username and the
 // MD5 of that user's sync key. Unknown users, wrong or revoked keys and
-// disabled accounts all fail the same way.
+// disabled or deleted accounts all fail the same way.
 func syncKeyUser(username, authKey string) *User {
 	var u User
 	var hash sql.NullString
+	var deleted sql.NullInt64
 	stored := kosync.DummyKeyHash
-	err := appDB.QueryRow(`SELECT u.id, u.username, u.password_hash, u.is_admin, u.is_editor, u.disabled, k.key_hash
+	err := appDB.QueryRow(`SELECT u.id, u.username, u.password_hash, u.is_admin, u.is_editor, u.disabled, u.deleted_at, k.key_hash
 		FROM users u JOIN sync_keys k ON k.user_id = u.id WHERE u.username = ?`, username).
-		Scan(&u.ID, &u.Username, &hash, &u.IsAdmin, &u.IsEditor, &u.Disabled, &stored)
+		Scan(&u.ID, &u.Username, &hash, &u.IsAdmin, &u.IsEditor, &u.Disabled, &deleted, &stored)
+	u.DeletedAt = deleted.Int64
 	match := subtle.ConstantTimeCompare([]byte(kosync.KeyHash(authKey)), []byte(stored)) == 1
-	if err != nil || !match || u.Disabled || username == "" || authKey == "" {
+	if err != nil || !match || u.Locked() || username == "" || authKey == "" {
 		return nil
 	}
 	u.HasPass = hash.Valid && hash.String != ""
