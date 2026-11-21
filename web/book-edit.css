@@ -496,9 +496,7 @@ a.lookup-result-label:hover {
     color: var(--text);
     margin: 0 0 0.4rem 0;
     line-height: 1.25;
-    white-space: nowrap;
-    overflow: hidden;
-    text-overflow: ellipsis;
+    overflow-wrap: anywhere;
 }
 
 .book-banner-meta {
@@ -567,8 +565,13 @@ a.lookup-result-label:hover {
         text-align: center;
         gap: 1rem;
     }
+    /* Full width, not shrunk to its content: a long title wraps */
+    .book-banner-info {
+        align-self: stretch;
+    }
     .book-banner-meta {
         justify-content: center;
+        flex-wrap: wrap;
     }
 }
 
