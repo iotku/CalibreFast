@@ -337,13 +337,18 @@ func hcSaveShare(userID int64, s hcShare) error {
 	return tx.Commit()
 }
 
-// hcShared: the user lets this book be sent (shared it, or shares every book).
+// hcShared: the user lets this book be sent: they shared it, or they
+// share every book and didn't leave this one out (hardcover_unshared).
 func hcShared(userID int64, uuid string) bool {
 	var one int
-	return appDB.QueryRow(`SELECT 1 FROM hardcover_links l WHERE l.user_id = ?1 AND (l.share_all = 1 OR
-		EXISTS (SELECT 1 FROM hardcover_shared s WHERE s.user_id = ?1 AND s.book_uuid = ?2))`, userID, uuid).Scan(&one) == nil
+	return appDB.QueryRow(`SELECT 1 FROM hardcover_links l WHERE l.user_id = ?1 AND (
+		EXISTS (SELECT 1 FROM hardcover_shared s WHERE s.user_id = ?1 AND s.book_uuid = ?2)
+		OR (l.share_all = 1 AND NOT EXISTS (SELECT 1 FROM hardcover_unshared x WHERE x.user_id = ?1 AND x.book_uuid = ?2)))`,
+		userID, uuid).Scan(&one) == nil
 }
 
+// hcIsBookShared: the user chose this book (hardcover_shared), whether or
+// not they share every book.
 func hcIsBookShared(userID int64, uuid string) bool {
 	var one int
 	return appDB.QueryRow(`SELECT 1 FROM hardcover_shared WHERE user_id = ? AND book_uuid = ?`, userID, uuid).Scan(&one) == nil
@@ -351,21 +356,39 @@ func hcIsBookShared(userID int64, uuid string) bool {
 
 // hcSetBookShared shares a book with Hardcover (it's sent now, as it
 // stands) or stops sharing it (nothing more is sent; what was sent stays
-// on Hardcover).
+// on Hardcover). For a user who shares every book, stopping leaves this
+// one out of it (hardcover_unshared) until they share it again.
 func hcSetBookShared(userID int64, uuid string, on bool) error {
+	tx, err := appDB.Begin()
+	if err != nil {
+		return err
+	}
+	defer tx.Rollback()
 	if on {
-		if _, err := appDB.Exec(`INSERT OR IGNORE INTO hardcover_shared (user_id, book_uuid, shared_at) VALUES (?, ?, ?)`,
+		if _, err := tx.Exec(`DELETE FROM hardcover_unshared WHERE user_id = ? AND book_uuid = ?`, userID, uuid); err != nil {
+			return err
+		}
+		if _, err := tx.Exec(`INSERT OR IGNORE INTO hardcover_shared (user_id, book_uuid, shared_at) VALUES (?, ?, ?)`,
 			userID, uuid, hcNow().Unix()); err != nil {
+			return err
+		}
+		if err := tx.Commit(); err != nil {
 			return err
 		}
 		hcSyncTouch(userID, uuid, 0)
 		return nil
 	}
-	if _, err := appDB.Exec(`DELETE FROM hardcover_shared WHERE user_id = ? AND book_uuid = ?`, userID, uuid); err != nil {
+	if _, err := tx.Exec(`DELETE FROM hardcover_shared WHERE user_id = ? AND book_uuid = ?`, userID, uuid); err != nil {
 		return err
 	}
-	_, err := appDB.Exec(`DELETE FROM hardcover_sync WHERE user_id = ? AND book_uuid = ?`, userID, uuid)
-	return err
+	if _, err := tx.Exec(`INSERT OR IGNORE INTO hardcover_unshared (user_id, book_uuid, unshared_at)
+		SELECT user_id, ?, ? FROM hardcover_links WHERE user_id = ? AND share_all = 1`, uuid, hcNow().Unix(), userID); err != nil {
+		return err
+	}
+	if _, err := tx.Exec(`DELETE FROM hardcover_sync WHERE user_id = ? AND book_uuid = ?`, userID, uuid); err != nil {
+		return err
+	}
+	return tx.Commit()
 }
 
 // hcSyncTouch marks a user's book as due to be sent after delay (or
@@ -413,8 +436,9 @@ func hcSyncBackfill(userID int64) (int, error) {
 	res, err := appDB.Exec(`INSERT INTO hardcover_sync (user_id, book_uuid, due_at, finished_on)
 		SELECT user_id, book_uuid, ?1, CASE WHEN status = 'finished' THEN date(updated_at, 'unixepoch', 'localtime') ELSE '' END
 		FROM reading_status r WHERE user_id = ?2 AND status IN ('reading', 'paused', 'finished', 'dropped')
-			AND ((SELECT share_all FROM hardcover_links WHERE user_id = ?2) = 1
-				OR book_uuid IN (SELECT book_uuid FROM hardcover_shared WHERE user_id = ?2))
+			AND (book_uuid IN (SELECT book_uuid FROM hardcover_shared WHERE user_id = ?2)
+				OR ((SELECT share_all FROM hardcover_links WHERE user_id = ?2) = 1
+					AND book_uuid NOT IN (SELECT book_uuid FROM hardcover_unshared WHERE user_id = ?2)))
 		ON CONFLICT (user_id, book_uuid) DO UPDATE SET due_at = excluded.due_at, attempts = 0, changes = changes + 1`,
 		hcNow().Unix(), userID)
 	if err != nil {
@@ -816,6 +840,10 @@ func hcSyncMerged(keep string, others []string) {
 	for _, o := range others {
 		_, _ = appDB.Exec(`INSERT OR IGNORE INTO hardcover_shared (user_id, book_uuid, shared_at)
 			SELECT user_id, ?, shared_at FROM hardcover_shared WHERE book_uuid = ?`, keep, o)
+		// Left out of every book: the book kept is too, unless the user shared one of them.
+		_, _ = appDB.Exec(`INSERT OR IGNORE INTO hardcover_unshared (user_id, book_uuid, unshared_at)
+			SELECT x.user_id, ?1, x.unshared_at FROM hardcover_unshared x WHERE x.book_uuid = ?2
+				AND NOT EXISTS (SELECT 1 FROM hardcover_shared s WHERE s.user_id = x.user_id AND s.book_uuid = ?1)`, keep, o)
 		_, _ = appDB.Exec(`INSERT OR IGNORE INTO hardcover_user_books (user_id, book_uuid, hc_book_id, hc_edition_id, pages, slug, title, chosen_at)
 			SELECT user_id, ?, hc_book_id, hc_edition_id, pages, slug, title, chosen_at FROM hardcover_user_books WHERE book_uuid = ?`, keep, o)
 		_, _ = appDB.Exec(`DELETE FROM hardcover_user_books WHERE book_uuid = ?`, o)

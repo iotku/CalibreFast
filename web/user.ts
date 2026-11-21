@@ -275,7 +275,7 @@ function bind(controls: HTMLElement): void {
         }
     });
 
-    // Track on Hardcover: this book is sent to the user's Hardcover account
+    // Sync to Hardcover: this book is sent to the user's Hardcover account
     // only once they tick it; how it stands, and choosing the right book.
     hcRefresh = wireHardcoverBook(controls, uuid);
 

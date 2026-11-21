@@ -190,7 +190,7 @@ func hcUnlinkAccount(userID int64) (hcRevoke, error) {
 		}
 	}
 	hcSetLinked(userID, false)
-	for _, table := range []string{"hardcover_sync", "hardcover_shared", "hardcover_user_books", "hardcover_links"} {
+	for _, table := range []string{"hardcover_sync", "hardcover_shared", "hardcover_unshared", "hardcover_user_books", "hardcover_links"} {
 		if _, err := appDB.Exec(`DELETE FROM `+table+` WHERE user_id = ?`, userID); err != nil {
 			return revoke, err
 		}
@@ -214,6 +214,7 @@ type hcAccountView struct {
 	Share     hcShare
 	Shared    []hcSharedBook // the books shared, newest first
 	Problems  []hcSharedBook // shared books that can't be sent (not found, or failing)
+	Unshared  []hcSharedBook // sharing every book: those left out, newest first
 }
 
 // hcSharedBook is a book a user shared, for the account page's list.
@@ -223,7 +224,17 @@ type hcSharedBook struct {
 
 // hcSharedBooks lists the library books userID shared.
 func hcSharedBooks(userID int64) []hcSharedBook {
-	rows, err := appDB.Query(`SELECT book_uuid FROM hardcover_shared WHERE user_id = ? ORDER BY shared_at DESC`, userID)
+	return hcListBooks(`SELECT book_uuid FROM hardcover_shared WHERE user_id = ? ORDER BY shared_at DESC`, userID)
+}
+
+// hcUnsharedBooks lists the library books userID left out of sharing every book.
+func hcUnsharedBooks(userID int64) []hcSharedBook {
+	return hcListBooks(`SELECT book_uuid FROM hardcover_unshared WHERE user_id = ? ORDER BY unshared_at DESC`, userID)
+}
+
+// hcListBooks: the library books whose uuids query lists (those no longer in the library left out).
+func hcListBooks(query string, userID int64) []hcSharedBook {
+	rows, err := appDB.Query(query, userID)
 	if err != nil {
 		return nil
 	}
@@ -296,6 +307,9 @@ func hcView(u *User, notice string) *hcAccountView {
 	}
 	v.State, v.Summary = "linked", hcSummary(userID)
 	v.Share, v.Shared, v.Problems = hcLoadShare(userID), hcSharedBooks(userID), hcProblemBooks(userID)
+	if v.Share.All {
+		v.Unshared = hcUnsharedBooks(userID)
+	}
 	return v
 }
 
@@ -414,7 +428,7 @@ func hardcoverShareHandler(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "could not save", http.StatusInternalServerError)
 		return
 	}
-	writeJSON(w, http.StatusOK, map[string]bool{"share": hcIsBookShared(u.ID, uuid), "all": hcLoadShare(u.ID).All})
+	writeJSON(w, http.StatusOK, map[string]bool{"share": hcShared(u.ID, uuid), "all": hcLoadShare(u.ID).All})
 }
 
 func registerHardcoverSyncRoutes(mux *http.ServeMux) {

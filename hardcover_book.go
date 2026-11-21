@@ -195,7 +195,7 @@ func hardcoverBookSearchHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	if !hcShared(u.ID, uuid) {
-		http.Error(w, "Tick Track on Hardcover first.", http.StatusConflict)
+		http.Error(w, "Turn on Sync to Hardcover first.", http.StatusConflict)
 		return
 	}
 	q := strings.Join(strings.Fields(r.URL.Query().Get("q")), " ")
@@ -253,7 +253,7 @@ func hardcoverBookMatchHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	if !hcShared(u.ID, uuid) {
-		http.Error(w, "Tick Track on Hardcover first.", http.StatusConflict)
+		http.Error(w, "Turn on Sync to Hardcover first.", http.StatusConflict)
 		return
 	}
 	if r.Method == http.MethodDelete {

@@ -1,16 +1,19 @@
 /**
- * The "on this device" line on a book's page and popup (templates/book.html,
- * .book-offline): whether the book (its EPUB, its PDF, or both) is kept in
- * this browser for reading with no connection (book-cache.ts), and a choice of
+ * The "Keep offline" split button on a book's page and popup
+ * (templates/book.html, .book-offline; sync-split.ts), with a line on
+ * whether the book (its EPUB, its PDF, or both) is kept in this browser
+ * for reading with no connection (book-cache.ts). Its menu:
  *   - Keep while reading: kept by this device's rules (retention.ts, set on
  *     /preferences; the default);
- *   - Always keep on this device: downloaded now (the preferred format,
+ *   - Keep on this device: downloaded now (the preferred format,
  *     last-format.ts, else the EPUB), never dropped for age, room or size.
  *     Only while the book is on one of the user's lists, so nothing sits
  *     on the device forgotten: a book with no status is added to Saved
  *     first, and taking it off every list (Not Reading) drops it;
- *   - Don't keep on this device: the reader keeps nothing, and a kept copy
+ *   - Never keep on this device: the reader keeps nothing, and a kept copy
  *     goes.
+ * The button toggles Keep on this device (and back to Keep while reading);
+ * set to Never, it opens the menu.
  * Loaded with user.ts, which runs wherever a book page or popup can show.
  */
 
@@ -22,6 +25,7 @@ import { devicePrefs } from "./prefs.js";
 import { applyChange, cachedMarks, saveMarks, type BookChange } from "./reading.js";
 import { downloadForOffline } from "./book-sync.js";
 import { fitsBookLimit, requestPersist } from "./retention.js";
+import { openMenu, paintSync, SYNC_ICONS, type SyncLook } from "./sync-split.js";
 
 /** Whether this browser can keep books at all (IndexedDB, and the service worker to read them offline). */
 const canKeep = isSecureContext && "indexedDB" in window && "serviceWorker" in navigator;
@@ -32,7 +36,7 @@ const megabytes = (n: number): string => `${(n / 1048576).toFixed(n < 10485760 ?
 const readable = (box: HTMLElement): KeptFormat[] =>
     (["epub", "pdf"] as const).filter((f) => (box.dataset["formats"] ?? "").split(" ").includes(f));
 
-/** The format to download for "Always keep". */
+/** The format to download for "Keep on this device". */
 function formatToKeep(box: HTMLElement, uuid: string): KeptFormat {
     const has = readable(box);
     return preferredFormat(uuid, has) ?? has[0] ?? "epub";
@@ -72,18 +76,31 @@ async function ensureListed(box: HTMLElement, uuid: string): Promise<string | nu
     return "wanted";
 }
 
+/** The toggle's look: what's kept here, and what a click does. */
+function look(pref: OfflinePref, kept: boolean, progress: number | undefined): SyncLook {
+    if (progress !== undefined) {
+        return { icon: SYNC_ICONS.device, label: `Downloading ${Math.round(progress * 100)}%`, title: "Downloading to keep on this device", on: true, pressed: true, busy: true };
+    }
+    if (pref === "keep") return { icon: SYNC_ICONS.deviceKept, label: "Kept offline", title: "Stop always keeping it (keep while reading)", on: true, pressed: true };
+    if (pref === "never") return { icon: SYNC_ICONS.deviceNever, label: "Not kept offline", title: "Choose how to keep it on this device", on: false };
+    if (kept) return { icon: SYNC_ICONS.deviceKept, label: "On this device", title: "Keep it on this device for good", on: true, pressed: false };
+    return { icon: SYNC_ICONS.device, label: "Keep offline", title: "Download it and keep it on this device", on: false, pressed: false };
+}
+
 async function show(box: HTMLElement): Promise<void> {
     const uuid = box.dataset["uuid"] ?? "";
     const state = box.querySelector<HTMLElement>(".book-offline-state");
     const select = box.querySelector<HTMLSelectElement>(".book-offline-pref");
+    const btn = box.querySelector<HTMLButtonElement>(".btn-offline");
     if (!state || !select) return;
     const pref = offlinePref(uuid);
     const kept = await getBookFiles(uuid).catch(() => []);
     select.value = pref;
     box.classList.toggle("is-kept", kept.length > 0);
     const progress = downloading.get(uuid);
+    if (btn) paintSync(btn, look(pref, kept.length > 0, progress));
     if (progress !== undefined) {
-        state.textContent = `Downloading for offline… ${Math.round(progress * 100)}%`;
+        state.textContent = "Downloading for offline reading…";
     } else if (kept.length) {
         // Which file, when the book has more than one the readers open.
         const which = readable(box).length > 1 ? `${kept.map((b) => (b.format ?? "epub").toUpperCase()).join(" and ")}, ` : "";
@@ -91,11 +108,11 @@ async function show(box: HTMLElement): Promise<void> {
         const limit = devicePrefs().maxBookBytes;
         const big = pref === "keep" && !fitsBookLimit(Math.max(...kept.map((b) => b.size)));
         state.textContent =
-            `On this device (${which}${megabytes(size)})${pref === "keep" ? ", kept for good" : ""}` +
+            `On this device (${which}${megabytes(size)})${pref === "keep" ? ", kept for good" : ", kept while reading"}` +
             (addedToSaved.has(uuid) ? ". Added to Saved" : "") +
             (big ? `. Larger than your ${megabytes(limit)} limit; kept because you chose to` : "");
     } else {
-        state.textContent = pref === "never" ? "Not kept on this device" : "Not on this device";
+        state.textContent = pref === "never" ? "Never kept on this device" : "Not on this device";
     }
     box.hidden = false;
 }
@@ -138,8 +155,10 @@ async function choose(box: HTMLElement, pref: OfflinePref): Promise<void> {
         } catch {
             downloading.delete(uuid);
             for (const b of boxesFor(uuid)) {
-                const state = b.querySelector<HTMLElement>(".book-offline-state");
-                if (state) state.textContent = "Couldn't download it yet. It's tried again while a library page is open, or kept when you next open it.";
+                void show(b).then(() => {
+                    const state = b.querySelector<HTMLElement>(".book-offline-state");
+                    if (state) state.textContent = "Couldn't download it yet. It's tried again while a library page is open, or kept when you next open it.";
+                });
             }
             return;
         }
@@ -154,8 +173,16 @@ const boxesFor = (uuid: string): HTMLElement[] =>
 function setUp(box: HTMLElement): void {
     if (!canKeep || box.dataset["ready"]) return;
     box.dataset["ready"] = "1";
-    box.querySelector<HTMLSelectElement>(".book-offline-pref")?.addEventListener("change", (e) => {
-        void choose(box, (e.target as HTMLSelectElement).value as OfflinePref);
+    const select = box.querySelector<HTMLSelectElement>(".book-offline-pref");
+    select?.addEventListener("change", () => void choose(box, select.value as OfflinePref));
+    // Toggles keeping it for good; set to Never, it opens the menu instead.
+    box.querySelector<HTMLButtonElement>(".btn-offline")?.addEventListener("click", () => {
+        const uuid = box.dataset["uuid"] ?? "";
+        if (!select || downloading.has(uuid)) return;
+        const pref = offlinePref(uuid);
+        if (pref === "never") return openMenu(select);
+        select.value = pref === "keep" ? "auto" : "keep";
+        void choose(box, select.value as OfflinePref);
     });
     void show(box);
 }

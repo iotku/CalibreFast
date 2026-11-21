@@ -1951,41 +1951,77 @@ body.book-standalone {
 /* A row per format: Read, with a small Download button joined to it as
    one split button (a touch target like the reading status menu's); a
    format without a reader gets Download across the row. */
-/* "On this device" and whether to keep the book there (offline-control.ts). */
-.book-offline {
+/* Under the formats: keeping the book on this device (offline-control.ts)
+   and sending it to Hardcover (hardcover-book.ts), each a split button
+   like Save's: a toggle across the row, its menu's caret beside it, and a
+   line under it on how it stands (sync-split.ts). */
+.book-offline,
+.book-hardcover {
     display: flex;
-    flex-wrap: wrap;
-    align-items: center;
-    gap: 0.4rem 0.6rem;
-    margin-top: 0.6rem;
-    font-size: var(--font-size-small);
-    color: var(--text-muted);
+    flex-direction: column;
+    gap: 0.3rem;
+    margin-top: 0.5rem;
 }
 
 .book-offline[hidden] {
     display: none;
 }
 
-.book-offline-state {
-    flex: 1 1 auto;
+.sync-split {
+    display: flex;
+    min-width: 0;
+}
+
+.sync-split .btn-sync {
+    flex: 1;
+    min-width: 0;
+    justify-content: flex-start;
+    padding: 0 0.9rem;
+    border-top-right-radius: 0;
+    border-bottom-right-radius: 0;
+}
+
+.btn-sync svg {
+    width: 16px;
+    height: 16px;
+    flex-shrink: 0;
+}
+
+.btn-sync-label {
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+.btn-sync.is-on {
+    color: var(--accent, #c8a96e);
+    border-color: var(--accent-dim, #7a6340);
+}
+
+.btn-sync.is-problem {
+    color: var(--danger, #e07a6f);
+    border-color: color-mix(in srgb, var(--danger, #e07a6f) 55%, transparent);
+}
+
+.btn-sync[aria-busy="true"] {
+    cursor: progress;
+}
+
+.sync-menu {
+    flex: none;
+}
+
+.sync-note {
+    font-size: 0.78rem;
+    color: var(--text-muted);
+}
+
+.sync-note:empty {
+    display: none;
 }
 
 .book-offline.is-kept .book-offline-state {
     color: var(--status-reading);
-}
-
-.book-offline.is-kept .book-offline-state::before {
-    content: "\2193\00a0"; /* ↓ */
-}
-
-.book-offline-pref {
-    max-width: 100%;
-    padding: 4px 6px;
-    border: 1px solid var(--border-medium);
-    border-radius: var(--radius-medium);
-    background: var(--bg-surface);
-    color: var(--text-primary);
-    font: inherit;
 }
 
 .book-actions {
@@ -2579,6 +2615,9 @@ body.book-standalone {
     }
 
     /* the 160px column: Read's label alone fits beside Download */
+    .sync-split .btn-sync {
+        padding: 0 0.5rem;
+    }
 
 
     .book-actions .btn-action-read .action-icon {
@@ -4189,19 +4228,10 @@ label.group-row span {
     margin: 0.4rem 0;
 }
 
-.book-hardcover {
-    display: inline-flex;
-    align-items: center;
-    gap: 0.4rem;
-    margin-top: 0.5rem;
-    font-size: 0.85rem;
-    cursor: pointer;
-}
-
 .book-hardcover-note {
     display: block;
     color: var(--text-muted);
-    font-size: 0.8rem;
+    font-size: 0.78rem;
 }
 
 .book-hardcover-problem {
@@ -4458,8 +4488,10 @@ label.group-row span {
     border-color: var(--accent-dim, #7a6340);
 }
 
-/* Only the caret shows; the menu lists every status. */
-.book-status {
+/* Only the caret shows; the menu lists every status (and the sync
+   controls' choices). */
+.book-status,
+.sync-menu {
     width: 32px;
     height: 44px;
     padding: 0;
@@ -4477,11 +4509,13 @@ label.group-row span {
     box-shadow: 0 2px 4px rgba(0, 0, 0, 0.2);
 }
 
-.book-status:hover {
+.book-status:hover,
+.sync-menu:hover {
     background-color: var(--bg-elevated, #2c2c2c);
 }
 
-.book-status option {
+.book-status option,
+.sync-menu option {
     color: var(--text-primary);
     background: var(--bg-surface);
 }
