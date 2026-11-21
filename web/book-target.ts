@@ -24,6 +24,8 @@ export interface BookTarget {
     formats: string;
     /** The book's file in a format. */
     file(format: string): string;
+    /** The book's Kindle file (AZW3, AZW, MOBI) converted to EPUB (Go: convert_read.go). */
+    asEpub(format: string): string;
     /** GET the cover as it is now. */
     cover: string;
     /** POST a new cover. */
@@ -52,6 +54,7 @@ export function libraryBook(uuid: string, importSource?: string | null): BookTar
         isbns: `/metadata/${id}/isbns`,
         formats: `/formats/${id}`,
         file: (format) => `/download/${id}/${format}`,
+        asEpub: (format) => `/book/as-epub/${id}/${encodeURIComponent(format)}`,
         cover: `/cover/${id}`,
         saveCover: `/upload-cover/${id}`,
         revertCover: `/revert-cover/${id}`,
@@ -69,6 +72,7 @@ export function pendingImport(importId: string): BookTarget {
         isbns: `${base}/isbns`,
         formats: `${base}/formats`,
         file: (format) => `${base}/file/${format}`,
+        asEpub: (format) => `${base}/as-epub/${encodeURIComponent(format)}`,
         cover: `${base}/cover`,
         saveCover: `${base}/cover`,
         revertCover: `${base}/cover/revert`,
