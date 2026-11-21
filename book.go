@@ -6,6 +6,7 @@ import (
 	"html/template"
 	"image"
 	"net/http"
+	"net/url"
 	"os"
 	"path/filepath"
 	"strconv"
@@ -85,6 +86,13 @@ func coverHue(uuid string) int {
 }
 
 func bookHandler(w http.ResponseWriter, r *http.Request) {
+	// A shelf's series card's #book/ link (the popup steps onto those too):
+	// its key is "series:<name>", and the name may hold a slash.
+	if name, ok := shelfSeriesName(strings.TrimPrefix(r.URL.Path, "/book/get/")); ok {
+		w.Header().Set("Cache-Control", "no-store")
+		http.Redirect(w, r, "/series-popup/"+url.PathEscape(name), http.StatusFound)
+		return
+	}
 	uuid := filepath.Base(r.URL.Path)
 
 	path, err := resolveBookPath(uuid)

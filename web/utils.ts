@@ -147,8 +147,9 @@ function bookInfo(title: string, author: string): HTMLDivElement {
 /**
  * A shelf's whole series (Book.series_card): the first book's cover under
  * a "Series · N books" banner, stacked, linking to the series page. No
- * data-uuid, so the reading marks, cover buttons, selection and the popup's
- * next/previous all pass it by.
+ * data-uuid, so the reading marks, cover buttons and selection pass it by;
+ * data-series-key (its "series:<name>" key) is what the popup's arrows step
+ * onto (modal.ts).
  */
 function seriesCard(book: Book, s: NonNullable<Book["series_card"]>, coverReady: boolean): HTMLElement {
     const name = s.name || book.title;
@@ -160,6 +161,7 @@ function seriesCard(book: Book, s: NonNullable<Book["series_card"]>, coverReady:
     link.append(coverWrapper(book, coverImg(coverUrl(book), coverReady), banner));
     const card = el("div", { className: "book series-card" }, link, bookInfo(name, book.authors || ""));
     card.dataset["series"] = name;
+    card.dataset["seriesKey"] = book.uuid;
     return card;
 }
 
