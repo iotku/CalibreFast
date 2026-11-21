@@ -461,6 +461,7 @@ type AuthPageData struct {
 	User         *User
 	Providers    []string // enabled OAuth providers
 	Registration bool
+	Signup       bool // login.html: creating an account first, signing in under it
 	Identities   []Identity
 	SyncURL      string       // KOReader's custom sync server address (kosync_server.go)
 	SyncKey      *syncKeyInfo // nil: no sync key
@@ -499,6 +500,7 @@ func renderAuthPage(w http.ResponseWriter, name string, data AuthPageData, statu
 	data.Title = SiteTitle
 	data.Providers = enabledProviders()
 	data.Registration = allowRegistrations
+	data.Signup = data.Signup && allowRegistrations
 	if data.User != nil {
 		data.DeletePurgeDay = time.Now().Add(accountRestoreWindow).Format("2 Jan 2006")
 		data.LastAdmin = data.User.IsAdmin && adminCount() <= 1
@@ -516,7 +518,7 @@ func loginHandler(w http.ResponseWriter, r *http.Request) {
 			http.Redirect(w, r, next, http.StatusSeeOther)
 			return
 		}
-		renderAuthPage(w, "login.html", AuthPageData{Next: next, Error: r.URL.Query().Get("error")}, http.StatusOK)
+		renderAuthPage(w, "login.html", AuthPageData{Next: next, Error: r.URL.Query().Get("error"), Signup: r.URL.Query().Get("signup") == "1"}, http.StatusOK)
 		return
 	}
 	if r.Method != http.MethodPost {
@@ -554,7 +556,7 @@ func registerHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	next := safeNext(r.FormValue("next"))
-	data := AuthPageData{Username: r.FormValue("username"), Next: next}
+	data := AuthPageData{Username: r.FormValue("username"), Next: next, Signup: true}
 	if !loginLimiter.allow("ip:" + clientIP(r)) {
 		data.Error = "Too many attempts. Try again in a few minutes."
 		renderAuthPage(w, "login.html", data, http.StatusTooManyRequests)

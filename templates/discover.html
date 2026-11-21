@@ -37,13 +37,16 @@
                     {{/* A summary of the user's reading stats (stats-data.ts), beside
                          the quote; a section of its own to turn off (Edit). */}}
                     <div class="greeting-stats-slot" id="greeting-stats" data-key="stats" data-name="Reading stats" hidden></div>
+                    {{/* For signed-out visitors, where the stats would be (discover.ts). */}}
+                    <aside class="intro-account" id="intro-account" aria-label="Your account" hidden>
+                        <p>An account keeps track of what you're reading on every device, a list of books saved for later, and suggestions from what you like.
+                        {{ if .ReadNeedsAccount }}Reading books here needs one too.{{ end }}</p>
+                        <div class="intro-account-actions">
+                            {{ if .Registration }}<a class="btn-standard btn-primary" href="/login?signup=1">Create an account</a>{{ end }}
+                            <a class="btn-standard" href="/login">Sign in</a>
+                        </div>
+                    </aside>
                 </div>
-                <p class="intro-account" id="intro-account" hidden>
-                    An account keeps track of what you're reading on every device, a list of books saved for later, and suggestions from what you like.
-                    {{ if .ReadNeedsAccount }}Reading books here needs one too.{{ end }}
-                    <a class="btn-standard" href="/login">Sign in</a>
-                    {{ if .Registration }}<a href="/login">Create an account</a>{{ end }}
-                </p>
             </section>
 
             {{/* The rows, in the user's order (docs/notes/Discover.md): these

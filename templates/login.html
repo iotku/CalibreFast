@@ -4,19 +4,33 @@
     <meta charset="utf-8">
     {{/* Nothing here names the app or the library, links into it or loads
          its scripts: to someone without an account it's only a sign-in form. */}}
-    <title>Sign in</title>
+    <title>{{ if .Signup }}Create an account{{ else }}Sign in{{ end }}</title>
     <meta name="robots" content="noindex, nofollow">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <link rel="stylesheet" href="{{ asset "auth.css" }}">
 </head>
 <body class="auth-body">
 <main class="auth-main auth-bare">
+    {{/* ?signup=1 (the home page's Create an account, or a failed attempt
+         to create one): that form first, focused, and sign in under it. */}}
+    {{ if .Signup }}
+    {{ template "auth-signup" . }}
+    {{ template "auth-signin" . }}
+    {{ else }}
+    {{ template "auth-signin" . }}
+    {{ template "auth-signup" . }}
+    {{ end }}
+</main>
+</body>
+</html>
+
+{{ define "auth-signin" }}
     <section class="auth-card">
-        <h1>Sign in</h1>
-        {{ if .Error }}<p class="auth-error" role="alert">{{ .Error }}</p>{{ end }}
+        {{ if .Signup }}<h2>Already have an account?</h2>{{ else }}<h1>Sign in</h1>
+        {{ if .Error }}<p class="auth-error" role="alert">{{ .Error }}</p>{{ end }}{{ end }}
         <form method="post" action="/login" class="auth-form">
             <input type="hidden" name="next" value="{{ .Next }}">
-            <label>Username <input name="username" type="text" value="{{ .Username }}" autocomplete="username" required autofocus></label>
+            <label>Username <input name="username" type="text" {{ if not .Signup }}value="{{ .Username }}" autofocus{{ end }} autocomplete="username" required></label>
             <label>Password <input name="password" type="password" autocomplete="current-password" required></label>
             <button type="submit" class="btn-standard auth-primary">Sign in</button>
         </form>
@@ -29,19 +43,20 @@
         </div>
         {{ end }}
     </section>
+{{ end }}
 
+{{ define "auth-signup" }}
     {{ if .Registration }}
     <section class="auth-card">
-        <h2>Create an account</h2>
+        {{ if .Signup }}<h1>Create an account</h1>
+        {{ if .Error }}<p class="auth-error" role="alert">{{ .Error }}</p>{{ end }}{{ else }}<h2>Create an account</h2>{{ end }}
         <form method="post" action="/register" class="auth-form">
             <input type="hidden" name="next" value="{{ .Next }}">
-            <label>Username <input name="username" type="text" autocomplete="username" pattern="[A-Za-z0-9._\-]{3,32}" required></label>
+            <label>Username <input name="username" type="text" {{ if .Signup }}value="{{ .Username }}" autofocus{{ end }} autocomplete="username" pattern="[A-Za-z0-9._\-]{3,32}" required></label>
             <label>Password <input name="password" type="password" autocomplete="new-password" minlength="10" required></label>
             <label>Repeat password <input name="password2" type="password" autocomplete="new-password" minlength="10" required></label>
-            <button type="submit" class="btn-standard">Create account</button>
+            <button type="submit" class="btn-standard{{ if .Signup }} auth-primary{{ end }}">Create account</button>
         </form>
     </section>
     {{ end }}
-</main>
-</body>
-</html>
+{{ end }}
