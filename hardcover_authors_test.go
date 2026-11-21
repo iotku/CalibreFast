@@ -73,6 +73,15 @@ func TestSplitDescription(t *testing.T) {
 	if len(l) > descLeadMax || !strings.HasSuffix(l, ".") || strings.TrimSpace(l+" "+m) != strings.TrimSpace(long) {
 		t.Errorf("one long paragraph: %d %q…", len(l), m[:20])
 	}
+	for desc, want := range map[string]bool{
+		"short":                  false,
+		strings.Repeat("a", 250): true,
+		"one\ntwo\nthree\nfour":  true,
+	} {
+		if got := (FilteredPageData{Description: desc}).DescClamps(); got != want {
+			t.Errorf("DescClamps(%.20q) = %v", desc, got)
+		}
+	}
 }
 
 // fakeHardcoverAuthors answers author queries: two "John Smith"s (only

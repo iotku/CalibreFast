@@ -14,7 +14,8 @@
     {{ with .Profile }}{{ with .Years }}<p class="agg-header-years">{{ . }}</p>{{ end }}{{ end }}
     {{ if .Description }}<div class="agg-header-desc">
         <p>{{ .DescLead }}</p>
-        {{ with .DescMore }}<details class="agg-header-more"><summary>More</summary><p>{{ . }}</p></details>{{ end }}
+        {{/* Without more to show, the toggle only shows on a phone, where the lead is cut to four lines. */}}
+        {{ if or .DescMore .DescClamps }}<details class="agg-header-more{{ if not .DescMore }} agg-header-more-narrow{{ end }}"><summary>More</summary>{{ with .DescMore }}<p>{{ . }}</p>{{ end }}</details>{{ end }}
     </div>{{ end }}
     {{ with .Profile }}{{ if or .FromHardcover .HardcoverURL .Refresh }}<p class="agg-header-source">
         {{ if .FromHardcover }}{{ if .HardcoverURL }}From <a href="{{ .HardcoverURL }}" rel="noopener noreferrer" target="_blank">Hardcover</a>{{ else }}From Hardcover{{ end }}
