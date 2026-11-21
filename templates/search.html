@@ -18,8 +18,15 @@
 {{ template "topbar-pager" }}
 {{ template "topbar-end" $tb }}
 <div class="search-intro">
-{{ range .Links }}
-    <p class="search-links"><span class="search-links-label">{{ .Label }}:</span>{{ range .Links }} <a href="{{ .Href }}">{{ .Name }}</a>{{ end }}</p>
+{{ range $i, $g := .Links }}
+    {{/* The first 20; "Show all" (web/search-links.ts) unhides the rest. */}}
+    <div class="search-links" role="group" aria-labelledby="search-links-{{ $i }}">
+        <span class="search-links-label" id="search-links-{{ $i }}">{{ $g.Label }}</span>
+        {{ range $g.Shown }}<a href="{{ .Href }}">{{ .Name }}</a>{{ end }}
+        {{ with $g.Hidden }}{{ range . }}<a href="{{ .Href }}" class="search-link-extra" hidden>{{ .Name }}</a>{{ end }}
+        <button type="button" class="search-links-more" aria-expanded="false" data-more="{{ len . }}">{{ len . }} more</button>{{ end }}
+        {{ with $g.More }}<span class="search-links-cut" hidden>and {{ . }} more: narrow the search to see them</span>{{ end }}
+    </div>
 {{ end }}
     <p class="search-hint">Words match title, author, series, tag, publisher or ISBN. Narrow with <code>author:</code> <code>title:</code> <code>series:</code> <code>tag:</code> <code>publisher:</code> <code>lang:</code> <code>format:</code> <code>isbn:</code>, keep words together with <code>"quotes"</code>, leave out with <code>-word</code>.</p>
 </div>

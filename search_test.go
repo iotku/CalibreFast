@@ -474,3 +474,46 @@ func TestSearchSlotsHonourCancel(t *testing.T) {
 		t.Errorf("status %d", rec.Code)
 	}
 }
+
+// Past 20 matching names, the rest wait behind "N more"; past 200 they're
+// left out (the page would be too big) and counted.
+func TestSearchLinksShowAll(t *testing.T) {
+	db := catalogFixture(t)
+	for i := range 230 {
+		addTestBook(t, db, fmt.Sprintf("Book %d", i), []string{fmt.Sprintf("Smith %03d", i)}, nil, "")
+	}
+	c, err := buildCatalog(db)
+	if err != nil {
+		t.Fatal(err)
+	}
+	libraryCatalog.Store(c)
+	res, err := runSearch(context.Background(), "smith")
+	if err != nil {
+		t.Fatal(err)
+	}
+	groups := res.links()
+	if len(groups) != 1 {
+		t.Fatalf("groups %+v", groups)
+	}
+	g := groups[0]
+	if len(g.Shown()) != searchLinksShown || len(g.Hidden()) != searchLinksMax-searchLinksShown || g.More != 30 {
+		t.Errorf("shown %d, hidden %d, more %d", len(g.Shown()), len(g.Hidden()), g.More)
+	}
+	var b strings.Builder
+	if err := templates.ExecuteTemplate(&b, "search.html", SearchPageData{Title: "T", Query: "smith", TotalBooks: len(res.slots), Links: groups}); err != nil {
+		t.Fatal(err)
+	}
+	out := b.String()
+	if n := strings.Count(out, `class="search-link-extra" hidden`); n != 180 {
+		t.Errorf("%d hidden links, want 180", n)
+	}
+	if !strings.Contains(out, `data-more="180">180 more</button>`) || !strings.Contains(out, "and 30 more") {
+		t.Error("no Show all button or count of the names left out")
+	}
+
+	// A short list has no button.
+	g.Links = g.Links[:3]
+	if len(g.Hidden()) != 0 || len(g.Shown()) != 3 {
+		t.Errorf("short list: shown %d hidden %d", len(g.Shown()), len(g.Hidden()))
+	}
+}
