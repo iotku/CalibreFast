@@ -264,7 +264,7 @@ func TestTokenFuncRefreshesOnce(t *testing.T) {
 
 func TestLibraryCalls(t *testing.T) {
 	f := newFakeLibrary(t)
-	c := New(Config{URL: f.srv.URL, Token: "hc_at_good", UserAgent: "CalibreFast/test", Budget: NewBudget(60, 10, 100)})
+	c := New(Config{URL: f.srv.URL, Token: "hc_at_good", UserAgent: "CalibreFast/test", Budget: NewBudget(60, 20, 100)})
 	ctx := context.Background()
 
 	f.reply["SyncEditions"] = `{"data":{"editions":[{"id":10,"book_id":1,"pages":0},{"id":11,"book_id":1,"pages":320}]}}`
@@ -274,6 +274,24 @@ func TestLibraryCalls(t *testing.T) {
 	}
 	if isbns := f.vars["SyncEditions"]["isbns"].([]any); len(isbns) != 1 {
 		t.Errorf("ISBNs sent: %v", isbns)
+	}
+
+	// Editions with no format (null) count; an audiobook's ISBN names the
+	// book, but its pages aren't used, and any other edition beats it.
+	f.reply["SyncEditions"] = `{"data":{"editions":[{"id":20,"book_id":2,"pages":600,"reading_format_id":2},{"id":21,"book_id":2,"pages":0,"reading_format_id":null}]}}`
+	if e, ok, err := c.FindEdition(ctx, []string{"9798990991804"}, 0, ""); err != nil || !ok || e != (Edition{BookID: 2, EditionID: 21}) {
+		t.Errorf("format unknown: %+v %v %v", e, ok, err)
+	}
+	f.reply["SyncEditions"] = `{"data":{"editions":[{"id":20,"book_id":2,"pages":600,"reading_format_id":2}]}}`
+	if e, ok, err := c.FindEdition(ctx, []string{"9798990991804"}, 0, ""); err != nil || !ok || e != (Edition{BookID: 2, EditionID: 20}) {
+		t.Errorf("only an audiobook: %+v %v %v", e, ok, err)
+	}
+	// A filter like reading_format_id: {_neq: 2} on its own drops every
+	// edition whose format is null, which is most of them.
+	for _, q := range []query{qSyncEditions, qSyncBooks} {
+		if strings.Contains(q.text, "reading_format_id: {_neq") && !strings.Contains(q.text, "_is_null: true}}, {reading_format_id: {_neq") {
+			t.Errorf("query drops editions with no format: %s", q.text)
+		}
 	}
 
 	f.reply["SyncEditions"] = `{"data":{"editions":[]}}`

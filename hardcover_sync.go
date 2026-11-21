@@ -473,6 +473,7 @@ func hcSyncStep(ctx context.Context) (ran bool, next time.Time) {
 		_, err = appDB.Exec(`UPDATE hardcover_sync SET due_at = ? WHERE user_id = ? AND due_at > 0 AND due_at < ?`,
 			wait.Until.Unix(), userID, wait.Until.Unix())
 	case errors.As(err, &skip):
+		log.Printf("hardcover sync: user %d, book %s: not sent: %s", userID, uuid, skip.why)
 		_, err = appDB.Exec(`UPDATE hardcover_sync SET due_at = 0, attempts = 0, error = ? WHERE user_id = ? AND book_uuid = ?`,
 			skip.why, userID, uuid)
 	case errors.Is(err, errHCNotLinked) || errors.Is(err, hardcover.ErrSignedOut):
@@ -480,7 +481,8 @@ func hcSyncStep(ctx context.Context) (ran bool, next time.Time) {
 		err = nil
 	default:
 		backoff := min(time.Minute*time.Duration(math.Pow(4, float64(min(attempts, 6)))), hcMaxBackoff)
-		msg := err.Error()
+		msg := err.Error() // never holds a token (pkg/hardcover's errors don't)
+		log.Printf("hardcover sync: user %d, book %s: %s; trying again in %s", userID, uuid, msg, backoff)
 		_, err = appDB.Exec(`UPDATE hardcover_sync SET due_at = ?, attempts = attempts + 1, error = ? WHERE user_id = ? AND book_uuid = ?`,
 			now.Add(backoff).Unix(), msg, userID, uuid)
 	}

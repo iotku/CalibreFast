@@ -636,6 +636,14 @@ var migrations = []string{
 	);
 	CREATE INDEX hardcover_sync_due ON hardcover_sync (due_at) WHERE due_at > 0;
 	`,
+	// 35: the first Hardcover edition lookup dropped every edition with no
+	// reading format, so books that are on Hardcover were kept as not
+	// found. Forget those misses and send the books they held back.
+	`
+	DELETE FROM hardcover_books WHERE hc_book_id = 0;
+	UPDATE hardcover_sync SET due_at = CAST(strftime('%s', 'now') AS INTEGER), error = ''
+		WHERE due_at = 0 AND error LIKE 'not found on Hardcover%';
+	`,
 }
 
 // openAppDB opens (creating if needed) and migrates the app database.

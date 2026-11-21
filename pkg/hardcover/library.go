@@ -24,7 +24,9 @@ const (
 	StatusDNF        = 5
 )
 
-// Reading formats (editions.reading_format_id).
+// Reading formats (editions.reading_format_id). Many editions have none
+// (null), so a filter on it must keep those: in Hasura, as in SQL,
+// {_neq: 2} drops a null.
 const formatAudio = 2
 
 var (
@@ -33,7 +35,7 @@ var (
 }`, 1}
 
 	qSyncEditions = query{`query SyncEditions($isbns: [String!]!) {
-  editions(where: {isbn_13: {_in: $isbns}, reading_format_id: {_neq: 2}}, order_by: {users_count: desc}, limit: 20) { id book_id isbn_13 pages }
+  editions(where: {isbn_13: {_in: $isbns}}, order_by: {users_count: desc}, limit: 20) { id book_id isbn_13 pages reading_format_id }
 }`, 1}
 
 	qSyncBooks = query{`query SyncBooks($ids: [Int!]!, $slugs: [String!]!) {
@@ -41,7 +43,7 @@ var (
     id
     slug
     pages
-    editions(where: {pages: {_gt: 0}, reading_format_id: {_neq: 2}}, order_by: {users_count: desc}, limit: 1) { id pages }
+    editions(where: {pages: {_gt: 0}, _or: [{reading_format_id: {_is_null: true}}, {reading_format_id: {_neq: 2}}]}, order_by: {users_count: desc}, limit: 1) { id pages }
   }
 }`, 1}
 
@@ -129,20 +131,32 @@ func (c *Client) FindEdition(ctx context.Context, isbns []string, bookID int64, 
 				ID     flexInt `json:"id"`
 				BookID flexInt `json:"book_id"`
 				Pages  int     `json:"pages"`
+				Format flexInt `json:"reading_format_id"` // 0: none given
 			} `json:"editions"`
 		}
 		if err := c.post(ctx, qSyncEditions, map[string]any{"isbns": isbns}, &data); err != nil {
 			return Edition{}, false, err
 		}
-		// Prefer one with a page count, and the book id we were given.
+		// Prefer one that isn't an audiobook, then one with a page count,
+		// then the book id we were given. An audiobook's ISBN still names
+		// the book, but not its pages (they're minutes, if anything).
 		var best *Edition
+		bestScore := -1
 		for _, e := range data.Editions {
 			if e.ID <= 0 || e.BookID <= 0 {
 				continue
 			}
 			cand := Edition{BookID: int64(e.BookID), EditionID: int64(e.ID), Pages: max(e.Pages, 0)}
-			if best == nil || score(cand, bookID) > score(*best, bookID) {
-				best = &cand
+			audio := e.Format == formatAudio
+			if audio {
+				cand.Pages = 0
+			}
+			s := score(cand, bookID)
+			if !audio {
+				s += 4
+			}
+			if best == nil || s > bestScore {
+				best, bestScore = &cand, s
 			}
 		}
 		if best != nil {
