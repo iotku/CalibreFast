@@ -6048,6 +6048,38 @@ body.selecting .book.selected .cover-wrapper {
 .tb-sync-state.is-done .tb-sync-mark {
     color: var(--status-finished);
 }
+.tb-sync-state {
+    align-items: center;
+    margin-bottom: 2px;
+}
+.tb-sync-label {
+    color: var(--text-primary);
+}
+.tb-sync-status {
+    color: var(--text-muted);
+}
+.tb-menu-list button.tb-sync-info-btn {
+    margin-left: auto;
+    display: inline-flex;
+    padding: 2px;
+    color: var(--text-muted);
+}
+.tb-menu-list button.tb-sync-info-btn[aria-expanded="true"] {
+    color: var(--text-primary);
+}
+.tb-sync-info-btn svg {
+    width: 15px;
+    height: 15px;
+}
+.tb-sync-info {
+    margin: 0 8px 8px 32px;
+    font-size: 0.8rem;
+    line-height: 1.4;
+    color: var(--text-secondary);
+}
+.tb-sync-info[hidden] {
+    display: none;
+}
 /* Then the notifications not dismissed yet (up to 5) and a link to all. */
 .tb-notices {
     list-style: none;

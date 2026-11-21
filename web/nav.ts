@@ -49,6 +49,7 @@ const BELL = "M6 16V11a6 6 0 0 1 12 0v5l2 2H4zM10 21h4";
 const CHECK = "M5 12.5l4.5 4.5L19 7.5";
 const CLOCK = "M12 3a9 9 0 1 0 0 18a9 9 0 1 0 0-18zM12 7v5l3 2";
 const CROSS = "M6 6l12 12M18 6L6 18";
+const INFO = "M12 3a9 9 0 1 0 0 18a9 9 0 1 0 0-18zM12 11v5M12 8h.01";
 const SLIDERS = "M4 6h9m4 0h3M4 12h3m4 0h9M4 18h11m4 0h1M15 4v4M9 10v4M17 16v4";
 
 /**
@@ -230,25 +231,40 @@ function init(bar: HTMLElement): void {
         syncFor.setUnseen(unseen);
         return syncFor.node;
     }
-    /** A line of the menu's top: a check when done, a clock while waiting. */
-    function stateLine(): { line: HTMLElement; set(done: boolean, text: string): void } {
-        const text = el("span");
-        const line = el("p", { className: "tb-sync-line tb-sync-state" }, text);
-        line.setAttribute("role", "status");
+    /**
+     * A line of the menu's top: its name, a check when done or a clock and a
+     * word or two while waiting, and an (i) that shows what it covers and
+     * where it stands in full.
+     */
+    function stateLine(label: string): { line: HTMLElement; set(done: boolean, short: string, detail: string): void } {
+        const status = el("span", { className: "tb-sync-status" });
+        status.setAttribute("role", "status");
+        const info = el("button", { type: "button", className: "tb-sync-info-btn", title: `About ${label}`, ariaLabel: `About ${label}` });
+        info.setAttribute("aria-expanded", "false");
+        info.append(icon(INFO));
+        const detail = el("p", { className: "tb-sync-info", hidden: true });
+        info.addEventListener("click", (e) => {
+            e.stopPropagation();
+            detail.hidden = !detail.hidden;
+            info.setAttribute("aria-expanded", String(!detail.hidden));
+        });
+        const head = el("p", { className: "tb-sync-line tb-sync-state" }, el("span", { className: "tb-sync-label", textContent: label }), status, info);
+        const line = el("div", {}, head, detail);
         let was: boolean | null = null;
         return {
             line,
-            set(done, t) {
+            set(done, short, d) {
                 if (was !== done) {
                     was = done;
                     const glyph = icon(done ? CHECK : CLOCK);
                     glyph.classList.add("tb-sync-mark");
-                    line.classList.toggle("is-done", done);
-                    const old = line.querySelector(".tb-sync-mark");
+                    head.classList.toggle("is-done", done);
+                    const old = head.querySelector(".tb-sync-mark");
                     if (old) old.replaceWith(glyph);
-                    else line.prepend(glyph);
+                    else head.prepend(glyph);
                 }
-                if (text.textContent !== t) text.textContent = t;
+                if (status.textContent !== short) status.textContent = short;
+                if (detail.textContent !== d) detail.textContent = d;
             },
         };
     }
@@ -278,8 +294,8 @@ function init(bar: HTMLElement): void {
         let unseen = 0;
         // Built once and updated in place: rebuilding it under the pointer
         // (or the keyboard focus) would lose a click.
-        const readingLine = stateLine();
-        const booksLine = stateLine();
+        const readingLine = stateLine("Reading Sync");
+        const booksLine = stateLine("Book Sync");
         // The book downloading: cover, title, authors, a progress bar, sizes.
         const cover = el("img", { className: "tb-sync-cover", alt: "", width: 40, height: 56, loading: "lazy" });
         const bookTitle = el("span", { className: "tb-sync-title" });
@@ -379,23 +395,29 @@ function init(bar: HTMLElement): void {
             }
             if (panel.hidden) return;
             const readingDone = navigator.onLine && !unsent;
-            const reading = !navigator.onLine
-                ? `Offline. ${unsent ? `Changes to ${plural(unsent, "book")} are` : "Your reading is"} kept here and sent when you're back online.`
-                : unsent
-                  ? `Changes to ${plural(unsent, "book")} waiting to be sent to the server.`
-                  : "Reading progress, bookmarks and highlights are synced.";
+            const readingShort = !navigator.onLine ? "Offline" : unsent ? `${unsent} waiting` : "";
+            const reading =
+                "Your reading progress, bookmarks and highlights, saved to the server so they're on every device you sign in on. " +
+                (!navigator.onLine
+                    ? `You're offline: ${unsent ? `changes to ${plural(unsent, "book")} are` : "your reading is"} kept here and sent when you're back online.`
+                    : unsent
+                      ? `Changes to ${plural(unsent, "book")} waiting to be sent.`
+                      : "All sent.");
             const booksDone = !a && !s.paused && !waiting;
-            const books = a
-                ? "Downloading for reading offline:"
+            const booksShort = a ? "Downloading" : s.paused ? "Paused" : waiting ? `${waiting} waiting` : "";
+            const books =
+                "Books kept on this device for reading offline: what you're reading and have saved, as set in Storage and preferences. " +
+                (a
+                ? "One is downloading now."
                 : s.paused
                   ? `Book downloads are paused${waiting ? `: ${plural(waiting, "book")} waiting` : ""}.`
                   : s.held && waiting
                     ? `${plural(waiting, "book")} to download once the page has finished loading.`
                   : waiting
                     ? `${plural(waiting, "book")} waiting to download. Downloads go on while a library page is open.`
-                    : "Books for offline reading are up to date on this device.";
-            readingLine.set(readingDone, reading);
-            booksLine.set(booksDone, books);
+                    : "All up to date.");
+            readingLine.set(readingDone, readingShort, reading);
+            booksLine.set(booksDone, booksShort, books);
             card.hidden = !a;
             if (a) {
                 // A path we build, not a URL from data.
