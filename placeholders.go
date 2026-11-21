@@ -22,6 +22,9 @@ package main
 // with its title and author first (fillFromPlaceholder): ebooks rarely say.
 // A library book edited to be a placeholder's book replaces it too
 // (placeholder_resolve.go).
+//
+// Signed-in users can Save one; they're told when it's replaced by a
+// library book (notifications.go).
 
 import (
 	"cmp"
@@ -224,6 +227,7 @@ func replacePlaceholder(id, bookUUID string) error {
 	}
 	placeholdersChanged()
 	gapsPlaceholderChanged(p.Meta.Series)
+	placeholderReplacedForSavers(p, bookUUID) // notifications.go
 	return nil
 }
 
@@ -530,6 +534,8 @@ type PlaceholderPageData struct {
 	CoverHue     int
 	Source       string
 	Writable     bool
+	// SignedIn: Save is offered; Saved: the user saved it (notifications.go).
+	SignedIn, Saved bool
 	// Links for the metadata shown.
 	SeriesHref    string
 	AuthorLinks   []placeholderLink
@@ -584,6 +590,11 @@ func placeholderPageData(p *placeholder, r *http.Request) PlaceholderPageData {
 		Source:       p.Source,
 		Writable:     canEditLibrary(r),
 	}
+	if u := currentUser(r); u != nil {
+		d.SignedIn = true
+		status, _ := readStatus(u.ID, p.UUID)
+		d.Saved = status == "wanted"
+	}
 	if p.Meta.Series != "" {
 		d.SeriesHref = categoryByKey("series").href(p.Meta.Series)
 	}
@@ -627,7 +638,7 @@ func placeholderPageHandler(w http.ResponseWriter, r *http.Request) {
 		http.NotFound(w, r)
 		return
 	}
-	w.Header().Set("Cache-Control", "no-cache")
+	w.Header().Set("Cache-Control", "private, no-cache") // Save shows the user's own state
 	w.Header().Set("Vary", "HX-Request")
 	if r.Header.Get("HX-Request") != "" {
 		// The book popup, stepping onto it from a book beside it (modal.ts).

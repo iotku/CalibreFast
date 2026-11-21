@@ -40,11 +40,20 @@ func booksByUUIDs(uuids []string) ([]Book, error) {
 	}
 	cat := currentCatalog()
 	var missing, seriesKeys []string
+	var phs map[string]*placeholder // books not in the library yet that were saved (notifications.go)
 	for _, u := range uuids {
 		if _, ok := shelfSeriesName(u); ok {
 			seriesKeys = append(seriesKeys, u)
 		} else if _, ok := cat.lookup(u); !ok {
-			missing = append(missing, u)
+			if phs == nil {
+				phs = map[string]*placeholder{}
+				for _, p := range allPlaceholders() {
+					phs[p.UUID] = p
+				}
+			}
+			if phs[u] == nil {
+				missing = append(missing, u)
+			}
 		}
 	}
 	series := seriesEntries(cat, seriesKeys)
@@ -60,6 +69,8 @@ func booksByUUIDs(uuids []string) ([]Book, error) {
 			out = append(out, b)
 		} else if b, ok := cat.lookup(u); ok {
 			out = append(out, b.Book)
+		} else if p := phs[u]; p != nil {
+			out = append(out, p.book())
 		} else if b, ok := byUUID[u]; ok {
 			out = append(out, b)
 		}
@@ -451,9 +462,15 @@ func setManualStatus(userID int64, uuid, status string, at int64) (bool, error) 
 
 func setStatusHandler(w http.ResponseWriter, r *http.Request) {
 	u := currentUser(r)
-	uuid, ok := requireBook(w, r)
-	if !ok {
-		return
+	uuid := r.PathValue("uuid")
+	// A book not in the library yet (a placeholder) can be Saved, or not:
+	// nothing else (notifications.go).
+	placeholder := uuid != "" && !bookExists(uuid) && placeholderByUUID(uuid) != nil
+	if !placeholder {
+		var ok bool
+		if uuid, ok = requireBook(w, r); !ok {
+			return
+		}
 	}
 	var req struct {
 		Status string `json:"status"`
@@ -464,6 +481,10 @@ func setStatusHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	req.Status = strings.TrimSpace(req.Status)
+	if placeholder && req.Status != "" && req.Status != "wanted" {
+		http.Error(w, "this book isn't in the library yet: it can only be saved", http.StatusBadRequest)
+		return
+	}
 	applied, err := setManualStatus(u.ID, uuid, req.Status, changeTime(req.AgeMS))
 	if err != nil {
 		if errors.Is(err, errBadStatus) {

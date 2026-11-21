@@ -382,8 +382,8 @@ func hcSyncStatus(userID int64, uuid, status string) {
 }
 
 func hcSyncMark(userID int64, uuid, status string, delay time.Duration) {
-	if appDB == nil || !hcIsLinked(userID) || !hcShared(userID, uuid) {
-		return
+	if appDB == nil || placeholderByUUID(uuid) != nil || !hcIsLinked(userID) || !hcShared(userID, uuid) {
+		return // a placeholder (saved: notifications.go) isn't a book Hardcover can be told about
 	}
 	now := hcNow()
 	today := now.Format(time.DateOnly)

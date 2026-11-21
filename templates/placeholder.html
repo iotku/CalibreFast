@@ -33,7 +33,12 @@
                 {{ if .Tags }}<dt>Tags</dt><dd>{{ .Tags }}</dd>{{ end }}
             </dl>
             {{ if .Meta.Description }}<p class="placeholder-desc">{{ .Meta.Description }}</p>{{ end }}
-            <p class="auth-muted">This book isn't in the library yet.</p>
+            <p class="auth-muted">This book isn't in the library yet.{{ if .SignedIn }} Save it to be told when it is.{{ end }}</p>
+            {{ if .SignedIn }}
+            <div class="ph-actions ph-actions-start">
+                {{ template "placeholder-save" . }}
+            </div>
+            {{ end }}
             {{ if .Writable }}
             <div class="ph-actions ph-actions-start">
                 <button type="button" id="ph-files-pick" class="btn-standard btn-primary">Add Formats</button>
@@ -75,6 +80,7 @@
     {{ end }}
 </main>
 {{ if .Writable }}<script type="module" src="{{ asset "placeholder.js" }}"></script>{{ end }}
+{{ if .SignedIn }}<script type="module" src="{{ asset "placeholder-save.js" }}"></script>{{ end }}
 </body>
 </html>
 
@@ -115,6 +121,9 @@
                 <span class="placeholder-banner">Not in library</span>
             </span>
         </div>
+        {{ if .SignedIn }}
+        <div class="book-user-row ph-save-row">{{ template "placeholder-save" . }}</div>
+        {{ end }}
         {{ if .Writable }}
         <div class="book-actions">
             <a class="btn-action" href="/missing/{{ .UUID }}">
@@ -144,3 +153,8 @@
         {{ if .Meta.Description }}<div class="description placeholder-desc">{{ .Meta.Description }}</div>{{ end }}
     </div>
 </div>{{ end }}
+
+{{/* Save: the user is told when the book is in the library
+     (notifications.go). web/placeholder-save.ts draws its icon and label
+     and toggles it. */}}
+{{ define "placeholder-save" }}<button type="button" class="btn-action btn-want{{ if .Saved }} is-on{{ end }}" data-placeholder-save="{{ .UUID }}" aria-pressed="{{ .Saved }}">{{ if .Saved }}Saved{{ else }}Save{{ end }}</button>{{ end }}

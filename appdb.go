@@ -688,6 +688,24 @@ var migrations = []string{
 	`
 	ALTER TABLE users ADD COLUMN deleted_at INTEGER;
 	`,
+	// 39: notifications for a user (notifications.go): for now, that a
+	// book they saved before it was in the library (a placeholder) is in
+	// it. book_uuid is the library book; title as it was then; on_deck: it
+	// went to On Deck (they had finished the book before it). seen_at: the
+	// bar's count no longer includes it.
+	`
+	CREATE TABLE notifications (
+		id         INTEGER PRIMARY KEY,
+		user_id    INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+		kind       TEXT    NOT NULL,
+		book_uuid  TEXT    NOT NULL DEFAULT '',
+		title      TEXT    NOT NULL DEFAULT '',
+		on_deck    INTEGER NOT NULL DEFAULT 0,
+		created_at INTEGER NOT NULL,
+		seen_at    INTEGER
+	);
+	CREATE INDEX notifications_user ON notifications (user_id, created_at);
+	`,
 }
 
 // openAppDB opens (creating if needed) and migrates the app database.
