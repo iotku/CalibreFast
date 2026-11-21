@@ -2628,6 +2628,7 @@ body.book-standalone {
 .agg-cloud[hidden],
 #agg-browse[hidden],
 .agg-letters[hidden],
+.agg-letter-bubble[hidden],
 .agg-order[hidden],
 .agg-preview[hidden],
 .agg-pill[hidden] {
@@ -2776,6 +2777,9 @@ body.book-standalone {
     margin: 0 0 0.75rem;
     padding: 6px 0;
     background: var(--bg-primary);
+    touch-action: none; /* dragging scrubs letters (aggregate.ts), not the page */
+    -webkit-user-select: none;
+    user-select: none;
 }
 
 .agg-letters a {
@@ -2788,10 +2792,39 @@ body.book-standalone {
     border-radius: var(--radius-small);
 }
 
+.agg-letters a {
+    -webkit-touch-callout: none;
+}
+
 .agg-letters a:hover,
 .agg-letters a:focus-visible {
     color: var(--text-primary);
     background: var(--bg-elevated);
+}
+
+.agg-letters a[aria-current] {
+    color: #c8a96e;
+    font-weight: 600;
+    background: var(--bg-elevated);
+}
+
+/* The letter under the finger while scrubbing, held above it like a keyboard key's popup */
+.agg-letter-bubble {
+    position: fixed;
+    z-index: 60;
+    display: grid;
+    place-items: center;
+    width: 56px;
+    height: 56px;
+    transform: translate(-50%, calc(-100% - 40px));
+    font-size: 1.75rem;
+    font-weight: 600;
+    color: var(--text-primary);
+    background: var(--bg-surface);
+    border: 1px solid var(--border-medium);
+    border-radius: var(--radius-medium);
+    box-shadow: var(--shadow-small);
+    pointer-events: none;
 }
 
 .agg-letter {
