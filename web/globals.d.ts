@@ -70,6 +70,8 @@ declare namespace EpubJS {
     interface Contents {
         document: Document;
         window: Window;
+        /** The CFI of a range in this chapter. */
+        cfiFromRange(range: Range): string;
     }
     interface Rendition {
         display(target?: string): Promise<void>;
@@ -77,8 +79,6 @@ declare namespace EpubJS {
         prev(): Promise<void>;
         on(event: "relocated", cb: (location: Location) => void): void;
         on(event: "rendered", cb: (section: Section, view: View) => void): void;
-        /** A text selection was made (it fires once the selection stops changing). */
-        on(event: "selected", cb: (cfiRange: string, contents: Contents) => void): void;
         /** The DOM range of a CFI, when its chapter is on screen. */
         getRange(cfi: string): Range | undefined;
         /** Lays the chapter out again for the container's size, at the same place. */

@@ -1083,18 +1083,47 @@ const notesUI = setupAnnotationUI({
 // A preview shows no highlights and makes none (selecting text still copies).
 if (!preview) void store.load();
 
-rendition.on("selected", (cfiRange, contents) => {
-    if (preview) return;
-    const selection = contents.window.getSelection();
-    const text = selection?.toString().trim() ?? "";
-    if (!selection?.rangeCount || !text) return;
-    const at = toScreen(contents.document, selection.getRangeAt(0).getBoundingClientRect());
-    notesUI.offerNew(at, text, (color) => {
+/**
+ * A selection in the chapter gets the highlight toolbar. The chapter's
+ * iframe is sandboxed without scripts, and Safari (WebKit, on every device)
+ * then runs none of the listeners we put on it: no selectionchange, so
+ * epub.js's "selected" never comes. This page can still read the frame's
+ * selection, so it looks a few times a second instead, in every browser.
+ * Offered once the selection has held still for a look (as epub.js waited
+ * for it to settle), and taken away again when it's gone.
+ */
+let lastSel = ""; // the selection seen at the last look
+let offeredSel = ""; // the selection the toolbar is showing for
+function checkSelection(): void {
+    if (preview || document.hidden) return;
+    let found: { contents: EpubJS.Contents; range: Range; text: string } | null = null;
+    for (const contents of rendition.getContents()) {
+        const sel = contents.window?.getSelection();
+        const text = sel?.toString().trim() ?? "";
+        if (sel?.rangeCount && text && !sel.isCollapsed) {
+            found = { contents, range: sel.getRangeAt(0), text };
+            break;
+        }
+    }
+    const key = found ? `${found.text}\u0000${found.range.startOffset}:${found.range.endOffset}` : "";
+    const settled = key === lastSel;
+    lastSel = key;
+    if (!found) {
+        if (offeredSel) notesUI.hideNew();
+        offeredSel = "";
+        return;
+    }
+    if (!settled || key === offeredSel) return;
+    offeredSel = key;
+    const { contents, range, text } = found;
+    const cfiRange = contents.cfiFromRange(range);
+    notesUI.offerNew(toScreen(contents.document, range.getBoundingClientRect()), text, (color) => {
         const made = store.add({ anchor: cfiRange, text, color, chapter: tocEntryFor(cfiRange)?.label ?? "", page: pageNumber(cfiRange) });
         contents.window.getSelection()?.removeAllRanges();
         return made;
     });
-});
+}
+if (!preview) setInterval(checkSelection, 200);
 rendition.on("relocated", () => notesUI.hide());
 
 // ---- search ----------------------------------------------------------------
