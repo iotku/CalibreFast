@@ -190,7 +190,7 @@ func hcUnlinkAccount(userID int64) (hcRevoke, error) {
 		}
 	}
 	hcSetLinked(userID, false)
-	for _, table := range []string{"hardcover_sync", "hardcover_shared", "hardcover_links"} {
+	for _, table := range []string{"hardcover_sync", "hardcover_shared", "hardcover_user_books", "hardcover_links"} {
 		if _, err := appDB.Exec(`DELETE FROM `+table+` WHERE user_id = ?`, userID); err != nil {
 			return revoke, err
 		}
@@ -213,6 +213,7 @@ type hcAccountView struct {
 	Summary   hcSyncSummary
 	Share     hcShare
 	Shared    []hcSharedBook // the books shared, newest first
+	Problems  []hcSharedBook // shared books that can't be sent (not found, or failing)
 }
 
 // hcSharedBook is a book a user shared, for the account page's list.
@@ -234,11 +235,10 @@ func hcSharedBooks(userID int64) []hcSharedBook {
 		}
 	}
 	rows.Close()
-	cat := currentCatalog()
 	var out []hcSharedBook
 	for _, u := range uuids {
-		if b, ok := cat.lookup(u); ok {
-			out = append(out, hcSharedBook{UUID: u, Title: b.Title, Authors: b.Authors})
+		if title, authors, ok := hcBookTitle(u); ok {
+			out = append(out, hcSharedBook{UUID: u, Title: title, Authors: authors})
 		}
 	}
 	return out
@@ -295,7 +295,7 @@ func hcView(u *User, notice string) *hcAccountView {
 		return v
 	}
 	v.State, v.Summary = "linked", hcSummary(userID)
-	v.Share, v.Shared = hcLoadShare(userID), hcSharedBooks(userID)
+	v.Share, v.Shared, v.Problems = hcLoadShare(userID), hcSharedBooks(userID), hcProblemBooks(userID)
 	return v
 }
 
@@ -419,6 +419,10 @@ func hardcoverShareHandler(w http.ResponseWriter, r *http.Request) {
 
 func registerHardcoverSyncRoutes(mux *http.ServeMux) {
 	mux.HandleFunc("PUT /api/me/books/{uuid}/hardcover", requireUser(hardcoverShareHandler))
+	mux.HandleFunc("GET /api/me/books/{uuid}/hardcover", requireUser(hardcoverBookStatusHandler))
+	mux.HandleFunc("GET /api/me/books/{uuid}/hardcover/search", requireUser(hardcoverBookSearchHandler))
+	mux.HandleFunc("PUT /api/me/books/{uuid}/hardcover/match", requireUser(hardcoverBookMatchHandler))
+	mux.HandleFunc("DELETE /api/me/books/{uuid}/hardcover/match", requireUser(hardcoverBookMatchHandler))
 	mux.HandleFunc("POST /account/hardcover", requireUser(hardcoverAccountHandler))
 	mux.HandleFunc("GET /api/me/hardcover", requireUser(hardcoverStatusHandler))
 }

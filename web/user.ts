@@ -23,6 +23,7 @@ import { startBookSync } from "./book-sync.js";
 import { api, el, errorMessage } from "./dom.js";
 import { serverHtml } from "./trusted.js";
 import { deleteBooks } from "./delete-books.js";
+import { wireHardcoverBook } from "./hardcover-book.js";
 import "./book-files.js"; // the book page's Files row (admins)
 import "./series-shelf.js"; // "Add series to shelf" (also the series page's, via app-htmx.ts)
 import "./offline-control.js"; // "On this device" and keeping the book (book.html)
@@ -228,6 +229,7 @@ function bind(controls: HTMLElement): void {
     const want = controls.querySelector<HTMLButtonElement>(".btn-want");
     const note = controls.querySelector<HTMLElement>(".book-status-note");
     if (want && status) paintWant(want, status.value);
+    let hcRefresh: (() => void) | null = null; // set below, once the Hardcover controls are wired
     const save = async (value: string): Promise<void> => {
         if (!status || !user) return;
         status.value = value;
@@ -235,6 +237,7 @@ function bind(controls: HTMLElement): void {
         if (note) note.textContent = note.dataset["progress"] ?? ""; // set here, not by the reader
         noteMark(user, uuid, { status: value });
         await sendNoted({ uuid, status: value }, "status");
+        if (hcRefresh) setTimeout(hcRefresh, 3000); // a shared book is sent to Hardcover
     };
     status?.addEventListener("change", () => void save(status.value));
     // Like the cover's button: toggles Saved for a book not started.
@@ -253,25 +256,8 @@ function bind(controls: HTMLElement): void {
     });
 
     // Track on Hardcover: this book is sent to the user's Hardcover account
-    // only once they tick it (hardcover_link.go).
-    const hc = controls.querySelector<HTMLInputElement>("input[data-hardcover-share]");
-    const hcNote = controls.querySelector<HTMLElement>(".book-hardcover-note");
-    hc?.addEventListener("change", async () => {
-        const share = hc.checked;
-        hc.disabled = true;
-        try {
-            const got = await api<{ share: boolean }>("PUT", `/api/me/books/${encodeURIComponent(uuid)}/hardcover`, { share });
-            hc.checked = got.share;
-            if (hcNote) {
-                hcNote.textContent = got.share ? "Sent to your Hardcover account as it changes" : "Not sent any more. What was sent stays on Hardcover.";
-            }
-        } catch (err) {
-            hc.checked = !share;
-            if (hcNote) hcNote.textContent = errorMessage(err);
-        } finally {
-            hc.disabled = false;
-        }
-    });
+    // only once they tick it; how it stands, and choosing the right book.
+    hcRefresh = wireHardcoverBook(controls, uuid);
 
     const count = controls.querySelector<HTMLElement>(".book-shelves-count");
     const paintCount = (): void => {
