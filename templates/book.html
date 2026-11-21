@@ -120,16 +120,22 @@
             {{ if $offline }}
             <!-- Kept on this device for reading offline, and whether to keep it
                  (web/offline-control.ts fills it in; it stays hidden where the
-                 browser can't keep books: not HTTPS or localhost). -->
+                 browser can't keep books: not HTTPS or localhost). The
+                 Hardcover sync control (book-user-actions.html) follows it. -->
             <div class="book-offline" data-uuid="{{ $.UUID }}" data-title="{{ $.Title }}"
                 data-formats="{{ range $i, $f := $.Formats }}{{ if $i }} {{ end }}{{ $f }}{{ end }}"
                 data-authors="{{ range $i, $a := $.Authors }}{{ if $i }}, {{ end }}{{ $a }}{{ end }}" hidden>
-                <span class="book-offline-state" role="status"></span>
-                <select class="book-offline-pref" aria-label="Keep this book on this device">
-                    <option value="auto">Keep while reading</option>
-                    <option value="keep">Always keep on this device</option>
-                    <option value="never">Don't keep on this device</option>
-                </select>
+                <!-- Keep offline (a toggle, painted by offline-control.ts) with
+                     the menu of how to keep it as its caret, like Save's. -->
+                <div class="sync-split">
+                    <button type="button" class="btn-action btn-sync btn-offline"></button>
+                    <select class="sync-menu book-offline-pref" title="Keep on this device" aria-label="Keep this book on this device">
+                        <option value="auto">Keep while reading</option>
+                        <option value="keep">Keep on this device</option>
+                        <option value="never">Never keep on this device</option>
+                    </select>
+                </div>
+                <span class="book-offline-state sync-note" role="status"></span>
             </div>
             {{ end }}
             <!-- Per-user controls (/book/me/<uuid>), loaded by user.ts. The

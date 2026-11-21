@@ -495,6 +495,89 @@ func TestHardcoverShareAPI(t *testing.T) {
 	}
 }
 
+// Sharing every book, a book left out isn't sent, nor backfilled, until
+// shared again; a merge carries the choice to the book kept.
+func TestHardcoverShareAllLeaveOut(t *testing.T) {
+	u, books, _ := setupHardcoverSync(t)
+	linkHardcover(t, u)
+	if err := hcSaveShare(u.ID, hcShare{All: true}); err != nil {
+		t.Fatal(err)
+	}
+	if !hcShared(u.ID, books[0]) || !hcShared(u.ID, books[1]) {
+		t.Fatal("every book should be shared")
+	}
+	if err := setStatus(u.ID, books[0], "reading", "manual"); err != nil {
+		t.Fatal(err)
+	}
+	if err := hcSetBookShared(u.ID, books[0], false); err != nil {
+		t.Fatal(err)
+	}
+	var n int
+	_ = appDB.QueryRow(`SELECT COUNT(*) FROM hardcover_sync WHERE book_uuid = ?`, books[0]).Scan(&n)
+	if hcShared(u.ID, books[0]) || !hcShared(u.ID, books[1]) || n != 0 {
+		t.Errorf("left out: shared=%v other=%v, %d rows waiting", hcShared(u.ID, books[0]), hcShared(u.ID, books[1]), n)
+	}
+	// Not queued by a change, nor by a backfill.
+	hcSyncTouch(u.ID, books[0], 0)
+	if _, err := hcSyncBackfill(u.ID); err != nil {
+		t.Fatal(err)
+	}
+	_ = appDB.QueryRow(`SELECT COUNT(*) FROM hardcover_sync WHERE book_uuid = ?`, books[0]).Scan(&n)
+	if n != 0 {
+		t.Errorf("a book left out was queued")
+	}
+	if v := hcView(u, ""); len(v.Unshared) != 1 || v.Unshared[0].UUID != books[0] {
+		t.Errorf("account page's list: %+v", v.Unshared)
+	}
+	// Going back to chosen books and then to every book keeps it out.
+	_ = hcSaveShare(u.ID, hcShare{})
+	_ = hcSaveShare(u.ID, hcShare{All: true})
+	if hcShared(u.ID, books[0]) {
+		t.Errorf("left out forgotten when sharing every book again")
+	}
+	// A merge: the book kept is left out too.
+	hcSyncMerged(books[1], []string{books[0]})
+	if hcShared(u.ID, books[1]) {
+		t.Errorf("merged book should be left out")
+	}
+	// Shared again: sent again.
+	if err := hcSetBookShared(u.ID, books[0], true); err != nil {
+		t.Fatal(err)
+	}
+	if !hcShared(u.ID, books[0]) {
+		t.Errorf("shared again, but not shared")
+	}
+	_ = appDB.QueryRow(`SELECT COUNT(*) FROM hardcover_unshared WHERE book_uuid = ?`, books[0]).Scan(&n)
+	if n != 0 {
+		t.Errorf("still listed as left out")
+	}
+	// Unlinking forgets it.
+	if _, err := hcUnlinkAccount(u.ID); err != nil {
+		t.Fatal(err)
+	}
+	_ = appDB.QueryRow(`SELECT COUNT(*) FROM hardcover_unshared`).Scan(&n)
+	if n != 0 {
+		t.Errorf("left-out books kept after unlinking")
+	}
+}
+
+// Choosing books, turning one off records nothing to leave out.
+func TestHardcoverUnshareChosenOnly(t *testing.T) {
+	u, books, _ := setupHardcoverSync(t)
+	linkHardcover(t, u)
+	_ = hcSetBookShared(u.ID, books[0], true)
+	_ = hcSetBookShared(u.ID, books[0], false)
+	var n int
+	_ = appDB.QueryRow(`SELECT COUNT(*) FROM hardcover_unshared`).Scan(&n)
+	if n != 0 {
+		t.Errorf("unsharing a chosen book left it out of every book")
+	}
+	_ = hcSaveShare(u.ID, hcShare{All: true})
+	if !hcShared(u.ID, books[0]) {
+		t.Errorf("sharing every book should include it")
+	}
+}
+
 func TestHardcoverSyncTokens(t *testing.T) {
 	u, books, f := setupHardcoverSync(t)
 	linkHardcover(t, u)

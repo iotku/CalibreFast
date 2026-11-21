@@ -523,7 +523,7 @@ type BookUserActionsData struct {
 }
 
 type bookHardcover struct {
-	Shared bool // this book, chosen
+	Shared bool // this book is sent: chosen, or every book is and it wasn't left out
 	All    bool // every book is shared
 }
 
@@ -543,7 +543,7 @@ func bookUserActionsHandler(w http.ResponseWriter, r *http.Request) {
 			data.Progress = progressNote(uuid, p, time.Now())
 		}
 		if hardcoverSyncEnabled() && hcIsLinked(u.ID) {
-			data.Hardcover = &bookHardcover{Shared: hcIsBookShared(u.ID, uuid), All: hcLoadShare(u.ID).All}
+			data.Hardcover = &bookHardcover{Shared: hcShared(u.ID, uuid), All: hcLoadShare(u.ID).All}
 		}
 		data.Shelves = shelfMarks(u, uuid)
 		for _, s := range data.Shelves {

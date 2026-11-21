@@ -4,7 +4,7 @@
  * (prefs.ts, applied by retention.ts), and what this device stores: a bar
  * of the space used against the limit and the browser's quota, and the
  * books kept here by status, each with a Remove button (which also sets the
- * book to "Don't keep on this device", so it isn't downloaded again).
+ * book to "Never keep on this device", so it isn't downloaded again).
  *
  * Everything is built with DOM calls (el()); titles and authors are text.
  */
@@ -281,7 +281,7 @@ function bookRow(b: CachedBook): HTMLElement {
     remove.addEventListener("click", () => {
         remove.disabled = true;
         // Removed by hand, likely for a reason (its size, not reading it
-        // offline): set to "Don't keep on this device", or it would only be
+        // offline): set to "Never keep on this device", or it would only be
         // downloaded again (On deck, Saved). Every format goes; the book's
         // popup can set it back.
         void setOfflinePref(b.uuid, "never").finally(() => void render());

@@ -712,6 +712,17 @@ var migrations = []string{
 	`
 	CREATE INDEX reading_status_book ON reading_status (book_uuid);
 	`,
+	// 41: books a user who shares every book with Hardcover left out
+	// (hardcover_sync.go): exceptions to hardcover_links.share_all, set
+	// from the book's Sync to Hardcover. Nothing about them is sent.
+	`
+	CREATE TABLE hardcover_unshared (
+		user_id     INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+		book_uuid   TEXT    NOT NULL,
+		unshared_at INTEGER NOT NULL,
+		PRIMARY KEY (user_id, book_uuid)
+	);
+	`,
 }
 
 // openAppDB opens (creating if needed) and migrates the app database.

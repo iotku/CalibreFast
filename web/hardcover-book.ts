@@ -1,12 +1,14 @@
 /**
- * The book page's "Track on Hardcover" (book-user-actions.html): sharing
- * the book with the user's Hardcover account, how its sync stands, and,
- * when Hardcover couldn't find it or found the wrong book, choosing the
- * right one. The choice is the user's own, for their sync only
+ * The book page's "Sync to Hardcover" split button (book-user-actions.html,
+ * sync-split.ts): sharing the book with the user's Hardcover account, how
+ * its sync stands, and, when Hardcover couldn't find it or found the wrong
+ * book, choosing the right one (from the menu, or the button itself when
+ * it wasn't found). The choice is the user's own, for their sync only
  * (hardcover_book.go). Built with el()/textContent: titles and errors
  * come from Hardcover and the library.
  */
 import { api, el, errorMessage } from "./dom.js";
+import { paintSync, SYNC_ICONS, type SyncLook } from "./sync-split.js";
 
 interface Match {
     book_id: number;
@@ -50,24 +52,80 @@ function time(ms: number): string {
     return new Date(ms).toLocaleTimeString(undefined, { hour: "2-digit", minute: "2-digit" });
 }
 
+/** The toggle's look for how the sync stands. */
+function look(st: Status): SyncLook {
+    const pressed = st.shared;
+    const off = st.all ? "Leave this book out of sharing every book with Hardcover" : "Stop sending this book to Hardcover";
+    switch (st.state) {
+        case "off":
+            return { icon: SYNC_ICONS.sync, label: "Sync to Hardcover", title: "Send this book's reading status to your Hardcover account", on: false, pressed };
+        case "not_found":
+            return { icon: SYNC_ICONS.problem, label: "Find on Hardcover", title: "Hardcover couldn't find this book: choose it", on: false, problem: true };
+        case "failing":
+            return { icon: SYNC_ICONS.problem, label: "Hardcover sync failing", title: off, on: true, pressed, problem: true };
+        case "waiting":
+            return { icon: SYNC_ICONS.sync, label: "Syncing to Hardcover", title: off, on: true, pressed };
+        case "no_status":
+            return { icon: SYNC_ICONS.sync, label: "Sharing with Hardcover", title: off, on: true, pressed };
+        default:
+            return { icon: SYNC_ICONS.sync, label: "Synced to Hardcover", title: off, on: true, pressed };
+    }
+}
+
+/** The menu: share or not, then what can be done about the match. */
+function menuOptions(st: Status, picking: boolean): HTMLOptionElement[] {
+    const opt = (value: string, label: string, extra: Partial<HTMLOptionElement> = {}): HTMLOptionElement =>
+        el("option", { value, textContent: label, ...extra });
+    const opts = [
+        opt("on", "Sync to Hardcover", { selected: st.shared }),
+        opt("off", "Don't sync to Hardcover", { selected: !st.shared }),
+    ];
+    if (st.shared) {
+        const label = picking
+            ? "Close the Hardcover search"
+            : st.state === "not_found"
+              ? "Find it on Hardcover…"
+              : st.match
+                ? "Wrong book? Choose another…"
+                : "Choose the book on Hardcover…";
+        opts.push(opt("pick", label));
+        if (st.match?.chosen) opts.push(opt("reset", "Use the library's match"));
+    }
+    if (st.all) opts.push(opt("account", "Sharing for every book…"));
+    return opts;
+}
+
 /** Wires the controls; the answer refreshes the status (after a change elsewhere on the page). */
 export function wireHardcoverBook(controls: HTMLElement, uuid: string): (() => void) | null {
-    const box = controls.querySelector<HTMLInputElement>("input[data-hardcover-share]");
+    const btn = controls.querySelector<HTMLButtonElement>("button[data-hardcover-toggle]");
+    const menu = controls.querySelector<HTMLSelectElement>("select[data-hardcover-menu]");
     const out = controls.querySelector<HTMLElement>("[data-hardcover-status]");
-    if (!box || !out) return null;
+    if (!btn || !menu || !out) return null;
     const base = `/api/me/books/${encodeURIComponent(uuid)}/hardcover`;
     let picking = false;
+    /** How it stands, as last painted: what the button and menu act on. */
+    let current: Status | null = null;
+    /** Before the first answer: as the server rendered it. */
+    const known = (): Status =>
+        current ?? {
+            shared: btn.getAttribute("aria-pressed") === "true",
+            all: !!menu.querySelector('option[value="account"]'),
+            state: btn.classList.contains("is-on") ? "waiting" : "off",
+            query: "",
+        };
 
     const paint = (st: Status): void => {
-        box.checked = st.shared;
-        box.disabled = st.all;
+        current = st;
+        paintSync(btn, look(st));
+        menu.replaceChildren(...menuOptions(st, picking));
+        menu.value = st.shared ? "on" : "off";
         const line = el("span", { className: "book-hardcover-note" });
         const parts: (Node | string)[] = [];
         const matchText = (): (Node | string)[] =>
             st.match ? [" as ", bookLink(st.match.slug, st.match.title || `book ${st.match.book_id}`)] : [];
         switch (st.state) {
             case "off":
-                parts.push("Nothing about this book is sent to Hardcover");
+                parts.push(st.all ? "Left out: you share every book but this one" : "Nothing about this book is sent to Hardcover");
                 break;
             case "no_status":
                 parts.push("Shared. Set want to read, reading or read to send it");
@@ -88,27 +146,62 @@ export function wireHardcoverBook(controls: HTMLElement, uuid: string): (() => v
                 break;
         }
         if (st.all && st.state !== "off") parts.push(" (you share every book: ", el("a", { href: "/account#hardcover", className: "meta-link", textContent: "change" }), ")");
+        if (st.shared && st.match?.chosen) parts.push(". You chose this match");
         line.append(...parts);
         const kids: Node[] = [line];
-        if (st.shared) {
-            const label =
-                st.state === "not_found" ? "Find it on Hardcover" : st.match ? "Wrong book?" : "Choose the book on Hardcover";
-            const toggle = el("button", { type: "button", className: "link-button", textContent: label });
-            toggle.setAttribute("aria-expanded", String(picking));
-            toggle.addEventListener("click", () => {
-                picking = !picking;
-                paint(st);
-            });
-            kids.push(toggle);
-            if (st.match?.chosen) {
-                const reset = el("button", { type: "button", className: "link-button", textContent: "Use the library's match" });
-                reset.addEventListener("click", () => void change(() => api<Status>("DELETE", `${base}/match`)));
-                kids.push(el("span", { className: "book-hardcover-note" }, "You chose this match. "), reset);
-            }
-            if (picking) kids.push(picker(st));
-        }
+        if (st.shared && picking) kids.push(picker(st));
         out.replaceChildren(...kids);
     };
+
+    const share = async (on: boolean): Promise<void> => {
+        btn.disabled = true;
+        menu.disabled = true;
+        try {
+            await api("PUT", base, { share: on });
+            if (!on) picking = false;
+        } catch (err) {
+            out.replaceChildren(el("span", { className: "book-hardcover-note book-hardcover-problem", textContent: errorMessage(err) }));
+        } finally {
+            btn.disabled = false;
+            menu.disabled = false;
+        }
+        refresh();
+        if (on) setTimeout(refresh, 3000);
+    };
+
+    const togglePicker = (): void => {
+        if (!current) return;
+        picking = !picking;
+        paint(current);
+        if (picking) out.querySelector<HTMLInputElement>(".book-hardcover-q")?.focus();
+    };
+
+    btn.addEventListener("click", () => {
+        const st = known();
+        if (st.state === "not_found") return togglePicker();
+        void share(!st.shared);
+    });
+
+    menu.addEventListener("change", () => {
+        const st = known();
+        const choice = menu.value;
+        menu.value = st.shared ? "on" : "off"; // the menu shows how it stands; a choice only acts
+        switch (choice) {
+            case "on":
+            case "off":
+                if ((choice === "on") !== st.shared) void share(choice === "on");
+                break;
+            case "pick":
+                togglePicker();
+                break;
+            case "reset":
+                void change(() => api<Status>("DELETE", `${base}/match`));
+                break;
+            case "account":
+                location.assign("/account#hardcover");
+                break;
+        }
+    });
 
     const picker = (st: Status): HTMLElement => {
         const input = el("input", {
@@ -172,21 +265,6 @@ export function wireHardcoverBook(controls: HTMLElement, uuid: string): (() => v
         });
     };
 
-    box.addEventListener("change", async () => {
-        const share = box.checked;
-        box.disabled = true;
-        try {
-            await api("PUT", base, { share });
-            if (!share) picking = false;
-        } catch (err) {
-            box.checked = !share;
-            out.replaceChildren(el("span", { className: "book-hardcover-note book-hardcover-problem", textContent: errorMessage(err) }));
-        } finally {
-            box.disabled = false;
-        }
-        refresh();
-        if (share) setTimeout(refresh, 3000);
-    });
     refresh();
     return refresh;
 }

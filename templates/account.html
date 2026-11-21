@@ -123,7 +123,7 @@
         <p class="auth-muted" role="status">Waiting for your approval. This page updates by itself once you've approved. The code works until {{ .Expires }}; if it runs out, start again.</p>
 
         {{ else if eq .State "linked" }}
-        <p class="sync-intro">Linked to your Hardcover account <b>{{ .Username }}</b>. {{ if .Share.All }}Every book you read here is sent there.{{ else }}Only the books you choose are sent there: tick <b>Track on Hardcover</b> on a book's page.{{ end }}</p>
+        <p class="sync-intro">Linked to your Hardcover account <b>{{ .Username }}</b>. {{ if .Share.All }}Every book you read here is sent there, except those you leave out: turn off <b>Sync to Hardcover</b> on a book's page.{{ else }}Only the books you choose are sent there: turn on <b>Sync to Hardcover</b> on a book's page.{{ end }}</p>
 
         <form method="post" action="/account/hardcover#hardcover" class="sync-share">
             <input type="hidden" name="action" value="settings">
@@ -156,16 +156,28 @@
         </div>
         {{ end }}
 
-        {{ if not .Share.All }}
+        {{ if .Share.All }}
+        <details class="sync-details">
+            <summary>Books you left out ({{ len .Unshared }})</summary>
+            {{ if .Unshared }}
+            <ul class="sync-shared">
+                {{ range .Unshared }}<li><a href="/book/get/{{ .UUID }}" class="meta-link">{{ .Title }}</a>{{ if .Authors }} <span class="auth-muted">{{ .Authors }}</span>{{ end }}</li>{{ end }}
+            </ul>
+            <p class="auth-muted">Nothing about these is sent. To send one again, turn on <b>Sync to Hardcover</b> on its page.</p>
+            {{ else }}
+            <p class="auth-muted">None. To keep a book off Hardcover, turn off <b>Sync to Hardcover</b> on its page.</p>
+            {{ end }}
+        </details>
+        {{ else }}
         <details class="sync-details"{{ if not .Shared }} open{{ end }}>
             <summary>Books you share ({{ len .Shared }})</summary>
             {{ if .Shared }}
             <ul class="sync-shared">
                 {{ range .Shared }}<li><a href="/book/get/{{ .UUID }}" class="meta-link">{{ .Title }}</a>{{ if .Authors }} <span class="auth-muted">{{ .Authors }}</span>{{ end }}</li>{{ end }}
             </ul>
-            <p class="auth-muted">To stop sharing one, untick <b>Track on Hardcover</b> on its page.</p>
+            <p class="auth-muted">To stop sharing one, turn off <b>Sync to Hardcover</b> on its page.</p>
             {{ else }}
-            <p class="auth-muted">None yet. Open a book and tick <b>Track on Hardcover</b> under its reading status; its status is sent straight away.</p>
+            <p class="auth-muted">None yet. Open a book and choose <b>Sync to Hardcover</b> under its Read and Download buttons; its status is sent straight away.</p>
             {{ end }}
         </details>
         {{ end }}
@@ -204,7 +216,7 @@
         <ol class="sync-steps">
             <li>Choose <b>Link Hardcover</b>. A short code appears here.</li>
             <li>Open <b>hardcover.app/link</b>, sign in to Hardcover, enter the code and approve CalibreFast.</li>
-            <li>Choose which books to share: tick <b>Track on Hardcover</b> on a book's page. Or, here, choose to share every book.</li>
+            <li>Choose which books to share: turn on <b>Sync to Hardcover</b> on a book's page. Or, here, choose to share every book.</li>
         </ol>
         <p class="auth-muted">Linking shares nothing by itself: no book is sent until you choose it. You need a Hardcover account (it's free). You never give CalibreFast your Hardcover password, and you can unlink at any time.</p>
         <p class="auth-muted">What you allow: CalibreFast may see who you are on Hardcover, and read and change your Hardcover library. It keeps that sign-in encrypted on this server, but whoever runs this server could use it, so link only if you trust them. Unlinking ends it.</p>
