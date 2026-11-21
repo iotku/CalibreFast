@@ -61,6 +61,8 @@ declare namespace EpubJS {
     }
     interface View {
         document: Document;
+        /** The view's box (holding the iframe) inside the manager's .epub-container. */
+        element: HTMLElement;
         /** The highlights' SVG layer, once one is drawn; render() places them again from their text. */
         pane?: { render(): void };
     }
