@@ -14,6 +14,7 @@ import {
     type CoverChoice, currentCover, epubPages, fetchCoverStatus, fileChoice, formatBytes, imageChoice, pdfPages, revertCover,
 } from "./cover-sources.js";
 import type { BookTarget } from "./book-target.js";
+import { CONVERTED_FORMATS } from "./formats.js";
 import { api, closeOnBackdropClick, el, errorMessage, maybeId } from "./dom.js";
 import type { CoverCandidate, LookupResult } from "./types.js";
 
@@ -194,6 +195,10 @@ export function mountCoverDialog({ book, autoDefault = false, opener, isbnInput,
         const sources: [string, () => AsyncGenerator<CoverChoice>][] = [];
         if (formats.includes("pdf")) sources.push(["PDF", () => pdfPages(book)]);
         if (formats.includes("epub")) sources.push(["EPUB", () => epubPages(book)]);
+        // A Kindle file, read as the EPUB the server converts it to (as the
+        // reader does): the first of AZW3, AZW, MOBI the book has.
+        const kindle = CONVERTED_FORMATS.find((f) => formats.includes(f));
+        if (kindle) sources.push([kindle.toUpperCase(), () => epubPages(book, kindle)]);
         for (const [name, source] of sources) {
             say(`Loading the ${name}'s first pages…`);
             try {
@@ -298,9 +303,10 @@ export function mountCoverDialog({ book, autoDefault = false, opener, isbnInput,
         void (async () => {
             if ((await fetchCoverStatus(book)).hasCover || filesLoaded) return;
             await loadBookFiles(); // the choices are then ready when the dialog opens
-            // As on upload: the EPUB's own cover, else the first page offered.
+            // As on upload: the EPUB's own cover, else a Kindle file's, else the first page offered.
             const choices = [...cards.keys()].filter((c) => c.save);
-            const first = choices.find((c) => c.label === "EPUB cover") ?? choices[0];
+            const own = ["EPUB", ...CONVERTED_FORMATS.map((f) => f.toUpperCase())].map((n) => `${n} cover`);
+            const first = own.map((l) => choices.find((c) => c.label === l)).find((c) => c) ?? choices[0];
             if (!first?.save || busy || (await fetchCoverStatus(book)).hasCover) return; // the admin already chose
             try {
                 await first.save();

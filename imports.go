@@ -1000,6 +1000,7 @@ func registerImportRoutes() {
 	http.HandleFunc("/import/{id}/isbns", requireEditor(importISBNsHandler))
 	http.HandleFunc("GET /import/{id}/formats", requireEditor(importFormatsHandler))
 	http.HandleFunc("GET /import/{id}/file/{format}", requireEditor(importFileHandler))
+	http.HandleFunc("GET /import/{id}/as-epub/{format}", requireEditor(importAsEPUBHandler)) // convert_read.go
 	http.HandleFunc("GET /import/{id}/cover", requireEditor(importCoverHandler))
 	http.HandleFunc("POST /import/{id}/cover", requireEditor(importSaveCoverHandler))
 	http.HandleFunc("GET /import/{id}/cover/status", requireEditor(importCoverStatusHandler))
