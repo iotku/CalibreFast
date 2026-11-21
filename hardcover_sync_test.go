@@ -6,8 +6,10 @@ import (
 	"io"
 	"net/http"
 	"net/http/httptest"
+	"net/url"
 	"os"
 	"path/filepath"
+	"slices"
 	"strings"
 	"sync"
 	"testing"
@@ -152,7 +154,18 @@ func (f *fakeHardcoverAccount) serve(w http.ResponseWriter, r *http.Request) {
 	case "SyncEditions":
 		io.WriteString(w, `{"data":{"editions":[{"id":501,"book_id":50,"isbn_13":"9780316129084","pages":300}]}}`)
 	case "SyncBooks":
+		// Book 60 is on Hardcover, by its id or slug.
+		ids, _ := req.Variables["ids"].([]any)
+		slugs, _ := req.Variables["slugs"].([]any)
+		if slices.Contains(ids, any(float64(60))) || slices.Contains(slugs, any("the-right-book")) {
+			io.WriteString(w, `{"data":{"books":[{"id":60,"slug":"the-right-book","title":"The Right Book","pages":250,"editions":[{"id":601,"pages":250}]}]}}`)
+			return
+		}
 		io.WriteString(w, `{"data":{"books":[]}}`)
+	case "SearchBooks":
+		io.WriteString(w, `{"data":{"search":{"results":{"hits":[{"document":{"id":"60"}}]}}}}`)
+	case "BooksForLookup":
+		io.WriteString(w, `{"data":{"books":[{"id":60,"slug":"the-right-book","title":"The Right Book","release_date":"2021-03-01","contributions":[{"author":{"name":"A. Writer"}}]}]}}`)
 	case "UserBook":
 		b := f.books[num(req.Variables["book"])]
 		if b == nil {
@@ -467,9 +480,14 @@ func TestHardcoverShareAPI(t *testing.T) {
 	mux := http.NewServeMux()
 	registerHardcoverSyncRoutes(mux)
 	rec := httptest.NewRecorder()
-	mux.ServeHTTP(rec, httptest.NewRequest("GET", "/api/me/books/"+books[0]+"/hardcover", nil))
+	mux.ServeHTTP(rec, asUser(httptest.NewRequest("POST", "/api/me/books/"+books[0]+"/hardcover", strings.NewReader(`{"share":true}`)), u))
 	if rec.Code != http.StatusMethodNotAllowed {
-		t.Errorf("GET: %d", rec.Code)
+		t.Errorf("POST: %d", rec.Code)
+	}
+	rec = httptest.NewRecorder()
+	mux.ServeHTTP(rec, httptest.NewRequest("GET", "/api/me/books/"+books[0]+"/hardcover", nil))
+	if rec.Code != http.StatusUnauthorized {
+		t.Errorf("GET signed out: %d", rec.Code)
 	}
 	// The book's controls offer the choice only to linked users.
 	if v := hcView(u, ""); v.State != "linked" || v.Share.All {
@@ -656,5 +674,132 @@ func TestHardcoverRoutes(t *testing.T) {
 	}
 	if l, _ := hcLoadAccount(u.ID); l != nil {
 		t.Error("still linked")
+	}
+}
+
+// A shared book Hardcover can't find shows so on its page, and the user
+// (no editor) chooses the right book, for their own sync only.
+func TestHardcoverBookMatch(t *testing.T) {
+	u, books, f := setupHardcoverSync(t)
+	mux := http.NewServeMux()
+	registerHardcoverSyncRoutes(mux)
+	call := func(method, path, body string) *httptest.ResponseRecorder {
+		t.Helper()
+		var rd io.Reader
+		if body != "" {
+			rd = strings.NewReader(body)
+		}
+		rec := httptest.NewRecorder()
+		mux.ServeHTTP(rec, asUser(httptest.NewRequest(method, path, rd), u))
+		return rec
+	}
+	state := func() hcBookStatus {
+		t.Helper()
+		rec := call("GET", "/api/me/books/"+books[1]+"/hardcover", "")
+		var st hcBookStatus
+		if rec.Code != 200 || json.Unmarshal(rec.Body.Bytes(), &st) != nil {
+			t.Fatalf("status: %d %s", rec.Code, rec.Body)
+		}
+		return st
+	}
+	base := "/api/me/books/" + books[1] + "/hardcover"
+	if rec := call("GET", base, ""); rec.Code != http.StatusConflict {
+		t.Errorf("status before linking: %d", rec.Code)
+	}
+	linkHardcover(t, u)
+
+	// Not shared: no search, no match (a search tells Hardcover the title).
+	if st := state(); st.State != "off" || st.Shared {
+		t.Errorf("not shared: %+v", st)
+	}
+	if rec := call("GET", base+"/search?q=anything", ""); rec.Code != http.StatusConflict {
+		t.Errorf("search on a book not shared: %d", rec.Code)
+	}
+	if rec := call("PUT", base+"/match", `{"book_id":60}`); rec.Code != http.StatusConflict {
+		t.Errorf("match on a book not shared: %d", rec.Code)
+	}
+
+	// The second book has no ISBN: shared and reading, it isn't found.
+	if err := setStatus(u.ID, books[1], "reading", "manual"); err != nil {
+		t.Fatal(err)
+	}
+	if rec := call("PUT", base, `{"share":true}`); rec.Code != 200 {
+		t.Fatalf("share: %d %s", rec.Code, rec.Body)
+	}
+	step(t)
+	if st := state(); st.State != "not_found" || st.Match != nil || st.Query == "" {
+		t.Fatalf("not found: %+v", st)
+	}
+	if p := hcProblemBooks(u.ID); len(p) != 1 || p[0].UUID != books[1] {
+		t.Errorf("account page problems: %+v", p)
+	}
+
+	// Search by title, or by a pasted link; junk links search as text.
+	var found []hcFoundBook
+	rec := call("GET", base+"/search?q=right+book", "")
+	if rec.Code != 200 || json.Unmarshal(rec.Body.Bytes(), &found) != nil || len(found) != 1 ||
+		found[0] != (hcFoundBook{BookID: 60, Slug: "the-right-book", Title: "The Right Book", Authors: "A. Writer", Year: "2021"}) {
+		t.Fatalf("search: %d %s", rec.Code, rec.Body)
+	}
+	rec = call("GET", base+"/search?q="+url.QueryEscape("https://hardcover.app/books/the-right-book/editions"), "")
+	if rec.Code != 200 || !strings.Contains(rec.Body.String(), `"book_id":60`) {
+		t.Errorf("by link: %d %s", rec.Code, rec.Body)
+	}
+	for _, q := range []string{"https://evil.example/books/the-right-book", "javascript:alert(1)", "https://hardcover.app/books/../x"} {
+		if slug, id, ok := hcLinkTarget(q); ok {
+			t.Errorf("%q taken as a link: %q %d", q, slug, id)
+		}
+	}
+	if rec := call("GET", base+"/search?q=", ""); rec.Code != http.StatusBadRequest {
+		t.Errorf("empty search: %d", rec.Code)
+	}
+
+	// Choosing it: only the id is taken from the request; Hardcover says
+	// the rest. It's sent at once, as that book.
+	if rec := call("PUT", base+"/match", `{"book_id":61,"title":"<b>x</b>"}`); rec.Code != http.StatusNotFound {
+		t.Errorf("a book Hardcover doesn't have: %d %s", rec.Code, rec.Body)
+	}
+	if rec := call("PUT", base+"/match", `{"book_id":60}`); rec.Code != 200 {
+		t.Fatalf("match: %d %s", rec.Code, rec.Body)
+	}
+	step(t)
+	st := state()
+	if st.State != "sent" || st.Match == nil || !st.Match.Chosen || st.Match.Title != "The Right Book" || st.Match.Slug != "the-right-book" {
+		t.Fatalf("after choosing: %+v %+v", st, st.Match)
+	}
+	if b := f.books[60]; b == nil || b.status != hardcover.StatusReading || b.edition != 601 {
+		t.Fatalf("not sent as the chosen book: %+v", f.books[60])
+	}
+	if p := hcProblemBooks(u.ID); len(p) != 0 {
+		t.Errorf("still a problem: %+v", p)
+	}
+	// The library is left alone, and other users aren't affected.
+	var ids int
+	_ = calibreDB.QueryRow(`SELECT COUNT(*) FROM identifiers i JOIN books b ON b.id = i.book WHERE b.uuid = ?`, books[1]).Scan(&ids)
+	if ids != 0 {
+		t.Errorf("the library's identifiers changed: %d", ids)
+	}
+	if _, ok := hcUserMatch(u.ID+1, books[1]); ok {
+		t.Error("another user got the match")
+	}
+
+	// Back to the library's match: not found again.
+	if rec := call("DELETE", base+"/match", ""); rec.Code != 200 {
+		t.Fatalf("unmatch: %d %s", rec.Code, rec.Body)
+	}
+	step(t)
+	if st := state(); st.State != "not_found" || st.Match != nil {
+		t.Errorf("after going back: %+v", st)
+	}
+
+	// Unlinking forgets the user's matches too.
+	if err := hcSetUserMatch(u.ID, books[1], hardcover.Edition{BookID: 60}); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := hcUnlinkAccount(u.ID); err != nil {
+		t.Fatal(err)
+	}
+	if _, ok := hcUserMatch(u.ID, books[1]); ok {
+		t.Error("a match outlived the link")
 	}
 }

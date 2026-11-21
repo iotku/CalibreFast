@@ -4019,6 +4019,55 @@ label.group-row span {
     font-size: 0.8rem;
 }
 
+.book-hardcover-problem {
+    color: var(--danger, #b3261e);
+}
+
+.book-hardcover-status .link-button {
+    padding: 0;
+    border: 0;
+    background: none;
+    color: var(--link, inherit);
+    font: inherit;
+    font-size: 0.8rem;
+    text-decoration: underline;
+    cursor: pointer;
+}
+
+.book-hardcover-pick {
+    margin-top: 0.5rem;
+    max-width: 32rem;
+}
+
+.book-hardcover-picker {
+    display: flex;
+    gap: 0.4rem;
+}
+
+.book-hardcover-q {
+    flex: 1;
+    min-width: 0;
+}
+
+.book-hardcover-results {
+    margin: 0.4rem 0;
+    padding: 0;
+    list-style: none;
+    font-size: 0.85rem;
+}
+
+.book-hardcover-results li {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 0.3rem;
+    padding: 0.25rem 0;
+}
+
+.book-hardcover-results .btn-standard {
+    margin-left: auto;
+}
+
 .sync-share fieldset {
     margin: 0 0 0.75rem;
     padding: 0;
