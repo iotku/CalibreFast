@@ -5987,7 +5987,8 @@ body.selecting .book.selected .cover-wrapper {
 }
 
 /* The top bar's sync button (web/nav.ts): a ring shows a download's
-   progress, a dot that something waits (unsent changes, paused books). */
+   progress, a dot that something waits (unsent changes, paused books); a
+   bell with a count (.tb-badge) while notifications are unseen. */
 .tb-sync-btn {
     position: relative;
 }
@@ -6012,6 +6013,29 @@ body.selecting .book.selected .cover-wrapper {
 .tb-sync-btn.is-busy > svg:first-child {
     color: var(--status-reading);
 }
+/* How the downloads just finished went, for a moment (nav.ts SYNC_LINGER_MS). */
+.tb-sync-result {
+    position: absolute;
+    right: -3px;
+    bottom: -2px;
+    width: 14px;
+    height: 14px;
+    display: grid;
+    place-items: center;
+    border-radius: 50%;
+    color: #fff;
+    background: var(--status-finished);
+    box-shadow: 0 0 0 2px var(--bg-primary, #111);
+    pointer-events: none;
+}
+.tb-sync-result[data-outcome="failed"] {
+    background: #e57373;
+}
+.tb-sync-result svg {
+    width: 10px;
+    height: 10px;
+    stroke-width: 3;
+}
 .tb-sync-btn.has-note::after {
     content: "";
     position: absolute;
@@ -6030,6 +6054,109 @@ body.selecting .book.selected .cover-wrapper {
     font-size: 0.85rem;
     line-height: 1.4;
     color: var(--text-secondary);
+}
+/* Its top lines: a check when synced, a clock while something waits. */
+.tb-sync-state {
+    display: flex;
+    gap: 8px;
+    align-items: flex-start;
+}
+.tb-sync-mark {
+    flex: none;
+    width: 16px;
+    height: 16px;
+    margin-top: 1px;
+    color: var(--text-muted);
+}
+.tb-sync-state.is-done .tb-sync-mark {
+    color: var(--status-finished);
+}
+.tb-sync-state {
+    align-items: center;
+    margin-bottom: 2px;
+}
+.tb-sync-label {
+    color: var(--text-primary);
+}
+.tb-sync-status {
+    color: var(--text-muted);
+}
+.tb-menu-list button.tb-sync-info-btn {
+    margin-left: auto;
+    display: inline-flex;
+    padding: 2px;
+    color: var(--text-muted);
+}
+.tb-menu-list button.tb-sync-info-btn[aria-expanded="true"] {
+    color: var(--text-primary);
+}
+.tb-sync-info-btn svg {
+    width: 15px;
+    height: 15px;
+}
+.tb-sync-info {
+    margin: 0 8px 8px 32px;
+    font-size: 0.8rem;
+    line-height: 1.4;
+    color: var(--text-secondary);
+}
+.tb-sync-info[hidden] {
+    display: none;
+}
+/* Then the notifications not dismissed yet (up to 5) and a link to all. */
+.tb-notices {
+    list-style: none;
+    margin: 0 0 2px;
+    padding: 0;
+    display: flex;
+    flex-direction: column;
+    gap: 2px;
+}
+.tb-notices[hidden] {
+    display: none;
+}
+.tb-notice {
+    display: flex;
+    gap: 6px;
+    align-items: flex-start;
+    padding: 6px 4px 6px 10px;
+    border-radius: var(--radius-small);
+}
+.tb-notice.is-new {
+    background: var(--bg-surface);
+}
+.tb-notice-text {
+    flex: 1;
+    min-width: 0;
+    display: flex;
+    flex-direction: column;
+    gap: 2px;
+}
+.tb-menu-list a.tb-notice-title,
+.tb-notice-title {
+    padding: 0;
+    font-size: 0.9rem;
+    font-weight: 600;
+    color: var(--text-primary);
+    white-space: normal;
+    overflow-wrap: anywhere;
+}
+.tb-menu-list a.tb-notice-title:hover {
+    background: none;
+    text-decoration: underline;
+}
+.tb-notice-note {
+    font-size: 0.78rem;
+    color: var(--text-secondary);
+}
+.tb-menu-list button.tb-notice-dismiss {
+    flex: none;
+    display: inline-flex;
+    padding: 4px;
+}
+.tb-notice-dismiss svg {
+    width: 14px;
+    height: 14px;
 }
 .tb-sync-book {
     display: flex;
