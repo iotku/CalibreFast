@@ -640,6 +640,10 @@ window.addEventListener("keydown", onKey);
  * notch turns one and spinning it scrubs through the book. A trackpad (or a
  * Magic Mouse) sends a steady stream for one swipe, momentum included: that
  * turns one page, and another every 350ms if the stream goes on.
+ *
+ * Times come from this page's clock, not e.timeStamp: each chapter is its
+ * own document with its own clock, starting again at 0 when it loads, so
+ * its timestamps can't be compared with the page's or the last chapter's.
  */
 const onWheel = (() => {
     let lastAt = -Infinity; // the previous wheel event
@@ -647,14 +651,18 @@ const onWheel = (() => {
     return (e: WheelEvent): void => {
         if (settings().flow === "scrolled" || e.ctrlKey) return;
         e.preventDefault();
-        const gap = e.timeStamp - lastAt;
-        lastAt = e.timeStamp;
+        const now = performance.now();
+        const gap = now - lastAt;
+        lastAt = now;
         const d = Math.abs(e.deltaY) >= Math.abs(e.deltaX) ? e.deltaY : e.deltaX;
-        // Line or page deltas only come from a wheel; tiny pixel ones are trackpad noise.
-        if (d === 0 || (e.deltaMode === WheelEvent.DOM_DELTA_PIXEL && Math.abs(d) < 4)) return;
-        const sinceTurn = e.timeStamp - turnAt;
-        // A trackpad stream comes every frame (~16ms); a pause this long starts a new gesture.
-        const newGesture = gap > 90;
+        // Tiny pixel deltas are a resting finger on a trackpad. (A slow notch
+        // on a Mac mouse is ~4px, sometimes 3.99, so the line is well below.)
+        if (d === 0 || (e.deltaMode === WheelEvent.DOM_DELTA_PIXEL && Math.abs(d) < 1.5)) return;
+        const sinceTurn = now - turnAt;
+        // A trackpad stream comes every frame (8–16ms); a pause this long
+        // starts a new gesture, or is the next notch of a wheel (a Mac's
+        // wheelDelta isn't in steps of 120 when it accelerates).
+        const newGesture = gap > 50;
         // A wheel notch: line/page deltas (Firefox), or the legacy wheelDelta in
         // steps of 120 (Chromium, Safari), set apart from the events around it.
         const legacy = (e as WheelEvent & { wheelDeltaY?: number }).wheelDeltaY;
@@ -663,7 +671,7 @@ const onWheel = (() => {
             (gap > 30 && e.deltaX === 0 && !!legacy && legacy % 120 === 0);
         if (!newGesture && !notch && sinceTurn < 350) return;
         if (sinceTurn < 40) return; // a wheel spun freely: no faster than the pages can follow
-        turnAt = e.timeStamp;
+        turnAt = now;
         turn(d > 0 ? 1 : -1);
     };
 })();
