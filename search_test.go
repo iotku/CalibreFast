@@ -1,6 +1,7 @@
 package main
 
 import (
+	"context"
 	"encoding/json"
 	"fmt"
 	"net/http"
@@ -8,6 +9,7 @@ import (
 	"net/url"
 	"slices"
 	"strings"
+	"sync"
 	"testing"
 )
 
@@ -98,7 +100,10 @@ func searchNames(t *testing.T, ids map[string]string, q string) []string {
 	for k, v := range ids {
 		byUUID[v] = k
 	}
-	res := runSearch(q)
+	res, err := runSearch(context.Background(), q)
+	if err != nil {
+		t.Fatal(err)
+	}
 	var got []string
 	for _, s := range res.slots {
 		got = append(got, byUUID[res.ix.cat.books[s].UUID])
@@ -191,7 +196,8 @@ func TestSearchLinks(t *testing.T) {
 	searchFixture(t)
 	name := func(q string) string {
 		var parts []string
-		for _, g := range runSearch(q).links() {
+		res, _ := runSearch(context.Background(), q)
+		for _, g := range res.links() {
 			var ns []string
 			for _, l := range g.Links {
 				ns = append(ns, l.Name+"="+l.Href)
@@ -250,7 +256,7 @@ func TestSearchPageEscapes(t *testing.T) {
 		t.Fatal(err)
 	}
 	libraryCatalog.Store(c)
-	res := runSearch("alert")
+	res, _ := runSearch(context.Background(), "alert")
 	data := SearchPageData{Title: "T", Query: `alert"><script>`, TotalBooks: len(res.slots), Links: res.links()}
 	if len(data.Links) == 0 {
 		t.Fatal("expected links")
@@ -269,14 +275,14 @@ func TestSearchPageEscapes(t *testing.T) {
 
 func BenchmarkSearch(b *testing.B) {
 	c := newCatalog()
-	for i := range 50000 {
-		c.authorNames[int32(i%5000+1)] = fmt.Sprintf("Author %d Surname%d", i%5000, i%97)
+	for i := range 100000 { // the design target (docs/notes/Discover.md, "Storage model")
+		c.authorNames[int32(i%30000+1)] = fmt.Sprintf("Author %d Surname%d", i%30000, i%97)
 		c.tagNames[int32(i%300+1)] = fmt.Sprintf("Tag %d", i%300)
 		c.seriesNames[int32(i%2000+1)] = fmt.Sprintf("Series %d Saga", i%2000)
 		c.books = append(c.books, catalogBook{
 			Book:      Book{Title: fmt.Sprintf("The Book of Things Number %d", i), UUID: fmt.Sprint(i)},
 			Sort:      fmt.Sprintf("Book of Things Number %d", i),
-			AuthorIDs: []int32{int32(i%5000 + 1)},
+			AuthorIDs: []int32{int32(i%30000 + 1)},
 			TagIDs:    []int32{int32(i%300 + 1), int32((i+7)%300 + 1)},
 			Series:    int32(i%2000 + 1),
 		})
@@ -295,5 +301,176 @@ func BenchmarkSearch(b *testing.B) {
 				ix.search(terms)
 			}
 		})
+	}
+}
+
+// Search is served from memory: neither the page nor its grid's requests
+// read the library (docs/notes/Discover.md, "Storage model").
+func TestSearchReadsNothingFromLibrary(t *testing.T) {
+	searchFixture(t)
+	io := libraryIO.Load()
+	for _, u := range []string{"/search?q=tolkien", "/api/search?q=tolkien&page=1", "/api/search?q=lang:fra+format:epub", "/search?q=isbn:9780552131063"} {
+		rec := httptest.NewRecorder()
+		h := searchHandler
+		if strings.HasPrefix(u, "/search") {
+			h = searchPageHandler
+		}
+		h(rec, httptest.NewRequest("GET", u, nil))
+		if rec.Code != http.StatusOK {
+			t.Errorf("%s: %d", u, rec.Code)
+		}
+	}
+	if libraryIO.Load() != io {
+		t.Error("search read the library")
+	}
+}
+
+// A private server (no -public) doesn't let anyone signed out search, through
+// the same middleware the server uses; -public does.
+func TestSearchNeedsSignInOnPrivateServer(t *testing.T) {
+	setupTestAppDB(t)
+	searchFixture(t)
+	orig := publicCatalog
+	t.Cleanup(func() { publicCatalog = orig })
+
+	mux := http.NewServeMux()
+	mux.HandleFunc("GET /search", searchPageHandler)
+	mux.HandleFunc("GET /api/search", searchHandler)
+	h := withAuth(mux)
+
+	u, err := createUser("reader", "longenough-pw", false)
+	if err != nil {
+		t.Fatal(err)
+	}
+	rec := httptest.NewRecorder()
+	if err := startSession(rec, httptest.NewRequest("POST", "/login", nil), u.ID); err != nil {
+		t.Fatal(err)
+	}
+	cookies := rec.Result().Cookies()
+	if len(cookies) == 0 {
+		t.Fatal("no session cookie")
+	}
+
+	get := func(path string, html, signedIn bool) *httptest.ResponseRecorder {
+		req := httptest.NewRequest("GET", path, nil)
+		if html {
+			req.Header.Set("Accept", "text/html")
+		}
+		if signedIn {
+			for _, c := range cookies {
+				req.AddCookie(c)
+			}
+		}
+		rec := httptest.NewRecorder()
+		h.ServeHTTP(rec, req)
+		return rec
+	}
+
+	publicCatalog = false
+	if rec := get("/api/search?q=tolkien", false, false); rec.Code != http.StatusUnauthorized || strings.Contains(rec.Body.String(), "Hobbit") {
+		t.Errorf("signed out, private: /api/search %d %q", rec.Code, rec.Body)
+	}
+	if rec := get("/search?q=tolkien", true, false); rec.Code != http.StatusSeeOther ||
+		!strings.HasPrefix(rec.Header().Get("Location"), "/login?next=") || strings.Contains(rec.Body.String(), "Tolkien") {
+		t.Errorf("signed out, private: /search %d %q", rec.Code, rec.Header().Get("Location"))
+	}
+	if rec := get("/search?q=tolkien", false, false); rec.Code != http.StatusUnauthorized {
+		t.Errorf("signed out, private, not a browser: /search %d", rec.Code)
+	}
+	// A forged or expired cookie is no better than none.
+	req := httptest.NewRequest("GET", "/api/search?q=tolkien", nil)
+	req.AddCookie(&http.Cookie{Name: sessionCookie, Value: "not-a-session"})
+	rec = httptest.NewRecorder()
+	h.ServeHTTP(rec, req)
+	if rec.Code != http.StatusUnauthorized {
+		t.Errorf("bad cookie: %d", rec.Code)
+	}
+
+	if rec := get("/api/search?q=tolkien", false, true); rec.Code != http.StatusOK || !strings.Contains(rec.Body.String(), "The Hobbit") {
+		t.Errorf("signed in, private: %d %q", rec.Code, rec.Body)
+	}
+	if rec := get("/search?q=tolkien", true, true); rec.Code != http.StatusOK || !strings.Contains(rec.Body.String(), "J. R. R. Tolkien") {
+		t.Errorf("signed in, private page: %d", rec.Code)
+	}
+
+	publicCatalog = true
+	if rec := get("/api/search?q=tolkien", false, false); rec.Code != http.StatusOK || !strings.Contains(rec.Body.String(), "The Hobbit") {
+		t.Errorf("signed out, -public: %d", rec.Code)
+	}
+	// Only GET: search changes nothing.
+	req = httptest.NewRequest("POST", "/api/search?q=tolkien", nil)
+	for _, c := range cookies {
+		req.AddCookie(c)
+	}
+	rec = httptest.NewRecorder()
+	h.ServeHTTP(rec, req)
+	if rec.Code != http.StatusMethodNotAllowed {
+		t.Errorf("POST: %d", rec.Code)
+	}
+}
+
+// Many searches at once while the catalog changes: one index per catalog,
+// answers always from a whole catalog (run with -race).
+func TestSearchConcurrentWithChanges(t *testing.T) {
+	ids := searchFixture(t)
+	db := calibreDB
+	done := make(chan struct{})
+	go func() {
+		defer close(done)
+		for i := range 20 {
+			mustExec(t, db, `UPDATE books SET title = ? WHERE uuid = ?`, fmt.Sprintf("Mort %d", i), ids["mort"])
+			catalogChanged(ids["mort"])
+			if err := catalogFlush(); err != nil {
+				t.Error(err)
+				return
+			}
+		}
+	}()
+	var wg sync.WaitGroup
+	for range 8 {
+		wg.Add(1)
+		go func() {
+			defer wg.Done()
+			for {
+				select {
+				case <-done:
+					return
+				default:
+				}
+				res, err := runSearch(context.Background(), "mort")
+				if err != nil {
+					t.Error(err)
+					return
+				}
+				if len(res.slots) != 1 {
+					t.Errorf("found %d books", len(res.slots))
+					return
+				}
+			}
+		}()
+	}
+	wg.Wait()
+}
+
+// A search waiting for a slot gives up when its request does.
+func TestSearchSlotsHonourCancel(t *testing.T) {
+	searchFixture(t)
+	for range cap(searchSlots) {
+		searchSlots <- struct{}{}
+	}
+	defer func() {
+		for range cap(searchSlots) {
+			<-searchSlots
+		}
+	}()
+	ctx, cancel := context.WithCancel(context.Background())
+	cancel()
+	if _, err := runSearch(ctx, "a query not cached"); err == nil {
+		t.Error("expected the cancelled search to give up")
+	}
+	rec := httptest.NewRecorder()
+	searchHandler(rec, httptest.NewRequest("GET", "/api/search?q=another", nil).WithContext(ctx))
+	if rec.Code != http.StatusServiceUnavailable {
+		t.Errorf("status %d", rec.Code)
 	}
 }

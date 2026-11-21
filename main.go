@@ -636,21 +636,8 @@ func serveLibraryHTTP() {
 	// Book Display
 	http.HandleFunc("/book/get/", bookHandler)
 
-	http.HandleFunc("/search", func(w http.ResponseWriter, r *http.Request) {
-		q := strings.TrimSpace(r.URL.Query().Get("q"))
-		data := SearchPageData{Title: SiteTitle, Query: q}
-		if q != "" {
-			res := runSearch(q)
-			data.TotalBooks = len(res.slots)
-			data.Links = res.links()
-		}
-		err := templates.ExecuteTemplate(w, "search.html", data)
-		if err != nil {
-			http.Error(w, err.Error(), 500)
-		}
-	})
-
-	http.HandleFunc("/api/search", searchHandler)
+	http.HandleFunc("GET /search", searchPageHandler)
+	http.HandleFunc("GET /api/search", searchHandler)
 
 	http.HandleFunc("/read", requireReader(readerPage("reader.html", true)))
 	http.HandleFunc("/read-pdf", requireReader(readerPage("reader-pdf.html", false)))

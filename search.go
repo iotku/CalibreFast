@@ -23,7 +23,9 @@ package main
 
 import (
 	"cmp"
+	"context"
 	"net/http"
+	"runtime"
 	"slices"
 	"strconv"
 	"strings"
@@ -178,6 +180,9 @@ func searchHay(names ...string) string {
 
 // matchHay is how well phrase matches hay.
 func matchHay(hay, phrase string) int {
+	if !strings.Contains(hay, phrase) {
+		return matchNone // most names: one scan, not four
+	}
 	switch {
 	case strings.Contains(hay, "\x1f "+phrase+" \x1f"):
 		return matchWhole
@@ -185,7 +190,7 @@ func matchHay(hay, phrase string) int {
 		return matchStart
 	case strings.Contains(hay, " "+phrase):
 		return matchWord
-	case len(phrase) >= 4 && strings.Contains(hay, phrase):
+	case len(phrase) >= 4:
 		return matchInside
 	}
 	return matchNone
@@ -512,42 +517,85 @@ const searchCacheSize = 32
 
 var searchCache struct {
 	sync.Mutex
-	ix      *searchIndex
-	results map[string]*searchResult
-	recent  []string // oldest first
+	ix       *searchIndex // the current catalog's, once built
+	building *indexBuild  // being built, for the catalog it names
+	results  map[string]*searchResult
+	recent   []string // oldest first
+}
+
+type indexBuild struct {
+	cat  *catalog
+	ix   *searchIndex
+	done chan struct{}
+}
+
+// searchSlots bounds how many searches are worked out at once (cached
+// answers don't take one), so a burst of new queries can't take every CPU
+// from the rest of the server.
+var searchSlots = make(chan struct{}, max(1, runtime.GOMAXPROCS(0)/2))
+
+// searchIndexFor returns c's index, building it once however many searches
+// ask for it at the same time.
+func searchIndexFor(c *catalog) *searchIndex {
+	searchCache.Lock()
+	if ix := searchCache.ix; ix != nil && ix.cat == c {
+		searchCache.Unlock()
+		return ix
+	}
+	if b := searchCache.building; b != nil && b.cat == c {
+		searchCache.Unlock()
+		<-b.done
+		return b.ix
+	}
+	b := &indexBuild{cat: c, done: make(chan struct{})}
+	searchCache.building = b
+	searchCache.Unlock()
+
+	defer close(b.done)
+	b.ix = newSearchIndex(c)
+	searchCache.Lock()
+	defer searchCache.Unlock()
+	if searchCache.building == b {
+		searchCache.building = nil
+	}
+	if currentCatalog() == c {
+		searchCache.ix = b.ix
+		searchCache.results = map[string]*searchResult{}
+		searchCache.recent = nil
+	}
+	return b.ix
 }
 
 // runSearch returns q's results in the current catalog, from the cache when
-// the same query was just run (the search page, then its grid's pages).
-func runSearch(q string) *searchResult {
+// the same query was just run (the search page, then its grid's pages). It
+// fails only if ctx ends while waiting for a slot.
+func runSearch(ctx context.Context, q string) (*searchResult, error) {
 	c := currentCatalog()
 	terms := parseSearch(q)
 	key := searchKey(terms)
 
 	searchCache.Lock()
-	if searchCache.ix == nil || searchCache.ix.cat != c {
-		searchCache.ix = nil
-		searchCache.results = map[string]*searchResult{}
-		searchCache.recent = nil
+	if ix := searchCache.ix; ix != nil && ix.cat == c {
+		if r, ok := searchCache.results[key]; ok {
+			searchCache.Unlock()
+			return r, nil
+		}
 	}
-	if r, ok := searchCache.results[key]; ok {
-		searchCache.Unlock()
-		return r
-	}
-	ix := searchCache.ix
 	searchCache.Unlock()
 
-	if ix == nil {
-		ix = newSearchIndex(c)
+	select {
+	case searchSlots <- struct{}{}:
+		defer func() { <-searchSlots }()
+	case <-ctx.Done():
+		return nil, ctx.Err()
 	}
-	r := ix.search(terms)
+	r := searchIndexFor(c).search(terms)
 
 	searchCache.Lock()
 	defer searchCache.Unlock()
-	if searchCache.ix != nil && searchCache.ix.cat != c {
-		return r // the catalog changed meanwhile: don't keep stale results
+	if ix := searchCache.ix; ix == nil || ix.cat != c {
+		return r, nil // the catalog changed meanwhile: don't keep stale results
 	}
-	searchCache.ix = ix
 	if _, ok := searchCache.results[key]; !ok {
 		searchCache.results[key] = r
 		searchCache.recent = append(searchCache.recent, key)
@@ -556,7 +604,7 @@ func runSearch(q string) *searchResult {
 			searchCache.recent = searchCache.recent[1:]
 		}
 	}
-	return r
+	return r, nil
 }
 
 // searchKey is the same for queries that mean the same ("Tolkien" and "tolkien ").
@@ -584,8 +632,22 @@ func searchKey(terms []searchTerm) string {
 // Handlers
 // ---------------------------------------------------------------------------
 
-// searchCount counts the books matching q.
-func searchCount(q string) int { return len(runSearch(q).slots) }
+// searchPageHandler: GET /search?q=…, the page; its grid asks /api/search.
+func searchPageHandler(w http.ResponseWriter, r *http.Request) {
+	q := strings.TrimSpace(r.URL.Query().Get("q"))
+	data := SearchPageData{Title: SiteTitle, Query: q}
+	if q != "" {
+		res, err := runSearch(r.Context(), q)
+		if err != nil {
+			return // the visitor left
+		}
+		data.TotalBooks = len(res.slots)
+		data.Links = res.links()
+	}
+	if err := templates.ExecuteTemplate(w, "search.html", data); err != nil {
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+	}
+}
 
 // searchHandler: GET /api/search?q=…&page=N, a page of results for the grid.
 func searchHandler(w http.ResponseWriter, r *http.Request) {
@@ -597,7 +659,11 @@ func searchHandler(w http.ResponseWriter, r *http.Request) {
 	page, _ := strconv.Atoi(r.URL.Query().Get("page"))
 	page = max(page, 1)
 
-	res := runSearch(q)
+	res, err := runSearch(r.Context(), q)
+	if err != nil {
+		http.Error(w, "search cancelled", http.StatusServiceUnavailable)
+		return
+	}
 	books := make([]Book, 0, booksPerPage)
 	if from := (page - 1) * booksPerPage; from < len(res.slots) && from >= 0 {
 		for _, s := range res.slots[from:min(from+booksPerPage, len(res.slots))] {
