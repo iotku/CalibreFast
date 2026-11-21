@@ -103,8 +103,9 @@ func TestShuffleListSkipsFinished(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	for _, id := range uuids[:2] {
-		if err := setStatus(u.ID, id, "finished", "manual"); err != nil {
+	// One finished, one dropped: both left out.
+	for i, id := range uuids[:2] {
+		if err := setStatus(u.ID, id, []string{"finished", "dropped"}[i], "manual"); err != nil {
 			t.Fatal(err)
 		}
 	}
@@ -124,7 +125,7 @@ func TestShuffleListSkipsFinished(t *testing.T) {
 	}
 	for _, id := range got {
 		if id == uuids[0] || id == uuids[1] {
-			t.Errorf("finished book %s listed", id)
+			t.Errorf("finished or dropped book %s listed", id)
 		}
 	}
 

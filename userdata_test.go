@@ -175,3 +175,58 @@ func TestOfflineChangeOrder(t *testing.T) {
 		t.Fatalf("a change made now didn't apply: %v", got)
 	}
 }
+
+// Paused and Dropped (Hardcover's Paused and Did Not Finish): reading a
+// paused book resumes it, without starting it again in the stats; nothing
+// automatic takes a book off Dropped; reading a dropped book again (by
+// choice) is a new start.
+func TestPausedAndDropped(t *testing.T) {
+	u, books := setupLibraryAndUser(t, 1)
+	b := books[0]
+	get := func() string { s, _ := readStatus(u.ID, b); return s }
+	started := func() int {
+		return count(t, appDB, `SELECT COUNT(*) FROM reading_events WHERE book_uuid = ? AND kind = 'started'`, b)
+	}
+
+	_ = setStatus(u.ID, b, "reading", "auto")
+	if err := setStatus(u.ID, b, "paused", "manual"); err != nil || get() != "paused" {
+		t.Fatalf("pause: %v %q", err, get())
+	}
+	_ = setStatus(u.ID, b, "reading", "auto") // opened again
+	if get() != "reading" || started() != 1 {
+		t.Fatalf("resume: %q, %d starts", get(), started())
+	}
+
+	if err := setStatus(u.ID, b, "dropped", "manual"); err != nil || get() != "dropped" {
+		t.Fatalf("drop: %v %q", err, get())
+	}
+	_ = setStatus(u.ID, b, "reading", "auto")
+	_ = setStatus(u.ID, b, "finished", "auto")
+	if get() != "dropped" {
+		t.Fatalf("reading took a book off Dropped: %q", get())
+	}
+	time.Sleep(1100 * time.Millisecond) // events are to the second
+	_ = setStatus(u.ID, b, "reading", "manual")
+	if started() != 2 {
+		t.Errorf("reading a dropped book again: %d starts", started())
+	}
+	if n := count(t, appDB, `SELECT COUNT(*) FROM reading_events WHERE book_uuid = ? AND kind = 'finished'`, b); n != 0 {
+		t.Errorf("dropping counted as finishing: %d", n)
+	}
+
+	// Listed, and in the marks the grids use.
+	_ = setStatus(u.ID, b, "paused", "manual")
+	m, _, err := userReading(u)
+	if err != nil || len(m.Paused) != 1 || len(m.Reading) != 0 || len(m.Dropped) != 0 {
+		t.Fatalf("marks: %+v %v", m, err)
+	}
+	mux := http.NewServeMux()
+	mux.HandleFunc("GET /me/{list}", requireUser(meListHandler))
+	for _, list := range []string{"paused", "dropped"} {
+		rec := httptest.NewRecorder()
+		mux.ServeHTTP(rec, asUser(httptest.NewRequest("GET", "/me/"+list, nil), u))
+		if rec.Code != 200 {
+			t.Errorf("/me/%s: %d", list, rec.Code)
+		}
+	}
+}

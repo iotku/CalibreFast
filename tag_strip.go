@@ -136,16 +136,12 @@ func tagStripHandler(w http.ResponseWriter, r *http.Request) {
 	start %= count
 	var skip func(string) bool
 	if u := currentUser(r); u != nil && appDB != nil {
-		uuids, err := scanStrings(appDB.Query(`SELECT book_uuid FROM reading_status WHERE user_id = ? AND status = 'finished'`, u.ID))
+		done, err := userDoneWith(u) // finished or dropped
 		if err != nil {
 			http.Error(w, "query failed", http.StatusInternalServerError)
 			return
 		}
-		finished := make(map[string]bool, len(uuids))
-		for _, id := range uuids {
-			finished[id] = true
-		}
-		skip = func(uuid string) bool { return finished[uuid] }
+		skip = func(uuid string) bool { return done[uuid] }
 	}
 	books, next := ix.strip(name, start, n, skip)
 	w.Header().Set("Cache-Control", "private, no-store")

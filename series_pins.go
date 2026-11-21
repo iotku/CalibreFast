@@ -28,9 +28,10 @@ import (
 	"strings"
 )
 
-// userFinished: the books u finished.
-func userFinished(u *User) (map[string]bool, error) {
-	uuids, err := scanStrings(appDB.Query(`SELECT book_uuid FROM reading_status WHERE user_id = ? AND status = 'finished'`, u.ID))
+// userDoneWith: the books u finished or dropped, which Shuffle, tag rows
+// and series rows leave out.
+func userDoneWith(u *User) (map[string]bool, error) {
+	uuids, err := scanStrings(appDB.Query(`SELECT book_uuid FROM reading_status WHERE user_id = ? AND status IN ('finished', 'dropped')`, u.ID))
 	out := make(map[string]bool, len(uuids))
 	for _, id := range uuids {
 		out[id] = true
@@ -39,10 +40,10 @@ func userFinished(u *User) (map[string]bool, error) {
 }
 
 // fillSeriesRows adds the books of the series rows of out (at those
-// places): in series order, without the finished ones unless the row
-// shows them.
+// places): in series order, without the finished (or dropped) ones unless
+// the row shows them.
 func fillSeriesRows(u *User, out []homeShelf, at []int) error {
-	finished, err := userFinished(u)
+	finished, err := userDoneWith(u)
 	if err != nil {
 		return err
 	}
@@ -184,7 +185,10 @@ func onDeck(u *User, m readingMarks, active map[string]int64) ([]Book, error) {
 // nextInSeries works out On Deck from the user's marks.
 func nextInSeries(ix *recIndex, m readingMarks, dismissed map[string]bool, active map[string]int64) []Book {
 	c := ix.cat
-	finished := make(map[string]bool, len(m.Finished))
+	finished := make(map[string]bool, len(m.Finished)+len(m.Dropped))
+	for _, id := range m.Dropped { // never the next one: it was given up on
+		finished[id] = true
+	}
 	furthest := map[int32]int32{} // series -> slot of the furthest finished
 	last := map[int32]int64{}     // series -> when a book of it was last finished
 	for _, id := range m.Finished {

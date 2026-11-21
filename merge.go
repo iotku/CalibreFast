@@ -870,7 +870,11 @@ func mergeReaderData(keep string, others []string, same map[string][]string) (in
 			dropped += total - kept
 		}
 	}
-	return dropped, tx.Commit()
+	if err := tx.Commit(); err != nil {
+		return 0, err
+	}
+	hcSyncMerged(keep, others)
+	return dropped, nil
 }
 
 func mergeApplyHandler(w http.ResponseWriter, r *http.Request) {

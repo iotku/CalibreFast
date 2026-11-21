@@ -83,7 +83,8 @@ func stillRecommended(c *catalog, s recShown, m readingMarks, hide map[string]bo
 		return b, false
 	}
 	_, reading := m.Reading[s.UUID]
-	if reading || slices.Contains(m.Finished, s.UUID) || slices.Contains(m.Favorites, s.UUID) {
+	if reading || slices.Contains(m.Finished, s.UUID) || slices.Contains(m.Paused, s.UUID) ||
+		slices.Contains(m.Dropped, s.UUID) || slices.Contains(m.Favorites, s.UUID) {
 		return b, false
 	}
 	return b, s.Kind == "series" || !slices.Contains(m.Wanted, s.UUID)

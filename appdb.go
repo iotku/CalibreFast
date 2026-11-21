@@ -584,6 +584,104 @@ var migrations = []string{
 	INSERT INTO reading_events (user_id, book_uuid, kind, at)
 		SELECT user_id, book_uuid, 'finished', updated_at FROM reading_status WHERE status = 'finished';
 	`,
+	// 34: reading sync to users' own Hardcover accounts (hardcover_sync.go).
+	// hardcover_links: a user's sign-in, its tokens sealed (secretbox.go),
+	// and what they chose to share: nothing is sent but the books in
+	// hardcover_shared, unless share_all; progress and dates only if chosen.
+	// hardcover_books: which Hardcover book and edition a library book is
+	// (hc_book_id 0: not found there, as of resolved_at). hardcover_sync:
+	// per user and book, what's waiting to be sent (due_at > 0), what was
+	// last sent, and the local dates of the read.
+	`
+	CREATE TABLE hardcover_links (
+		user_id        INTEGER PRIMARY KEY REFERENCES users(id) ON DELETE CASCADE,
+		hc_user_id     INTEGER NOT NULL,
+		hc_username    TEXT    NOT NULL DEFAULT '',
+		access_token   TEXT    NOT NULL,              -- sealed
+		refresh_token  TEXT    NOT NULL,              -- sealed
+		access_expires INTEGER NOT NULL,
+		scope          TEXT    NOT NULL DEFAULT '',
+		linked_at      INTEGER NOT NULL,
+		broken         TEXT    NOT NULL DEFAULT '',   -- why it no longer works; '' when it does
+		share_all      INTEGER NOT NULL DEFAULT 0,    -- every book, not only those in hardcover_shared
+		share_progress INTEGER NOT NULL DEFAULT 0,    -- send how far along (pages)
+		share_dates    INTEGER NOT NULL DEFAULT 0     -- send the dates a read started and finished
+	);
+	CREATE TABLE hardcover_shared (
+		user_id   INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+		book_uuid TEXT    NOT NULL,
+		shared_at INTEGER NOT NULL,
+		PRIMARY KEY (user_id, book_uuid)
+	);
+	CREATE TABLE hardcover_books (
+		book_uuid     TEXT    PRIMARY KEY,
+		hc_book_id    INTEGER NOT NULL DEFAULT 0,
+		hc_edition_id INTEGER NOT NULL DEFAULT 0,
+		pages         INTEGER NOT NULL DEFAULT 0,
+		resolved_at   INTEGER NOT NULL
+	);
+	CREATE TABLE hardcover_sync (
+		user_id       INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+		book_uuid     TEXT    NOT NULL,
+		due_at        INTEGER NOT NULL DEFAULT 0,     -- unix s; 0: nothing to send
+		attempts      INTEGER NOT NULL DEFAULT 0,
+		changes       INTEGER NOT NULL DEFAULT 0,     -- counts changes, so one made while sending isn't lost
+		error         TEXT    NOT NULL DEFAULT '',
+		started_on    TEXT    NOT NULL DEFAULT '',    -- YYYY-MM-DD, local
+		finished_on   TEXT    NOT NULL DEFAULT '',
+		sent_status   INTEGER NOT NULL DEFAULT 0,     -- Hardcover status_id last sent
+		sent_pages    INTEGER NOT NULL DEFAULT 0,
+		sent_at       INTEGER NOT NULL DEFAULT 0,
+		PRIMARY KEY (user_id, book_uuid)
+	);
+	CREATE INDEX hardcover_sync_due ON hardcover_sync (due_at) WHERE due_at > 0;
+	`,
+	// 35: the first Hardcover edition lookup dropped every edition with no
+	// reading format, so books that are on Hardcover were kept as not
+	// found. Forget those misses and send the books they held back.
+	`
+	DELETE FROM hardcover_books WHERE hc_book_id = 0;
+	UPDATE hardcover_sync SET due_at = CAST(strftime('%s', 'now') AS INTEGER), error = ''
+		WHERE due_at = 0 AND error LIKE 'not found on Hardcover%';
+	`,
+	// 36: hardcover_user_books: the Hardcover book a user chose for a
+	// library book, for their own sync only (any user, editor or not; the
+	// library's identifiers are left alone). It outranks hardcover_books,
+	// which now also keeps the book's slug and title, to show the match;
+	// that table is a cache, so it's emptied to be filled again with them.
+	`
+	CREATE TABLE hardcover_user_books (
+		user_id       INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+		book_uuid     TEXT    NOT NULL,
+		hc_book_id    INTEGER NOT NULL,
+		hc_edition_id INTEGER NOT NULL DEFAULT 0,
+		pages         INTEGER NOT NULL DEFAULT 0,
+		slug          TEXT    NOT NULL DEFAULT '',
+		title         TEXT    NOT NULL DEFAULT '',
+		chosen_at     INTEGER NOT NULL,
+		PRIMARY KEY (user_id, book_uuid)
+	);
+	DELETE FROM hardcover_books;
+	ALTER TABLE hardcover_books ADD COLUMN slug TEXT NOT NULL DEFAULT '';
+	ALTER TABLE hardcover_books ADD COLUMN title TEXT NOT NULL DEFAULT '';
+	`,
+	// 37: Paused and Dropped are reading statuses too (as Hardcover's Paused
+	// and Did Not Finish). SQLite can't alter a CHECK: the table is rebuilt.
+	`
+	CREATE TABLE reading_status_new (
+		user_id    INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+		book_uuid  TEXT    NOT NULL,
+		status     TEXT    NOT NULL CHECK (status IN ('wanted', 'reading', 'paused', 'finished', 'dropped')),
+		source     TEXT    NOT NULL CHECK (source IN ('manual', 'auto')),
+		updated_at INTEGER NOT NULL,
+		position   INTEGER,
+		PRIMARY KEY (user_id, book_uuid)
+	);
+	INSERT INTO reading_status_new (user_id, book_uuid, status, source, updated_at, position)
+		SELECT user_id, book_uuid, status, source, updated_at, position FROM reading_status;
+	DROP TABLE reading_status;
+	ALTER TABLE reading_status_new RENAME TO reading_status;
+	`,
 }
 
 // openAppDB opens (creating if needed) and migrates the app database.

@@ -35,8 +35,12 @@ const DefaultURL = "https://api.hardcover.app/v1/graphql"
 
 // Config configures a Client. Token is required.
 type Config struct {
-	URL        string // default DefaultURL
-	Token      string // a Hardcover API token with read:catalog
+	URL   string // default DefaultURL
+	Token string // a Hardcover API token with read:catalog
+	// TokenFunc, instead of Token, gives a token for each request (an
+	// OAuth access token that's refreshed). force: Hardcover refused the
+	// last one; get a new one.
+	TokenFunc  func(ctx context.Context, force bool) (string, error)
 	UserAgent  string // identify the software, not the user
 	HTTPClient *http.Client
 	Budget     *Budget          // default FreePlan()
@@ -46,6 +50,7 @@ type Config struct {
 // Client asks Hardcover. It is safe for concurrent use.
 type Client struct {
 	url, auth, userAgent string
+	tokenFunc            func(ctx context.Context, force bool) (string, error)
 	http                 *http.Client
 	Budget               *Budget
 	now                  func() time.Time
@@ -69,6 +74,7 @@ func New(cfg Config) *Client {
 	c := &Client{
 		url:       cfg.URL,
 		auth:      authHeader(cfg.Token),
+		tokenFunc: cfg.TokenFunc,
 		userAgent: cfg.UserAgent,
 		http:      cfg.HTTPClient,
 		Budget:    cfg.Budget,
@@ -126,6 +132,10 @@ func (e *WaitError) Error() string {
 
 // ErrUnauthorized: the token is missing, wrong or expired.
 var ErrUnauthorized = errors.New("Hardcover refused the API token (missing, wrong or expired): set CF_HARDCOVER_TOKEN to a current one")
+
+// ErrSignedOut: a TokenFunc client's token was refused even after a new one
+// was got: the account was unlinked or its access revoked on Hardcover.
+var ErrSignedOut = errors.New("Hardcover refused this account's sign-in (revoked or expired): link Hardcover again")
 
 // query is a GraphQL query and what it costs (its top-level fields).
 type query struct {
@@ -199,11 +209,34 @@ type gqlError struct {
 	Message string `json:"message"`
 }
 
-// post sends q with vars and decodes its data into out.
+// post sends q with vars and decodes its data into out. A TokenFunc
+// client that's refused asks for a new token, once.
 func (c *Client) post(ctx context.Context, q query, vars map[string]any, out any) error {
-	if c.auth == "" {
-		return ErrUnauthorized
+	if c.tokenFunc == nil {
+		if c.auth == "" {
+			return ErrUnauthorized
+		}
+		return c.send(ctx, c.auth, q, vars, out)
 	}
+	for force := range 2 {
+		tok, err := c.tokenFunc(ctx, force == 1)
+		if err != nil {
+			return err
+		}
+		auth := authHeader(tok)
+		if auth == "" {
+			return ErrSignedOut
+		}
+		err = c.send(ctx, auth, q, vars, out)
+		if !errors.Is(err, ErrUnauthorized) {
+			return err
+		}
+	}
+	return ErrSignedOut
+}
+
+// send is one request, with auth.
+func (c *Client) send(ctx context.Context, auth string, q query, vars map[string]any, out any) error {
 	if until := c.Budget.Reserve(c.now(), q.cost); !until.IsZero() {
 		return &WaitError{Until: until, Reason: "Hardcover's request limit is used up for now"}
 	}
@@ -218,7 +251,7 @@ func (c *Client) post(ctx context.Context, q query, vars map[string]any, out any
 	req.Header.Set("Content-Type", "application/json")
 	req.Header.Set("Accept", "application/json")
 	req.Header.Set("User-Agent", c.userAgent)
-	req.Header.Set("Authorization", c.auth)
+	req.Header.Set("Authorization", auth)
 	resp, err := c.http.Do(req)
 	if err != nil {
 		// No URL or address in the error: it is shown in the UI.
@@ -258,7 +291,11 @@ func (c *Client) post(ctx context.Context, q query, vars map[string]any, out any
 		_ = json.Unmarshal(raw, &e)
 		switch {
 		case e.Error == "insufficient_scope":
-			return errors.New("the Hardcover API token lacks the read:catalog permission")
+			scope := clip(e.Scope)
+			if scope == "" {
+				scope = "read:catalog"
+			}
+			return fmt.Errorf("the Hardcover token lacks the %s permission", scope)
 		case slices.Contains(e.Errors, "request_exceeds_capacity"):
 			until := now.Add(time.Minute)
 			c.Budget.Pause(until)

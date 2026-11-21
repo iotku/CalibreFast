@@ -133,7 +133,7 @@ type Group = "reading" | "wanted" | "finished" | "other";
 const GROUPS: { key: Group; label: string }[] = [
     { key: "reading", label: "Reading" },
     { key: "wanted", label: "On deck and Saved" },
-    { key: "finished", label: "Finished" },
+    { key: "finished", label: "Finished and Dropped" },
     { key: "other", label: "Kept on this device" },
 ];
 
@@ -142,6 +142,8 @@ function groupOf(b: CachedBook): Group {
     const s = statusOf(marks, b.uuid);
     // The next in a series, downloaded ahead of time: no status of its own.
     if (s === "" && savedList(marks.user)?.books.some((x) => x.on_deck && x.uuid === b.uuid)) return "wanted";
+    if (s === "paused") return "reading";
+    if (s === "dropped") return "finished";
     return s === "reading" || s === "wanted" || s === "finished" ? s : b.statusSeen ? "other" : "reading";
 }
 

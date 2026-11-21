@@ -29,18 +29,12 @@ func shuffleHandler(w http.ResponseWriter, r *http.Request) {
 	logErr(templates.ExecuteTemplate(w, "index.html", data), "render shuffle page")
 }
 
-const shuffleEmpty = "Nothing left to shuffle: you've finished every book here."
+const shuffleEmpty = "Nothing left to shuffle: you've finished (or dropped) every book here."
 
-// shuffleList is the catalog's random order without the books u finished.
+// shuffleList is the catalog's random order without the books u finished
+// or dropped.
 func shuffleList(u *User) uuidList {
-	finished := func() (map[string]bool, error) {
-		uuids, err := scanStrings(appDB.Query(`SELECT book_uuid FROM reading_status WHERE user_id = ? AND status = 'finished'`, u.ID))
-		set := make(map[string]bool, len(uuids))
-		for _, id := range uuids {
-			set[id] = true
-		}
-		return set, err
-	}
+	finished := func() (map[string]bool, error) { return userDoneWith(u) }
 	// walk calls f with each book to show, in order, until it returns false.
 	walk := func(f func(uuid string) bool) error {
 		skip, err := finished()

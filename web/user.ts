@@ -23,6 +23,7 @@ import { startBookSync } from "./book-sync.js";
 import { api, el, errorMessage } from "./dom.js";
 import { serverHtml } from "./trusted.js";
 import { deleteBooks } from "./delete-books.js";
+import { wireHardcoverBook } from "./hardcover-book.js";
 import "./book-files.js"; // the book page's Files row (admins)
 import "./series-shelf.js"; // "Add series to shelf" (also the series page's, via app-htmx.ts)
 import "./offline-control.js"; // "On this device" and keeping the book (book.html)
@@ -93,7 +94,7 @@ function showLocal(container: HTMLElement, uuid: string): void {
     paintStar(star, fav);
     const select = el("select", { className: "book-status", title: "Reading status" });
     select.setAttribute("aria-label", "Reading status");
-    for (const [value, label] of [["", "Not reading"], ["wanted", "Saved"], ["reading", "Reading"], ["finished", "Finished"]] as const) {
+    for (const [value, label] of STATUS_OPTIONS) {
         select.append(el("option", { value, textContent: label, selected: value === status }));
     }
     const read = m.reading.get(uuid);
@@ -186,12 +187,31 @@ function reportChange(change: BookChange): void {
     document.dispatchEvent(new CustomEvent<BookChange>("cf:status", { detail: change }));
 }
 
+/** The status menu's choices, as book-user-actions.html has them. */
+const STATUS_OPTIONS = [
+    ["", "Not reading"],
+    ["wanted", "Saved"],
+    ["reading", "Reading"],
+    ["paused", "Paused"],
+    ["finished", "Finished"],
+    ["dropped", "Dropped"],
+] as const;
+
+/** The Save button's look for a status that isn't Saved or none. */
+const STATUS_LOOK: Record<string, [() => SVGSVGElement, string]> = {
+    reading: [ICONS.read, "Reading"],
+    paused: [ICONS.paused, "Paused"],
+    finished: [ICONS.done, "Finished"],
+    dropped: [ICONS.dropped, "Dropped"],
+};
+
 /** Paint the Save button for a status ("wanted" is shown as Saved). */
 function paintWant(btn: HTMLButtonElement, status: string): void {
     const toggle = status === "" || status === "wanted";
     const on = status === "wanted";
-    const icon = status === "reading" ? ICONS.read : status === "finished" ? ICONS.done : on ? ICONS.wanted : ICONS.want;
-    const label = status === "reading" ? "Reading" : status === "finished" ? "Finished" : on ? "Saved" : "Save";
+    const look = STATUS_LOOK[status];
+    const icon = look ? look[0] : on ? ICONS.wanted : ICONS.want;
+    const label = look ? look[1] : on ? "Saved" : "Save";
     btn.replaceChildren(icon(), el("span", {}, label));
     btn.classList.toggle("is-on", status !== "");
     if (toggle) btn.setAttribute("aria-pressed", String(on));
@@ -228,6 +248,7 @@ function bind(controls: HTMLElement): void {
     const want = controls.querySelector<HTMLButtonElement>(".btn-want");
     const note = controls.querySelector<HTMLElement>(".book-status-note");
     if (want && status) paintWant(want, status.value);
+    let hcRefresh: (() => void) | null = null; // set below, once the Hardcover controls are wired
     const save = async (value: string): Promise<void> => {
         if (!status || !user) return;
         status.value = value;
@@ -235,6 +256,7 @@ function bind(controls: HTMLElement): void {
         if (note) note.textContent = note.dataset["progress"] ?? ""; // set here, not by the reader
         noteMark(user, uuid, { status: value });
         await sendNoted({ uuid, status: value }, "status");
+        if (hcRefresh) setTimeout(hcRefresh, 3000); // a shared book is sent to Hardcover
     };
     status?.addEventListener("change", () => void save(status.value));
     // Like the cover's button: toggles Saved for a book not started.
@@ -251,6 +273,10 @@ function bind(controls: HTMLElement): void {
             status.focus(); // no showPicker for selects (older Safari)
         }
     });
+
+    // Track on Hardcover: this book is sent to the user's Hardcover account
+    // only once they tick it; how it stands, and choosing the right book.
+    hcRefresh = wireHardcoverBook(controls, uuid);
 
     const count = controls.querySelector<HTMLElement>(".book-shelves-count");
     const paintCount = (): void => {

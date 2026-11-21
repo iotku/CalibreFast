@@ -117,6 +117,7 @@ func configureLookups() {
 	googleBooksKey = os.Getenv("CF_GOOGLE_BOOKS_KEY")
 	bookLookups = newBookLookups(googleBooksKey)
 	configureHardcover()
+	configureHardcoverSync()
 	switch {
 	case noLookups:
 		log.Println("-no-lookups: the metadata editor won't look books up online")
