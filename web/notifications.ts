@@ -1,5 +1,5 @@
 // The notifications page (templates/notifications.html, notifications.go):
-// once shown they're seen, so the bar's bell goes; each can be dismissed.
+// once shown they're seen, so the bar's bell (the sync button) goes; each can be dismissed.
 
 import { api, errorMessage, maybeId, statusLine } from "./dom.js";
 
@@ -14,9 +14,9 @@ function emptied(): void {
     if (empty) empty.hidden = false;
 }
 
-/** The bell (nav.ts) once they're seen. Its count comes back from /api/me on the next page. */
+/** The bar's bell and count (nav.ts) go once they're seen. */
 function bellSeen(): void {
-    document.querySelectorAll('#user-nav a[data-nav="notifications"].tb-has-badge').forEach((a) => a.remove());
+    document.dispatchEvent(new CustomEvent("cf:notifications-seen"));
 }
 
 // Shown, so seen. nav.ts may draw the bell again from an answer that

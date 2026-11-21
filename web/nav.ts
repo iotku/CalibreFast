@@ -11,7 +11,7 @@ import { settleAccountPrefs } from "./account-prefs.js";
 import { startSendingPending } from "./send-pending.js";
 import { onSyncChange, readSync, STALE_MS, unsentBooks, writeSync } from "./sync-state.js";
 import { forgetOfflineReading, refreshOfflineReading } from "./offline-books.js";
-import { el, withPageScheme } from "./dom.js";
+import { api, el, withPageScheme } from "./dom.js";
 import { forgetSynced } from "./local-keys.js";
 import { declineOffer, guestBookCount, offerDeclined, offerDeclinedForGood } from "./guest-data.js";
 
@@ -46,6 +46,9 @@ const UPLOAD = "M12 15V4M7 9l5-5 5 5M4 15v4a1 1 0 0 0 1 1h14a1 1 0 0 0 1-1v-4";
 const INBOX = "M3 13l3-8h12l3 8M3 13v5a1 1 0 0 0 1 1h16a1 1 0 0 0 1-1v-5M3 13h5l1 2h6l1-2h5";
 const SYNC = "M20 11a8 8 0 0 0-14.3-4.9L4 8M4 4v4h4M4 13a8 8 0 0 0 14.3 4.9L20 16m0 4v-4h-4";
 const BELL = "M6 16V11a6 6 0 0 1 12 0v5l2 2H4zM10 21h4";
+const CHECK = "M5 12.5l4.5 4.5L19 7.5";
+const CLOCK = "M12 3a9 9 0 1 0 0 18a9 9 0 1 0 0-18zM12 7v5l3 2";
+const CROSS = "M6 6l12 12M18 6L6 18";
 const SLIDERS = "M4 6h9m4 0h3M4 12h3m4 0h9M4 18h11m4 0h1M15 4v4M9 10v4M17 16v4";
 
 /**
@@ -200,22 +203,63 @@ function init(bar: HTMLElement): void {
     let userToggle: Toggle | null = null;
     let syncToggle: Toggle | null = null;
 
-    // ---- sync button ----------------------------------------------------------
-    // Whether reading changes have reached the server, and the books being
-    // downloaded for offline reading (book-sync.ts, sync-state.ts), with a
-    // switch to pause downloads on a slow connection. A ring shows a
-    // download's progress; a dot, something waiting (unsent changes, books
-    // paused or left for the next library page).
+    // ---- sync and notifications button ------------------------------------------
+    // Its menu starts with whether reading changes have reached the server
+    // and whether the books kept for offline reading are (book-sync.ts,
+    // sync-state.ts), each with a check when done; then the notifications not
+    // dismissed yet (up to NOTICES_SHOWN, notifications.go) and a link to all
+    // of them; then a switch to pause downloads on a slow connection.
+    // The button is a bell with a count while any notifications are unseen,
+    // unless a download is going (the sync icon with its progress ring, the
+    // count still on it); else the sync icon, a dot when something waits
+    // (unsent changes, books paused or left for the next library page).
+    // Opening the menu marks the notifications seen.
 
     const megabytes = (n: number): string => `${(n / 1048576).toFixed(1)} MB`;
     const plural = (n: number, one: string): string => `${n} ${one}${n === 1 ? "" : "s"}`;
-    let syncFor: { name: string; node: HTMLElement } | null = null;
+    const NOTICES_SHOWN = 5;
+    interface SyncButton {
+        node: HTMLElement;
+        /** How many notifications are unseen. */
+        setUnseen(n: number): void;
+    }
+    let syncFor: (SyncButton & { name: string }) | null = null;
     /** The sync button, made once per user (render runs again when the server's answer differs). */
-    function syncButton(name: string): HTMLElement {
-        if (syncFor?.name !== name) syncFor = { name, node: makeSyncButton(name) };
+    function syncButton(name: string, unseen: number): HTMLElement {
+        if (syncFor?.name !== name) syncFor = { name, ...makeSyncButton(name) };
+        syncFor.setUnseen(unseen);
         return syncFor.node;
     }
-    function makeSyncButton(name: string): HTMLElement {
+    /** A line of the menu's top: a check when done, a clock while waiting. */
+    function stateLine(): { line: HTMLElement; set(done: boolean, text: string): void } {
+        const text = el("span");
+        const line = el("p", { className: "tb-sync-line tb-sync-state" }, text);
+        line.setAttribute("role", "status");
+        let was: boolean | null = null;
+        return {
+            line,
+            set(done, t) {
+                if (was !== done) {
+                    was = done;
+                    const glyph = icon(done ? CHECK : CLOCK);
+                    glyph.classList.add("tb-sync-mark");
+                    line.classList.toggle("is-done", done);
+                    const old = line.querySelector(".tb-sync-mark");
+                    if (old) old.replaceWith(glyph);
+                    else line.prepend(glyph);
+                }
+                if (text.textContent !== t) text.textContent = t;
+            },
+        };
+    }
+    interface Notice {
+        id: number;
+        title: string;
+        on_deck: boolean;
+        seen: boolean;
+        href: string;
+    }
+    function makeSyncButton(name: string): SyncButton {
         const ns = "http://www.w3.org/2000/svg";
         const ring = document.createElementNS(ns, "svg");
         ring.setAttribute("viewBox", "0 0 36 36");
@@ -227,13 +271,15 @@ function init(bar: HTMLElement): void {
         const btn = el("button", { type: "button", className: "tb-icon tb-sync-btn", title: "Sync", ariaLabel: "Sync status" });
         btn.setAttribute("aria-haspopup", "true");
         btn.setAttribute("aria-expanded", "false");
-        btn.append(icon(SYNC), ring);
+        const syncIcon = icon(SYNC);
+        const bellIcon = icon(BELL);
+        const badge = el("span", { className: "tb-badge" });
+        btn.append(syncIcon, ring);
+        let unseen = 0;
         // Built once and updated in place: rebuilding it under the pointer
         // (or the keyboard focus) would lose a click.
-        const readingLine = el("p", { className: "tb-sync-line" });
-        const booksLine = el("p", { className: "tb-sync-line" });
-        readingLine.setAttribute("role", "status");
-        booksLine.setAttribute("role", "status");
+        const readingLine = stateLine();
+        const booksLine = stateLine();
         // The book downloading: cover, title, authors, a progress bar, sizes.
         const cover = el("img", { className: "tb-sync-cover", alt: "", width: 40, height: 56, loading: "lazy" });
         const bookTitle = el("span", { className: "tb-sync-title" });
@@ -251,13 +297,60 @@ function init(bar: HTMLElement): void {
             e.stopPropagation();
             writeSync(name, { paused: !readSync(name).paused });
         });
+        // The notifications not dismissed yet, newest first, fetched when the menu opens.
+        const notices = el("ul", { className: "tb-notices", hidden: true });
+        const allNotices = mark(el("a", { href: "/me/notifications", className: "tb-notices-all", textContent: "All notifications" }), "notifications");
+        let noticesWant = 0;
+        const loadNotices = (): void => {
+            const want = ++noticesWant;
+            api<Notice[]>("GET", "/api/me/notifications")
+                .then((ns) => {
+                    if (want === noticesWant) showNotices(ns);
+                })
+                .catch(() => {}); // offline: the link still goes to them
+        };
+        const showNotices = (ns: Notice[]): void => {
+            notices.replaceChildren(
+                ...ns.slice(0, NOTICES_SHOWN).map((n) => {
+                    // href is a path the server built (/book/get/{uuid}); checked all the same.
+                    const href = /^\/(?![\/\\])/.test(n.href) ? n.href : "";
+                    const title = href ? el("a", { href, className: "tb-notice-title", textContent: n.title }) : el("span", { className: "tb-notice-title", textContent: n.title });
+                    const dismiss = el("button", { type: "button", className: "tb-notice-dismiss", title: "Dismiss", ariaLabel: `Dismiss: ${n.title}` });
+                    dismiss.append(icon(CROSS));
+                    const item = el(
+                        "li",
+                        { className: n.seen ? "tb-notice" : "tb-notice is-new" },
+                        el("span", { className: "tb-notice-text" }, title, el("span", { className: "tb-notice-note", textContent: n.on_deck ? "In the library, and On deck" : "In the library, in Saved" })),
+                        dismiss,
+                    );
+                    dismiss.addEventListener("click", (e) => {
+                        e.stopPropagation();
+                        dismiss.disabled = true;
+                        api("DELETE", `/api/me/notifications/${encodeURIComponent(String(n.id))}`)
+                            .then(() => {
+                                item.remove();
+                                loadNotices(); // the next one up, if any
+                            })
+                            .catch(() => {
+                                dismiss.disabled = false;
+                            });
+                    });
+                    return item;
+                }),
+            );
+            notices.hidden = !notices.childElementCount;
+            allNotices.textContent = ns.length > NOTICES_SHOWN ? `All notifications (${ns.length})` : "All notifications";
+        };
         const panel = el(
             "div",
             { className: "tb-menu-list tb-sync-panel", hidden: true },
-            readingLine,
-            booksLine,
+            readingLine.line,
+            booksLine.line,
             card,
             nextLine,
+            el("hr"),
+            notices,
+            allNotices,
             el("hr"),
             pause,
             mark(el("a", { href: "/preferences", textContent: "Storage and preferences" }), "preferences"),
@@ -270,13 +363,28 @@ function init(bar: HTMLElement): void {
             const unsent = unsentBooks(name);
             arc.setAttribute("stroke-dasharray", `${a?.total ? Math.round((a.got / a.total) * 100) : a ? 8 : 0} 100`);
             btn.classList.toggle("is-busy", !!a);
-            btn.classList.toggle("has-note", !a && (!!s.paused || waiting > 0 || unsent > 0 || !navigator.onLine));
+            btn.classList.toggle("has-note", !a && !unseen && (!!s.paused || waiting > 0 || unsent > 0 || !navigator.onLine));
+            // A bell while there's news, unless a download is going.
+            const glyph = unseen && !a ? bellIcon : syncIcon;
+            if (btn.firstElementChild !== glyph) btn.firstElementChild?.replaceWith(glyph);
+            btn.classList.toggle("tb-has-badge", unseen > 0);
+            if (unseen) {
+                badge.textContent = unseen > 99 ? "99+" : String(unseen);
+                if (!badge.isConnected) btn.append(badge);
+            } else badge.remove();
+            const label = unseen ? `Sync status, ${unseen} new notification${unseen === 1 ? "" : "s"}` : "Sync status";
+            if (btn.getAttribute("aria-label") !== label) {
+                btn.setAttribute("aria-label", label);
+                btn.title = unseen ? `${unseen} new notification${unseen === 1 ? "" : "s"}` : "Sync";
+            }
             if (panel.hidden) return;
+            const readingDone = navigator.onLine && !unsent;
             const reading = !navigator.onLine
                 ? `Offline. ${unsent ? `Changes to ${plural(unsent, "book")} are` : "Your reading is"} kept here and sent when you're back online.`
                 : unsent
                   ? `Changes to ${plural(unsent, "book")} waiting to be sent to the server.`
-                  : "Reading progress, bookmarks and highlights are saved to the server.";
+                  : "Reading progress, bookmarks and highlights are synced.";
+            const booksDone = !a && !s.paused && !waiting;
             const books = a
                 ? "Downloading for reading offline:"
                 : s.paused
@@ -286,8 +394,8 @@ function init(bar: HTMLElement): void {
                   : waiting
                     ? `${plural(waiting, "book")} waiting to download. Downloads go on while a library page is open.`
                     : "Books for offline reading are up to date on this device.";
-            if (readingLine.textContent !== reading) readingLine.textContent = reading;
-            if (booksLine.textContent !== books) booksLine.textContent = books;
+            readingLine.set(readingDone, reading);
+            booksLine.set(booksDone, books);
             card.hidden = !a;
             if (a) {
                 // A path we build, not a URL from data.
@@ -319,6 +427,14 @@ function init(bar: HTMLElement): void {
         syncToggle = register(btn, (open) => {
             panel.hidden = !open;
             paint();
+            if (!open) return;
+            loadNotices();
+            // Shown, so seen: the bell goes.
+            if (unseen) {
+                api("POST", "/api/me/notifications/seen")
+                    .then(() => document.dispatchEvent(new CustomEvent("cf:notifications-seen")))
+                    .catch(() => {});
+            }
         });
         onSyncChange(name, paint);
         window.addEventListener("online", paint);
@@ -328,8 +444,32 @@ function init(bar: HTMLElement): void {
             if (readSync(name).active || !panel.hidden) paint();
         }, 3000);
         paint();
-        return el("div", { className: "tb-menu tb-sync" }, btn, panel);
+        return {
+            node: el("div", { className: "tb-menu tb-sync" }, btn, panel),
+            setUnseen(n) {
+                if (n === unseen) return;
+                unseen = n;
+                paint();
+            },
+        };
     }
+    // Seen (the menu opened, or the notifications page shown, notifications.ts):
+    // the count goes from the bar and from what the next page draws first.
+    document.addEventListener("cf:notifications-seen", () => {
+        syncFor?.setUnseen(0);
+        const c = cache.get();
+        if (!c) return;
+        try {
+            const st = JSON.parse(c) as MeState;
+            if (!st.notifications) return;
+            st.notifications = 0;
+            shown = JSON.stringify(st);
+            cache.set(shown);
+        } catch {
+            return;
+        }
+        snapshot();
+    });
     function render(st: MeState): void {
         // Other scripts on the page (the grid's Select) follow this.
         if (st.canEdit) document.documentElement.dataset["canEdit"] = "1";
@@ -367,15 +507,6 @@ function init(bar: HTMLElement): void {
             importsShortcut.append(el("span", { className: "tb-badge", textContent: imports > 99 ? "99+" : String(imports) }));
         }
 
-        // Something to tell (a saved book is in the library now): a bell while any are unseen.
-        const unseen = st.notifications ?? 0;
-        let bell: HTMLAnchorElement | null = null;
-        if (unseen) {
-            bell = shortcut("/me/notifications", `${unseen} new notification${unseen === 1 ? "" : "s"}`, BELL, "notifications");
-            bell.classList.add("tb-has-badge");
-            bell.append(el("span", { className: "tb-badge", textContent: unseen > 99 ? "99+" : String(unseen) }));
-        }
-
         const btn = el("button", { type: "button", className: "tb-user-btn", title: name, ariaLabel: `Account menu for ${name}` });
         btn.setAttribute("aria-haspopup", "true");
         btn.setAttribute("aria-expanded", "false");
@@ -402,7 +533,6 @@ function init(bar: HTMLElement): void {
                 mark(el("a", { href: "/me/finished", textContent: "Finished" }), "finished"),
                 mark(el("a", { href: "/me/dropped", textContent: "Dropped" }), "dropped"),
                 mark(el("a", { href: "/me/stats", textContent: "Reading stats" }), "stats"),
-                mark(el("a", { href: "/me/notifications", textContent: unseen ? `Notifications (${unseen})` : "Notifications" }), "notifications"),
             ],
             [
                 ...(st.canEdit ? [mark(el("a", { href: "/upload", textContent: "Upload books" }), "upload")] : []),
@@ -435,13 +565,12 @@ function init(bar: HTMLElement): void {
         });
 
         userEl.replaceChildren(
-            ...(bell ? [bell] : []),
             ...(importsShortcut ? [importsShortcut] : []),
             ...(st.canEdit ? [shortcut("/upload", "Upload books", UPLOAD, "upload")] : []),
             shortcut("/me/saved", "Saved", BOOKMARK, "saved"),
             shortcut("/me/favorites", "Favorites", STAR, "favorites"),
             shortcut("/me/reading", "Reading", BOOK, "reading"),
-            syncButton(name),
+            syncButton(name, st.notifications ?? 0),
             el("div", { className: "tb-menu" }, btn, list),
         );
         snapshot();
@@ -471,6 +600,11 @@ function init(bar: HTMLElement): void {
     function snapshot(): void {
         const copy = userEl.cloneNode(true) as HTMLElement;
         for (const a of copy.querySelectorAll("[aria-current]")) a.removeAttribute("aria-current");
+        // Not the sync menu's insides (filled again once drawn; notification
+        // titles needn't sit in storage) nor its ring: only the tags
+        // topbar.html's script rebuilds.
+        for (const p of copy.querySelectorAll(".tb-sync-panel")) p.replaceChildren();
+        for (const r of copy.querySelectorAll(".tb-sync-ring")) r.remove();
         try {
             localStorage.setItem(NAV_KEY, JSON.stringify([...copy.childNodes].flatMap(navTree)));
         } catch {
