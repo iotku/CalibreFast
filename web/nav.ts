@@ -210,15 +210,17 @@ function init(bar: HTMLElement): void {
     // sync-state.ts), each with a check when done; then the notifications not
     // dismissed yet (up to NOTICES_SHOWN, notifications.go) and a link to all
     // of them; then a switch to pause downloads on a slow connection.
-    // The button is a bell with a count while any notifications are unseen,
-    // unless a download is going (the sync icon with its progress ring, the
-    // count still on it); else the sync icon, a dot when something waits
-    // (unsent changes, books paused or left for the next library page).
-    // Opening the menu marks the notifications seen.
+    // The button is a bell, with a count while any notifications are unseen
+    // (opening the menu marks them seen). While a book downloads it's the
+    // sync icon with its progress ring (the count still on it), and stays so
+    // for SYNC_LINGER_MS after, so a quick download isn't missed. A dot when
+    // something waits (unsent changes, books paused or left for the next
+    // library page) and nothing's unseen.
 
     const megabytes = (n: number): string => `${(n / 1048576).toFixed(1)} MB`;
     const plural = (n: number, one: string): string => `${n} ${one}${n === 1 ? "" : "s"}`;
     const NOTICES_SHOWN = 5;
+    const SYNC_LINGER_MS = 3000;
     interface SyncButton {
         node: HTMLElement;
         /** How many notifications are unseen. */
@@ -284,7 +286,7 @@ function init(bar: HTMLElement): void {
         const arc = document.createElementNS(ns, "circle");
         for (const [k, v] of [["cx", "18"], ["cy", "18"], ["r", "16"], ["pathLength", "100"], ["stroke-dasharray", "0 100"]]) arc.setAttribute(k!, v!);
         ring.append(arc);
-        const btn = el("button", { type: "button", className: "tb-icon tb-sync-btn", title: "Sync", ariaLabel: "Sync status" });
+        const btn = el("button", { type: "button", className: "tb-icon tb-sync-btn", title: "Notifications and sync", ariaLabel: "Notifications and sync" });
         btn.setAttribute("aria-haspopup", "true");
         btn.setAttribute("aria-expanded", "false");
         const syncIcon = icon(SYNC);
@@ -292,6 +294,8 @@ function init(bar: HTMLElement): void {
         const badge = el("span", { className: "tb-badge" });
         btn.append(syncIcon, ring);
         let unseen = 0;
+        let busyAt = 0; // when a download was last seen going
+        let lingerTimer = 0;
         // Built once and updated in place: rebuilding it under the pointer
         // (or the keyboard focus) would lose a click.
         const readingLine = stateLine("Reading Sync");
@@ -380,18 +384,26 @@ function init(bar: HTMLElement): void {
             arc.setAttribute("stroke-dasharray", `${a?.total ? Math.round((a.got / a.total) * 100) : a ? 8 : 0} 100`);
             btn.classList.toggle("is-busy", !!a);
             btn.classList.toggle("has-note", !a && !unseen && (!!s.paused || waiting > 0 || unsent > 0 || !navigator.onLine));
-            // A bell while there's news, unless a download is going.
-            const glyph = unseen && !a ? bellIcon : syncIcon;
+            // The sync icon while a download goes and a moment after; else the bell.
+            if (a) busyAt = Date.now();
+            const lingering = !a && Date.now() - busyAt < SYNC_LINGER_MS;
+            if (lingering && !lingerTimer) {
+                lingerTimer = window.setTimeout(() => {
+                    lingerTimer = 0;
+                    paint();
+                }, SYNC_LINGER_MS - (Date.now() - busyAt) + 50);
+            }
+            const glyph = a || lingering ? syncIcon : bellIcon;
             if (btn.firstElementChild !== glyph) btn.firstElementChild?.replaceWith(glyph);
             btn.classList.toggle("tb-has-badge", unseen > 0);
             if (unseen) {
                 badge.textContent = unseen > 99 ? "99+" : String(unseen);
                 if (!badge.isConnected) btn.append(badge);
             } else badge.remove();
-            const label = unseen ? `Sync status, ${unseen} new notification${unseen === 1 ? "" : "s"}` : "Sync status";
+            const label = unseen ? `Notifications and sync, ${unseen} new notification${unseen === 1 ? "" : "s"}` : "Notifications and sync";
             if (btn.getAttribute("aria-label") !== label) {
                 btn.setAttribute("aria-label", label);
-                btn.title = unseen ? `${unseen} new notification${unseen === 1 ? "" : "s"}` : "Sync";
+                btn.title = unseen ? `${unseen} new notification${unseen === 1 ? "" : "s"}` : "Notifications and sync";
             }
             if (panel.hidden) return;
             const readingDone = navigator.onLine && !unsent;
