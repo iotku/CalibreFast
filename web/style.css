@@ -567,9 +567,6 @@ button.row-icon:hover {
     display: block !important;
     opacity: 0.5;
 }
-.home-editing .row-off.greeting {
-    display: flex !important;
-}
 .home-editing .edit-only {
     display: flex !important;
 }
@@ -632,6 +629,23 @@ button.row-icon:hover {
 }
 .greeting .row-toggle {
     align-self: flex-start;
+}
+/* The greeting turned off: its name, quote and sign-in line go; the reading
+   stats summary stays unless it's off (or empty) too. While editing, the
+   greeting's parts are dimmed, as a row turned off is, and its switches stay. */
+body:not(.home-editing) .greeting-off > .greeting-head,
+body:not(.home-editing) .greeting-off .greeting-quote,
+body:not(.home-editing) .greeting-off > .intro-account {
+    display: none !important;
+}
+/* A rule of its own: a browser without :has drops just this one. */
+body:not(.home-editing) .greeting-off:not(:has(.greeting-stats-slot:not([hidden]):not(.row-off))) {
+    display: none !important;
+}
+.home-editing .greeting-off .greeting-hello,
+.home-editing .greeting-off .greeting-quote,
+.home-editing .greeting-off > .intro-account {
+    opacity: 0.5;
 }
 .home-editing .greeting .greeting-head {
     display: flex;
@@ -6272,7 +6286,7 @@ body.selecting .book.selected .cover-wrapper {
     display: none;
 }
 @media (min-width: 901px) {
-    .greeting:not(.row-off) {
+    .greeting:not(.greeting-off) {
         display: grid;
         grid-template-columns: minmax(0, 1fr) auto;
         align-items: start;
