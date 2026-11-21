@@ -24,6 +24,8 @@ export interface AnnotationUI {
     /** Shows the toolbar by an existing highlight. */
     offerExisting(at: DOMRect, a: Annotation): void;
     hide(): void;
+    /** Hides the toolbar if it is showing for a selection (not an existing highlight). */
+    hideNew(): void;
     /** Hides the toolbar. True if it was showing (the press that did it shouldn't also turn the page). */
     dismiss(): boolean;
     /** Fills the sidebar's Notes tab. */
@@ -162,8 +164,21 @@ export function setupAnnotationUI(opts: AnnotationUIOptions): AnnotationUI {
         target = null;
     }
 
-    /** Above the selection when there's room, otherwise below; never off screen. */
-    function show(at: DOMRect, current: string | null): void {
+    // A touch selection gets the system's own menu (copy, select all, web
+    // search) right beside it, above or below, with drag handles under it;
+    // no page can turn that off without losing selection altogether. So
+    // there the toolbar keeps to the screen's edge, at the bottom, or the top
+    // when the selection is near the bottom.
+    const touch = matchMedia("(pointer: coarse)");
+    const EDGE = 12; // from the screen's edge
+    const CLEAR = 72; // around the selection: the system menu or the handles
+
+    /**
+     * Above the selection when there's room, otherwise below; never off
+     * screen. For a new touch selection (awaySelection), at an edge of the
+     * screen instead, clear of the system's menu.
+     */
+    function show(at: DOMRect, current: string | null, awaySelection = false): void {
         bar.hidden = false;
         const existing = target && "existing" in target ? target.existing : null;
         deleteBtn.hidden = !existing;
@@ -172,9 +187,28 @@ export function setupAnnotationUI(opts: AnnotationUIOptions): AnnotationUI {
         COLORS.forEach((c, i) => colorButtons[i]?.setAttribute("aria-pressed", String(c === current)));
         const w = bar.offsetWidth;
         const h = bar.offsetHeight;
-        const left = Math.min(window.innerWidth - w - 8, Math.max(8, at.left + at.width / 2 - w / 2));
-        let top = at.top - h - 10;
-        if (top < 56) top = Math.min(window.innerHeight - h - 8, at.bottom + 10);
+        const vh = window.innerHeight;
+        let left = Math.min(window.innerWidth - w - 8, Math.max(8, at.left + at.width / 2 - w / 2));
+        let top: number;
+        bar.style.bottom = "";
+        if (awaySelection && touch.matches) {
+            left = (window.innerWidth - w) / 2;
+            const bottomTop = vh - h - EDGE;
+            const topTop = 56 + EDGE; // below the top bar's place
+            const roomBelow = bottomTop - at.bottom;
+            const roomAbove = at.top - (topTop + h);
+            if (roomBelow >= CLEAR || roomBelow >= roomAbove) {
+                // Above the home indicator / gesture bar too.
+                bar.style.bottom = `calc(${EDGE}px + env(safe-area-inset-bottom, 0px))`;
+                bar.style.top = "auto";
+                bar.style.left = `${Math.max(8, left)}px`;
+                return;
+            }
+            top = topTop;
+        } else {
+            top = at.top - h - 10;
+            if (top < 56) top = Math.min(vh - h - 8, at.bottom + 10);
+        }
         bar.style.left = `${left}px`;
         bar.style.top = `${top}px`;
     }
@@ -291,13 +325,16 @@ export function setupAnnotationUI(opts: AnnotationUIOptions): AnnotationUI {
     return {
         offerNew(at, text, make) {
             target = { make, text };
-            show(at, null);
+            show(at, null, true);
         },
         offerExisting(at, a) {
             target = { existing: a };
             show(at, a.color);
         },
         hide,
+        hideNew() {
+            if (target && !("existing" in target)) hide();
+        },
         dismiss() {
             const was = !bar.hidden;
             hide();
