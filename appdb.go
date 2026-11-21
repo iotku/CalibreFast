@@ -665,6 +665,23 @@ var migrations = []string{
 	ALTER TABLE hardcover_books ADD COLUMN slug TEXT NOT NULL DEFAULT '';
 	ALTER TABLE hardcover_books ADD COLUMN title TEXT NOT NULL DEFAULT '';
 	`,
+	// 37: Paused and Dropped are reading statuses too (as Hardcover's Paused
+	// and Did Not Finish). SQLite can't alter a CHECK: the table is rebuilt.
+	`
+	CREATE TABLE reading_status_new (
+		user_id    INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+		book_uuid  TEXT    NOT NULL,
+		status     TEXT    NOT NULL CHECK (status IN ('wanted', 'reading', 'paused', 'finished', 'dropped')),
+		source     TEXT    NOT NULL CHECK (source IN ('manual', 'auto')),
+		updated_at INTEGER NOT NULL,
+		position   INTEGER,
+		PRIMARY KEY (user_id, book_uuid)
+	);
+	INSERT INTO reading_status_new (user_id, book_uuid, status, source, updated_at, position)
+		SELECT user_id, book_uuid, status, source, updated_at, position FROM reading_status;
+	DROP TABLE reading_status;
+	ALTER TABLE reading_status_new RENAME TO reading_status;
+	`,
 }
 
 // openAppDB opens (creating if needed) and migrates the app database.

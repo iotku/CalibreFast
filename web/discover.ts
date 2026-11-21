@@ -533,7 +533,7 @@ function guestMarks(): Marks {
             resume.set(uuid, readerUrl(uuid, e.format));
         }
     }
-    return { user: null, signedIn: false, reading, resume, wanted: new Set(), finished, favorites: new Set() };
+    return { user: null, signedIn: false, reading, resume, wanted: new Set(), paused: new Set(), finished, dropped: new Set(), favorites: new Set() };
 }
 
 /** Continue reading, for a signed-out visitor: this device's books, newest first. */

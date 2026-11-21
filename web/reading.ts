@@ -18,7 +18,7 @@
 
 import { el, icon, safeUrl } from "./dom.js";
 import { meRequest } from "./me.js";
-import { noteMark, overlayPending, pendingMark } from "./pending-marks.js";
+import { addStatus, clearStatus, noteMark, overlayPending, pendingMark } from "./pending-marks.js";
 import { sendPending } from "./send-pending.js";
 
 export interface Marks {
@@ -30,7 +30,9 @@ export interface Marks {
     /** uuid -> reader URL, for books being read. */
     resume: Map<string, string>;
     wanted: Set<string>;
+    paused: Set<string>;
     finished: Set<string>;
+    dropped: Set<string>;
     favorites: Set<string>;
 }
 
@@ -44,7 +46,9 @@ export interface StoredMarks {
     reading: Record<string, number | null>;
     resume?: Record<string, string>;
     wanted?: string[];
+    paused?: string[];
     finished?: string[];
+    dropped?: string[];
     favorites?: string[];
 }
 
@@ -56,7 +60,9 @@ function toMarks(v: StoredMarks | null): Marks {
         reading: new Map(Object.entries(v?.reading ?? {})),
         resume: new Map(Object.entries(v?.resume ?? {})),
         wanted: new Set(v?.wanted),
+        paused: new Set(v?.paused),
         finished: new Set(v?.finished),
+        dropped: new Set(v?.dropped),
         favorites: new Set(v?.favorites),
     });
 }
@@ -125,7 +131,9 @@ function toStored(m: Marks): StoredMarks | null {
         reading: Object.fromEntries(m.reading),
         resume: Object.fromEntries(m.resume),
         wanted: [...m.wanted],
+        paused: [...m.paused],
         finished: [...m.finished],
+        dropped: [...m.dropped],
         favorites: [...m.favorites],
     };
 }
@@ -137,9 +145,13 @@ export function saveMarks(m: Marks): StoredMarks | null {
     return v;
 }
 
-/** A book's reading status as the server has it: "", "wanted", "reading" or "finished". */
+/** A book's reading status as the server has it: "", "wanted", "reading", "paused", "finished" or "dropped". */
 export function statusOf(m: Marks, uuid: string): string {
-    return m.finished.has(uuid) ? "finished" : m.reading.has(uuid) ? "reading" : m.wanted.has(uuid) ? "wanted" : "";
+    if (m.finished.has(uuid)) return "finished";
+    if (m.dropped.has(uuid)) return "dropped";
+    if (m.reading.has(uuid)) return "reading";
+    if (m.paused.has(uuid)) return "paused";
+    return m.wanted.has(uuid) ? "wanted" : "";
 }
 
 /** A change to one book, made and saved elsewhere (the book popup's controls). */
@@ -161,12 +173,8 @@ export function applyChange(m: Marks, c: BookChange): boolean {
     }
     if (c.status === undefined || c.status === statusOf(m, c.uuid)) return true;
     if (c.status === "reading") return false;
-    m.reading.delete(c.uuid);
-    m.resume.delete(c.uuid);
-    m.wanted.delete(c.uuid);
-    m.finished.delete(c.uuid);
-    if (c.status === "wanted") m.wanted.add(c.uuid);
-    else if (c.status === "finished") m.finished.add(c.uuid);
+    clearStatus(m, c.uuid);
+    addStatus(m, c.uuid, c.status);
     return true;
 }
 
@@ -231,12 +239,14 @@ export function markCard(card: HTMLElement, marks: Marks): void {
     const uuid = card.dataset["uuid"];
     if (!uuid) return;
     // Same precedence as the right button (rightState).
-    const finished = marks.finished.has(uuid);
-    const reading = !finished && marks.reading.has(uuid);
-    const wanted = !finished && !reading && marks.wanted.has(uuid);
+    const s = statusOf(marks, uuid);
+    const finished = s === "finished";
+    const reading = s === "reading";
     card.classList.toggle("is-finished", finished);
     card.classList.toggle("is-reading", reading);
-    card.classList.toggle("is-wanted", wanted);
+    card.classList.toggle("is-wanted", s === "wanted");
+    card.classList.toggle("is-paused", s === "paused");
+    card.classList.toggle("is-dropped", s === "dropped");
     paintProgress(card, finished ? 1 : reading ? (marks.reading.get(uuid) ?? null) : undefined, finished);
     paintActions(card, uuid, marks);
 }
@@ -272,6 +282,9 @@ export const ICONS = {
     read: () => icon({}, ["path", { d: "M8 5v14l11-7z", fill: "currentColor" }]),
     done: () =>
         icon({}, ["path", { d: "M5 12.5l4.5 4.5L19 7.5", fill: "none", stroke: "currentColor", "stroke-width": 2.5, "stroke-linecap": "round", "stroke-linejoin": "round" }]),
+    paused: () => icon({}, ["path", { d: "M8 5h3v14H8zM13 5h3v14h-3z", fill: "currentColor" }]),
+    dropped: () =>
+        icon({}, ["path", { d: "M6.5 6.5l11 11M17.5 6.5l-11 11", fill: "none", stroke: "currentColor", "stroke-width": 2.5, "stroke-linecap": "round" }]),
 };
 
 /** A cover button (or link, or badge) with a title, label and icon. */
@@ -283,10 +296,21 @@ function coverButton<K extends "button" | "a" | "span">(tag: K, cls: string, tit
 }
 
 /** The right button's state, which decides what it shows and does. */
-function rightState(uuid: string, marks: Marks): "want" | "wanted" | "read" | "done" | "" {
-    if (marks.finished.has(uuid)) return "done";
-    if (marks.reading.has(uuid)) return marks.resume.has(uuid) ? "read" : "";
-    return marks.wanted.has(uuid) ? "wanted" : "want";
+function rightState(uuid: string, marks: Marks): "want" | "wanted" | "read" | "done" | "paused" | "dropped" | "" {
+    switch (statusOf(marks, uuid)) {
+        case "finished":
+            return "done";
+        case "dropped":
+            return "dropped";
+        case "reading":
+            return marks.resume.has(uuid) ? "read" : "";
+        case "paused":
+            return "paused";
+        case "wanted":
+            return "wanted";
+        default:
+            return "want";
+    }
 }
 
 function paintActions(card: HTMLElement, uuid: string, marks: Marks): void {
@@ -327,10 +351,14 @@ function paintActions(card: HTMLElement, uuid: string, marks: Marks): void {
             buttons.push(a);
             break;
         }
-        case "done": {
-            const done = coverButton("span", "cover-done", "Finished", ICONS.done());
-            done.setAttribute("role", "img");
-            buttons.push(done);
+        case "done":
+        case "paused":
+        case "dropped": {
+            const [cls, title, ico] =
+                right === "done" ? ["cover-done", "Finished", ICONS.done] : right === "paused" ? ["cover-paused", "Paused", ICONS.paused] : ["cover-dropped", "Dropped", ICONS.dropped];
+            const badge = coverButton("span", cls, title, ico());
+            badge.setAttribute("role", "img");
+            buttons.push(badge);
             break;
         }
     }

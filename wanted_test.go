@@ -120,3 +120,48 @@ func TestMigrationWantedStatus(t *testing.T) {
 		t.Errorf("%d statuses left after deleting their user", n)
 	}
 }
+
+// Migration 37 rebuilds reading_status for Paused and Dropped: statuses
+// and their list order survive, and the user's foreign key still holds.
+func TestMigrationPausedDropped(t *testing.T) {
+	dir := t.TempDir()
+	all := migrations
+	migrations = all[:36]
+	db, err := openAppDB(dir)
+	migrations = all
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := db.Exec(`INSERT INTO users (id, username, created_at) VALUES (1, 'reader', 0)`); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := db.Exec(`INSERT INTO reading_status (user_id, book_uuid, status, source, updated_at, position) VALUES (1, 'book-a', 'wanted', 'manual', 5, 3)`); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := db.Exec(`INSERT INTO reading_status (user_id, book_uuid, status, source, updated_at) VALUES (1, 'book-b', 'paused', 'manual', 6)`); err == nil {
+		t.Fatal("paused allowed before the migration")
+	}
+	db.Close()
+	if db, err = openAppDB(dir); err != nil {
+		t.Fatalf("upgrade: %v", err)
+	}
+	defer db.Close()
+	var status string
+	var pos int
+	if err := db.QueryRow(`SELECT status, position FROM reading_status WHERE book_uuid = 'book-a'`).Scan(&status, &pos); err != nil || status != "wanted" || pos != 3 {
+		t.Fatalf("kept: %q %d %v", status, pos, err)
+	}
+	for _, s := range []string{"paused", "dropped"} {
+		if _, err := db.Exec(`INSERT INTO reading_status (user_id, book_uuid, status, source, updated_at) VALUES (1, ?, ?, 'manual', 6)`, "book-"+s, s); err != nil {
+			t.Fatalf("%s: %v", s, err)
+		}
+	}
+	if _, err := db.Exec(`DELETE FROM users WHERE id = 1`); err != nil {
+		t.Fatal(err)
+	}
+	var n int
+	_ = db.QueryRow(`SELECT COUNT(*) FROM reading_status`).Scan(&n)
+	if n != 0 {
+		t.Errorf("%d statuses left after deleting their user", n)
+	}
+}

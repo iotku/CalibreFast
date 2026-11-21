@@ -59,7 +59,7 @@ import { cachedMarks, fetchMarks, statusOf as statusIn } from "./reading.js";
 
 const DAY_MS = 24 * 3600 * 1000;
 
-/** A book's status ("", "wanted", "reading", "finished"); undefined: not known. */
+/** A book's status ("", "wanted", "reading", "paused", "finished", "dropped"); undefined: not known. */
 type StatusFn = (uuid: string) => string | undefined;
 
 /**
@@ -251,8 +251,8 @@ export async function sweep(statusOf?: (uuid: string) => string, protect?: strin
         let keep: boolean;
         if (!fitsBookLimit(b.size, prefs)) keep = false;
         else if (s === "wanted") keep = saved === null || saved.has(b.uuid) || (b.lastOpened > 0 && asReading());
-        else if (s === "finished") keep = age <= FINISHED_KEEP_DAYS * DAY_MS;
-        else keep = asReading();
+        else if (s === "finished" || s === "dropped") keep = age <= FINISHED_KEEP_DAYS * DAY_MS;
+        else keep = asReading(); // reading, or paused: set aside, to come back to
         if (!keep) await deleteBook(b.uuid, format);
     }
     await makeRoom(0, protect);
@@ -278,7 +278,7 @@ export async function makeRoom(need: number, protect?: string): Promise<boolean>
     const when = (b: CachedBook): number => savedAt.get(b.uuid) ?? b.savedAt ?? b.lastOpened;
     const candidates = books.filter((b) => b.uuid !== protect && offlinePref(b.uuid) !== "keep" && !recent.has(b.uuid));
     const byOpened = (a: CachedBook, b: CachedBook): number => a.lastOpened - b.lastOpened;
-    const finished = candidates.filter((b) => status(b.uuid) === "finished").sort(byOpened);
+    const finished = candidates.filter((b) => status(b.uuid) === "finished" || status(b.uuid) === "dropped").sort(byOpened);
     // Downloads cut off part way: only room until they finish, and they come
     // back from where they are. A pinned book's (it'll be kept) and the one
     // being opened stay.
@@ -292,7 +292,7 @@ export async function makeRoom(need: number, protect?: string): Promise<boolean>
     const notReading = candidates
         .filter((b) => {
             const s = status(b.uuid);
-            return s === "wanted" ? b.lastOpened > 0 : s !== "finished" && !readingClass(s, b);
+            return s === "wanted" ? b.lastOpened > 0 : s !== "finished" && s !== "dropped" && !readingClass(s, b);
         })
         .sort(byOpened);
     // A guest's books have no status: the least recently opened go.

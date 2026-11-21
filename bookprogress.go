@@ -104,7 +104,9 @@ type readingMarks struct {
 	Reading   map[string]*float64 `json:"reading"`
 	Resume    map[string]string   `json:"resume"`
 	Wanted    []string            `json:"wanted"`
+	Paused    []string            `json:"paused"`
 	Finished  []string            `json:"finished"`
+	Dropped   []string            `json:"dropped"`
 	Favorites []string            `json:"favorites"`
 }
 
@@ -113,7 +115,7 @@ type readingMarks struct {
 func userReading(u *User) (readingMarks, map[string]int64, error) {
 	m := readingMarks{
 		User: u.Username, Reading: map[string]*float64{}, Resume: map[string]string{},
-		Wanted: []string{}, Finished: []string{}, Favorites: []string{},
+		Wanted: []string{}, Paused: []string{}, Finished: []string{}, Dropped: []string{}, Favorites: []string{},
 	}
 	active := map[string]int64{}
 	rows, err := appDB.Query(`SELECT book_uuid, status, updated_at FROM reading_status WHERE user_id = ?`, u.ID)
@@ -133,8 +135,12 @@ func userReading(u *User) (readingMarks, map[string]int64, error) {
 			readingUUIDs = append(readingUUIDs, uuid)
 		case "wanted":
 			m.Wanted = append(m.Wanted, uuid)
+		case "paused":
+			m.Paused = append(m.Paused, uuid)
 		case "finished":
 			m.Finished = append(m.Finished, uuid)
+		case "dropped":
+			m.Dropped = append(m.Dropped, uuid)
 		}
 	}
 	rows.Close()
