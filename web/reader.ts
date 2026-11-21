@@ -697,31 +697,7 @@ rendition.on("rendered", (section, view) => {
         true,
     );
 
-    // Swipe sideways to turn the page (pages layout only: the scrolling
-    // layout leaves touches to the browser).
-    let start: { x: number; y: number; t: number } | null = null;
-    doc.addEventListener(
-        "touchstart",
-        (e) => {
-            const p = e.touches.length === 1 ? e.touches[0] : undefined;
-            start = p ? { x: p.screenX, y: p.screenY, t: e.timeStamp } : null;
-        },
-        { passive: true },
-    );
-    doc.addEventListener(
-        "touchend",
-        (e) => {
-            const p = e.changedTouches[0];
-            if (!start || !p || settings().flow === "scrolled" || doc.getSelection()?.toString()) return;
-            const dx = p.screenX - start.x;
-            const dy = p.screenY - start.y;
-            if (e.timeStamp - start.t < 700 && Math.abs(dx) > 40 && Math.abs(dx) > 1.5 * Math.abs(dy)) {
-                turnSide(dx < 0 ? 1 : -1);
-            }
-            start = null;
-        },
-        { passive: true },
-    );
+    swipeToTurn(doc, view.element);
 
     // The wheel turns pages, one per gesture however long a trackpad keeps
     // sending events.
@@ -741,6 +717,123 @@ rendition.on("rendered", (section, view) => {
 
     doc.addEventListener("keydown", onKey);
 });
+
+/**
+ * Swipe sideways to turn the page (pages layout only: the scrolling layout
+ * leaves touches to the browser). The page follows the finger, showing the
+ * next one beside it (the view holds the whole chapter; its container
+ * clips it to one screen). Let go and it finishes the turn, or goes back,
+ * at about the speed the finger was moving: a slow peek turns slowly, a
+ * flick at once. Taps (the click handler) still turn without any animation.
+ */
+function swipeToTurn(doc: Document, view: HTMLElement): void {
+    type Sample = { x: number; t: number };
+    let start: { x: number; y: number } | null = null;
+    let dragging = false;
+    let samples: Sample[] = [];
+    let anim: Animation | null = null;
+
+    const screenWidth = (): number => container.querySelector<HTMLElement>(".epub-container")?.clientWidth || window.innerWidth;
+    const shift = (x: number): void => {
+        view.style.transform = x ? `translateX(${x}px)` : "";
+    };
+    // px/ms over the last ~100ms of the drag (+ is rightwards).
+    const velocity = (): number => {
+        const last = samples[samples.length - 1];
+        const first = samples.find((s) => last.t - s.t <= 100) ?? last;
+        return last.t > first.t ? (last.x - first.x) / (last.t - first.t) : 0;
+    };
+    const slide = (from: number, to: number, speed: number, done: () => void): void => {
+        // An ease-out curve that leaves at twice its average speed: twice the
+        // distance over the finger's speed keeps the page going as fast as it was.
+        const ms = speed > 0.05 ? Math.min(450, Math.max(90, (2 * Math.abs(to - from)) / speed)) : 300;
+        anim = view.animate([{ transform: `translateX(${from}px)` }, { transform: `translateX(${to}px)` }], {
+            duration: ms,
+            easing: "cubic-bezier(0.25, 0.5, 0.5, 1)",
+        });
+        shift(to);
+        anim.onfinish = anim.oncancel = () => {
+            anim = null;
+            done();
+        };
+    };
+    // Turn while the view still sits a screen over, and put it back in the
+    // same frame as epub.js scrolls (its queue turns in a requestAnimationFrame
+    // queued first), so neither page shows twice. Back where it was if the
+    // page didn't move (the first or last page, or epub.js busy too long).
+    const turnFrom = (offset: number, side: 1 | -1): void => {
+        const sc = container.querySelector<HTMLElement>(".epub-container");
+        const before = sc?.scrollLeft;
+        turnSide(side);
+        let frames = 0;
+        const settle = (): void => {
+            if (!view.isConnected || sc?.scrollLeft !== before) shift(0);
+            else if (++frames < 20) requestAnimationFrame(settle);
+            else slide(offset, 0, 0, () => undefined);
+        };
+        requestAnimationFrame(settle);
+    };
+
+    doc.addEventListener(
+        "touchstart",
+        (e) => {
+            anim?.finish(); // a new swipe doesn't wait for the last one
+            const p = e.touches.length === 1 ? e.touches[0] : undefined;
+            start = p && settings().flow !== "scrolled" ? { x: p.screenX, y: p.screenY } : null;
+            dragging = false;
+            samples = p ? [{ x: p.screenX, t: e.timeStamp }] : [];
+        },
+        { passive: true },
+    );
+    doc.addEventListener(
+        "touchmove",
+        (e) => {
+            const p = e.touches.length === 1 ? e.touches[0] : undefined;
+            if (!start || !p) return;
+            const dx = p.screenX - start.x;
+            const dy = p.screenY - start.y;
+            if (!dragging) {
+                if (Math.abs(dx) < 10 && Math.abs(dy) < 10) return;
+                // Mostly sideways, and not extending a selection: a page drag.
+                if (Math.abs(dx) <= 1.2 * Math.abs(dy) || doc.getSelection()?.toString()) {
+                    start = null;
+                    return;
+                }
+                dragging = true;
+                chrome.hideBars();
+            }
+            e.preventDefault();
+            samples.push({ x: p.screenX, t: e.timeStamp });
+            if (samples.length > 20) samples.shift();
+            if (!reducedMotion.matches) shift(dx);
+        },
+        { passive: false },
+    );
+    const end = (e: TouchEvent): void => {
+        const p = e.changedTouches[0];
+        if (!start || !dragging || !p) {
+            start = null;
+            return;
+        }
+        samples.push({ x: p.screenX, t: e.timeStamp });
+        const dx = p.screenX - start.x;
+        start = null;
+        dragging = false;
+        const v = velocity();
+        const w = screenWidth();
+        // Far enough, or flicked that way (and not pulled back at the end).
+        const go = e.type === "touchend" && ((Math.abs(dx) > w * 0.3 && v * dx >= -0.1 * Math.abs(dx)) || (Math.abs(dx) > 20 && v * Math.sign(dx) > 0.3));
+        const side = dx < 0 ? 1 : -1;
+        if (reducedMotion.matches) {
+            if (go) turnSide(side);
+            return;
+        }
+        if (go) slide(dx, -side * w, Math.abs(v), () => turnFrom(-side * w, side));
+        else slide(dx, 0, Math.abs(v), () => undefined);
+    };
+    doc.addEventListener("touchend", end, { passive: true });
+    doc.addEventListener("touchcancel", end, { passive: true });
+}
 
 function followLink(href: string, section: EpubJS.Section): void {
     const url = new URL(href, `epub:/${pathOf(section.url)}`);
