@@ -594,13 +594,25 @@ type Entry struct {
 	// AltIDs: those books' ids. Which of them is shown can change from
 	// one fetch to the next, so a decision about the entry (a dismissal)
 	// is kept against any of them.
-	AltIDs     []int64 `json:"altIds,omitempty"`
+	AltIDs []int64 `json:"altIds,omitempty"`
+	// AltSlugs: those books' slugs, for matching a library book that
+	// names one of them.
+	AltSlugs   []string `json:"altSlugs,omitempty"`
 	users      int
 	altAuthors []string
 }
 
 // IDs: the entry's book id, then the ids of the books merged into it.
 func (e *Entry) IDs() []int64 { return append([]int64{e.BookID}, e.AltIDs...) }
+
+// Slugs: the entry's slug (if any), then those of the books merged into it.
+func (e *Entry) Slugs() []string {
+	var out []string
+	if e.Slug != "" {
+		out = append(out, e.Slug)
+	}
+	return append(out, e.AltSlugs...)
+}
 
 // SeriesDetail is a series and its books in order (compilations and
 // partial books left out, one book per position: its most read). A
@@ -713,9 +725,16 @@ func (c *Client) SeriesBooks(ctx context.Context, ids ...int64) (*SeriesDetail, 
 					if e.users > old.users { // the most read one is shown
 						e.AltTitles = append(old.AltTitles, old.Title)
 						e.AltIDs = append(old.AltIDs, old.BookID)
+						e.AltSlugs = old.AltSlugs
+						if old.Slug != "" {
+							e.AltSlugs = append(e.AltSlugs, old.Slug)
+						}
 						*old = e
 					} else {
 						old.AltIDs = append(old.AltIDs, e.BookID)
+						if e.Slug != "" {
+							old.AltSlugs = append(old.AltSlugs, e.Slug)
+						}
 						if e.Title != old.Title && !slices.Contains(old.AltTitles, e.Title) {
 							old.AltTitles = append(old.AltTitles, e.Title)
 						}
