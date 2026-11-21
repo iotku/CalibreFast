@@ -585,3 +585,14 @@ func splitDescription(s string) (lead, more string) {
 // DescLead and DescMore: the description, split for showing (filtered.html).
 func (d FilteredPageData) DescLead() string { l, _ := splitDescription(d.Description); return l }
 func (d FilteredPageData) DescMore() string { _, m := splitDescription(d.Description); return m }
+
+// descNarrowMax: a lead longer than this (or with this many line breaks) may
+// pass the four lines a phone shows of it (style.css), so it gets a "More"
+// toggle there even when there is no more to show.
+const descNarrowMax = 200
+
+// DescClamps: the lead may be cut short on a phone.
+func (d FilteredPageData) DescClamps() bool {
+	l := d.DescLead()
+	return len(l) > descNarrowMax || strings.Count(l, "\n") >= 3
+}

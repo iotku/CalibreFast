@@ -3179,14 +3179,54 @@ body.book-standalone {
     opacity: 0.6;
 }
 
+.agg-header-more-narrow {
+    display: none;
+}
+
+/* A phone: keep the header shorter than a row of covers. The picture stays
+   beside the text, the description shows four lines until "More" is opened,
+   and the series chips scroll sideways instead of wrapping. */
 @media (max-width: 640px) {
     .agg-header {
-        flex-direction: column;
+        gap: 0.75rem;
     }
 
     .agg-header-img {
-        width: 100%;
-        max-height: 200px;
+        width: 80px;
+        max-height: 80px;
+    }
+
+    .agg-header-body {
+        gap: 0.5rem;
+    }
+
+    .agg-header-desc > p:first-child {
+        display: -webkit-box;
+        -webkit-line-clamp: 4;
+        line-clamp: 4;
+        -webkit-box-orient: vertical;
+        overflow: hidden;
+    }
+
+    .agg-header-desc:has(> .agg-header-more[open]) > p:first-child {
+        display: block;
+        -webkit-line-clamp: unset;
+        line-clamp: none;
+    }
+
+    .agg-header-more-narrow {
+        display: block;
+    }
+
+    .agg-header-series {
+        flex-wrap: nowrap;
+        overflow-x: auto;
+        scrollbar-width: thin;
+    }
+
+    .agg-header-series > .agg-chip {
+        flex: none;
+        white-space: nowrap;
     }
 }
 
