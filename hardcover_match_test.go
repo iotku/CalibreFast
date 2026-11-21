@@ -377,3 +377,76 @@ func TestHCRankCandidates(t *testing.T) {
 		t.Errorf("weak lead: picked %v sure %v", ids, sure)
 	}
 }
+
+// A book whose Hardcover identifier names an entry matches it whatever its
+// title, ahead of a title or ISBN match to another entry.
+func TestHCMatchByIdentifier(t *testing.T) {
+	d := &hardcover.SeriesDetail{Entries: []hardcover.Entry{
+		{BookID: 1, Slug: "alpha", Title: "Alpha", Position: pos(1), ISBNs: []string{"9780316129084"}},
+		{BookID: 2, Title: "Beta", Position: pos(2), AltIDs: []int64{20}},
+		{BookID: 3, Slug: "gamma", Title: "Gamma", Position: pos(3)},
+	}}
+	other := hcLibBook{UUID: "x", Title: "Totally Different"}
+	// Titled and ISBN'd like Alpha, but its identifier says it's Beta.
+	y := hcLibBook{UUID: "y", Title: "Alpha", Series: "S", Index: 2}
+	lib := hcLibrary{
+		members:  []string{"S"},
+		inSeries: []hcLibBook{y},
+		byISBN:   map[string][]hcLibBook{"9780316129084": {y}},
+		byHCSlug: map[string][]hcLibBook{"alpha": {other}, "gamma": {{UUID: "z", Title: "Z"}}},
+		byHCID:   map[int64][]hcLibBook{20: {y}},
+		refused:  map[int64]map[string]bool{3: {"z": true}},
+	}
+	rev := hcMatchSeries(d, lib, nil, nil)
+	if len(rev.Present) != 1 || rev.Present[0].Book.UUID != "y" || rev.Present[0].Entry.BookID != 2 || rev.Present[0].Strength != hcByID {
+		t.Fatalf("present: %+v", rev.Present)
+	}
+	if len(rev.Untagged) != 1 || rev.Untagged[0].Book.UUID != "x" || rev.Untagged[0].Entry.BookID != 1 ||
+		rev.Untagged[0].Strength != hcByID || !rev.Untagged[0].Checked {
+		t.Fatalf("untagged: %+v", rev.Untagged)
+	}
+	// "Not a match" still wins over the identifier.
+	if len(rev.Missing) != 1 || rev.Missing[0].Entry.BookID != 3 {
+		t.Fatalf("missing: %+v", rev.Missing)
+	}
+	if len(rev.Extra) != 0 {
+		t.Fatalf("extra: %+v", rev.Extra)
+	}
+}
+
+// hcLibraryFor finds books by their Hardcover identifiers, as the metadata
+// editor saves them (or as Calibre's plugin does, in any case).
+func TestHCLibraryIdentifiers(t *testing.T) {
+	db, wheel, other := seriesFixture(t)
+	bookID := func(uuid string) int64 {
+		var id int64
+		if err := db.QueryRow(`SELECT id FROM books WHERE uuid = ?`, uuid).Scan(&id); err != nil {
+			t.Fatal(err)
+		}
+		return id
+	}
+	mustExec(t, db, `INSERT INTO identifiers (book, type, val) VALUES (?, 'hardcover', 'my-slug')`, bookID(other[0]))
+	mustExec(t, db, `INSERT INTO identifiers (book, type, val) VALUES (?, 'Hardcover-ID', ' 77 ')`, bookID(wheel[0]))
+	mustExec(t, db, `INSERT INTO identifiers (book, type, val) VALUES (?, 'hardcover', 'unrelated')`, bookID(other[1]))
+	d := &hardcover.SeriesDetail{Entries: []hardcover.Entry{
+		{BookID: 5, Slug: "My-Slug", Title: "Nothing Like It", Position: pos(1)},
+		{BookID: 6, Title: "Also Unlike", Position: pos(2), AltIDs: []int64{77}},
+	}}
+	lib, err := hcLibraryFor(hcSeriesInfo{Name: "Wheel", Members: []string{"Wheel"}}, d)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got := lib.byHCSlug["my-slug"]; len(got) != 1 || got[0].UUID != other[0] {
+		t.Errorf("by slug: %+v", got)
+	}
+	if got := lib.byHCID[77]; len(got) != 1 || got[0].UUID != wheel[0] {
+		t.Errorf("by id: %+v", got)
+	}
+	if len(lib.byHCSlug) != 1 || len(lib.byHCID) != 1 {
+		t.Errorf("extra: %+v %+v", lib.byHCSlug, lib.byHCID)
+	}
+	rev := hcMatchSeries(d, lib, nil, nil)
+	if len(rev.Untagged) != 1 || rev.Untagged[0].Book.UUID != other[0] || rev.Untagged[0].Strength != hcByID {
+		t.Errorf("untagged: %+v", rev.Untagged)
+	}
+}

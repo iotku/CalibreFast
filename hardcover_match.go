@@ -38,6 +38,11 @@ type hcLibrary struct {
 	byTitle func(key string) []hcLibBook
 	// byISBN: library books with this ISBN-13.
 	byISBN map[string][]hcLibBook
+	// byHCSlug, byHCID: library books whose "hardcover" identifier is this
+	// slug (lower case) or whose "hardcover-id" is this book id: an
+	// editor's say-so that the book is that one, whatever its title.
+	byHCSlug map[string][]hcLibBook
+	byHCID   map[int64][]hcLibBook
 	// members: the series' names (its group's members), any case.
 	members []string
 	// refused: Hardcover book id -> library uuids an editor said aren't
@@ -57,6 +62,7 @@ func (l *hcLibrary) refuses(e *hardcover.Entry, uuid string) bool {
 
 // Match strengths.
 const (
+	hcByID     = "hardcover id" // the book's Hardcover identifier
 	hcByISBN   = "isbn"
 	hcByTitle  = "title+author"
 	hcBySeries = "title in series" // same title, already in the series
@@ -281,6 +287,31 @@ func hcMatchSeries(d *hardcover.SeriesDetail, lib hcLibrary, placeholders []*pla
 		}
 	}
 
+	// 0. A library book that names the entry in its Hardcover identifiers.
+	// Settled before the rest, so a title or ISBN match to another entry
+	// can't take it first.
+	byID := map[int]hcLibBook{}
+	for i := range d.Entries {
+		e := &d.Entries[i]
+		var found []hcLibBook
+		if e.Slug != "" {
+			found = append(found, lib.byHCSlug[strings.ToLower(e.Slug)]...)
+		}
+		for _, id := range e.IDs() {
+			found = append(found, lib.byHCID[id]...)
+		}
+		slices.SortStableFunc(found, func(a, b hcLibBook) int {
+			return cmp.Compare(boolInt(!hcInMembers(a.Series, lib.members)), boolInt(!hcInMembers(b.Series, lib.members)))
+		})
+		for _, b := range found {
+			if !used[b.UUID] && !lib.refuses(e, b.UUID) {
+				byID[i] = b
+				used[b.UUID] = true
+				break
+			}
+		}
+	}
+
 	for i := range d.Entries {
 		e := &d.Entries[i]
 		var keys []string
@@ -305,9 +336,15 @@ func hcMatchSeries(d *hardcover.SeriesDetail, lib hcLibrary, placeholders []*pla
 			cp := b
 			book, strength = &cp, s
 		}
+		if b, ok := byID[i]; ok {
+			take(b, hcByID)
+		}
 		// 1. An ISBN of one of its editions; a book in the series first.
 		var byISBN []hcLibBook
 		for _, n := range e.ISBNs {
+			if book != nil {
+				break
+			}
 			for _, b := range lib.byISBN[isbn.Normalize(n)] {
 				if !used[b.UUID] && !lib.refuses(e, b.UUID) && !slices.ContainsFunc(byISBN, func(x hcLibBook) bool { return x.UUID == b.UUID }) {
 					byISBN = append(byISBN, b)
