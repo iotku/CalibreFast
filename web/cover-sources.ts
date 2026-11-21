@@ -1,11 +1,13 @@
 // Where a book's cover can come from: its current cover, the first pages of
-// its PDF or EPUB, an image found online or uploaded. Each is a CoverChoice
+// its PDF or EPUB (or a Kindle file, read as the EPUB the server converts it
+// to, as the reader does), an image found online or uploaded. Each is a CoverChoice
 // that knows its size and saves itself as the cover. Used by the upload
 // page's strip (cover-picker.ts) and the editor's dialog (cover-dialog.ts).
 
 import type { BookTarget } from "./book-target.js";
 import { openEpub } from "./epub-open.js";
 import { canInflate, mediaType, openBuffer, openRemote, type EpubSource } from "./epub-source.js";
+import { isConvertedFormat } from "./formats.js";
 import { EPUBJS_URL, openPdfRanges } from "./vendor.js";
 import { setVendorScriptSrc } from "./trusted.js";
 
@@ -199,8 +201,10 @@ function loadScript(src: string): Promise<void> {
 /**
  * The EPUB's declared cover, then its first sections: each section's first
  * image, or its text drawn as a page. The same picture is offered once.
+ * format "azw3", "azw" or "mobi" reads that file converted to EPUB by the
+ * server (convert_read.go); its choices are labelled "AZW3 cover"…
  */
-export async function* epubPages(target: BookTarget): AsyncGenerator<CoverChoice> {
+export async function* epubPages(target: BookTarget, format = "epub"): AsyncGenerator<CoverChoice> {
     if (!canInflate) return; // no DecompressionStream to unzip it with
     if (typeof window.ePub === "undefined") await loadScript(EPUBJS_URL);
     // Read as the reader does (epub-open.ts): epub.js gets each file through
@@ -208,12 +212,14 @@ export async function* epubPages(target: BookTarget): AsyncGenerator<CoverChoice
     // to DOMParser (refused under Trusted Types outside the reader). The zip
     // is read file by file with range requests, so only the files looked at
     // are fetched; the whole file where that can't be done.
+    const url = isConvertedFormat(format) ? target.asEpub(format) : target.file("epub");
+    const name = isConvertedFormat(format) ? format.toUpperCase() : "EPUB";
     let source: EpubSource;
     try {
-        source = await openRemote(target.file("epub"));
+        source = await openRemote(url);
     } catch {
-        const res = await fetch(target.file("epub"), { credentials: "same-origin" });
-        if (!res.ok) throw new Error(`HTTP ${res.status}`);
+        const res = await fetch(url, { credentials: "same-origin" });
+        if (!res.ok) throw new Error((await res.text().catch(() => "")).trim() || `HTTP ${res.status}`);
         source = openBuffer(new Uint8Array(await res.arrayBuffer()), "");
     }
     const { book, pathOf } = openEpub(source, "cover-sources");
@@ -234,7 +240,7 @@ export async function* epubPages(target: BookTarget): AsyncGenerator<CoverChoice
     try {
         const coverHref = await book.coverUrl();
         const coverUrl = coverHref ? await fileUrl(pathOf(coverHref)) : null;
-        const cover = coverUrl ? await imageChoice(target, coverUrl, "EPUB cover") : null;
+        const cover = coverUrl ? await imageChoice(target, coverUrl, `${name} cover`) : null;
         if (fresh(cover)) yield cover;
     } catch {
         /* no declared cover */
@@ -246,7 +252,7 @@ export async function* epubPages(target: BookTarget): AsyncGenerator<CoverChoice
         try {
             const doc = await section.load(book.load.bind(book));
             if (!doc) continue;
-            const label = `EPUB section ${i + 1}`;
+            const label = `${name} section ${i + 1}`;
             const imgEl = doc.querySelector("img, image");
             const rawSrc = imgEl?.getAttribute("src") || imgEl?.getAttribute("href") || imgEl?.getAttribute("xlink:href");
             if (rawSrc) {

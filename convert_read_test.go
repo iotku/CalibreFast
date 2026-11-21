@@ -110,3 +110,62 @@ func TestAsEPUB(t *testing.T) {
 		t.Errorf("POST: %d", rec.Code)
 	}
 }
+
+// A Kindle file waiting in the import queue is served converted to EPUB too
+// (the metadata editor's cover dialog reads it), to editors only.
+func TestImportAsEPUB(t *testing.T) {
+	setupTestAppDB(t)
+	origCache := cacheDir
+	cacheDir = t.TempDir()
+	t.Cleanup(func() { cacheDir = origCache })
+	w, dir := newTestWatcher(t)
+	origImports, origWrites := imports, allowWrites
+	imports, allowWrites = w.inbox, true
+	t.Cleanup(func() { imports, allowWrites = origImports, origWrites })
+
+	src, err := os.ReadFile("pkg/mobi/testdata/tiny.azw3")
+	if err != nil {
+		t.Fatal(err)
+	}
+	writeTestFile(t, filepath.Join(dir, "Book.azw3"), src)
+	w.scan()
+	w.scan()
+	items := w.inbox.list()
+	if len(items) != 1 || len(items[0].Files) != 1 || items[0].Files[0].Format != "azw3" {
+		t.Fatalf("queue: %+v", items)
+	}
+	id := items[0].ID
+	editor, _ := createUser("convertadmin", "correct horse battery", true)
+	reader, _ := createUser("convertreader", "correct horse battery", false)
+
+	mux := http.NewServeMux()
+	mux.HandleFunc("GET /import/{id}/as-epub/{format}", requireEditor(importAsEPUBHandler))
+
+	rec := call(t, mux, editor, "GET", "/import/"+id+"/as-epub/azw3", "")
+	if rec.Code != 200 || rec.Header().Get("Content-Type") != "application/epub+zip" {
+		t.Fatalf("editor: %d %q", rec.Code, rec.Header().Get("Content-Type"))
+	}
+	zr, err := zip.NewReader(bytes.NewReader(rec.Body.Bytes()), int64(rec.Body.Len()))
+	if err != nil || len(zr.File) == 0 || zr.File[0].Name != "mimetype" {
+		t.Fatalf("not an EPUB: %v", err)
+	}
+	// Cached apart from library books, under the waiting book's id.
+	if got, _ := filepath.Glob(filepath.Join(convertedDir(), "import-"+id+".azw3.*.epub")); len(got) != 1 {
+		t.Errorf("cache: %q", got)
+	}
+	for path, want := range map[string]int{
+		"/import/" + id + "/as-epub/mobi":        http.StatusNotFound, // no such file
+		"/import/" + id + "/as-epub/epub":        http.StatusNotFound, // not converted
+		"/import/not-a-book/as-epub/azw3":        http.StatusNotFound,
+		"/import/" + id + "/as-epub/..%2Fx.azw3": http.StatusNotFound,
+	} {
+		if rec := call(t, mux, editor, "GET", path, ""); rec.Code != want {
+			t.Errorf("%s: %d, want %d", path, rec.Code, want)
+		}
+	}
+	for _, u := range []*User{reader, nil} {
+		if rec := call(t, mux, u, "GET", "/import/"+id+"/as-epub/azw3", ""); rec.Code == 200 {
+			t.Errorf("user %v got a waiting book", u)
+		}
+	}
+}
