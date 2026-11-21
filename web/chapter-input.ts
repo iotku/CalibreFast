@@ -178,21 +178,40 @@ function surfaceOver(holder: HTMLElement, doc: Document, frame: HTMLIFrameElemen
             if (!holes || !layHoles()) cover();
         }
     }).observe(holder);
-    // The handles move the selection without telling anyone: follow it.
-    let follow: ReturnType<typeof setInterval> | undefined;
+    // The handles move the selection without telling anyone, so it is looked
+    // at every frame. While it moves, a handle is being dragged: Safari places
+    // the dragged end by what is under the finger, so the tiles stand aside
+    // (else the selection can't follow the finger past its hole, onto another
+    // line). Once it has held still a while, the holes go where its ends are now.
+    const STILL_MS = 700;
+    let follow = 0;
+    const selKey = (): string => {
+        const s = selection();
+        return s && s.rangeCount && !s.isCollapsed ? [s.anchorOffset, s.focusOffset, s.toString().length, s.anchorNode?.nodeName, s.focusNode?.nodeName].join() : "";
+    };
     const watch = (): void => {
-        clearInterval(follow);
-        follow = setInterval(() => {
-            if (!surface.isConnected || !doc.defaultView) {
-                clearInterval(follow);
+        cancelAnimationFrame(follow);
+        let last = selKey();
+        let movedAt = -Infinity;
+        const look = (now: number): void => {
+            if (!surface.isConnected || !doc.defaultView) return;
+            follow = requestAnimationFrame(look);
+            if (touching) return;
+            const key = selKey();
+            if (!key) {
+                cancelAnimationFrame(follow);
+                cover();
                 return;
             }
-            if (touching) return;
-            if (!layHoles()) {
-                clearInterval(follow);
-                cover();
+            if (key !== last) {
+                last = key;
+                movedAt = now;
+                surface.classList.add("passing");
+            } else if (surface.classList.contains("passing") && now - movedAt > STILL_MS) {
+                layHoles();
             }
-        }, 200);
+        };
+        follow = requestAnimationFrame(look);
     };
 
     // ---- clicks that only made or cleared a selection go no further ----------
@@ -235,11 +254,12 @@ function surfaceOver(holder: HTMLElement, doc: Document, frame: HTMLIFrameElemen
         const caret = caretAt(p);
         const s = selection();
         if (!caret || !s || !word) return;
-        const before = caret.compareBoundaryPoints(Range.START_TO_START, word) < 0;
-        if (before) s.setBaseAndExtent(word.endContainer, word.endOffset, caret.startContainer, caret.startOffset);
-        else if (caret.compareBoundaryPoints(Range.START_TO_END, word) > 0) {
-            s.setBaseAndExtent(word.startContainer, word.startOffset, caret.startContainer, caret.startOffset);
-        } else s.setBaseAndExtent(word.startContainer, word.startOffset, word.endContainer, word.endOffset);
+        // Before the word: from its end back to the finger; after it: from
+        // its start on to the finger; on it: just the word.
+        const where = word.comparePoint(caret.startContainer, caret.startOffset);
+        if (where < 0) s.setBaseAndExtent(word.endContainer, word.endOffset, caret.startContainer, caret.startOffset);
+        else if (where > 0) s.setBaseAndExtent(word.startContainer, word.startOffset, caret.startContainer, caret.startOffset);
+        else s.setBaseAndExtent(word.startContainer, word.startOffset, word.endContainer, word.endOffset);
     };
 
     surface.addEventListener(
