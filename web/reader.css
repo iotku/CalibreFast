@@ -1223,8 +1223,10 @@ body[data-margin="wide"] #reader-container {
     cursor: crosshair;
 }
 
-/* The magnifier needs a mouse; on touch, pinch. */
-@media (hover: none), (pointer: coarse) {
+/* Mouse-only controls (the magnifier: on touch, pinch). Only ever hidden, never
+   shown with a display of our own, so each keeps its own (a .r-btn's inline-flex
+   centres its icon). */
+@media not all and (hover: hover) and (pointer: fine) {
     .r-mouse-only {
         display: none;
     }
@@ -1232,16 +1234,6 @@ body[data-margin="wide"] #reader-container {
 
 .r-under {
     margin-top: 8px;
-}
-
-.r-mouse-only {
-    display: none;
-}
-
-@media (hover: hover) and (pointer: fine) {
-    .r-mouse-only {
-        display: block;
-    }
 }
 
 .r-indent {
