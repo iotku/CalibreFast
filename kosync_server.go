@@ -280,6 +280,7 @@ func kosyncPutHandler(w http.ResponseWriter, r *http.Request, u *User) {
 			status = "finished"
 		}
 		_ = setStatus(u.ID, b.UUID, status, "auto")
+		hcSyncTouch(u.ID, b.UUID, hcProgressDelay) // hardcover_sync.go
 	}
 	writeJSON(w, http.StatusOK, map[string]any{"document": doc, "timestamp": now / 1000})
 }
@@ -353,6 +354,7 @@ func registerKosyncRoutes(mux *http.ServeMux) {
 	mux.HandleFunc("PUT /syncs/progress", kosyncWrongURLHandler)
 	mux.HandleFunc("GET /syncs/progress/{document}", kosyncWrongURLHandler)
 	mux.HandleFunc("POST /account/sync-key", requireUser(syncKeyHandler))
+	registerHardcoverSyncRoutes(mux)
 }
 
 // ---------------------------------------------------------------------------
@@ -376,6 +378,7 @@ func formatDay(unix int64) string { return time.Unix(unix, 0).Format("2 Jan 2006
 // fillSyncKeyData adds the device sync section's data to the account page.
 func fillSyncKeyData(data *AuthPageData, r *http.Request) {
 	data.SyncURL = kosyncServerURL(r)
+	data.Hardcover = hcView(data.User, r.URL.Query().Get("hardcover"))
 	if r.URL.Query().Get("sync") == "revoked" {
 		data.SyncNotice = "Sync key revoked. Devices using it can no longer sync."
 	}

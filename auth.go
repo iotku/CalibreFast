@@ -453,6 +453,7 @@ type AuthPageData struct {
 	SyncKey      *syncKeyInfo // nil: no sync key
 	NewSyncKey   string       // shown once, right after it is generated
 	SyncNotice   string
+	Hardcover    *hcAccountView // reading sync to Hardcover (hardcover_link.go); nil: off on this server
 }
 
 // safeNext returns next if it is a path on this site, otherwise "/". It is
@@ -759,6 +760,10 @@ func adminDeleteUser(w http.ResponseWriter, r *http.Request) {
 	if target.IsAdmin && !target.Disabled && adminCount() <= 1 {
 		http.Error(w, "can't delete the last admin", http.StatusConflict)
 		return
+	}
+	// Their Hardcover sign-in is ended there too, not just deleted here.
+	if revoke, err := hcUnlinkAccount(id); err != nil || revoke == hcRevokeFailed {
+		log.Printf("deleting user %s: their Hardcover sign-in couldn't be revoked (it's deleted here): %v", target.Username, err)
 	}
 	if _, err := appDB.Exec(`DELETE FROM users WHERE id = ?`, id); err != nil {
 		http.Error(w, err.Error(), http.StatusInternalServerError)

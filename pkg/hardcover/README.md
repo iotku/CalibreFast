@@ -6,6 +6,11 @@ A client for [Hardcover's GraphQL API](https://docs.hardcover.app/api/getting-st
 that finds book series and lists their books in order. It runs server-side
 only, with a personal API token that has the `read:catalog` scope.
 
+It also signs users in with OAuth's device grant (`OAuth`: `StartDevice`,
+`PollDevice`, `Refresh`, `Revoke`) and, with a client made from a user's own
+token (`Config.TokenFunc`), reads and changes their library: `Me`,
+`FindEdition`, `UserBook`, `AddUserBook`, `SetUserBook`, `UpdateRead`.
+
 ## Usage
 
 ```go

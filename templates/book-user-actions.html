@@ -23,6 +23,14 @@
     </div>
     {{/* where you are in the book, or who set the status: under the cover */}}
     <span class="book-status-note" data-progress="{{ .Progress }}">{{ if .Progress }}{{ .Progress }}{{ else if and .Status (eq .StatusSource "auto") }}set by the reader{{ end }}</span>
+    {{ with .Hardcover }}
+    {{/* Sharing this book with the user's Hardcover account (hardcover_link.go). */}}
+    <label class="book-hardcover" title="{{ if .All }}You share every book with Hardcover (Account → Hardcover){{ else }}Send this book's reading status to your Hardcover account{{ end }}">
+        <input type="checkbox" data-hardcover-share {{ if or .Shared .All }}checked{{ end }} {{ if .All }}disabled{{ end }}>
+        Track on Hardcover
+    </label>
+    <span class="book-hardcover-note">{{ if .All }}You share every book: <a href="/account#hardcover" class="meta-link">change</a>{{ else if .Shared }}Sent to your Hardcover account as it changes{{ else }}Nothing about this book is sent to Hardcover{{ end }}</span>
+    {{ end }}
     <details class="book-shelves">
         <summary>Shelves<span class="book-shelves-count">{{ if .OnShelves }} ({{ .OnShelves }}){{ end }}</span></summary>
         <div class="book-shelves-list">

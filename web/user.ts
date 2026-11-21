@@ -252,6 +252,27 @@ function bind(controls: HTMLElement): void {
         }
     });
 
+    // Track on Hardcover: this book is sent to the user's Hardcover account
+    // only once they tick it (hardcover_link.go).
+    const hc = controls.querySelector<HTMLInputElement>("input[data-hardcover-share]");
+    const hcNote = controls.querySelector<HTMLElement>(".book-hardcover-note");
+    hc?.addEventListener("change", async () => {
+        const share = hc.checked;
+        hc.disabled = true;
+        try {
+            const got = await api<{ share: boolean }>("PUT", `/api/me/books/${encodeURIComponent(uuid)}/hardcover`, { share });
+            hc.checked = got.share;
+            if (hcNote) {
+                hcNote.textContent = got.share ? "Sent to your Hardcover account as it changes" : "Not sent any more. What was sent stays on Hardcover.";
+            }
+        } catch (err) {
+            hc.checked = !share;
+            if (hcNote) hcNote.textContent = errorMessage(err);
+        } finally {
+            hc.disabled = false;
+        }
+    });
+
     const count = controls.querySelector<HTMLElement>(".book-shelves-count");
     const paintCount = (): void => {
         const n = controls.querySelectorAll("input[data-shelf]:checked").length;
