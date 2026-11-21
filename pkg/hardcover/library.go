@@ -35,13 +35,14 @@ var (
 }`, 1}
 
 	qSyncEditions = query{`query SyncEditions($isbns: [String!]!) {
-  editions(where: {isbn_13: {_in: $isbns}}, order_by: {users_count: desc}, limit: 20) { id book_id isbn_13 pages reading_format_id }
+  editions(where: {isbn_13: {_in: $isbns}}, order_by: {users_count: desc}, limit: 20) { id book_id isbn_13 pages reading_format_id book { slug title } }
 }`, 1}
 
 	qSyncBooks = query{`query SyncBooks($ids: [Int!]!, $slugs: [String!]!) {
   books(where: {_or: [{id: {_in: $ids}}, {slug: {_in: $slugs}}], canonical_id: {_is_null: true}}, limit: 10) {
     id
     slug
+    title
     pages
     editions(where: {pages: {_gt: 0}, _or: [{reading_format_id: {_is_null: true}}, {reading_format_id: {_neq: 2}}]}, order_by: {users_count: desc}, limit: 1) { id pages }
   }
@@ -115,8 +116,10 @@ func (c *Client) Me(ctx context.Context) (Me, error) {
 // Edition is the Hardcover book (and edition, if known) a library book is.
 type Edition struct {
 	BookID    int64
-	EditionID int64 // 0: unknown
-	Pages     int   // the edition's (or book's) page count; 0: unknown
+	EditionID int64  // 0: unknown
+	Pages     int    // the edition's (or book's) page count; 0: unknown
+	Slug      string // the book's (valid, ValidSlug), or ""
+	Title     string // the book's
 }
 
 // FindEdition finds the book a library book is, best first: the edition
@@ -132,6 +135,10 @@ func (c *Client) FindEdition(ctx context.Context, isbns []string, bookID int64, 
 				BookID flexInt `json:"book_id"`
 				Pages  int     `json:"pages"`
 				Format flexInt `json:"reading_format_id"` // 0: none given
+				Book   struct {
+					Slug  string `json:"slug"`
+					Title string `json:"title"`
+				} `json:"book"`
 			} `json:"editions"`
 		}
 		if err := c.post(ctx, qSyncEditions, map[string]any{"isbns": isbns}, &data); err != nil {
@@ -146,7 +153,8 @@ func (c *Client) FindEdition(ctx context.Context, isbns []string, bookID int64, 
 			if e.ID <= 0 || e.BookID <= 0 {
 				continue
 			}
-			cand := Edition{BookID: int64(e.BookID), EditionID: int64(e.ID), Pages: max(e.Pages, 0)}
+			cand := Edition{BookID: int64(e.BookID), EditionID: int64(e.ID), Pages: max(e.Pages, 0),
+				Slug: cleanSlug(e.Book.Slug), Title: e.Book.Title}
 			audio := e.Format == formatAudio
 			if audio {
 				cand.Pages = 0
@@ -181,6 +189,7 @@ func (c *Client) FindEdition(ctx context.Context, isbns []string, bookID int64, 
 		Books []struct {
 			ID       flexInt `json:"id"`
 			Slug     string  `json:"slug"`
+			Title    string  `json:"title"`
 			Pages    int     `json:"pages"`
 			Editions []struct {
 				ID    flexInt `json:"id"`
@@ -196,7 +205,7 @@ func (c *Client) FindEdition(ctx context.Context, isbns []string, bookID int64, 
 		if b.ID <= 0 {
 			continue
 		}
-		e := Edition{BookID: int64(b.ID), Pages: max(b.Pages, 0)}
+		e := Edition{BookID: int64(b.ID), Pages: max(b.Pages, 0), Slug: cleanSlug(b.Slug), Title: b.Title}
 		if len(b.Editions) > 0 && b.Editions[0].ID > 0 {
 			e.EditionID, e.Pages = int64(b.Editions[0].ID), b.Editions[0].Pages
 		}

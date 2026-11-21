@@ -604,12 +604,14 @@ func hcPushBook(ctx context.Context, userID int64, uuid string) error {
 		return nil
 	}
 	c := hcUserClient(userID)
-	ed, found, err := hcResolveBook(ctx, c, uuid)
-	if err != nil {
-		return err
+	ed, found := hcUserMatch(userID, uuid)
+	if !found {
+		if ed, found, err = hcResolveBook(ctx, c, uuid); err != nil {
+			return err
+		}
 	}
 	if !found {
-		return &hcSkip{"not found on Hardcover (no ISBN or Hardcover identifier it knows)"}
+		return &hcSkip{hcNotFound}
 	}
 	row := hcLoadSyncRow(userID, uuid)
 	if !share.Dates {
@@ -716,8 +718,8 @@ func hcReadDates(userID int64, uuid string, row hcSyncRow) (started, finished st
 func hcResolveBook(ctx context.Context, c *hardcover.Client, uuid string) (hardcover.Edition, bool, error) {
 	var ed hardcover.Edition
 	var at int64
-	err := appDB.QueryRow(`SELECT hc_book_id, hc_edition_id, pages, resolved_at FROM hardcover_books WHERE book_uuid = ?`, uuid).
-		Scan(&ed.BookID, &ed.EditionID, &ed.Pages, &at)
+	err := appDB.QueryRow(`SELECT hc_book_id, hc_edition_id, pages, slug, title, resolved_at FROM hardcover_books WHERE book_uuid = ?`, uuid).
+		Scan(&ed.BookID, &ed.EditionID, &ed.Pages, &ed.Slug, &ed.Title, &at)
 	if err == nil {
 		ttl := hcFoundTTL
 		if ed.BookID == 0 {
@@ -731,20 +733,17 @@ func hcResolveBook(ctx context.Context, c *hardcover.Client, uuid string) (hardc
 	if err != nil {
 		return ed, false, err
 	}
-	if hardcoverEnabled() {
-		c = hcClient
-	}
-	ed, found, err := c.FindEdition(ctx, isbns, hcID, slug)
+	ed, found, err := hcCatalogClient(c).FindEdition(ctx, isbns, hcID, slug)
 	if err != nil {
 		return ed, false, err
 	}
 	if !found {
 		ed = hardcover.Edition{}
 	}
-	_, err = appDB.Exec(`INSERT INTO hardcover_books (book_uuid, hc_book_id, hc_edition_id, pages, resolved_at) VALUES (?, ?, ?, ?, ?)
+	_, err = appDB.Exec(`INSERT INTO hardcover_books (book_uuid, hc_book_id, hc_edition_id, pages, slug, title, resolved_at) VALUES (?, ?, ?, ?, ?, ?, ?)
 		ON CONFLICT (book_uuid) DO UPDATE SET hc_book_id = excluded.hc_book_id, hc_edition_id = excluded.hc_edition_id,
-			pages = excluded.pages, resolved_at = excluded.resolved_at`,
-		uuid, ed.BookID, ed.EditionID, ed.Pages, hcNow().Unix())
+			pages = excluded.pages, slug = excluded.slug, title = excluded.title, resolved_at = excluded.resolved_at`,
+		uuid, ed.BookID, ed.EditionID, ed.Pages, ed.Slug, ed.Title, hcNow().Unix())
 	return ed, found, err
 }
 
@@ -811,6 +810,9 @@ func hcSyncMerged(keep string, others []string) {
 	for _, o := range others {
 		_, _ = appDB.Exec(`INSERT OR IGNORE INTO hardcover_shared (user_id, book_uuid, shared_at)
 			SELECT user_id, ?, shared_at FROM hardcover_shared WHERE book_uuid = ?`, keep, o)
+		_, _ = appDB.Exec(`INSERT OR IGNORE INTO hardcover_user_books (user_id, book_uuid, hc_book_id, hc_edition_id, pages, slug, title, chosen_at)
+			SELECT user_id, ?, hc_book_id, hc_edition_id, pages, slug, title, chosen_at FROM hardcover_user_books WHERE book_uuid = ?`, keep, o)
+		_, _ = appDB.Exec(`DELETE FROM hardcover_user_books WHERE book_uuid = ?`, o)
 	}
 	rows, err := appDB.Query(`SELECT user_id FROM reading_status WHERE book_uuid = ?`, keep)
 	if err != nil {

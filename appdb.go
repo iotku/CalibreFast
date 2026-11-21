@@ -644,6 +644,27 @@ var migrations = []string{
 	UPDATE hardcover_sync SET due_at = CAST(strftime('%s', 'now') AS INTEGER), error = ''
 		WHERE due_at = 0 AND error LIKE 'not found on Hardcover%';
 	`,
+	// 36: hardcover_user_books: the Hardcover book a user chose for a
+	// library book, for their own sync only (any user, editor or not; the
+	// library's identifiers are left alone). It outranks hardcover_books,
+	// which now also keeps the book's slug and title, to show the match;
+	// that table is a cache, so it's emptied to be filled again with them.
+	`
+	CREATE TABLE hardcover_user_books (
+		user_id       INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+		book_uuid     TEXT    NOT NULL,
+		hc_book_id    INTEGER NOT NULL,
+		hc_edition_id INTEGER NOT NULL DEFAULT 0,
+		pages         INTEGER NOT NULL DEFAULT 0,
+		slug          TEXT    NOT NULL DEFAULT '',
+		title         TEXT    NOT NULL DEFAULT '',
+		chosen_at     INTEGER NOT NULL,
+		PRIMARY KEY (user_id, book_uuid)
+	);
+	DELETE FROM hardcover_books;
+	ALTER TABLE hardcover_books ADD COLUMN slug TEXT NOT NULL DEFAULT '';
+	ALTER TABLE hardcover_books ADD COLUMN title TEXT NOT NULL DEFAULT '';
+	`,
 }
 
 // openAppDB opens (creating if needed) and migrates the app database.

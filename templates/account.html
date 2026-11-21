@@ -145,8 +145,16 @@
             <dt>Linked</dt><dd>{{ .LinkedAt }}</dd>
             <dt>Last sent</dt><dd>{{ if .Summary.LastSent }}{{ .Summary.LastSent }}{{ else }}Nothing yet{{ end }}</dd>
             {{ if .Summary.Waiting }}<dt>Waiting</dt><dd>{{ .Summary.Waiting }} book(s){{ if .Summary.Failing }}, {{ .Summary.Failing }} being retried{{ if .Summary.LastErr }} ({{ .Summary.LastErr }}){{ end }}{{ end }}</dd>{{ end }}
-            {{ if .Summary.Skipped }}<dt>Not sent</dt><dd>{{ .Summary.Skipped }} book(s) Hardcover couldn't be matched to. A book is matched by its ISBN, or by a <code>hardcover</code> identifier; ask an editor to add one.</dd>{{ end }}
+            {{ if .Summary.Skipped }}<dt>Not sent</dt><dd>{{ .Summary.Skipped }} book(s) Hardcover couldn't find.</dd>{{ end }}
         </dl>
+        {{ if .Problems }}
+        <div class="sync-problems">
+            <p><b>Needs your attention:</b> open each book and choose <b>Find it on Hardcover</b> to pick the right book, or see why it couldn't be sent.</p>
+            <ul class="sync-shared">
+                {{ range .Problems }}<li><a href="/book/get/{{ .UUID }}" class="meta-link">{{ .Title }}</a>{{ if .Authors }} <span class="auth-muted">{{ .Authors }}</span>{{ end }}</li>{{ end }}
+            </ul>
+        </div>
+        {{ end }}
 
         {{ if not .Share.All }}
         <details class="sync-details"{{ if not .Shared }} open{{ end }}>

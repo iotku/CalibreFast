@@ -267,9 +267,9 @@ func TestLibraryCalls(t *testing.T) {
 	c := New(Config{URL: f.srv.URL, Token: "hc_at_good", UserAgent: "CalibreFast/test", Budget: NewBudget(60, 20, 100)})
 	ctx := context.Background()
 
-	f.reply["SyncEditions"] = `{"data":{"editions":[{"id":10,"book_id":1,"pages":0},{"id":11,"book_id":1,"pages":320}]}}`
+	f.reply["SyncEditions"] = `{"data":{"editions":[{"id":10,"book_id":1,"pages":0},{"id":11,"book_id":1,"pages":320,"book":{"slug":"one","title":"One"}}]}}`
 	e, ok, err := c.FindEdition(ctx, []string{"978-0-316-12908-4", "bad", "9780316129084"}, 0, "")
-	if err != nil || !ok || e != (Edition{BookID: 1, EditionID: 11, Pages: 320}) {
+	if err != nil || !ok || e != (Edition{BookID: 1, EditionID: 11, Pages: 320, Slug: "one", Title: "One"}) {
 		t.Fatalf("by ISBN: %+v %v %v", e, ok, err)
 	}
 	if isbns := f.vars["SyncEditions"]["isbns"].([]any); len(isbns) != 1 {
@@ -295,9 +295,9 @@ func TestLibraryCalls(t *testing.T) {
 	}
 
 	f.reply["SyncEditions"] = `{"data":{"editions":[]}}`
-	f.reply["SyncBooks"] = `{"data":{"books":[{"id":5,"slug":"x","pages":200,"editions":[{"id":50,"pages":210}]}]}}`
+	f.reply["SyncBooks"] = `{"data":{"books":[{"id":5,"slug":"x","title":"Five","pages":200,"editions":[{"id":50,"pages":210}]}]}}`
 	e, ok, err = c.FindEdition(ctx, []string{"9780316129084"}, 5, "../evil")
-	if err != nil || !ok || e != (Edition{BookID: 5, EditionID: 50, Pages: 210}) {
+	if err != nil || !ok || e != (Edition{BookID: 5, EditionID: 50, Pages: 210, Slug: "x", Title: "Five"}) {
 		t.Fatalf("by id: %+v %v %v", e, ok, err)
 	}
 	if slugs := f.vars["SyncBooks"]["slugs"].([]any); len(slugs) != 0 {
