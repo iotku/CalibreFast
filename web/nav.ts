@@ -49,6 +49,7 @@ const BELL = "M6 16V11a6 6 0 0 1 12 0v5l2 2H4zM10 21h4";
 const CHECK = "M5 12.5l4.5 4.5L19 7.5";
 const CLOCK = "M12 3a9 9 0 1 0 0 18a9 9 0 1 0 0-18zM12 7v5l3 2";
 const CROSS = "M6 6l12 12M18 6L6 18";
+const ALERT = "M12 7v6M12 17h.01";
 const INFO = "M12 3a9 9 0 1 0 0 18a9 9 0 1 0 0-18zM12 11v5M12 8h.01";
 const SLIDERS = "M4 6h9m4 0h3M4 12h3m4 0h9M4 18h11m4 0h1M15 4v4M9 10v4M17 16v4";
 
@@ -213,7 +214,8 @@ function init(bar: HTMLElement): void {
     // The button is a bell, with a count while any notifications are unseen
     // (opening the menu marks them seen). While a book downloads it's the
     // sync icon with its progress ring (the count still on it), and stays so
-    // for SYNC_LINGER_MS after, so a quick download isn't missed. A dot when
+    // for SYNC_LINGER_MS after, so a quick download isn't missed, with how it
+    // went: a green check, or a "!" when a download failed. A dot when
     // something waits (unsent changes, books paused or left for the next
     // library page) and nothing's unseen.
 
@@ -295,7 +297,9 @@ function init(bar: HTMLElement): void {
         btn.append(syncIcon, ring);
         let unseen = 0;
         let busyAt = 0; // when a download was last seen going
+        let busySince = 0; // when the downloads now ending began
         let lingerTimer = 0;
+        const result = el("span", { className: "tb-sync-result" });
         // Built once and updated in place: rebuilding it under the pointer
         // (or the keyboard focus) would lose a click.
         const readingLine = stateLine("Reading Sync");
@@ -385,8 +389,27 @@ function init(bar: HTMLElement): void {
             btn.classList.toggle("is-busy", !!a);
             btn.classList.toggle("has-note", !a && !unseen && (!!s.paused || waiting > 0 || unsent > 0 || !navigator.onLine));
             // The sync icon while a download goes and a moment after; else the bell.
-            if (a) busyAt = Date.now();
+            if (a) {
+                if (Date.now() - busyAt >= SYNC_LINGER_MS) busySince = Date.now();
+                busyAt = Date.now();
+            }
             const lingering = !a && Date.now() - busyAt < SYNC_LINGER_MS;
+            // How it went, once it's over (not held for a busy page, nor paused): the run's
+            // own word, or a download cut off (its report gone stale) as a failure.
+            const over = lingering && !s.held && !s.paused;
+            const r = s.lastResult && s.lastResult.at >= busySince ? s.lastResult : null;
+            const outcome = !over ? null : s.active ? "failed" : r ? (r.ok ? "ok" : "failed") : null;
+            if (outcome) {
+                if (result.dataset["outcome"] !== outcome) {
+                    result.dataset["outcome"] = outcome;
+                    result.replaceChildren(icon(outcome === "ok" ? CHECK : ALERT));
+                    result.title = outcome === "ok" ? "Synced" : "A download failed";
+                }
+                if (!result.isConnected) btn.append(result);
+            } else {
+                result.remove();
+                delete result.dataset["outcome"];
+            }
             if (lingering && !lingerTimer) {
                 lingerTimer = window.setTimeout(() => {
                     lingerTimer = 0;

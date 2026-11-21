@@ -133,10 +133,13 @@ export async function downloadForOffline(
         navigator.locks ? navigator.locks.request(`cf-book-download:${uuid}`, once) : once();
     if (opts.auto) return locked(); // the queue clears what it reported (runJobs)
     // Asked for (a pinned book): shown in the top bar while it goes, cleared after, however it ends.
+    let ok = false;
     try {
-        return await locked();
+        const result = await locked();
+        ok = result === "ok";
+        return result;
     } finally {
-        writeSync(currentUser(), { active: null });
+        writeSync(currentUser(), { active: null, lastResult: { ok, at: Date.now() } });
     }
 }
 
@@ -435,6 +438,7 @@ async function runJobs(user: string, jobs: Job[]): Promise<void> {
     const run = async (): Promise<void> => {
         let left = jobs.length;
         let savedStopped = false;
+        let anyFailed = false;
         for (const [i, job] of jobs.entries()) {
             if (paused() || currentUser() !== user) break;
             left--;
@@ -481,9 +485,17 @@ async function runJobs(user: string, jobs: Job[]): Promise<void> {
                 left++; // that one is still to come
                 break;
             }
+            if (result === "failed" || result === "no-room") anyFailed = true;
             if (result === "no-room") savedStopped = true; // no room for Saved books without dropping others
         }
-        writeSync(user, { active: null, held: false, waiting: paused() ? left : 0, next: [] });
+        writeSync(user, {
+            active: null,
+            held: false,
+            waiting: paused() ? left : 0,
+            next: [],
+            // Paused part way: nothing to say yet.
+            ...(paused() ? {} : { lastResult: { ok: !anyFailed, at: Date.now() } }),
+        });
     };
     // One tab at a time. The others wait their turn (not skip): if the tab
     // downloading closes, the next takes over, finding done what's done.

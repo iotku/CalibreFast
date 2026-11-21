@@ -6013,6 +6013,29 @@ body.selecting .book.selected .cover-wrapper {
 .tb-sync-btn.is-busy > svg:first-child {
     color: var(--status-reading);
 }
+/* How the downloads just finished went, for a moment (nav.ts SYNC_LINGER_MS). */
+.tb-sync-result {
+    position: absolute;
+    right: -3px;
+    bottom: -2px;
+    width: 14px;
+    height: 14px;
+    display: grid;
+    place-items: center;
+    border-radius: 50%;
+    color: #fff;
+    background: var(--status-finished);
+    box-shadow: 0 0 0 2px var(--bg-primary, #111);
+    pointer-events: none;
+}
+.tb-sync-result[data-outcome="failed"] {
+    background: #e57373;
+}
+.tb-sync-result svg {
+    width: 10px;
+    height: 10px;
+    stroke-width: 3;
+}
 .tb-sync-btn.has-note::after {
     content: "";
     position: absolute;
