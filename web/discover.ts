@@ -896,6 +896,15 @@ function mergeOrder(saved: string[], fixed: string[], pins: string[]): string[] 
     return out;
 }
 
+/**
+ * The class a section turned off gets. The greeting's own (the name, the
+ * quote, the sign-in line) go without the section: the reading stats
+ * summary is in it and has a switch of its own.
+ */
+function offClass(key: string | undefined): string {
+    return key === "greeting" ? "greeting-off" : "row-off";
+}
+
 /** The rows in the layout's order, and the sections turned off. */
 function applyLayout(): void {
     if (editing) return;
@@ -919,7 +928,7 @@ function applyLayout(): void {
     }
     for (const el of [byId("greeting"), byId("greeting-stats"), ...rows.values()]) {
         const key = el.dataset["key"];
-        el.classList.toggle("row-off", !!key && layout.hidden.includes(key));
+        el.classList.toggle(offClass(key), !!key && layout.hidden.includes(key));
     }
     pumpSoon();
 }
@@ -965,7 +974,7 @@ function addToggle(row: HTMLElement, head = row.querySelector<HTMLElement>(":sco
     box.addEventListener("change", () => {
         layout.hidden = layout.hidden.filter((k) => k !== key);
         if (!box.checked) layout.hidden.push(key);
-        row.classList.toggle("row-off", !box.checked);
+        row.classList.toggle(offClass(key), !box.checked);
         saveLayout();
     });
     head.append(label);

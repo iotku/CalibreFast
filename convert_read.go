@@ -3,7 +3,9 @@ package main
 // Reading Kindle books (AZW3, AZW, MOBI) in the EPUB reader.
 //
 // GET /book/as-epub/{uuid}/{format} is the book's file in that format
-// converted to EPUB (pkg/mobi). The reader opens /read?uuid=…&format=azw3
+// converted to EPUB (pkg/mobi), as is GET /import/{id}/as-epub/{format} for
+// a book waiting in the import queue (editors only). The metadata editor's
+// cover dialog reads these to offer the book's own cover and pictures. The reader opens /read?uuid=…&format=azw3
 // and reads that, exactly as it reads an .epub from /download. The library
 // is never written to: the EPUB is kept in the cache folder, named by the
 // source file's size and modification time and the converter's version, and
@@ -86,13 +88,39 @@ func asEPUBHandler(w http.ResponseWriter, r *http.Request) {
 		http.NotFound(w, r)
 		return
 	}
-	epub, err := convertedEPUB(uuid, format, src)
+	serveConvertedEPUB(w, r, uuid, format, src)
+}
+
+// importAsEPUBHandler: a waiting book's Kindle file converted to EPUB.
+func importAsEPUBHandler(w http.ResponseWriter, r *http.Request) {
+	it := importFromRequest(w, r)
+	if it == nil {
+		return
+	}
+	format := strings.ToLower(r.PathValue("format"))
+	if !isConvertedFormat(format) {
+		http.NotFound(w, r)
+		return
+	}
+	for _, f := range it.Files {
+		if f.Format == format {
+			// Cached under "import-<id>", apart from library books' uuids.
+			serveConvertedEPUB(w, r, "import-"+it.ID, format, filepath.Join(imports.itemDir(it.ID), f.Name))
+			return
+		}
+	}
+	http.NotFound(w, r)
+}
+
+// serveConvertedEPUB answers with src converted to EPUB, cached under key.
+func serveConvertedEPUB(w http.ResponseWriter, r *http.Request, key, format, src string) {
+	epub, err := convertedEPUB(key, format, src)
 	switch {
 	case errors.Is(err, mobi.ErrDRM):
 		http.Error(w, "this book is DRM-protected and can't be read here", http.StatusUnprocessableEntity)
 		return
 	case err != nil:
-		log.Printf("converting %s (%s) to EPUB: %v", uuid, format, err)
+		log.Printf("converting %s (%s) to EPUB: %v", key, format, err)
 		http.Error(w, "this book's file couldn't be converted for reading", http.StatusUnprocessableEntity)
 		return
 	}
@@ -116,7 +144,8 @@ func convertedDir() string {
 }
 
 // convertedEPUB is the path of src converted to EPUB, converting it unless
-// a copy of the file as it is now is in the cache.
+// a copy of the file as it is now is in the cache. uuid names the copies
+// (a library book's uuid, or "import-<id>").
 func convertedEPUB(uuid, format, src string) (string, error) {
 	fi, err := os.Stat(src)
 	if err != nil {

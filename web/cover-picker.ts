@@ -1,11 +1,14 @@
 // The upload page's cover picker: upload an image, or pick a page of the
-// book's PDF or EPUB from a strip of thumbnails. A click saves it. With
-// autoSelectDefault, the EPUB's cover (or the PDF's first page) is saved
+// book's PDF, EPUB or Kindle file (AZW3, AZW, MOBI: converted to EPUB by the
+// server) from a strip of thumbnails. A click saves it. With
+// autoSelectDefault, the EPUB's cover (else the Kindle file's, else the PDF's
+// first page) is saved
 // right away. The metadata editor uses cover-dialog.ts instead.
 
 import { libraryBook } from "./book-target.js";
 import { el, errorMessage } from "./dom.js";
 import { type CoverChoice, epubPages, fileChoice, pdfPages } from "./cover-sources.js";
+import { CONVERTED_FORMATS } from "./formats.js";
 
 /** Called after a cover is saved for a book. */
 type CoverSaved = ((uuid: string) => void) | null;
@@ -113,10 +116,13 @@ export function buildCoverPicker(
     };
     const pdfBtn = formats.includes("pdf") ? sourceButton("Pick from PDF pages", () => pdfPages(book)) : null;
     const epubBtn = formats.includes("epub") ? sourceButton("Pick from EPUB pages", () => epubPages(book)) : null;
+    const kindle = CONVERTED_FORMATS.find((f) => formats.includes(f));
+    const kindleBtn = kindle ? sourceButton(`Pick from ${kindle.toUpperCase()} pages`, () => epubPages(book, kindle)) : null;
 
-    // On upload: the EPUB's cover, else the PDF's first page.
+    // On upload: the EPUB's cover, else the Kindle file's, else the PDF's first page.
     if (options.autoSelectDefault) {
         if (epubBtn) void show(epubBtn, epubPages(book), true);
+        else if (kindle && kindleBtn) void show(kindleBtn, epubPages(book, kindle), true);
         else if (pdfBtn) void show(pdfBtn, pdfPages(book), true);
     }
 
