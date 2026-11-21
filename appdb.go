@@ -706,6 +706,12 @@ var migrations = []string{
 	);
 	CREATE INDEX notifications_user ON notifications (user_id, created_at);
 	`,
+	// 40: reading_status by book, for "who has this book" (the savers of a
+	// placeholder being replaced, notifications.go; Hardcover sync's
+	// lookups): the primary key leads with user_id.
+	`
+	CREATE INDEX reading_status_book ON reading_status (book_uuid);
+	`,
 }
 
 // openAppDB opens (creating if needed) and migrates the app database.

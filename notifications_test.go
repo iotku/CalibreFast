@@ -215,3 +215,18 @@ func TestSavedPlaceholderKeepsOwnStatus(t *testing.T) {
 		t.Errorf("notifications %d after a deletion, want 1", n)
 	}
 }
+
+// Finding a placeholder's savers uses the index on reading_status's
+// book_uuid (migration 40), not a scan of everyone's statuses.
+func TestPlaceholderSaversIndexed(t *testing.T) {
+	setupTestAppDB(t)
+	var id, parent, unused int
+	var detail string
+	if err := appDB.QueryRow(`EXPLAIN QUERY PLAN SELECT user_id FROM reading_status WHERE book_uuid = ? AND status = 'wanted'`, "x").
+		Scan(&id, &parent, &unused, &detail); err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(detail, "reading_status_book") {
+		t.Errorf("plan %q doesn't use reading_status_book", detail)
+	}
+}
