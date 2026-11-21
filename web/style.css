@@ -2632,17 +2632,49 @@ body.book-standalone {
     margin: 0.25rem 0;
 }
 
-.search-links a {
-    color: var(--text-primary);
-    padding: 0.1rem 0.5rem;
-    border-radius: 999px;
-    background: var(--bg-secondary);
-    text-decoration: none;
+.search-links {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: baseline;
+    gap: 0.4rem 0.35rem;
+    margin: 0.4rem 0;
+}
+
+.search-links-label {
+    min-width: 4.5rem;
     margin-right: 0.15rem;
 }
 
+.search-links a,
+.search-links-more {
+    color: var(--text-primary);
+    padding: 0.15rem 0.6rem;
+    border-radius: 999px;
+    background: var(--bg-secondary);
+    text-decoration: none;
+    line-height: 1.4;
+    max-width: 100%;
+    overflow-wrap: anywhere;
+}
+
+.search-links-more {
+    border: 1px solid var(--text-muted);
+    background: transparent;
+    font: inherit;
+    cursor: pointer;
+}
+
+.search-links [hidden] {
+    display: none;
+}
+
+.search-links-cut {
+    color: var(--text-muted);
+}
+
 .search-links a:hover,
-.search-links a:focus-visible {
+.search-links a:focus-visible,
+.search-links-more:hover {
     text-decoration: underline;
 }
 

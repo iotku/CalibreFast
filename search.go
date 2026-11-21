@@ -421,9 +421,19 @@ type searchLink struct {
 type searchLinkGroup struct {
 	Label string
 	Links []searchLink
+	More  int // matches past searchLinksMax, not listed
 }
 
-const searchLinksPerGroup = 5
+// Shown at first: searchLinksShown of each kind; the rest, up to
+// searchLinksMax (which bounds the page's size), behind "Show all".
+const (
+	searchLinksShown = 20
+	searchLinksMax   = 200
+)
+
+// Shown are the links listed at first, Hidden those behind "Show all".
+func (g searchLinkGroup) Shown() []searchLink  { return g.Links[:min(len(g.Links), searchLinksShown)] }
+func (g searchLinkGroup) Hidden() []searchLink { return g.Links[min(len(g.Links), searchLinksShown):] }
 
 // links are the authors, series and tags that match every word of the query
 // (at a word's start or better) and are on books found, most books first.
@@ -493,14 +503,15 @@ func (r *searchResult) links() []searchLinkGroup {
 			}
 			return strings.Compare(names[k.key][a], names[k.key][b])
 		})
-		if len(ids) > searchLinksPerGroup {
-			ids = ids[:searchLinksPerGroup]
-		}
 		if len(ids) == 0 {
 			continue
 		}
 		c := categoryByKey(k.key)
 		g := searchLinkGroup{Label: c.Title}
+		if len(ids) > searchLinksMax {
+			g.More = len(ids) - searchLinksMax
+			ids = ids[:searchLinksMax]
+		}
 		for _, id := range ids {
 			g.Links = append(g.Links, searchLink{Name: names[k.key][id], Href: c.href(names[k.key][id])})
 		}

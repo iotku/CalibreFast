@@ -88,7 +88,7 @@ Authors are shown by name everywhere ("Alan A. A. Donovan & Brian W. Kernighan")
 - **`"quotes"`** keep words together; **`-word`** leaves out books that match.
 - **One field:** `author:`, `title:`, `series:`, `tag:`, `publisher:`, `lang:` (`fra`, `fr` or `french`), `format:` (`epub`) and `isbn:` (a whole ISBN-10 or -13, with or without dashes, or part of one). A bare ISBN works too.
 - **Order:** title matches first, then author, series, tag and publisher; a whole name beats its start, which beats a word's start. Equal books are listed series by series, in reading order.
-- **Matching authors, series and tags** (those that match every word) are linked above the results, so `discworld` offers the series page.
+- **Matching authors, series and tags** (those that match every word) are linked above the results, most books first, so `discworld` offers the series page. Each kind shows its first 20; **N more** shows the rest (up to 200, then a count of those left out) and **Show fewer** hides them again.
 
 ## Metadata editor
 
