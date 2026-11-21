@@ -55,6 +55,7 @@ export function setupLoupe(container: HTMLElement, getView: () => PdfView | null
     /** Slides the tile so the point under the pointer is at the lens's centre. */
     function place(t: Tile, px: number, py: number, scale: number): void {
         const s = t.canvas.style;
+        t.canvas.hidden = false; // hidden while the pointer was over another page
         s.width = `${t.w * scale}px`;
         s.height = `${t.h * scale}px`;
         s.left = `${LENS_W / 2 - (px - t.x) * scale}px`;
@@ -112,16 +113,22 @@ export function setupLoupe(container: HTMLElement, getView: () => PdfView | null
         drawing = task;
         task.promise
             .then(() => {
+                drawing = null;
+                if (!on) return; // turned off meanwhile
                 tile?.canvas.remove();
                 tile = next;
                 lens.append(canvas);
+                // Place it before this frame is painted. pdf.js finishes inside an
+                // animation frame, so one requested now would come a frame late,
+                // and the new tile would show unplaced (at the lens's corner, at
+                // device-pixel size) for a frame: the lens's content would jump.
+                if (frame) cancelAnimationFrame(frame);
+                update();
             })
             .catch(() => {
                 /* cancelled, or the page went away */
-            })
-            .finally(() => {
                 drawing = null;
-                schedule(); // the pointer has probably moved on
+                schedule();
             });
     }
     function schedule(): void {
