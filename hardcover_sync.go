@@ -32,12 +32,6 @@ import (
 	"github.com/iotku/CalibreFast/pkg/isbn"
 )
 
-// defaultHardcoverClientID is CalibreFast's OAuth app on Hardcover (a
-// public "Mobile, desktop, or CLI" app with the device grant). The id is
-// public by design: anyone can read it from the binary. Admins may use
-// their own with CF_HARDCOVER_CLIENT_ID.
-const defaultHardcoverClientID = ""
-
 var (
 	// noHardcoverSync (-no-hardcover-sync) turns off linking Hardcover
 	// accounts, and sending to linked ones.
@@ -68,12 +62,14 @@ const (
 	hcMaxBackoff = 24 * time.Hour
 )
 
+// configureHardcoverSync reads the server's own OAuth app on Hardcover
+// (CF_HARDCOVER_CLIENT_ID). No client id ships with CalibreFast: a public
+// client has no secret, so anyone could start sign-ins under a shared one.
+// With one app per server, the approval screen on Hardcover names who
+// actually runs the server, and only that admin answers for it.
 func configureHardcoverSync() {
 	hcOAuth, hcRevoker = nil, nil
 	id := strings.TrimSpace(os.Getenv("CF_HARDCOVER_CLIENT_ID"))
-	if id == "" {
-		id = defaultHardcoverClientID
-	}
 	if id != "" {
 		hcRevoker = &hardcover.OAuth{ClientID: id, UserAgent: lookupUserAgent}
 	}
