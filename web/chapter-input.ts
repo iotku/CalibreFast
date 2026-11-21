@@ -247,6 +247,7 @@ function surfaceOver(holder: HTMLElement, doc: Document, frame: HTMLIFrameElemen
         (e) => {
             touching = true;
             lastTouch = e.timeStamp;
+            swallow = false; // (a long press may have had no click to swallow)
             clearTimeout(press?.timer);
             press = null;
             word = null;
@@ -264,9 +265,10 @@ function surfaceOver(holder: HTMLElement, doc: Document, frame: HTMLIFrameElemen
                 x: t.clientX,
                 y: t.clientY,
                 timer: setTimeout(() => {
-                    if (!press || !selectWord(p)) return;
+                    if (!press) return;
+                    swallow = true; // a long press is never a tap
+                    if (!selectWord(p)) return;
                     word = selection()?.getRangeAt(0).cloneRange() ?? null;
-                    swallow = true;
                     surface.classList.add("passing");
                     open(true);
                 }, LONG_PRESS_MS),
@@ -317,6 +319,7 @@ function surfaceOver(holder: HTMLElement, doc: Document, frame: HTMLIFrameElemen
     const isMouse = (e: MouseEvent): boolean => e.timeStamp - lastTouch > 1000;
     surface.addEventListener("mousedown", (e) => {
         if (e.button !== 0 || !isMouse(e)) return;
+        swallow = false;
         const s = selection();
         anchor = null;
         dragged = false;
