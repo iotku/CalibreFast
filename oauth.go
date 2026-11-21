@@ -348,7 +348,7 @@ func resolveOAuthUser(provider string, ou *oauthUser, linkUserID int64, invite s
 		if err != nil {
 			return 0, "", err
 		}
-		if u.Disabled {
+		if u.Locked() {
 			return 0, "", errDisabled
 		}
 		// keep display details fresh

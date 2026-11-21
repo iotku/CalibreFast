@@ -156,8 +156,8 @@ func adminCreateLink(w http.ResponseWriter, r *http.Request) {
 			http.Error(w, "no such user", http.StatusNotFound)
 			return
 		}
-		if u.Disabled {
-			http.Error(w, "that user is disabled", http.StatusConflict)
+		if u.Locked() {
+			http.Error(w, "that user is disabled or deleted", http.StatusConflict)
 			return
 		}
 		userID, target = u.ID, u
@@ -290,7 +290,7 @@ func linkHandler(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 		u, err := getUserByID(link.UserID)
-		if err != nil || u.Disabled {
+		if err != nil || u.Locked() {
 			data.Error = "This account is disabled."
 			renderLinkPage(w, data, http.StatusForbidden)
 			return

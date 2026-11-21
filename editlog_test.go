@@ -97,6 +97,7 @@ var (
 		{"POST", "/api/admin/users"},
 		{"PATCH", "/api/admin/users/1"},
 		{"DELETE", "/api/admin/users/1"},
+		{"POST", "/api/admin/users/1/restore"},
 		{"GET", "/api/admin/links"},
 		{"POST", "/api/admin/links"},
 		{"GET", "/admin/activity"},

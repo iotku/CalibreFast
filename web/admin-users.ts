@@ -25,7 +25,8 @@ table.addEventListener("change", async (e) => {
     }
 });
 
-table.addEventListener("click", async (e) => {
+/** Row actions, for active users and for deleted accounts alike. */
+async function rowAction(e: Event): Promise<void> {
     const btn = e.target instanceof Element ? e.target.closest<HTMLButtonElement>("button[data-action]") : null;
     const row = btn?.closest<HTMLTableRowElement>("tr");
     if (!btn || !row) return;
@@ -52,11 +53,17 @@ table.addEventListener("click", async (e) => {
                 row.remove();
                 say(`Deleted ${name}.`);
                 break;
+            case "restore":
+                await api("POST", `/api/admin/users/${id}/restore`);
+                location.reload();
+                break;
         }
     } catch (err) {
         say(errorMessage(err), true);
     }
-});
+}
+table.addEventListener("click", rowAction);
+document.getElementById("deleted-table")?.addEventListener("click", rowAction);
 
 byId("add-user", HTMLFormElement).addEventListener("submit", async (e) => {
     e.preventDefault();
