@@ -650,6 +650,10 @@ func meHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	me["prefs"] = prefs
+	// Unseen notifications: the bar's bell (notifications.go).
+	if n := unseenNotifications(u.ID); n > 0 {
+		me["notifications"] = n
+	}
 	if r.URL.Query().Get("reading") != "" {
 		m, _, err := userReading(u)
 		if err != nil {
@@ -876,6 +880,7 @@ func registerAuthRoutes() {
 	registerKosyncRoutes(http.DefaultServeMux)
 	registerPrefsRoutes()
 	registerStatsRoutes()
+	registerNotificationRoutes()
 }
 
 func withUserCtx(r *http.Request, u *User) context.Context {

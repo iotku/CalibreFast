@@ -1,0 +1,44 @@
+<!doctype html>
+<html lang="en">
+<head>
+    <meta charset="utf-8">
+    {{ robotsMeta }}
+    {{ appHead }}
+    <title>Notifications · {{ .Title }}</title>
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <link rel="stylesheet" href="{{ asset "style.css" }}">
+</head>
+<body class="auth-body">
+{{ $tb := topbar "Title" "Notifications" "Active" "notifications" }}
+{{ template "topbar-start" $tb }}
+{{ template "topbar-end" $tb }}
+<!-- notifications.go; web/notifications.ts marks them seen and dismisses them -->
+<main class="auth-main auth-wide">
+    <section class="auth-card notifications">
+        <div class="notifications-head">
+            <h1>Notifications</h1>
+            {{ if .Notifications }}<button type="button" class="btn-standard" id="notifications-clear">Dismiss all</button>{{ end }}
+        </div>
+        <p class="auth-muted notifications-empty"{{ if .Notifications }} hidden{{ end }}>Nothing new. Save a book that isn't in the library yet (on its page) to be told here when it arrives.</p>
+        {{ if .Notifications }}
+        <ul class="notification-list">
+            {{ range .Notifications }}
+            <li class="notification{{ if not .Seen }} is-new{{ end }}" data-id="{{ .ID }}">
+                <div class="notification-text">
+                    {{ if .Href }}<a href="{{ .Href }}" class="meta-link">{{ .Title }}</a>{{ else }}{{ .Title }}{{ end }}, which you saved, is in the library now.
+                    {{ if .OnDeck }}You finished the book before it, so it's On deck.{{ else }}It's in your Saved books.{{ end }}
+                    <span class="notification-when">{{ .When }}</span>
+                </div>
+                <button type="button" class="tb-icon notification-dismiss" aria-label="Dismiss" title="Dismiss">
+                    <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M6 6l12 12M18 6L6 18"/></svg>
+                </button>
+            </li>
+            {{ end }}
+        </ul>
+        {{ end }}
+        <p id="notifications-status" class="auth-notice" role="status" hidden></p>
+    </section>
+</main>
+<script type="module" src="{{ asset "notifications.js" }}"></script>
+</body>
+</html>

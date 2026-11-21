@@ -28,6 +28,7 @@ import "./book-files.js"; // the book page's Files row (admins)
 import "./series-shelf.js"; // "Add series to shelf" (also the series page's, via app-htmx.ts)
 import "./offline-control.js"; // "On this device" and keeping the book (book.html)
 import "./read-link.js"; // the cover opens the format last read (book.html)
+import "./placeholder-save.js"; // Save in a placeholder's popup (placeholder.html)
 import { ICONS, cachedMarks, changeWaits, statusOf, type BookChange, type BookState } from "./reading.js";
 import { lastKnownUser } from "./local-keys.js";
 import { noteMark, pendingMark } from "./pending-marks.js";

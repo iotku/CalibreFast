@@ -45,6 +45,7 @@ const BOOKMARK = "M6 3h12a1 1 0 0 1 1 1v17l-7-4.5L5 21V4a1 1 0 0 1 1-1z";
 const UPLOAD = "M12 15V4M7 9l5-5 5 5M4 15v4a1 1 0 0 0 1 1h14a1 1 0 0 0 1-1v-4";
 const INBOX = "M3 13l3-8h12l3 8M3 13v5a1 1 0 0 0 1 1h16a1 1 0 0 0 1-1v-5M3 13h5l1 2h6l1-2h5";
 const SYNC = "M20 11a8 8 0 0 0-14.3-4.9L4 8M4 4v4h4M4 13a8 8 0 0 0 14.3 4.9L20 16m0 4v-4h-4";
+const BELL = "M6 16V11a6 6 0 0 1 12 0v5l2 2H4zM10 21h4";
 const SLIDERS = "M4 6h9m4 0h3M4 12h3m4 0h9M4 18h11m4 0h1M15 4v4M9 10v4M17 16v4";
 
 /**
@@ -171,6 +172,8 @@ function init(bar: HTMLElement): void {
         canAdmin: boolean;
         /** Books waiting in the import queue; null when there is no queue to show. */
         imports?: number | null;
+        /** Unseen notifications (notifications.go). */
+        notifications?: number;
     }
     const cache = {
         get(): string | null {
@@ -364,6 +367,15 @@ function init(bar: HTMLElement): void {
             importsShortcut.append(el("span", { className: "tb-badge", textContent: imports > 99 ? "99+" : String(imports) }));
         }
 
+        // Something to tell (a saved book is in the library now): a bell while any are unseen.
+        const unseen = st.notifications ?? 0;
+        let bell: HTMLAnchorElement | null = null;
+        if (unseen) {
+            bell = shortcut("/me/notifications", `${unseen} new notification${unseen === 1 ? "" : "s"}`, BELL, "notifications");
+            bell.classList.add("tb-has-badge");
+            bell.append(el("span", { className: "tb-badge", textContent: unseen > 99 ? "99+" : String(unseen) }));
+        }
+
         const btn = el("button", { type: "button", className: "tb-user-btn", title: name, ariaLabel: `Account menu for ${name}` });
         btn.setAttribute("aria-haspopup", "true");
         btn.setAttribute("aria-expanded", "false");
@@ -390,6 +402,7 @@ function init(bar: HTMLElement): void {
                 mark(el("a", { href: "/me/finished", textContent: "Finished" }), "finished"),
                 mark(el("a", { href: "/me/dropped", textContent: "Dropped" }), "dropped"),
                 mark(el("a", { href: "/me/stats", textContent: "Reading stats" }), "stats"),
+                mark(el("a", { href: "/me/notifications", textContent: unseen ? `Notifications (${unseen})` : "Notifications" }), "notifications"),
             ],
             [
                 ...(st.canEdit ? [mark(el("a", { href: "/upload", textContent: "Upload books" }), "upload")] : []),
@@ -422,6 +435,7 @@ function init(bar: HTMLElement): void {
         });
 
         userEl.replaceChildren(
+            ...(bell ? [bell] : []),
             ...(importsShortcut ? [importsShortcut] : []),
             ...(st.canEdit ? [shortcut("/upload", "Upload books", UPLOAD, "upload")] : []),
             shortcut("/me/saved", "Saved", BOOKMARK, "saved"),
@@ -482,6 +496,7 @@ function init(bar: HTMLElement): void {
                 canEdit: !!body.can_edit_library,
                 canAdmin: !!body.can_admin_library,
                 imports: body.pending_imports ?? null,
+                notifications: body.notifications ?? 0,
             };
             const json = JSON.stringify(st);
             cache.set(json);

@@ -68,6 +68,8 @@ export interface MeResponse {
      * can review them, when there is a watch folder or something is waiting.
      */
     pending_imports?: number;
+    /** Unseen notifications (notifications.go); absent when none. */
+    notifications?: number;
     /** The user's reading marks, when asked for (?reading=1), as /api/me/reading has them. */
     reading?: StoredMarks;
     /** The tag of the user's marks (listtag.go), with ?reading=1. */
