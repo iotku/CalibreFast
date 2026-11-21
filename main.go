@@ -433,63 +433,6 @@ func main() {
 	serveLibraryHTTP()
 }
 
-const searchWhere = `
-FROM books b
-LEFT JOIN books_authors_link bal ON bal.book = b.id
-LEFT JOIN authors a ON a.id = bal.author
-WHERE (b.title LIKE ? OR ` + authorNameSQL + ` LIKE ? OR a.sort LIKE ?)`
-
-// searchCount counts the books matching q.
-func searchCount(q string) int {
-	like := "%" + q + "%"
-	var count int
-	err := calibreDB.QueryRow(`SELECT COUNT(DISTINCT b.id) `+searchWhere, like, like, like).Scan(&count)
-	if err != nil {
-		log.Println("search count error:", err)
-		return 0
-	}
-	return count
-}
-
-func searchHandler(w http.ResponseWriter, r *http.Request) {
-	q := r.URL.Query().Get("q")
-	if q == "" {
-		http.Error(w, "missing q", http.StatusBadRequest)
-		return
-	}
-
-	page, _ := strconv.Atoi(r.URL.Query().Get("page"))
-	if page < 1 {
-		page = 1
-	}
-
-	like := "%" + q + "%"
-	offset := (page - 1) * booksPerPage
-
-	query := `
-SELECT
-    b.uuid,
-    b.title,
-    ` + bookAuthorsSQL + ` AS authors,
-    b.pubdate,
-    b.path,
-    b.last_modified` + searchWhere + `
-GROUP BY b.id
-ORDER BY b.sort
-LIMIT ? OFFSET ?`
-
-	rows, err := calibreDB.Query(query, like, like, like, booksPerPage, offset)
-	if err != nil {
-		log.Println("search error:", err)
-		http.Error(w, "search failed", http.StatusInternalServerError)
-		return
-	}
-	defer func(rows *sql.Rows) {
-		logErr(rows.Close(), "could not close rows in searchHandler")
-	}(rows)
-	logErr(encodeBooksJSONFromRows(rows, w), "failed to encode search results")
-}
-
 // coverStamp turns a Calibre last_modified value into the ?t= cache-buster
 // used on cover URLs ("20060102150405"). Every page must produce the same
 // string for a book, or the browser treats the thumbnail URLs as different
@@ -697,7 +640,9 @@ func serveLibraryHTTP() {
 		q := strings.TrimSpace(r.URL.Query().Get("q"))
 		data := SearchPageData{Title: SiteTitle, Query: q}
 		if q != "" {
-			data.TotalBooks = searchCount(q)
+			res := runSearch(q)
+			data.TotalBooks = len(res.slots)
+			data.Links = res.links()
 		}
 		err := templates.ExecuteTemplate(w, "search.html", data)
 		if err != nil {

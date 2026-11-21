@@ -37,14 +37,19 @@ type catalogBook struct {
 	HasCover  bool     // books.has_cover
 	Formats   []string // lower case, from the data table ("epub", "pdf", …)
 	Removed   bool     // recycled since the last full build
+	Publisher int32    // 0 if none
+	LangIDs   []int32
+	ISBNs     []string // identifiers of type isbn, digits (and X) only (search.go)
 }
 
 type catalog struct {
-	books       []catalogBook // full build: Latest order; later additions at the end
-	byUUID      map[string]int32
-	tagNames    map[int32]string
-	authorNames map[int32]string
-	seriesNames map[int32]string
+	books          []catalogBook // full build: Latest order; later additions at the end
+	byUUID         map[string]int32
+	tagNames       map[int32]string
+	authorNames    map[int32]string
+	seriesNames    map[int32]string
+	publisherNames map[int32]string
+	langCodes      map[int32]string // languages.lang_code ("eng")
 	// shuffle: every slot of books in a random order, made at each start
 	// (Shuffle, docs/notes/Discover.md section 2). Books added while running
 	// go at the end, so the shuffle page files before them don't change.
@@ -55,10 +60,12 @@ var libraryCatalog atomic.Pointer[catalog]
 
 func newCatalog() *catalog {
 	return &catalog{
-		byUUID:      map[string]int32{},
-		tagNames:    map[int32]string{},
-		authorNames: map[int32]string{},
-		seriesNames: map[int32]string{},
+		byUUID:         map[string]int32{},
+		tagNames:       map[int32]string{},
+		authorNames:    map[int32]string{},
+		seriesNames:    map[int32]string{},
+		publisherNames: map[int32]string{},
+		langCodes:      map[int32]string{},
 	}
 }
 
@@ -224,8 +231,44 @@ func loadCatalogBooks(db queryer, uuids []string, names *catalog) ([]catalogBook
 	if err != nil {
 		return nil, err
 	}
+	err = scanLinks(db, `SELECT l.book, p.id, p.name FROM books_publishers_link l JOIN publishers p ON p.id = l.publisher`+where, args,
+		func(book int64, id int32, name string) {
+			if i, ok := at[book]; ok {
+				books[i].Publisher = id
+				names.publisherNames[id] = name
+			}
+		})
+	if err != nil {
+		return nil, err
+	}
+	err = scanLinks(db, `SELECT l.book, g.id, g.lang_code FROM books_languages_link l JOIN languages g ON g.id = l.lang_code`+where+` ORDER BY l.item_order`, args,
+		func(book int64, id int32, code string) {
+			if i, ok := at[book]; ok {
+				books[i].LangIDs = append(books[i].LangIDs, id)
+				names.langCodes[id] = code
+			}
+		})
+	if err != nil {
+		return nil, err
+	}
+	isbnWhere := ` WHERE lower(l.type) = 'isbn'`
+	if where != "" {
+		isbnWhere = where + ` AND lower(l.type) = 'isbn'`
+	}
+	err = scanLinks(db, `SELECT l.book, 0, l.val FROM identifiers l`+isbnWhere, args,
+		func(book int64, _ int32, val string) {
+			if i, ok := at[book]; ok {
+				if n := normalizeISBN(val); n != "" && !slices.Contains(books[i].ISBNs, n) {
+					books[i].ISBNs = append(books[i].ISBNs, n)
+				}
+			}
+		})
+	if err != nil {
+		return nil, err
+	}
 	for i := range books {
 		books[i].TagIDs = slices.Clip(books[i].TagIDs)
+		books[i].LangIDs = slices.Clip(books[i].LangIDs)
 	}
 	return books, nil
 }
@@ -360,7 +403,7 @@ func catalogFlush() error {
 	}
 	libraryCatalog.Store(next)
 	gapsCatalogChanged(old, next, append(reread, removed...)) // only their series (series_gaps.go)
-	placeholdersCatalogChanged(next, reread) // a book edited to be a placeholder's (placeholder_resolve.go)
+	placeholdersCatalogChanged(next, reread)                  // a book edited to be a placeholder's (placeholder_resolve.go)
 	scheduleCatalogSnapshot()
 	refreshFeatured() // a title or cover on a featured shelf
 	refreshTagRows()  // the tags' counts
@@ -371,12 +414,14 @@ func catalogFlush() error {
 // again and those in removed marked removed. old isn't modified.
 func applyCatalogChanges(db queryer, old *catalog, reread, removed []string) (*catalog, error) {
 	c := &catalog{
-		books:       slices.Clone(old.books),
-		byUUID:      maps.Clone(old.byUUID),
-		tagNames:    old.tagNames,
-		authorNames: old.authorNames,
-		seriesNames: old.seriesNames,
-		shuffle:     old.shuffle,
+		books:          slices.Clone(old.books),
+		byUUID:         maps.Clone(old.byUUID),
+		tagNames:       old.tagNames,
+		authorNames:    old.authorNames,
+		seriesNames:    old.seriesNames,
+		publisherNames: old.publisherNames,
+		langCodes:      old.langCodes,
+		shuffle:        old.shuffle,
 	}
 	names := newCatalog()
 	found := map[string]bool{}
@@ -422,5 +467,7 @@ func applyCatalogChanges(db queryer, old *catalog, reread, removed []string) (*c
 	merge(&c.tagNames, names.tagNames)
 	merge(&c.authorNames, names.authorNames)
 	merge(&c.seriesNames, names.seriesNames)
+	merge(&c.publisherNames, names.publisherNames)
+	merge(&c.langCodes, names.langCodes)
 	return c, nil
 }

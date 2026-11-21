@@ -82,7 +82,13 @@ Authors are shown by name everywhere ("Alan A. A. Donovan & Brian W. Kernighan")
 
 ## Search
 
-`/search?q=…` matches titles and authors, using the same grid and navigation as the library.
+`/search?q=…` lists matching books on the same grid as the library, answered from memory (it never reads `metadata.db`).
+
+- **Every word must match**, in any of title, author, series, tag, publisher or ISBN: `tolkien hobbit` finds The Hobbit. A word matches the start of a word (`tolk` → Tolkien); words of four letters or more also match inside one. Case, accents and punctuation don't count (`emile` → Émile).
+- **`"quotes"`** keep words together; **`-word`** leaves out books that match.
+- **One field:** `author:`, `title:`, `series:`, `tag:`, `publisher:`, `lang:` (`fra`, `fr` or `french`), `format:` (`epub`) and `isbn:` (a whole ISBN-10 or -13, with or without dashes, or part of one). A bare ISBN works too.
+- **Order:** title matches first, then author, series, tag and publisher; a whole name beats its start, which beats a word's start. Equal books are listed series by series, in reading order.
+- **Matching authors, series and tags** (those that match every word) are linked above the results, so `discworld` offers the series page.
 
 ## Metadata editor
 

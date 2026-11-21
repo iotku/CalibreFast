@@ -26,7 +26,7 @@ CalibreFast reads directly from your Calibre `metadata.db` and serves your libra
 - **Fast browsing.** Scroll your whole library in one grid, or jump straight to any page.
 - **Book details.** A popup for each book with read and download buttons for every format (EPUB, PDF, MOBI, AZW3, DJVU).
 - **Read in the browser:** EPUB and PDF readers.
-- **Search** by title or author.
+- **Search** by title, author, series, tag, publisher or ISBN, with field filters (`author:`, `lang:`, `format:`…).
 - **Browse by author, publisher, tag or language,** with language codes shown as names (`eng` → English).
 - **Groups** merge values that mean the same thing, like `en`/`eng`/`en-US` → English, without editing any books.
 - **Metadata editor:** tag and language chips, autocomplete from your library, a formatted description editor, side-by-side comparison of your changes, and safeguards so curated metadata isn't lost. It can find ISBNs in the book's own files and look books up on Open Library by ISBN or by title and author (Google Books or Hardcover on request, with an API key), offering the matches you tick to pick values from (identical values share one pill), or accepting one in one go.

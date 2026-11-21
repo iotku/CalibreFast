@@ -37,7 +37,7 @@ import (
 //
 // 3: author names with a comma, which metadata.db keeps as "|", are read
 // with the comma (authorNameSQL); a snapshot from before kept the "|".
-const catalogSnapshotVersion = 3
+const catalogSnapshotVersion = 4 // 4: publishers, languages, ISBNs (search.go)
 
 type libraryKey struct {
 	Library     string // -basedir, absolute
@@ -52,12 +52,14 @@ type libraryKey struct {
 }
 
 type catalogSnapshot struct {
-	Version     int
-	Key         libraryKey
-	Books       []catalogBook
-	TagNames    map[int32]string
-	AuthorNames map[int32]string
-	SeriesNames map[int32]string
+	Version        int
+	Key            libraryKey
+	Books          []catalogBook
+	TagNames       map[int32]string
+	AuthorNames    map[int32]string
+	SeriesNames    map[int32]string
+	PublisherNames map[int32]string
+	LangCodes      map[int32]string
 }
 
 func catalogSnapshotPath() string { return filepath.Join(cacheDir, "catalog.snap") }
@@ -113,11 +115,13 @@ func loadCatalogSnapshot(key libraryKey) (*catalog, bool) {
 		return nil, false
 	}
 	c := &catalog{
-		books:       s.Books,
-		byUUID:      make(map[string]int32, len(s.Books)),
-		tagNames:    nonNil(s.TagNames),
-		authorNames: nonNil(s.AuthorNames),
-		seriesNames: nonNil(s.SeriesNames),
+		books:          s.Books,
+		byUUID:         make(map[string]int32, len(s.Books)),
+		tagNames:       nonNil(s.TagNames),
+		authorNames:    nonNil(s.AuthorNames),
+		seriesNames:    nonNil(s.SeriesNames),
+		publisherNames: nonNil(s.PublisherNames),
+		langCodes:      nonNil(s.LangCodes),
 	}
 	for i := range c.books {
 		c.byUUID[c.books[i].UUID] = int32(i)
@@ -143,6 +147,7 @@ func writeCatalogSnapshot(c *catalog, key libraryKey) error {
 	err := gob.NewEncoder(&buf).Encode(catalogSnapshot{
 		Version: catalogSnapshotVersion, Key: key, Books: c.books,
 		TagNames: c.tagNames, AuthorNames: c.authorNames, SeriesNames: c.seriesNames,
+		PublisherNames: c.publisherNames, LangCodes: c.langCodes,
 	})
 	if err != nil {
 		return err
