@@ -7,6 +7,7 @@ import { createSyncIndicator } from "./sync-indicator.js";
 import { keepCover } from "./offline-books.js";
 import { byId, el, errorMessage, maybeId, modalOpen } from "./dom.js";
 import { openEpub } from "./epub-open.js";
+import { chapterInput } from "./chapter-input.js";
 import { allowEpubChapters } from "./trusted.js";
 import { canInflate, openBuffer, openRemote, type EpubSource } from "./epub-source.js";
 import { syncGuestBook } from "./guest-sync.js";
@@ -492,12 +493,6 @@ rendition.display = (target?: string): Promise<void> => {
     jumped = true;
     return display(target);
 };
-// Using the chapter itself (its own document) is reading too.
-rendition.on("rendered", (_section, view) => {
-    for (const ev of ["keydown", "pointerdown", "wheel", "touchstart"]) {
-        view.document.addEventListener(ev, () => activity?.touch(), { passive: true });
-    }
-});
 
 function countPages(cfi: string, endCfi: string | null, atEnd: boolean): void {
     const n = pageAt(cfi)?.n ?? null;
@@ -677,20 +672,31 @@ container.addEventListener("wheel", onWheel, { passive: false });
 
 /**
  * Each chapter is its own document (an iframe), so presses, taps, swipes,
- * the wheel and keys are listened for there. A tap on the left or right
- * third turns the page; in the middle it shows or hides the bars.
+ * the wheel and keys are listened for there, or (Safari) on a surface over
+ * it: see chapter-input.ts. A tap on the left or right third turns the
+ * page; in the middle it shows or hides the bars.
  */
 rendition.on("rendered", (section, view) => {
     const doc = view.document;
-    const frameTop = (): number => doc.defaultView?.frameElement?.getBoundingClientRect().top ?? 0;
-    doc.addEventListener("mousemove", (e) => chrome.pointerAt(frameTop() + e.clientY));
-    // Out of the chapter: to the page around it (whose own mousemove follows) or the window.
-    doc.addEventListener("mouseout", (e) => {
-        if (!e.relatedTarget) chrome.pointerAt(frameTop() + e.clientY, true);
-    });
+    const input = chapterInput(view);
+    const on = input.target;
+    // Using the chapter itself is reading too.
+    for (const ev of ["keydown", "pointerdown", "wheel", "touchstart"]) on.addEventListener(ev, () => activity?.touch(), { passive: true });
+    if (!input.surface) {
+        // The surface is part of this page: its pointer, wheel and keys reach
+        // this page's own listeners.
+        const frameTop = (): number => doc.defaultView?.frameElement?.getBoundingClientRect().top ?? 0;
+        doc.addEventListener("mousemove", (e) => chrome.pointerAt(frameTop() + e.clientY));
+        // Out of the chapter: to the page around it (whose own mousemove follows) or the window.
+        doc.addEventListener("mouseout", (e) => {
+            if (!e.relatedTarget) chrome.pointerAt(frameTop() + e.clientY, true);
+        });
+        doc.addEventListener("wheel", onWheel, { passive: false });
+        doc.addEventListener("keydown", onKey);
+    }
     // A press that closed a panel does nothing else.
     let swallow = false;
-    doc.addEventListener("pointerdown", () => {
+    on.addEventListener("pointerdown", () => {
         const closed = chrome.closePanels();
         swallow = notesUI.dismiss() || closed;
     });
@@ -698,12 +704,12 @@ rendition.on("rendered", (section, view) => {
     // Links are handled here (capture phase, before epub.js): in-book links
     // become a history entry plus a jump; external links open in a new tab
     // from this page (the chapter iframe is sandboxed and can't open windows).
-    doc.addEventListener(
+    on.addEventListener(
         "click",
-        (e) => {
-            // The target lives in the iframe's window: `instanceof Element` (ours) is false.
-            const t = e.target as Element | null;
-            const a = typeof t?.closest === "function" ? t.closest("a[href]") : null;
+        (ev) => {
+            const e = ev as MouseEvent;
+            const t = input.hit(e);
+            const a = t?.closest("a[href]");
             const href = a?.getAttribute("href");
             if (href) {
                 e.preventDefault();
@@ -717,14 +723,14 @@ rendition.on("rendered", (section, view) => {
                 followLink(href, section);
                 return;
             }
-            const hit = preview ? null : highlightAt(doc, e.clientX, e.clientY);
+            const p = input.toChapter(e);
+            const hit = preview ? null : highlightAt(doc, p.x, p.y);
             if (hit) {
                 notesUI.offerExisting(toScreen(doc, hit.rect), hit.annotation);
                 return;
             }
-            if (doc.getSelection()?.toString() || t?.closest?.("input, button, select, textarea, audio, video, summary")) return;
-            const frame = doc.defaultView?.frameElement;
-            const x = (frame?.getBoundingClientRect().left ?? 0) + e.clientX;
+            if (doc.getSelection()?.toString() || t?.closest("input, button, select, textarea, audio, video, summary")) return;
+            const x = (doc.defaultView?.frameElement?.getBoundingClientRect().left ?? 0) + p.x;
             if (x < window.innerWidth * 0.3) turnSide(-1);
             else if (x > window.innerWidth * 0.7) turnSide(1);
             else chrome.toggleBars();
@@ -732,11 +738,7 @@ rendition.on("rendered", (section, view) => {
         true,
     );
 
-    swipeToTurn(doc, view.element);
-
-    doc.addEventListener("wheel", onWheel, { passive: false });
-
-    doc.addEventListener("keydown", onKey);
+    swipeToTurn(on, doc, view.element);
 });
 
 /**
@@ -747,7 +749,7 @@ rendition.on("rendered", (section, view) => {
  * at about the speed the finger was moving: a slow peek turns slowly, a
  * flick at once. Taps (the click handler) still turn without any animation.
  */
-function swipeToTurn(doc: Document, view: HTMLElement): void {
+function swipeToTurn(on: EventTarget, doc: Document, view: HTMLElement): void {
     type Sample = { x: number; t: number };
     let start: { x: number; y: number } | null = null;
     let dragging = false;
@@ -795,9 +797,10 @@ function swipeToTurn(doc: Document, view: HTMLElement): void {
         requestAnimationFrame(settle);
     };
 
-    doc.addEventListener(
+    on.addEventListener(
         "touchstart",
-        (e) => {
+        (ev) => {
+            const e = ev as TouchEvent;
             anim?.finish(); // a new swipe doesn't wait for the last one
             const p = e.touches.length === 1 ? e.touches[0] : undefined;
             start = p && settings().flow !== "scrolled" ? { x: p.screenX, y: p.screenY } : null;
@@ -806,9 +809,10 @@ function swipeToTurn(doc: Document, view: HTMLElement): void {
         },
         { passive: true },
     );
-    doc.addEventListener(
+    on.addEventListener(
         "touchmove",
-        (e) => {
+        (ev) => {
+            const e = ev as TouchEvent;
             const p = e.touches.length === 1 ? e.touches[0] : undefined;
             if (!start || !p) return;
             const dx = p.screenX - start.x;
@@ -852,8 +856,8 @@ function swipeToTurn(doc: Document, view: HTMLElement): void {
         if (go) slide(dx, -side * w, Math.abs(v), () => turnFrom(-side * w, side));
         else slide(dx, 0, Math.abs(v), () => undefined);
     };
-    doc.addEventListener("touchend", end, { passive: true });
-    doc.addEventListener("touchcancel", end, { passive: true });
+    on.addEventListener("touchend", (e) => end(e as TouchEvent), { passive: true });
+    on.addEventListener("touchcancel", (e) => end(e as TouchEvent), { passive: true });
 }
 
 function followLink(href: string, section: EpubJS.Section): void {

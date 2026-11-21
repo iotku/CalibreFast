@@ -1355,3 +1355,24 @@ body[data-margin="wide"] #reader-container {
 .r-sync-text a {
     color: var(--accent);
 }
+
+/* Safari's input surface over a chapter (chapter-input.ts): it only takes
+   pointer input through its tiles, which leave holes for selection handles. */
+.chapter-surface {
+    position: absolute;
+    inset: 0;
+    z-index: 1;
+    pointer-events: none;
+    -webkit-user-select: none;
+    user-select: none;
+    -webkit-touch-callout: none;
+    -webkit-tap-highlight-color: transparent;
+}
+.chapter-surface > div {
+    position: absolute;
+    pointer-events: auto;
+    touch-action: manipulation;
+}
+.chapter-surface.passing > div {
+    pointer-events: none;
+}
