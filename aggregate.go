@@ -181,6 +181,7 @@ type SearchPageData struct {
 	Title      string // site title
 	Query      string // pre-filled query from URL
 	TotalBooks int
+	Links      []searchLinkGroup // matching authors, series and tags (search.go)
 }
 
 // ---------------------------------------------------------------------------

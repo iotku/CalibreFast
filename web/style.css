@@ -2616,6 +2616,46 @@ body.book-standalone {
 }
 
 /* ============================================
+   Page-Specific - Search
+   ============================================ */
+.search-intro {
+    max-width: 2800px;
+    margin: var(--topbar-total) auto 0;
+    font-size: 0.9rem;
+}
+
+.search-intro + #books {
+    margin-top: 0.75rem;
+}
+
+.search-intro p {
+    margin: 0.25rem 0;
+}
+
+.search-links a {
+    color: var(--text-primary);
+    padding: 0.1rem 0.5rem;
+    border-radius: 999px;
+    background: var(--bg-secondary);
+    text-decoration: none;
+    margin-right: 0.15rem;
+}
+
+.search-links a:hover,
+.search-links a:focus-visible {
+    text-decoration: underline;
+}
+
+.search-links-label,
+.search-hint {
+    color: var(--text-muted);
+}
+
+.search-hint code {
+    font-size: 0.85em;
+}
+
+/* ============================================
    Page-Specific - Aggregate
    ============================================ */
 #aggregate-page {

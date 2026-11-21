@@ -17,6 +17,12 @@
 {{ template "topbar-start" $tb }}
 {{ template "topbar-pager" }}
 {{ template "topbar-end" $tb }}
+<div class="search-intro">
+{{ range .Links }}
+    <p class="search-links"><span class="search-links-label">{{ .Label }}:</span>{{ range .Links }} <a href="{{ .Href }}">{{ .Name }}</a>{{ end }}</p>
+{{ end }}
+    <p class="search-hint">Words match title, author, series, tag, publisher or ISBN. Narrow with <code>author:</code> <code>title:</code> <code>series:</code> <code>tag:</code> <code>publisher:</code> <code>lang:</code> <code>format:</code> <code>isbn:</code>, keep words together with <code>"quotes"</code>, leave out with <code>-word</code>.</p>
+</div>
 {{ if .Query }}
 <div id="books" data-page-url="/api/search?q={{ .Query }}&page={n}" data-page-size="{{ booksPerPage }}" data-total-books="{{ .TotalBooks }}" data-empty-text="No results found."></div>
 {{ else }}

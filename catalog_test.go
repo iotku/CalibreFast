@@ -70,17 +70,22 @@ type wantBook struct {
 	tags           []string
 	series         string
 	formats        []string
+	publisher      string
+	langs, isbns   []string
 }
 
 func readWant(t *testing.T, db *sql.DB, uuid string) wantBook {
 	t.Helper()
 	var w wantBook
-	var tags, series, formats sql.NullString
+	var tags, series, formats, publisher, langs, isbns sql.NullString
 	err := db.QueryRow(`SELECT b.title, `+bookAuthorsSQL+`,
 			(SELECT group_concat(t.name, '|' ORDER BY l.id) FROM books_tags_link l JOIN tags t ON t.id = l.tag WHERE l.book = b.id),
 			(SELECT s.name FROM books_series_link l JOIN series s ON s.id = l.series WHERE l.book = b.id),
-			(SELECT group_concat(lower(format), '|') FROM data WHERE book = b.id)
-		FROM books b WHERE b.uuid = ?`, uuid).Scan(&w.title, &w.authors, &tags, &series, &formats)
+			(SELECT group_concat(lower(format), '|') FROM data WHERE book = b.id),
+			(SELECT p.name FROM books_publishers_link l JOIN publishers p ON p.id = l.publisher WHERE l.book = b.id),
+			(SELECT group_concat(g.lang_code, '|' ORDER BY l.item_order) FROM books_languages_link l JOIN languages g ON g.id = l.lang_code WHERE l.book = b.id),
+			(SELECT group_concat(val, '|') FROM identifiers WHERE book = b.id AND lower(type) = 'isbn')
+		FROM books b WHERE b.uuid = ?`, uuid).Scan(&w.title, &w.authors, &tags, &series, &formats, &publisher, &langs, &isbns)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -92,6 +97,16 @@ func readWant(t *testing.T, db *sql.DB, uuid string) wantBook {
 		slices.Sort(w.formats)
 	}
 	w.series = series.String
+	w.publisher = publisher.String
+	if langs.String != "" {
+		w.langs = strings.Split(langs.String, "|")
+	}
+	for _, v := range strings.Split(isbns.String, "|") {
+		if n := normalizeISBN(v); n != "" && !slices.Contains(w.isbns, n) {
+			w.isbns = append(w.isbns, n)
+		}
+	}
+	slices.Sort(w.isbns)
 	return w
 }
 
@@ -102,6 +117,13 @@ func gotBook(c *catalog, b catalogBook) wantBook {
 	}
 	if len(g.formats) == 0 {
 		g.formats = nil
+	}
+	g.publisher = c.publisherNames[b.Publisher]
+	for _, id := range b.LangIDs {
+		g.langs = append(g.langs, c.langCodes[id])
+	}
+	if len(b.ISBNs) > 0 {
+		g.isbns = slices.Sorted(slices.Values(b.ISBNs))
 	}
 	return g
 }
@@ -130,7 +152,8 @@ func checkCatalogMatchesDB(t *testing.T, db *sql.DB, c *catalog) {
 
 func wantEqual(a, b wantBook) bool {
 	return a.title == b.title && a.authors == b.authors && a.series == b.series &&
-		slices.Equal(a.tags, b.tags) && slices.Equal(a.formats, b.formats)
+		slices.Equal(a.tags, b.tags) && slices.Equal(a.formats, b.formats) &&
+		a.publisher == b.publisher && slices.Equal(a.langs, b.langs) && slices.Equal(a.isbns, b.isbns)
 }
 
 func TestBuildCatalog(t *testing.T) {
@@ -320,7 +343,8 @@ func TestApplyMetadataUpdatesCatalog(t *testing.T) {
 	mux.HandleFunc("POST /metadata/{uuid}/apply", applyMetadataHandler)
 	rec := httptest.NewRecorder()
 	mux.ServeHTTP(rec, httptest.NewRequest(http.MethodPost, "/metadata/"+uuid+"/apply",
-		strings.NewReader(`{"title": "After", "creators": "A", "tags": "Fresh"}`)))
+		strings.NewReader(`{"title": "After", "creators": "A", "tags": "Fresh", "publisher": "New Press",
+			"languages": "fra, eng", "identifiers": [{"scheme": "isbn", "value": "0-261-10221-4"}]}`)))
 	if rec.Code != http.StatusOK {
 		t.Fatalf("apply: %d %s", rec.Code, rec.Body)
 	}
@@ -330,6 +354,9 @@ func TestApplyMetadataUpdatesCatalog(t *testing.T) {
 	got, _ := currentCatalog().lookup(uuid)
 	if got.Title != "After" {
 		t.Errorf("catalog title %q after the editor's Apply", got.Title)
+	}
+	if got.Publisher == 0 || len(got.LangIDs) != 2 || !slices.Equal(got.ISBNs, []string{"9780261102217"}) {
+		t.Errorf("catalog publisher %d, languages %v, ISBNs %v after the editor's Apply", got.Publisher, got.LangIDs, got.ISBNs)
 	}
 	checkCatalogMatchesDB(t, db, currentCatalog())
 }
