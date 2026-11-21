@@ -78,6 +78,11 @@ func hardcoverMeta(b *hardcover.Book) *opf.Metadata {
 	if b.Slug != "" { // as Calibre's Hardcover plugin names it
 		m.Identifiers = append(m.Identifiers, opf.Identifier{Scheme: "hardcover", Value: b.Slug})
 	}
+	// Its book id too: a series' list may show another Hardcover book at
+	// the same position, keeping only this one's id (Entry.AltIDs).
+	if b.ID > 0 {
+		m.Identifiers = append(m.Identifiers, opf.Identifier{Scheme: hcIdentifierScheme, Value: strconv.FormatInt(b.ID, 10)})
+	}
 	return m
 }
 

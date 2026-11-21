@@ -264,8 +264,8 @@ func hcLibraryIdentifiers(lib *hcLibrary, x *hcTitleIndex, d *hardcover.SeriesDe
 	var vals []any
 	for i := range d.Entries {
 		e := &d.Entries[i]
-		if e.Slug != "" {
-			vals = append(vals, strings.ToLower(e.Slug))
+		for _, slug := range e.Slugs() {
+			vals = append(vals, strings.ToLower(slug))
 		}
 		for _, id := range e.IDs() {
 			vals = append(vals, strconv.FormatInt(id, 10))

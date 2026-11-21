@@ -385,6 +385,8 @@ func TestHCMatchByIdentifier(t *testing.T) {
 		{BookID: 1, Slug: "alpha", Title: "Alpha", Position: pos(1), ISBNs: []string{"9780316129084"}},
 		{BookID: 2, Title: "Beta", Position: pos(2), AltIDs: []int64{20}},
 		{BookID: 3, Slug: "gamma", Title: "Gamma", Position: pos(3)},
+		// A less-read book at the same position, kept only by its slug.
+		{BookID: 4, Slug: "delta-1", Title: "Delta", Position: pos(4), AltIDs: []int64{40}, AltSlugs: []string{"delta-book-one"}},
 	}}
 	other := hcLibBook{UUID: "x", Title: "Totally Different"}
 	// Titled and ISBN'd like Alpha, but its identifier says it's Beta.
@@ -393,7 +395,7 @@ func TestHCMatchByIdentifier(t *testing.T) {
 		members:  []string{"S"},
 		inSeries: []hcLibBook{y},
 		byISBN:   map[string][]hcLibBook{"9780316129084": {y}},
-		byHCSlug: map[string][]hcLibBook{"alpha": {other}, "gamma": {{UUID: "z", Title: "Z"}}},
+		byHCSlug: map[string][]hcLibBook{"alpha": {other}, "gamma": {{UUID: "z", Title: "Z"}}, "delta-book-one": {{UUID: "w", Title: "W"}}},
 		byHCID:   map[int64][]hcLibBook{20: {y}},
 		refused:  map[int64]map[string]bool{3: {"z": true}},
 	}
@@ -401,8 +403,9 @@ func TestHCMatchByIdentifier(t *testing.T) {
 	if len(rev.Present) != 1 || rev.Present[0].Book.UUID != "y" || rev.Present[0].Entry.BookID != 2 || rev.Present[0].Strength != hcByID {
 		t.Fatalf("present: %+v", rev.Present)
 	}
-	if len(rev.Untagged) != 1 || rev.Untagged[0].Book.UUID != "x" || rev.Untagged[0].Entry.BookID != 1 ||
-		rev.Untagged[0].Strength != hcByID || !rev.Untagged[0].Checked {
+	if len(rev.Untagged) != 2 || rev.Untagged[0].Book.UUID != "x" || rev.Untagged[0].Entry.BookID != 1 ||
+		rev.Untagged[0].Strength != hcByID || !rev.Untagged[0].Checked ||
+		rev.Untagged[1].Book.UUID != "w" || rev.Untagged[1].Entry.BookID != 4 {
 		t.Fatalf("untagged: %+v", rev.Untagged)
 	}
 	// "Not a match" still wins over the identifier.

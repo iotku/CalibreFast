@@ -294,8 +294,8 @@ func hcMatchSeries(d *hardcover.SeriesDetail, lib hcLibrary, placeholders []*pla
 	for i := range d.Entries {
 		e := &d.Entries[i]
 		var found []hcLibBook
-		if e.Slug != "" {
-			found = append(found, lib.byHCSlug[strings.ToLower(e.Slug)]...)
+		for _, slug := range e.Slugs() {
+			found = append(found, lib.byHCSlug[strings.ToLower(slug)]...)
 		}
 		for _, id := range e.IDs() {
 			found = append(found, lib.byHCID[id]...)
