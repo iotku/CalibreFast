@@ -24,6 +24,8 @@ export interface AnnotationUI {
     /** Shows the toolbar by an existing highlight. */
     offerExisting(at: DOMRect, a: Annotation): void;
     hide(): void;
+    /** Hides the toolbar if it is showing for a selection (not an existing highlight). */
+    hideNew(): void;
     /** Hides the toolbar. True if it was showing (the press that did it shouldn't also turn the page). */
     dismiss(): boolean;
     /** Fills the sidebar's Notes tab. */
@@ -330,6 +332,9 @@ export function setupAnnotationUI(opts: AnnotationUIOptions): AnnotationUI {
             show(at, a.color);
         },
         hide,
+        hideNew() {
+            if (target && !("existing" in target)) hide();
+        },
         dismiss() {
             const was = !bar.hidden;
             hide();
