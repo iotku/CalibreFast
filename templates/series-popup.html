@@ -1,0 +1,62 @@
+{{/* The book popup's view of a shelf's whole series (shelf_series.go
+     seriesPopupHandler; modal.ts loads it, as an htmx request, when the
+     arrows step onto a series card): laid out like a book's (book.html), so
+     the cover and arrows stay put. */}}
+{{ define "series-popup" }}<title>{{ .Name }}</title>
+<div class="book-page series-popup">
+    <div class="book-header">
+        <div class="title-row">
+            <h1>{{ .Name }} <a href="{{ .Href }}" class="icon-link" title="Open the series" aria-label="Open the series">
+                    <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor"
+                        stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                        <path d="M10 13a5 5 0 0 0 7.07 0l2.83-2.83a5 5 0 0 0-7.07-7.07l-1.5 1.5" />
+                        <path d="M14 11a5 5 0 0 0-7.07 0l-2.83 2.83a5 5 0 0 0 7.07 7.07l1.5-1.5" />
+                    </svg>
+                </a></h1>
+        </div>
+        {{ if .Authors }}
+        <div class="book-authors">
+            by {{ range $i, $a := .Authors }}{{ if $i }}, {{ end }}<a href="{{ $a.Href }}" class="meta-link author-link">{{ $a.Name }}</a>{{ end }}
+        </div>
+        {{ end }}
+    </div>
+    <div class="book-page-side">
+        <div class="book-page-cover">
+            <a href="{{ .Href }}" class="cover-link" title="Open the series" aria-label="Open the series">
+                <span class="cover-stack series-stack">
+                    <span class="cover-placeholder" style="--cover-hue: {{ .CoverHue }}" aria-hidden="true">
+                        <span class="cover-placeholder-title">{{ .Name }}</span>
+                        {{ if .AuthorNames }}<span class="cover-placeholder-author">{{ .AuthorNames }}</span>{{ end }}
+                    </span>
+                    <img class="cover-full" alt="" src="/cover/{{ .Cover }}?t={{ .CoverStamp }}" onload="this.classList.add('loaded')" onerror="this.remove()" />
+                    <span class="series-banner" aria-hidden="true">{{ .Label }}</span>
+                </span>
+            </a>
+        </div>
+        <div class="book-actions">
+            <a class="btn-action" href="{{ .Href }}">
+                <svg class="action-icon" viewBox="0 0 24 24" width="16" height="16" fill="none"
+                    stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                    <path d="M4 4h4v16H4zM10 4h4v16h-4zM15 5l3.5-1 3 15-3.5 1z" />
+                </svg>
+                <span>Open series</span>
+            </a>
+        </div>
+        {{ if .LoggedIn }}
+        <div class="series-popup-shelves">
+            {{/* The whole series, as one entry on a shelf (series-shelf.ts). */}}
+            <details class="book-shelves book-series-shelves" data-series="{{ .Name }}">
+                <summary>Series on shelves<span class="book-shelves-count">{{ with .OnShelves }} ({{ . }}){{ end }}</span></summary>
+                {{ template "series-shelf-list" .Shelves }}
+            </details>
+        </div>
+        {{ end }}
+    </div>
+    <div class="book-page-info">
+        <ol class="series-popup-books">
+            {{ range .Books }}
+            <li><span class="series-popup-index">#{{ .Index }}</span> <a href="#book/{{ .UUID }}" class="meta-link">{{ .Title }}</a></li>
+            {{ end }}
+        </ol>
+    </div>
+</div>{{ end }}

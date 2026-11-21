@@ -271,20 +271,23 @@ function hideModal(): void {
 }
 
 /**
- * What the popup loads for a card: a book's popup, or a placeholder's (a
- * book not in the library yet: placeholders.go answers an htmx request with
- * its popup view). With no card on the page (a deep link), /book/get/
- * sends a placeholder's on to it.
+ * What the popup loads for a card: a book's popup, a placeholder's (a book
+ * not in the library yet: placeholders.go answers an htmx request with its
+ * popup view), or a shelf's whole series (shelf_series.go). With no card on
+ * the page (a deep link), /book/get/ sends the last two on to theirs.
  */
-const bookUrl = (uuid: string, card: HTMLElement | null = cardFor(uuid)): string =>
-    card?.dataset["placeholder"] === uuid ? `/missing/${encodeURIComponent(uuid)}` : `/book/get/${encodeURIComponent(uuid)}`;
+function bookUrl(uuid: string, card: HTMLElement | null = cardFor(uuid)): string {
+    if (card?.dataset["placeholder"] === uuid) return `/missing/${encodeURIComponent(uuid)}`;
+    if (card?.dataset["seriesKey"] === uuid && card.dataset["series"]) return `/series-popup/${encodeURIComponent(card.dataset["series"])}`;
+    return `/book/get/${encodeURIComponent(uuid)}`;
+}
 
-/** A card's id: a book's uuid, or a placeholder's (utils.ts placeholderCard). */
+/** A card's id: a book's uuid, a placeholder's, or a series' key (utils.ts placeholderCard, seriesCard). */
 const cardId = (card: HTMLElement | null | undefined): string | undefined =>
-    card?.dataset["uuid"] ?? card?.dataset["placeholder"];
+    card?.dataset["uuid"] ?? card?.dataset["placeholder"] ?? card?.dataset["seriesKey"];
 
-/** Placeholders have no per-user controls (favorite, status, shelves). */
-const isPlaceholder = (card: HTMLElement | null): boolean => !!card?.dataset["placeholder"];
+/** Only books have per-user controls (favorite, status, shelves). */
+const hasControls = (card: HTMLElement | null): boolean => !card?.dataset["placeholder"] && !card?.dataset["seriesKey"];
 
 /** Path and query of a request URL, as htmx may have resolved it. */
 function samePath(a: string, b: string): boolean {
@@ -311,7 +314,7 @@ export function loadBook(uuid: string): void {
     showModal();
     watchGrid(card);
     updateNavButtons(); // the arrows follow the book asked for, not the one still showing
-    if (!isPlaceholder(card)) prefetchControls(uuid); // in parallel with the book, not after it
+    if (hasControls(card)) prefetchControls(uuid); // in parallel with the book, not after it
     const hit = takePrefetch(uuid);
     // Otherwise the book's card (if on the page) as the source: htmx then
     // uses the card's hx-preload response, even one still in flight.
@@ -340,12 +343,13 @@ const prefetched = new Map<string, { res: Promise<Response>; expires: number }>(
 function cardFor(uuid: string): HTMLElement | null {
     if (shownCard?.isConnected && cardId(shownCard) === uuid) return shownCard;
     const id = CSS.escape(uuid);
-    return document.querySelector<HTMLElement>(`.book[data-uuid="${id}"], .book[data-placeholder="${id}"]`);
+    return document.querySelector<HTMLElement>(`.book[data-uuid="${id}"], .book[data-placeholder="${id}"], .book[data-series-key="${id}"]`);
 }
 
 /**
  * The card next to the shown one (dir 1) or before it (-1), in its grid or
- * row: a book, a placeholder, or a skeleton whose page hasn't arrived yet.
+ * row: a book, a placeholder, a series, or a skeleton whose page hasn't
+ * arrived yet.
  * Null at the end.
  */
 function adjacent(dir: 1 | -1): HTMLElement | null {
@@ -356,7 +360,7 @@ function adjacent(dir: 1 | -1): HTMLElement | null {
     return null;
 }
 
-/** The book (or placeholder) next to the shown one, if it's there yet (not a skeleton). */
+/** The book (or placeholder, or series) next to the shown one, if it's there yet (not a skeleton). */
 function neighbour(dir: 1 | -1): HTMLElement | null {
     const el = adjacent(dir);
     return cardId(el) ? el : null;
@@ -437,7 +441,7 @@ function prefetchNeighbours(): void {
         const uuid = cardId(card);
         if (!card || !uuid) continue;
         prefetchBook(uuid, card);
-        if (!isPlaceholder(card)) prefetchControls(uuid);
+        if (hasControls(card)) prefetchControls(uuid);
     }
 }
 

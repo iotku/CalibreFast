@@ -3,6 +3,7 @@ package main
 import (
 	"encoding/json"
 	"net/http"
+	"net/http/httptest"
 	"net/url"
 	"slices"
 	"strings"
@@ -185,5 +186,58 @@ func TestSeriesShelfEntryPoints(t *testing.T) {
 	}
 	if body := call(t, mux, nil, "GET", "/series/Saga", "").Body.String(); strings.Contains(body, "series-shelf-panel") {
 		t.Fatal("signed-out series page offers shelves")
+	}
+}
+
+// The book popup's arrows step onto a shelf's series card (modal.ts): an
+// htmx request gets its popup view, a plain one the series page, and its
+// #book/ link (/book/get/series:<name>) leads there, slash and all.
+func TestSeriesPopup(t *testing.T) {
+	alice, saga, _ := seriesShelfFixture(t)
+	_, _ = calibreDB.Exec(`UPDATE series SET name = 'A/B & C?' WHERE name = 'Saga'`)
+	c, err := buildCatalog(calibreDB)
+	if err != nil {
+		t.Fatal(err)
+	}
+	libraryCatalog.Store(c)
+	mux := http.NewServeMux()
+	mux.HandleFunc("GET /series-popup/{name...}", seriesPopupHandler)
+	mux.HandleFunc("/book/get/", bookHandler)
+	get := func(path string, u *User, htmx bool) *httptest.ResponseRecorder {
+		req := httptest.NewRequest("GET", path, nil)
+		if u != nil {
+			req = asUser(req, u)
+		}
+		if htmx {
+			req.Header.Set("HX-Request", "true")
+		}
+		rec := httptest.NewRecorder()
+		mux.ServeHTTP(rec, req)
+		return rec
+	}
+	popup := "/series-popup/" + url.PathEscape("A/B & C?")
+	rec := get(popup, alice, true)
+	body := rec.Body.String()
+	if rec.Code != http.StatusOK || !strings.Contains(body, `class="book-page series-popup"`) || strings.Contains(body, "<html") ||
+		!strings.Contains(body, "A/B &amp; C?") || !strings.Contains(body, "Series · 4 books") ||
+		!strings.Contains(body, "/cover/"+saga[3]) || !strings.Contains(body, `data-series="A/B &amp; C?"`) {
+		t.Fatalf("popup: %d %s", rec.Code, body)
+	}
+	// Reading order: the prequel (0.5), the two 1s by date, then 2.
+	order := []int{strings.Index(body, "Saga Prequel"), strings.Index(body, "Saga One A"), strings.Index(body, "Saga One B"), strings.Index(body, "Saga Two")}
+	if !slices.IsSorted(order) || order[0] < 0 {
+		t.Errorf("books out of order: %v", order)
+	}
+	if body := get(popup, nil, true).Body.String(); strings.Contains(body, "data-series-shelf") || strings.Contains(body, "book-series-shelves") {
+		t.Error("signed out, but offered shelves")
+	}
+	if rec := get(popup, alice, false); rec.Code != http.StatusFound || rec.Header().Get("Location") != "/series/A%2FB%20&%20C%3F" {
+		t.Errorf("plain request: %d %q", rec.Code, rec.Header().Get("Location"))
+	}
+	if rec := get("/series-popup/Nope", alice, true); rec.Code != http.StatusNotFound {
+		t.Errorf("unknown series: %d", rec.Code)
+	}
+	if rec := get("/book/get/"+url.PathEscape("series:A/B & C?"), alice, true); rec.Code != http.StatusFound || rec.Header().Get("Location") != popup {
+		t.Errorf("/book/get/ of a series key: %d %q", rec.Code, rec.Header().Get("Location"))
 	}
 }

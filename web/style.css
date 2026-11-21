@@ -5365,6 +5365,48 @@ body.selecting .book.selected .cover-wrapper {
     border-radius: inherit;
 }
 
+/* A shelf's whole series in the book popup (series-popup.html): its first
+   book's cover, framed, under the "Series · N books" banner, as on its card. */
+.series-stack {
+    position: relative;
+    width: 100%;
+    max-width: 280px; /* the cover placeholder's */
+    overflow: hidden;
+    border-radius: var(--radius-large);
+    container-type: inline-size;
+}
+
+.series-stack::after {
+    content: "";
+    position: absolute;
+    inset: 0;
+    z-index: 2;
+    pointer-events: none;
+    box-shadow: inset 0 0 0 3px var(--accent, #c8a96e);
+    border-radius: inherit;
+}
+
+.series-popup-shelves {
+    display: contents;
+}
+
+.series-popup-books {
+    margin: 0;
+    padding: 0;
+    list-style: none;
+}
+
+.series-popup-books li {
+    padding: 0.2rem 0;
+}
+
+.series-popup-index {
+    display: inline-block;
+    min-width: 2.5em;
+    color: var(--text-secondary);
+    font-variant-numeric: tabular-nums;
+}
+
 .placeholder-view {
     display: flex;
     gap: 1.5rem;
