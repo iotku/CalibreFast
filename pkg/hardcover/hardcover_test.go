@@ -367,7 +367,7 @@ func TestSeriesBooksParts(t *testing.T) {
 					{"position":5,"book":{"id":50,"title":"Five","users_count":1}}]},
 				{"id":2,"name":"Target","slug":"target-b","books_count":3,"author":{"name":"B"},"book_series":[
 					{"position":1,"book":{"id":10,"title":"One","users_count":3}},
-					{"position":2,"book":{"id":21,"title":"Dr Who - The Daleks","users_count":2}},
+					{"position":2,"book":{"id":21,"slug":"dr-who-the-daleks","title":"Dr Who - The Daleks","users_count":2}},
 					{"position":null,"book":{"id":99,"title":"Unnumbered","users_count":0}}]}]}}`)
 		case "BookDetails":
 			io.WriteString(w, `{"data":{"books":[
@@ -405,5 +405,8 @@ func TestSeriesBooksParts(t *testing.T) {
 	}
 	if ids := daleks.IDs(); len(ids) != 2 || ids[0] != 20 {
 		t.Errorf("merged position 2 ids %v", ids)
+	}
+	if slugs := daleks.Slugs(); len(slugs) != 1 || slugs[0] != "dr-who-the-daleks" {
+		t.Errorf("merged position 2 slugs %v", slugs)
 	}
 }

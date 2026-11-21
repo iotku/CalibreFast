@@ -70,7 +70,7 @@ func TestHardcoverLookup(t *testing.T) {
 	for _, id := range o.Identifiers {
 		ids[id.Scheme] = id.Value
 	}
-	if ids["isbn"] != "9780552152938" || ids["hardcover"] != "mort" {
+	if ids["isbn"] != "9780552152938" || ids["hardcover"] != "mort" || ids["hardcover-id"] != "42" {
 		t.Errorf("identifiers %v", o.Identifiers)
 	}
 	if m.Cover != "/metadata/lookup/cover?src=hardcover&id=42" {
