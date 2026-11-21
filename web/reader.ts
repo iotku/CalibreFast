@@ -641,6 +641,41 @@ function onKey(e: KeyboardEvent): void {
 window.addEventListener("keydown", onKey);
 
 /**
+ * The wheel turns pages. A mouse wheel sends one event per notch, so every
+ * notch turns one and spinning it scrubs through the book. A trackpad (or a
+ * Magic Mouse) sends a steady stream for one swipe, momentum included: that
+ * turns one page, and another every 350ms if the stream goes on.
+ */
+const onWheel = (() => {
+    let lastAt = -Infinity; // the previous wheel event
+    let turnAt = -Infinity; // the previous turn
+    return (e: WheelEvent): void => {
+        if (settings().flow === "scrolled" || e.ctrlKey) return;
+        e.preventDefault();
+        const gap = e.timeStamp - lastAt;
+        lastAt = e.timeStamp;
+        const d = Math.abs(e.deltaY) >= Math.abs(e.deltaX) ? e.deltaY : e.deltaX;
+        // Line or page deltas only come from a wheel; tiny pixel ones are trackpad noise.
+        if (d === 0 || (e.deltaMode === WheelEvent.DOM_DELTA_PIXEL && Math.abs(d) < 4)) return;
+        const sinceTurn = e.timeStamp - turnAt;
+        // A trackpad stream comes every frame (~16ms); a pause this long starts a new gesture.
+        const newGesture = gap > 90;
+        // A wheel notch: line/page deltas (Firefox), or the legacy wheelDelta in
+        // steps of 120 (Chromium, Safari), set apart from the events around it.
+        const legacy = (e as WheelEvent & { wheelDeltaY?: number }).wheelDeltaY;
+        const notch =
+            e.deltaMode !== WheelEvent.DOM_DELTA_PIXEL ||
+            (gap > 30 && e.deltaX === 0 && !!legacy && legacy % 120 === 0);
+        if (!newGesture && !notch && sinceTurn < 350) return;
+        if (sinceTurn < 40) return; // a wheel spun freely: no faster than the pages can follow
+        turnAt = e.timeStamp;
+        turn(d > 0 ? 1 : -1);
+    };
+})();
+// The margins around the chapter take the wheel too.
+container.addEventListener("wheel", onWheel, { passive: false });
+
+/**
  * Each chapter is its own document (an iframe), so presses, taps, swipes,
  * the wheel and keys are listened for there. A tap on the left or right
  * third turns the page; in the middle it shows or hides the bars.
@@ -723,21 +758,7 @@ rendition.on("rendered", (section, view) => {
         { passive: true },
     );
 
-    // The wheel turns pages, one per gesture however long a trackpad keeps
-    // sending events.
-    let wheelAt = 0;
-    doc.addEventListener(
-        "wheel",
-        (e) => {
-            if (settings().flow === "scrolled" || e.ctrlKey) return;
-            e.preventDefault();
-            const d = Math.abs(e.deltaY) >= Math.abs(e.deltaX) ? e.deltaY : e.deltaX;
-            if (Math.abs(d) < 4 || e.timeStamp - wheelAt < 350) return;
-            wheelAt = e.timeStamp;
-            turn(d > 0 ? 1 : -1);
-        },
-        { passive: false },
-    );
+    doc.addEventListener("wheel", onWheel, { passive: false });
 
     doc.addEventListener("keydown", onKey);
 });
