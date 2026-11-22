@@ -80,10 +80,48 @@ document.addEventListener("click", (e) => {
     const panel = document.getElementById("series-shelf-panel");
     if (toggle && panel) {
         const show = panel.hidden;
+        // Where it was pressed, read before the panel shows (and before a
+        // folded ⋯ menu holding the button closes).
+        const anchor = show ? anchorOf(toggle, e) : null;
         panel.hidden = !show;
         toggle.setAttribute("aria-expanded", String(show));
+        if (anchor) placeUnder(panel, anchor);
     }
 });
+
+interface Anchor {
+    left: number;
+    right: number;
+    bottom: number;
+}
+
+/** The button's box; or, when it's not laid out, the point pressed, or the ⋯ that held it. */
+function anchorOf(toggle: HTMLElement, e: MouseEvent): Anchor | null {
+    const r = toggle.getBoundingClientRect();
+    if (r.width > 0) return r;
+    if (e.clientX || e.clientY) return { left: e.clientX, right: e.clientX, bottom: e.clientY };
+    const more = toggle.closest(".tb-actions")?.querySelector(".tb-manage-btn")?.getBoundingClientRect();
+    return more && more.width > 0 ? more : null;
+}
+
+/**
+ * Opens the panel just under what was pressed: its right edge lined up
+ * with the anchor's, moved in to stay 8px inside the window. A phone keeps
+ * the stylesheet's full-width panel and only takes the height.
+ */
+function placeUnder(panel: HTMLElement, a: Anchor): void {
+    const bar = document.querySelector(".site-bar")?.getBoundingClientRect().bottom ?? 0;
+    panel.style.top = `${Math.round(Math.max(a.bottom, bar) + 8)}px`;
+    if (window.innerWidth <= 600) {
+        panel.style.left = "";
+        panel.style.right = "";
+        return;
+    }
+    const w = panel.offsetWidth;
+    const max = document.documentElement.clientWidth - w - 8;
+    panel.style.left = `${Math.round(Math.max(8, Math.min(a.right - w, max)))}px`;
+    panel.style.right = "auto";
+}
 
 document.addEventListener("keydown", (e) => {
     const input = e.target;
