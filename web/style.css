@@ -6795,3 +6795,31 @@ body.selecting .book.selected .cover-wrapper {
 .ph-save-row {
     margin-top: 0.75em;
 }
+
+/* Server page: backups (templates/admin-server.html) */
+.server-backup-actions {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 0.5rem;
+}
+
+.server-backup-list {
+    width: 100%;
+    border-collapse: collapse;
+    font-size: 0.9rem;
+}
+
+.server-backup-list th,
+.server-backup-list td {
+    text-align: left;
+    padding: 0.3rem 0.5rem 0.3rem 0;
+    border-bottom: 1px solid var(--bg-secondary);
+}
+
+.server-backup-list td:nth-child(3) {
+    white-space: nowrap;
+}
+
+.server-backup-list a {
+    color: var(--accent, #c8a96e);
+}

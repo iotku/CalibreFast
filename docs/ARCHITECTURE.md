@@ -209,6 +209,10 @@ Each book's `authors` is its authors' names in Calibre's order, `A & B` (`bookAu
 - **No web endpoint deletes from the bin.** `-empty-recycle-bin` (`emptyRecycleBin`) runs from the command line and exits.
 - **Browser:** `web/delete-books.ts` is the confirmation (type `delete`) and Undo; `web/select-books.ts` adds **Select** to the grid's top bar (and a long press on a card, touch and pen only, which swallows the click that follows) once `nav.ts` says the viewer can edit (`data-can-edit` on `<html>`, `cf:me` event), and marks cards as `app-htmx.ts` renders them; `web/user.ts` wires the book page's button; `web/recycle-bin.ts` is `/recycle-bin`.
 
+## Backups
+
+`backup.go`: a goroutine (`startBackups`) checks every hour and makes what's due: `appDB` daily and `calibreDB` weekly, each with `VACUUM INTO` to a `.partial` name, renamed when whole, owner-only, into `-backup-dir`. Due means the newest backup of that kind (by the UTC time in its name) is older than its interval, so restarts add nothing. The library backup is skipped when `currentLibraryKey()` matches the one in the last backup's sidecar. The newest `-backup-keep` of each are kept. `secrets.key` is copied once per key (by fingerprint) into `-datadir/secrets.key.d/`, never into `-backup-dir` (the database and its key are kept apart); app sidecars name their key, and a copy is pruned once no kept backup names it. One backup runs at a time (`backupMu`); the Server page's **Back up now** (`POST /api/admin/backups`) starts one in the background, and its live Backups list shows it. Downloads (`GET /api/admin/backups/{name}`) serve only names from the listing. All of it is behind `requireAdminUser`.
+
 ## ISBNs and online lookups
 
 Both are behind `requireWrites` and only add options to the metadata editor (`web/isbn-tools.ts`). They never write.

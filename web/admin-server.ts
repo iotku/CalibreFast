@@ -1,5 +1,5 @@
 // The admin's Server page (templates/admin-server.html): keep its uptime,
-// API budgets and storage current (GET /admin/server/live, Go: serverLive
+// API budgets, backups and storage current (GET /admin/server/live, Go: serverLive
 // in server.go), and stop the server (POST /api/admin/server/stop, Go:
 // serverStopHandler), then watch for it to come back when a service
 // manager restarts it.
@@ -110,3 +110,22 @@ button.addEventListener("click", async () => {
         say(errorMessage(err), true);
     }
 });
+
+// Backups (backup.go): "Back up now" starts one in the background; the live
+// Backups list shows it running, then done.
+const sayBackup = statusLine("backup-status");
+for (const btn of document.querySelectorAll<HTMLButtonElement>("button[data-backup]")) {
+    btn.addEventListener("click", async () => {
+        const kind = btn.dataset["backup"] ?? "";
+        btn.disabled = true;
+        try {
+            await api("POST", `/api/admin/backups?kind=${encodeURIComponent(kind)}`);
+            sayBackup("Backing up… it appears in the list when it's done.");
+            void refresh();
+        } catch (err) {
+            sayBackup(errorMessage(err), true);
+        } finally {
+            btn.disabled = false;
+        }
+    });
+}
