@@ -5,7 +5,8 @@ package main
 // and faulty tags or languages can be found, then edited a book or a
 // selection at a time.
 //
-// GET /api/library/table answers the rows, from metadata.db. POST
+// GET /api/library/table answers the rows, from metadata.db (?ids=a,b:
+// only those books, as the grid's "Edit in table" asks). POST
 // /api/library/bulk changes some fields of a set of books: the change is
 // queued (bulk_queue.go) and later each book's metadata.opf is read (as the
 // metadata editor does), the changes are made to it, and it's saved with
@@ -207,8 +208,20 @@ func folderFormats(uuid, path string) []string {
 	return out
 }
 
+// tableIDsMax: the most books ?ids= can ask for (web/library-edit.ts
+// loads the whole table for more).
+const tableIDsMax = 500
+
 func libraryTableHandler(w http.ResponseWriter, r *http.Request) {
-	books, err := tableBooks(calibreDB, nil)
+	var uuids []string // nil: every book
+	if ids := r.URL.Query().Get("ids"); ids != "" {
+		uuids = strings.Split(ids, ",")
+		if len(uuids) > tableIDsMax {
+			http.Error(w, fmt.Sprintf("at most %d books", tableIDsMax), http.StatusBadRequest)
+			return
+		}
+	}
+	books, err := tableBooks(calibreDB, uuids)
 	if err != nil {
 		log.Println("library table:", err)
 		http.Error(w, err.Error(), http.StatusInternalServerError)
