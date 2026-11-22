@@ -16,6 +16,18 @@
     <section class="auth-card" id="server-page" data-refresh-ms="{{ .RefreshMS }}">
         <h1>Server</h1>
         {{ template "server-live" . }}
+        <h2>Backups</h2>
+        {{ if .Backups.On }}
+        <p class="auth-muted">The app's data (accounts, reading, highlights, shelves) is backed up daily, and Calibre's <code>metadata.db</code> weekly when it changed, into <code>{{ .Backups.Dir }}</code>. The newest {{ .Backups.Keep }} of each are kept. Backups hold everyone's accounts and reading: keep them as safe as the server's data folder. The key for users' Hardcover sign-ins (<code>secrets.key</code>) is never in a backup or a download; copies stay in the data folder.</p>
+        <div class="server-backup-actions">
+            <button type="button" class="btn-standard" data-backup="app">Back up app data now</button>
+            <button type="button" class="btn-standard" data-backup="library">Back up metadata.db now</button>
+        </div>
+        <p id="backup-status" class="auth-notice" role="status" hidden></p>
+        {{ template "server-backups" . }}
+        {{ else }}
+        <p class="auth-muted">Off (<code>-backups=false</code>).</p>
+        {{ end }}
         <h2>Stop the server</h2>
         {{ if .Systemd }}
         <p class="auth-muted">Requests in progress finish first, then the server stops. systemd starts it again if its unit restarts it (<code>Restart=always</code>, as in <code>deploy/systemd/</code>, which also pulls and rebuilds it first). Expect a minute or so.</p>
@@ -77,3 +89,24 @@
             {{- end }}
         </div>
 {{ end }}
+
+{{/* The backups list: on the page, and in /admin/server/live with server-live. */}}
+{{ define "server-backups" }}
+        <div class="server-backups" id="server-backups" data-live>
+            {{ with .Backups.Running }}<p class="auth-notice">Backing up {{ . }} data…</p>{{ end }}
+            {{ with .Backups.Error }}<p class="auth-error">{{ . }}</p>{{ end }}
+            {{ if .Backups.List }}
+            <table class="server-backup-list">
+                <thead><tr><th scope="col">Backup</th><th scope="col">Made</th><th scope="col">Size</th><th scope="col"></th></tr></thead>
+                <tbody>
+                {{ range .Backups.List }}
+                <tr><td>{{ .Label }}</td><td>{{ .When }}</td><td>{{ .SizeText }}</td><td><a href="/api/admin/backups/{{ .Name }}" download aria-label="Download the {{ .Label }} backup made {{ .When }}">Download</a></td></tr>
+                {{ end }}
+                </tbody>
+            </table>
+            {{ else }}
+            <p class="auth-muted">No backups yet.</p>
+            {{ end }}
+        </div>
+{{ end }}
+{{ define "server-live-all" }}{{ template "server-live" . }}{{ if .Backups.On }}{{ template "server-backups" . }}{{ end }}{{ end }}

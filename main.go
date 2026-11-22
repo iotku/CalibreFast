@@ -316,6 +316,9 @@ func main() {
 	flag.StringVar(&hostPort, "port", "8080", "port to listen on")
 	flag.BoolVar(&allowWrites, "allow-writes", false, "allow admins to change the library (metadata edits, uploads, covers, groups)")
 	flag.StringVar(&dataDir, "datadir", "data", "where CalibreFast keeps its own database (accounts, favorites, progress, shelves)")
+	flag.BoolVar(&backupsOn, "backups", true, "back up the app database daily and metadata.db weekly (when it changed) into -backup-dir")
+	flag.StringVar(&backupDir, "backup-dir", "", "where backups go (default <datadir>/backups); best on another disk")
+	flag.IntVar(&backupKeep, "backup-keep", backupKeep, "how many backups of each kind to keep")
 	flag.BoolVar(&publicCatalog, "public", false, "let anonymous visitors browse the library catalog (by default everything requires signing in)")
 	flag.BoolVar(&publicRead, "public-read", false, "public read-only mode: anonymous visitors can also read and download books (implies -public)")
 	flag.BoolVar(&allowRobots, "robots-allowed", false, "let search engines index the library (only with -public-read; otherwise robots.txt, X-Robots-Tag and a meta tag on every page tell them to stay out)")
@@ -430,6 +433,7 @@ func main() {
 	}
 	startHardcoverSync() // users' reading, to their Hardcover accounts (hardcover_sync.go)
 	startAccountPurge()  // accounts their owners deleted, once they can't be restored (account_delete.go)
+	startBackups()       // the app database daily, metadata.db weekly (backup.go)
 	serveLibraryHTTP()
 }
 
@@ -651,6 +655,7 @@ func serveLibraryHTTP() {
 
 	// Server status and the admin's Stop button (server.go)
 	registerServerRoutes()
+	registerBackupRoutes()
 
 	log.Println("Listening on :" + hostPort)
 	http.HandleFunc(cspReportPath, requireUser(cspReportHandler)) // csp.go

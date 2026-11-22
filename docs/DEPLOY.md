@@ -104,6 +104,26 @@ The page says whether systemd started the server:
 - **Started by systemd:** after **Stop server**, the page waits for the server to come back up (pulled and rebuilt) and reloads.
 - **Anything else:** stopping really stops it. Nothing starts it again until someone does so on the server, and the page warns about this before stopping.
 
+## Backups and restoring
+
+The server backs itself up (`backup.go`), into `-backup-dir` (default `backups` in `-datadir`; another disk is better):
+
+- **The app database** (`calibrefast.db`: accounts, reading, bookmarks, highlights, shelves, which exist nowhere else), daily, as `app-YYYYMMDD-HHMMSS.db`.
+- **Calibre's `metadata.db`**, weekly, as `library-YYYYMMDD-HHMMSS.db`, and only if it changed since the last one. Calibre's own backups still matter: this is the database, not the books.
+
+The newest 7 of each are kept (`-backup-keep`); `-backups=false` turns them off. Times are UTC. Each is a whole SQLite database made while the server runs (`VACUUM INTO`). An admin can make one now, or download one, under **Backups** on the Server page.
+
+`secrets.key` (the key users' Hardcover sign-ins are encrypted with) is never put in `-backup-dir` or a download: with the database it opens every linked sign-in ([SECURITY.md](SECURITY.md#where-data-is-stored)). It never changes, so only one copy is kept per key, in `secrets.key.d/` beside it in `-datadir`. Each app backup's `.json` says which key it was made with (`"key"`, the start of its SHA-256); without it, users only link Hardcover again.
+
+**Restoring the app database:**
+
+1. Stop the server.
+2. In `-datadir`, delete `calibrefast.db-wal` and `calibrefast.db-shm` if they're there, and replace `calibrefast.db` with the backup (renamed to `calibrefast.db`, mode `0600`).
+3. If `secrets.key` is gone or differs from the backup's key, copy `secrets.key.d/secrets-<key>.key` to `secrets.key`.
+4. Start the server.
+
+**Restoring `metadata.db`:** stop the server and Calibre, keep the current `metadata.db` aside, copy the backup into the library as `metadata.db` (with no `metadata.db-wal` beside it), and start them. Books added after the backup are still in their folders; Calibre's **Library maintenance → Restore database** can find them.
+
 ## Without systemd
 
 The update script and the config file work anywhere:
