@@ -157,12 +157,16 @@ func (b *importInbox) editOne(id string, edit *bulkEdit) (*pendingImport, bool, 
 	next := cloneImport(it)
 	m := &next.Merged.OPFMetadata
 	m.FillSeries()
+	m.FillRating()
 	if !edit.apply(m) {
 		return nil, false, nil
 	}
 	if edit.Series != nil || edit.SeriesIndex != nil {
 		// approve takes the series from Meta (SeriesSet isn't stored).
 		m.SyncSeriesMeta()
+	}
+	if edit.Rating != nil {
+		m.SyncRatingMeta() // and the rating, the same way
 	}
 	if err := b.saveEdit(next); err != nil {
 		log.Printf("imports: editing %s: %v", id, err)

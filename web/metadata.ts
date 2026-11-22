@@ -7,6 +7,7 @@ import { closeOnBackdropClick, el as tag, errorMessage, maybeId } from "./dom.js
 import { isbnDigits, mountIsbnTools } from "./isbn-tools.js";
 import { parseInert } from "./trusted.js";
 import { joinAuthors, splitAuthors, tidyAuthors } from "./authors.js";
+import { ratingLabel } from "./rating.js";
 import type { DuplicateBook, DuplicateCheck, MetaSource, ValueSuggestion } from "./types.js";
 
 type FieldKind = "string" | "date" | "list" | "identifiers";
@@ -15,6 +16,7 @@ type FieldKey =
   | "creators"
   | "description"
   | "publisher"
+  | "rating"
   | "series"
   | "series_index"
   | "date"
@@ -44,6 +46,8 @@ const FIELDS: { key: FieldKey; kind: FieldKind }[] = [
   { key: "creators", kind: "list" },
   { key: "description", kind: "string" },
   { key: "publisher", kind: "string" },
+  // Calibre's rating, 0–10 half-stars as a string ("" none); sent always.
+  { key: "rating", kind: "string" },
   // Sent always, so saving sets the book's series (empty: none).
   { key: "series", kind: "string" },
   { key: "series_index", kind: "string" },
@@ -75,6 +79,7 @@ function fieldValue(meta: MetaSource, key: FieldKey, kind: FieldKind): string {
     case "string":
     case "date": {
       const v = metaProp(meta, key);
+      if (typeof v === "number") return v > 0 ? String(v) : ""; // the rating
       return typeof v === "string" ? v : "";
     }
     case "list":
@@ -276,10 +281,12 @@ function populateField(
     const value = fieldValue(meta, key, kind);
     return { value, index: indexInput && value ? fieldValue(meta, "series_index", "string") : "" };
   };
-  const shown = (value: string, index: string): string => (index ? `${value} #${index}` : value);
+  const shown = (value: string, index: string): string =>
+    key === "rating" ? ratingLabel(value) : index ? `${value} #${index}` : value;
   /** What the field holds now, as a pill would show it. */
   const showing = (): string => {
     const v = input.value.trim();
+    if (key === "rating") return ratingLabel(v);
     return indexInput && v ? shown(v, indexInput.value.trim()) : v;
   };
 
@@ -856,6 +863,7 @@ function duplicateComparison(b: DuplicateBook, lib: MetaSource, adding: MetaSour
     const v = (m: MetaSource): string => {
       if (key === "description") return plainText(fieldValue(m, key, kind));
       if (key === "series") return m.Series ? `${m.Series}${m.SeriesIndex ? ` #${m.SeriesIndex}` : ""}` : "";
+      if (key === "rating") return ratingLabel(fieldValue(m, key, kind));
       if (key === "languages") return metaList(m, key).map(languageName).join(", ");
       if (key === "identifiers") return (m.Identifiers ?? []).map((i) => (i.Scheme ? `${i.Scheme}: ${i.Value}` : i.Value)).join(", ");
       return fieldValue(m, key, kind);
@@ -877,6 +885,7 @@ const FIELD_LABELS: Record<FieldKey, string> = {
   title: "Title",
   creators: "Authors",
   publisher: "Publisher",
+  rating: "Rating",
   series: "Series",
   series_index: "Number in series",
   date: "Publication date",
@@ -917,7 +926,10 @@ export function computeChanges(current: MetaSource | null, values: FormValues): 
       // An unparseable stored date shows as an empty date input and is kept
       // by the server, so an empty field there isn't a change.
       if (kind === "date" && !after && before && !/^\d{4}-\d{2}-\d{2}$/.test(before)) continue;
-      if (before !== after) changes.push({ key, label, kind: "string", before, after });
+      if (before !== after) {
+        const show = key === "rating" ? ratingLabel : (v: string): string => v;
+        changes.push({ key, label, kind: "string", before: show(before), after: show(after) });
+      }
     }
   }
   return changes;
@@ -1318,6 +1330,7 @@ export async function mountMetadataEditor(book: BookTarget, form: HTMLFormElemen
         Languages: parseList(values.languages ?? ""), Subjects: parseList(values.subjects ?? ""),
         Identifiers: (values.identifiers ?? []).map((i) => ({ Scheme: i.scheme, Value: i.value, ID: i.id })),
         Series: values.series ?? "", SeriesIndex: values.series ? values.series_index ?? "" : "",
+        Rating: Number(values.rating) || 0,
       };
       dupAdding = adding;
       const formats = (dupDialog.dataset["formats"] ?? "").split(",").filter(Boolean).map((f) => f.toUpperCase());

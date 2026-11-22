@@ -216,6 +216,9 @@ type bookSnap struct {
 	Identifiers []opfIdentifier `json:"identifiers"`
 	Series      string          `json:"series"`
 	SeriesIndex string          `json:"series_index"`
+	// Rating: nil in entries logged before ratings were editable, which an
+	// undo then leaves alone.
+	Rating *int `json:"rating,omitempty"`
 }
 
 // snapBook is the book's metadata now; nil if it isn't in the library.
@@ -227,7 +230,7 @@ func snapBook(uuid string) *bookSnap {
 	return &bookSnap{
 		Title: m.Title, Creators: m.Creators, Description: m.Description, Publisher: m.Publisher,
 		Date: m.Date, Languages: m.Languages, Subjects: m.Subjects, Identifiers: m.Identifiers,
-		Series: m.Series, SeriesIndex: m.SeriesIndex,
+		Series: m.Series, SeriesIndex: m.SeriesIndex, Rating: &m.Rating,
 	}
 }
 
@@ -242,11 +245,15 @@ func bookTitle(uuid string) string {
 }
 
 func (s *bookSnap) metadata() OPFMetadata {
-	return OPFMetadata{
+	m := OPFMetadata{
 		Title: s.Title, Creators: slices.Clone(s.Creators), Description: s.Description, Publisher: s.Publisher,
 		Date: s.Date, Languages: slices.Clone(s.Languages), Subjects: slices.Clone(s.Subjects),
 		Identifiers: slices.Clone(s.Identifiers), Series: s.Series, SeriesIndex: s.SeriesIndex, SeriesSet: true,
 	}
+	if s.Rating != nil {
+		m.Rating, m.RatingSet = *s.Rating, true
+	}
+	return m
 }
 
 // logBookEdit records a change to a book's metadata, given its metadata
@@ -511,7 +518,11 @@ func revertBook(e *editLogEntry, by *User, undo string) error {
 	if now == nil {
 		return errors.New("the book isn't in the library")
 	}
-	if !sameJSON(e.After, now) {
+	cmpNow := *now
+	if after.Rating == nil {
+		cmpNow.Rating = nil // logged before ratings were kept: not part of the check
+	}
+	if !sameJSON(e.After, &cmpNow) {
 		return errRevertConflict
 	}
 	if len(e.Before) == 0 { // a new book: to the bin

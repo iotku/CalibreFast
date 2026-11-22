@@ -250,13 +250,15 @@ type bulkEdit struct {
 	Languages       *string  `json:"languages,omitempty"` // "eng, fra"
 	AddLanguages    []string `json:"add_languages,omitempty"`
 	RemoveLanguages []string `json:"remove_languages,omitempty"` // "en" removes "eng" too
+
+	Rating *string `json:"rating,omitempty"` // 0–10 half-stars, "" or "0" for none (rating.go)
 }
 
 func (e *bulkEdit) empty() bool {
 	return e.Title == nil && e.Authors == nil && e.Publisher == nil && e.Date == nil &&
 		e.Series == nil && e.SeriesIndex == nil &&
 		e.Tags == nil && len(e.AddTags) == 0 && len(e.RemoveTags) == 0 && e.SplitTags == "" &&
-		e.Languages == nil && len(e.AddLanguages) == 0 && len(e.RemoveLanguages) == 0
+		e.Languages == nil && len(e.AddLanguages) == 0 && len(e.RemoveLanguages) == 0 && e.Rating == nil
 }
 
 // apply makes the changes to m, and says whether anything changed.
@@ -303,6 +305,10 @@ func (e *bulkEdit) apply(m *OPFMetadata) bool {
 			index = ""
 		}
 		m.Series, m.SeriesIndex, m.SeriesSet = name, index, true
+	}
+
+	if e.Rating != nil {
+		m.Rating, m.RatingSet = opf.ParseRating(*e.Rating), true
 	}
 
 	if e.Tags != nil {
@@ -406,14 +412,17 @@ func bookEditMetadata(uuid string) (*OPFMetadata, error) {
 	m.Series, m.SeriesIndex = "", ""
 	var series sql.NullString
 	var index float64
-	err = calibreDB.QueryRow(`SELECT (SELECT s.name FROM books_series_link x JOIN series s ON s.id = x.series WHERE x.book = b.id LIMIT 1), b.series_index
-		FROM books b WHERE b.uuid = ?`, uuid).Scan(&series, &index)
+	var rating sql.NullInt64
+	err = calibreDB.QueryRow(`SELECT (SELECT s.name FROM books_series_link x JOIN series s ON s.id = x.series WHERE x.book = b.id LIMIT 1), b.series_index,
+			(SELECT r.rating FROM books_ratings_link x JOIN ratings r ON r.id = x.rating WHERE x.book = b.id LIMIT 1)
+		FROM books b WHERE b.uuid = ?`, uuid).Scan(&series, &index, &rating)
 	if err != nil {
 		return nil, fmt.Errorf("couldn't read the series: %w", err)
 	}
 	if series.Valid && strings.TrimSpace(series.String) != "" {
 		m.Series, m.SeriesIndex = series.String, strconv.FormatFloat(index, 'f', -1, 64)
 	}
+	m.Rating = min(max(int(rating.Int64), 0), 10) // metadata.db's, not the OPF's (opf is shadowed here)
 	return &m, nil
 }
 

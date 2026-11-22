@@ -114,6 +114,8 @@ export interface MetaSource {
     /** The series and the book's number in it (Go: OPFMetadata.Series). */
     Series?: string;
     SeriesIndex?: string;
+    /** Calibre's rating, 0–10 half-stars (Go: OPFMetadata.Rating); absent when none. */
+    Rating?: number;
     /** Set by the editor on answers from an online lookup. */
     External?: boolean;
 }
@@ -345,6 +347,8 @@ export interface BulkEdit {
     languages?: string;
     add_languages?: string[];
     remove_languages?: string[];
+    /** Calibre's rating, "0"–"10" half-stars; "" for none. */
+    rating?: string;
 }
 
 /** POST /api/library/bulk (Go: bulkResult). */

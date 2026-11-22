@@ -434,12 +434,16 @@ func (b *importInbox) approve(id string, meta OPFMetadata, override bool) (bookU
 	if meta.SeriesSet {
 		book.SyncSeriesMeta() // …or as the editor sent it
 	}
+	if meta.RatingSet { // the rating the same way
+		book.Rating = meta.Rating
+		book.SyncRatingMeta()
+	}
 
 	// The cover and the editor's metadata go in with the book, and the
 	// queue folder is removed once it's in (add_journal.go: finishAdd), so
 	// even a crash part way through leaves the book here or there, whole.
 	var timing addTiming
-	opts := addOptions{Import: &addJournalImport{Dir: dir, Meta: book.OPFMetadata, SeriesSet: book.SeriesSet}, Timing: &timing}
+	opts := addOptions{Import: &addJournalImport{Dir: dir, Meta: book.OPFMetadata, SeriesSet: book.SeriesSet, RatingSet: book.RatingSet}, Timing: &timing}
 	if _, err := os.Stat(filepath.Join(dir, "cover.jpg")); err == nil {
 		opts.Cover = filepath.Join(dir, "cover.jpg")
 	}

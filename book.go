@@ -45,6 +45,7 @@ type BookPageData struct {
 	// The series as metadata.db has it ("" without one), and the book's
 	// number in it ("2", "2.5").
 	Series, SeriesIndex string
+	Rating              *ratingStars // Calibre's rating (rating.go); nil when unrated
 
 	Writable bool // server started with -allow-writes (shows the Edit button)
 
@@ -56,7 +57,7 @@ type BookPageData struct {
 	// cover.jpg's size in pixels (0 when unknown): the page reserves the
 	// cover's shape before any image loads, so nothing moves when it does.
 	CoverW, CoverH int
-	CoverHue int  // placeholder colour, as on the book's library card
+	CoverHue       int // placeholder colour, as on the book's library card
 }
 
 // The book page shows this many tags and authors; a "+N more" button
@@ -202,6 +203,7 @@ func bookHandler(w http.ResponseWriter, r *http.Request) {
 		data.CoverW, data.CoverH = imageSize(filepath.Join(baseDir, path, "cover.jpg"))
 	}
 	data.Series, data.SeriesIndex = librarySeriesFields(uuid)
+	data.Rating = starsFor(libraryRating(uuid))
 	// render into buffer first
 	var buf bytes.Buffer
 

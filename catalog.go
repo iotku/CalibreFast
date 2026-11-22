@@ -40,6 +40,7 @@ type catalogBook struct {
 	Publisher int32    // 0 if none
 	LangIDs   []int32
 	ISBNs     []string // identifiers of type isbn, digits (and X) only (search.go)
+	Rating    uint8    // 0–10 half-stars, 0 if none (rating.go)
 }
 
 type catalog struct {
@@ -253,6 +254,15 @@ func loadCatalogBooks(db queryer, uuids []string, names *catalog) ([]catalogBook
 			if i, ok := at[book]; ok {
 				books[i].LangIDs = append(books[i].LangIDs, id)
 				names.langCodes[id] = code
+			}
+		})
+	if err != nil {
+		return nil, err
+	}
+	err = scanLinks(db, `SELECT l.book, r.rating, '' FROM books_ratings_link l JOIN ratings r ON r.id = l.rating`+where, args,
+		func(book int64, rating int32, _ string) {
+			if i, ok := at[book]; ok {
+				books[i].Rating = uint8(min(max(rating, 0), 10))
 			}
 		})
 	if err != nil {

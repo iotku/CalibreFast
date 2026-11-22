@@ -37,6 +37,13 @@ type Metadata struct {
 	// SeriesSet: the editor sent a series (perhaps none): saving replaces
 	// the book's. Otherwise the book's series is left as it is.
 	SeriesSet bool `xml:"-" json:"-"`
+
+	// The rating, 0–10 half-stars as Calibre keeps it (JSON only; rating.go):
+	// read from calibre:rating by FillRating, written back by SyncRatingMeta.
+	Rating int `xml:"-" json:",omitempty"`
+	// RatingSet: the editor sent a rating (perhaps none): saving replaces
+	// the book's. Otherwise it's left as it is.
+	RatingSet bool `xml:"-" json:"-"`
 }
 
 // Identifier is a <dc:identifier>: an ISBN, a uuid, Calibre's book id, ….

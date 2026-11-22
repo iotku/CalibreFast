@@ -18,6 +18,7 @@
 import { api, byId, closeOnBackdropClick, el, errorMessage, icon, lineIcon, modalOpen } from "./dom.js";
 import { attachSuggest } from "./suggest.js";
 import { joinAuthors, splitAuthors, tidyAuthors } from "./authors.js";
+import { ratingLabel } from "./rating.js";
 import { deleteBooks } from "./delete-books.js";
 import { previewUrl } from "./formats.js";
 import { languageChipLabel, languageKey, loadLanguageCodes } from "./languages.js";
@@ -2002,7 +2003,7 @@ attachSuggest(field("authors"), { category: "author", multi: true, separators: "
 attachSuggest(field("publisher"), { category: "publisher" });
 attachSuggest(field("series"), { category: "series" });
 // Typing in a "set" box ticks it.
-for (const name of ["tags", "languages", "authors", "series", "publisher", "date"]) {
+for (const name of ["tags", "languages", "authors", "series", "publisher", "date", "rating"]) {
     field(name).addEventListener("input", () => {
         field(`${name}_on`).checked = true;
         updateSummary();
@@ -2060,6 +2061,7 @@ function buildEdit(): BulkEdit {
     }
     if (field("publisher_on").checked) edit.publisher = field("publisher").value;
     if (field("date_on").checked) edit.date = field("date").value;
+    if (field("rating_on").checked) edit.rating = field("rating").value;
     return edit;
 }
 
@@ -2079,6 +2081,7 @@ function updateSummary(): void {
     }
     if (e.publisher !== undefined) parts.push(e.publisher.trim() ? "set the publisher" : "clear the publisher");
     if (e.date !== undefined) parts.push(e.date ? "set the date" : "clear the date");
+    if (e.rating !== undefined) parts.push(e.rating ? `rate ${ratingLabel(e.rating)}` : "clear the rating");
     summary.textContent = parts.length ? `For ${plural(selected.size, "book")}: ${parts.join(", ")}.` : "Nothing to change yet.";
     applyBtn.disabled = parts.length === 0;
 }

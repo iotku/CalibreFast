@@ -201,6 +201,15 @@ func insertBookTx(db *sql.DB, meta *UploadedBookMeta, formats []formatEntry, bef
 		tx.Exec(`INSERT OR IGNORE INTO identifiers (book, type, val) VALUES (?, ?, ?)`, bookID, idType, idVal)
 	}
 
+	// The rating: as the editor set it, or the file's calibre:rating.
+	meta.FillRating()
+	if r := opf.CleanRating(meta.Rating); r > 0 {
+		if err = setBookRating(tx, bookID, r); err != nil {
+			retErr = fmt.Errorf("rating: %w", err)
+			return
+		}
+	}
+
 	if beforeCommit != nil {
 		if err = beforeCommit(tx, bookID, bookUUID, bookPath); err != nil {
 			retErr = err
@@ -565,6 +574,13 @@ func updateBookIfUnchanged(db *sql.DB, baseDir string, bookUUID string, meta *OP
 		}
 	}
 
+	// The rating, when the editor sent one; otherwise the book's stays.
+	if meta.RatingSet {
+		if err = setBookRating(tx, bookID, opf.CleanRating(meta.Rating)); err != nil {
+			return "", "", fmt.Errorf("rating: %w", err)
+		}
+	}
+
 	// As stored, to check the next change against.
 	var modified string
 	if modified, err = bookModified(tx, bookUUID); err != nil {
@@ -586,7 +602,14 @@ func updateBookIfUnchanged(db *sql.DB, baseDir string, bookUUID string, meta *OP
 			if meta.SeriesSet {
 				existingOPF.Metadata.SyncSeriesMeta()
 			}
+			if meta.RatingSet {
+				existingOPF.Metadata.SyncRatingMeta()
+			}
 		} else {
+			if meta.RatingSet {
+				existingOPF.Metadata.Rating = meta.Rating
+				existingOPF.Metadata.SyncRatingMeta()
+			}
 			if meta.SeriesSet {
 				existingOPF.Metadata.Series, existingOPF.Metadata.SeriesIndex = meta.Series, meta.SeriesIndex
 				existingOPF.Metadata.SyncSeriesMeta()

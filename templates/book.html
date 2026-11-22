@@ -154,6 +154,11 @@
             </div>
         </div>
         <div class="book-page-info">
+            {{ with .Rating }}
+            <div class="meta-row book-rating" role="img" aria-label="{{ .Text }}" title="{{ .Text }}">
+                {{- range .Stars }}<span class="star star-{{ . }}" aria-hidden="true">★</span>{{ end -}}
+            </div>
+            {{ end }}
             {{ if .Series }}
             <div class="meta-row">
                 Book {{ .SeriesIndex }} in <a href="/series/{{ .Series }}" class="meta-link">{{ alias "series" .Series }}</a>

@@ -28,6 +28,7 @@ const (
 	sortByAuthor    = "author"    // A–Z by the first author's sort name
 	sortBySeries    = "series"    // by series, in reading order; books in none after
 	sortByPublished = "published" // newest published first; unknown dates last
+	sortByRating    = "rating"    // highest rated first; unrated last (rating.go)
 )
 
 var sortLabels = map[string]string{
@@ -37,14 +38,15 @@ var sortLabels = map[string]string{
 	sortByAuthor:    "Author",
 	sortBySeries:    "Series",
 	sortByPublished: "Published",
+	sortByRating:    "Rating",
 }
 
 // The sorts each kind of page offers, its default first.
 var (
-	latestSorts   = []string{sortByAdded, sortByTitle, sortByAuthor, sortBySeries, sortByPublished}
-	filteredSorts = []string{sortByTitle, sortByAuthor, sortBySeries, sortByAdded, sortByPublished}
-	seriesSorts   = []string{sortBySeries, sortByTitle, sortByAdded, sortByPublished}
-	searchSorts   = []string{sortByBest, sortByTitle, sortByAuthor, sortBySeries, sortByAdded, sortByPublished}
+	latestSorts   = []string{sortByAdded, sortByTitle, sortByAuthor, sortBySeries, sortByPublished, sortByRating}
+	filteredSorts = []string{sortByTitle, sortByAuthor, sortBySeries, sortByAdded, sortByPublished, sortByRating}
+	seriesSorts   = []string{sortBySeries, sortByTitle, sortByAdded, sortByPublished, sortByRating}
+	searchSorts   = []string{sortByBest, sortByTitle, sortByAuthor, sortBySeries, sortByAdded, sortByPublished, sortByRating}
 )
 
 // pickSort is the requested sort if it's one of allowed, else the default
@@ -166,6 +168,10 @@ func sortSlots(c *catalog, slots []int32, key string) {
 				return -1
 			}
 			return strings.Compare(pb, pa) // newest first
+		}
+	case sortByRating:
+		less = func(a, b int32) int {
+			return cmp.Or(cmp.Compare(books[b].Rating, books[a].Rating), strings.Compare(k.title[a], k.title[b]))
 		}
 	default:
 		return

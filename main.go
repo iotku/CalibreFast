@@ -807,6 +807,7 @@ func GetOptionsForBook(w http.ResponseWriter, r *http.Request) {
 		// The series as metadata.db has it (what "next in series" goes by),
 		// which the OPF may not match.
 		opfDoc.Metadata.Series, opfDoc.Metadata.SeriesIndex = librarySeriesFields(uuid)
+		opfDoc.Metadata.Rating = libraryRating(uuid) // metadata.db's, as for the series
 		metas = append(metas, &UploadedBookMeta{
 			OPFMetadata: opfDoc.Metadata,
 			Format:      "current",
@@ -867,6 +868,9 @@ type ApplyMetadataRequest struct {
 	// book's series as it is, "" removes it.
 	Series      *string `json:"series"`
 	SeriesIndex *string `json:"series_index"`
+	// The rating, 0–10 half-stars ("8"); nil (not sent) leaves the book's,
+	// "" or "0" removes it.
+	Rating *string `json:"rating"`
 	// Override: add a book from the import queue though it looks like one
 	// already in the library (duplicates.go).
 	Override bool `json:"override"`
@@ -996,6 +1000,10 @@ func metadataFromRequest(req ApplyMetadataRequest) OPFMetadata {
 		Languages:   requestLanguages(req),
 		Subjects:    parseSubjectsString(req.Subjects),
 		Identifiers: req.Identifiers,
+	}
+	if req.Rating != nil {
+		m.RatingSet = true
+		m.Rating = opf.ParseRating(*req.Rating)
 	}
 	if req.Series != nil {
 		m.SeriesSet = true
