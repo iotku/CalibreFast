@@ -2988,15 +2988,15 @@ body.book-standalone {
     background: var(--bg-elevated);
 }
 
-/* The letter under the finger while scrubbing, held above it like a keyboard key's popup */
+/* The letter under the finger while scrubbing, held above it like a keyboard key's popup
+   (aggregate.ts places it). Over the top bar (1000): the bar's first row sits right under it. */
 .agg-letter-bubble {
     position: fixed;
-    z-index: 60;
+    z-index: 1100;
     display: grid;
     place-items: center;
     width: 56px;
     height: 56px;
-    transform: translate(-50%, calc(-100% - 40px));
     font-size: 1.75rem;
     font-weight: 600;
     color: var(--text-primary);
