@@ -128,6 +128,7 @@ type serverPageData struct {
 	GoVersion string
 	Storage   []storageMeter
 	Budgets   []apiBudget
+	Backups   backupView
 	RefreshMS int64 // how often the page asks for serverLive
 }
 
@@ -151,6 +152,7 @@ func serverData() serverPageData {
 		GoVersion: goVersion,
 		Storage:   serverStorage(),
 		Budgets:   apiBudgets(now),
+		Backups:   backupData(),
 		RefreshMS: serverRefresh.Milliseconds(),
 	}
 }
@@ -170,7 +172,7 @@ func serverPage(w http.ResponseWriter, r *http.Request) {
 func serverLive(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Cache-Control", "no-store")
 	w.Header().Set("Content-Type", "text/html; charset=utf-8")
-	logErr(templates.ExecuteTemplate(w, "server-live", serverData()), "render server-live")
+	logErr(templates.ExecuteTemplate(w, "server-live-all", serverData()), "render server-live")
 }
 
 // POST /api/admin/server/stop: stop the server cleanly. Admins only: the

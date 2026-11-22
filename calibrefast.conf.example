@@ -23,6 +23,12 @@ basedir = /srv/calibre/library
 datadir = /var/lib/calibrefast/data
 cachedir = /var/lib/calibrefast/cache
 
+# Backups: the app database daily, metadata.db weekly when it changed (on by
+# default, into backups in datadir). Another disk is better.
+# backup-dir = /srv/backups/calibrefast
+# backup-keep = 7
+# backups = false
+
 port = 8080
 
 # Let admins (and editors, for books) change the library.
