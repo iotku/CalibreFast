@@ -72,6 +72,7 @@ type wantBook struct {
 	formats        []string
 	publisher      string
 	langs, isbns   []string
+	rating         int
 }
 
 func readWant(t *testing.T, db *sql.DB, uuid string) wantBook {
@@ -84,8 +85,9 @@ func readWant(t *testing.T, db *sql.DB, uuid string) wantBook {
 			(SELECT group_concat(lower(format), '|') FROM data WHERE book = b.id),
 			(SELECT p.name FROM books_publishers_link l JOIN publishers p ON p.id = l.publisher WHERE l.book = b.id),
 			(SELECT group_concat(g.lang_code, '|' ORDER BY l.item_order) FROM books_languages_link l JOIN languages g ON g.id = l.lang_code WHERE l.book = b.id),
-			(SELECT group_concat(val, '|') FROM identifiers WHERE book = b.id AND lower(type) = 'isbn')
-		FROM books b WHERE b.uuid = ?`, uuid).Scan(&w.title, &w.authors, &tags, &series, &formats, &publisher, &langs, &isbns)
+			(SELECT group_concat(val, '|') FROM identifiers WHERE book = b.id AND lower(type) = 'isbn'),
+			COALESCE((SELECT r.rating FROM books_ratings_link l JOIN ratings r ON r.id = l.rating WHERE l.book = b.id), 0)
+		FROM books b WHERE b.uuid = ?`, uuid).Scan(&w.title, &w.authors, &tags, &series, &formats, &publisher, &langs, &isbns, &w.rating)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -119,6 +121,7 @@ func gotBook(c *catalog, b catalogBook) wantBook {
 		g.formats = nil
 	}
 	g.publisher = c.publisherNames[b.Publisher]
+	g.rating = int(b.Rating)
 	for _, id := range b.LangIDs {
 		g.langs = append(g.langs, c.langCodes[id])
 	}
@@ -153,7 +156,7 @@ func checkCatalogMatchesDB(t *testing.T, db *sql.DB, c *catalog) {
 func wantEqual(a, b wantBook) bool {
 	return a.title == b.title && a.authors == b.authors && a.series == b.series &&
 		slices.Equal(a.tags, b.tags) && slices.Equal(a.formats, b.formats) &&
-		a.publisher == b.publisher && slices.Equal(a.langs, b.langs) && slices.Equal(a.isbns, b.isbns)
+		a.publisher == b.publisher && slices.Equal(a.langs, b.langs) && slices.Equal(a.isbns, b.isbns) && a.rating == b.rating
 }
 
 func TestBuildCatalog(t *testing.T) {

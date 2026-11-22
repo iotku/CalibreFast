@@ -6795,3 +6795,26 @@ body.selecting .book.selected .cover-wrapper {
 .ph-save-row {
     margin-top: 0.75em;
 }
+
+/* Calibre's rating in the book popup (templates/book.html) */
+.book-rating {
+    font-size: 1.1rem;
+    letter-spacing: 0.1em;
+    line-height: 1;
+}
+
+.book-rating .star-full {
+    color: var(--accent, #c8a96e);
+}
+
+.book-rating .star-empty {
+    color: var(--text-muted);
+    opacity: 0.5;
+}
+
+.book-rating .star-half {
+    background: linear-gradient(90deg, var(--accent, #c8a96e) 50%, color-mix(in srgb, var(--text-muted) 50%, transparent) 50%);
+    -webkit-background-clip: text;
+    background-clip: text;
+    color: transparent;
+}

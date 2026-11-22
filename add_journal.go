@@ -76,6 +76,7 @@ type addJournalImport struct {
 	Dir       string      `json:"dir"`  // its queue folder, removed once the book is in
 	Meta      OPFMetadata `json:"meta"` // what the admin settled on (updateBookInCalibreDB)
 	SeriesSet bool        `json:"series_set,omitempty"`
+	RatingSet bool        `json:"rating_set,omitempty"`
 }
 
 func (j *addJournal) path() string    { return filepath.Join(addingDir(), j.ID+".json") }
@@ -342,6 +343,7 @@ func finishAdd(j *addJournal) {
 	}
 	meta := im.Meta
 	meta.SeriesSet = im.SeriesSet
+	meta.RatingSet = im.RatingSet
 	// The same write the editor's Apply does: the description, every
 	// author's sort name and the identifiers reach metadata.db too.
 	if _, err := updateBookInCalibreDB(calibreDB, baseDir, j.UUID, &meta); err != nil {

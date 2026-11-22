@@ -63,6 +63,9 @@ func (c *category) sorts() []string {
 // several series (” for none, which sorts after).
 const bookSeriesSortSQL = `(SELECT COALESCE(NULLIF(s.sort, ''), s.name) FROM books_series_link sl JOIN series s ON s.id = sl.series WHERE sl.book = b.id)`
 
+// bookRatingSQL: a book's rating, 0 for none.
+const bookRatingSQL = `COALESCE((SELECT r.rating FROM books_ratings_link rl JOIN ratings r ON r.id = rl.rating WHERE rl.book = b.id), 0)`
+
 // sortOrderSQL is the fixed ORDER BY for each sort key: the only SQL a sort
 // adds to a query. Keys come from c.sorts() via pickSort, never the request.
 var sortOrderSQL = map[string]string{
@@ -71,6 +74,7 @@ var sortOrderSQL = map[string]string{
 	sortByAdded:     `b.timestamp DESC, b.id DESC`,
 	sortByPublished: `(b.pubdate IS NULL OR substr(b.pubdate, 1, 10) < '0102'), b.pubdate DESC, b.sort COLLATE NOCASE, b.id`,
 	sortBySeries:    bookSeriesSortSQL + ` IS NULL, ` + bookSeriesSortSQL + ` COLLATE NOCASE, b.series_index, b.sort COLLATE NOCASE, b.id`,
+	sortByRating:    bookRatingSQL + ` DESC, b.sort COLLATE NOCASE, b.id`,
 }
 
 // bookOrder: how a filtered page lists its books in sort key. A series'

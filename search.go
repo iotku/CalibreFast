@@ -12,6 +12,8 @@ package main
 //	                        lang (a code or name: "eng", "en", "english"),
 //	                        format ("epub"), isbn
 //	978-0-261-10221-7       an ISBN (10 or 13 digits, with or without dashes)
+//	rating:4                Calibre's rating: 4 stars or more; rating:=4.5
+//	                        exactly 4½, rating:0 unrated
 //
 // Text is compared without case, accents or punctuation (foldWords), and a
 // word matches the start of a word ("tolk" finds Tolkien); words of four
@@ -24,6 +26,7 @@ package main
 import (
 	"cmp"
 	"context"
+	"math"
 	"net/http"
 	"runtime"
 	"slices"
@@ -53,12 +56,14 @@ const (
 	fieldLang
 	fieldFormat
 	fieldISBN
+	fieldRating
 )
 
 var searchPrefixes = map[string]searchField{
 	"title": fieldTitle, "author": fieldAuthor, "authors": fieldAuthor, "by": fieldAuthor,
 	"series": fieldSeries, "tag": fieldTag, "tags": fieldTag, "publisher": fieldPublisher,
 	"lang": fieldLang, "language": fieldLang, "format": fieldFormat, "isbn": fieldISBN,
+	"rating": fieldRating, "stars": fieldRating,
 }
 
 type searchTerm struct {
@@ -312,6 +317,11 @@ func (m *termMatcher) score(ix *searchIndex, i int) int {
 		return 0
 	case fieldISBN:
 		return isbnScore(b.ISBNs, m.isbn, searchDigits(m.raw))
+	case fieldRating:
+		if ratingMatches(int(b.Rating), m.raw) {
+			return 1
+		}
+		return 0
 	}
 	best := 0
 	if m.field == fieldAny && m.isbn != "" && slices.Contains(b.ISBNs, m.isbn) {
@@ -336,6 +346,25 @@ func (m *termMatcher) score(ix *searchIndex, i int) int {
 		best = max(best, fieldWeight[fieldPublisher]*m.publishers[b.Publisher])
 	}
 	return best
+}
+
+// ratingMatches: rating:4 is 4 stars or more, rating:=4.5 exactly 4½,
+// rating:0 unrated. rating (half-stars) is the book's, 0 for none.
+func ratingMatches(rating int, q string) bool {
+	exact := strings.HasPrefix(q, "=")
+	q = strings.TrimSuffix(strings.TrimLeft(q, "=>"), "*")
+	stars, err := strconv.ParseFloat(strings.TrimSpace(q), 64)
+	if err != nil || stars < 0 || stars > 5 {
+		return false
+	}
+	want := int(math.Round(stars * 2))
+	switch {
+	case want == 0:
+		return rating == 0
+	case exact:
+		return rating == want
+	}
+	return rating >= want
 }
 
 // isbnScore: an exact ISBN, or for a partial one, any ISBN containing its digits.
@@ -649,7 +678,7 @@ func searchKey(terms []searchTerm) string {
 		}
 		b.WriteString(strconv.Itoa(int(t.field)))
 		b.WriteByte(':')
-		if t.field == fieldLang || t.field == fieldFormat || t.field == fieldISBN {
+		if t.field == fieldLang || t.field == fieldFormat || t.field == fieldISBN || t.field == fieldRating {
 			b.WriteString(strings.ToLower(t.raw))
 		} else {
 			b.WriteString(t.phrase)
