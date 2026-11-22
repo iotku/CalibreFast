@@ -145,8 +145,10 @@ func savedBooksHandler(w http.ResponseWriter, r *http.Request) {
 		listed[b.UUID] = true
 		out = append(out, savedBook{UUID: b.UUID, Title: b.Title, Authors: b.Authors, OnDeck: true})
 	}
+	// The whole list, not just limit rows: placeholders, series and books
+	// already On Deck are skipped, and mustn't take a download's place.
 	rows, err := appDB.Query(`SELECT book_uuid, updated_at FROM reading_status
-		WHERE user_id = ? AND status = 'wanted' `+wantedOrder+` LIMIT ?`, u.ID, limit)
+		WHERE user_id = ? AND status = 'wanted' `+wantedOrder, u.ID)
 	if err != nil {
 		http.Error(w, "query failed", http.StatusInternalServerError)
 		return
@@ -162,19 +164,23 @@ func savedBooksHandler(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 	rows.Close()
-	books, err := booksByUUIDs(uuids)
-	if err != nil {
-		http.Error(w, "query failed", http.StatusInternalServerError)
-		return
-	}
-	for _, b := range books {
-		if len(out) == limit {
-			break
+	for len(out) < limit && len(uuids) > 0 {
+		chunk := uuids[:min(len(uuids), limit)]
+		uuids = uuids[len(chunk):]
+		books, err := booksByUUIDs(chunk)
+		if err != nil {
+			http.Error(w, "query failed", http.StatusInternalServerError)
+			return
 		}
-		if b.Placeholder != nil || b.SeriesCard != nil {
-			continue // nothing to download
+		for _, b := range books {
+			if len(out) == limit {
+				break
+			}
+			if b.Placeholder != nil || b.SeriesCard != nil {
+				continue // nothing to download
+			}
+			out = append(out, savedBook{UUID: b.UUID, Title: b.Title, Authors: b.Authors, SavedAt: at[b.UUID]})
 		}
-		out = append(out, savedBook{UUID: b.UUID, Title: b.Title, Authors: b.Authors, SavedAt: at[b.UUID]})
 	}
 	writeJSONTagged(w, r, out)
 }

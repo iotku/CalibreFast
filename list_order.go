@@ -25,8 +25,11 @@ import (
 const (
 	favoritesOrder = `ORDER BY position IS NOT NULL, position, created_at DESC, book_uuid`
 	statusOrder    = `ORDER BY position IS NOT NULL, position, updated_at DESC, book_uuid`
-	wantedOrder    = `ORDER BY position IS NULL, position, updated_at, book_uuid`
-	shelfOrder     = `ORDER BY position IS NULL, position, added_at, book_uuid`
+	// Saved: books not in the library yet (placeholders) last, whatever
+	// their place, as they may never arrive.
+	wantedOrder = `ORDER BY book_uuid IN (SELECT uuid FROM placeholders WHERE deleted_at IS NULL),
+		position IS NULL, position, updated_at, book_uuid`
+	shelfOrder = `ORDER BY position IS NULL, position, added_at, book_uuid`
 )
 
 // maxArrangeBooks: the most books the editor loads (and an order may name).
