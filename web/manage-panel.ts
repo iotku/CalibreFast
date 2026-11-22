@@ -25,6 +25,15 @@ function setOpen(open: boolean): void {
 
 toggle?.addEventListener("click", () => setOpen(panel.hidden !== false));
 panel.querySelector(".manage-panel-close")?.addEventListener("click", () => setOpen(false));
+// A section's ⓘ: its explanation, shown or hidden.
+for (const btn of panel.querySelectorAll<HTMLButtonElement>(".manage-info-btn")) {
+    const info = document.getElementById(btn.getAttribute("aria-controls") ?? "");
+    btn.addEventListener("click", () => {
+        if (!info) return;
+        info.hidden = !info.hidden;
+        btn.setAttribute("aria-expanded", String(!info.hidden));
+    });
+}
 // The group editor's Cancel.
 panel.addEventListener("cf:manage-close", () => setOpen(false));
 document.addEventListener("keydown", (e) => {

@@ -134,15 +134,25 @@
     <div class="manage-panel-body">
 {{ if .CanVerify }}
     <section id="series-verify" class="manage-section series-verify" data-series="{{ .Name }}" aria-labelledby="series-verify-title">
-        <h3 id="series-verify-title">Books in the series</h3>
-        <p class="manage-hint">Give either or both. The series shows as complete while the library has them all, and what it lacks is listed on Missing books.{{ if not (or .VerifiedTotal .VerifiedBooks) }} Not set yet: the numbers below are from the books here.{{ end }}</p>
+        <div class="manage-section-head">
+            <h3 id="series-verify-title">Books in the series</h3>
+            <button type="button" class="manage-info-btn" aria-expanded="false" aria-controls="series-verify-info" aria-label="About these numbers" title="About these numbers">
+                <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true"><circle cx="12" cy="12" r="9"/><path d="M12 11v5M12 8h.01"/></svg>
+            </button>
+        </div>
+        <div id="series-verify-info" class="manage-info" hidden>
+            <p>Give either or both. The series shows as complete while the library has them all, and what it lacks is listed on Missing books.</p>
+            <p><strong>Highest number:</strong> every number from 1 up to it is needed. Novellas like 1.5 don't count.</p>
+            <p><strong>Number of books:</strong> however they're numbered, for a series whose books aren't (all #1, or #0). Placeholders stand in for missing books, but don't count as books the library has.</p>
+        </div>
         <form class="series-verify-form">
-            <label class="group-field"><span>Highest number</span>
-                <input type="number" id="series-verify-total" min="0" max="10000" step="1" value="{{ if .SuggestTotal }}{{ .SuggestTotal }}{{ end }}" class="input-search"></label>
-            <p class="manage-hint">Every number from 1 up to it is needed. Novellas like 1.5 don't count.</p>
-            <label class="group-field"><span>Number of books</span>
-                <input type="number" id="series-verify-books" min="0" max="10000" step="1" value="{{ if .SuggestBooks }}{{ .SuggestBooks }}{{ end }}" class="input-search"></label>
-            <p class="manage-hint">However they're numbered: for a series whose books aren't (all #1, or #0). Placeholders stand in for missing books, but don't count as books the library has.</p>
+            <div class="series-verify-fields">
+                <label class="group-field"><span>Highest number</span>
+                    <input type="number" id="series-verify-total" min="0" max="10000" step="1" value="{{ if .SuggestTotal }}{{ .SuggestTotal }}{{ end }}" class="input-search"></label>
+                <label class="group-field"><span>Number of books</span>
+                    <input type="number" id="series-verify-books" min="0" max="10000" step="1" value="{{ if .SuggestBooks }}{{ .SuggestBooks }}{{ end }}" class="input-search"></label>
+            </div>
+            {{ if not (or .VerifiedTotal .VerifiedBooks) }}<p class="manage-hint">Not set yet: these are from the books here.</p>{{ end }}
             <p id="series-verify-status" class="group-status error" role="status" hidden></p>
             <div class="group-row group-actions">
                 {{ if or .VerifiedTotal .VerifiedBooks }}<button type="button" id="series-verify-remove" class="btn-standard btn-danger">Forget</button>{{ end }}
@@ -197,10 +207,13 @@
         <ul class="group-members">
             {{ range .Members }}<li data-member="{{ . }}"></li>{{ end }}
         </ul>
-        <p id="group-status" class="group-status" role="status"></p>
-        <div class="group-row group-actions">
-            <button type="button" id="group-cancel" class="btn-standard">Cancel</button>
-            <button type="button" id="group-save" class="btn-standard btn-primary">Save</button>
+        {{/* Stays at the bottom of the sidebar while the section is in view, however many values it has. */}}
+        <div class="manage-sticky-foot">
+            <p id="group-status" class="group-status" role="status"></p>
+            <div class="group-row group-actions">
+                <button type="button" id="group-cancel" class="btn-standard">Cancel</button>
+                <button type="button" id="group-save" class="btn-standard btn-primary">Save</button>
+            </div>
         </div>
     </section>
 {{ end }}

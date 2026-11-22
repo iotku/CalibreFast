@@ -4079,11 +4079,20 @@ body.book-standalone {
     flex: 1 1 auto;
     overflow-y: auto;
     overscroll-behavior: contain;
-    padding: 0 1.1rem calc(1rem + env(safe-area-inset-bottom, 0px));
+    padding: 0 1.1rem;
 }
 
 .manage-section {
     padding: 1rem 0;
+}
+
+.manage-section:last-child {
+    padding-bottom: calc(1rem + env(safe-area-inset-bottom, 0px));
+}
+
+/* Its sticky footer is the end of the sidebar. */
+.manage-section:has(.manage-sticky-foot) {
+    padding-bottom: 0;
 }
 
 .manage-section + .manage-section {
@@ -4106,12 +4115,78 @@ body.book-standalone {
     color: var(--text-muted);
 }
 
-.series-verify .group-field .input-search {
-    width: 8rem;
+.manage-section-head {
+    display: flex;
+    align-items: center;
+    gap: 4px;
+    margin-bottom: 0.6rem;
+}
+
+.manage-section-head h3 {
+    margin: 0;
+}
+
+.manage-info-btn {
+    display: inline-flex;
+    padding: 4px;
+    color: var(--text-muted);
+    background: none;
+    border: 0;
+    border-radius: 50%;
+    cursor: pointer;
+}
+
+.manage-info-btn:hover,
+.manage-info-btn[aria-expanded="true"] {
+    color: var(--text-primary);
+}
+
+.manage-info {
+    margin: 0 0 0.8rem;
+    padding: 0.6rem 0.75rem;
+    font-size: 0.8rem;
+    line-height: 1.45;
+    color: var(--text-secondary);
+    background: var(--bg-surface);
+    border-radius: var(--radius-small);
+}
+
+.manage-info[hidden] {
+    display: none;
+}
+
+.manage-info p {
+    margin: 0;
+}
+
+.manage-info p + p {
+    margin-top: 0.4rem;
+}
+
+/* Highest number and number of books, side by side. */
+.series-verify-fields {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 10px;
 }
 
 .manage-section .group-actions {
     margin-top: 0.6rem;
+}
+
+/* The group's Cancel/Save: at the bottom of the sidebar while the
+   section is in view, so a long list of values can't push them away. */
+.manage-sticky-foot {
+    position: sticky;
+    bottom: 0;
+    margin: 0 -1.1rem;
+    padding: 0.6rem 1.1rem calc(0.8rem + env(safe-area-inset-bottom, 0px));
+    background: var(--bg-secondary);
+    border-top: 1px solid var(--border-subtle, var(--border-medium));
+}
+
+.manage-sticky-foot .group-actions {
+    margin-top: 0;
 }
 
 /* The series page's "Add to shelf" (series-shelf.ts): like the group panel. */
@@ -4242,6 +4317,8 @@ body.book-standalone {
 }
 
 .group-field textarea {
+    height: auto;
+    padding: 8px 12px;
     resize: vertical;
     min-height: 3.5em;
     max-height: 30vh;
