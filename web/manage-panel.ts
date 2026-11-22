@@ -1,10 +1,12 @@
 // The Manage sidebar of an aggregate page (templates/filtered.html), opened
 // from "Manage Series" (or Author, Tag, …) at the top of the bar's Manage
-// menu. It stays open while you work in it (no click outside closes it);
-// it closes with its ×, Esc, or the menu entry again. Its parts save on
+// menu. It sits beside the page, which moves over for it (style.css), and
+// stays open until closed (its ×, Esc, the menu entry again), however you
+// use the page meanwhile: a book's popup can open over it. Closed, it keeps
+// what you'd entered until you leave the page (or Cancel the group's). Its parts save on
 // their own: the series' book counts (series-verify.ts, editors) and the
 // group editor (groups.ts, admins), which also handles the Feature button.
-import { byId, maybeId } from "./dom.js";
+import { byId, maybeId, modalOpen } from "./dom.js";
 import "./series-verify.js";
 import "./groups.js";
 
@@ -36,8 +38,15 @@ for (const btn of panel.querySelectorAll<HTMLButtonElement>(".manage-info-btn"))
 }
 // The group editor's Cancel.
 panel.addEventListener("cf:manage-close", () => setOpen(false));
-document.addEventListener("keydown", (e) => {
-    // Not while a dialog (the book modal, a picker) has it.
-    if (e.key !== "Escape" || panel.hidden || e.defaultPrevented || document.querySelector("dialog[open]")) return;
-    setOpen(false);
-});
+// Capture phase: seen before the book popup's own Esc closes it.
+document.addEventListener(
+    "keydown",
+    (e) => {
+        // Not while the book popup or a dialog has it: that Esc closes that.
+        if (e.key !== "Escape" || panel.hidden || e.defaultPrevented || modalOpen()) return;
+        // A list open in it (the group's suggestions) closes first.
+        if (e.target instanceof HTMLElement && e.target.getAttribute("aria-expanded") === "true") return;
+        setOpen(false);
+    },
+    true,
+);

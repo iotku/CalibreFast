@@ -338,7 +338,7 @@ function init(panel: HTMLElement, sidebar: HTMLElement): void {
             e.preventDefault();
             void add();
         } else if (e.key === "Escape" && open) {
-            e.preventDefault(); // close the list, not the sidebar (manage-panel.ts)
+            e.preventDefault(); // close the list, not the sidebar (manage-panel.ts checks aria-expanded)
             closeSuggestions();
         }
     });

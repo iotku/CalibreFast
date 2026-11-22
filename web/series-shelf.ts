@@ -7,7 +7,7 @@
  * an element with data-series, the series as browsed. Handled by delegation,
  * so popups that arrive later work too.
  */
-import { api, errorMessage } from "./dom.js";
+import { api, errorMessage, modalOpen } from "./dom.js";
 
 const seriesUrl = (shelf: string, series: string): string =>
     `/api/shelves/${encodeURIComponent(shelf)}/series/${encodeURIComponent(series)}`;
@@ -75,7 +75,8 @@ document.addEventListener("click", (e) => {
     const input = add?.parentElement?.querySelector<HTMLInputElement>(".series-shelf-new");
     if (input) void create(input);
 
-    // The series page's top-bar button shows and hides its panel.
+    // The series page's top-bar button shows and hides its panel; its ×
+    // closes it.
     const toggle = t?.closest<HTMLButtonElement>(".series-shelf-toggle");
     const panel = document.getElementById("series-shelf-panel");
     if (toggle && panel) {
@@ -84,7 +85,31 @@ document.addEventListener("click", (e) => {
         toggle.setAttribute("aria-expanded", String(show));
         if (show) followButton(panel, toggle);
     }
+    if (t?.closest(".series-shelf-close")) closeShelfPanel();
 });
+
+function closeShelfPanel(): void {
+    const panel = document.getElementById("series-shelf-panel");
+    if (!panel || panel.hidden) return;
+    panel.hidden = true;
+    for (const b of document.querySelectorAll(".series-shelf-toggle")) b.setAttribute("aria-expanded", "false");
+}
+
+// A tap off the open panel closes it. Off the bar too, it goes no further
+// (it doesn't open the book under it); on the bar it does (another menu).
+document.addEventListener(
+    "click",
+    (e) => {
+        const panel = document.getElementById("series-shelf-panel");
+        const t = e.target instanceof Element ? e.target : null;
+        if (!panel || panel.hidden || !t || panel.contains(t) || t.closest(".series-shelf-toggle")) return;
+        closeShelfPanel();
+        if (t.closest(".site-bar")) return;
+        e.preventDefault();
+        e.stopPropagation();
+    },
+    true,
+);
 
 /** Up to the skinny bar (style.css), the panel is centred on its button; past it, the full width. */
 const SKINNY = "(max-width: 600px)";
@@ -134,6 +159,9 @@ function followButton(panel: HTMLElement, toggle: HTMLElement): void {
         following = null;
     }
 }
+
+// Capture phase: seen before the book popup's own Esc closes it.
+document.addEventListener("keydown", (e) => e.key === "Escape" && !modalOpen() && closeShelfPanel(), true);
 
 document.addEventListener("keydown", (e) => {
     const input = e.target;

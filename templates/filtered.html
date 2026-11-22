@@ -114,7 +114,10 @@
 {{ end }}{{ end }}{{ end }}
 {{ template "topbar-end" $tb }}
 {{ with .Extra }}{{ with .SeriesShelf }}
-<section id="series-shelf-panel" class="series-shelf-panel" data-series="{{ . }}" hidden>
+<section id="series-shelf-panel" class="series-shelf-panel" data-series="{{ . }}" aria-label="Add to shelf" hidden>
+    <button type="button" class="tb-icon series-shelf-close" aria-label="Close" title="Close (Esc)">
+        <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true"><path d="M6 6l12 12M18 6L6 18"/></svg>
+    </button>
     <p class="series-shelf-hint">Put <strong>{{ . }}</strong> on a shelf as one entry. It shows the first book's cover and opens this page.</p>
     {{ template "series-shelf-list" $.Extra.SeriesShelves }}
 </section>

@@ -43,9 +43,9 @@ export function closeOnBackdropClick(dialog: HTMLDialogElement): void {
     });
 }
 
-/** Whether a modal dialog is open: the keyboard is its own until it closes. */
+/** Whether a modal (a dialog, or the book popup) is open: the keyboard is its own until it closes. */
 export function modalOpen(): boolean {
-    return document.querySelector("dialog[open]") !== null;
+    return document.querySelector("dialog[open], .modal-overlay.open") !== null;
 }
 
 /** Message from an unknown thrown value. */

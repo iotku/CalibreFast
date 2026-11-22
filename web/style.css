@@ -4047,7 +4047,7 @@ body.book-standalone {
     z-index: 999;
     display: flex;
     flex-direction: column;
-    width: min(420px, 100vw);
+    width: var(--manage-panel-width);
     box-sizing: border-box;
     background: var(--bg-secondary);
     border-left: 1px solid var(--border-medium);
@@ -4056,6 +4056,26 @@ body.book-standalone {
 
 .manage-panel[hidden] {
     display: none;
+}
+
+/* Beside the page, not over it: the page moves over while it's open. A
+   skinny window has no room beside it, so there it covers the page. */
+:root {
+    --manage-panel-width: min(420px, 45vw);
+}
+
+body:has(.manage-panel:not([hidden])) {
+    padding-right: calc(var(--page-padding) + var(--manage-panel-width));
+}
+
+@media (max-width: 600px) {
+    :root {
+        --manage-panel-width: 100vw;
+    }
+
+    body:has(.manage-panel:not([hidden])) {
+        padding-right: var(--page-padding);
+    }
 }
 
 .manage-panel-head {
@@ -4210,6 +4230,33 @@ body.book-standalone {
 
 .series-shelf-panel[hidden] {
     display: none;
+}
+
+/* The × of the Manage sidebar and the Add to shelf panel. */
+.manage-panel-close,
+.series-shelf-close {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    width: 32px;
+    height: 32px;
+    padding: 0;
+    color: var(--text-secondary);
+    background: none;
+    border: 0;
+    border-radius: var(--radius-small);
+    cursor: pointer;
+}
+
+.manage-panel-close:hover,
+.series-shelf-close:hover {
+    color: var(--text-primary);
+    background: rgba(255, 255, 255, 0.08);
+}
+
+.series-shelf-close {
+    float: right;
+    margin: -0.5rem -0.6rem 0 0.4rem;
 }
 
 .series-shelf-hint {
