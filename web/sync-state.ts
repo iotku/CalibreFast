@@ -25,6 +25,8 @@ export interface SyncState {
     waiting?: number;
     /** Waiting for pages to finish loading what's on screen (page-busy.ts). */
     held?: boolean;
+    /** How the last run of downloads ended (ok: none failed), and when (ms); the top bar shows it for a moment. */
+    lastResult?: { ok: boolean; at: number };
 }
 
 /** A download not reported for this long was cut off (its page closed). */
