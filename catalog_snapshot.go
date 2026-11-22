@@ -37,7 +37,7 @@ import (
 //
 // 3: author names with a comma, which metadata.db keeps as "|", are read
 // with the comma (authorNameSQL); a snapshot from before kept the "|".
-const catalogSnapshotVersion = 4 // 4: publishers, languages, ISBNs (search.go)
+const catalogSnapshotVersion = 5 // 5: authors' sort names (catalog_sort.go)
 
 type libraryKey struct {
 	Library     string // -basedir, absolute
@@ -60,6 +60,7 @@ type catalogSnapshot struct {
 	SeriesNames    map[int32]string
 	PublisherNames map[int32]string
 	LangCodes      map[int32]string
+	AuthorSorts    map[int32]string
 }
 
 func catalogSnapshotPath() string { return filepath.Join(cacheDir, "catalog.snap") }
@@ -122,6 +123,7 @@ func loadCatalogSnapshot(key libraryKey) (*catalog, bool) {
 		seriesNames:    nonNil(s.SeriesNames),
 		publisherNames: nonNil(s.PublisherNames),
 		langCodes:      nonNil(s.LangCodes),
+		authorSorts:    nonNil(s.AuthorSorts),
 	}
 	for i := range c.books {
 		c.byUUID[c.books[i].UUID] = int32(i)
@@ -147,7 +149,7 @@ func writeCatalogSnapshot(c *catalog, key libraryKey) error {
 	err := gob.NewEncoder(&buf).Encode(catalogSnapshot{
 		Version: catalogSnapshotVersion, Key: key, Books: c.books,
 		TagNames: c.tagNames, AuthorNames: c.authorNames, SeriesNames: c.seriesNames,
-		PublisherNames: c.publisherNames, LangCodes: c.langCodes,
+		PublisherNames: c.publisherNames, LangCodes: c.langCodes, AuthorSorts: c.authorSorts,
 	})
 	if err != nil {
 		return err

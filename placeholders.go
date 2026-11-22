@@ -435,8 +435,9 @@ func compareListEntries(series bool, a, b *listEntry) int {
 }
 
 // filteredPageWithPlaceholders: page `page` of c's filtered page for
-// members, its books and the placeholders phs merged in order.
-func filteredPageWithPlaceholders(c *category, members []string, phs []*placeholder, page int) ([]Book, error) {
+// members, its books and the placeholders phs merged in order. In another
+// order than the page's default (key), the placeholders come after the books.
+func filteredPageWithPlaceholders(c *category, members []string, phs []*placeholder, page int, key string) ([]Book, error) {
 	query := fmt.Sprintf(`
 		SELECT b.uuid, b.title, `+bookAuthorsSQL+` AS authors,
 			b.pubdate, b.path, b.last_modified, b.sort, b.series_index
@@ -446,7 +447,7 @@ func filteredPageWithPlaceholders(c *category, members []string, phs []*placehol
 		WHERE t.%s IN (%s)
 		GROUP BY b.id
 		ORDER BY %s`,
-		c.LinkTable, c.Table, c.LinkCol, c.NameCol, placeholders(len(members)), c.bookOrder())
+		c.LinkTable, c.Table, c.LinkCol, c.NameCol, placeholders(len(members)), c.bookOrder(key))
 	rows, err := calibreDB.Query(query, toArgs(members)...)
 	if err != nil {
 		return nil, err
@@ -476,11 +477,13 @@ func filteredPageWithPlaceholders(c *category, members []string, phs []*placehol
 	}
 	slices.SortStableFunc(ph, func(a, b listEntry) int { return compareListEntries(series, &a, &b) })
 
-	// Merge: the library's book first where they tie.
+	// Merge: the library's book first where they tie. Sorted otherwise, the
+	// placeholders (which have no added date, author sort, …) go last.
+	merged := key == c.sorts()[0]
 	all := make([]Book, 0, len(lib)+len(ph))
 	i, j := 0, 0
 	for i < len(lib) || j < len(ph) {
-		if j == len(ph) || (i < len(lib) && compareListEntries(series, &lib[i], &ph[j]) <= 0) {
+		if j == len(ph) || (i < len(lib) && (!merged || compareListEntries(series, &lib[i], &ph[j]) <= 0)) {
 			all = append(all, lib[i].Book)
 			i++
 		} else {

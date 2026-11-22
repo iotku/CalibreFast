@@ -56,7 +56,7 @@ func TestSeriesOrder(t *testing.T) {
 	}
 	// The series page (metadata.db) agrees.
 	got, err := scanStrings(db.Query(`SELECT b.uuid FROM books b JOIN books_series_link l ON l.book = b.id
-		JOIN series s ON s.id = l.series WHERE s.name = 'Wheel' ORDER BY ` + categoryByKey("series").bookOrder()))
+		JOIN series s ON s.id = l.series WHERE s.name = 'Wheel' ORDER BY ` + categoryByKey("series").bookOrder(sortBySeries)))
 	if err != nil {
 		t.Fatal(err)
 	}
