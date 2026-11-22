@@ -5754,6 +5754,31 @@ body.selecting .book.selected .cover-wrapper {
     margin: 1.25rem 0 0.5rem;
 }
 
+/* /missing: each series' placeholders, folded to its heading */
+.ph-series > summary {
+    cursor: pointer;
+    margin: 1.25rem 0 0.5rem;
+}
+
+.ph-series > summary > .ph-group {
+    display: inline;
+    margin: 0 0.4rem 0 0;
+}
+
+.ph-series[open] > summary {
+    margin-bottom: 0.5rem;
+}
+
+/* /missing: Hardcover series with every book, below the rest */
+.ph-complete {
+    margin-top: 1rem;
+}
+
+.ph-complete > summary {
+    cursor: pointer;
+    font-weight: 600;
+}
+
 .ph-list {
     list-style: none;
     margin: 0;

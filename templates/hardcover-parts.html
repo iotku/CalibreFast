@@ -11,6 +11,15 @@
 {{ if .Complete }}<span class="hc-complete" title="Every numbered book is in the library, in the series ({{ .Label }})">Complete</span>
 {{ else }}{{ if .Numbered }}<span class="ph-sub">{{ .Have }} of {{ .Numbered }} numbered books</span>{{ end }}{{ if .Books }}<span class="ph-sub">{{ .BooksHave }} of {{ .Books }} books</span>{{ end }}{{ end }}
 {{ end }}
+{{/* One linked series on /missing (missing.html). */}}
+{{ define "hc-missing-row" }}
+<li class="ph-gap">
+    <a href="{{ .Review }}" class="ph-title">{{ .Name }}</a>
+    <span class="ph-sub">{{ if .Pending }}<strong>{{ .Pending }} suggestion{{ if ne .Pending 1 }}s{{ end }}</strong>{{ else }}nothing to do{{ end }}</span>
+    {{ template "hc-status" .Status }}
+    <span class="ph-sub">fetched {{ .Checked }}{{ if .Stale }} <span class="hc-held">(old)</span>{{ end }}</span>
+</li>
+{{ end }}
 {{ define "hc-jobs" }}
 {{ if . }}
 <ul class="ph-list hc-jobs" id="hc-jobs">

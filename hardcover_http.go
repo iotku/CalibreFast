@@ -354,8 +354,11 @@ func hardcoverAuthorPage(w http.ResponseWriter, r *http.Request) {
 type MissingHardcover struct {
 	Enabled bool
 	Series  []hcMissingRow
-	Usage   HardcoverUsage
-	Jobs    []HardcoverJobView
+	// Complete: series Hardcover says the library has every book of, with
+	// nothing waiting for a decision. Shown folded away below Series.
+	Complete []hcMissingRow
+	Usage    HardcoverUsage
+	Jobs     []HardcoverJobView
 }
 
 type hcMissingRow struct {
@@ -382,7 +385,11 @@ func missingHardcover() *MissingHardcover {
 				row.Status = rev.status()
 			}
 		}
-		m.Series = append(m.Series, row)
+		if row.Status.Complete && row.Pending == 0 {
+			m.Complete = append(m.Complete, row)
+		} else {
+			m.Series = append(m.Series, row)
+		}
 	}
 	slices.SortStableFunc(m.Series, func(a, b hcMissingRow) int { return cmp.Compare(b.Pending, a.Pending) })
 	return m
