@@ -22,7 +22,8 @@
         <p class="auth-muted">Placeholders are books that aren't in the library yet. They're kept in CalibreFast's own database, not Calibre's, and show on their series', authors' and publishers' pages and in On deck.</p>
         {{ if not .Series }}<p class="auth-muted"><em>No placeholders yet.</em></p>{{ end }}
         {{ range .Series }}
-        <h2 class="ph-group">{{ if .Name }}<a href="{{ .Href }}">{{ .Name }}</a>{{ else }}Not in a series{{ end }}</h2>
+        <details class="ph-series">
+        <summary><h2 class="ph-group">{{ if .Name }}<a href="{{ .Href }}">{{ .Name }}</a>{{ else }}Not in a series{{ end }}</h2> <span class="ph-sub">{{ len .Books }} book{{ if ne (len .Books) 1 }}s{{ end }}</span></summary>
         <ul class="ph-list">
             {{ range .Books }}
             <li>
@@ -36,6 +37,7 @@
             </li>
             {{ end }}
         </ul>
+        </details>
         {{ end }}
     </section>
     {{ with .Hardcover }}
@@ -43,17 +45,19 @@
         <h2>Series on Hardcover</h2>
         {{ template "hc-usage" .Usage }}
         <p class="auth-muted">Series linked to Hardcover, and what their lists suggest. Link a series from its page (Hardcover in its menu), or an author's series from the author's page.</p>
-        {{ if not .Series }}<p class="auth-muted"><em>No series linked yet.</em></p>{{ end }}
+        {{ if and (not .Series) (not .Complete) }}<p class="auth-muted"><em>No series linked yet.</em></p>{{ end }}
         <ul class="ph-list">
-            {{ range .Series }}
-            <li class="ph-gap">
-                <a href="{{ .Review }}" class="ph-title">{{ .Name }}</a>
-                <span class="ph-sub">{{ if .Pending }}<strong>{{ .Pending }} suggestion{{ if ne .Pending 1 }}s{{ end }}</strong>{{ else }}nothing to do{{ end }}</span>
-                {{ template "hc-status" .Status }}
-                <span class="ph-sub">fetched {{ .Checked }}{{ if .Stale }} <span class="hc-held">(old)</span>{{ end }}</span>
-            </li>
-            {{ end }}
+            {{ range .Series }}{{ template "hc-missing-row" . }}{{ end }}
         </ul>
+        {{ with .Complete }}
+        <details class="ph-complete">
+            <summary>Complete on Hardcover ({{ len . }})</summary>
+            <p class="auth-muted">Every book Hardcover lists is in the library. Refresh one now and then to catch new books.</p>
+            <ul class="ph-list">
+                {{ range . }}{{ template "hc-missing-row" . }}{{ end }}
+            </ul>
+        </details>
+        {{ end }}
         {{ with .Jobs }}<h3>Waiting for Hardcover</h3>{{ end }}
         {{ template "hc-jobs" .Jobs }}
     </section>
