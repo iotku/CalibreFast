@@ -52,6 +52,12 @@
                 {{ end }}
                 <div class="book-banner-info">
                     <h1 class="book-banner-title" id="edit-header-title">Loading book…</h1>
+                    <p class="book-banner-author" id="edit-header-author"></p>
+                    <!-- The form's rating (the hidden input in #metadata-form): stars and source pills -->
+                    <div class="book-banner-rating">
+                        <div id="edit-rating-stars"></div>
+                        <div class="meta-source-buttons" data-field="rating" data-form="metadata-form"></div>
+                    </div>
                     {{ if and .Merge .Merge.Incoming }}
                     <div class="book-banner-meta import-files">
                         <span>Adding to this book:</span>
@@ -77,6 +83,10 @@
                         <span class="uuid-badge">{{.UUID}}</span>
                     </div>
                     {{ end }}
+                    <div class="book-banner-meta" id="edit-header-isbn" hidden>
+                        <span>ISBN:</span>
+                        <span class="uuid-badge"></span>
+                    </div>
                     <!-- How the page works: shown on a click (.info-tip, script below) -->
                     <details class="info-tip">
                         <summary class="info-tip-btn" title="How editing works"><svg class="info-tip-i" viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" aria-hidden="true"><circle cx="12" cy="12" r="10"/><path d="M12 11v6"/><circle cx="12" cy="7.5" r="0.6" fill="currentColor"/></svg><span class="sr-only">How editing works</span></summary>
@@ -280,23 +290,8 @@
                         <div class="meta-source-buttons" data-field="publisher"></div>
                     </fieldset>
 
-                    <fieldset class="meta-field">
-                        <legend>Rating</legend>
-                        <select name="rating" class="meta-input meta-rating">
-                            <option value="">No rating</option>
-                            <option value="1">½ star</option>
-                            <option value="2">1 star</option>
-                            <option value="3">1½ stars</option>
-                            <option value="4">2 stars</option>
-                            <option value="5">2½ stars</option>
-                            <option value="6">3 stars</option>
-                            <option value="7">3½ stars</option>
-                            <option value="8">4 stars</option>
-                            <option value="9">4½ stars</option>
-                            <option value="10">5 stars</option>
-                        </select>
-                        <div class="meta-source-buttons" data-field="rating"></div>
-                    </fieldset>
+                    <!-- The rating: picked with the stars in the banner -->
+                    <input type="hidden" name="rating" />
 
                     <fieldset class="meta-field series-field">
                         <legend>Series</legend>

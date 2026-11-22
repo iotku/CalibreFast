@@ -7,7 +7,7 @@ import { closeOnBackdropClick, el as tag, errorMessage, maybeId } from "./dom.js
 import { isbnDigits, mountIsbnTools } from "./isbn-tools.js";
 import { parseInert } from "./trusted.js";
 import { joinAuthors, splitAuthors, tidyAuthors } from "./authors.js";
-import { ratingLabel } from "./rating.js";
+import { mountStarRating, ratingLabel } from "./rating.js";
 import type { DuplicateBook, DuplicateCheck, MetaSource, ValueSuggestion } from "./types.js";
 
 type FieldKind = "string" | "date" | "list" | "identifiers";
@@ -237,7 +237,7 @@ function fieldDiffToggle(
     const changes = computeChanges(current, collectValues(form)).filter((c) => c.key === key || (key === "series" && c.key === "series_index"));
     el.replaceChildren(...renderChanges(changes, { compact: true }));
   };
-  (buttonRow.closest("fieldset") ?? buttonRow).append(el);
+  (buttonRow.closest("fieldset, .book-banner-rating") ?? buttonRow).append(el);
   openDiffs.set(key, { el, render });
   render();
 }
@@ -264,7 +264,10 @@ function populateField(
   kind: FieldKind,
 ): AddSource | null {
   const input = form.querySelector<HTMLInputElement | HTMLTextAreaElement>(`[name="${key}"]`);
-  const buttonRow = form.querySelector<HTMLElement>(`.meta-source-buttons[data-field="${key}"]`);
+  // A row can sit outside the form, naming it (the rating's, in the banner).
+  const rowSel = `.meta-source-buttons[data-field="${key}"]`;
+  const buttonRow =
+    form.querySelector<HTMLElement>(rowSel) ?? (form.id ? document.querySelector<HTMLElement>(`${rowSel}[data-form="${form.id}"]`) : null);
   if (!input || !buttonRow) return null;
 
   // The series and its number are offered together, under the series
@@ -1117,6 +1120,10 @@ export async function mountMetadataEditor(book: BookTarget, form: HTMLFormElemen
   const statusEl = maybeId("edit-status");
   const saveBtn = maybeId("btn-save", HTMLButtonElement) ?? form.querySelector<HTMLButtonElement>('button[type="submit"]');
   const headerTitle = maybeId("edit-header-title");
+  const ratingInput = form.querySelector<HTMLInputElement>('input[name="rating"]');
+  const ratingStars = maybeId("edit-rating-stars");
+  // Before the fields are filled, so the stars follow the rating's value.
+  if (ratingInput && ratingStars) mountStarRating(ratingStars, ratingInput);
   const applyLabel = saveBtn?.textContent ?? "Apply Changes";
   // A waiting book can always be added, and books always merged: changed or not.
   const always = book.pending || !!book.merge;
@@ -1322,6 +1329,15 @@ export async function mountMetadataEditor(book: BookTarget, form: HTMLFormElemen
     const current = metas.find((m) => m.Format === "current") || metas[0];
     if (current && headerTitle) {
       headerTitle.textContent = current.Title || "Untitled Book";
+    }
+    const headerAuthor = maybeId("edit-header-author");
+    if (current && headerAuthor) headerAuthor.textContent = joinAuthors(metaList(current, "creators"));
+    const headerIsbn = maybeId("edit-header-isbn");
+    const isbn = current?.Identifiers?.find((i) => i.Scheme.trim().toLowerCase() === "isbn" && i.Value.trim())?.Value.trim();
+    const isbnBadge = headerIsbn?.querySelector(".uuid-badge");
+    if (headerIsbn && isbnBadge && isbn) {
+      isbnBadge.textContent = isbn;
+      headerIsbn.hidden = false;
     }
 
     let overrideNext = false;
