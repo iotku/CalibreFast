@@ -7,7 +7,7 @@
 // choice survives scrolling: cards are marked again as they're re-rendered
 // (markSelected, from app-htmx.ts).
 
-import { el, modalOpen } from "./dom.js";
+import { el, icon, lineIcon, modalOpen } from "./dom.js";
 import { deleteBooks, type BookToDelete } from "./delete-books.js";
 
 const LONG_PRESS_MS = 450; // before Android opens its link menu (~500 ms)
@@ -77,7 +77,13 @@ export function setupSelection(grid: HTMLElement): void {
         if (!tools) return;
         ready = true;
 
-        toggleBtn = el("button", { type: "button", className: "tb-btn tb-select-btn", title: "Select books to merge, edit or remove them" }, "Select");
+        // A crowded bar shows only the icon (style.css: tb-tight).
+        toggleBtn = el(
+            "button",
+            { type: "button", className: "tb-btn tb-select-btn", title: "Select books to merge, edit or remove them", ariaLabel: "Select books" },
+            icon(lineIcon(18), ["rect", { x: 3, y: 3, width: 18, height: 18, rx: 3 }], "m8 12 3 3 5-6"),
+            el("span", { className: "tb-label" }, "Select"),
+        );
         toggleBtn.setAttribute("aria-pressed", "false");
         toggleBtn.addEventListener("click", () => setSelecting(grid, !selecting));
         tools.append(toggleBtn);

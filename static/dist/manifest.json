@@ -5,7 +5,7 @@
   "admin-server.js": "admin-server-7FMO4PIA.js",
   "admin-users.js": "admin-users-ACLWRP65.js",
   "aggregate.js": "aggregate-WJ7KI3YF.js",
-  "app-htmx.js": "app-htmx-FTO23ONC.js",
+  "app-htmx.js": "app-htmx-HGWJ34V7.js",
   "auth.css": "auth-V7KPARBN.css",
   "author-profile.js": "author-profile-GJZCB44E.js",
   "book-edit.css": "book-edit-LQIXJEJZ.css",
@@ -23,7 +23,7 @@
   "list-edit.js": "list-edit-DUEZ6ULE.js",
   "metadata.js": "metadata-SWR4NTZ7.js",
   "missing.js": "missing-7WPIOCFJ.js",
-  "nav.js": "nav-BEDNP2YD.js",
+  "nav.js": "nav-24ZXYEMV.js",
   "notifications.js": "notifications-ERKKZJLI.js",
   "offline.js": "offline-FB3TMHIV.js",
   "placeholder-save.js": "placeholder-save-EV2DBPH4.js",
@@ -38,7 +38,7 @@
   "shelf-page.js": "shelf-page-74LESUPK.js",
   "shelves.js": "shelves-AP7VLE42.js",
   "stats.js": "stats-R4NG5UNN.js",
-  "style.css": "style-UZGMUSRU.css",
+  "style.css": "style-5PSMAD3V.css",
   "sw.js": "sw-A2X4WNOD.js",
   "user.js": "user-3LWVXEOX.js"
 }
