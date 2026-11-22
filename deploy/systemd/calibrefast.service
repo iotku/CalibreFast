@@ -1,43 +1,62 @@
-# CalibreFast as a systemd service: on every start it pulls the latest
-# commit, rebuilds (deploy/update.sh), then runs with the options in
-# calibrefast.conf. It's started again whenever it stops on its own,
-# including an admin's Stop button (Server page); `systemctl stop` stops it.
+# CalibreFast as a systemd service. It runs the build `current` points at
+# (deploy/update.sh builds each commit in releases/ while the server keeps
+# running), with the options in calibrefast.conf. It's started again
+# whenever it stops on its own, including an admin's Stop button (Server
+# page); `systemctl stop` stops it.
+#
+# Updating with little downtime: build first, then restart (a second or two):
+#
+#     sudo -u calibrefast /opt/calibrefast/deploy/update.sh && sudo systemctl restart calibrefast
+#
+# With calibrefast.socket as well, connections during that restart wait
+# instead of failing.
 #
 # Adjust the paths and user below to your install, then see docs/DEPLOY.md:
 #
-#     sudo cp deploy/systemd/calibrefast.service /etc/systemd/system/
+#     sudo cp deploy/systemd/calibrefast.service deploy/systemd/calibrefast.socket /etc/systemd/system/
 #     sudo systemctl daemon-reload
-#     sudo systemctl enable --now calibrefast
+#     sudo systemctl enable --now calibrefast.socket calibrefast
 
 [Unit]
 Description=CalibreFast (Calibre library web server)
 Wants=network-online.target
 After=network-online.target
+# Use systemd's socket when calibrefast.socket is installed; without it the
+# server listens on calibrefast.conf's port itself.
+Wants=calibrefast.socket
+After=calibrefast.socket
 
 [Service]
 Type=simple
 User=calibrefast
 Group=calibrefast
-# The git checkout: the update script, the binary, templates and static files.
-WorkingDirectory=/opt/calibrefast
+# The build that runs: its binary, templates and static files
+# (a link into releases/ in the git checkout, set by deploy/update.sh).
+WorkingDirectory=/opt/calibrefast/current
 # Where go is (go generate and go build run before each start).
 Environment=PATH=/usr/local/go/bin:/usr/local/bin:/usr/bin:/bin
 Environment=CALIBREFAST_BRANCH=master
 # Secrets (OAuth, Google Books key), if any: see calibrefast.env.example.
 EnvironmentFile=-/opt/calibrefast/calibrefast.env
 
-# "-": when the update can't run (offline, a build error) the build that's
-# already there starts anyway.
+# Catches up on anything not built yet: nothing to do after an update.sh
+# run, but Stop server (or a plain restart) still pulls and builds here,
+# while the server is down. "-": when the update can't run (offline, a
+# build error) the build that's already there starts anyway.
 ExecStartPre=-/opt/calibrefast/deploy/update.sh
-ExecStart=/opt/calibrefast/CalibreFast -config /opt/calibrefast/calibrefast.conf
+ExecStart=/opt/calibrefast/current/CalibreFast -config /opt/calibrefast/calibrefast.conf
 
 # An admin's Stop exits cleanly (status 0): "always" brings it back.
 Restart=always
-RestartSec=2
+# Short: with calibrefast.socket, connections wait for it meanwhile.
+RestartSec=200ms
 # The first build downloads Go modules and the TypeScript tools.
 TimeoutStartSec=15min
-# Requests in progress get 30s to finish (server.go).
-TimeoutStopSec=45
+# Stopping cleanly can take a while at worst (server.go): 30s for requests
+# in progress, 15s for the handlers of any cut off, then the background
+# work (bulk edits 30s, Hardcover 5s + 5s, the import queue 30s). Being
+# killed partway is what leaves work half done, so give it all of that.
+TimeoutStopSec=2min
 
 NoNewPrivileges=true
 PrivateTmp=true

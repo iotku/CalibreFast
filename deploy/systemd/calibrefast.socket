@@ -1,0 +1,23 @@
+# CalibreFast's listening socket, held by systemd (socket activation).
+# While the service restarts (an update, Stop server), new connections wait
+# in the kernel's queue and are answered once it's back, instead of being
+# refused. Install it beside calibrefast.service (docs/DEPLOY.md):
+#
+#     sudo cp deploy/systemd/calibrefast.socket /etc/systemd/system/
+#     sudo systemctl daemon-reload
+#     sudo systemctl enable --now calibrefast.socket
+#     sudo systemctl restart calibrefast
+#
+# The port here replaces calibrefast.conf's `port` (which is then not used).
+
+[Unit]
+Description=CalibreFast listening socket
+
+[Socket]
+# A port alone listens on every address; 127.0.0.1:8080 for behind a proxy.
+ListenStream=8080
+# Room for the connections that arrive while the server restarts.
+Backlog=1024
+
+[Install]
+WantedBy=sockets.target

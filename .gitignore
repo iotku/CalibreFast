@@ -23,5 +23,9 @@ Icon\r
 # Local launch options and secrets (calibrefast.conf.example, calibrefast.env.example)
 /calibrefast.conf
 /calibrefast.env
-# The update script's build in progress (deploy/update.sh)
+# The update script's releases (deploy/update.sh)
 /CalibreFast.new
+/CalibreFast.old
+/releases/
+/current
+/.update.lock
