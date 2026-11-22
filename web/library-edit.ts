@@ -1356,6 +1356,9 @@ byId("lt-remove").addEventListener("click", async () => {
 async function sendEdit(uuids: string[], edit: BulkEdit): Promise<BulkResult> {
     const res = await api<BulkResult>("POST", SOURCE.bulk, { uuids, edit });
     swapRows(res.books);
+    // The changed books are ticked, so one the change takes out of the
+    // filters stays in sight (pinned above the list) instead of vanishing.
+    for (const b of res.books) selected.add(b.uuid);
     if (res.job) followJob(res.job, uuids);
     pollChecking();
     return res;
