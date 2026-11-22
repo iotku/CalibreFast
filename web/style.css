@@ -140,7 +140,8 @@ a.btn-standard {
 }
 
 button:disabled,
-.btn:disabled {
+.btn:disabled,
+.btn-action[aria-disabled="true"] {
     opacity: 0.5;
     cursor: not-allowed;
 }
@@ -2215,6 +2216,11 @@ body.book-standalone {
         transform var(--transition-fast);
 }
 
+/* A link button with nowhere to go yet (Merge, before two books are picked). */
+.btn-action[aria-disabled="true"] {
+    pointer-events: none;
+}
+
 .btn-action:hover {
     background: var(--bg-elevated, #2c2c2c);
     border-color: rgba(255, 255, 255, 0.35);
@@ -4115,7 +4121,12 @@ body:has(.manage-panel:not([hidden])) {
     padding-bottom: 0;
 }
 
-.manage-section + .manage-section {
+.manage-section[hidden] {
+    display: none;
+}
+
+/* A rule between visible sections (select-section starts hidden). */
+.manage-section:not([hidden]) ~ .manage-section {
     border-top: 1px solid var(--border-subtle, var(--border-medium));
 }
 
@@ -4126,6 +4137,22 @@ body:has(.manage-panel:not([hidden])) {
     letter-spacing: 0.04em;
     text-transform: uppercase;
     color: var(--text-secondary);
+}
+
+/* Select books, Feature: on/off buttons. */
+.manage-toggle-btn {
+    display: inline-flex;
+    align-items: center;
+    gap: 8px;
+}
+
+.manage-toggle-btn[aria-pressed="true"] {
+    color: var(--text-primary);
+    border-color: var(--accent, #c8a96e);
+}
+
+.manage-toggle-btn[aria-pressed="true"] svg {
+    color: var(--accent, #c8a96e);
 }
 
 .manage-hint {
@@ -5745,53 +5772,6 @@ label.group-row span {
     -webkit-user-drag: none; /* a drag would cancel the press */
 }
 
-.site-bar .tb-select-btn {
-    display: inline-flex;
-    align-items: center;
-    gap: 6px;
-}
-
-.site-bar .tb-select-btn svg {
-    display: none;
-}
-
-/* A crowded bar (nav.ts) or a phone: Select is its icon. */
-.site-bar.tb-tightest .tb-select-btn {
-    width: 36px;
-    padding: 0;
-    justify-content: center;
-}
-
-.site-bar.tb-tightest .tb-select-btn svg {
-    display: block;
-}
-
-.site-bar.tb-tightest .tb-select-btn .tb-label {
-    display: none;
-}
-
-@media (max-width: 640px) {
-    .site-bar .tb-select-btn {
-        width: 36px;
-        padding: 0;
-        justify-content: center;
-    }
-
-    .site-bar .tb-select-btn svg {
-        display: block;
-    }
-
-    .site-bar .tb-select-btn .tb-label {
-        display: none;
-    }
-}
-
-.site-bar .tb-select-btn[aria-pressed="true"] {
-    background: #8f2a2a;
-    border-color: #c44;
-    color: #fff;
-}
-
 body.selecting .book {
     cursor: pointer;
 }
@@ -5854,6 +5834,24 @@ body.selecting .book.selected .cover-wrapper {
     border: 1px solid var(--border-medium);
     border-radius: var(--radius-medium, 8px);
     box-shadow: var(--shadow-medium);
+}
+
+/* Over the Manage sidebar where it covers the page; beside it, centred
+   in what's left of the page, where it doesn't. */
+.select-bar {
+    z-index: 1000;
+}
+
+body:has(.manage-panel:not([hidden])) .select-bar {
+    left: calc((100vw - var(--manage-panel-width)) / 2);
+    max-width: calc(100vw - var(--manage-panel-width) - 32px);
+}
+
+@media (max-width: 600px) {
+    body:has(.manage-panel:not([hidden])) .select-bar {
+        left: 50%;
+        max-width: calc(100vw - 32px);
+    }
 }
 
 .select-bar[hidden] {

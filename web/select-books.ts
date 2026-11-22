@@ -1,13 +1,14 @@
-// Choosing books in a grid to merge, edit or remove them (admins, with
-// -allow-writes). "Select" in the top bar, or a long press on a card on a
-// touch screen, turns taps on cards into ticks; a bar at the bottom counts
+// Choosing books in a grid to merge, edit or remove them (editors, with
+// -allow-writes). A Ctrl+click on a card, a long press on one on a touch
+// screen, or "Select books" in the Manage sidebar (templates/filtered.html)
+// turns taps on cards into ticks; a bar at the bottom counts
 // them and offers Merge (the metadata editor's merge mode, Go: merge.go),
 // Edit in table (the bulk editor, library-edit.ts) and Remove (the
 // confirmation, delete-books.ts). The
 // choice survives scrolling: cards are marked again as they're re-rendered
 // (markSelected, from app-htmx.ts).
 
-import { el, icon, lineIcon, modalOpen } from "./dom.js";
+import { el, modalOpen } from "./dom.js";
 import { deleteBooks, type BookToDelete } from "./delete-books.js";
 
 const LONG_PRESS_MS = 450; // before Android opens its link menu (~500 ms)
@@ -18,7 +19,7 @@ let selecting = false;
 let bar: HTMLElement | null = null;
 let countEl: HTMLElement | null = null;
 let removeBtn: HTMLButtonElement | null = null;
-let mergeBtn: HTMLButtonElement | null = null;
+let mergeBtn: HTMLAnchorElement | null = null;
 let tableBtn: HTMLButtonElement | null = null;
 
 /** At most this many books are merged at once (Go: mergeMaxBooks). */
@@ -51,7 +52,14 @@ function update(): void {
         removeBtn.textContent = n ? `Remove ${n} from library…` : "Remove from library…";
     }
     if (mergeBtn) {
-        mergeBtn.disabled = n < 2 || n > MERGE_MAX;
+        // A link, so a middle click opens the merge in a new tab.
+        if (n < 2 || n > MERGE_MAX) {
+            mergeBtn.removeAttribute("href");
+            mergeBtn.setAttribute("aria-disabled", "true");
+        } else {
+            mergeBtn.href = `/book/merge?${new URLSearchParams({ ids: [...chosen.keys()].join(",") })}`;
+            mergeBtn.removeAttribute("aria-disabled");
+        }
         mergeBtn.title = n > MERGE_MAX ? `At most ${MERGE_MAX} books at a time` : "Make the selected books one book, with every format: pick its metadata, cover and files";
         mergeBtn.textContent = n >= 2 ? `Merge ${n}…` : "Merge…";
     }
@@ -62,6 +70,7 @@ function setSelecting(grid: HTMLElement, on: boolean): void {
     selecting = on;
     document.body.classList.toggle("selecting", on);
     toggleBtn?.setAttribute("aria-pressed", String(on));
+    if (toggleBtn) toggleBtn.textContent = on ? "Stop selecting" : "Select books";
     if (bar) bar.hidden = !on;
     if (!on) chosen.clear();
     for (const card of cardsOf(grid)) markSelected(card);
@@ -73,26 +82,25 @@ export function setupSelection(grid: HTMLElement): void {
     let ready = false;
     const start = (): void => {
         if (ready || document.documentElement.dataset["canEdit"] !== "1") return;
-        const tools = document.querySelector(".tb-tools");
-        if (!tools) return;
         ready = true;
 
-        // A crowded bar shows only the icon (style.css: tb-tight).
-        toggleBtn = el(
-            "button",
-            { type: "button", className: "tb-btn tb-select-btn", title: "Select books to merge, edit or remove them", ariaLabel: "Select books" },
-            icon(lineIcon(18), ["rect", { x: 3, y: 3, width: 18, height: 18, rx: 3 }], "m8 12 3 3 5-6"),
-            el("span", { className: "tb-label" }, "Select"),
-        );
-        toggleBtn.setAttribute("aria-pressed", "false");
-        toggleBtn.addEventListener("click", () => setSelecting(grid, !selecting));
-        tools.append(toggleBtn);
+        // The Manage sidebar's button, where the page has one. Where the
+        // sidebar covers the page (a phone), starting closes it.
+        toggleBtn = document.querySelector<HTMLButtonElement>("#select-books-btn");
+        const section = document.getElementById("select-section");
+        if (section) section.hidden = false;
+        toggleBtn?.addEventListener("click", () => {
+            setSelecting(grid, !selecting);
+            const sidebar = document.getElementById("manage-panel");
+            if (selecting && sidebar && matchMedia("(max-width: 600px)").matches) sidebar.dispatchEvent(new CustomEvent("cf:manage-close"));
+        });
 
         countEl = el("span", { className: "select-count", role: "status" });
         removeBtn = el("button", { type: "button", className: "btn-action btn-danger", disabled: true });
         const clear = el("button", { type: "button", className: "btn-action" }, "Clear");
         const done = el("button", { type: "button", className: "btn-action" }, "Done");
-        mergeBtn = el("button", { type: "button", className: "btn-action", disabled: true }, "Merge…");
+        mergeBtn = el("a", { className: "btn-action" }, "Merge…");
+        mergeBtn.setAttribute("aria-disabled", "true");
         tableBtn = el("button", { type: "button", className: "btn-action", disabled: true, title: "Open the selected books in the bulk editor's table" }, "Edit in table");
         bar = el("div", { className: "select-bar", hidden: true }, countEl, el("span", { className: "select-bar-actions" }, clear, done, tableBtn, mergeBtn, removeBtn));
         bar.setAttribute("aria-label", "Selected books");
@@ -104,10 +112,6 @@ export function setupSelection(grid: HTMLElement): void {
             update();
         });
         done.addEventListener("click", () => setSelecting(grid, false));
-        mergeBtn.addEventListener("click", () => {
-            const q = new URLSearchParams({ ids: [...chosen.keys()].join(",") });
-            location.assign(`/book/merge?${q}`);
-        });
         tableBtn.addEventListener("click", () => {
             try {
                 sessionStorage.setItem(BULK_SELECTION_KEY, JSON.stringify([...chosen.keys()]));
@@ -140,7 +144,10 @@ export function setupSelection(grid: HTMLElement): void {
         // doesn't open (or the tick doesn't come straight off again).
         grid.classList.add("can-select"); // no iOS link preview or text selection on a long press
         let press: { timer: ReturnType<typeof setTimeout>; x: number; y: number } | null = null;
+        // The click that follows a long press or a Mac's Ctrl+click, on the
+        // same card: a click on another one is a pick of its own.
         let swallowClickUntil = 0;
+        let swallowCard: HTMLElement | null = null;
         const cancelPress = (): void => {
             if (press) clearTimeout(press.timer);
             press = null;
@@ -156,6 +163,7 @@ export function setupSelection(grid: HTMLElement): void {
                 timer: setTimeout(() => {
                     press = null;
                     swallowClickUntil = Date.now() + 1500;
+                    swallowCard = card;
                     if (!selecting) setSelecting(grid, true);
                     toggle(card);
                     navigator.vibrate?.(15);
@@ -172,15 +180,38 @@ export function setupSelection(grid: HTMLElement): void {
             if (Date.now() < swallowClickUntil || (press && cardAt(e.target))) e.preventDefault();
         });
 
+        // Ctrl+click (a mouse's long press): start selecting, with this book.
+        // On a Mac, Ctrl+click is a right click: it comes as contextmenu,
+        // and no click follows.
+        const ctrlPick = (card: HTMLElement): void => {
+            if (!selecting) setSelecting(grid, true);
+            toggle(card);
+        };
+        grid.addEventListener("contextmenu", (e) => {
+            const card = cardAt(e.target);
+            if (!card || !e.ctrlKey) return;
+            e.preventDefault();
+            swallowClickUntil = Date.now() + 500;
+            swallowCard = card;
+            ctrlPick(card);
+        });
+
         // Capture, so the card's own link (the book popup) never sees it.
         grid.addEventListener(
             "click",
             (e) => {
                 const card = cardAt(e.target);
-                if (card && Date.now() < swallowClickUntil) {
+                if (card && card === swallowCard && Date.now() < swallowClickUntil) {
                     swallowClickUntil = 0;
+                    swallowCard = null;
                     e.preventDefault();
                     e.stopPropagation();
+                    return;
+                }
+                if (card && e.ctrlKey && !selecting) {
+                    e.preventDefault(); // not a new tab
+                    e.stopPropagation();
+                    ctrlPick(card);
                     return;
                 }
                 if (!selecting || !card) return;

@@ -122,6 +122,36 @@ func TestBulkEditHTTP(t *testing.T) {
 		t.Errorf("formats %v", table.Books[0].Formats)
 	}
 
+	// ?ids=: only those books (the grid's "Edit in table").
+	b := addOPFTestBook(t, db, "Beta", []string{"Bo"}, nil, nil)
+	for _, c := range []struct {
+		ids  string
+		want []string
+	}{
+		{b.uuid, []string{b.uuid}},
+		{a.uuid + "," + b.uuid, []string{a.uuid, b.uuid}},
+		{"nope", nil},
+	} {
+		rec := httptest.NewRecorder()
+		libraryTableHandler(rec, httptest.NewRequest("GET", "/api/library/table?ids="+c.ids, nil))
+		var got struct{ Books []tableBook }
+		if err := json.Unmarshal(rec.Body.Bytes(), &got); err != nil {
+			t.Fatalf("ids=%s: %v %s", c.ids, err, rec.Body)
+		}
+		var uuids []string
+		for _, bk := range got.Books {
+			uuids = append(uuids, bk.UUID)
+		}
+		if !slices.Equal(uuids, c.want) {
+			t.Errorf("ids=%s: %v, want %v", c.ids, uuids, c.want)
+		}
+	}
+	rec = httptest.NewRecorder()
+	libraryTableHandler(rec, httptest.NewRequest("GET", "/api/library/table?ids="+strings.Repeat("x,", tableIDsMax)+"x", nil))
+	if rec.Code != http.StatusBadRequest {
+		t.Errorf("too many ids: %d", rec.Code)
+	}
+
 	post := func(body string) *httptest.ResponseRecorder {
 		rec := httptest.NewRecorder()
 		req := httptest.NewRequest("POST", "/api/library/bulk", bytes.NewBufferString(body))

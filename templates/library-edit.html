@@ -96,7 +96,8 @@
         <button type="button" id="lt-select-none" class="btn-action">Clear</button>
         <button type="button" id="lt-edit" class="btn-action">Edit…</button>
         <button type="button" id="lt-split" class="btn-action">Split tags…</button>
-        <button type="button" id="lt-merge" class="btn-action" title="Make the selected books one book, with every format"{{ if .Queue }} hidden{{ end }}>Merge…</button>
+        {{/* A link (library-edit.ts sets its href): a middle click opens the merge in a new tab. */}}
+        <a id="lt-merge" class="btn-action" aria-disabled="true" title="Make the selected books one book, with every format"{{ if .Queue }} hidden{{ end }}>Merge…</a>
         <button type="button" id="lt-remove" class="btn-action btn-danger"{{ if .Queue }} hidden{{ end }}>Remove…</button>
     </span>
 </div>

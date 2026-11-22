@@ -36,6 +36,15 @@ const OVERSCAN = 8; // rows drawn beyond the screen, each way
 const BULK_SELECTION_KEY = "cf-bulk-selection";
 /** At most this many books are merged at once (Go: mergeMaxBooks). */
 const MERGE_MAX = 20;
+/** At most this many books are loaded on their own; more, and the whole table (Go: tableIDsMax). */
+const SUBSET_MAX = 500;
+/**
+ * The books "Edit in table" brought, when only they are loaded (a big
+ * library takes long to load whole): null once the whole table is. Clear
+ * filters, unticking "Only selected" or looking for duplicates loads it.
+ */
+let subset: string[] | null = null;
+const tableUrl = (): string => (subset ? `${SOURCE.table}?${new URLSearchParams({ ids: subset.join(",") })}` : SOURCE.table);
 
 type ColKey = "title" | "authors" | "series" | "publisher" | "pubdate" | "languages" | "tags" | "formats" | "added" | "library";
 /** The bulk edit field a column's cells edit. */
@@ -257,7 +266,7 @@ const tagLenWrap = byId("lt-taglen-wrap");
 const splitBtn = byId("lt-split", HTMLButtonElement);
 const bar = byId("lt-bar");
 const selectedEl = byId("lt-selected");
-const mergeBtn = byId("lt-merge", HTMLButtonElement);
+const mergeBtn = byId("lt-merge", HTMLAnchorElement);
 
 const undoBtn = byId("lt-undo", HTMLButtonElement);
 /** What the status line's Undo does: the last tag change, until something else is said. */
@@ -640,7 +649,8 @@ function refresh(): void {
     }
     const groupsShown = dupMode && shown.length ? shown[shown.length - 1]!.group + 1 : 0;
     countEl.textContent =
-        `${n(shown.length)} of ${plural(rows.length, "book")}` +
+        `${n(shown.length)} of ${plural(rows.length, subset ? "picked book" : "book")}` +
+        (subset ? " · Clear filters loads the whole library" : "") +
         (dupMode === MARKED ? ` · ${plural(groupsShown, "group")} marked not duplicates` : dupMode ? ` · ${plural(groupsShown, "group")} of look-alikes` : "");
     sizeBody();
     emptyEl.hidden = shown.length > 0 || rows.length === 0;
@@ -916,7 +926,7 @@ function selectionChanged(): void {
     const k = selected.size;
     bar.hidden = k === 0;
     selectedEl.textContent = `${plural(k, "book")} selected`;
-    mergeBtn.disabled = k < 2 || k > MERGE_MAX;
+    setMergeLink();
     const books = selectedBooks();
     if (tagCheck === "semicolon") {
         splitBtn.textContent = `Split on ${SPLIT_SEP}`;
@@ -1327,12 +1337,25 @@ byId("lt-select-none").addEventListener("click", () => {
     if (onlySelected) refresh();
     else selectionChanged();
 });
-mergeBtn.addEventListener("click", () => {
+/**
+ * Merge is a link, so a middle click (or the menu's "Open in new tab")
+ * opens it in a tab of its own. Its href follows the selection, and is set
+ * again as it's pressed: the table may have been sorted since.
+ */
+function setMergeLink(): void {
+    const k = selected.size;
+    if (k < 2 || k > MERGE_MAX) {
+        mergeBtn.removeAttribute("href");
+        mergeBtn.setAttribute("aria-disabled", "true");
+        return;
+    }
     // In the table's order: the first is the record kept, unless changed there.
     const order = shown.filter((r) => selected.has(r.b.uuid)).map((r) => r.b.uuid);
     const rest = [...selected].filter((u) => !order.includes(u));
-    location.assign(mergeLink([...order, ...rest]));
-});
+    mergeBtn.href = mergeLink([...order, ...rest]);
+    mergeBtn.removeAttribute("aria-disabled");
+}
+for (const type of ["pointerdown", "focus", "contextmenu"]) mergeBtn.addEventListener(type, setMergeLink);
 byId("lt-remove").addEventListener("click", async () => {
     const books = selectedBooks();
     if (!(await deleteBooks(books))) return;
@@ -2151,7 +2174,8 @@ searchInput.addEventListener("input", () => {
 });
 dupSelect.addEventListener("change", () => {
     dupMode = dupSelect.value;
-    refresh();
+    if (dupMode && subset) void loadWhole(); // look-alikes are among every book
+    else refresh();
 });
 function tagCheckChanged(): void {
     tagCheckSelect.value = tagCheck;
@@ -2245,7 +2269,8 @@ splitForm.addEventListener("submit", (e) => {
 });
 onlySelectedBox.addEventListener("change", () => {
     onlySelected = onlySelectedBox.checked;
-    refresh();
+    if (!onlySelected && subset) void loadWhole();
+    else refresh();
 });
 byId("lt-clear").addEventListener("click", () => {
     for (const c of COLUMNS) {
@@ -2260,7 +2285,8 @@ byId("lt-clear").addEventListener("click", () => {
     tagLen = TAG_LEN_DEFAULT;
     tagCheckChanged();
     onlySelected = onlySelectedBox.checked = false;
-    refresh();
+    if (subset) void loadWhole();
+    else refresh();
 });
 document.addEventListener("keydown", (e) => {
     if (e.key === "Escape" && selectedCell && !editing && !modalOpen()) {
@@ -2318,6 +2344,8 @@ function loadView(): void {
             /* no storage: nothing preselected */
         }
         onlySelected = onlySelectedBox.checked = selected.size > 0;
+        // Only those books, at first: not the whole library to edit a few.
+        if (!QUEUE && !dupMode && selected.size > 0 && selected.size <= SUBSET_MAX) subset = [...selected];
     }
 }
 
@@ -2326,7 +2354,7 @@ async function start(): Promise<void> {
     loadView();
     buildHead();
     try {
-        const [data] = await Promise.all([api<TableData>("GET", SOURCE.table), loadLanguageCodes()]);
+        const [data] = await Promise.all([api<TableData>("GET", tableUrl()), loadLanguageCodes()]);
         rows = data.books.map(makeRow);
         notDupSets = data.not_duplicates;
     } catch (err) {
@@ -2334,6 +2362,26 @@ async function start(): Promise<void> {
         say(`Couldn't load ${SOURCE.name}: ${errorMessage(err)}`, "error");
         return;
     }
+    loaded();
+}
+
+/** The whole table, after only the books "Edit in table" brought. */
+async function loadWhole(): Promise<void> {
+    if (!subset) return;
+    const picked = subset;
+    subset = null;
+    countEl.textContent = `Loading ${SOURCE.name}…`;
+    try {
+        const data = await api<TableData>("GET", SOURCE.table);
+        rows = data.books.map(makeRow);
+        notDupSets = data.not_duplicates;
+    } catch (err) {
+        subset = picked;
+        refresh();
+        say(`Couldn't load ${SOURCE.name}: ${errorMessage(err)}`, "error");
+        return;
+    }
+    reloadedAt = Date.now();
     loaded();
 }
 
@@ -2386,7 +2434,7 @@ async function reloadRows(): Promise<void> {
     const gen = changedHere;
     let stale = false;
     try {
-        const data = await api<TableData>("GET", SOURCE.table);
+        const data = await api<TableData>("GET", tableUrl());
         if (editing || modalOpen() || cellMenu || expanded) {
             // Redrawing would close what's open: next time.
             reloadedAt = 0;

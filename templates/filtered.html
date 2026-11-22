@@ -21,11 +21,12 @@
              Manage menu. On a phone, or a bar too full for them (nav.ts:
              tb-fold), both go into that menu, behind ⋯, so the pager and
              the user menu stay on screen. */}}
-{{ $own := false }}{{ $feat := false }}{{ with .Extra }}{{ if or .Shelf .TagPin .SeriesPin .SeriesShelf }}{{ $own = true }}{{ end }}{{ if and .Shelf .CanFeature }}{{ $feat = true }}{{ end }}{{ end }}
-{{ if or $own .NewPlaceholder .CanVerify .Hardcover .Writable $feat }}
+{{ $own := false }}{{ $feat := false }}{{ $kind := "page" }}{{ with .Label }}{{ $kind = . }}{{ end }}{{ with .Extra }}{{ if .Shelf }}{{ $kind = "shelf" }}{{ end }}{{ end }}{{ with .Extra }}{{ if or .Shelf .TagPin .SeriesPin .SeriesShelf }}{{ $own = true }}{{ end }}{{ if and .Shelf .CanFeature }}{{ $feat = true }}{{ end }}{{ end }}
+{{ if .NewPlaceholder }}{{ $own = true }}{{ end }}
+{{ if or $own .CanVerify .Hardcover .Writable $feat }}
         <div class="tb-actions">
         <button type="button" class="btn-group-toggle tb-manage-btn" aria-haspopup="true" aria-expanded="false" aria-controls="tb-actions-pop"
-                title="{{ if or .NewPlaceholder .CanVerify .Hardcover .Writable $feat }}Manage this {{ with .Label }}{{ . }}{{ else }}page{{ end }}{{ else }}Page actions{{ end }}">
+                title="{{ if or .CanVerify .Hardcover .Writable $feat }}Manage this {{ with .Label }}{{ . }}{{ else }}page{{ end }}{{ else }}Page actions{{ end }}">
             <svg class="tb-manage-icon" viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true"><path d="M4 6h10M18 6h2M4 12h4M12 12h8M4 18h12M20 18h0"/><circle cx="16" cy="6" r="2"/><circle cx="10" cy="12" r="2"/><circle cx="18" cy="18" r="2"/></svg>
             <svg class="tb-fold-icon" viewBox="0 0 24 24" width="18" height="18" fill="currentColor" aria-hidden="true"><circle cx="5" cy="12" r="2"/><circle cx="12" cy="12" r="2"/><circle cx="19" cy="12" r="2"/></svg>
             <span class="tb-label">Manage</span>
@@ -63,42 +64,26 @@
             <span class="tb-label">Add to shelf</span>
         </button>
 {{ end }}{{ end }}
-        </div>
-        <div class="tb-manage-menu">
-{{ if or .Writable .CanVerify }}
-        <button type="button" id="manage-toggle" class="btn-group-toggle" aria-expanded="false" aria-controls="manage-panel"
-                title="{{ if .Writable }}This {{ .Label }}'s name, picture, description and grouped values{{ end }}{{ if and .Writable .CanVerify }}; {{ end }}{{ if .CanVerify }}how many books the series has{{ end }}">
-            <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="3" y="4" width="18" height="16" rx="2"/><path d="M15 4v16"/></svg>
-            <span class="tb-label">Manage {{ capitalize .Label }}</span>
-        </button>
-{{ end }}
 {{ with .NewPlaceholder }}
-        <a class="btn-group-toggle" href="{{ . }}" title="Add a book that isn't in the library yet to this page">
+        <a class="btn-group-toggle" href="{{ . }}" title="Add Placeholder: a book that isn't in the library yet, on this page">
             <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="5" y="3" width="14" height="18" rx="2" stroke-dasharray="3 2"/><path d="M12 9v6M9 12h6"/></svg>
             <span class="tb-label">Add Placeholder</span>
         </a>
+{{ end }}
+        </div>
+        <div class="tb-manage-menu">
+{{ if or .Writable .CanVerify $feat }}
+        <button type="button" id="manage-toggle" class="btn-group-toggle" aria-expanded="false" aria-controls="manage-panel"
+                title="Manage this {{ $kind }}: select its books{{ if .CanVerify }}, how many books the series has{{ end }}{{ if or .Writable $feat }}, feature it{{ end }}{{ if .Writable }}, its name, picture and grouped values{{ end }}">
+            <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="3" y="4" width="18" height="16" rx="2"/><path d="M15 4v16"/></svg>
+            <span class="tb-label">Manage {{ capitalize $kind }}</span>
+        </button>
 {{ end }}
 {{ with .Hardcover }}
         <a class="btn-group-toggle" href="{{ . }}" title="{{ if eq $.Category "author" }}Check this author's series on Hardcover{{ else }}Check this series on Hardcover{{ end }}: books missing from the library, and books here without the series">
             <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M4 5a2 2 0 0 1 2-2h12v16H6a2 2 0 0 0-2 2z"/><path d="M4 21V5"/><circle cx="12" cy="10" r="3"/><path d="M14.2 12.2 16 14"/></svg>
             <span class="tb-label">Hardcover</span>
         </a>
-{{ end }}
-{{ with .Extra }}{{ with .Shelf }}{{ if $.Extra.CanFeature }}
-        <button type="button" class="btn-group-toggle shelf-page-btn" data-shelf-action="feature" data-id="{{ .ID }}" aria-pressed="{{ .Featured }}"
-                title="Show this shelf on everyone's home page">
-            <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2" stroke-linejoin="round" aria-hidden="true"><path d="M12 3l2.8 5.7 6.2.9-4.5 4.4 1.1 6.2L12 17.3 6.4 20.2l1.1-6.2L3 9.6l6.2-.9z"/></svg>
-            <span class="tb-label">{{ if .Featured }}Featured{{ else }}Feature{{ end }}</span>
-        </button>
-{{ end }}{{ end }}{{ end }}
-{{ if .Writable }}{{ if .Category }}
-        <button type="button" id="feature-toggle" class="btn-group-toggle" aria-pressed="{{ .Featured }}"
-                data-category="{{ .Category }}" data-key="{{ .Key }}"
-                title="Show this {{ .Label }} at the top of the {{ .Label }} list, for everyone">
-            <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2" stroke-linejoin="round" aria-hidden="true"><path d="M12 3l2.8 5.7 6.2.9-4.5 4.4 1.1 6.2L12 17.3 6.4 20.2l1.1-6.2L3 9.6l6.2-.9z"/></svg>
-            <span class="tb-label">{{ if .Featured }}Featured{{ else }}Feature{{ end }}</span>
-        </button>
-{{ end }}
 {{ end }}
         </div>
         </div>
@@ -122,19 +107,47 @@
     {{ template "series-shelf-list" $.Extra.SeriesShelves }}
 </section>
 {{ end }}{{ end }}
-{{ if or .Writable .CanVerify }}
+{{ if or .Writable .CanVerify $feat }}
 {{/* Manage this entry (web/manage-panel.ts): a sidebar on the right, under
      the Manage menu. Its parts save on their own: the series' book counts
      (editors; series_complete.go, web/series-verify.ts) and the group, with
      its name, picture and description (admins; web/groups.ts). */}}
 <aside id="manage-panel" class="manage-panel" aria-labelledby="manage-panel-title" hidden>
     <header class="manage-panel-head">
-        <h2 id="manage-panel-title">Manage {{ capitalize .Label }}</h2>
+        <h2 id="manage-panel-title">Manage {{ capitalize $kind }}</h2>
         <button type="button" class="tb-icon manage-panel-close" aria-label="Close" title="Close (Esc)">
             <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true"><path d="M6 6l12 12M18 6L6 18"/></svg>
         </button>
     </header>
     <div class="manage-panel-body">
+    {{/* Shown to editors by select-books.ts, which also starts selecting on a
+         Ctrl+click or a long press on a book. */}}
+    <section class="manage-section" id="select-section" aria-labelledby="select-section-title" hidden>
+        <h3 id="select-section-title">Books on this page</h3>
+        <button type="button" id="select-books-btn" class="btn-standard manage-toggle-btn" aria-pressed="false">Select books</button>
+        <p class="manage-hint">Or Ctrl+click a book; on a touch screen, press and hold one.</p>
+    </section>
+{{ if or (and .Writable .Category) $feat }}
+    <section class="manage-section" aria-labelledby="feature-section-title">
+        <h3 id="feature-section-title">Featured</h3>
+{{ if and .Writable .Category }}
+            <button type="button" id="feature-toggle" class="btn-standard manage-toggle-btn" aria-pressed="{{ .Featured }}"
+                    data-category="{{ .Category }}" data-key="{{ .Key }}"
+                    title="Show this {{ .Label }} at the top of the {{ .Label }} list, for everyone">
+                <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2" stroke-linejoin="round" aria-hidden="true"><path d="M12 3l2.8 5.7 6.2.9-4.5 4.4 1.1 6.2L12 17.3 6.4 20.2l1.1-6.2L3 9.6l6.2-.9z"/></svg>
+                <span class="tb-label">{{ if .Featured }}Featured{{ else }}Feature{{ end }}</span>
+            </button>
+        <p class="manage-hint">Shown at the top of the {{ .Label }} list, for everyone.</p>
+{{ else }}{{ with .Extra }}{{ with .Shelf }}
+            <button type="button" class="btn-standard manage-toggle-btn shelf-page-btn" data-shelf-action="feature" data-id="{{ .ID }}" aria-pressed="{{ .Featured }}"
+                    title="Show this shelf on everyone's home page">
+                <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2" stroke-linejoin="round" aria-hidden="true"><path d="M12 3l2.8 5.7 6.2.9-4.5 4.4 1.1 6.2L12 17.3 6.4 20.2l1.1-6.2L3 9.6l6.2-.9z"/></svg>
+                <span class="tb-label">{{ if .Featured }}Featured{{ else }}Feature{{ end }}</span>
+            </button>
+        <p class="manage-hint">Shown on everyone's home page.</p>
+{{ end }}{{ end }}{{ end }}
+    </section>
+{{ end }}
 {{ if .CanVerify }}
     <section id="series-verify" class="manage-section series-verify" data-series="{{ .Name }}" aria-labelledby="series-verify-title">
         <div class="manage-section-head">
@@ -238,7 +251,8 @@
 </div>
 <div id="scroll-badge"></div>
 <script type="module" src="{{ asset "app-htmx.js" }}"></script>
-{{ if or .Writable .CanVerify }}<script type="module" src="{{ asset "manage-panel.js" }}"></script>{{ end }}
+{{ $feat := false }}{{ with .Extra }}{{ if and .Shelf .CanFeature }}{{ $feat = true }}{{ end }}{{ end }}
+{{ if or .Writable .CanVerify $feat }}<script type="module" src="{{ asset "manage-panel.js" }}"></script>{{ end }}
 {{ with .Profile }}{{ if or .Lookup .Refresh }}<script type="module" src="{{ asset "author-profile.js" }}"></script>{{ end }}{{ end }}
 {{ with .Extra }}{{ if or .Shelf .TagPin .SeriesPin }}<script type="module" src="{{ asset "shelf-page.js" }}"></script>{{ end }}{{ end }}
 {{ with .Extra }}{{ if and .Arrange (gt $.TotalBooks 1) }}<script type="module" src="{{ asset "list-edit.js" }}"></script>{{ end }}{{ end }}
