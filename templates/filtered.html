@@ -15,26 +15,30 @@
 <body>
 {{ $tb := topbar "Active" .Active "Title" .Display "Sub" .Sub }}
 {{ template "topbar-start" $tb }}
-        {{/* The page's actions. On narrow screens, three or more fold behind one
-             button (nav.ts) so the bar keeps its pager and user menu. */}}
+        {{/* The page's actions. Your own (pin to home, add to a shelf) are
+             icons in the bar; the library's (missing book, mark complete,
+             Hardcover, feature, group: editors and admins) are in the
+             Manage menu. On a phone, or a bar too full for them (nav.ts:
+             tb-fold), both go into that menu, behind ⋯, so the pager and
+             the user menu stay on screen. */}}
+{{ $own := false }}{{ $feat := false }}{{ with .Extra }}{{ if or .Shelf .TagPin .SeriesPin .SeriesShelf }}{{ $own = true }}{{ end }}{{ if and .Shelf .CanFeature }}{{ $feat = true }}{{ end }}{{ end }}
+{{ if or $own .NewPlaceholder .CanVerify .Hardcover .Writable $feat }}
         <div class="tb-actions">
-        <button type="button" class="tb-icon tb-actions-btn" aria-label="Page actions" aria-expanded="false" aria-controls="tb-actions-menu">
-            <svg viewBox="0 0 24 24" width="18" height="18" fill="currentColor" aria-hidden="true"><circle cx="5" cy="12" r="2"/><circle cx="12" cy="12" r="2"/><circle cx="19" cy="12" r="2"/></svg>
+        <button type="button" class="btn-group-toggle tb-manage-btn" aria-haspopup="true" aria-expanded="false" aria-controls="tb-actions-pop"
+                title="{{ if or .NewPlaceholder .CanVerify .Hardcover .Writable $feat }}Manage this {{ with .Label }}{{ . }}{{ else }}page{{ end }}{{ else }}Page actions{{ end }}">
+            <svg class="tb-manage-icon" viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true"><path d="M4 6h10M18 6h2M4 12h4M12 12h8M4 18h12M20 18h0"/><circle cx="16" cy="6" r="2"/><circle cx="10" cy="12" r="2"/><circle cx="18" cy="18" r="2"/></svg>
+            <svg class="tb-fold-icon" viewBox="0 0 24 24" width="18" height="18" fill="currentColor" aria-hidden="true"><circle cx="5" cy="12" r="2"/><circle cx="12" cy="12" r="2"/><circle cx="19" cy="12" r="2"/></svg>
+            <span class="tb-label">Manage</span>
+            <svg class="tb-manage-caret" viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="m6 9 6 6 6-6"/></svg>
         </button>
-        <div class="tb-actions-menu" id="tb-actions-menu">
+        <div class="tb-actions-pop" id="tb-actions-pop">
+        <div class="tb-own-actions">
 {{ with .Extra }}{{ with .Shelf }}
         <button type="button" class="btn-group-toggle shelf-page-btn" data-shelf-action="pin" data-id="{{ .ID }}" aria-pressed="{{ .Pinned }}"
                 title="Show this shelf on your home page">
             <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 17v5M9 3h6l-1 7 4 3H6l4-3z"/></svg>
             <span class="tb-label">{{ if .Pinned }}On home{{ else }}Pin to home{{ end }}</span>
         </button>
-        {{ if $.Extra.CanFeature }}
-        <button type="button" class="btn-group-toggle shelf-page-btn" data-shelf-action="feature" data-id="{{ .ID }}" aria-pressed="{{ .Featured }}"
-                title="Show this shelf on everyone's home page">
-            <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2" stroke-linejoin="round" aria-hidden="true"><path d="M12 3l2.8 5.7 6.2.9-4.5 4.4 1.1 6.2L12 17.3 6.4 20.2l1.1-6.2L3 9.6l6.2-.9z"/></svg>
-            <span class="tb-label">{{ if .Featured }}Featured{{ else }}Feature{{ end }}</span>
-        </button>
-        {{ end }}
 {{ end }}{{ end }}
 {{ with .Extra }}{{ with .TagPin }}
         <button type="button" class="btn-group-toggle shelf-page-btn" data-shelf-action="pin-tag" data-tag="{{ . }}" aria-pressed="{{ $.Extra.Pinned }}"
@@ -50,6 +54,17 @@
             <span class="tb-label">{{ if $.Extra.Pinned }}On home{{ else }}Pin to home{{ end }}</span>
         </button>
 {{ end }}{{ end }}
+{{ with .Extra }}{{ with .SeriesShelf }}
+        {{/* Put the whole series on shelves (series-shelf.ts, in app-htmx.js
+             by way of user.ts; shelf_series.go). */}}
+        <button type="button" class="btn-group-toggle series-shelf-toggle" aria-expanded="false" aria-controls="series-shelf-panel"
+                title="Add this whole series to a shelf, as one entry">
+            <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M4 4h4v16H4zM10 4h4v16h-4zM16 5l3.5-1 3 15.5-3.5 1z"/></svg>
+            <span class="tb-label">Add to shelf</span>
+        </button>
+{{ end }}{{ end }}
+        </div>
+        <div class="tb-manage-menu">
 {{ with .NewPlaceholder }}
         <a class="btn-group-toggle" href="{{ . }}" title="Add a book that isn't in the library yet to this page">
             <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="5" y="3" width="14" height="18" rx="2" stroke-dasharray="3 2"/><path d="M12 9v6M9 12h6"/></svg>
@@ -69,31 +84,31 @@
             <span class="tb-label">Hardcover</span>
         </a>
 {{ end }}
+{{ with .Extra }}{{ with .Shelf }}{{ if $.Extra.CanFeature }}
+        <button type="button" class="btn-group-toggle shelf-page-btn" data-shelf-action="feature" data-id="{{ .ID }}" aria-pressed="{{ .Featured }}"
+                title="Show this shelf on everyone's home page">
+            <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2" stroke-linejoin="round" aria-hidden="true"><path d="M12 3l2.8 5.7 6.2.9-4.5 4.4 1.1 6.2L12 17.3 6.4 20.2l1.1-6.2L3 9.6l6.2-.9z"/></svg>
+            <span class="tb-label">{{ if .Featured }}Featured{{ else }}Feature{{ end }}</span>
+        </button>
+{{ end }}{{ end }}{{ end }}
 {{ if .Writable }}{{ if .Category }}
         <button type="button" id="feature-toggle" class="btn-group-toggle" aria-pressed="{{ .Featured }}"
                 data-category="{{ .Category }}" data-key="{{ .Key }}"
                 title="Show this {{ .Label }} at the top of the {{ .Label }} list, for everyone">
-            <svg class="tb-group-icon" viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2" stroke-linejoin="round" aria-hidden="true"><path d="M12 3l2.8 5.7 6.2.9-4.5 4.4 1.1 6.2L12 17.3 6.4 20.2l1.1-6.2L3 9.6l6.2-.9z"/></svg>
+            <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2" stroke-linejoin="round" aria-hidden="true"><path d="M12 3l2.8 5.7 6.2.9-4.5 4.4 1.1 6.2L12 17.3 6.4 20.2l1.1-6.2L3 9.6l6.2-.9z"/></svg>
             <span class="tb-label">{{ if .Featured }}Featured{{ else }}Feature{{ end }}</span>
         </button>
 {{ end }}
         <button type="button" id="group-toggle" class="btn-group-toggle" aria-expanded="false" aria-controls="group-panel"
                 title="Choose which {{ .Label }} values this page includes" aria-label="Group {{ .Label }} values">
-            <svg class="tb-group-icon" viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2" stroke-linejoin="round" aria-hidden="true"><path d="M12 3l9 5-9 5-9-5zM3 13l9 5 9-5"/></svg>
+            <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2" stroke-linejoin="round" aria-hidden="true"><path d="M12 3l9 5-9 5-9-5zM3 13l9 5 9-5"/></svg>
             <span class="tb-label">{{ if .Grouped }}Group · {{ len .Members }}{{ else }}Group…{{ end }}</span>
         </button>
 {{ end }}
-{{ with .Extra }}{{ with .SeriesShelf }}
-        {{/* Put the whole series on shelves (series-shelf.ts, in app-htmx.js
-             by way of user.ts; shelf_series.go). */}}
-        <button type="button" class="btn-group-toggle series-shelf-toggle" aria-expanded="false" aria-controls="series-shelf-panel"
-                title="Add this whole series to a shelf, as one entry">
-            <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M4 4h4v16H4zM10 4h4v16h-4zM16 5l3.5-1 3 15.5-3.5 1z"/></svg>
-            <span class="tb-label">Add to shelf</span>
-        </button>
-{{ end }}{{ end }}
         </div>
         </div>
+        </div>
+{{ end }}
 {{ template "topbar-pager" }}
 {{ with .Extra }}{{ with .Arrange }}{{ if gt $.TotalBooks 1 }}
         {{/* Arrange the books: drag or move them (list-edit.ts, list_order.go). */}}

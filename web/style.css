@@ -1708,6 +1708,58 @@ body:not(.home-editing) .greeting-off:not(:has(.greeting-stats-slot:not([hidden]
     }
 }
 
+/* The same, when a crowded bar needs it (nav.ts: tb-tighter). */
+.site-bar.tb-tighter .tb-menu-btn {
+    display: inline-flex !important;
+}
+
+.site-bar.tb-tighter .tb-nav {
+    display: none;
+    position: absolute;
+    top: calc(100% + 4px);
+    left: var(--page-padding);
+    flex-direction: column; /* as wide as its longest item */
+    align-items: stretch;
+    gap: 2px;
+    padding: 6px;
+    background: var(--bg-elevated);
+    border: 1px solid var(--border-medium);
+    border-radius: var(--radius-medium);
+    box-shadow: var(--shadow-medium);
+}
+
+.site-bar.tb-tighter.nav-open .tb-nav {
+    display: flex;
+}
+
+.site-bar.tb-tighter .tb-nav a {
+    padding: 14px;
+    line-height: 16px;
+}
+
+.site-bar.tb-tighter .tb-nav a[aria-current="page"]::after {
+    display: none;
+}
+
+.site-bar.tb-tighter .tb-nav a:hover,
+.site-bar.tb-tighter .tb-nav a[aria-current="page"] {
+    background: rgba(255, 255, 255, 0.08);
+}
+
+.site-bar.tb-tighter .tb-nav a[aria-current="page"] {
+    text-decoration: underline;
+    text-decoration-thickness: 2px;
+    text-underline-offset: 6px;
+}
+
+.site-bar.tb-tighter .tb-nav .tb-home {
+    display: block;
+}
+
+.site-bar.tb-tighter .tb-title-nav {
+    display: block;
+}
+
 /* ≤ 640px: search becomes an icon; saved/favorites/reading live in the user menu */
 @media (max-width: 640px) {
     .site-bar {
@@ -1766,6 +1818,43 @@ body:not(.home-editing) .greeting-off:not(:has(.greeting-stats-slot:not([hidden]
     }
 }
 
+
+/* A bar with more in it than fits (nav.ts adds these, a step at a time, to
+   keep the user menu on screen). tb-tight: as on a phone, the shortcuts
+   (all in the user menu too), the user name and the pager's arrows go;
+   tb-tighter: the browse links go into the ☰ menu (above); tb-tightest:
+   the search box becomes its icon. */
+.site-bar.tb-tight .tb-shortcut,
+.site-bar.tb-tight .tb-user-name,
+.site-bar.tb-tight .tb-pager #prev-page,
+.site-bar.tb-tight .tb-pager #next-page {
+    display: none !important;
+}
+
+.site-bar.tb-tightest .tb-search {
+    display: none;
+}
+
+.site-bar.tb-tightest .tb-search-btn {
+    display: inline-flex !important;
+    margin-left: auto;
+}
+
+.site-bar.tb-tightest.search-open .tb-search {
+    display: flex;
+    position: absolute;
+    inset: 0;
+    max-width: none;
+    z-index: 2;
+    gap: 6px;
+    padding: 0 8px;
+    margin: 0;
+    background: var(--bg-secondary);
+}
+
+.site-bar.tb-tightest.search-open .tb-search-close {
+    display: inline-flex !important;
+}
 
 /* ============================================
    Component - Book Detail Page
@@ -3623,15 +3712,7 @@ body.book-standalone {
     gap: 6px;
 }
 
-.tb-group-icon {
-    display: none;
-}
-
 @media (max-width: 640px) {
-    .tb-group-icon {
-        display: block;
-    }
-
     .site-bar .btn-group-toggle {
         width: 36px;
         height: 36px;
@@ -3640,58 +3721,306 @@ body.book-standalone {
     }
 }
 
-/* A page's actions (filtered.html): inline, unless a narrow bar has three or
-   more, which fold behind ⋯ into a list with their labels (they'd push the
-   pager and user menu off a narrow bar). */
-.tb-actions,
-.tb-actions-menu {
+/* A page's actions (filtered.html). Your own (pin, add to shelf) are icons
+   in the bar, named by their title and a label kept for screen readers;
+   the library's tools are in the Manage menu, with their labels. The two
+   share .tb-actions-pop, which is only a box when folded (below). */
+.tb-actions {
+    position: relative;
+    display: flex;
+    align-items: center;
+    gap: 6px;
+}
+
+.tb-actions-pop {
     display: contents;
 }
 
-.site-bar .tb-actions-btn {
+.tb-own-actions {
+    order: -1; /* before the Manage button */
+    display: flex;
+    align-items: center;
+    gap: 6px;
+}
+
+.tb-own-actions:not(:has(*)) {
     display: none;
 }
 
-@media (max-width: 1024px) {
-    .tb-actions:has(.tb-actions-menu > :nth-child(3)) {
-        display: block;
-        position: relative;
-        flex: none;
-    }
+.site-bar .tb-own-actions .btn-group-toggle {
+    width: 36px;
+    height: 36px;
+    padding: 0;
+    justify-content: center;
+}
 
-    .site-bar .tb-actions:has(.tb-actions-menu > :nth-child(3)) .tb-actions-btn {
-        display: inline-flex;
-    }
+.site-bar .tb-own-actions .tb-label {
+    position: absolute;
+    width: 1px;
+    height: 1px;
+    overflow: hidden;
+    clip-path: inset(50%);
+    white-space: nowrap;
+}
 
-    .tb-actions:has(.tb-actions-menu > :nth-child(3)) .tb-actions-menu {
-        display: none;
-        position: fixed;
-        top: calc(var(--topbar-total) + 8px);
-        left: 16px;
+.site-bar .tb-manage-btn {
+    height: 36px;
+}
+
+/* Nothing to manage (a reader): no button, while not folded. */
+.tb-actions:not(:has(.tb-manage-menu > *)) .tb-manage-btn,
+.tb-fold-icon {
+    display: none;
+}
+
+.tb-manage-caret {
+    margin-left: -2px;
+}
+
+.tb-manage-menu {
+    position: absolute;
+    top: calc(100% + 8px);
+    right: 0;
+    z-index: 1000;
+    display: flex;
+    flex-direction: column;
+    gap: 2px;
+    min-width: 210px;
+    padding: 6px;
+    background: var(--bg-elevated);
+    border: 1px solid var(--border-medium);
+    border-radius: var(--radius-medium);
+    box-shadow: var(--shadow-medium);
+    max-height: calc(100dvh - var(--topbar-total) - 20px - env(safe-area-inset-bottom, 0px));
+    overflow-y: auto;
+    overscroll-behavior: contain;
+}
+
+.tb-actions:not(.open) .tb-manage-menu {
+    display: none;
+}
+
+/* Items: menu rows, not the bar's dashed buttons. */
+.site-bar .tb-manage-menu .btn-group-toggle {
+    width: 100%;
+    height: auto;
+    padding: 9px 10px;
+    justify-content: flex-start;
+    gap: 10px;
+    border: 0;
+    border-radius: var(--radius-small);
+    color: var(--text-secondary);
+    font-size: 0.92rem;
+    text-decoration: none;
+    text-align: left;
+}
+
+.site-bar .tb-manage-menu .btn-group-toggle:hover,
+.site-bar .tb-own-actions .btn-group-toggle:hover {
+    color: var(--text-primary);
+}
+
+.site-bar .tb-manage-menu .btn-group-toggle:hover,
+.site-bar.tb-fold .tb-own-actions .btn-group-toggle:hover {
+    background: rgba(255, 255, 255, 0.08);
+}
+
+.site-bar .tb-manage-menu .btn-group-toggle .tb-label {
+    display: inline;
+}
+
+.site-bar .tb-manage-menu .btn-group-toggle[aria-pressed="true"] {
+    color: var(--text-primary);
+}
+
+.site-bar .tb-manage-menu .btn-group-toggle[aria-pressed="true"] svg,
+.site-bar .tb-actions-pop .btn-group-toggle[aria-pressed="true"] svg {
+    color: var(--accent, currentColor);
+}
+
+/* A crowded bar (nav.ts): Manage is its icon. */
+.site-bar.tb-tight .tb-manage-btn {
+    width: 36px;
+    padding: 0;
+    justify-content: center;
+}
+
+.site-bar.tb-tight .tb-manage-btn .tb-label,
+.site-bar.tb-tight .tb-manage-caret {
+    display: none;
+}
+
+/* Folded, on a phone or a bar still too full (nav.ts: tb-fold): your own
+   actions join the Manage menu, and its button is ⋯. */
+.site-bar.tb-fold .tb-actions-pop {
+    position: absolute;
+    top: calc(100% + 8px);
+    left: 0; /* under ⋯, near the left of a folded bar */
+    max-width: calc(100vw - 16px);
+    z-index: 1000;
+    display: flex;
+    flex-direction: column;
+    gap: 2px;
+    min-width: 210px;
+    padding: 6px;
+    background: var(--bg-elevated);
+    border: 1px solid var(--border-medium);
+    border-radius: var(--radius-medium);
+    box-shadow: var(--shadow-medium);
+    max-height: calc(100dvh - var(--topbar-total) - 20px - env(safe-area-inset-bottom, 0px));
+    overflow-y: auto;
+    overscroll-behavior: contain;
+}
+
+.site-bar.tb-fold .tb-actions:not(.open) .tb-actions-pop {
+    display: none;
+}
+
+.site-bar.tb-fold .tb-own-actions,
+.site-bar.tb-fold .tb-manage-menu {
+    position: static;
+    display: flex;
+    flex-direction: column;
+    gap: 2px;
+    min-width: 0;
+    padding: 0;
+    border: 0;
+    box-shadow: none;
+    background: none;
+    order: 0;
+}
+
+.site-bar.tb-fold .tb-own-actions:has(*) + .tb-manage-menu:has(*) {
+    margin-top: 4px;
+    padding-top: 6px;
+    border-top: 1px solid var(--border-medium);
+    border-radius: 0;
+}
+
+.site-bar.tb-fold .tb-own-actions .btn-group-toggle {
+    width: 100%;
+    height: auto;
+    padding: 9px 10px;
+    justify-content: flex-start;
+    gap: 10px;
+    border: 0;
+    border-radius: var(--radius-small);
+    color: var(--text-secondary);
+    font-size: 0.92rem;
+    text-decoration: none;
+    text-align: left;
+}
+
+.site-bar.tb-fold .tb-own-actions .btn-group-toggle .tb-label {
+    display: inline;
+    position: static;
+    width: auto;
+    height: auto;
+    clip-path: none;
+}
+
+.site-bar.tb-fold .tb-manage-btn,
+.site-bar.tb-fold .tb-actions:not(:has(.tb-manage-menu > *)) .tb-manage-btn {
+    display: inline-flex;
+    width: 36px;
+    padding: 0;
+    justify-content: center;
+}
+
+.site-bar.tb-fold .tb-manage-icon,
+.site-bar.tb-fold .tb-manage-btn .tb-label,
+.site-bar.tb-fold .tb-manage-caret {
+    display: none;
+}
+
+.site-bar.tb-fold .tb-fold-icon {
+    display: block;
+}
+
+@media (max-width: 640px) {
+    .site-bar .tb-actions-pop {
+        position: absolute;
+        top: calc(100% + 8px);
+        left: 0; /* under ⋯, near the left of a folded bar */
+        max-width: calc(100vw - 16px);
         z-index: 1000;
+        display: flex;
         flex-direction: column;
-        gap: 6px;
-        width: min(240px, calc(100vw - 32px));
-        box-sizing: border-box;
-        padding: 8px;
-        background: var(--bg-secondary); /* solid: a blur can't nest in the bar's */
+        gap: 2px;
+        min-width: 210px;
+        padding: 6px;
+        background: var(--bg-elevated);
         border: 1px solid var(--border-medium);
         border-radius: var(--radius-medium);
-        box-shadow: 0 12px 32px rgba(0, 0, 0, 0.5);
+        box-shadow: var(--shadow-medium);
+        max-height: calc(100dvh - var(--topbar-total) - 20px - env(safe-area-inset-bottom, 0px));
+        overflow-y: auto;
+        overscroll-behavior: contain;
     }
 
-    .tb-actions.open:has(.tb-actions-menu > :nth-child(3)) .tb-actions-menu {
+    .site-bar .tb-actions:not(.open) .tb-actions-pop {
+        display: none;
+    }
+
+    .site-bar .tb-own-actions,
+    .site-bar .tb-manage-menu {
+        position: static;
         display: flex;
+        flex-direction: column;
+        gap: 2px;
+        min-width: 0;
+        padding: 0;
+        border: 0;
+        box-shadow: none;
+        background: none;
+        order: 0;
     }
 
-    .site-bar .tb-actions:has(.tb-actions-menu > :nth-child(3)) .btn-group-toggle {
+    .site-bar .tb-own-actions:has(*) + .tb-manage-menu:has(*) {
+        margin-top: 4px;
+        padding-top: 6px;
+        border-top: 1px solid var(--border-medium);
+        border-radius: 0;
+    }
+
+    .site-bar .tb-own-actions .btn-group-toggle {
         width: 100%;
-        padding: 0 10px;
+        height: auto;
+        padding: 9px 10px;
         justify-content: flex-start;
+        gap: 10px;
+        border: 0;
+        border-radius: var(--radius-small);
+        color: var(--text-secondary);
+        font-size: 0.92rem;
+        text-decoration: none;
+        text-align: left;
     }
 
-    .site-bar .tb-actions:has(.tb-actions-menu > :nth-child(3)) .btn-group-toggle .tb-label {
+    .site-bar .tb-own-actions .btn-group-toggle .tb-label {
         display: inline;
+        position: static;
+        width: auto;
+        height: auto;
+        clip-path: none;
+    }
+
+    .site-bar .tb-manage-btn,
+    .site-bar .tb-actions:not(:has(.tb-manage-menu > *)) .tb-manage-btn {
+        display: inline-flex;
+        width: 36px;
+        padding: 0;
+        justify-content: center;
+    }
+
+    .site-bar .tb-manage-icon,
+    .site-bar .tb-manage-btn .tb-label,
+    .site-bar .tb-manage-caret {
+        display: none;
+    }
+
+    .site-bar .tb-fold-icon {
+        display: block;
     }
 }
 
@@ -5233,6 +5562,47 @@ label.group-row span {
 .can-select .book a,
 .can-select .book img {
     -webkit-user-drag: none; /* a drag would cancel the press */
+}
+
+.site-bar .tb-select-btn {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+}
+
+.site-bar .tb-select-btn svg {
+    display: none;
+}
+
+/* A crowded bar (nav.ts) or a phone: Select is its icon. */
+.site-bar.tb-tightest .tb-select-btn {
+    width: 36px;
+    padding: 0;
+    justify-content: center;
+}
+
+.site-bar.tb-tightest .tb-select-btn svg {
+    display: block;
+}
+
+.site-bar.tb-tightest .tb-select-btn .tb-label {
+    display: none;
+}
+
+@media (max-width: 640px) {
+    .site-bar .tb-select-btn {
+        width: 36px;
+        padding: 0;
+        justify-content: center;
+    }
+
+    .site-bar .tb-select-btn svg {
+        display: block;
+    }
+
+    .site-bar .tb-select-btn .tb-label {
+        display: none;
+    }
 }
 
 .site-bar .tb-select-btn[aria-pressed="true"] {

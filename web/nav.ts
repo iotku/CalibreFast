@@ -144,10 +144,52 @@ function init(bar: HTMLElement): void {
     });
     bar.querySelector(".tb-search-close")?.addEventListener("click", () => closeAll());
 
-    // A page's actions folded behind ⋯ on phones (filtered.html); picking
-    // one closes the list, as any click does.
+    // A page's actions: the Manage menu, and when folded your own actions
+    // with it (filtered.html); picking one closes it, as any click does.
     const actions = bar.querySelector<HTMLElement>(".tb-actions");
-    register(bar.querySelector(".tb-actions-btn"), (open) => actions?.classList.toggle("open", open));
+    register(bar.querySelector(".tb-manage-btn"), (open) => actions?.classList.toggle("open", open));
+
+    // Keep the whole bar on screen. The breakpoints in style.css size it for
+    // a typical page, but a long title, an admin's shortcuts and a page's
+    // tools can still add up to more than the window: then it steps down,
+    // a level at a time, until it fits (tb-tight: shortcuts and labels go,
+    // as on a phone; tb-tighter: the browse links go into ☰; tb-tightest: the
+    // search box becomes its icon; tb-fold: the page's own actions go into
+    // its ⋯ menu). Without this the user menu, last in the bar, would be
+    // pushed off the edge.
+    // Measured by the user part's right edge, not scrollWidth, which an open
+    // dropdown would count too; the page title, which shrinks first, counts
+    // as crowded once it's cut to less than TITLE_MIN.
+    const levels = ["tb-tight", "tb-tighter", "tb-tightest", "tb-fold"];
+    const TITLE_MIN = 140;
+    const last = user ?? bar.querySelector<HTMLElement>(".tb-tools");
+    const title = bar.querySelector<HTMLElement>(".tb-title");
+    const overflows = (): boolean => {
+        if (title && title.offsetParent && title.clientWidth < Math.min(title.scrollWidth, TITLE_MIN)) return true;
+        if (!last) return false;
+        const edge = bar.getBoundingClientRect().right - parseFloat(getComputedStyle(bar).paddingRight);
+        return last.getBoundingClientRect().right > edge + 1;
+    };
+    const fit = (): void => {
+        bar.classList.remove(...levels);
+        for (const level of levels) {
+            if (!overflows()) return;
+            bar.classList.add(level);
+        }
+    };
+    let fitQueued = false;
+    const queueFit = (): void => {
+        if (fitQueued) return;
+        fitQueued = true;
+        requestAnimationFrame(() => {
+            fitQueued = false;
+            fit();
+        });
+    };
+    new ResizeObserver(queueFit).observe(bar);
+    // The user part and the grid's Select are drawn after this runs.
+    new MutationObserver(queueFit).observe(bar, { childList: true, subtree: true, characterData: true });
+    fit();
 
     // ---- user part ----------------------------------------------------------
     //
