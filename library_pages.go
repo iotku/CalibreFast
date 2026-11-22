@@ -178,6 +178,75 @@ func shufflePageFile(page int) string {
 	return filepath.Join("pages", "shuffle", "page"+strconv.Itoa(page)+".json")
 }
 
+// latestRowBooks: books in the Discover page's Recently added row (web/discover.ts STRIP).
+const latestRowBooks = 12
+
+// warmLatestRow warms the Recently added row: the first books of page1.json.
+func warmLatestRow() {
+	data, err := os.ReadFile(pageFile(1))
+	if err != nil {
+		return
+	}
+	var books []Book
+	if json.Unmarshal(data, &books) != nil {
+		return
+	}
+	warmThumbs(bookUUIDs(books[:min(len(books), latestRowBooks)])...)
+}
+
+// shufflePageUUIDs: the books of pages/shuffle/pageN.json, as
+// writeShufflePages makes it (the books not removed, in the shuffle order,
+// booksPerPage a page).
+func shufflePageUUIDs(c *catalog, page int) []string {
+	var out []string
+	if page < 1 {
+		return out
+	}
+	skip := (page - 1) * booksPerPage
+	for _, i := range c.shuffle {
+		b := &c.books[i]
+		if b.Removed {
+			continue
+		}
+		if skip > 0 {
+			skip--
+			continue
+		}
+		out = append(out, b.UUID)
+		if len(out) == booksPerPage {
+			break
+		}
+	}
+	return out
+}
+
+// The Shuffle row walks a page file a strip at a time, one strip a visit
+// (the page keeps its place, cf-shuffle): when a browser first asks for a
+// page, the rest of it and the page after are what it shows next. Each page
+// is warmed once per pages version.
+var shuffleWarmed struct {
+	sync.Mutex
+	version string
+	pages   map[int]bool
+}
+
+// warmShufflePage warms pages/shuffle/pageN.json and the page after (once).
+func warmShufflePage(page int) {
+	v := currentPagesVersion()
+	shuffleWarmed.Lock()
+	if shuffleWarmed.version != v || shuffleWarmed.pages == nil {
+		shuffleWarmed.version, shuffleWarmed.pages = v, map[int]bool{}
+	}
+	first := !shuffleWarmed.pages[page]
+	shuffleWarmed.pages[page] = true
+	shuffleWarmed.Unlock()
+	if !first {
+		return
+	}
+	c := currentCatalog()
+	warmThumbs(append(shufflePageUUIDs(c, page), shufflePageUUIDs(c, page+1)...)...)
+}
+
 // writeShufflePages writes pages/shuffle/pageN.json: the books not removed,
 // in the catalog's random order, booksPerPage per page. Like the library
 // pages, only files whose contents change are written: an edit rewrites the
@@ -269,6 +338,9 @@ func refreshPagesFor(uuids ...string) {
 	if len(want) == 0 {
 		return
 	}
+	// Once the pages are written: Recently added, on everyone's Discover
+	// page, shows a book just added (or a new cover on one there) next.
+	defer func() { go warmLatestRow() }()
 	// Latest: the pages each book was written to.
 	pages := map[int]bool{}
 	for u, b := range want {

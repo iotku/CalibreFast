@@ -21,11 +21,13 @@ import (
 	"net/http"
 	"net/url"
 	"os"
+	"os/signal"
 	"path/filepath"
 	"strconv"
 	"strings"
 	"sync"
 	"sync/atomic"
+	"syscall"
 	"time"
 	"unicode"
 	"unicode/utf8"
@@ -311,7 +313,27 @@ func servePages(dir string) http.Handler {
 			w.Header().Set("Cache-Control", "no-cache")
 		}
 		files.ServeHTTP(w, r)
+		if page, ok := shufflePageFromPath(r.URL.Path); ok {
+			go warmShufflePage(page)
+		}
 	})
+}
+
+// shufflePageFromPath: N of "/pages/shuffle/pageN.json".
+func shufflePageFromPath(p string) (int, bool) {
+	s, ok := strings.CutPrefix(p, "/pages/shuffle/page")
+	if !ok {
+		return 0, false
+	}
+	s, ok = strings.CutSuffix(s, ".json")
+	if !ok {
+		return 0, false
+	}
+	n, err := strconv.Atoi(s)
+	if err != nil || n < 1 || n > 1<<20 {
+		return 0, false
+	}
+	return n, true
 }
 
 func main() {
@@ -341,6 +363,7 @@ func main() {
 	emptyRecycle := flag.String("empty-recycle-bin", "", "permanently delete Recycling Bin batches older than this (e.g. 30d, 12h; 0 for all) and exit")
 	createUserName := flag.String("create-user", "", "create a user (or reset their password) and exit; password from $CF_PASSWORD or stdin")
 	createAdmin := flag.Bool("admin", false, "with -create-user: make the user an admin")
+	buildThumbs := flag.Bool("build-thumbnails", false, "make every cover thumbnail missing from the cache (-cachedir), then exit; safe while the server runs")
 	configPath := flag.String("config", "", "read options from this file, one \"name = value\" per line (see calibrefast.conf.example); options on the command line win")
 	flag.Parse()
 	if *configPath != "" {
@@ -358,6 +381,25 @@ func main() {
 		}
 		if err := emptyRecycleBin(age, os.Stdout); err != nil {
 			log.Fatal(err)
+		}
+		return
+	}
+
+	if *buildThumbs {
+		// Only the library and the cache: not the app database, nor the
+		// catalog or page files.
+		if baseDir == "" {
+			log.Fatal("missing -basedir")
+		}
+		if _, err := os.Stat(filepath.Join(baseDir, "metadata.db")); err != nil {
+			log.Fatal("metadata.db not found in ", baseDir)
+		}
+		initCalibreDB()
+		ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
+		err := buildThumbnails(ctx, os.Stdout)
+		stop()
+		if err != nil {
+			log.Fatal("build-thumbnails: ", err)
 		}
 		return
 	}

@@ -6,7 +6,7 @@ Cover and thumbnail helpers for ebook libraries.
 
 | Function | What it does |
 | --- | --- |
-| `ResizeToWidth(img, w)` | Scales to `w` pixels wide, keeping the shape (Catmull-Rom). |
+| `ResizeToWidth(img, w)` | Scales to `w` pixels wide, keeping the shape (Catmull-Rom; quick halvings first when much wider). |
 | `Thumb(data, width, quality, abort)` | A JPEG thumbnail, never larger than the original: images already narrow enough, or whose thumbnail would be more bytes, come back unchanged. `abort` is checked between decoding, scaling and encoding, so a server can stop work for a request that went away. |
 | `CoverJPEG(data, CoverOptions{MaxWidth, KeepMaxBytes, Quality})` | A JPEG cover from any supported image. A JPEG that is already narrow and small enough is kept byte for byte (re-encoding only loses quality); anything else is decoded, scaled down if too wide, and encoded once. |
 | `PDFFirstPageImage(ctx, path, maxBytes)` | The picture that *is* a PDF's first page (a scan, or a cover placed on the page), as stored in the PDF. Uses [pdfcpu](https://github.com/pdfcpu/pdfcpu). |

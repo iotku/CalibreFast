@@ -175,6 +175,19 @@ func (l recList) at(i int) recBook {
 // pages: how many rows of recRowMax the list makes.
 func (l recList) pages() int { return (l.len() + recRowMax - 1) / recRowMax }
 
+// pageUUIDs: the books of a row page, cheaply (no recBooks made); none for a
+// page past the last (Next starts over then, ranked with new randomness).
+func (l recList) pageUUIDs(page int) []string {
+	var out []string
+	if page < 0 || page >= l.pages() {
+		return out
+	}
+	for i := page * recRowMax; i < min(l.len(), (page+1)*recRowMax); i++ {
+		out = append(out, l.uuid(i))
+	}
+	return out
+}
+
 // page: the list's row page (a page past the last is the first).
 func (l recList) page(page int) []recBook {
 	if page < 0 || page >= l.pages() {

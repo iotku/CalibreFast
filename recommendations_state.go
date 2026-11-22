@@ -152,6 +152,7 @@ func userRecommend(u *User, marks readingMarks) (recs []recBook, tags []string, 
 	if changed {
 		err = saveRecState(u, seed, page, recs)
 	}
+	go warmThumbs(l.pageUUIDs(page + 1)...) // what Next shows
 	return recs, tags, err
 }
 
@@ -212,6 +213,7 @@ func recNextHandler(w http.ResponseWriter, r *http.Request) {
 	}
 	w.Header().Set("Cache-Control", "private, no-store")
 	writeJSON(w, http.StatusOK, recNextAnswer{Recommended: recs})
+	go warmThumbs(l.pageUUIDs(page + 1)...) // what Next shows after this
 }
 
 func setNotInterestedHandler(w http.ResponseWriter, r *http.Request) {

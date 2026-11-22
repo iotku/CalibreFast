@@ -18,7 +18,7 @@ cp calibrefast.conf.example calibrefast.conf
 
 Each line is `name = value`, with the same names as the [command-line flags](../README.md#getting-started). An on/off flag can be just its name (`allow-writes`). Lines starting with `#` are comments. An option given on the command line as well overrides the file's value. `calibrefast.conf` is in `.gitignore`, so your settings stay out of git and a `git pull` never touches them.
 
-The flags that run a one-off task and exit (`-create-user`, `-admin`, `-empty-recycle-bin`) only work on the command line. They do read the rest of the options from the file, so `-datadir` and `-basedir` match the server's:
+The flags that run a one-off task and exit (`-create-user`, `-admin`, `-empty-recycle-bin`, `-build-thumbnails`) only work on the command line. They do read the rest of the options from the file, so `-datadir` and `-basedir` match the server's:
 
 ```bash
 ./CalibreFast -config calibrefast.conf -create-user yourname -admin

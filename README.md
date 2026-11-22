@@ -100,6 +100,7 @@ Then open [http://localhost:8080](http://localhost:8080) and sign in. Add more u
 | `-recycle-bin DIR` | Where books removed from the library are kept until you empty it (default `<datadir>/recycle-bin`). On the library's filesystem, removing and restoring are instant; elsewhere the files are copied. |
 | `-empty-recycle-bin AGE` | Permanently delete what was removed from the library more than `AGE` ago (`30d`, `12h`; `0` for everything) and exit. The only way to empty the Recycling Bin: it can't be done from the web. |
 | `-create-user NAME` | Create a user (or reset their password) and exit; add `-admin` to make them an admin |
+| `-build-thumbnails` | Make every cover thumbnail missing from `-cachedir`, then exit. Otherwise each is made the first time its cover is shown, so on a large library this saves that wait. About 30–40 KB and 40 ms of one core per book; safe to run while the server is running. |
 | `-config FILE` | Read the options from a file, one `name = value` per line (see `calibrefast.conf.example`); options also on the command line win |
 
 To run it as a service that updates itself (systemd: pull, rebuild, restart), with the options in `calibrefast.conf`, see [DEPLOY.md](docs/DEPLOY.md).

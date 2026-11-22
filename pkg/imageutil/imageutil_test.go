@@ -7,7 +7,10 @@ import (
 	"image/color"
 	"image/jpeg"
 	"image/png"
+	"math"
 	"testing"
+
+	"golang.org/x/image/draw"
 )
 
 const thumbWidth = 400
@@ -149,5 +152,76 @@ func TestResizeToWidth(t *testing.T) {
 	img := image.NewRGBA(image.Rect(0, 0, 300, 1))
 	if got := ResizeToWidth(img, 100).Bounds(); got.Dx() != 100 || got.Dy() != 1 {
 		t.Errorf("got %v", got)
+	}
+	// Far wider than the target (through the halvings), odd sizes, very flat.
+	for _, size := range [][2]int{{4001, 3}, {3333, 5001}, {801, 1201}, {1600, 2400}} {
+		src := image.NewRGBA(image.Rect(0, 0, size[0], size[1]))
+		want := max(1, int(float64(size[1])*400/float64(size[0])+0.5))
+		if got := ResizeToWidth(src, 400).Bounds(); got.Dx() != 400 || got.Dy() != want {
+			t.Errorf("%v: got %v, want 400x%d", size, got, want)
+		}
+	}
+}
+
+// The quick first steps don't change what the thumbnail looks like: it
+// matches Catmull-Rom all the way down, to well past what anyone could see.
+func TestResizeToWidthMatchesCatmullRom(t *testing.T) {
+	for _, size := range [][2]int{{1600, 2400}, {2560, 3840}, {950, 1400}} {
+		src := coverLike(size[0], size[1])
+		got := ResizeToWidth(src, 400).(*image.RGBA)
+		ref := image.NewRGBA(got.Bounds())
+		draw.CatmullRom.Scale(ref, ref.Bounds(), src, src.Bounds(), draw.Src, nil)
+		if p := psnr(got, ref); p < 40 {
+			t.Errorf("%v: %.1f dB from Catmull-Rom, want at least 40", size, p)
+		}
+	}
+}
+
+// coverLike: smooth gradients with sharp-edged shapes and fine lines, as
+// covers have (a title, an illustration), at a cover's proportions.
+func coverLike(w, h int) *image.RGBA {
+	img := image.NewRGBA(image.Rect(0, 0, w, h))
+	for y := range h {
+		for x := range w {
+			c := color.RGBA{uint8(255 * x / w), uint8(255 * y / h), uint8(128 + 100*math.Sin(float64(x+y)/90)), 255}
+			dx, dy := x-w/2, y-h/3
+			if dx*dx+dy*dy < (w/4)*(w/4) {
+				c = color.RGBA{230, 200, 40, 255}
+			}
+			if y > h*2/3 && y < h*2/3+h/12 && (x/(w/40))%2 == 0 {
+				c = color.RGBA{20, 20, 20, 255} // "lettering"
+			}
+			img.Set(x, y, c)
+		}
+	}
+	return img
+}
+
+func psnr(a, b *image.RGBA) float64 {
+	var se float64
+	for i := range a.Pix {
+		if i%4 == 3 {
+			continue
+		}
+		d := float64(a.Pix[i]) - float64(b.Pix[i])
+		se += d * d
+	}
+	mse := se / float64(len(a.Pix)/4*3)
+	if mse == 0 {
+		return math.Inf(1)
+	}
+	return 10 * math.Log10(255*255/mse)
+}
+
+func BenchmarkThumb(b *testing.B) {
+	img := coverLike(1600, 2400)
+	var buf bytes.Buffer
+	if err := jpeg.Encode(&buf, img, &jpeg.Options{Quality: 92}); err != nil {
+		b.Fatal(err)
+	}
+	for b.Loop() {
+		if _, err := Thumb(buf.Bytes(), thumbWidth, 80, nil); err != nil {
+			b.Fatal(err)
+		}
 	}
 }

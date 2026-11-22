@@ -146,4 +146,17 @@ func tagStripHandler(w http.ResponseWriter, r *http.Request) {
 	books, next := ix.strip(name, start, n, skip)
 	w.Header().Set("Cache-Control", "private, no-store")
 	writeJSON(w, http.StatusOK, tagStripAnswer{Books: books, Start: start, Next: next, Count: count})
+	// The page keeps next (cf-tag-shuffle): it's where this row starts on the
+	// next visit, and what its Shuffle button shows.
+	coming, _ := ix.strip(name, next, n, skip)
+	go warmThumbs(bookUUIDs(coming)...)
+}
+
+// bookUUIDs: the books' uuids, in order.
+func bookUUIDs(books []Book) []string {
+	out := make([]string, len(books))
+	for i, b := range books {
+		out[i] = b.UUID
+	}
+	return out
 }
