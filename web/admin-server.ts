@@ -2,8 +2,10 @@
 // API budgets, backups and storage current (GET /admin/server/live, Go: serverLive
 // in server.go), and stop the server (POST /api/admin/server/stop, Go:
 // serverStopHandler), then watch for it to come back when a service
-// manager restarts it.
-import { api, byId, errorMessage, statusLine } from "./dom.js";
+// manager restarts it. Update (POST/GET /api/admin/server/update, Go:
+// server_update.go) builds the latest version while the server runs, shows
+// the build's output, and reloads once the new build answers.
+import { api, byId, errorMessage, maybeId, statusLine } from "./dom.js";
 import { parseServerHtml } from "./trusted.js";
 
 const say = statusLine("server-status");
@@ -110,6 +112,102 @@ button.addEventListener("click", async () => {
         say(errorMessage(err), true);
     }
 });
+
+// Update (server_update.go): the server builds while it keeps running, then
+// restarts onto the build if it's new. The page follows the build's output,
+// and reloads once a different process (the new build) answers.
+type UpdateStatus = {
+    running: boolean;
+    done: boolean;
+    ok: boolean;
+    restarting: boolean;
+    message: string;
+    output: string[] | null;
+    by: string;
+    started: string;
+};
+
+const updateButton = maybeId("server-update", HTMLButtonElement);
+const updateOutput = maybeId("update-output", HTMLPreElement);
+const sayUpdate = updateButton ? statusLine("update-status") : () => {};
+const UPDATE_POLL_MS = 1000;
+
+/** Show the build's output, following its end unless the admin scrolled up. */
+function showOutput(lines: string[] | null): void {
+    if (!updateOutput || !lines?.length) return;
+    const atEnd = updateOutput.scrollHeight - updateOutput.scrollTop - updateOutput.clientHeight < 24;
+    updateOutput.hidden = false;
+    updateOutput.textContent = lines.join("\n");
+    if (atEnd) updateOutput.scrollTop = updateOutput.scrollHeight;
+}
+
+/**
+ * Follow an update until it's done; when it restarts the server, until a
+ * different process answers (the new build), then reload.
+ */
+async function followUpdate(first: UpdateStatus): Promise<void> {
+    if (!updateButton) return;
+    const process = first.started;
+    const until = Date.now() + GIVE_UP_MS;
+    updateButton.disabled = true;
+    let st = first;
+    let wentAway = false;
+    for (;;) {
+        showOutput(st.output);
+        if (st.started !== process) {
+            sayUpdate("Updated. Reloading…");
+            location.reload();
+            return;
+        }
+        if (st.restarting || wentAway) {
+            stopping = true; // the live sections would only fail meanwhile
+            clearTimeout(refreshTimer);
+            sayUpdate(st.restarting ? st.message : "Restarting…");
+        } else if (st.done) {
+            sayUpdate(st.message, !st.ok);
+            updateButton.disabled = false;
+            return;
+        } else {
+            sayUpdate(st.by ? `Building (started by ${st.by})…` : "Building…");
+        }
+        if (Date.now() > until) {
+            sayUpdate("It hasn't come back. Check the service on the server (systemctl status, journalctl).", true);
+            return;
+        }
+        await new Promise((r) => setTimeout(r, UPDATE_POLL_MS));
+        try {
+            st = await api<UpdateStatus>("GET", "/api/admin/server/update");
+        } catch (err) {
+            // fetch's TypeError: not answering, as while it restarts (the
+            // last status before that may not have said so yet). Any other
+            // answer after that is a server that doesn't know this update:
+            // the new build (an older one, rolled back to, may lack the
+            // endpoint).
+            if (err instanceof TypeError) wentAway = true;
+            else if (wentAway || st.restarting) {
+                location.reload();
+                return;
+            }
+        }
+    }
+}
+
+if (updateButton) {
+    updateButton.addEventListener("click", async () => {
+        if (!confirm("Build the latest version and restart onto it? The server keeps running while it builds.")) return;
+        updateButton.disabled = true;
+        try {
+            await followUpdate(await api<UpdateStatus>("POST", "/api/admin/server/update"));
+        } catch (err) {
+            updateButton.disabled = false;
+            sayUpdate(errorMessage(err), true);
+        }
+    });
+    // An update already running (another admin, or this page reloaded): follow it.
+    api<UpdateStatus>("GET", "/api/admin/server/update")
+        .then((st) => (st.running || st.restarting ? followUpdate(st) : undefined))
+        .catch(() => {});
+}
 
 // Backups (backup.go): "Back up now" starts one in the background; the live
 // Backups list shows it running, then done.

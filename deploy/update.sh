@@ -91,7 +91,7 @@ else
             ln -s "../../$d" "$rel/$d"
         fi
     done
-    if (cd "$rel" && go generate . && go build -tags sqlite_fts5 -o CalibreFast .); then
+    if (cd "$rel" && go generate . && go build -tags sqlite_fts5 -o CalibreFast.new . && mv -f CalibreFast.new CalibreFast); then
         say "built $short"
     else
         say "build failed: staying on $(readlink current 2>/dev/null || echo 'what is there')"

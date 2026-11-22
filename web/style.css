@@ -6797,6 +6797,21 @@ body.selecting .book.selected .cover-wrapper {
 }
 
 /* Server page: backups (templates/admin-server.html) */
+.server-update-output {
+    max-height: 16rem;
+    overflow: auto;
+    margin: 0.5rem 0 0;
+    padding: 0.5rem 0.75rem;
+    border: 1px solid var(--border-subtle);
+    border-radius: var(--radius-small);
+    background: var(--bg-secondary);
+    color: var(--text-secondary);
+    font-size: var(--font-size-small);
+    line-height: 1.4;
+    white-space: pre-wrap;
+    overflow-wrap: anywhere;
+}
+
 .server-backup-actions {
     display: flex;
     flex-wrap: wrap;

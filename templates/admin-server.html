@@ -28,9 +28,18 @@
         {{ else }}
         <p class="auth-muted">Off (<code>-backups=false</code>).</p>
         {{ end }}
+        <h2>Update</h2>
+        {{ if .NoUpdate }}
+        <p class="auth-muted">{{ .NoUpdate }}</p>
+        {{ else }}
+        <p class="auth-muted">Builds the latest version while the server keeps running, then restarts onto it, which takes a second or two. If the build fails, nothing changes.</p>
+        <button type="button" id="server-update" class="btn-standard">Update now</button>
+        <p id="update-status" class="auth-notice" role="status" hidden></p>
+        <pre id="update-output" class="server-update-output" tabindex="0" aria-label="Build output" hidden></pre>
+        {{ end }}
         <h2>Stop the server</h2>
         {{ if .Systemd }}
-        <p class="auth-muted">Requests in progress finish first, then the server stops. systemd starts it again if its unit restarts it (<code>Restart=always</code>, as in <code>deploy/systemd/</code>, which also pulls and rebuilds it first). Expect a minute or so.</p>
+        <p class="auth-muted">Requests in progress finish first, then the server stops. systemd starts it again if its unit restarts it (<code>Restart=always</code>, as in <code>deploy/systemd/</code>), building anything new first while it's down: <strong>Update</strong> is quicker. Expect up to a minute.</p>
         {{ else }}
         <p class="auth-muted">Requests in progress finish first, then the server stops. <strong>Nothing starts it again</strong> unless a service manager watches it: it stays down until someone starts it on the server.</p>
         {{ end }}
