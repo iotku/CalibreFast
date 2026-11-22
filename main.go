@@ -188,6 +188,8 @@ type IndexPageData struct {
 	PagesDir   string // where the page files are: "/pages/", "/pages/shuffle/"
 	Version    string // pagesVersion, so the files can be cached for good
 	EmptyText  string
+	PageURL    string   // instead of the page files: an API URL, before &page={n} (sorted Latest)
+	Sort       gridSort // the sort select (catalog_sort.go); none when empty
 }
 
 var (
@@ -563,8 +565,9 @@ func indexHandler(w http.ResponseWriter, r *http.Request) {
 }
 
 // latestHandler serves /latest: every book, newest added first, from the
-// page files.
+// page files; in another order (?sort=), from the catalog.
 func latestHandler(w http.ResponseWriter, r *http.Request) {
+	key := pickSort(r, latestSorts)
 	data := IndexPageData{
 		Title:      "Latest — " + SiteTitle,
 		Heading:    "Latest",
@@ -572,6 +575,12 @@ func latestHandler(w http.ResponseWriter, r *http.Request) {
 		TotalBooks: int(totalBooks.Load()),
 		PagesDir:   "/pages/",
 		Version:    currentPagesVersion(),
+		Sort:       newGridSort("latest", key, latestSorts),
+	}
+	if key != sortByAdded { // another order than the page files': from the catalog
+		c := currentCatalog()
+		data.TotalBooks = len(latestOrder(c, key))
+		data.PageURL = "/api/latest?sort=" + key // the template adds &page={n}, unescaped
 	}
 	logErr(templates.ExecuteTemplate(w, "index.html", data), "render latest page")
 }
@@ -579,6 +588,7 @@ func latestHandler(w http.ResponseWriter, r *http.Request) {
 func serveLibraryHTTP() {
 	http.HandleFunc("/", indexHandler)
 	http.HandleFunc("GET /latest", latestHandler)
+	http.HandleFunc("GET /api/latest", latestSortedHandler)
 	http.HandleFunc("GET /shuffle", shuffleHandler)
 	registerRobotsRoutes()
 

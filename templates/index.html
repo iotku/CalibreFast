@@ -17,7 +17,8 @@
 {{ template "topbar-start" $tb }}
 {{ template "topbar-pager" }}
 {{ template "topbar-end" $tb }}
-        <div id="books" data-page-url="{{ .PagesDir }}page{n}.json?v={{ .Version }}" data-page-size="{{ booksPerPage }}" data-total-books="{{ .TotalBooks }}"{{ with .EmptyText }} data-empty-text="{{ . }}"{{ end }}></div>
+        {{ template "grid-sort" .Sort }}
+        <div id="books" data-page-url="{{ with .PageURL }}{{ . }}&page={n}{{ else }}{{ .PagesDir }}page{n}.json?v={{ .Version }}{{ end }}" data-page-size="{{ booksPerPage }}" data-total-books="{{ .TotalBooks }}"{{ with .EmptyText }} data-empty-text="{{ . }}"{{ end }}></div>
         <div id="book-modal" class="modal-overlay">
             <div class="modal-content">
                 <button id="modal-close" aria-label="Close modal">✕</button>

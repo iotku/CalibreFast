@@ -35,6 +35,7 @@ import { markSelected, setupSelection } from "./select-books.js";
 import { setupPageDragScroll } from "./drag-scroll.js";
 import "./offline-marks.js"; // the "on this device" badge on cards
 import "./search-links.js"; // the search page's author, series and tag links
+import { sortRedirecting } from "./grid-sort.js"; // the sort select above the grid
 
 const RENDER_AHEAD = 1; // screens of rows in the DOM past the viewport, in the scroll direction
 const RENDER_BEHIND = 0.5; // ...and the other way
@@ -153,6 +154,7 @@ function showScrollBadge(page: number): void {
 /* ------------------------------------------------------------------ */
 
 window.addEventListener("DOMContentLoaded", () => {
+    if (sortRedirecting) return; // going to this page in the remembered order
     if (totalPagesEl) totalPagesEl.textContent = String(totalPages);
     if (pageInputEl) pageInputEl.max = String(totalPages); // arrow keys clamp natively
     updateNavigationButtons();
