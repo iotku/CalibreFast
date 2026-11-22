@@ -3803,6 +3803,7 @@ body.book-standalone {
 /* Items: menu rows, not the bar's dashed buttons. */
 .site-bar .tb-manage-menu .btn-group-toggle {
     width: 100%;
+    box-sizing: border-box; /* the padding inside the 100% */
     height: auto;
     padding: 9px 10px;
     justify-content: flex-start;
@@ -3899,6 +3900,7 @@ body.book-standalone {
 
 .site-bar.tb-fold .tb-own-actions .btn-group-toggle {
     width: 100%;
+    box-sizing: border-box; /* the padding inside the 100% */
     height: auto;
     padding: 9px 10px;
     justify-content: flex-start;
@@ -3985,6 +3987,7 @@ body.book-standalone {
 
     .site-bar .tb-own-actions .btn-group-toggle {
         width: 100%;
+        box-sizing: border-box; /* the padding inside the 100% */
         height: auto;
         padding: 9px 10px;
         justify-content: flex-start;
