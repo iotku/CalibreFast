@@ -27,6 +27,8 @@ import (
 	"sync"
 	"sync/atomic"
 	"time"
+	"unicode"
+	"unicode/utf8"
 
 	"github.com/google/uuid"
 	"github.com/iotku/CalibreFast/pkg/opf"
@@ -486,6 +488,15 @@ func fileModTime(f *os.File) (t time.Time) {
 	return stat.ModTime()
 }
 
+// capitalize: "series" → "Series", for a label at the start of a title.
+func capitalize(s string) string {
+	r, n := utf8.DecodeRuneInString(s)
+	if n == 0 {
+		return s
+	}
+	return string(unicode.ToUpper(r)) + s[n:]
+}
+
 var templates = template.Must(
 	template.New("").Funcs(template.FuncMap{
 		"topbar":       topbarData,
@@ -497,6 +508,7 @@ var templates = template.Must(
 		"count":        countLabel,
 		"dict":         templateDict,
 		"alias":        groupAlias,
+		"capitalize":   capitalize,
 	}).ParseGlob("templates/*.html"),
 )
 

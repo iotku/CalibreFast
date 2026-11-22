@@ -17,10 +17,11 @@ interface Member {
     added: boolean; // not saved yet
 }
 
+// The group editor is a section of the Manage sidebar (manage-panel.ts).
 const panel = maybeId("group-panel");
-const toggle = maybeId("group-toggle");
+const sidebar = maybeId("manage-panel");
 
-if (panel && toggle) init(panel, toggle);
+if (panel && sidebar) init(panel, sidebar);
 
 // Feature: show this entry at the top of its aggregate page, for everyone.
 const featureBtn = maybeId("feature-toggle", HTMLButtonElement);
@@ -68,7 +69,7 @@ async function pictureBitmap(file: File): Promise<ImageBitmap> {
     }
 }
 
-function init(panel: HTMLElement, toggle: HTMLElement): void {
+function init(panel: HTMLElement, sidebar: HTMLElement): void {
     const category = panel.dataset["category"] ?? "";
     const key = panel.dataset["key"] ?? "";
     const initialName = panel.dataset["name"] ?? "";
@@ -234,7 +235,7 @@ function init(panel: HTMLElement, toggle: HTMLElement): void {
 
     async function refreshSuggestions(): Promise<void> {
         const q = lower(addInput.value.trim());
-        if (!q || panel.hidden) return closeSuggestions();
+        if (!q || sidebar.hidden) return closeSuggestions();
         await loadValues();
         if (lower(addInput.value.trim()) !== q) return; // typed on meanwhile
         shown = matches(q);
@@ -288,15 +289,6 @@ function init(panel: HTMLElement, toggle: HTMLElement): void {
         setStatus(`No ${panel.dataset["label"]} “${typed}” in the library.`, true);
     }
 
-    function open(show: boolean): void {
-        panel.hidden = !show;
-        toggle.setAttribute("aria-expanded", String(show));
-        if (show) {
-            void loadValues();
-            addInput.focus();
-        }
-    }
-
     /** Saves the grouping, description and picture in one request. */
     async function save(): Promise<void> {
         const edit: GroupEdit = {};
@@ -328,7 +320,7 @@ function init(panel: HTMLElement, toggle: HTMLElement): void {
         }
     }
 
-    toggle.addEventListener("click", () => open(panel.hidden !== false)); // hidden → show
+    sidebar.addEventListener("cf:manage-open", () => void loadValues());
     byId("group-add-btn").addEventListener("click", () => void add());
     addInput.addEventListener("input", () => {
         setStatus("");
@@ -346,7 +338,7 @@ function init(panel: HTMLElement, toggle: HTMLElement): void {
             e.preventDefault();
             void add();
         } else if (e.key === "Escape" && open) {
-            e.stopPropagation(); // close the list, not the whole panel
+            e.preventDefault(); // close the list, not the sidebar (manage-panel.ts)
             closeSuggestions();
         }
     });
@@ -378,12 +370,9 @@ function init(panel: HTMLElement, toggle: HTMLElement): void {
         imageFile.value = "";
         setStatus("");
         showImage();
-        open(false);
+        sidebar.dispatchEvent(new CustomEvent("cf:manage-close"));
     });
     saveBtn.addEventListener("click", () => void save());
-    document.addEventListener("keydown", (e) => {
-        if (e.key === "Escape" && !panel.hidden) open(false);
-    });
 
     render();
 }

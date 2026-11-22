@@ -13,7 +13,6 @@
   "cover-dialog.js": "cover-dialog-UPLPJFRW.js",
   "cover-picker.js": "cover-picker-DDM6U4I3.js",
   "discover.js": "discover-WYS3FSUO.js",
-  "groups.js": "groups-X47J6DPV.js",
   "hardcover-link.js": "hardcover-link-HWN7SI7M.js",
   "hardcover.js": "hardcover-B7GRJAPP.js",
   "imports.js": "imports-QERUPMOE.js",
@@ -21,6 +20,7 @@
   "library-edit.js": "library-edit-ASJ7HOIH.js",
   "library-repairs.js": "library-repairs-QH5FQU4L.js",
   "list-edit.js": "list-edit-DUEZ6ULE.js",
+  "manage-panel.js": "manage-panel-S6LEQX5Q.js",
   "metadata.js": "metadata-SWR4NTZ7.js",
   "missing.js": "missing-7WPIOCFJ.js",
   "nav.js": "nav-24ZXYEMV.js",
@@ -34,11 +34,10 @@
   "reader.css": "reader-ZNUFWW7Y.css",
   "reader.js": "reader-RULTZP4H.js",
   "recycle-bin.js": "recycle-bin-DAQKUWN6.js",
-  "series-verify.js": "series-verify-WHHURVYJ.js",
   "shelf-page.js": "shelf-page-74LESUPK.js",
   "shelves.js": "shelves-AP7VLE42.js",
   "stats.js": "stats-R4NG5UNN.js",
-  "style.css": "style-M4AQSF4I.css",
+  "style.css": "style-PEQPHSVC.css",
   "sw.js": "sw-A2X4WNOD.js",
   "user.js": "user-3LWVXEOX.js"
 }
