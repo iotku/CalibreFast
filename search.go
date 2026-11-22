@@ -353,6 +353,28 @@ type searchResult struct {
 	ix    *searchIndex
 	terms []searchTerm
 	slots []int32
+
+	mu     sync.Mutex
+	sorted map[string][]int32 // slots in another order (catalog_sort.go), made once
+}
+
+// inOrder is the results sorted by key: by relevance (slots) by default.
+func (r *searchResult) inOrder(key string) []int32 {
+	if key == sortByBest {
+		return r.slots
+	}
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	if o, ok := r.sorted[key]; ok {
+		return o
+	}
+	o := slices.Clone(r.slots)
+	sortSlots(r.ix.cat, o, key)
+	if r.sorted == nil {
+		r.sorted = map[string][]int32{}
+	}
+	r.sorted[key] = o
+	return o
 }
 
 func (ix *searchIndex) search(terms []searchTerm) *searchResult {
@@ -646,7 +668,7 @@ func searchKey(terms []searchTerm) string {
 // searchPageHandler: GET /search?q=…, the page; its grid asks /api/search.
 func searchPageHandler(w http.ResponseWriter, r *http.Request) {
 	q := strings.TrimSpace(r.URL.Query().Get("q"))
-	data := SearchPageData{Title: SiteTitle, Query: q}
+	data := SearchPageData{Title: SiteTitle, Query: q, Sort: newGridSort("search", pickSort(r, searchSorts), searchSorts)}
 	if q != "" {
 		res, err := runSearch(r.Context(), q)
 		if err != nil {
@@ -675,13 +697,5 @@ func searchHandler(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "search cancelled", http.StatusServiceUnavailable)
 		return
 	}
-	books := make([]Book, 0, booksPerPage)
-	if from := (page - 1) * booksPerPage; from < len(res.slots) && from >= 0 {
-		for _, s := range res.slots[from:min(from+booksPerPage, len(res.slots))] {
-			b := res.ix.cat.books[s].Book
-			uuidPathIndex.Store(b.UUID, b.Path)
-			books = append(books, b)
-		}
-	}
-	writeJSON(w, http.StatusOK, books)
+	writeJSON(w, http.StatusOK, pageOfSlots(res.ix.cat, res.inOrder(pickSort(r, searchSorts)), page))
 }

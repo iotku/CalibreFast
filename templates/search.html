@@ -29,9 +29,10 @@
     </div>
 {{ end }}
     <p class="search-hint">Words match title, author, series, tag, publisher or ISBN. Narrow with <code>author:</code> <code>title:</code> <code>series:</code> <code>tag:</code> <code>publisher:</code> <code>lang:</code> <code>format:</code> <code>isbn:</code>, keep words together with <code>"quotes"</code>, leave out with <code>-word</code>.</p>
+{{ if .Query }}{{ template "grid-sort" .Sort }}{{ end }}
 </div>
 {{ if .Query }}
-<div id="books" data-page-url="/api/search?q={{ .Query }}&page={n}" data-page-size="{{ booksPerPage }}" data-total-books="{{ .TotalBooks }}" data-empty-text="No results found."></div>
+<div id="books" data-page-url="/api/search?sort={{ .Sort.Current }}&q={{ .Query }}&page={n}" data-page-size="{{ booksPerPage }}" data-total-books="{{ .TotalBooks }}" data-empty-text="No results found."></div>
 {{ else }}
 <div id="books" data-total-books="0" data-empty-text=""></div>
 {{ end }}

@@ -50,6 +50,7 @@ type catalog struct {
 	seriesNames    map[int32]string
 	publisherNames map[int32]string
 	langCodes      map[int32]string // languages.lang_code ("eng")
+	authorSorts    map[int32]string // authors.sort ("Tolkien, J. R. R."), for sorting (catalog_sort.go)
 	// shuffle: every slot of books in a random order, made at each start
 	// (Shuffle, docs/notes/Discover.md section 2). Books added while running
 	// go at the end, so the shuffle page files before them don't change.
@@ -66,6 +67,7 @@ func newCatalog() *catalog {
 		seriesNames:    map[int32]string{},
 		publisherNames: map[int32]string{},
 		langCodes:      map[int32]string{},
+		authorSorts:    map[int32]string{},
 	}
 }
 
@@ -201,6 +203,11 @@ func loadCatalogBooks(db queryer, uuids []string, names *catalog) ([]catalogBook
 	for i := range books {
 		books[i].AuthorIDs = slices.Clip(books[i].AuthorIDs)
 		books[i].Book.Authors = strings.Join(authorList[books[i].ID], " & ")
+	}
+	err = scanLinks(db, `SELECT l.book, a.id, COALESCE(a.sort, '') FROM books_authors_link l JOIN authors a ON a.id = l.author`+where, args,
+		func(_ int64, id int32, sort string) { names.authorSorts[id] = sort })
+	if err != nil {
+		return nil, err
 	}
 	err = scanLinks(db, `SELECT l.book, t.id, t.name FROM books_tags_link l JOIN tags t ON t.id = l.tag`+where+` ORDER BY l.id`, args,
 		func(book int64, id int32, name string) {
@@ -421,6 +428,7 @@ func applyCatalogChanges(db queryer, old *catalog, reread, removed []string) (*c
 		seriesNames:    old.seriesNames,
 		publisherNames: old.publisherNames,
 		langCodes:      old.langCodes,
+		authorSorts:    old.authorSorts,
 		shuffle:        old.shuffle,
 	}
 	names := newCatalog()
@@ -469,5 +477,6 @@ func applyCatalogChanges(db queryer, old *catalog, reread, removed []string) (*c
 	merge(&c.seriesNames, names.seriesNames)
 	merge(&c.publisherNames, names.publisherNames)
 	merge(&c.langCodes, names.langCodes)
+	merge(&c.authorSorts, names.authorSorts)
 	return c, nil
 }

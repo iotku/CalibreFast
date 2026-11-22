@@ -2680,6 +2680,36 @@ body.book-standalone {
 }
 
 /* ============================================
+   Sort select above a grid (templates/grid-sort.html)
+   ============================================ */
+.grid-sort {
+    max-width: 2800px;
+    margin: var(--topbar-total) auto 0;
+    display: flex;
+    justify-content: flex-end;
+    font-size: 0.9rem;
+    color: var(--text-muted);
+}
+
+.grid-sort + #books {
+    margin-top: 0.5rem;
+}
+
+.search-intro .grid-sort {
+    margin: 0.5rem 0 0;
+}
+
+.grid-sort-select {
+    margin-left: 0.4rem;
+    font: inherit;
+    color: var(--text-primary);
+    background: var(--bg-secondary);
+    border: 1px solid var(--bg-secondary);
+    border-radius: 6px;
+    padding: 0.2rem 0.4rem;
+}
+
+/* ============================================
    Page-Specific - Search
    ============================================ */
 .search-intro {

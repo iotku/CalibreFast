@@ -50,11 +50,37 @@ var categories = []*category{
 	{"series", "series", "series", "Series", "series", "series", "name", "books_series_link", "series", false, "sort"},
 }
 
-// bookOrder: how a filtered page lists its books. A series reads in order:
-// as seriesCompare (series.go) has it.
-func (c *category) bookOrder() string {
+// sorts: the orders c's filtered pages offer (catalog_sort.go), the default
+// first. A series reads in order by default.
+func (c *category) sorts() []string {
 	if c.Key == "series" {
+		return seriesSorts
+	}
+	return filteredSorts
+}
+
+// bookSeriesSortSQL: a book's series, as sorted, for ordering books of
+// several series (” for none, which sorts after).
+const bookSeriesSortSQL = `(SELECT COALESCE(NULLIF(s.sort, ''), s.name) FROM books_series_link sl JOIN series s ON s.id = sl.series WHERE sl.book = b.id)`
+
+// sortOrderSQL is the fixed ORDER BY for each sort key: the only SQL a sort
+// adds to a query. Keys come from c.sorts() via pickSort, never the request.
+var sortOrderSQL = map[string]string{
+	sortByTitle:     `b.sort COLLATE NOCASE, b.id`,
+	sortByAuthor:    `COALESCE(b.author_sort, '') = '', b.author_sort COLLATE NOCASE, b.sort COLLATE NOCASE, b.id`,
+	sortByAdded:     `b.timestamp DESC, b.id DESC`,
+	sortByPublished: `(b.pubdate IS NULL OR substr(b.pubdate, 1, 10) < '0102'), b.pubdate DESC, b.sort COLLATE NOCASE, b.id`,
+	sortBySeries:    bookSeriesSortSQL + ` IS NULL, ` + bookSeriesSortSQL + ` COLLATE NOCASE, b.series_index, b.sort COLLATE NOCASE, b.id`,
+}
+
+// bookOrder: how a filtered page lists its books in sort key. A series'
+// own page in series order reads as seriesCompare (series.go) has it.
+func (c *category) bookOrder(key string) string {
+	if c.Key == "series" && key == sortBySeries {
 		return seriesOrderSQL
+	}
+	if o, ok := sortOrderSQL[key]; ok {
+		return o
 	}
 	return "b.sort"
 }
@@ -148,12 +174,13 @@ type FilteredPageData struct {
 	Key         string // value from the URL (used to address the group)
 	Members     []string
 	Grouped     bool
-	GroupsError string // non-empty when grouping is read-only
-	Writable    bool   // an admin, with -allow-writes (shows the group editor)
-	Featured    bool   // on the aggregate page's Featured list
-	Description string // the entry's description (aggregate_meta)
-	ImageURL    string // the entry's picture, "" for none
-	PageURL     string // API base URL; template appends &page={n}
+	GroupsError string   // non-empty when grouping is read-only
+	Writable    bool     // an admin, with -allow-writes (shows the group editor)
+	Featured    bool     // on the aggregate page's Featured list
+	Description string   // the entry's description (aggregate_meta)
+	ImageURL    string   // the entry's picture, "" for none
+	PageURL     string   // API base URL; template appends the sort and &page={n}
+	Sort        gridSort // the sort select (catalog_sort.go); none on lists with an arranged order
 	// Missing: placeholders among the books (placeholders.go), counted in
 	// TotalBooks. NewPlaceholder: where admins start one for this page.
 	Missing        int
@@ -182,6 +209,7 @@ type SearchPageData struct {
 	Query      string // pre-filled query from URL
 	TotalBooks int
 	Links      []searchLinkGroup // matching authors, series and tags (search.go)
+	Sort       gridSort
 }
 
 // ---------------------------------------------------------------------------
@@ -525,10 +553,11 @@ func filteredBooksHandler(w http.ResponseWriter, r *http.Request, c *category) {
 		page = 1
 	}
 	offset := (page - 1) * booksPerPage
+	key := pickSort(r, c.sorts())
 
 	// Books not in the library yet go among the rest (placeholders.go).
 	if phs := placeholdersFor(c, members); len(phs) > 0 {
-		books, err := filteredPageWithPlaceholders(c, members, phs, page)
+		books, err := filteredPageWithPlaceholders(c, members, phs, page, key)
 		if err != nil {
 			log.Println("filtered books error:", err)
 			http.Error(w, "query failed", http.StatusInternalServerError)
@@ -548,7 +577,7 @@ func filteredBooksHandler(w http.ResponseWriter, r *http.Request, c *category) {
 		GROUP BY b.id
 		ORDER BY %s
 		LIMIT ? OFFSET ?`,
-		c.LinkTable, c.Table, c.LinkCol, c.NameCol, placeholders(len(members)), c.bookOrder())
+		c.LinkTable, c.Table, c.LinkCol, c.NameCol, placeholders(len(members)), c.bookOrder(key))
 
 	args := append(toArgs(members), booksPerPage, offset)
 	rows, err := calibreDB.Query(query, args...)
@@ -602,6 +631,7 @@ func filteredPageHandler(c *category) http.HandlerFunc {
 			Members:     members,
 			Grouped:     grouped,
 			PageURL:     c.href(value) + "?api=1",
+			Sort:        newGridSort(c.Key, pickSort(r, c.sorts()), c.sorts()),
 			TotalBooks:  getFilteredTotal(c, name, members),
 			Writable:    canAdminLibrary(r), // groups and featured entries: admins
 		}
