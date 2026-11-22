@@ -215,7 +215,11 @@ func makeBackupLocked(kind string, now time.Time, force bool) (string, error) {
 	}
 
 	start := time.Now()
-	name := kind + "-" + now.UTC().Format(backupStamp) + ".db"
+	prefix := backupApp // a constant, whatever kind's string came from
+	if kind == backupLibrary {
+		prefix = backupLibrary
+	}
+	name := prefix + "-" + now.UTC().Format(backupStamp) + ".db"
 	final := filepath.Join(root, name)
 	if _, err := os.Stat(final); err == nil {
 		return "", fmt.Errorf("%s already exists", name)
@@ -406,8 +410,15 @@ func backupData() backupView {
 // POST /api/admin/backups (kind=app|library): make one now, in the
 // background; the page's live section shows it when it's done.
 func backupNowHandler(w http.ResponseWriter, r *http.Request) {
-	kind := r.FormValue("kind")
-	if kind != backupApp && kind != backupLibrary {
+	// The kind becomes part of a file name: take it from the constants, not
+	// the request.
+	var kind string
+	switch r.FormValue("kind") {
+	case backupApp:
+		kind = backupApp
+	case backupLibrary:
+		kind = backupLibrary
+	default:
 		http.Error(w, "kind must be app or library", http.StatusBadRequest)
 		return
 	}
