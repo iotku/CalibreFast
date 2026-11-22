@@ -283,18 +283,43 @@ input[type="number"],
     color: var(--text-muted);
     font-size: var(--font-size-small);
 }
+/* Signed out: what an account is for and the way to one, as a card where
+   the reading stats would be (beside the quote; under it on narrow screens). */
 .intro-account {
-    margin: 0;
+    flex: 0 1 360px;
+    display: flex;
+    flex-direction: column;
+    gap: var(--gap-medium);
+    padding: var(--gap-medium) var(--gap-large);
     color: var(--text-secondary);
-    max-width: 70ch;
+    font-size: var(--font-size-small);
     line-height: 1.5;
+    background: var(--bg-surface);
+    border: 1px solid var(--border-light);
+    border-radius: var(--radius-medium);
 }
-.intro-account .btn-standard {
-    margin-left: var(--gap-medium);
+.intro-account[hidden] {
+    display: none;
 }
-.intro-account a:not(.btn-standard) {
-    margin-left: var(--gap-medium);
-    color: var(--text-link);
+.intro-account p {
+    margin: 0;
+}
+.intro-account-actions {
+    display: flex;
+    flex-wrap: wrap;
+    gap: var(--gap-small);
+}
+.intro-account-actions .btn-standard {
+    flex: 1 1 auto;
+}
+/* a.btn-standard's colours outrank .btn-primary's. */
+.intro-account-actions a.btn-primary {
+    background: #c8a96e;
+    color: #121212;
+    border-color: #c8a96e;
+}
+.intro-account-actions a.btn-primary:hover {
+    background: #d6ba84;
 }
 
 .row-head {
@@ -635,7 +660,7 @@ button.row-icon:hover {
    greeting's parts are dimmed, as a row turned off is, and its switches stay. */
 body:not(.home-editing) .greeting-off > .greeting-head,
 body:not(.home-editing) .greeting-off .greeting-quote,
-body:not(.home-editing) .greeting-off > .intro-account {
+body:not(.home-editing) .greeting-off .intro-account {
     display: none !important;
 }
 /* A rule of its own: a browser without :has drops just this one. */
@@ -644,7 +669,7 @@ body:not(.home-editing) .greeting-off:not(:has(.greeting-stats-slot:not([hidden]
 }
 .home-editing .greeting-off .greeting-hello,
 .home-editing .greeting-off .greeting-quote,
-.home-editing .greeting-off > .intro-account {
+.home-editing .greeting-off .intro-account {
     opacity: 0.5;
 }
 .home-editing .greeting .greeting-head {
@@ -6572,9 +6597,11 @@ body.selecting .book.selected .cover-wrapper {
     .greeting > .greeting-body {
         display: contents;
     }
-    .greeting .greeting-stats-slot {
+    .greeting .greeting-stats-slot,
+    .greeting .intro-account {
         grid-column: 2;
         grid-row: 1 / span 2;
+        max-width: 360px;
     }
 }
 .greeting-stats {

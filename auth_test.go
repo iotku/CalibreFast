@@ -317,6 +317,43 @@ func TestRegisterFollowsNext(t *testing.T) {
 	}
 }
 
+// The home page's Create an account (/login?signup=1) puts that form first
+// and focuses it, as a failed attempt to create one does; plain /login, or
+// signup with registration closed, leads with Sign in.
+func TestLoginSignupFirst(t *testing.T) {
+	setupTestAppDB(t)
+	orig := allowRegistrations
+	t.Cleanup(func() { allowRegistrations = orig })
+	signupFirst := func(body string) bool {
+		reg, login := strings.Index(body, `action="/register"`), strings.Index(body, `action="/login"`)
+		return reg >= 0 && reg < login && regexp.MustCompile(`(?s)action="/register".*?autofocus`).MatchString(body[:login])
+	}
+	get := func(target string) string {
+		rec := httptest.NewRecorder()
+		loginHandler(rec, httptest.NewRequest(http.MethodGet, target, nil))
+		return rec.Body.String()
+	}
+	allowRegistrations = true
+	if !signupFirst(get("/login?signup=1")) {
+		t.Error("/login?signup=1: sign up isn't first and focused")
+	}
+	if signupFirst(get("/login")) {
+		t.Error("/login: sign up first")
+	}
+	form := url.Values{"username": {"x"}, "password": {"a long enough password"}, "password2": {"another password"}}
+	req := httptest.NewRequest(http.MethodPost, "/register", strings.NewReader(form.Encode()))
+	req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
+	rec := httptest.NewRecorder()
+	registerHandler(rec, req)
+	if rec.Code != http.StatusBadRequest || !signupFirst(rec.Body.String()) {
+		t.Errorf("failed sign up: %d, sign up not first", rec.Code)
+	}
+	allowRegistrations = false
+	if body := get("/login?signup=1"); strings.Contains(body, `action="/register"`) {
+		t.Error("registration closed: sign up form shown")
+	}
+}
+
 // /api/me?reading=1 carries the reading marks /api/me/reading would send
 // (the library grids' first look); plain /api/me doesn't.
 func TestMeWithReading(t *testing.T) {
