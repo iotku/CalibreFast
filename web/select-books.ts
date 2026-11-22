@@ -1,13 +1,14 @@
-// Choosing books in a grid to merge, edit or remove them (admins, with
-// -allow-writes). "Select" in the top bar, or a long press on a card on a
-// touch screen, turns taps on cards into ticks; a bar at the bottom counts
+// Choosing books in a grid to merge, edit or remove them (editors, with
+// -allow-writes). A Ctrl+click on a card, a long press on one on a touch
+// screen, or "Select books" in the Manage sidebar (templates/filtered.html)
+// turns taps on cards into ticks; a bar at the bottom counts
 // them and offers Merge (the metadata editor's merge mode, Go: merge.go),
 // Edit in table (the bulk editor, library-edit.ts) and Remove (the
 // confirmation, delete-books.ts). The
 // choice survives scrolling: cards are marked again as they're re-rendered
 // (markSelected, from app-htmx.ts).
 
-import { el, icon, lineIcon, modalOpen } from "./dom.js";
+import { el, modalOpen } from "./dom.js";
 import { deleteBooks, type BookToDelete } from "./delete-books.js";
 
 const LONG_PRESS_MS = 450; // before Android opens its link menu (~500 ms)
@@ -62,6 +63,7 @@ function setSelecting(grid: HTMLElement, on: boolean): void {
     selecting = on;
     document.body.classList.toggle("selecting", on);
     toggleBtn?.setAttribute("aria-pressed", String(on));
+    if (toggleBtn) toggleBtn.textContent = on ? "Stop selecting" : "Select books";
     if (bar) bar.hidden = !on;
     if (!on) chosen.clear();
     for (const card of cardsOf(grid)) markSelected(card);
@@ -73,20 +75,18 @@ export function setupSelection(grid: HTMLElement): void {
     let ready = false;
     const start = (): void => {
         if (ready || document.documentElement.dataset["canEdit"] !== "1") return;
-        const tools = document.querySelector(".tb-tools");
-        if (!tools) return;
         ready = true;
 
-        // A crowded bar shows only the icon (style.css: tb-tight).
-        toggleBtn = el(
-            "button",
-            { type: "button", className: "tb-btn tb-select-btn", title: "Select books to merge, edit or remove them", ariaLabel: "Select books" },
-            icon(lineIcon(18), ["rect", { x: 3, y: 3, width: 18, height: 18, rx: 3 }], "m8 12 3 3 5-6"),
-            el("span", { className: "tb-label" }, "Select"),
-        );
-        toggleBtn.setAttribute("aria-pressed", "false");
-        toggleBtn.addEventListener("click", () => setSelecting(grid, !selecting));
-        tools.append(toggleBtn);
+        // The Manage sidebar's button, where the page has one. Where the
+        // sidebar covers the page (a phone), starting closes it.
+        toggleBtn = document.querySelector<HTMLButtonElement>("#select-books-btn");
+        const section = document.getElementById("select-section");
+        if (section) section.hidden = false;
+        toggleBtn?.addEventListener("click", () => {
+            setSelecting(grid, !selecting);
+            const sidebar = document.getElementById("manage-panel");
+            if (selecting && sidebar && matchMedia("(max-width: 600px)").matches) sidebar.dispatchEvent(new CustomEvent("cf:manage-close"));
+        });
 
         countEl = el("span", { className: "select-count", role: "status" });
         removeBtn = el("button", { type: "button", className: "btn-action btn-danger", disabled: true });
@@ -172,6 +172,21 @@ export function setupSelection(grid: HTMLElement): void {
             if (Date.now() < swallowClickUntil || (press && cardAt(e.target))) e.preventDefault();
         });
 
+        // Ctrl+click (a mouse's long press): start selecting, with this book.
+        // On a Mac, Ctrl+click is a right click: it comes as contextmenu,
+        // and no click follows.
+        const ctrlPick = (card: HTMLElement): void => {
+            if (!selecting) setSelecting(grid, true);
+            toggle(card);
+        };
+        grid.addEventListener("contextmenu", (e) => {
+            const card = cardAt(e.target);
+            if (!card || !e.ctrlKey) return;
+            e.preventDefault();
+            swallowClickUntil = Date.now() + 500;
+            ctrlPick(card);
+        });
+
         // Capture, so the card's own link (the book popup) never sees it.
         grid.addEventListener(
             "click",
@@ -181,6 +196,12 @@ export function setupSelection(grid: HTMLElement): void {
                     swallowClickUntil = 0;
                     e.preventDefault();
                     e.stopPropagation();
+                    return;
+                }
+                if (card && e.ctrlKey && !selecting) {
+                    e.preventDefault(); // not a new tab
+                    e.stopPropagation();
+                    ctrlPick(card);
                     return;
                 }
                 if (!selecting || !card) return;
