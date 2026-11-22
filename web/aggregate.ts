@@ -339,9 +339,13 @@ function scrubTo(e: PointerEvent): void {
     scrub.index = i;
     markCurrent(i);
     bubble.textContent = a.textContent;
-    bubble.style.left = `${e.clientX}px`;
-    bubble.style.top = `${e.clientY}px`;
     bubble.hidden = false;
+    // Centred 40px above the finger, kept on screen: near the top it can't be above, so it
+    // stops at the edge (still clear of a finger on the bar's first row).
+    const w = bubble.offsetWidth;
+    const h = bubble.offsetHeight;
+    bubble.style.left = `${Math.max(4, Math.min(e.clientX - w / 2, window.innerWidth - w - 4))}px`;
+    bubble.style.top = `${Math.max(4, e.clientY - h - 40)}px`;
 }
 
 function endScrub(e: PointerEvent, jump: boolean): void {
