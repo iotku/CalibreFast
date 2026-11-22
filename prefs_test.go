@@ -227,3 +227,43 @@ func TestReadingMarksTag(t *testing.T) {
 		t.Fatalf("changed marks not sent: %s", rec.Body)
 	}
 }
+
+// Placeholders on Saved come last, and don't take a download's place:
+// asking for N gets N books though older placeholders were saved first.
+func TestSavedBooksSkipPlaceholders(t *testing.T) {
+	u, books := setupLibraryAndUser(t, 3)
+	placeholdersChanged()
+	t.Cleanup(placeholdersChanged)
+	var phs []string
+	for i := 0; i < 2; i++ {
+		p := &placeholder{Meta: OPFMetadata{Title: "Coming Soon", Creators: []string{"Ann"}}}
+		if err := savePlaceholder(p, nil); err != nil {
+			t.Fatal(err)
+		}
+		phs = append(phs, p.UUID)
+	}
+	saved := append(append([]string{}, phs...), books...) // placeholders oldest
+	for i, b := range saved {
+		if err := setStatus(u.ID, b, "wanted", "manual"); err != nil {
+			t.Fatal(err)
+		}
+		if _, err := appDB.Exec(`UPDATE reading_status SET updated_at = ? WHERE user_id = ? AND book_uuid = ?`, 1000+i, u.ID, b); err != nil {
+			t.Fatal(err)
+		}
+	}
+	order, err := wantedInOrder(u)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if want := append(append([]string{}, books...), phs...); strings.Join(order, ",") != strings.Join(want, ",") {
+		t.Errorf("Saved order %v, want books then placeholders %v", order, want)
+	}
+	rec := call(t, prefsMux(), u, "GET", "/api/me/saved-books?limit=3", "")
+	var got []savedBook
+	if err := json.Unmarshal(rec.Body.Bytes(), &got); err != nil {
+		t.Fatalf("%s: %v", rec.Body, err)
+	}
+	if len(got) != 3 || got[0].UUID != books[0] || got[2].UUID != books[2] {
+		t.Errorf("limit=3: %+v, want all 3 books", got)
+	}
+}
