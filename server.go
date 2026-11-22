@@ -252,7 +252,8 @@ type serverPageData struct {
 	Storage   []storageMeter
 	Budgets   []apiBudget
 	Backups   backupView
-	RefreshMS int64 // how often the page asks for serverLive
+	RefreshMS int64  // how often the page asks for serverLive
+	NoUpdate  string // why Update isn't offered (server_update.go), or ""
 }
 
 // serverData is what the Server page shows. Cheap enough to build every
@@ -277,6 +278,7 @@ func serverData() serverPageData {
 		Budgets:   apiBudgets(now),
 		Backups:   backupData(),
 		RefreshMS: serverRefresh.Milliseconds(),
+		NoUpdate:  updateAvailable(),
 	}
 }
 
@@ -314,4 +316,6 @@ func registerServerRoutes() {
 	http.HandleFunc("GET /admin/server", requireAdminUser(serverPage))
 	http.HandleFunc("GET /admin/server/live", requireAdminUser(serverLive))
 	http.HandleFunc("POST /api/admin/server/stop", requireAdminUser(serverStopHandler))
+	http.HandleFunc("POST /api/admin/server/update", requireAdminUser(serverUpdateStart)) // server_update.go
+	http.HandleFunc("GET /api/admin/server/update", requireAdminUser(serverUpdateStatus))
 }

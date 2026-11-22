@@ -96,7 +96,7 @@ The first start downloads Go modules and the TypeScript tools, which can take a 
 
 | You want to… | Do |
 |---|---|
-| Update to the latest `master` | `sudo -u calibrefast /opt/calibrefast/deploy/update.sh && sudo systemctl restart calibrefast` (builds first: down for a second or two) |
+| Update to the latest `master` | **Update now** on the Server page, or `sudo -u calibrefast /opt/calibrefast/deploy/update.sh && sudo systemctl restart calibrefast` (builds first: down for a second or two) |
 | Update, the slow way | `sudo systemctl restart calibrefast`, or **Stop server** on the Server page (builds while it's down) |
 | Go back to the previous build | `sudo -u calibrefast ln -sfn releases/<commit> /opt/calibrefast/current`, then restart (`ls -t releases` lists them, newest first). It stays on that build until a newer commit lands |
 | Stop it (it stays stopped) | `sudo systemctl stop calibrefast calibrefast.socket` (the socket alone would start it again on the next visit) |
@@ -126,9 +126,11 @@ sudo systemctl restart calibrefast
 
 Merge any changes you made to the old unit (paths, user, `CALIBREFAST_BRANCH`) into the new one, and set the socket's port to yours. The old binary is kept as `CalibreFast.old`; delete it once the new one runs. Until the unit is replaced, the old one keeps working: `CalibreFast` in the checkout is now a link to `current`'s binary, and the checkout is kept at the same commit.
 
-## Stopping from the web
+## Updating and stopping from the web
 
-Admins have **Server** in the account menu (`/admin/server`). The page shows the version that's running and since when, and has a **Stop server** button. Only admins can open the page or call it (`POST /api/admin/server/stop`): editors, users and visitors get a 404, as for any admin page.
+Admins have **Server** in the account menu (`/admin/server`). The page shows the version that's running and since when, and has **Update now** and **Stop server** buttons. Only admins can open the page or call them (`POST /api/admin/server/update`, `POST /api/admin/server/stop`): editors, users and visitors get a 404, as for any admin page.
+
+**Update now** runs `deploy/update.sh` while the server keeps serving, and shows its output as it goes (it's in the journal too, as `update>` lines). If the build fails, nothing changes and the page says so. If it built something other than what's running, the server stops cleanly and systemd starts it on the new build; the page reloads once the new build answers. If the latest is what's running already, nothing restarts. It's offered only when systemd started the server and `deploy/update.sh` is beside it.
 
 The page says whether systemd started the server:
 
