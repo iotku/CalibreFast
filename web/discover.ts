@@ -202,7 +202,7 @@ function fillRow(row: string | HTMLElement, books: Book[], { hint = false, all =
     const allEl = section.querySelector<HTMLElement>(".row-all");
     if (allEl) allEl.hidden = !all;
     section.hidden = books.length === 0 && !hint;
-    pumpCovers();
+    pumpAfterFill();
 }
 
 async function latestRow(): Promise<void> {
@@ -341,25 +341,68 @@ async function shuffleRow(): Promise<void> {
 const coversInflight = new Set<HTMLImageElement>();
 let coversPaused = false;
 
+/** The page's measurements, once per pass over the covers. */
+interface CoverView {
+    header: number;
+    width: number;
+    height: number;
+    rows: Map<Element, DOMRect>;
+}
+
 /** px from what's visible: 0 = on screen (within its row's scrolled view, too). */
-function coverDistance(img: HTMLImageElement): number {
+function coverDistance(img: HTMLImageElement, view: CoverView): number {
     const r = img.getBoundingClientRect();
-    const header = document.querySelector<HTMLElement>(".top-bar")?.offsetHeight ?? 0;
-    const row = img.closest<HTMLElement>(".row-books")?.getBoundingClientRect();
+    const rowEl = img.closest<HTMLElement>(".row-books");
+    let row: DOMRect | undefined;
+    if (rowEl) {
+        row = view.rows.get(rowEl);
+        if (!row) view.rows.set(rowEl, (row = rowEl.getBoundingClientRect()));
+    }
     const left = Math.max(0, row?.left ?? 0);
-    const right = Math.min(window.innerWidth, row?.right ?? window.innerWidth);
-    const dy = r.top > window.innerHeight ? r.top - window.innerHeight : r.bottom < header ? header - r.bottom : 0;
+    const right = Math.min(view.width, row?.right ?? view.width);
+    const dy = r.top > view.height ? r.top - view.height : r.bottom < view.header ? view.header - r.bottom : 0;
     const dx = r.left > right ? r.left - right : r.right < left ? left - r.right : 0;
     return dy + dx;
 }
+
+/*
+ * The covers waiting, nearest first, as last measured. Each cover that
+ * settles starts the next from this list, so measuring every waiting cover
+ * again (a layout read each) happens only when something moved: a scroll, a
+ * resize, or a change to the page's rows (layoutWatch).
+ */
+let coverQueue: { img: HTMLImageElement; dist: number }[] | null = null;
+/** A change that may have moved covers: not a cover settling ("loaded" on it, "no-cover" on its link, utils.ts). */
+const moves = (records: MutationRecord[]): boolean =>
+    records.some(
+        (r) =>
+            r.attributeName !== "class" ||
+            !(r.target instanceof Element) ||
+            !(r.target.matches("img.book-cover") || r.target.querySelector(":scope > img.book-cover")),
+    );
+const layoutWatch = new MutationObserver((records) => {
+    if (moves(records)) coverQueue = null;
+});
+layoutWatch.observe(root, { childList: true, subtree: true, attributes: true, attributeFilter: ["hidden", "class", "style"] });
 
 /** On-screen covers first, a few at a time; then the nearest. */
 function pumpCovers(): void {
     for (const img of coversInflight) if (!img.isConnected) coversInflight.delete(img);
     if (coversPaused) return;
-    const queue = [...root.querySelectorAll<HTMLImageElement>(".book-cover[data-src]")]
-        .map((img) => ({ img, dist: coverDistance(img) }))
-        .sort((a, b) => a.dist - b.dist);
+    // Changes not yet delivered to the observer (this same task) count too.
+    if (moves(layoutWatch.takeRecords())) coverQueue = null;
+    if (!coverQueue) {
+        const view: CoverView = {
+            header: document.querySelector<HTMLElement>(".top-bar")?.offsetHeight ?? 0,
+            width: window.innerWidth,
+            height: window.innerHeight,
+            rows: new Map(),
+        };
+        coverQueue = [...root.querySelectorAll<HTMLImageElement>(".book-cover[data-src]")]
+            .map((img) => ({ img, dist: coverDistance(img, view) }))
+            .sort((a, b) => a.dist - b.dist);
+    }
+    const queue = (coverQueue = coverQueue.filter((c) => c.img.isConnected && c.img.dataset["src"] !== undefined));
     const onScreenWaiting = queue.some((c) => c.dist === 0);
     const cap = maxCovers();
     for (const { img, dist } of queue) {
@@ -416,8 +459,20 @@ function drainPreloads(): void {
 document.addEventListener("load", onCoverSettled, true);
 document.addEventListener("error", onCoverSettled, true);
 
+/** Rows filled one after another in the same task: their covers measured once, after the last. */
+let fillPumpQueued = false;
+function pumpAfterFill(): void {
+    if (fillPumpQueued) return;
+    fillPumpQueued = true;
+    queueMicrotask(() => {
+        fillPumpQueued = false;
+        pumpCovers();
+    });
+}
+
 let pumpQueued = false;
 function pumpSoon(): void {
+    coverQueue = null; // something scrolled or resized: measure again
     if (pumpQueued) return;
     pumpQueued = true;
     requestAnimationFrame(() => {
