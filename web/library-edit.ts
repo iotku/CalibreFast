@@ -257,7 +257,7 @@ const tagLenWrap = byId("lt-taglen-wrap");
 const splitBtn = byId("lt-split", HTMLButtonElement);
 const bar = byId("lt-bar");
 const selectedEl = byId("lt-selected");
-const mergeBtn = byId("lt-merge", HTMLButtonElement);
+const mergeBtn = byId("lt-merge", HTMLAnchorElement);
 
 const undoBtn = byId("lt-undo", HTMLButtonElement);
 /** What the status line's Undo does: the last tag change, until something else is said. */
@@ -916,7 +916,7 @@ function selectionChanged(): void {
     const k = selected.size;
     bar.hidden = k === 0;
     selectedEl.textContent = `${plural(k, "book")} selected`;
-    mergeBtn.disabled = k < 2 || k > MERGE_MAX;
+    setMergeLink();
     const books = selectedBooks();
     if (tagCheck === "semicolon") {
         splitBtn.textContent = `Split on ${SPLIT_SEP}`;
@@ -1327,12 +1327,25 @@ byId("lt-select-none").addEventListener("click", () => {
     if (onlySelected) refresh();
     else selectionChanged();
 });
-mergeBtn.addEventListener("click", () => {
+/**
+ * Merge is a link, so a middle click (or the menu's "Open in new tab")
+ * opens it in a tab of its own. Its href follows the selection, and is set
+ * again as it's pressed: the table may have been sorted since.
+ */
+function setMergeLink(): void {
+    const k = selected.size;
+    if (k < 2 || k > MERGE_MAX) {
+        mergeBtn.removeAttribute("href");
+        mergeBtn.setAttribute("aria-disabled", "true");
+        return;
+    }
     // In the table's order: the first is the record kept, unless changed there.
     const order = shown.filter((r) => selected.has(r.b.uuid)).map((r) => r.b.uuid);
     const rest = [...selected].filter((u) => !order.includes(u));
-    location.assign(mergeLink([...order, ...rest]));
-});
+    mergeBtn.href = mergeLink([...order, ...rest]);
+    mergeBtn.removeAttribute("aria-disabled");
+}
+for (const type of ["pointerdown", "focus", "contextmenu"]) mergeBtn.addEventListener(type, setMergeLink);
 byId("lt-remove").addEventListener("click", async () => {
     const books = selectedBooks();
     if (!(await deleteBooks(books))) return;

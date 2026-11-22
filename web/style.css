@@ -140,7 +140,8 @@ a.btn-standard {
 }
 
 button:disabled,
-.btn:disabled {
+.btn:disabled,
+.btn-action[aria-disabled="true"] {
     opacity: 0.5;
     cursor: not-allowed;
 }
@@ -2213,6 +2214,11 @@ body.book-standalone {
         border-color var(--transition-fast),
         color var(--transition-fast),
         transform var(--transition-fast);
+}
+
+/* A link button with nowhere to go yet (Merge, before two books are picked). */
+.btn-action[aria-disabled="true"] {
+    pointer-events: none;
 }
 
 .btn-action:hover {
