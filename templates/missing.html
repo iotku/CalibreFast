@@ -40,6 +40,31 @@
         </details>
         {{ end }}
     </section>
+    {{ with .Removed }}
+    <section class="auth-card" id="ph-removed">
+        <details class="ph-complete">
+            <summary>Recently removed ({{ len . }})</summary>
+            <p class="auth-muted">Placeholders a library book replaced, or that were removed by hand, newest first: how each was matched, and by whom. Restore one replaced in error. Each removal is in <a href="/admin/activity">Activity</a> too.</p>
+            <ul class="ph-list">
+                {{ range . }}
+                <li class="ph-removed" data-uuid="{{ .UUID }}">
+                    <span class="ph-item">
+                        <span class="ph-title">{{ .Title }}</span>
+                        {{ if .Authors }}<span class="ph-sub">{{ .Authors }}</span>{{ end }}
+                        {{ if .Series }}<span class="ph-sub">{{ .Series }}{{ if .Index }} #{{ .Index }}{{ end }}</span>{{ end }}
+                    </span>
+                    <span class="ph-sub">
+                        {{ .When }} ·
+                        {{ if .BookUUID }}{{ if .BookTitle }}replaced by <a href="{{ .BookHref }}">{{ .BookTitle }}</a>{{ else }}replaced by a book no longer in the library{{ end }}{{ with .Why }} ({{ . }}){{ end }}{{ else }}{{ with .Why }}{{ . }}{{ else }}removed{{ end }}{{ end }}{{ with .By }} · {{ . }}{{ end }}
+                    </span>
+                    <button type="button" class="btn-standard ph-restore">Restore</button>
+                </li>
+                {{ end }}
+            </ul>
+            <p class="auth-muted" id="ph-removed-status" role="status"></p>
+        </details>
+    </section>
+    {{ end }}
     {{ with .Hardcover }}
     <section class="auth-card" id="hc-missing">
         <h2>Series on Hardcover</h2>
@@ -81,5 +106,6 @@
     </section>
 </main>
 {{ if .Hardcover }}<script type="module" src="{{ asset "hardcover.js" }}"></script>{{ end }}
+{{ if .Removed }}<script type="module" src="{{ asset "missing.js" }}"></script>{{ end }}
 </body>
 </html>

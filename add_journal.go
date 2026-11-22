@@ -125,6 +125,12 @@ type addOptions struct {
 	Cover  string            // copied into the book's folder as cover.jpg ("" for none)
 	Import *addJournalImport // the book's import queue folder; see addJournalImport
 	Timing *addTiming        // if set, how long the steps took
+	By     *User             // who's adding it, for the edit log (nil: nobody, the server)
+	// Placeholders: those the book replaces once it's in
+	// (placeholdersToReplace), with PlaceholdersDecided. Undecided, the
+	// ones it matches, or none if it matches more than one.
+	Placeholders        []placeholderMatch
+	PlaceholdersDecided bool
 }
 
 // addTiming is how long an add's steps took, for telling a slow disk from a
@@ -162,6 +168,11 @@ func addBookToLibrary(meta *UploadedBookMeta, entries []formatEntry) (bookUUID, 
 func addBook(meta *UploadedBookMeta, entries []formatEntry, opts addOptions) (bookUUID, bookPath string, err error) {
 	if len(entries) == 0 {
 		return "", "", errors.New("no book files")
+	}
+	// The placeholders it replaces, worked out before it's in the library
+	// (placeholderNumberMatch asks whether a library book has its number).
+	if !opts.PlaceholdersDecided {
+		opts.Placeholders, _ = placeholdersToReplace(&meta.OPFMetadata, "", placeholdersAsk)
 	}
 	var token [8]byte
 	rand.Read(token[:])
@@ -308,12 +319,8 @@ func addBook(meta *UploadedBookMeta, entries []formatEntry, opts addOptions) (bo
 	}
 	uuidPathIndex.Store(bookUUID, bookPath)
 	formatCache.Delete(bookUUID)
-	// A placeholder for this book (placeholders.go) has served its turn.
-	added := meta.OPFMetadata
-	if added.Series == "" {
-		added.FillSeries()
-	}
-	resolvePlaceholders(&added, bookUUID)
+	// The placeholders for this book (placeholders.go) have served their turn.
+	resolvePlaceholders(opts.Placeholders, bookUUID, opts.By)
 	return bookUUID, bookPath, nil
 }
 

@@ -55,6 +55,18 @@ func TestPlaceholderResolvedByEdit(t *testing.T) {
 		}
 	}
 
+	// A book just added that matches: the add said what it replaces
+	// ("replace none" here), so the catalog's reading of it replaces
+	// nothing; an edit after that does.
+	mustExec(t, db, `UPDATE books SET title = 'Sourcery' WHERE uuid = ?`, d)
+	resolvePlaceholders(nil, d, nil)
+	flush(d)
+	if !there(kept) {
+		t.Fatal("a book just added (replacing none) replaced a placeholder")
+	}
+	mustExec(t, db, `UPDATE books SET title = 'Other' WHERE uuid = ?`, d)
+	flush(d)
+
 	// Title and author (a subtitle aside).
 	mustExec(t, db, `UPDATE books SET title = 'Mort: A Discworld Novel' WHERE uuid = ?`, a)
 	flush(a)
@@ -111,7 +123,7 @@ func TestPlaceholderResolvedByEdit(t *testing.T) {
 
 	// It's in the edit log, so it can be undone.
 	var n int
-	appDB.QueryRow(`SELECT COUNT(*) FROM edit_log WHERE action = 'placeholder in library'`).Scan(&n)
+	appDB.QueryRow(`SELECT COUNT(*) FROM edit_log WHERE action LIKE 'placeholder in library%'`).Scan(&n)
 	if n != 3 {
 		t.Errorf("%d edit log entries, want 3", n)
 	}

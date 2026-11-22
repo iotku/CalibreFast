@@ -5840,6 +5840,32 @@ body.selecting .book.selected .cover-wrapper {
     color: var(--accent, #c8a96e);
 }
 
+/* /missing: a recently removed placeholder, with Restore */
+.ph-removed {
+    display: flex;
+    gap: 0.25rem 0.6rem;
+    align-items: center;
+    flex-wrap: wrap;
+    padding-bottom: 0.4rem;
+}
+
+.ph-removed .ph-item {
+    padding-bottom: 0;
+    flex-basis: 100%;
+}
+
+#ph-removed a {
+    color: var(--accent, #c8a96e);
+}
+
+.ph-removed .ph-restore {
+    margin-left: auto;
+}
+
+.ph-removed .ph-item:hover .ph-title {
+    text-decoration: none;
+}
+
 @media (max-width: 600px) {
     .placeholder-view {
         flex-direction: column;

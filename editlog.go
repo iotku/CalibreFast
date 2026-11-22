@@ -413,7 +413,7 @@ func putPlaceholder(id string, s *placeholderSnap) error {
 	if err != nil {
 		return err
 	}
-	res, err := appDB.Exec(`UPDATE placeholders SET meta = ?, cover = ?, deleted_at = NULL, replaced_by = '', updated_at = ? WHERE uuid = ?`,
+	res, err := appDB.Exec(`UPDATE placeholders SET meta = ?, cover = ?, deleted_at = NULL, replaced_by = '', replaced_why = '', replaced_user = '', updated_at = ? WHERE uuid = ?`,
 		string(meta), s.Cover, nowUnix(), id)
 	if err != nil {
 		return err

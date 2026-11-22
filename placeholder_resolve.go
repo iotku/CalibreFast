@@ -7,7 +7,8 @@ package main
 //   - its title by one of its authors (placeholderTitleMatch),
 //   - its ISBN, or
 //   - its title, series and number.
-// The deletion is in the edit log, so it can be undone.
+// The deletion is in the edit log, so it can be undone. A book just added
+// isn't matched here: the add decided (placeholdersToReplace).
 
 import (
 	"log"
@@ -53,6 +54,9 @@ func placeholdersCatalogChanged(next *catalog, uuids []string) {
 	var bookUUIDs []string
 	byID := map[int64]int{}
 	for _, u := range uuids {
+		if _, added := placeholdersSettled.LoadAndDelete(u); added {
+			continue // just added: the add said what it replaces
+		}
 		cb, ok := next.lookup(u)
 		if !ok || cb.Removed {
 			continue
@@ -99,12 +103,8 @@ func placeholdersCatalogChanged(next *catalog, uuids []string) {
 			if !placeholderMatchesEdited(p, b) {
 				continue
 			}
-			before := snapPlaceholder(p)
-			if err := replacePlaceholder(p.UUID, bookUUIDs[i]); err != nil {
+			if err := replacePlaceholderLogged(p, bookUUIDs[i], whyEdited, nil); err != nil {
 				log.Printf("placeholder %s: %v", p.UUID, err)
-			} else {
-				log.Printf("placeholder %q: a book in the library is it now", p.Meta.Title)
-				logEdit(nil, "placeholder in library", logKindPlaceholder, p.UUID, p.Meta.Title, before, nil)
 			}
 			break
 		}

@@ -627,6 +627,57 @@ function populateIdentifiers(form: HTMLFormElement, current: MetaSource | null, 
     updateHighlights();
   }
 
+  /**
+   * Add a source's identifiers on top of the active ones (a file's, or a
+   * placeholder's, picked by its pill): nothing else goes, so Hardcover
+   * links and the like stay. A book has one value per type (Calibre keys
+   * them by type), so the source's ISBN, and any type it has, replaces the
+   * one there; that one is crossed out (Undo) if the book had it. Ones
+   * without a type are just added.
+   */
+  function stackIdentifiers(ids: Ident[]): void {
+    const crossedOut = (k: string) =>
+      [...customList.querySelectorAll<HTMLElement>(".custom-identifier-row.removed")]
+        .find((row) => mergeKey(rowValues(row).scheme, rowValues(row).value) === k);
+    for (const i of ids) {
+      const scheme = i.scheme.trim();
+      const type = scheme.toLowerCase();
+      if (!scheme && !i.value) continue;
+      const k = mergeKey(scheme, i.value);
+      if (type === "isbn") {
+        const old = isbnInput.value.trim();
+        if (old && isbnDigits(old) === isbnDigits(i.value)) continue;
+        if (old) park("isbn", old, isbnInput.dataset["id"] || "");
+        isbnInput.value = i.value;
+        const back = crossedOut(k);
+        if (back?.dataset["id"]) isbnInput.dataset["id"] = back.dataset["id"];
+        else if (i.id) isbnInput.dataset["id"] = i.id;
+        else delete isbnInput.dataset["id"];
+        back?.remove();
+        continue;
+      }
+      const active = [...customList.querySelectorAll<HTMLElement>(".custom-identifier-row:not(.removed)")];
+      if (active.some((row) => mergeKey(rowValues(row).scheme, rowValues(row).value) === k)) continue;
+      // Its type's other value gives way (one per type); untyped ones stack.
+      if (type) {
+        for (const row of active) {
+          const v = rowValues(row);
+          if (v.scheme.toLowerCase() !== type) continue;
+          row.remove();
+          park(v.scheme, v.value, v.id);
+        }
+      }
+      const back = crossedOut(k);
+      if (back) {
+        setRemoved(back, false);
+        customList.insertBefore(back, firstRemoved());
+      } else {
+        customList.insertBefore(makeRow(scheme, i.value, i.id), firstRemoved());
+      }
+    }
+    updateHighlights();
+  }
+
   function useIsbn(isbn: string): void {
     const old = isbnInput.value.trim();
     if (old && isbnDigits(old) === isbnDigits(isbn)) return;
@@ -697,7 +748,17 @@ function populateIdentifiers(form: HTMLFormElement, current: MetaSource | null, 
       btn.addEventListener("click", () => mergeIdentifiers(ids));
       buttonRow.appendChild(btn);
       buttons.push(btn);
+    } else if (meta.Format !== "current") {
+      // A file's or the placeholder's: added on top (stackIdentifiers), so
+      // its pill matches once they're all there.
+      const btn = sourceButton(meta, `Click to add from ${meta.Format}: "${displayVal}"`);
+      btn.dataset["keys"] = ids.map((i) => mergeKey(i.scheme, i.value)).join("\n");
+      btn.dataset["verb"] = "add";
+      btn.addEventListener("click", () => stackIdentifiers(ids));
+      buttonRow.appendChild(btn);
+      buttons.push(btn);
     } else {
+      // What the book has now: back to exactly that.
       const btn = sourceButton(meta, `Click to use from ${meta.Format}: "${displayVal}"`);
       btn.dataset["normalized"] = normalize(ids);
       btn.addEventListener("click", () => setIdentifiers(ids, { keepMissing: true }));
@@ -815,17 +876,43 @@ export class DuplicateError extends Error {
   }
 }
 
-export async function applyValues(book: BookTarget, values: FormValues, { override = false } = {}): Promise<ApplyResult> {
+/** A placeholder a waiting book matches (Go: placeholderChoiceRow). */
+export interface PlaceholderChoice {
+  uuid: string;
+  title: string;
+  authors?: string;
+  series?: string;
+  index?: string;
+  why: string;
+}
+
+/**
+ * Adding a waiting book was refused: it matches more than one placeholder
+ * (Go: tooManyPlaceholdersError). Sending it again with placeholders "all"
+ * or "none" says whether it replaces them.
+ */
+export class PlaceholdersError extends Error {
+  constructor(message: string, readonly placeholders: PlaceholderChoice[]) {
+    super(message);
+  }
+}
+
+export async function applyValues(
+  book: BookTarget,
+  values: FormValues,
+  { override = false, placeholders = "" }: { override?: boolean; placeholders?: "" | "all" | "none" } = {},
+): Promise<ApplyResult> {
   const res = await fetch(book.apply, {
     method: "POST",
     headers: { "content-type": "application/json" },
-    body: JSON.stringify({ ...values, ...book.extra?.(), ...(override && { override: true }) }),
+    body: JSON.stringify({ ...values, ...book.extra?.(), ...(override && { override: true }), ...(placeholders && { placeholders }) }),
   });
   if (!res.ok) {
     const text = await res.text();
     if (res.status === 409 && res.headers.get("content-type")?.includes("json")) {
-      const body = JSON.parse(text) as { error?: string; duplicate?: DuplicateCheck };
+      const body = JSON.parse(text) as { error?: string; duplicate?: DuplicateCheck; placeholders?: PlaceholderChoice[] };
       if (body.duplicate) throw new DuplicateError(body.error ?? "Possibly already in the library", body.duplicate);
+      if (body.placeholders?.length) throw new PlaceholdersError(body.error ?? "It matches several placeholders", body.placeholders);
     }
     throw new Error(text || `HTTP ${res.status}`);
   }
@@ -1238,6 +1325,42 @@ export async function mountMetadataEditor(book: BookTarget, form: HTMLFormElemen
     }
 
     let overrideNext = false;
+    let placeholdersNext: "" | "all" | "none" = "";
+    /** The book matches several placeholders: which, and whether it replaces them all or none. */
+    const showPlaceholders = (err: PlaceholdersError, override: boolean) => {
+      if (!statusEl) return;
+      statusEl.className = "edit-status pending";
+      const list = document.createElement("ul");
+      for (const p of err.placeholders) {
+        const link = document.createElement("a");
+        link.href = `/missing/${encodeURIComponent(p.uuid)}`;
+        link.target = "_blank";
+        link.textContent = p.title;
+        const li = document.createElement("li");
+        const where = p.series ? ` — ${p.series}${p.index ? ` #${p.index}` : ""}` : "";
+        li.append(link, `${p.authors ? ` by ${p.authors}` : ""}${where} (${p.why})`);
+        list.append(li);
+      }
+      const choice = (label: string, value: "all" | "none") => {
+        const b = document.createElement("button");
+        b.type = "button";
+        b.className = "btn-standard btn-override";
+        b.textContent = label;
+        b.addEventListener("click", () => {
+          placeholdersNext = value;
+          overrideNext = override; // past the duplicate check already, if it was
+          form.requestSubmit();
+        });
+        return b;
+      };
+      const box = document.createElement("div");
+      box.className = "ph-choice";
+      const buttons = document.createElement("div");
+      buttons.className = "ph-choice-buttons";
+      buttons.append(choice(`Add, replacing all ${err.placeholders.length}`, "all"), choice("Add, replacing none", "none"));
+      box.append(`⚠ Not added yet: it matches ${err.placeholders.length} placeholders. Adding it replaces the ones you choose.`, list, buttons);
+      statusEl.replaceChildren(box);
+    };
     /** The book looks already in the library: say which, and offer to add it anyway. */
     const showDuplicate = (err: DuplicateError) => {
       if (!statusEl) return;
@@ -1449,9 +1572,11 @@ export async function mountMetadataEditor(book: BookTarget, form: HTMLFormElemen
       // "Add anyway" on a possible duplicate: this one submit only.
       const override = overrideNext;
       overrideNext = false;
+      const placeholders = placeholdersNext;
+      placeholdersNext = "";
       try {
         saving = true;
-        const result = await applyValues(book, values, { override });
+        const result = await applyValues(book, values, { override, placeholders });
         baseline = JSON.stringify(values); // applied: nothing unsaved now
         added = true;
         if (statusEl) {
@@ -1488,6 +1613,10 @@ export async function mountMetadataEditor(book: BookTarget, form: HTMLFormElemen
       } catch (err) {
         if (err instanceof DuplicateError && statusEl) {
           showDuplicate(err);
+          return;
+        }
+        if (err instanceof PlaceholdersError && statusEl) {
+          showPlaceholders(err, override);
           return;
         }
         console.error("Apply metadata failed:", err);

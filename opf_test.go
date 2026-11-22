@@ -111,7 +111,7 @@ func TestUploadThenSetISBN_UUIDIDStaysOnBookUUID(t *testing.T) {
 	}
 	defer form.RemoveAll()
 
-	res := processUploadGroup(form.File["books"], false)
+	res := processUploadGroup(form.File["books"], false, placeholdersAsk, nil)
 	if res.Error != "" {
 		t.Fatalf("upload: %s", res.Error)
 	}

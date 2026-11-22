@@ -83,7 +83,7 @@ func TestSavedPlaceholderArrives(t *testing.T) {
 	if err := writeLibraryPages(); err != nil {
 		t.Fatal(err)
 	}
-	resolvePlaceholders(&OPFMetadata{Title: "Other Three", Creators: []string{"Writer"}, Series: "Other", SeriesIndex: "3"}, book)
+	resolvePlaceholders(placeholdersForBook(&OPFMetadata{Title: "Other Three", Creators: []string{"Writer"}, Series: "Other", SeriesIndex: "3"}), book, nil)
 	if placeholderByUUID(ph) != nil {
 		t.Fatal("placeholder not replaced")
 	}

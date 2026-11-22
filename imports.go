@@ -18,7 +18,6 @@ package main
 // -datadir, not the library, so Calibre never sees a half-imported book.
 
 import (
-	"database/sql"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -402,6 +401,14 @@ const slowAdd = time.Second
 // error is a *duplicateError. override adds it anyway, unless the library
 // holds one of its files byte for byte.
 func (b *importInbox) approve(id string, meta OPFMetadata, override bool) (bookUUID string, err error) {
+	return b.approveWith(id, meta, override, placeholdersAsk, nil)
+}
+
+// approveWith is approve, by user by, with placeholders saying what the
+// book replaces if it matches more than one placeholder (placeholdersAll…;
+// placeholdersAsk refuses the add with a tooManyPlaceholdersError). A
+// book whose files were added from a placeholder's page replaces only it.
+func (b *importInbox) approveWith(id string, meta OPFMetadata, override bool, placeholders string, by *User) (bookUUID string, err error) {
 	it := b.take(id)
 	if it == nil {
 		return "", fs.ErrNotExist
@@ -418,6 +425,11 @@ func (b *importInbox) approve(id string, meta OPFMetadata, override bool) (bookU
 	if check.blocks(override) {
 		b.put(it)
 		return "", &duplicateError{check}
+	}
+	replaces, err := placeholdersToReplace(&meta, it.Placeholder, placeholders)
+	if err != nil {
+		b.put(it)
+		return "", err
 	}
 
 	entries := make([]formatEntry, 0, len(it.Files))
@@ -443,7 +455,8 @@ func (b *importInbox) approve(id string, meta OPFMetadata, override bool) (bookU
 	// queue folder is removed once it's in (add_journal.go: finishAdd), so
 	// even a crash part way through leaves the book here or there, whole.
 	var timing addTiming
-	opts := addOptions{Import: &addJournalImport{Dir: dir, Meta: book.OPFMetadata, SeriesSet: book.SeriesSet, RatingSet: book.RatingSet}, Timing: &timing}
+	opts := addOptions{Import: &addJournalImport{Dir: dir, Meta: book.OPFMetadata, SeriesSet: book.SeriesSet, RatingSet: book.RatingSet}, Timing: &timing,
+		By: by, Placeholders: replaces, PlaceholdersDecided: true}
 	if _, err := os.Stat(filepath.Join(dir, "cover.jpg")); err == nil {
 		opts.Cover = filepath.Join(dir, "cover.jpg")
 	}
@@ -1172,7 +1185,7 @@ func importApplyHandler(w http.ResponseWriter, r *http.Request) {
 	}
 	next := nextImport(imports.list(), it.ID)
 
-	bookUUID, err := imports.approve(it.ID, meta, req.Override)
+	bookUUID, err := imports.approveWith(it.ID, meta, req.Override, req.Placeholders, currentUser(r))
 	if errors.Is(err, fs.ErrNotExist) {
 		http.Error(w, "this book was just added or discarded by someone else", http.StatusConflict)
 		return
@@ -1181,20 +1194,16 @@ func importApplyHandler(w http.ResponseWriter, r *http.Request) {
 		writeJSON(w, http.StatusConflict, map[string]any{"error": dup.Error(), "duplicate": dup.check})
 		return
 	}
+	if many, ok := errors.AsType[*tooManyPlaceholdersError](err); ok {
+		writeJSON(w, http.StatusConflict, map[string]any{"error": many.Error(), "placeholders": many.Rows()})
+		return
+	}
 	if err != nil {
 		log.Println("imports: add to library:", err)
 		http.Error(w, "Couldn't add the book to the library: "+err.Error(), http.StatusInternalServerError)
 		return
 	}
 	logBookEdit(currentUser(r), "import", bookUUID, nil)
-	if it.Placeholder != "" {
-		p := placeholderByUUID(it.Placeholder)
-		if err := replacePlaceholder(it.Placeholder, bookUUID); err != nil && !errors.Is(err, sql.ErrNoRows) {
-			log.Printf("imports: placeholder %s: %v", it.Placeholder, err)
-		} else if p != nil {
-			logEdit(currentUser(r), "placeholder added", logKindPlaceholder, p.UUID, p.Meta.Title, snapPlaceholder(p), nil)
-		}
-	}
 	catalogChanged(bookUUID)
 	refreshLibraryPages()
 	refreshAllCaches()
