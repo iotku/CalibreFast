@@ -4219,10 +4219,11 @@ body.book-standalone {
     color: var(--text-muted);
 }
 
+/* Skinny: the full width (series-shelf.ts centres it on its button otherwise). */
 @media (max-width: 600px) {
     .series-shelf-panel {
-        right: 16px;
-        left: 16px;
+        right: 8px;
+        left: 8px;
         width: auto;
     }
 }

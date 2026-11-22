@@ -80,47 +80,59 @@ document.addEventListener("click", (e) => {
     const panel = document.getElementById("series-shelf-panel");
     if (toggle && panel) {
         const show = panel.hidden;
-        // Where it was pressed, read before the panel shows (and before a
-        // folded ⋯ menu holding the button closes).
-        const anchor = show ? anchorOf(toggle, e) : null;
         panel.hidden = !show;
         toggle.setAttribute("aria-expanded", String(show));
-        if (anchor) placeUnder(panel, anchor);
+        if (show) followButton(panel, toggle);
     }
 });
 
-interface Anchor {
-    left: number;
-    right: number;
-    bottom: number;
-}
-
-/** The button's box; or, when it's not laid out, the point pressed, or the ⋯ that held it. */
-function anchorOf(toggle: HTMLElement, e: MouseEvent): Anchor | null {
-    const r = toggle.getBoundingClientRect();
-    if (r.width > 0) return r;
-    if (e.clientX || e.clientY) return { left: e.clientX, right: e.clientX, bottom: e.clientY };
-    const more = toggle.closest(".tb-actions")?.querySelector(".tb-manage-btn")?.getBoundingClientRect();
-    return more && more.width > 0 ? more : null;
-}
+/** Up to the skinny bar (style.css), the panel is centred on its button; past it, the full width. */
+const SKINNY = "(max-width: 600px)";
+let following: (() => void) | null = null;
 
 /**
- * Opens the panel just under what was pressed: its right edge lined up
- * with the anchor's, moved in to stay 8px inside the window. A phone keeps
- * the stylesheet's full-width panel and only takes the height.
+ * Keeps the open panel centred under the button that opened it, as far as
+ * the window's edges allow, and following it while the bar is redrawn
+ * (resized, steps folded or unfolded: nav.ts). When the button has folded
+ * into ⋯, the panel goes under the ⋯ instead.
  */
-function placeUnder(panel: HTMLElement, a: Anchor): void {
-    const bar = document.querySelector(".site-bar")?.getBoundingClientRect().bottom ?? 0;
-    panel.style.top = `${Math.round(Math.max(a.bottom, bar) + 8)}px`;
-    if (window.innerWidth <= 600) {
-        panel.style.left = "";
-        panel.style.right = "";
-        return;
+function followButton(panel: HTMLElement, toggle: HTMLElement): void {
+    const bar = document.querySelector<HTMLElement>(".site-bar");
+    const place = (): void => {
+        if (panel.hidden) return stop();
+        if (window.matchMedia(SKINNY).matches) {
+            panel.style.left = panel.style.right = panel.style.top = "";
+            return;
+        }
+        const anchor = [toggle, toggle.closest(".tb-actions")?.querySelector<HTMLElement>(".tb-manage-btn")]
+            .map((el) => el?.getBoundingClientRect())
+            .find((r) => r && r.width > 0);
+        if (!anchor) return;
+        const w = panel.offsetWidth;
+        const max = document.documentElement.clientWidth - w - 8;
+        const centre = anchor.left + anchor.width / 2;
+        panel.style.left = `${Math.round(Math.max(8, Math.min(centre - w / 2, max)))}px`;
+        panel.style.right = "auto";
+        panel.style.top = `${Math.round(Math.max(anchor.bottom, bar?.getBoundingClientRect().bottom ?? 0) + 8)}px`;
+    };
+    stop();
+    const observer = new ResizeObserver(place);
+    if (bar) observer.observe(bar);
+    // The bar keeps its size when a step folds; its parts move.
+    const mutations = new MutationObserver(place);
+    if (bar) mutations.observe(bar, { attributes: true, attributeFilter: ["class"] });
+    window.addEventListener("resize", place);
+    following = () => {
+        observer.disconnect();
+        mutations.disconnect();
+        window.removeEventListener("resize", place);
+    };
+    place();
+
+    function stop(): void {
+        following?.();
+        following = null;
     }
-    const w = panel.offsetWidth;
-    const max = document.documentElement.clientWidth - w - 8;
-    panel.style.left = `${Math.round(Math.max(8, Math.min(a.right - w, max)))}px`;
-    panel.style.right = "auto";
 }
 
 document.addEventListener("keydown", (e) => {
