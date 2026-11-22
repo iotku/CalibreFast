@@ -29,7 +29,10 @@ say() { echo "update: $*"; }
 
 # The home is the main checkout, also when this runs from a release's copy.
 here=$(cd "$(dirname "$0")" && pwd)
-home=$(dirname "$(git -C "$here" rev-parse --path-format=absolute --git-common-dir)")
+# (--git-common-dir may be relative to $here; git before 2.31 has no
+# --path-format=absolute.)
+common=$(cd "$here" && cd "$(git rev-parse --git-common-dir)" && pwd)
+home=$(dirname "$common")
 cd "$home"
 branch="${CALIBREFAST_BRANCH:-master}"
 keep="${CALIBREFAST_KEEP:-3}"
