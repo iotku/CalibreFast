@@ -667,7 +667,6 @@ func serveLibraryHTTP() {
 	registerServerRoutes()
 	registerBackupRoutes()
 
-	log.Println("Listening on :" + hostPort)
 	http.HandleFunc(cspReportPath, requireUser(cspReportHandler)) // csp.go
 	registerAuthRoutes()
 	serve(":"+hostPort, securityHeaders(robotsHeader(csrfProtect(withAuth(http.DefaultServeMux)))))

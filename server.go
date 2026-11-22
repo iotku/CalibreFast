@@ -8,16 +8,24 @@ package main
 // Coming back is the service manager's job: the systemd unit in
 // deploy/systemd/ restarts it (Restart=always), pulling and rebuilding
 // first (docs/DEPLOY.md). Restarting itself without one isn't done yet.
+//
+// Under systemd socket activation (deploy/systemd/calibrefast.socket)
+// systemd holds the listening socket and hands it over (systemdListener),
+// so while the server restarts new connections wait in the kernel's queue
+// instead of being refused.
 
 import (
 	"context"
 	"encoding/json"
 	"errors"
+	"fmt"
 	"log"
+	"net"
 	"net/http"
 	"os"
 	"os/signal"
 	"runtime/debug"
+	"strconv"
 	"syscall"
 	"time"
 )
@@ -44,13 +52,25 @@ func serve(addr string, h http.Handler) {
 	signals := make(chan os.Signal, 1)
 	signal.Notify(signals, os.Interrupt, syscall.SIGTERM)
 
+	ln, err := systemdListener()
+	if err != nil {
+		log.Fatal(err)
+	}
+	if ln != nil {
+		log.Printf("Listening on %s (socket from systemd; -port is not used)", ln.Addr())
+	} else if ln, err = net.Listen("tcp", addr); err != nil {
+		log.Fatal(err) // couldn't listen (port in use, …)
+	} else {
+		log.Println("Listening on " + addr)
+	}
+
 	served := make(chan error, 1)
-	go func() { served <- srv.ListenAndServe() }()
+	go func() { served <- srv.Serve(ln) }()
 
 	var why string
 	select {
 	case err := <-served:
-		log.Fatal(err) // couldn't listen (port in use, …)
+		log.Fatal(err)
 	case sig := <-signals:
 		why = "signal " + sig.String()
 	case why = <-stopRequests:
@@ -73,6 +93,31 @@ func serve(addr string, h http.Handler) {
 	imports.stopItemWriter(time.Now().Add(shutdownTimeout)) // imports_edit_queue.go
 	closeDatabases()
 	log.Println("stopped")
+}
+
+// systemdListener is the listening socket systemd passed in (socket
+// activation: LISTEN_PID is this process and LISTEN_FDS at least 1; the
+// first passed descriptor is always 3), or nil when there's none. The
+// variables are cleared so a child process can't take them for its own.
+func systemdListener() (net.Listener, error) {
+	pid, fds := os.Getenv("LISTEN_PID"), os.Getenv("LISTEN_FDS")
+	os.Unsetenv("LISTEN_PID")
+	os.Unsetenv("LISTEN_FDS")
+	os.Unsetenv("LISTEN_FDNAMES")
+	if pid == "" || pid != strconv.Itoa(os.Getpid()) {
+		return nil, nil
+	}
+	if n, err := strconv.Atoi(fds); err != nil || n < 1 {
+		return nil, nil
+	}
+	const listenFDsStart = 3
+	f := os.NewFile(listenFDsStart, "systemd-socket")
+	defer f.Close() // FileListener has its own copy
+	ln, err := net.FileListener(f)
+	if err != nil {
+		return nil, fmt.Errorf("socket from systemd: %w", err)
+	}
+	return ln, nil
 }
 
 func closeDatabases() {

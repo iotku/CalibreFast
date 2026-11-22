@@ -2,11 +2,10 @@
 
 This guide covers running CalibreFast on a Linux server with systemd. The service:
 
-- pulls the latest commit of `master`, rebuilds the browser bundles (`go generate`) and builds the server with full-text search (`-tags sqlite_fts5`) every time it starts;
+- runs the build that `current` points at: [`deploy/update.sh`](../deploy/update.sh) builds each new commit of `master` in its own folder while the server keeps running, so an update costs a restart of a second or two, not the 20–30 seconds of the build;
+- with the optional socket unit, keeps the port open while it restarts, so visitors wait a moment instead of getting an error;
 - reads its options from a config file, `calibrefast.conf`;
 - starts again whenever it stops on its own, including when an admin stops it from the web (**Account menu → Server → Stop server**).
-
-So restarting the service, or pressing **Stop server**, also updates it.
 
 ## The config file
 
@@ -61,39 +60,69 @@ The steps below install into `/opt/calibrefast`, running as a `calibrefast` user
    sudo -u calibrefast ./CalibreFast -config calibrefast.conf -create-user yourname -admin
    ```
 
-5. **Install and start the service:**
+5. **Install and start the service** and its socket. The socket's `ListenStream` (8080 in the file) is the port from now on; edit it first if yours differs. Without the socket the service works as well, listening on `port` from `calibrefast.conf` itself.
 
    ```bash
-   sudo cp deploy/systemd/calibrefast.service /etc/systemd/system/
+   sudo cp deploy/systemd/calibrefast.service deploy/systemd/calibrefast.socket /etc/systemd/system/
    sudo systemctl daemon-reload
-   sudo systemctl enable --now calibrefast
+   sudo systemctl enable --now calibrefast.socket calibrefast
    ```
 
-   Watch it with `systemctl status calibrefast` and `journalctl -u calibrefast -f`.
+   Watch it with `systemctl status calibrefast` and `journalctl -u calibrefast -f`. The first line it logs says where it listens: `Listening on [::]:8080 (socket from systemd; -port is not used)` with the socket.
 
-### What happens on each start
+### How updates work
 
-`ExecStartPre` runs [`deploy/update.sh`](../deploy/update.sh):
+The server reads its templates and static files from disk while it runs, so the binary and those files have to come from the same commit. [`deploy/update.sh`](../deploy/update.sh) keeps each build in a folder of its own:
 
-1. It resets `static/dist/` to the committed files, so leftovers from an earlier `go generate` can't block the pull.
-2. It fetches and fast-forwards to `origin/$CALIBREFAST_BRANCH` (`master` unless the unit sets otherwise).
-3. If that brought a new commit (or there's no binary yet), it runs `go generate .` (type-check plus bundles) and `go build -tags sqlite_fts5`. The new binary replaces the old one only once it has built.
-4. If the build fails, the checkout goes back to the commit it was on. Templates and static files are read from the checkout while the server runs, so they have to match the binary.
+```
+/opt/calibrefast/                 the git checkout (the "home"): config, data, the script
+├── releases/<commit>/            one git worktree per commit, with its binary
+├── current -> releases/<commit>  the build the service runs
+└── CalibreFast -> current/CalibreFast
+```
 
-The unit runs the script with a leading `-`, so a failed update (no network, a build error) never keeps CalibreFast down. The build that's already there starts, and the failure is in the journal.
+1. It fetches `origin/$CALIBREFAST_BRANCH` (`master` unless the unit sets otherwise). If `current` is already that commit, it stops there.
+2. It checks the commit out in `releases/<commit>/` and runs `go generate .` (type-check plus bundles) and `go build -tags sqlite_fts5` there. The running server doesn't notice: its files are in another folder.
+3. If the build fails, the half-built folder is removed and nothing else changes.
+4. If it built, `current` switches to it (atomically), and the home checkout fast-forwards to the same commit. The newest three releases are kept (`CALIBREFAST_KEEP`).
 
-The first start downloads Go modules and the TypeScript tools, which can take a few minutes (`TimeoutStartSec=15min`).
+The new build runs once the service restarts. Each release reaches the home's `data/` and `pages/` (and `cache/`, `covers/` if there) through links, so relative paths in `calibrefast.conf`, and the default `datadir = data`, mean what they did; absolute paths are clearer.
+
+The unit also runs the script as `ExecStartPre`, with a leading `-` so a failed update (no network, a build error) never keeps CalibreFast down. After an update it finds nothing to do. After **Stop server**, it still pulls and builds then, while the server is down (the slow way, as before).
+
+The first start downloads Go modules and the TypeScript tools, which can take a few minutes (`TimeoutStartSec=15min`). Later builds reuse Go's caches and take seconds to half a minute.
 
 ### Stopping, restarting, updating
 
 | You want to… | Do |
 |---|---|
-| Update to the latest `master` | `sudo systemctl restart calibrefast`, or **Stop server** on the Server page |
-| Stop it (it stays stopped) | `sudo systemctl stop calibrefast` |
+| Update to the latest `master` | `sudo -u calibrefast /opt/calibrefast/deploy/update.sh && sudo systemctl restart calibrefast` (builds first: down for a second or two) |
+| Update, the slow way | `sudo systemctl restart calibrefast`, or **Stop server** on the Server page (builds while it's down) |
+| Go back to the previous build | `sudo -u calibrefast ln -sfn releases/<commit> /opt/calibrefast/current`, then restart (`ls -t releases` lists them, newest first). It stays on that build until a newer commit lands |
+| Stop it (it stays stopped) | `sudo systemctl stop calibrefast calibrefast.socket` (the socket alone would start it again on the next visit) |
 | Change an option | Edit `calibrefast.conf`, then restart |
-| Run another branch | `Environment=CALIBREFAST_BRANCH=…` in the unit (`systemctl edit calibrefast`), then restart |
+| Change the port | Edit `ListenStream` in `calibrefast.socket` (`systemctl edit --full calibrefast.socket`), then `systemctl restart calibrefast.socket calibrefast` |
+| Run another branch | `Environment=CALIBREFAST_BRANCH=…` in the unit (`systemctl edit calibrefast`), then update |
 
 Either way of stopping is clean: CalibreFast stops taking new connections, gives requests in progress (a download, an upload) up to 30 seconds to finish, closes its databases and exits. On `systemctl stop`, systemd sends `SIGTERM` and waits up to `TimeoutStopSec`, which is 45 seconds.
+
+With `calibrefast.socket`, "stops taking new connections" only means the old process stops accepting them: the port stays open, connections wait in its queue, and the new process answers them once it's up. A restart then shows as a short pause, not an error page. Without the socket, connections are refused from the moment the old process starts stopping until the new one listens.
+
+### Moving from the old layout
+
+Before releases, the service built in the checkout itself and ran `/opt/calibrefast/CalibreFast`. To move:
+
+```bash
+cd /opt/calibrefast
+sudo -u calibrefast git pull --ff-only
+sudo -u calibrefast PATH=/usr/local/go/bin:$PATH ./deploy/update.sh
+sudo cp deploy/systemd/calibrefast.service deploy/systemd/calibrefast.socket /etc/systemd/system/
+sudo systemctl daemon-reload
+sudo systemctl enable --now calibrefast.socket
+sudo systemctl restart calibrefast
+```
+
+Merge any changes you made to the old unit (paths, user, `CALIBREFAST_BRANCH`) into the new one, and set the socket's port to yours. The old binary is kept as `CalibreFast.old`; delete it once the new one runs. Until the unit is replaced, the old one keeps working: `CalibreFast` in the checkout is now a link to `current`'s binary, and the checkout is kept at the same commit.
 
 ## Stopping from the web
 
@@ -132,6 +161,6 @@ The update script and the config file work anywhere:
 ./deploy/update.sh && ./CalibreFast -config calibrefast.conf
 ```
 
-Any supervisor that restarts a process when it exits (launchd, runit, s6, supervisord, a container's restart policy) can take systemd's place. Have it run the line above, so that it restarts on exit status 0 too.
+(`./CalibreFast` is a link to `current/CalibreFast`, and the checkout is kept at the commit it was built from.) Any supervisor that restarts a process when it exits (launchd, runit, s6, supervisord, a container's restart policy) can take systemd's place. Have it run the line above, so that it restarts on exit status 0 too.
 
 **Planned:** a way for CalibreFast to restart itself after **Stop server** when no service manager runs it. That would let the button update a server started by hand. It isn't implemented yet: without a supervisor, **Stop server** only stops.
