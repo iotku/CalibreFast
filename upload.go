@@ -608,6 +608,7 @@ func refreshLibraryPages() {
 	defer pagesMu.Unlock()
 	_, err := writePagesFromCatalog(currentCatalog())
 	logErr(err, "library pages: couldn't write")
+	go warmLatestRow() // the books just added, in Recently added on everyone's Discover page
 }
 
 // writePage1FromDB rewrites pages/page1.json with the booksPerPage most

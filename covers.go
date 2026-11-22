@@ -221,15 +221,50 @@ func loadThumb(uuid string, abort func() error) (data []byte, cacheHit bool, err
 
 	// The thumbnail takes the cover's modification time: it's stale once the
 	// cover is newer.
-	if err := ensureDir(thumbPath); err != nil {
-		log.Printf("cover-thumb: %v", err)
-	}
-	if err := os.WriteFile(thumbPath, data, 0644); err != nil {
+	if err := writeThumbFile(thumbPath, data, origStat.ModTime()); err != nil {
 		log.Printf("cover-thumb: failed to write thumbnail %s: %v", thumbPath, err)
-	} else {
-		_ = os.Chtimes(thumbPath, origStat.ModTime(), origStat.ModTime())
 	}
 	return data, false, nil
+}
+
+// writeThumbFile writes a thumbnail under a temporary name and renames it
+// into place, so nobody reads half a file: not this server's requests, nor
+// another process making thumbnails at the same time (-build-thumbnails).
+func writeThumbFile(path string, data []byte, modTime time.Time) error {
+	if err := ensureDir(path); err != nil {
+		return err
+	}
+	f, err := os.CreateTemp(filepath.Dir(path), ".thumb-*.tmp")
+	if err != nil {
+		return err
+	}
+	tmp := f.Name()
+	_, err = f.Write(data)
+	if cerr := f.Close(); err == nil {
+		err = cerr
+	}
+	if err == nil {
+		err = os.Chmod(tmp, 0o644)
+	}
+	if err == nil {
+		_ = os.Chtimes(tmp, modTime, modTime)
+		err = os.Rename(tmp, path)
+	}
+	if err != nil {
+		os.Remove(tmp)
+	}
+	return err
+}
+
+// thumbCached: the book's thumbnail for its current cover is in the cache
+// (a stat, nothing read).
+func thumbCached(uuid string) bool {
+	stamp, err := bookCoverStamp(uuid)
+	if err != nil {
+		return false
+	}
+	_, err = os.Stat(thumbCachePath(uuid, stamp))
+	return err == nil
 }
 
 // Thumbnails only need to look good at library-grid sizes (cards are ~200 CSS

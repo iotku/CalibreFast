@@ -7,9 +7,15 @@ import (
 	"time"
 )
 
-// Thumbnails whose request was cancelled (the cover scrolled away) are made
-// later, while no cover-thumb requests are coming in, so that the next
-// visit gets them from the cache without making anyone wait now.
+// Thumbnails made later, while no cover-thumb requests are coming in, so
+// that they come from the cache when they're asked for without making anyone
+// wait now:
+//   - those whose request was cancelled (the cover scrolled away);
+//   - those known to be coming (warmThumbs): what a Discover row shows next,
+//     on the next visit or the next click (a tag row's next strip, the rest
+//     of the Shuffle page being walked, Recommended's next page, books just
+//     added to Recently added). Not the whole library: that's
+//     -build-thumbnails (thumb_build.go).
 
 const (
 	backlogSize      = 1024            // cancelled thumbnails remembered; more are dropped
@@ -20,6 +26,7 @@ var (
 	thumbBacklog = make(chan string, backlogSize)
 	backlogged   sync.Map // uuid -> struct{}: in thumbBacklog
 
+	backlogRunning  atomic.Bool  // runThumbBacklog is making them: warmThumbs queues
 	thumbRequests   atomic.Int64 // cover-thumb requests in progress
 	lastThumbFinish atomic.Int64 // unix nanoseconds
 )
@@ -52,10 +59,34 @@ func backlogThumb(uuid string) {
 	}
 }
 
+// warmThumbs queues the thumbnails of books about to be shown (see the top),
+// leaving out those with nothing to make: in the cache already (a stat), or
+// known to have no cover. Books the backlog already has cost nothing.
+func warmThumbs(uuids ...string) {
+	if !backlogRunning.Load() {
+		return // nothing would make them (tests, -build-thumbnails)
+	}
+	for _, u := range uuids {
+		if u == "" {
+			continue
+		}
+		if _, missing := noCover.Load(u); missing {
+			continue
+		}
+		if _, queued := backlogged.Load(u); queued {
+			continue
+		}
+		if !thumbCached(u) {
+			backlogThumb(u)
+		}
+	}
+}
+
 // runThumbBacklog makes backlogged thumbnails one at a time while the server
 // is idle. A cover-thumb request arriving meanwhile stops the current one,
 // which goes back in the queue.
 func runThumbBacklog() {
+	backlogRunning.Store(true)
 	yield := func() error {
 		if thumbRequests.Load() > 0 {
 			return errThumbsBusy

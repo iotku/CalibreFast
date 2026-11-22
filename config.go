@@ -21,6 +21,7 @@ var notInConfig = map[string]bool{
 	"create-user":       true,
 	"admin":             true,
 	"empty-recycle-bin": true,
+	"build-thumbnails":  true,
 }
 
 // applyConfigFile sets fs's flags from the file at path. Each line is
