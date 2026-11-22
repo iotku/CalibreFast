@@ -3,7 +3,8 @@ package main
 // Stopping the server cleanly. SIGINT/SIGTERM (Ctrl-C, systemctl stop) and
 // an admin's Stop button (/admin/server) end the same way: no new
 // connections, requests in progress finish (up to shutdownTimeout), the
-// databases close, and the process exits 0.
+// handlers of any cut off finish what they were doing (up to handlerGrace),
+// the databases close, and the process exits 0.
 //
 // Coming back is the service manager's job: the systemd unit in
 // deploy/systemd/ restarts it (Restart=always), pulling and rebuilding
@@ -25,7 +26,10 @@ import (
 	"os"
 	"os/signal"
 	"runtime/debug"
+	"sort"
 	"strconv"
+	"strings"
+	"sync"
 	"syscall"
 	"time"
 )
@@ -33,6 +37,75 @@ import (
 // shutdownTimeout is how long requests in progress (a download, an
 // upload) get to finish once a stop is asked for; then they're cut off.
 const shutdownTimeout = 30 * time.Second
+
+// handlerGrace is how long, after the connections still open at
+// shutdownTimeout are cut, their handlers get to return before the
+// databases close. Cutting a connection doesn't stop its handler: one
+// partway through saving (an upload's files, then its database rows)
+// carries on, and closing the databases under it would leave the work half
+// done. Their requests' contexts are cancelled, so most return at once.
+const handlerGrace = 15 * time.Second
+
+// running counts the handlers in progress (trackHandlers), so stopping can
+// wait for them, and names them for the log if they don't finish.
+var running = struct {
+	sync.Mutex
+	next uint64
+	reqs map[uint64]string
+	done chan struct{} // closed when reqs empties, while someone waits
+}{reqs: map[uint64]string{}}
+
+// trackHandlers counts h's calls in running while they run.
+func trackHandlers(h http.Handler) http.Handler {
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		running.Lock()
+		running.next++
+		id := running.next
+		running.reqs[id] = r.Method + " " + r.URL.Path
+		running.Unlock()
+		defer func() {
+			running.Lock()
+			delete(running.reqs, id)
+			if len(running.reqs) == 0 && running.done != nil {
+				close(running.done)
+				running.done = nil
+			}
+			running.Unlock()
+		}()
+		h.ServeHTTP(w, r)
+	})
+}
+
+// waitForHandlers waits until no handler is running, or until deadline.
+// It returns the ones still running then ("POST /api/upload"), sorted.
+func waitForHandlers(deadline time.Time) []string {
+	running.Lock()
+	if len(running.reqs) == 0 {
+		running.Unlock()
+		return nil
+	}
+	if running.done == nil {
+		running.done = make(chan struct{})
+	}
+	done := running.done
+	running.Unlock()
+
+	timer := time.NewTimer(time.Until(deadline))
+	defer timer.Stop()
+	select {
+	case <-done:
+		return nil
+	case <-timer.C:
+	}
+	running.Lock()
+	defer running.Unlock()
+	left := make([]string, 0, len(running.reqs))
+	for _, what := range running.reqs {
+		left = append(left, what)
+	}
+	sort.Strings(left)
+	return left
+}
 
 // stopRequests carries why the server should stop (the admin who asked).
 var stopRequests = make(chan string, 1)
@@ -48,7 +121,7 @@ func requestStop(why string) {
 // serve runs the HTTP server until it's asked to stop (a signal, or an
 // admin), then shuts it down cleanly and closes the databases.
 func serve(addr string, h http.Handler) {
-	srv := &http.Server{Addr: addr, Handler: h}
+	srv := &http.Server{Addr: addr, Handler: trackHandlers(h)}
 	signals := make(chan os.Signal, 1)
 	signal.Notify(signals, os.Interrupt, syscall.SIGTERM)
 
@@ -86,6 +159,11 @@ func serve(addr string, h http.Handler) {
 	}
 	if err := <-served; err != nil && !errors.Is(err, http.ErrServerClosed) {
 		log.Printf("server: %v", err)
+	}
+	// Cut-off connections' handlers may still be saving something.
+	if left := waitForHandlers(time.Now().Add(handlerGrace)); len(left) > 0 {
+		log.Printf("still running after %s, closing the databases under them (their next query fails): %s",
+			handlerGrace, strings.Join(left, ", "))
 	}
 	stopBulkEdits(time.Now().Add(shutdownTimeout))          // bulk_queue.go
 	stopHardcover(time.Now().Add(5 * time.Second))          // hardcover.go

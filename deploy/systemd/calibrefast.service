@@ -52,8 +52,11 @@ Restart=always
 RestartSec=200ms
 # The first build downloads Go modules and the TypeScript tools.
 TimeoutStartSec=15min
-# Requests in progress get 30s to finish (server.go).
-TimeoutStopSec=45
+# Stopping cleanly can take a while at worst (server.go): 30s for requests
+# in progress, 15s for the handlers of any cut off, then the background
+# work (bulk edits 30s, Hardcover 5s + 5s, the import queue 30s). Being
+# killed partway is what leaves work half done, so give it all of that.
+TimeoutStopSec=2min
 
 NoNewPrivileges=true
 PrivateTmp=true

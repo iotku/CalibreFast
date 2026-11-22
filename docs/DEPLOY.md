@@ -104,7 +104,9 @@ The first start downloads Go modules and the TypeScript tools, which can take a 
 | Change the port | Edit `ListenStream` in `calibrefast.socket` (`systemctl edit --full calibrefast.socket`), then `systemctl restart calibrefast.socket calibrefast` |
 | Run another branch | `Environment=CALIBREFAST_BRANCH=…` in the unit (`systemctl edit calibrefast`), then update |
 
-Either way of stopping is clean: CalibreFast stops taking new connections, gives requests in progress (a download, an upload) up to 30 seconds to finish, closes its databases and exits. On `systemctl stop`, systemd sends `SIGTERM` and waits up to `TimeoutStopSec`, which is 45 seconds.
+Either way of stopping is clean: CalibreFast stops taking new connections and gives requests in progress (a download, an upload) up to 30 seconds to finish. A connection still open then is cut, and the visitor gets an error (an upload that hadn't finished arriving saves nothing). The handler behind it may be partway through saving, so CalibreFast waits up to 15 more seconds for it to finish before it closes its databases, then exits. On `systemctl stop`, systemd sends `SIGTERM` and waits up to `TimeoutStopSec`, 2 minutes, which covers the longest clean stop.
+
+A stop is usually instant: it only takes long while something is in progress. Restarting during a big upload makes visitors wait (with the socket) or get errors (without it) for up to those 30 seconds.
 
 With `calibrefast.socket`, "stops taking new connections" only means the old process stops accepting them: the port stays open, connections wait in its queue, and the new process answers them once it's up. A restart then shows as a short pause, not an error page. Without the socket, connections are refused from the moment the old process starts stopping until the new one listens.
 
