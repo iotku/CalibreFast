@@ -873,6 +873,10 @@ type ApplyMetadataRequest struct {
 	// Override: add a book from the import queue though it looks like one
 	// already in the library (duplicates.go).
 	Override bool `json:"override"`
+	// Placeholders: for a book from the import queue that matches more
+	// than one placeholder, whether it replaces them "all" or "none"
+	// (placeholders.go: placeholdersToReplace); "" asks first.
+	Placeholders string `json:"placeholders"`
 }
 
 // requestLanguages prefers the multi-language "languages" field and falls

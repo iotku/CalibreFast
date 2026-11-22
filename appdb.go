@@ -723,6 +723,13 @@ var migrations = []string{
 		PRIMARY KEY (user_id, book_uuid)
 	);
 	`,
+	// 42: why a placeholder was removed (placeholders.go: replacePlaceholder):
+	// which match made a library book replace it, or that it was removed by
+	// hand, and who did it, for the list of recently removed ones on /missing.
+	`
+	ALTER TABLE placeholders ADD COLUMN replaced_why TEXT NOT NULL DEFAULT '';
+	ALTER TABLE placeholders ADD COLUMN replaced_user TEXT NOT NULL DEFAULT ''; -- username, kept when the account is deleted
+	`,
 }
 
 // openAppDB opens (creating if needed) and migrates the app database.

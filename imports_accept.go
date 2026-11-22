@@ -14,8 +14,8 @@ package main
 // the reason, for a review.
 
 import (
-	"database/sql"
 	"errors"
+	"fmt"
 	"io/fs"
 	"log"
 	"net/http"
@@ -96,25 +96,20 @@ func acceptImport(it *pendingImport, by *User) (uuid, reason string) {
 		return "", err.Error()
 	}
 	imports.coverFromFiles(it) // the page found none either (or it would be there)
-	uuid, err := imports.approve(it.ID, meta, false)
+	uuid, err := imports.approveWith(it.ID, meta, false, placeholdersAsk, by)
 	if errors.Is(err, fs.ErrNotExist) {
 		return "", ""
 	}
 	if dup, ok := errors.AsType[*duplicateError](err); ok {
 		return "", dup.Error()
 	}
+	if many, ok := errors.AsType[*tooManyPlaceholdersError](err); ok {
+		return "", fmt.Sprintf("it matches %d placeholders: review it to say which it replaces", len(many.Matches))
+	}
 	if err != nil {
 		log.Printf("imports: mass import of %q: %v", it.Merged.Title, err)
 		return "", "couldn't add it: " + strings.TrimSpace(err.Error())
 	}
 	logBookEdit(by, "import", uuid, nil)
-	if it.Placeholder != "" {
-		p := placeholderByUUID(it.Placeholder)
-		if err := replacePlaceholder(it.Placeholder, uuid); err != nil && !errors.Is(err, sql.ErrNoRows) {
-			log.Printf("imports: placeholder %s: %v", it.Placeholder, err)
-		} else if p != nil {
-			logEdit(by, "placeholder added", logKindPlaceholder, p.UUID, p.Meta.Title, snapPlaceholder(p), nil)
-		}
-	}
 	return uuid, ""
 }

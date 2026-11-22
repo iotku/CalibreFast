@@ -111,7 +111,7 @@ func TestPlaceholderResolvedByEdit(t *testing.T) {
 
 	// It's in the edit log, so it can be undone.
 	var n int
-	appDB.QueryRow(`SELECT COUNT(*) FROM edit_log WHERE action = 'placeholder in library'`).Scan(&n)
+	appDB.QueryRow(`SELECT COUNT(*) FROM edit_log WHERE action LIKE 'placeholder in library%'`).Scan(&n)
 	if n != 3 {
 		t.Errorf("%d edit log entries, want 3", n)
 	}

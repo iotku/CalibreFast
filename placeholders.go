@@ -15,9 +15,15 @@ package main
 // library's series, at /missing; make them at /missing/new; and edit them on
 // their own page, /missing/{uuid}, which anyone who can browse the library
 // sees. Adding files there sends them to the import queue with the
-// placeholder's metadata; approving the book deletes the placeholder. So does
-// adding any book that matches one (same series and number, or same title
-// and author): resolvePlaceholders. A book uploaded or queued for import
+// placeholder's metadata; approving the book replaces that placeholder, and
+// only it. Adding any other book replaces those it matches: the same title
+// by one of the same authors, or its series and number where the number
+// tells books apart (placeholderNumberMatch: not in a series whose books
+// aren't numbered). A book that matches more than one is added only once
+// an editor says whether it replaces them all or none
+// (placeholdersToReplace). Each removal says how it was matched and by whom,
+// is in the edit log, and is listed on /missing to restore one replaced in
+// error. A book uploaded or queued for import
 // with no series of its own takes the series and number of the placeholder
 // with its title and author first (fillFromPlaceholder): ebooks rarely say.
 // A library book edited to be a placeholder's book replaces it too
@@ -41,6 +47,7 @@ import (
 	"strconv"
 	"strings"
 	"sync/atomic"
+	"time"
 
 	"github.com/google/uuid"
 	"github.com/iotku/CalibreFast/pkg/opf"
@@ -211,23 +218,55 @@ func savePlaceholder(p *placeholder, by *User) error {
 	return err
 }
 
+// Why a placeholder was removed (placeholders.replaced_why), for the edit
+// log and the list of recently removed ones on /missing.
+const (
+	whyFilesAdded  = "files added from its page"
+	whySeriesIndex = "same series and number"
+	whyTitle       = "same title and author"
+	whyEdited      = "a library book edited to be it"
+	whyByHand      = "removed by hand"
+)
+
 // deletePlaceholder removes one. It is only marked removed (deleted_at),
 // cover and all, so the removal can be undone (editlog.go).
 func deletePlaceholder(id string) error { return replacePlaceholder(id, "") }
 
 // replacePlaceholder removes one that library book bookUUID is ("": none,
 // removed by hand); its page then leads to that book.
-func replacePlaceholder(id, bookUUID string) error {
+func replacePlaceholder(id, bookUUID string) error { return removePlaceholder(id, bookUUID, "", nil) }
+
+// removePlaceholder removes placeholder id: library book bookUUID is it
+// ("": none), found by why (whySeriesIndex…), by user by (nil: nobody, or
+// the server). Both are kept for /missing's list of removed placeholders.
+func removePlaceholder(id, bookUUID, why string, by *User) error {
 	p := placeholderByUUID(id)
 	if p == nil {
 		return sql.ErrNoRows
 	}
-	if _, err := appDB.Exec(`UPDATE placeholders SET deleted_at = ?, replaced_by = ? WHERE uuid = ?`, nowUnix(), bookUUID, id); err != nil {
+	user := ""
+	if by != nil {
+		user = by.Username
+	}
+	if _, err := appDB.Exec(`UPDATE placeholders SET deleted_at = ?, replaced_by = ?, replaced_why = ?, replaced_user = ? WHERE uuid = ?`,
+		nowUnix(), bookUUID, why, user, id); err != nil {
 		return err
 	}
 	placeholdersChanged()
 	gapsPlaceholderChanged(p.Meta.Series)
 	placeholderReplacedForSavers(p, bookUUID) // notifications.go
+	return nil
+}
+
+// replacePlaceholderLogged: library book bookUUID replaces p (why: how it
+// was matched), in the edit log too, so it can be undone there or restored
+// from /missing.
+func replacePlaceholderLogged(p *placeholder, bookUUID, why string, by *User) error {
+	if err := removePlaceholder(p.UUID, bookUUID, why, by); err != nil {
+		return err
+	}
+	log.Printf("placeholder %q is in the library now (%s)", p.Meta.Title, why)
+	logEdit(by, "placeholder in library ("+why+")", logKindPlaceholder, p.UUID, p.Meta.Title, snapPlaceholder(p), nil)
 	return nil
 }
 
@@ -285,23 +324,153 @@ func placeholderForNewBook(m *OPFMetadata) *placeholder {
 	return found
 }
 
-// matchingPlaceholder: the placeholder a book about to be added stands
-// for: the one at its series and number, else the one with its title by
-// one of its authors (placeholderForNewBook). nil when none.
-func matchingPlaceholder(m *OPFMetadata) *placeholder {
+// knownAuthors: authors names someone ("Unknown" doesn't).
+func knownAuthors(authors []string) bool {
+	return slices.ContainsFunc(authors, func(a string) bool {
+		a = strings.TrimSpace(a)
+		return a != "" && !strings.EqualFold(a, "Unknown")
+	})
+}
+
+// libraryHasSeriesNumber: a book in the library is number index of series.
+func libraryHasSeriesNumber(series string, index float64) bool {
+	if calibreDB == nil {
+		return false
+	}
+	var one int
+	err := calibreDB.QueryRow(`SELECT 1 FROM books b JOIN books_series_link l ON l.book = b.id JOIN series s ON s.id = l.series
+		WHERE s.name = ? COLLATE NOCASE AND b.series_index = ? LIMIT 1`, series, index).Scan(&one)
+	return err == nil
+}
+
+// placeholderNumberMatch: placeholder p is the book at number index of
+// series (cleaned: opf.CleanSeries) by authors, by its number alone. Only
+// when the number tells books apart: no other placeholder of the series
+// and no book in the library has it (a series whose books aren't numbered
+// has them all at #1, or #0), and p shares an author with the book where
+// both name one.
+func placeholderNumberMatch(p *placeholder, series string, index float64, authors []string) bool {
+	if series == "" || !strings.EqualFold(strings.TrimSpace(p.Meta.Series), series) || p.index() != index {
+		return false
+	}
+	for _, q := range allPlaceholders() {
+		if q != p && strings.EqualFold(strings.TrimSpace(q.Meta.Series), series) && q.index() == index {
+			return false
+		}
+	}
+	if knownAuthors(p.Meta.Creators) && knownAuthors(authors) && !hcSharesAuthor(p.Meta.Creators, authors) {
+		return false
+	}
+	return !libraryHasSeriesNumber(series, index)
+}
+
+// placeholderMatch is a placeholder a book being added stands for, and why.
+type placeholderMatch struct {
+	P   *placeholder
+	Why string // whyTitle…
+}
+
+// placeholdersForBook: the placeholders a book about to be added stands
+// for: the same title by one of its authors (placeholderTitleMatch), or
+// its series and number where that tells (placeholderNumberMatch).
+func placeholdersForBook(m *OPFMetadata) []placeholderMatch {
 	if appDB == nil || m == nil {
 		return nil
 	}
 	c := *m
 	c.FillSeries()
-	if series, index, err := opf.CleanSeries(c.Series, c.SeriesIndex); err == nil && series != "" {
-		for _, p := range allPlaceholders() {
-			if strings.EqualFold(p.Meta.Series, series) && p.index() == index {
-				return p
-			}
+	series, index, err := opf.CleanSeries(c.Series, c.SeriesIndex)
+	if err != nil {
+		series = ""
+	}
+	var out []placeholderMatch
+	for _, p := range allPlaceholders() {
+		switch {
+		case placeholderTitleMatch(p, c.Title, c.Creators):
+			out = append(out, placeholderMatch{p, whyTitle})
+		case placeholderNumberMatch(p, series, index, c.Creators):
+			out = append(out, placeholderMatch{p, whySeriesIndex})
 		}
 	}
-	return placeholderForNewBook(&c)
+	return out
+}
+
+// matchingPlaceholder: the placeholder a book about to be added stands
+// for (placeholdersForBook), the one with its title first. nil when none.
+func matchingPlaceholder(m *OPFMetadata) *placeholder {
+	if p := placeholderForNewBook(m); p != nil {
+		return p
+	}
+	if ms := placeholdersForBook(m); len(ms) > 0 {
+		return ms[0].P
+	}
+	return nil
+}
+
+// How an add treats the placeholders the book matches, when more than one
+// does (addOptions.Placeholders): the editor is asked first.
+const (
+	placeholdersAsk  = ""     // refuse the add: tooManyPlaceholdersError
+	placeholdersAll  = "all"  // replace them all
+	placeholdersNone = "none" // replace none
+)
+
+// tooManyPlaceholdersError: a book wasn't added, as it matches more than
+// one placeholder and nobody said whether it replaces them all.
+type tooManyPlaceholdersError struct{ Matches []placeholderMatch }
+
+func (e *tooManyPlaceholdersError) Error() string {
+	return fmt.Sprintf("this book matches %d placeholders: say whether it replaces them all", len(e.Matches))
+}
+
+// placeholderChoiceRow is a matched placeholder, for asking (JSON).
+type placeholderChoiceRow struct {
+	UUID    string `json:"uuid"`
+	Title   string `json:"title"`
+	Authors string `json:"authors,omitempty"`
+	Series  string `json:"series,omitempty"`
+	Index   string `json:"index,omitempty"`
+	Why     string `json:"why"`
+}
+
+func (e *tooManyPlaceholdersError) Rows() []placeholderChoiceRow {
+	out := make([]placeholderChoiceRow, 0, len(e.Matches))
+	for _, m := range e.Matches {
+		out = append(out, placeholderChoiceRow{UUID: m.P.UUID, Title: m.P.Meta.Title, Authors: m.P.authors(),
+			Series: m.P.Meta.Series, Index: m.P.Meta.SeriesIndex, Why: m.Why})
+	}
+	return out
+}
+
+// placeholdersToReplace: what adding the book m replaces. forID is the
+// placeholder its files were added for (from its page): only that one, if
+// it's still there. Else what it matches (placeholdersForBook); when that
+// is more than one, choice says which (placeholdersAll…), and with none
+// given the add is refused (tooManyPlaceholdersError), so it is asked.
+func placeholdersToReplace(m *OPFMetadata, forID, choice string) ([]placeholderMatch, error) {
+	if forID != "" {
+		if p := placeholderByUUID(forID); p != nil {
+			return []placeholderMatch{{p, whyFilesAdded}}, nil
+		}
+	}
+	ms := placeholdersForBook(m)
+	if len(ms) <= 1 || choice == placeholdersAll {
+		return ms, nil
+	}
+	if choice == placeholdersNone {
+		return nil, nil
+	}
+	return nil, &tooManyPlaceholdersError{ms}
+}
+
+// resolvePlaceholders: library book bookUUID, just added, replaces the
+// placeholders in ms (placeholdersToReplace).
+func resolvePlaceholders(ms []placeholderMatch, bookUUID string, by *User) {
+	for _, m := range ms {
+		if err := replacePlaceholderLogged(m.P, bookUUID, m.Why, by); err != nil && !errors.Is(err, sql.ErrNoRows) {
+			log.Printf("placeholder %s: %v", m.P.UUID, err)
+		}
+	}
 }
 
 // placeholderSourceFormat names a placeholder's metadata among the
@@ -350,32 +519,6 @@ func fillFromPlaceholder(m *OPFMetadata) *placeholder {
 	}
 	m.Identifiers = append(m.Identifiers, add...)
 	return p
-}
-
-// resolvePlaceholders deletes the placeholders a book just added to the
-// library stands for: same series and number, or the same title by one of
-// the same authors (placeholderTitleMatch).
-func resolvePlaceholders(m *OPFMetadata, bookUUID string) {
-	if appDB == nil || m == nil {
-		return
-	}
-	series, index, err := opf.CleanSeries(m.Series, m.SeriesIndex)
-	if err != nil {
-		series = ""
-	}
-	for _, p := range allPlaceholders() {
-		same := series != "" && strings.EqualFold(p.Meta.Series, series) && p.index() == index
-		if !same {
-			same = placeholderTitleMatch(p, m.Title, m.Creators)
-		}
-		if same {
-			if err := replacePlaceholder(p.UUID, bookUUID); err != nil {
-				log.Printf("placeholder %s: %v", p.UUID, err)
-			} else {
-				log.Printf("placeholder %q is in the library now", p.Meta.Title)
-			}
-		}
-	}
 }
 
 // ---------------------------------------------------------------------------
@@ -556,6 +699,93 @@ type MissingPageData struct {
 	Hardcover *MissingHardcover
 	Count     int
 	Writable  bool
+	// Removed: placeholders removed lately, newest first, to check what
+	// replaced them and restore one replaced in error.
+	Removed []removedPlaceholder
+}
+
+// removedPlaceholder is a removed placeholder, for /missing.
+type removedPlaceholder struct {
+	UUID      string
+	Title     string
+	Authors   string
+	Series    string
+	Index     string
+	Why       string // whyTitle…, "" when not known (removed before it was kept)
+	By        string // who, "" for nobody (the server, or not known)
+	When      string
+	BookUUID  string // the library book that replaced it, "" for none
+	BookTitle string // "" when it's no longer in the library
+}
+
+func (r removedPlaceholder) BookHref() string { return "/book/get/" + url.PathEscape(r.BookUUID) }
+
+// removedPlaceholdersShown: how many /missing lists.
+const removedPlaceholdersShown = 50
+
+// removedPlaceholders: the placeholders removed last, newest first.
+func removedPlaceholders(limit int) []removedPlaceholder {
+	if appDB == nil {
+		return nil
+	}
+	rows, err := appDB.Query(`SELECT uuid, meta, deleted_at, replaced_by, replaced_why, replaced_user
+		FROM placeholders WHERE deleted_at IS NOT NULL ORDER BY deleted_at DESC LIMIT ?`, limit)
+	if err != nil {
+		log.Println("removed placeholders:", err)
+		return nil
+	}
+	defer rows.Close()
+	var out []removedPlaceholder
+	for rows.Next() {
+		var r removedPlaceholder
+		var meta string
+		var at int64
+		if err := rows.Scan(&r.UUID, &meta, &at, &r.BookUUID, &r.Why, &r.By); err != nil {
+			log.Println("removed placeholders:", err)
+			continue
+		}
+		var m OPFMetadata
+		if json.Unmarshal([]byte(meta), &m) != nil {
+			continue
+		}
+		r.Title, r.Authors, r.Series, r.Index = m.Title, strings.Join(m.Creators, " & "), m.Series, m.SeriesIndex
+		r.When = time.Unix(at, 0).Format("2006-01-02 15:04")
+		if r.BookUUID != "" {
+			r.BookTitle = bookTitle(r.BookUUID)
+		}
+		out = append(out, r)
+	}
+	return out
+}
+
+// POST /api/placeholders/{uuid}/restore: a removed placeholder back, as it
+// was (replaced in error, say). In the edit log, so it can be undone.
+func placeholderRestoreHandler(w http.ResponseWriter, r *http.Request) {
+	id := r.PathValue("uuid")
+	if placeholderByUUID(id) != nil {
+		w.WriteHeader(http.StatusNoContent) // there already
+		return
+	}
+	var meta, cover string
+	err := appDB.QueryRow(`SELECT meta, cover FROM placeholders WHERE uuid = ? AND deleted_at IS NOT NULL`, id).Scan(&meta, &cover)
+	if errors.Is(err, sql.ErrNoRows) {
+		http.Error(w, "no such placeholder", http.StatusNotFound)
+		return
+	}
+	snap := &placeholderSnap{Cover: cover}
+	if err == nil {
+		err = json.Unmarshal([]byte(meta), &snap.Meta)
+	}
+	if err == nil {
+		err = putPlaceholder(id, snap)
+	}
+	if err != nil {
+		log.Println("placeholder restore:", err)
+		http.Error(w, "could not restore it", http.StatusInternalServerError)
+		return
+	}
+	logEdit(currentUser(r), "restore placeholder", logKindPlaceholder, id, snap.Meta.Title, nil, snap)
+	w.WriteHeader(http.StatusNoContent)
 }
 
 type missingSeries struct {
@@ -668,7 +898,8 @@ func newPlaceholderPageHandler(w http.ResponseWriter, r *http.Request) {
 // GET /missing: every placeholder, and the gaps in the library's series.
 func missingPageHandler(w http.ResponseWriter, r *http.Request) {
 	phs := allPlaceholders()
-	d := MissingPageData{Title: "Missing books — " + SiteTitle, Count: len(phs), Writable: true, Gaps: seriesGaps(), Hardcover: missingHardcover()}
+	d := MissingPageData{Title: "Missing books — " + SiteTitle, Count: len(phs), Writable: true, Gaps: seriesGaps(), Hardcover: missingHardcover(),
+		Removed: removedPlaceholders(removedPlaceholdersShown)}
 	by := map[string]*missingSeries{}
 	for _, p := range phs {
 		k := strings.ToLower(p.Meta.Series)
@@ -797,7 +1028,7 @@ func placeholderUpdateHandler(w http.ResponseWriter, r *http.Request) {
 // DELETE /api/placeholders/{uuid}
 func placeholderDeleteHandler(w http.ResponseWriter, r *http.Request) {
 	p := placeholderByUUID(r.PathValue("uuid"))
-	if err := deletePlaceholder(r.PathValue("uuid")); errors.Is(err, sql.ErrNoRows) {
+	if err := removePlaceholder(r.PathValue("uuid"), "", whyByHand, currentUser(r)); errors.Is(err, sql.ErrNoRows) {
 		http.Error(w, "no such placeholder", http.StatusNotFound)
 		return
 	} else if err != nil {
@@ -974,4 +1205,5 @@ func registerPlaceholderRoutes() {
 	http.HandleFunc("POST /api/placeholders/{uuid}/cover", requireEditor(placeholderCoverHandler))
 	http.HandleFunc("DELETE /api/placeholders/{uuid}/cover", requireEditor(placeholderCoverHandler))
 	http.HandleFunc("POST /api/placeholders/{uuid}/files", requireEditor(placeholderFilesHandler))
+	http.HandleFunc("POST /api/placeholders/{uuid}/restore", requireEditor(placeholderRestoreHandler))
 }

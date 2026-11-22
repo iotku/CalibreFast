@@ -99,12 +99,8 @@ func placeholdersCatalogChanged(next *catalog, uuids []string) {
 			if !placeholderMatchesEdited(p, b) {
 				continue
 			}
-			before := snapPlaceholder(p)
-			if err := replacePlaceholder(p.UUID, bookUUIDs[i]); err != nil {
+			if err := replacePlaceholderLogged(p, bookUUIDs[i], whyEdited, nil); err != nil {
 				log.Printf("placeholder %s: %v", p.UUID, err)
-			} else {
-				log.Printf("placeholder %q: a book in the library is it now", p.Meta.Title)
-				logEdit(nil, "placeholder in library", logKindPlaceholder, p.UUID, p.Meta.Title, before, nil)
 			}
 			break
 		}

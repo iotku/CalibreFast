@@ -324,6 +324,10 @@ type UploadResult struct {
 	// SeriesFromPlaceholder: "Series #n", when the files had no series and
 	// the placeholder for the book gave it.
 	SeriesFromPlaceholder string `json:"seriesFromPlaceholder,omitempty"`
+	// Placeholders: not added, as it matches more than one placeholder
+	// (placeholders.go: placeholdersToReplace). Sending it again with
+	// placeholders=all or none says whether it replaces them.
+	Placeholders []placeholderChoiceRow `json:"placeholders,omitempty"`
 }
 
 func uploadHandler(w http.ResponseWriter, r *http.Request) {
@@ -353,10 +357,14 @@ func uploadHandler(w http.ResponseWriter, r *http.Request) {
 
 	groups := groupFilesByStem(files)
 	override := r.FormValue("override") == "1"
+	phChoice := r.FormValue("placeholders")
+	if phChoice != placeholdersAll && phChoice != placeholdersNone {
+		phChoice = placeholdersAsk
+	}
 
 	var results []UploadResult
 	for _, group := range groups {
-		results = append(results, processUploadGroup(group, override))
+		results = append(results, processUploadGroup(group, override, phChoice, currentUser(r)))
 	}
 	for _, res := range results {
 		if res.UUID != "" && res.Error == "" && res.Duplicate == nil {
@@ -418,7 +426,7 @@ func readBookMeta(p, name string) *UploadedBookMeta {
 	return meta
 }
 
-func processUploadGroup(files []*multipart.FileHeader, override bool) UploadResult { // TODO: How does this determine pairs, does this actually work at all?
+func processUploadGroup(files []*multipart.FileHeader, override bool, phChoice string, by *User) UploadResult { // TODO: How does this determine pairs, does this actually work at all?
 	var metas []*UploadedBookMeta
 	var entries []formatEntry
 	names := make([]string, 0, len(files))
@@ -475,7 +483,14 @@ func processUploadGroup(files []*multipart.FileHeader, override bool) UploadResu
 		return result
 	}
 
-	bookUUID, _, err := addBookToLibrary(merged, entries)
+	// More than one placeholder it could be: asked first.
+	replaces, err := placeholdersToReplace(&merged.OPFMetadata, "", phChoice)
+	if many, ok := errors.AsType[*tooManyPlaceholdersError](err); ok {
+		cleanupTemps(entries)
+		result.Placeholders = many.Rows()
+		return result
+	}
+	bookUUID, _, err := addBook(merged, entries, addOptions{By: by, Placeholders: replaces, PlaceholdersDecided: true})
 	if err != nil {
 		cleanupTemps(entries)
 		result.Error = err.Error()

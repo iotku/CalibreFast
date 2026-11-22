@@ -21,7 +21,8 @@
   "library-edit.js": "library-edit-KLAHV6G7.js",
   "library-repairs.js": "library-repairs-QH5FQU4L.js",
   "list-edit.js": "list-edit-DUEZ6ULE.js",
-  "metadata.js": "metadata-7SKZT2VD.js",
+  "metadata.js": "metadata-PENLCR42.js",
+  "missing.js": "missing-7WPIOCFJ.js",
   "nav.js": "nav-BEDNP2YD.js",
   "notifications.js": "notifications-ERKKZJLI.js",
   "offline.js": "offline-FB3TMHIV.js",
@@ -37,7 +38,7 @@
   "shelf-page.js": "shelf-page-74LESUPK.js",
   "shelves.js": "shelves-AP7VLE42.js",
   "stats.js": "stats-R4NG5UNN.js",
-  "style.css": "style-5YMDQ57Q.css",
+  "style.css": "style-LBEDN6OJ.css",
   "sw.js": "sw-A2X4WNOD.js",
   "user.js": "user-3LWVXEOX.js"
 }

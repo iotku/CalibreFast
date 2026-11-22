@@ -64,7 +64,7 @@ func uploadFiles(t *testing.T, name string, data []byte, override bool) UploadRe
 		t.Fatal(err)
 	}
 	t.Cleanup(func() { form.RemoveAll() })
-	res := processUploadGroup(form.File["books"], override)
+	res := processUploadGroup(form.File["books"], override, placeholdersAsk, nil)
 	if res.Error != "" {
 		t.Fatalf("upload %s: %s", name, res.Error)
 	}

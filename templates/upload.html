@@ -989,8 +989,61 @@
                 return div;
             }
 
+            // A book not added because it matches more than one placeholder
+            // (placeholders.go: placeholdersToReplace): which, and whether it
+            // replaces them all or none.
+            function renderPlaceholders(item, sent) {
+                const rows = item.placeholders.map((p) => {
+                    const link = h("a", "", p.title);
+                    link.href = `/missing/${encodeURIComponent(p.uuid)}`;
+                    link.target = "_blank";
+                    const where = p.series ? ` — ${p.series}${p.index ? " #" + p.index : ""}` : "";
+                    return h("li", "", link, p.authors ? " — " + p.authors : "", where, " ",
+                        h("span", "result-dup-why", p.why));
+                });
+                const body = h("div", "result-body",
+                    h("div", "result-title", item.title || "Untitled"),
+                    h("div", "result-meta", (item.authors || []).join(", ")),
+                    h("div", "result-dup", `Not added yet: it matches ${item.placeholders.length} placeholders. Adding it replaces the ones you choose.`),
+                    h("ul", "result-dup-list", ...rows));
+                const div = h("div", "result-item duplicate", h("span", "result-status-icon", "?"), body, h("span", ""));
+                const files = (item.files || [])
+                    .map((name) => sent.find((f) => f.name === name))
+                    .filter(Boolean);
+                if (!files.length) return div;
+                const buttons = [];
+                const choice = (label, value) => {
+                    const btn = document.createElement("button");
+                    btn.type = "button";
+                    btn.className = "result-override";
+                    btn.textContent = label;
+                    btn.addEventListener("click", async () => {
+                        for (const b of buttons) b.disabled = true;
+                        btn.textContent = "Uploading…";
+                        const fd = new FormData();
+                        for (const f of files) fd.append("books", f, f.name);
+                        fd.append("placeholders", value);
+                        fd.append("override", "1"); // past the duplicate check already
+                        try {
+                            const data = JSON.parse(await uploadXHR(fd, () => {}));
+                            div.replaceWith(...data.map((r) => renderItem(r, files)));
+                        } catch (err) {
+                            for (const b of buttons) b.disabled = false;
+                            btn.textContent = label;
+                            alert("Upload failed: " + err.message);
+                        }
+                    });
+                    buttons.push(btn);
+                    return btn;
+                };
+                body.append(choice(`Add, replacing all ${item.placeholders.length}`, "all"), " ",
+                    choice("Add, replacing none", "none"));
+                return div;
+            }
+
             function renderItem(item, sent) {
                     if (item.duplicate) return renderDuplicate(item, sent);
+                    if (item.placeholders && item.placeholders.length) return renderPlaceholders(item, sent);
                     if (item.error) {
                         return h("div", "result-item error",
                             h("span", "result-status-icon", "✕"),

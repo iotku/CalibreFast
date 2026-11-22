@@ -174,15 +174,15 @@ func TestPlaceholders(t *testing.T) {
 
 	// A book added for it (same series and number, or same title and an
 	// author in common) resolves it.
-	resolvePlaceholders(&OPFMetadata{Title: "Something Else", Series: "OTHER", SeriesIndex: "3"}, "")
+	resolvePlaceholders(placeholdersForBook(&OPFMetadata{Title: "Something Else", Series: "OTHER", SeriesIndex: "3"}), "", nil)
 	if placeholderByUUID(third) != nil {
 		t.Error("book 3 added, placeholder kept")
 	}
-	resolvePlaceholders(&OPFMetadata{Title: "other one and a half", Creators: []string{"Someone"}}, "")
+	resolvePlaceholders(placeholdersForBook(&OPFMetadata{Title: "other one and a half", Creators: []string{"Someone"}}), "", nil)
 	if placeholderByUUID(half) == nil {
 		t.Error("resolved by title alone")
 	}
-	resolvePlaceholders(&OPFMetadata{Title: "other one and a half", Creators: []string{"writer"}}, "")
+	resolvePlaceholders(placeholdersForBook(&OPFMetadata{Title: "other one and a half", Creators: []string{"writer"}}), "", nil)
 	if placeholderByUUID(half) != nil {
 		t.Error("same title and author, placeholder kept")
 	}
