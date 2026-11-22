@@ -627,6 +627,57 @@ function populateIdentifiers(form: HTMLFormElement, current: MetaSource | null, 
     updateHighlights();
   }
 
+  /**
+   * Add a source's identifiers on top of the active ones (a file's, or a
+   * placeholder's, picked by its pill): nothing else goes, so Hardcover
+   * links and the like stay. A book has one value per type (Calibre keys
+   * them by type), so the source's ISBN, and any type it has, replaces the
+   * one there; that one is crossed out (Undo) if the book had it. Ones
+   * without a type are just added.
+   */
+  function stackIdentifiers(ids: Ident[]): void {
+    const crossedOut = (k: string) =>
+      [...customList.querySelectorAll<HTMLElement>(".custom-identifier-row.removed")]
+        .find((row) => mergeKey(rowValues(row).scheme, rowValues(row).value) === k);
+    for (const i of ids) {
+      const scheme = i.scheme.trim();
+      const type = scheme.toLowerCase();
+      if (!scheme && !i.value) continue;
+      const k = mergeKey(scheme, i.value);
+      if (type === "isbn") {
+        const old = isbnInput.value.trim();
+        if (old && isbnDigits(old) === isbnDigits(i.value)) continue;
+        if (old) park("isbn", old, isbnInput.dataset["id"] || "");
+        isbnInput.value = i.value;
+        const back = crossedOut(k);
+        if (back?.dataset["id"]) isbnInput.dataset["id"] = back.dataset["id"];
+        else if (i.id) isbnInput.dataset["id"] = i.id;
+        else delete isbnInput.dataset["id"];
+        back?.remove();
+        continue;
+      }
+      const active = [...customList.querySelectorAll<HTMLElement>(".custom-identifier-row:not(.removed)")];
+      if (active.some((row) => mergeKey(rowValues(row).scheme, rowValues(row).value) === k)) continue;
+      // Its type's other value gives way (one per type); untyped ones stack.
+      if (type) {
+        for (const row of active) {
+          const v = rowValues(row);
+          if (v.scheme.toLowerCase() !== type) continue;
+          row.remove();
+          park(v.scheme, v.value, v.id);
+        }
+      }
+      const back = crossedOut(k);
+      if (back) {
+        setRemoved(back, false);
+        customList.insertBefore(back, firstRemoved());
+      } else {
+        customList.insertBefore(makeRow(scheme, i.value, i.id), firstRemoved());
+      }
+    }
+    updateHighlights();
+  }
+
   function useIsbn(isbn: string): void {
     const old = isbnInput.value.trim();
     if (old && isbnDigits(old) === isbnDigits(isbn)) return;
@@ -697,7 +748,17 @@ function populateIdentifiers(form: HTMLFormElement, current: MetaSource | null, 
       btn.addEventListener("click", () => mergeIdentifiers(ids));
       buttonRow.appendChild(btn);
       buttons.push(btn);
+    } else if (meta.Format !== "current") {
+      // A file's or the placeholder's: added on top (stackIdentifiers), so
+      // its pill matches once they're all there.
+      const btn = sourceButton(meta, `Click to add from ${meta.Format}: "${displayVal}"`);
+      btn.dataset["keys"] = ids.map((i) => mergeKey(i.scheme, i.value)).join("\n");
+      btn.dataset["verb"] = "add";
+      btn.addEventListener("click", () => stackIdentifiers(ids));
+      buttonRow.appendChild(btn);
+      buttons.push(btn);
     } else {
+      // What the book has now: back to exactly that.
       const btn = sourceButton(meta, `Click to use from ${meta.Format}: "${displayVal}"`);
       btn.dataset["normalized"] = normalize(ids);
       btn.addEventListener("click", () => setIdentifiers(ids, { keepMissing: true }));
