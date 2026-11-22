@@ -3803,6 +3803,7 @@ body.book-standalone {
 /* Items: menu rows, not the bar's dashed buttons. */
 .site-bar .tb-manage-menu .btn-group-toggle {
     width: 100%;
+    box-sizing: border-box; /* the padding inside the 100% */
     height: auto;
     padding: 9px 10px;
     justify-content: flex-start;
@@ -3899,6 +3900,7 @@ body.book-standalone {
 
 .site-bar.tb-fold .tb-own-actions .btn-group-toggle {
     width: 100%;
+    box-sizing: border-box; /* the padding inside the 100% */
     height: auto;
     padding: 9px 10px;
     justify-content: flex-start;
@@ -3985,6 +3987,7 @@ body.book-standalone {
 
     .site-bar .tb-own-actions .btn-group-toggle {
         width: 100%;
+        box-sizing: border-box; /* the padding inside the 100% */
         height: auto;
         padding: 9px 10px;
         justify-content: flex-start;
@@ -4033,27 +4036,177 @@ body.book-standalone {
 
 /* The name, description, picture and buttons stay at the top; the member
    list below takes what height is left and scrolls on its own. */
-.group-panel {
+/* The Manage sidebar (filtered.html, manage-panel.ts): on the right, under
+   the bar's Manage menu, the full height of the window. It stays open
+   while you work in it; its × (or Esc) closes it. */
+.manage-panel {
     position: fixed;
-    top: calc(var(--topbar-total) + 8px);
-    left: 20px;
+    top: var(--topbar-total);
+    right: 0;
+    bottom: 0;
     z-index: 999;
     display: flex;
     flex-direction: column;
-    width: min(460px, calc(100vw - 32px));
-    max-height: calc(100dvh - var(--topbar-total) - 24px);
-    padding: 1rem 1.1rem;
+    width: var(--manage-panel-width);
     box-sizing: border-box;
-    background: var(--bg-modal);
-    backdrop-filter: blur(14px);
-    -webkit-backdrop-filter: blur(14px);
-    border: 1px solid var(--border-medium);
-    border-radius: var(--radius-medium);
-    box-shadow: 0 12px 32px rgba(0, 0, 0, 0.5);
+    background: var(--bg-secondary);
+    border-left: 1px solid var(--border-medium);
+    box-shadow: -12px 0 32px rgba(0, 0, 0, 0.45);
 }
 
-.group-panel[hidden] {
+.manage-panel[hidden] {
     display: none;
+}
+
+/* Beside the page, not over it: the page moves over while it's open. A
+   skinny window has no room beside it, so there it covers the page. */
+:root {
+    --manage-panel-width: min(420px, 45vw);
+}
+
+body:has(.manage-panel:not([hidden])) {
+    padding-right: calc(var(--page-padding) + var(--manage-panel-width));
+}
+
+@media (max-width: 600px) {
+    :root {
+        --manage-panel-width: 100vw;
+    }
+
+    body:has(.manage-panel:not([hidden])) {
+        padding-right: var(--page-padding);
+    }
+}
+
+.manage-panel-head {
+    flex: none;
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    padding: 10px 10px 10px 1.1rem;
+    border-bottom: 1px solid var(--border-subtle, var(--border-medium));
+}
+
+.manage-panel-head h2 {
+    flex: 1;
+    min-width: 0;
+    margin: 0;
+    font-size: 1rem;
+    font-weight: 600;
+}
+
+.manage-panel-body {
+    flex: 1 1 auto;
+    overflow-y: auto;
+    overscroll-behavior: contain;
+    padding: 0 1.1rem;
+}
+
+.manage-section {
+    padding: 1rem 0;
+}
+
+.manage-section:last-child {
+    padding-bottom: calc(1rem + env(safe-area-inset-bottom, 0px));
+}
+
+/* Its sticky footer is the end of the sidebar. */
+.manage-section:has(.manage-sticky-foot) {
+    padding-bottom: 0;
+}
+
+.manage-section + .manage-section {
+    border-top: 1px solid var(--border-subtle, var(--border-medium));
+}
+
+.manage-section h3 {
+    margin: 0 0 0.6rem;
+    font-size: 0.8rem;
+    font-weight: 600;
+    letter-spacing: 0.04em;
+    text-transform: uppercase;
+    color: var(--text-secondary);
+}
+
+.manage-hint {
+    margin: 0.3rem 0 0.7rem;
+    font-size: 0.8rem;
+    line-height: 1.45;
+    color: var(--text-muted);
+}
+
+.manage-section-head {
+    display: flex;
+    align-items: center;
+    gap: 4px;
+    margin-bottom: 0.6rem;
+}
+
+.manage-section-head h3 {
+    margin: 0;
+}
+
+.manage-info-btn {
+    display: inline-flex;
+    padding: 4px;
+    color: var(--text-muted);
+    background: none;
+    border: 0;
+    border-radius: 50%;
+    cursor: pointer;
+}
+
+.manage-info-btn:hover,
+.manage-info-btn[aria-expanded="true"] {
+    color: var(--text-primary);
+}
+
+.manage-info {
+    margin: 0 0 0.8rem;
+    padding: 0.6rem 0.75rem;
+    font-size: 0.8rem;
+    line-height: 1.45;
+    color: var(--text-secondary);
+    background: var(--bg-surface);
+    border-radius: var(--radius-small);
+}
+
+.manage-info[hidden] {
+    display: none;
+}
+
+.manage-info p {
+    margin: 0;
+}
+
+.manage-info p + p {
+    margin-top: 0.4rem;
+}
+
+/* Highest number and number of books, side by side. */
+.series-verify-fields {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 10px;
+}
+
+.manage-section .group-actions {
+    margin-top: 0.6rem;
+}
+
+/* The group's Cancel/Save: at the bottom of the sidebar while the
+   section is in view, so a long list of values can't push them away. */
+.manage-sticky-foot {
+    position: sticky;
+    bottom: 0;
+    margin: 0 -1.1rem;
+    padding: 0.6rem 1.1rem calc(0.8rem + env(safe-area-inset-bottom, 0px));
+    background: var(--bg-secondary);
+    border-top: 1px solid var(--border-subtle, var(--border-medium));
+}
+
+.manage-sticky-foot .group-actions {
+    margin-top: 0;
 }
 
 /* The series page's "Add to shelf" (series-shelf.ts): like the group panel. */
@@ -4079,6 +4232,33 @@ body.book-standalone {
     display: none;
 }
 
+/* The × of the Manage sidebar and the Add to shelf panel. */
+.manage-panel-close,
+.series-shelf-close {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    width: 32px;
+    height: 32px;
+    padding: 0;
+    color: var(--text-secondary);
+    background: none;
+    border: 0;
+    border-radius: var(--radius-small);
+    cursor: pointer;
+}
+
+.manage-panel-close:hover,
+.series-shelf-close:hover {
+    color: var(--text-primary);
+    background: rgba(255, 255, 255, 0.08);
+}
+
+.series-shelf-close {
+    float: right;
+    margin: -0.5rem -0.6rem 0 0.4rem;
+}
+
 .series-shelf-hint {
     margin: 0 0 0.6rem;
     font-size: 0.8rem;
@@ -4086,10 +4266,11 @@ body.book-standalone {
     color: var(--text-muted);
 }
 
+/* Skinny: the full width (series-shelf.ts centres it on its button otherwise). */
 @media (max-width: 600px) {
     .series-shelf-panel {
-        right: 16px;
-        left: 16px;
+        right: 8px;
+        left: 8px;
         width: auto;
     }
 }
@@ -4184,6 +4365,8 @@ body.book-standalone {
 }
 
 .group-field textarea {
+    height: auto;
+    padding: 8px 12px;
     resize: vertical;
     min-height: 3.5em;
     max-height: 30vh;
@@ -4203,10 +4386,8 @@ body.book-standalone {
     flex-wrap: wrap;
     align-content: flex-start;
     gap: 6px;
-    flex: 1 1 auto;
     min-height: 2.5rem;
-    overflow-y: auto;
-    margin: 0;
+    margin: 0 0 0.6rem;
     padding: 2px 0 0;
     list-style: none;
 }
@@ -6835,52 +7016,6 @@ body.selecting .book.selected .cover-wrapper {
 
 #hc-link-row[hidden] {
     display: none;
-}
-
-/* A series page: an editor's count of the series' numbered books (series-verify.ts) */
-.series-verify {
-    width: min(460px, calc(100vw - 32px));
-    padding: 1.25rem 1.5rem;
-    background: var(--bg-surface);
-    color: var(--text-primary);
-    border: 1px solid var(--border-medium);
-    border-radius: var(--radius-medium, 8px);
-    box-shadow: var(--shadow-medium);
-}
-
-.series-verify::backdrop {
-    background: var(--bg-modal-overlay);
-}
-
-.series-verify h2 {
-    margin: 0 0 0.75rem;
-    font-size: 1.15rem;
-    overflow-wrap: anywhere;
-}
-
-.series-verify label {
-    display: flex;
-    gap: 0.6rem;
-    align-items: center;
-    margin: 0.75rem 0;
-}
-
-.series-verify input[type="number"] {
-    width: 7rem;
-}
-
-.series-verify label {
-    justify-content: space-between;
-    margin-bottom: 0.2rem;
-}
-
-.series-verify-hint {
-    margin: 0 0 0.75rem;
-    font-size: 0.85rem;
-}
-
-.series-verify .ph-actions {
-    justify-content: flex-end;
 }
 
 /* ------------------------------------------------------------------ */

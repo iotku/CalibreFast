@@ -65,18 +65,18 @@
 {{ end }}{{ end }}
         </div>
         <div class="tb-manage-menu">
+{{ if or .Writable .CanVerify }}
+        <button type="button" id="manage-toggle" class="btn-group-toggle" aria-expanded="false" aria-controls="manage-panel"
+                title="{{ if .Writable }}This {{ .Label }}'s name, picture, description and grouped values{{ end }}{{ if and .Writable .CanVerify }}; {{ end }}{{ if .CanVerify }}how many books the series has{{ end }}">
+            <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="3" y="4" width="18" height="16" rx="2"/><path d="M15 4v16"/></svg>
+            <span class="tb-label">Manage {{ capitalize .Label }}</span>
+        </button>
+{{ end }}
 {{ with .NewPlaceholder }}
         <a class="btn-group-toggle" href="{{ . }}" title="Add a book that isn't in the library yet to this page">
             <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="5" y="3" width="14" height="18" rx="2" stroke-dasharray="3 2"/><path d="M12 9v6M9 12h6"/></svg>
-            <span class="tb-label">Missing book</span>
+            <span class="tb-label">Add Placeholder</span>
         </a>
-{{ end }}
-{{ if .CanVerify }}
-        <button type="button" id="series-verify-btn" class="btn-group-toggle" aria-pressed="{{ if or .VerifiedTotal .VerifiedBooks }}true{{ else }}false{{ end }}"
-                title="Say how many books this series has (its highest number, its number of books, or both), to mark it complete when the library has them all">
-            <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="9"/><path d="m8 12 3 3 5-6"/></svg>
-            <span class="tb-label">{{ if or .VerifiedTotal .VerifiedBooks }}Checked{{ else }}Mark complete{{ end }}</span>
-        </button>
 {{ end }}
 {{ with .Hardcover }}
         <a class="btn-group-toggle" href="{{ . }}" title="{{ if eq $.Category "author" }}Check this author's series on Hardcover{{ else }}Check this series on Hardcover{{ end }}: books missing from the library, and books here without the series">
@@ -99,11 +99,6 @@
             <span class="tb-label">{{ if .Featured }}Featured{{ else }}Feature{{ end }}</span>
         </button>
 {{ end }}
-        <button type="button" id="group-toggle" class="btn-group-toggle" aria-expanded="false" aria-controls="group-panel"
-                title="Choose which {{ .Label }} values this page includes" aria-label="Group {{ .Label }} values">
-            <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2" stroke-linejoin="round" aria-hidden="true"><path d="M12 3l9 5-9 5-9-5zM3 13l9 5 9-5"/></svg>
-            <span class="tb-label">{{ if .Grouped }}Group · {{ len .Members }}{{ else }}Group…{{ end }}</span>
-        </button>
 {{ end }}
         </div>
         </div>
@@ -119,88 +114,119 @@
 {{ end }}{{ end }}{{ end }}
 {{ template "topbar-end" $tb }}
 {{ with .Extra }}{{ with .SeriesShelf }}
-<section id="series-shelf-panel" class="series-shelf-panel" data-series="{{ . }}" hidden>
+<section id="series-shelf-panel" class="series-shelf-panel" data-series="{{ . }}" aria-label="Add to shelf" hidden>
+    <button type="button" class="tb-icon series-shelf-close" aria-label="Close" title="Close (Esc)">
+        <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true"><path d="M6 6l12 12M18 6L6 18"/></svg>
+    </button>
     <p class="series-shelf-hint">Put <strong>{{ . }}</strong> on a shelf as one entry. It shows the first book's cover and opens this page.</p>
     {{ template "series-shelf-list" $.Extra.SeriesShelves }}
 </section>
 {{ end }}{{ end }}
+{{ if or .Writable .CanVerify }}
+{{/* Manage this entry (web/manage-panel.ts): a sidebar on the right, under
+     the Manage menu. Its parts save on their own: the series' book counts
+     (editors; series_complete.go, web/series-verify.ts) and the group, with
+     its name, picture and description (admins; web/groups.ts). */}}
+<aside id="manage-panel" class="manage-panel" aria-labelledby="manage-panel-title" hidden>
+    <header class="manage-panel-head">
+        <h2 id="manage-panel-title">Manage {{ capitalize .Label }}</h2>
+        <button type="button" class="tb-icon manage-panel-close" aria-label="Close" title="Close (Esc)">
+            <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true"><path d="M6 6l12 12M18 6L6 18"/></svg>
+        </button>
+    </header>
+    <div class="manage-panel-body">
+{{ if .CanVerify }}
+    <section id="series-verify" class="manage-section series-verify" data-series="{{ .Name }}" aria-labelledby="series-verify-title">
+        <div class="manage-section-head">
+            <h3 id="series-verify-title">Books in the series</h3>
+            <button type="button" class="manage-info-btn" aria-expanded="false" aria-controls="series-verify-info" aria-label="About these numbers" title="About these numbers">
+                <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true"><circle cx="12" cy="12" r="9"/><path d="M12 11v5M12 8h.01"/></svg>
+            </button>
+        </div>
+        <div id="series-verify-info" class="manage-info" hidden>
+            <p>Give either or both. The series shows as complete while the library has them all, and what it lacks is listed on Missing books.</p>
+            <p><strong>Highest number:</strong> every number from 1 up to it is needed. Novellas like 1.5 don't count.</p>
+            <p><strong>Number of books:</strong> however they're numbered, for a series whose books aren't (all #1, or #0). Placeholders stand in for missing books, but don't count as books the library has.</p>
+        </div>
+        <form class="series-verify-form">
+            <div class="series-verify-fields">
+                <label class="group-field"><span>Highest number</span>
+                    <input type="number" id="series-verify-total" min="0" max="10000" step="1" value="{{ if .SuggestTotal }}{{ .SuggestTotal }}{{ end }}" class="input-search"></label>
+                <label class="group-field"><span>Number of books</span>
+                    <input type="number" id="series-verify-books" min="0" max="10000" step="1" value="{{ if .SuggestBooks }}{{ .SuggestBooks }}{{ end }}" class="input-search"></label>
+            </div>
+            {{ if not (or .VerifiedTotal .VerifiedBooks) }}<p class="manage-hint">Not set yet: these are from the books here.</p>{{ end }}
+            <p id="series-verify-status" class="group-status error" role="status" hidden></p>
+            <div class="group-row group-actions">
+                {{ if or .VerifiedTotal .VerifiedBooks }}<button type="button" id="series-verify-remove" class="btn-standard btn-danger">Forget</button>{{ end }}
+                <button type="submit" class="btn-standard btn-primary">{{ if or .VerifiedTotal .VerifiedBooks }}Save{{ else }}Mark complete{{ end }}</button>
+            </div>
+        </form>
+    </section>
+{{ end }}
 {{ if .Writable }}
-<section id="group-panel" class="group-panel" hidden
-         data-category="{{ .Category }}" data-key="{{ .Key }}" data-name="{{ .SuggestName }}" data-label="{{ .Label }}"
-         data-image="{{ .ImageURL }}">
-    {{/* What it is first, then the buttons: the member list below can be
-         long, and scrolls on its own (web/groups.ts). */}}
-    <div class="group-head">
-        <div class="group-meta">
-            <div class="group-image">
-                <button type="button" id="group-image-pick" class="group-image-pick" title="Choose a picture">
-                    <img id="group-image-preview" alt=""{{ if .ImageURL }} src="{{ .ImageURL }}"{{ else }} hidden{{ end }}>
-                    <canvas id="group-image-canvas" hidden></canvas>
-                    <span id="group-image-empty"{{ if .ImageURL }} hidden{{ end }}>Add picture</span>
-                </button>
-                <button type="button" id="group-image-remove" class="group-image-remove"{{ if not .ImageURL }} hidden{{ end }}>Remove</button>
-                <input id="group-image-file" type="file" accept="image/*,.svg" hidden>
+    <section id="group-panel" class="manage-section group-panel"
+             data-category="{{ .Category }}" data-key="{{ .Key }}" data-name="{{ .SuggestName }}" data-label="{{ .Label }}"
+             data-image="{{ .ImageURL }}" aria-labelledby="group-panel-title">
+        <h3 id="group-panel-title">Details and grouping{{ if .Grouped }} · {{ len .Members }} values{{ end }}</h3>
+        <div class="group-head">
+            <div class="group-meta">
+                <div class="group-image">
+                    <button type="button" id="group-image-pick" class="group-image-pick" title="Choose a picture">
+                        <img id="group-image-preview" alt=""{{ if .ImageURL }} src="{{ .ImageURL }}"{{ else }} hidden{{ end }}>
+                        <canvas id="group-image-canvas" hidden></canvas>
+                        <span id="group-image-empty"{{ if .ImageURL }} hidden{{ end }}>Add picture</span>
+                    </button>
+                    <button type="button" id="group-image-remove" class="group-image-remove"{{ if not .ImageURL }} hidden{{ end }}>Remove</button>
+                    <input id="group-image-file" type="file" accept="image/*,.svg" hidden>
+                </div>
+                <div class="group-fields">
+                    <label class="group-field">
+                        <span>Display name</span>
+                        <input id="group-name" class="input-search" type="text" value="{{ .SuggestName }}"
+                               autocomplete="off" spellcheck="false" data-1p-ignore data-lpignore="true" data-form-type="other" />
+                    </label>
+                    <label class="group-field">
+                        <span>Description</span>
+                        <textarea id="group-description" class="input-search" rows="3" maxlength="10000">{{ .Description }}</textarea>
+                    </label>
+                </div>
             </div>
-            <div class="group-fields">
-                <label class="group-field">
-                    <span>Display name</span>
-                    <input id="group-name" class="input-search" type="text" value="{{ .SuggestName }}"
-                           autocomplete="off" spellcheck="false" data-1p-ignore data-lpignore="true" data-form-type="other" />
-                </label>
-                <label class="group-field">
-                    <span>Description</span>
-                    <textarea id="group-description" class="input-search" rows="3" maxlength="10000">{{ .Description }}</textarea>
-                </label>
+            {{ if .GroupsError }}<p class="group-error">{{ .GroupsError }}</p>{{ end }}
+            <p class="group-hint">Books whose {{ .Label }} is any of these values are shown here.
+                A value can belong to one group; adding it here moves it from any other.
+                Books themselves are never changed.</p>
+            <div class="group-row group-add-row">
+                <!-- Suggestions come only from the library (custom list, not a
+                     datalist, so browsers can't mix in saved form history). -->
+                <input id="group-add" class="input-search" type="text" placeholder="Add a {{ .Label }}…"
+                       role="combobox" aria-autocomplete="list" aria-expanded="false" aria-controls="group-suggest"
+                       autocomplete="off" autocorrect="off" autocapitalize="off" spellcheck="false"
+                       data-1p-ignore data-lpignore="true" data-form-type="other"{{ if .GroupsError }} disabled{{ end }} />
+                <ul id="group-suggest" class="group-suggest" role="listbox" hidden></ul>
+                <button type="button" id="group-add-btn" class="btn-standard"{{ if .GroupsError }} disabled{{ end }}>Add</button>
             </div>
         </div>
-        {{ if .GroupsError }}<p class="group-error">{{ .GroupsError }}</p>{{ end }}
-        <p id="group-status" class="group-status" role="status"></p>
-        <div class="group-row group-actions">
-            <button type="button" id="group-cancel" class="btn-standard">Cancel</button>
-            <button type="button" id="group-save" class="btn-standard btn-primary">Save</button>
+        <ul class="group-members">
+            {{ range .Members }}<li data-member="{{ . }}"></li>{{ end }}
+        </ul>
+        {{/* Stays at the bottom of the sidebar while the section is in view, however many values it has. */}}
+        <div class="manage-sticky-foot">
+            <p id="group-status" class="group-status" role="status"></p>
+            <div class="group-row group-actions">
+                <button type="button" id="group-cancel" class="btn-standard">Cancel</button>
+                <button type="button" id="group-save" class="btn-standard btn-primary">Save</button>
+            </div>
         </div>
-        <p class="group-hint">Books whose {{ .Label }} is any of these values are shown here.
-            A value can belong to one group; adding it here moves it from any other.
-            Books themselves are never changed.</p>
-        <div class="group-row group-add-row">
-            <!-- Suggestions come only from the library (custom list, not a
-                 datalist, so browsers can't mix in saved form history). -->
-            <input id="group-add" class="input-search" type="text" placeholder="Add a {{ .Label }}…"
-                   role="combobox" aria-autocomplete="list" aria-expanded="false" aria-controls="group-suggest"
-                   autocomplete="off" autocorrect="off" autocapitalize="off" spellcheck="false"
-                   data-1p-ignore data-lpignore="true" data-form-type="other"{{ if .GroupsError }} disabled{{ end }} />
-            <ul id="group-suggest" class="group-suggest" role="listbox" hidden></ul>
-            <button type="button" id="group-add-btn" class="btn-standard"{{ if .GroupsError }} disabled{{ end }}>Add</button>
-        </div>
+    </section>
+{{ end }}
     </div>
-    <ul class="group-members">
-        {{ range .Members }}<li data-member="{{ . }}"></li>{{ end }}
-    </ul>
-</section>
+</aside>
 {{ end }}
 {{/* An author's profile may come from Hardcover after the page has loaded
      (hardcover_authors.go, web/author-profile.ts): the header is rendered
      again into #agg-header. */}}
 <div id="agg-header" class="agg-header-wrap"{{ with .Profile }}{{ with .Lookup }} data-profile-lookup="{{ . }}"{{ end }}{{ end }}>{{ template "agg-header" . }}</div>
-{{ if .CanVerify }}
-{{/* What an editor says of the series: its highest number, its number of books, or both (series_complete.go, web/series-verify.ts). */}}
-<dialog id="series-verify" class="series-verify" data-series="{{ .Name }}">
-    <form method="dialog" class="series-verify-form">
-        <h2>Books in {{ .Display }}</h2>
-        <p class="auth-muted">Give either or both. The series shows as complete while the library has them all, and what it lacks is listed on Missing books.</p>
-        <label>Highest number <input type="number" id="series-verify-total" min="0" max="10000" step="1" value="{{ if .SuggestTotal }}{{ .SuggestTotal }}{{ end }}"></label>
-        <p class="auth-muted series-verify-hint">Every number from 1 up to it is needed. Novellas like 1.5 don't count.</p>
-        <label>Number of books <input type="number" id="series-verify-books" min="0" max="10000" step="1" value="{{ if .SuggestBooks }}{{ .SuggestBooks }}{{ end }}"></label>
-        <p class="auth-muted series-verify-hint">However they're numbered: for a series whose books aren't (all #1, or #0). Placeholders stand in for missing books, but don't count as books the library has.</p>
-        <p id="series-verify-status" class="auth-error" role="status" hidden></p>
-        <div class="ph-actions">
-            {{ if or .VerifiedTotal .VerifiedBooks }}<button type="button" id="series-verify-remove" class="btn-standard btn-danger">Forget</button>{{ end }}
-            <button type="button" id="series-verify-cancel" class="btn-standard">Cancel</button>
-            <button type="submit" class="btn-standard btn-primary">Save</button>
-        </div>
-    </form>
-</dialog>
-{{ end }}
 {{ template "grid-sort" .Sort }}
 <div id="books" data-page-url="{{ .PageURL }}{{ with .Sort.Options }}&sort={{ $.Sort.Current }}{{ end }}&page={n}" data-page-size="{{ booksPerPage }}" data-total-books="{{ .TotalBooks }}"{{ if .EmptyText }} data-empty-text="{{ .EmptyText }}"{{ end }}></div>
 <p id="status" class="status-message"></p>
@@ -212,8 +238,7 @@
 </div>
 <div id="scroll-badge"></div>
 <script type="module" src="{{ asset "app-htmx.js" }}"></script>
-{{ if .Writable }}<script type="module" src="{{ asset "groups.js" }}"></script>{{ end }}
-{{ if .CanVerify }}<script type="module" src="{{ asset "series-verify.js" }}"></script>{{ end }}
+{{ if or .Writable .CanVerify }}<script type="module" src="{{ asset "manage-panel.js" }}"></script>{{ end }}
 {{ with .Profile }}{{ if or .Lookup .Refresh }}<script type="module" src="{{ asset "author-profile.js" }}"></script>{{ end }}{{ end }}
 {{ with .Extra }}{{ if or .Shelf .TagPin .SeriesPin }}<script type="module" src="{{ asset "shelf-page.js" }}"></script>{{ end }}{{ end }}
 {{ with .Extra }}{{ if and .Arrange (gt $.TotalBooks 1) }}<script type="module" src="{{ asset "list-edit.js" }}"></script>{{ end }}{{ end }}

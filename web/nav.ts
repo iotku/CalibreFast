@@ -121,6 +121,20 @@ function init(bar: HTMLElement): void {
     function closeAll(): void {
         for (const t of toggles) if (t.btn.getAttribute("aria-expanded") === "true") t.set(false);
     }
+    // A tap off the bar while one of its menus is open only closes the menu:
+    // it isn't passed on, so it doesn't also open the book under it (or
+    // follow a link). Taps on the bar itself go through (to another menu).
+    document.addEventListener(
+        "click",
+        (e) => {
+            if (!toggles.some((t) => t.btn.getAttribute("aria-expanded") === "true")) return;
+            if (e.target instanceof Element && e.target.closest(".site-bar")) return;
+            e.preventDefault();
+            e.stopPropagation();
+            closeAll();
+        },
+        true,
+    );
     document.addEventListener("click", (e) => {
         // Clicks inside an open panel (e.g. the search box) keep it open.
         if (e.target instanceof Element && e.target.closest(".tb-nav, .tb-menu-list, .tb-search")) return;
