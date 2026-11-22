@@ -5854,6 +5854,10 @@ body.selecting .book.selected .cover-wrapper {
     flex-basis: 100%;
 }
 
+#ph-removed a {
+    color: var(--accent, #c8a96e);
+}
+
 .ph-removed .ph-restore {
     margin-left: auto;
 }

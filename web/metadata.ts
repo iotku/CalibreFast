@@ -1292,13 +1292,13 @@ export async function mountMetadataEditor(book: BookTarget, form: HTMLFormElemen
         });
         return b;
       };
-      statusEl.replaceChildren(
-        `⚠ Not added yet: it matches ${err.placeholders.length} placeholders. Adding it replaces the ones you choose.`,
-        list,
-        choice(`Add, replacing all ${err.placeholders.length}`, "all"),
-        " ",
-        choice("Add, replacing none", "none"),
-      );
+      const box = document.createElement("div");
+      box.className = "ph-choice";
+      const buttons = document.createElement("div");
+      buttons.className = "ph-choice-buttons";
+      buttons.append(choice(`Add, replacing all ${err.placeholders.length}`, "all"), choice("Add, replacing none", "none"));
+      box.append(`⚠ Not added yet: it matches ${err.placeholders.length} placeholders. Adding it replaces the ones you choose.`, list, buttons);
+      statusEl.replaceChildren(box);
     };
     /** The book looks already in the library: say which, and offer to add it anyway. */
     const showDuplicate = (err: DuplicateError) => {

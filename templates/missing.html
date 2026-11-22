@@ -55,7 +55,7 @@
                     </span>
                     <span class="ph-sub">
                         {{ .When }} ·
-                        {{ if .BookUUID }}{{ if .BookTitle }}replaced by <a href="{{ .BookHref }}">{{ .BookTitle }}</a>{{ else }}replaced by a book no longer in the library{{ end }}{{ else }}removed{{ end }}{{ with .Why }} ({{ . }}){{ end }}{{ with .By }} · {{ . }}{{ end }}
+                        {{ if .BookUUID }}{{ if .BookTitle }}replaced by <a href="{{ .BookHref }}">{{ .BookTitle }}</a>{{ else }}replaced by a book no longer in the library{{ end }}{{ with .Why }} ({{ . }}){{ end }}{{ else }}{{ with .Why }}{{ . }}{{ else }}removed{{ end }}{{ end }}{{ with .By }} · {{ . }}{{ end }}
                     </span>
                     <button type="button" class="btn-standard ph-restore">Restore</button>
                 </li>

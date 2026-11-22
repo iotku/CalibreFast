@@ -1606,6 +1606,31 @@ input[type="date"].meta-input::-webkit-calendar-picker-indicator:hover {
     box-sizing: border-box;
 }
 
+/* A waiting book that matches several placeholders (metadata.ts: showPlaceholders) */
+.edit-status .ph-choice {
+    flex: 1;
+}
+
+.ph-choice ul {
+    margin: 6px 0 10px;
+    padding-left: 1.2rem;
+}
+
+.ph-choice a {
+    color: inherit;
+    text-decoration: underline;
+}
+
+.ph-choice-buttons {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 8px;
+}
+
+.edit-status .ph-choice-buttons .btn-override {
+    margin-left: 0;
+}
+
 .edit-status.pending {
     display: flex;
     background: rgba(200, 169, 110, 0.1);

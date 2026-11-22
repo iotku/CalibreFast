@@ -46,6 +46,7 @@ import (
 	"slices"
 	"strconv"
 	"strings"
+	"sync"
 	"sync/atomic"
 	"time"
 
@@ -463,9 +464,18 @@ func placeholdersToReplace(m *OPFMetadata, forID, choice string) ([]placeholderM
 	return nil, &tooManyPlaceholdersError{ms}
 }
 
+// placeholdersSettled: books just added, whose placeholders the add
+// decided (resolvePlaceholders). The catalog's next reading of them isn't
+// an edit to match against placeholders (placeholdersCatalogChanged), or
+// "replace none", or files added for one placeholder, would be undone.
+var placeholdersSettled sync.Map // book uuid -> struct{}
+
 // resolvePlaceholders: library book bookUUID, just added, replaces the
-// placeholders in ms (placeholdersToReplace).
+// placeholders in ms (placeholdersToReplace), and no others.
 func resolvePlaceholders(ms []placeholderMatch, bookUUID string, by *User) {
+	if bookUUID != "" {
+		placeholdersSettled.Store(bookUUID, struct{}{})
+	}
 	for _, m := range ms {
 		if err := replacePlaceholderLogged(m.P, bookUUID, m.Why, by); err != nil && !errors.Is(err, sql.ErrNoRows) {
 			log.Printf("placeholder %s: %v", m.P.UUID, err)
