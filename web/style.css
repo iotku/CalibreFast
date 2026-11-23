@@ -7,6 +7,9 @@
     --topbar-padding: 6px;
     --topbar-total: calc(var(--topbar-height) + var(--topbar-padding) * 2);
     --page-padding: clamp(12px, 1.5vw, 32px);
+    /* How wide a page's content gets on a wide screen: the book grids,
+       Discover and the aggregate pages share it, so they line up. */
+    --content-max: 1600px;
     --gap-small: 4px;
     --gap-medium: 8px;
     --gap-large: 12px;
@@ -207,7 +210,7 @@ input[type="number"],
     display: grid;
     grid-template-columns: repeat(6, 1fr);
     gap: 10px;
-    max-width: 2800px;
+    max-width: var(--content-max);
     margin: var(--topbar-total) auto 0;
 }
 
@@ -226,7 +229,7 @@ input[type="number"],
 }
 
 .page-head h1 {
-    max-width: 2800px; /* the grid's: lined up with its left edge */
+    max-width: var(--content-max); /* the grid's: lined up with its left edge */
     margin: 0 auto;
     font-size: 1.35rem;
     font-weight: 600;
@@ -288,7 +291,7 @@ input[type="number"],
 .discover {
     --row-gap: 10px;
     --row-cols: 6;
-    max-width: 2800px;
+    max-width: var(--content-max);
     margin: var(--topbar-total) auto 0;
     display: flex;
     flex-direction: column;
@@ -892,16 +895,6 @@ body:not(.home-editing) .greeting-off:not(:has(.greeting-stats-slot:not([hidden]
     }
 }
 
-@media (min-width: 1800px) {
-    .discover {
-        --row-cols: 8;
-    }
-}
-@media (min-width: 2000px) {
-    .discover {
-        --row-cols: 10;
-    }
-}
 @media (max-width: 900px) {
     .discover {
         --row-cols: 4;
@@ -1315,19 +1308,6 @@ body:not(.home-editing) .greeting-off:not(:has(.greeting-stats-slot:not([hidden]
     border-radius: var(--radius-medium);
 }
 
-
-/* Wideboys */
-@media (min-width: 2000px) {
-    #books {
-        grid-template-columns: repeat(10, minmax(0, 1fr));
-    }
-}
-
-@media (min-width: 1800px) {
-    #books {
-        grid-template-columns: repeat(8, minmax(0, 1fr));
-    }
-}
 
 /* ============================================
    Tablet and Mobile
@@ -2822,7 +2802,7 @@ body.book-standalone {
    Sort select above a grid (templates/grid-sort.html)
    ============================================ */
 .grid-sort {
-    max-width: 2800px;
+    max-width: var(--content-max);
     margin: var(--topbar-total) auto 0;
     display: flex;
     justify-content: flex-end;
@@ -2852,7 +2832,7 @@ body.book-standalone {
    Page-Specific - Search
    ============================================ */
 .search-intro {
-    max-width: 2800px;
+    max-width: var(--content-max);
     margin: var(--topbar-total) auto 0;
     font-size: 0.9rem;
 }
@@ -2923,17 +2903,11 @@ body.book-standalone {
 /* ============================================
    Page-Specific - Aggregate
    ============================================ */
+/* The body's padding at the sides, as the book grids have. */
 #aggregate-page {
-    padding: calc(var(--topbar-total) + 1rem) 2rem 2rem;
-    max-width: 1200px;
+    padding: calc(var(--topbar-total) + 1rem) 0 2rem;
+    max-width: var(--content-max);
     margin: 0 auto;
-}
-
-@media (max-width: 640px) {
-    #aggregate-page {
-        padding-left: 16px;
-        padding-right: 16px;
-    }
 }
 
 .agg-cloud {
@@ -3324,7 +3298,7 @@ body.book-standalone {
     flex-wrap: wrap;
     gap: 1rem 2rem;
     align-items: flex-start;
-    max-width: 2800px;
+    max-width: var(--content-max);
     margin: calc(var(--topbar-total) + 1rem) auto 1rem;
 }
 
@@ -5471,7 +5445,7 @@ label.group-row span {
    reached: the Reading list's cards, as in the library (.book), with the
    books not kept on this device as placeholders. */
 .offline-main {
-    max-width: 1400px;
+    max-width: var(--content-max);
     margin: var(--topbar-total) auto 0;
     padding-top: 0.75rem;
 }
