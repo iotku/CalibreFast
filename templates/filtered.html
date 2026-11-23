@@ -194,6 +194,20 @@
                         <span>Description</span>
                         <textarea id="group-description" class="input-search" rows="3" maxlength="10000">{{ .Description }}</textarea>
                     </label>
+                    {{ if eq .Category "author" }}{{/* Hardcover's years until changed here (aggregate_meta.go); the age is worked out from them. */}}
+                    <div class="group-years">
+                        <label class="group-field">
+                            <span>Born (year)</span>
+                            <input id="group-born" class="input-search" type="number" inputmode="numeric" min="1" max="9999" step="1"
+                                   value="{{ with .Profile }}{{ if .Born }}{{ .Born }}{{ end }}{{ end }}" autocomplete="off" data-1p-ignore data-lpignore="true" data-form-type="other" />
+                        </label>
+                        <label class="group-field">
+                            <span>Died (year)</span>
+                            <input id="group-died" class="input-search" type="number" inputmode="numeric" min="1" max="9999" step="1"
+                                   value="{{ with .Profile }}{{ if .Died }}{{ .Died }}{{ end }}{{ end }}" placeholder="Living" autocomplete="off" data-1p-ignore data-lpignore="true" data-form-type="other" />
+                        </label>
+                    </div>
+                    {{ end }}
                 </div>
             </div>
             {{ if .GroupsError }}<p class="group-error">{{ .GroupsError }}</p>{{ end }}

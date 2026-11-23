@@ -730,6 +730,13 @@ var migrations = []string{
 	ALTER TABLE placeholders ADD COLUMN replaced_why TEXT NOT NULL DEFAULT '';
 	ALTER TABLE placeholders ADD COLUMN replaced_user TEXT NOT NULL DEFAULT ''; -- username, kept when the account is deleted
 	`,
+	// 43: an author's years as an editor set them (aggregate_meta.go), in
+	// place of Hardcover's when years_set. 0: not known.
+	`
+	ALTER TABLE aggregate_meta ADD COLUMN years_set  INTEGER NOT NULL DEFAULT 0;
+	ALTER TABLE aggregate_meta ADD COLUMN born_year  INTEGER NOT NULL DEFAULT 0;
+	ALTER TABLE aggregate_meta ADD COLUMN death_year INTEGER NOT NULL DEFAULT 0;
+	`,
 }
 
 // openAppDB opens (creating if needed) and migrates the app database.

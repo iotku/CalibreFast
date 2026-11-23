@@ -264,6 +264,27 @@ func TestHardcoverAuthorProfiles(t *testing.T) {
 		!strings.Contains(page, "data-profile-refresh") {
 		t.Errorf("own description:\n%s", page)
 	}
+	// The age goes under the picture, worked out from the years.
+	if !strings.Contains(page, `<span class="agg-header-age">Age 76</span>`) {
+		t.Errorf("no age:\n%s", page)
+	}
+	// An editor's years win over Hardcover's; set back, Hardcover's show again.
+	if err := setAggregateMeta("author", "John Smith", metaEdit{Years: &metaYears{Set: true, Born: 1950, Died: 2001}}); err != nil {
+		t.Fatal(err)
+	}
+	page = do(admin, "POST", "/api/authors/profile?name=John+Smith", http.StatusOK)
+	if !strings.Contains(page, "Died at 51") || !strings.Contains(page, "1950–2001") || !strings.Contains(page, "Our own words.") {
+		t.Errorf("own years:\n%s", page)
+	}
+	if err := setAggregateMeta("author", "John Smith", metaEdit{Years: &metaYears{}}); err != nil {
+		t.Fatal(err)
+	}
+	if page = do(admin, "POST", "/api/authors/profile?name=John+Smith", http.StatusOK); !strings.Contains(page, "born 1950") {
+		t.Errorf("Hardcover's years again:\n%s", page)
+	}
+	if err := setAggregateMeta("author", "John Smith", metaEdit{Years: &metaYears{Set: true, Born: 2000, Died: 1990}}); err == nil {
+		t.Error("died before born accepted")
+	}
 
 	// Author lookups are spread out; editors' requests don't wait for them.
 	do(alice, "POST", "/api/authors/profile?name=J.+R.+R.+Tolkien", http.StatusAccepted)

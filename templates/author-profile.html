@@ -8,14 +8,18 @@
 <header class="agg-header">
     {{ if or .ImageURL .Description .SeriesStatus (and .Profile .Profile.Shows) }}
     <div class="agg-header-main">
-    {{ if .ImageURL }}<img class="agg-header-img" src="{{ .ImageURL }}" alt="">{{ end }}
+    {{/* An author's years and age go under their picture, or above the text without one. */}}
+    {{ if .ImageURL }}<figure class="agg-header-figure">
+        <img class="agg-header-img" src="{{ .ImageURL }}" alt="">
+        {{ with .Profile }}{{ if .Years }}<figcaption class="agg-header-years">{{ with .Age }}<span class="agg-header-age">{{ . }}</span>{{ end }}<span>{{ .Years }}</span></figcaption>{{ end }}{{ end }}
+    </figure>{{ end }}
     <div class="agg-header-body">
     {{ with .SeriesStatus }}<p class="agg-header-status" id="series-status">
         {{ if .Complete }}<span class="hc-complete">Complete</span> Every book is in the library ({{ .Label }}).
         {{ else }}{{ if .Numbered }}{{ .Have }} of {{ .Numbered }} numbered books{{ if .Books }};{{ end }}{{ end }}
         {{ if .Books }}{{ .BooksHave }} of {{ .Books }} books{{ end }} in the library ({{ .Label }}).{{ end }}
     </p>{{ end }}
-    {{ with .Profile }}{{ with .Years }}<p class="agg-header-years">{{ . }}</p>{{ end }}{{ end }}
+    {{ if not .ImageURL }}{{ with .Profile }}{{ if .Years }}<p class="agg-header-years">{{ with .Age }}<span class="agg-header-age">{{ . }}</span> · {{ end }}{{ .Years }}</p>{{ end }}{{ end }}{{ end }}
     {{ if .Description }}<div class="agg-header-desc">
         <p>{{ .DescLead }}</p>
         {{/* Without more to show, the toggle only shows on a phone, where the lead is cut to four lines. */}}

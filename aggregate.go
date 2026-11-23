@@ -809,6 +809,12 @@ type groupEdit struct {
 	Members     *[]string `json:"members"`     // nil: the grouping is left as it is; empty: dissolved
 	Description *string   `json:"description"` // nil: left as it is
 	RemoveImage bool      `json:"removeImage"`
+	// Years: an author's years of birth and death (0: not known); nil:
+	// left as they are. The same as Hardcover's: Hardcover's again.
+	Years *struct {
+		Born int `json:"born"`
+		Died int `json:"died"`
+	} `json:"years"`
 }
 
 // readGroupEdit reads a group edit: a JSON body, or a multipart form with
@@ -891,7 +897,23 @@ func groupPutHandler(w http.ResponseWriter, r *http.Request) {
 		renameAggregate(c.Key, oldName, newName)
 	}
 
-	if err := setAggregateMeta(c.Key, newName, metaEdit{Description: e.Description, Image: img, RemoveImage: e.RemoveImage}); err != nil {
+	edit := metaEdit{Description: e.Description, Image: img, RemoveImage: e.RemoveImage}
+	if e.Years != nil && c.Key == "author" {
+		y := &metaYears{Set: true, Born: e.Years.Born, Died: e.Years.Died}
+		if err := checkYears(y.Born, y.Died); err != nil {
+			http.Error(w, err.Error(), http.StatusBadRequest)
+			return
+		}
+		hc := hcAuthorFor(newName)
+		if !hc.found() {
+			hc = &hcAuthor{}
+		}
+		if y.Born == hc.Born && y.Died == hc.Died {
+			y = &metaYears{} // Hardcover's, kept up to date with it
+		}
+		edit.Years = y
+	}
+	if err := setAggregateMeta(c.Key, newName, edit); err != nil {
 		log.Println("save aggregate meta:", err)
 		http.Error(w, "failed to save the description or picture: "+err.Error(), http.StatusInternalServerError)
 		return
