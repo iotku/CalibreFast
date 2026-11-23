@@ -107,16 +107,34 @@ function link(item: AggregateEntry, className: string): HTMLAnchorElement {
 // Search
 // ---------------------------------------------------------------------------
 
-/** Entries matching q, best match first, then by book count. */
-function search(all: Entry[], q: string): AggregateEntry[] {
+/**
+ * The best max entries matching q (best match first, then by book count),
+ * and how many match in all. Only the shown ones are sorted: a short query
+ * can match most of a big library.
+ */
+function search(all: Entry[], q: string, max: number): { shown: AggregateEntry[]; total: number } {
     const query = prepareQuery(q);
-    const found: { item: AggregateEntry; score: number }[] = [];
-    for (const e of all) {
-        const score = bestScore(query, e.hay);
-        if (score) found.push({ item: e.item, score });
+    const scores = new Float64Array(all.length);
+    let total = 0;
+    for (let i = 0; i < all.length; i++) {
+        const e = all[i] as Entry;
+        const s = bestScore(query, e.hay);
+        if (s) {
+            scores[i] = s;
+            total++;
+        }
     }
-    found.sort((a, b) => b.score - a.score || b.item.count - a.item.count);
-    return found.map((f) => f.item);
+    const better = (i: number, j: number): number =>
+        (scores[j] as number) - (scores[i] as number) || (all[j] as Entry).item.count - (all[i] as Entry).item.count;
+    let picked: number[] = [];
+    for (let i = 0; i < all.length; i++) {
+        if (!scores[i]) continue;
+        picked.push(i);
+        // Keep at most 2×max, trimming to the best max when full: linear overall.
+        if (picked.length >= 2 * max) picked = picked.sort(better).slice(0, max);
+    }
+    picked.sort(better);
+    return { shown: picked.slice(0, max).map((i) => (all[i] as Entry).item), total };
 }
 
 function showResults(searching: boolean): void {
@@ -133,27 +151,56 @@ async function update(): Promise<void> {
     }
     const all = entries ?? (await load());
     if (input.value.trim() !== q) return; // typed on meanwhile
-    const found = search(all, q);
-    const shown = found.slice(0, MAX_RESULTS);
+    const { shown, total } = search(all, q, MAX_RESULTS);
     results.replaceChildren(...shown.map((item) => link(item, `agg-item agg-t${tierOf(item.count)}`)));
-    if (found.length > shown.length) {
-        results.append(el("p", { className: "agg-more" }, `${found.length - shown.length} more: keep typing to narrow it down.`));
-    } else if (found.length === 0) {
+    if (total > shown.length) {
+        results.append(el("p", { className: "agg-more" }, `${total - shown.length} more: keep typing to narrow it down.`));
+    } else if (total === 0) {
         results.append(el("p", { className: "status-message" }, entries ? "Nothing found." : "Couldn't load the list."));
     }
     showResults(true);
 }
 
-input.addEventListener("input", () => void update());
+// Searching a big list takes a while on a slow phone: wait for a pause in typing rather than
+// searching for every letter, and never run two at once.
+const TYPING_PAUSE = 120;
+let updateTimer = 0;
+let running: Promise<void> | null = null;
+let again = false;
+
+function queueUpdate(): void {
+    clearTimeout(updateTimer);
+    if (!input.value.trim()) {
+        void update(); // clearing the box: at once
+        return;
+    }
+    updateTimer = window.setTimeout(runUpdate, entries ? TYPING_PAUSE : 0);
+}
+
+function runUpdate(): void {
+    if (running) {
+        again = true;
+        return;
+    }
+    running = update().finally(() => {
+        running = null;
+        if (again) {
+            again = false;
+            runUpdate();
+        }
+    });
+}
+
+input.addEventListener("input", queueUpdate);
 input.addEventListener("focus", () => void load(), { once: true });
 input.addEventListener("keydown", (e) => {
     if (e.key === "Escape" && input.value) {
         input.value = "";
-        void update();
+        queueUpdate();
     }
 });
 // The browser may restore the box's text on back/forward.
-if (input.value) void update();
+if (input.value) runUpdate();
 
 // ---------------------------------------------------------------------------
 // Discover
@@ -204,7 +251,8 @@ function sortKey(a: HTMLAnchorElement): string {
     return fold(a.dataset["sort"] ?? a.firstChild?.textContent ?? "").trim();
 }
 
-const keys = new Map(items.map((a) => [a, sortKey(a)]));
+// Folded on first use: most visits never sort A–Z.
+let keys: Map<HTMLAnchorElement, string> | null = null;
 
 function letterOf(key: string): string {
     const c = key.charAt(0);
@@ -214,8 +262,9 @@ function letterOf(key: string): string {
 function setOrder(order: Order): void {
     let sorted: HTMLAnchorElement[];
     if (order === "az") {
+        keys ??= new Map(items.map((a) => [a, sortKey(a)]));
         const collator = new Intl.Collator(undefined, { numeric: true });
-        sorted = items.slice().sort((a, b) => collator.compare(keys.get(a) ?? "", keys.get(b) ?? ""));
+        sorted = items.slice().sort((a, b) => collator.compare(keys?.get(a) ?? "", keys?.get(b) ?? ""));
     } else if (order === "shuffle") {
         sorted = sample(items, items.length, () => false);
     } else {
@@ -227,7 +276,7 @@ function setOrder(order: Order): void {
     let last = "";
     for (const a of sorted) {
         if (order === "az") {
-            const letter = letterOf(keys.get(a) ?? "");
+            const letter = letterOf(keys?.get(a) ?? "");
             if (letter !== last) {
                 last = letter;
                 const id = `agg-letter-${letter === "#" ? "num" : letter}`;

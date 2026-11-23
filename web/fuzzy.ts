@@ -21,36 +21,87 @@ export function fold(s: string): string {
 
 const WORD_SPLIT = /[^\p{L}\p{N}]+/u;
 
+/**
+ * A 32-bit set of the characters in s (code point mod 32). A bit that isn't
+ * set means that character is certainly absent, so masks rule names out
+ * cheaply before the slower checks; a set bit proves nothing.
+ */
+function charMask(s: string): number {
+    let m = 0;
+    for (let i = 0; i < s.length; i++) m |= 1 << (s.charCodeAt(i) & 31);
+    return m;
+}
+
+/** How many characters of s are certainly not in a string with this mask. */
+function missing(s: string, mask: number): number {
+    let n = 0;
+    for (let i = 0; i < s.length; i++) if (!(mask & (1 << (s.charCodeAt(i) & 31)))) n++;
+    return n;
+}
+
 /** A name prepared for matching: folded once, not on every key. */
 export interface Hay {
     text: string; // folded
     words: string[]; // folded words, punctuation dropped
+    wordMasks: number[]; // charMask of each word
+    mask: number; // charMask of text
     starts: Uint8Array; // starts[i] = 1 if text[i] begins a word
+}
+
+const WORD_CHAR = /[\p{L}\p{N}]/u;
+
+/** Whether text[i] is part of a word: a letter or digit (ASCII without a regex). */
+function isWordChar(text: string, i: number): boolean {
+    const c = text.charCodeAt(i);
+    if (c < 128) return (c >= 97 && c <= 122) || (c >= 48 && c <= 57) || (c >= 65 && c <= 90);
+    if (c >= 0xd800 && c <= 0xdfff) {
+        // half of a pair: test the whole character
+        const at = c >= 0xdc00 && i > 0 ? i - 1 : i;
+        return WORD_CHAR.test(String.fromCodePoint(text.codePointAt(at) ?? c));
+    }
+    return WORD_CHAR.test(text.charAt(i));
 }
 
 export function prepare(s: string): Hay {
     const text = fold(s);
     const starts = new Uint8Array(text.length);
-    let prevWordChar = false;
-    for (let i = 0; i < text.length; i++) {
-        const isWordChar = !WORD_SPLIT.test(text[i] ?? "");
-        if (isWordChar && !prevWordChar) starts[i] = 1;
-        prevWordChar = isWordChar;
+    const words: string[] = [];
+    const wordMasks: number[] = [];
+    let mask = 0;
+    let start = -1;
+    let wm = 0;
+    for (let i = 0; i <= text.length; i++) {
+        if (i < text.length && isWordChar(text, i)) {
+            if (start < 0) {
+                start = i;
+                starts[i] = 1;
+                wm = 0;
+            }
+            wm |= 1 << (text.charCodeAt(i) & 31);
+        } else if (start >= 0) {
+            words.push(text.slice(start, i));
+            wordMasks.push(wm);
+            mask |= wm;
+            start = -1;
+        }
     }
-    return { text, words: text.split(WORD_SPLIT).filter(Boolean), starts };
+    return { text, words, wordMasks, mask, starts };
 }
 
 /** A query prepared once per keystroke. */
 export interface Query {
     text: string; // folded, trimmed
     tokens: string[];
+    typos: number[]; // allowedTypos of each token
     compact: string; // letters and digits only, for initials matching
+    compactMask: number;
 }
 
 export function prepareQuery(q: string): Query {
     const text = fold(q.trim());
     const tokens = text.split(WORD_SPLIT).filter(Boolean);
-    return { text, tokens, compact: tokens.join("") };
+    const compact = tokens.join("");
+    return { text, tokens, typos: tokens.map((t) => allowedTypos(t.length)), compact, compactMask: charMask(compact) };
 }
 
 /** Typos a query word of this length may have. */
@@ -58,62 +109,88 @@ function allowedTypos(len: number): number {
     return len >= 8 ? 2 : len >= 4 ? 1 : 0;
 }
 
+// Rows of the edit-distance table, reused: no allocation per comparison.
+let rowA = new Int32Array(64);
+let rowB = new Int32Array(64);
+let rowC = new Int32Array(64);
+
 /**
- * Edit distance (insert, delete, substitute, swap neighbours) between a and
- * b, or max+1 as soon as it must exceed max.
+ * Whether token is within max edits (insert, delete, substitute, swap
+ * neighbours) of the whole word or of a prefix of it as long as the token,
+ * give or take max letters, so a half-typed word with a typo still matches.
+ * One table serves every prefix: its last row holds the distance from the
+ * token to each prefix of the word.
  */
-function distance(a: string, b: string, max: number): number {
-    if (Math.abs(a.length - b.length) > max) return max + 1;
-    let prev2: number[] = [];
-    let prev = Array.from({ length: b.length + 1 }, (_, j) => j);
-    for (let i = 1; i <= a.length; i++) {
-        const cur = [i];
+function nearWord(token: string, word: string, max: number): boolean {
+    const n = token.length;
+    const cols = Math.min(word.length, n + max); // longer prefixes can't be within max
+    if (cols < 1 || n - cols > max) return false;
+    if (rowA.length <= cols) {
+        rowA = new Int32Array(cols * 2);
+        rowB = new Int32Array(cols * 2);
+        rowC = new Int32Array(cols * 2);
+    }
+    let prev2 = rowA;
+    let prev = rowB;
+    let cur = rowC;
+    for (let j = 0; j <= cols; j++) prev[j] = j;
+    for (let i = 1; i <= n; i++) {
+        const a = token.charCodeAt(i - 1);
+        const aBefore = i > 1 ? token.charCodeAt(i - 2) : -1;
+        cur[0] = i;
         let rowMin = i;
-        for (let j = 1; j <= b.length; j++) {
-            const cost = a[i - 1] === b[j - 1] ? 0 : 1;
-            let d = Math.min((prev[j] ?? 0) + 1, (cur[j - 1] ?? 0) + 1, (prev[j - 1] ?? 0) + cost);
-            if (i > 1 && j > 1 && a[i - 1] === b[j - 2] && a[i - 2] === b[j - 1]) {
-                d = Math.min(d, (prev2[j - 2] ?? 0) + 1);
+        for (let j = 1; j <= cols; j++) {
+            const b = word.charCodeAt(j - 1);
+            let d = Math.min((prev[j] as number) + 1, (cur[j - 1] as number) + 1, (prev[j - 1] as number) + (a === b ? 0 : 1));
+            if (i > 1 && j > 1 && a === word.charCodeAt(j - 2) && aBefore === b) {
+                d = Math.min(d, (prev2[j - 2] as number) + 1);
             }
-            cur.push(d);
+            cur[j] = d;
             if (d < rowMin) rowMin = d;
         }
-        if (rowMin > max) return max + 1;
+        if (rowMin > max) return false;
+        const t = prev2;
         prev2 = prev;
         prev = cur;
+        cur = t;
     }
-    return prev[b.length] ?? max + 1;
+    for (let j = Math.max(1, n - max); j <= cols; j++) {
+        if ((prev[j] as number) <= max) return true;
+    }
+    return false;
 }
 
 /**
  * How well one query word matches one name word: 3 prefix, 2 contains,
- * 1 within the allowed typos (of the whole word or of its start, so a
- * half-typed word with a typo still matches), 0 not at all.
+ * 1 within the allowed typos (of the whole word or of its start), 0 not at all.
  */
-function wordScore(token: string, word: string): number {
+function wordScore(token: string, max: number, word: string, wordMask: number): number {
     if (word.startsWith(token)) return 3;
     if (token.length >= 3 && word.includes(token)) return 2;
-    const max = allowedTypos(token.length);
     if (max === 0) return 0;
-    if (distance(token, word, max) <= max) return 1;
-    // a prefix of the word as long as the token, give or take a letter
-    for (let len = token.length - max; len <= token.length + max; len++) {
-        if (len < 1 || len >= word.length) continue;
-        if (distance(token, word.slice(0, len), max) <= max) return 1;
-    }
-    return 0;
+    // Each token letter missing from the word costs an edit.
+    if (missing(token, wordMask) > max) return 0;
+    return nearWord(token, word, max) ? 1 : 0;
 }
 
 /** Every query word matches a different name word: the summed word scores, else 0. */
-function tokensScore(tokens: string[], words: string[]): number {
+function tokensScore(q: Query, h: Hay): number {
+    const { tokens, typos } = q;
+    const { words, wordMasks } = h;
+    // Cheap rejection first: a word too far off for the whole name can't be near any of its words.
+    for (let k = 0; k < tokens.length; k++) {
+        if (missing(tokens[k] ?? "", h.mask) > (typos[k] ?? 0)) return 0;
+    }
     const used = new Uint8Array(words.length);
     let total = 0;
-    for (const t of tokens) {
+    for (let k = 0; k < tokens.length; k++) {
+        const t = tokens[k] ?? "";
+        const max = typos[k] ?? 0;
         let best = 0;
         let bestAt = -1;
         for (let i = 0; i < words.length; i++) {
             if (used[i]) continue;
-            const s = wordScore(t, words[i] ?? "");
+            const s = wordScore(t, max, words[i] ?? "", wordMasks[i] ?? 0);
             if (s > best) {
                 best = s;
                 bestAt = i;
@@ -133,8 +210,8 @@ function tokensScore(tokens: string[], words: string[]): number {
  * continue the current run. Returns the number of runs (fewer is better),
  * else 0.
  */
-function initialsRuns(q: string, h: Hay): number {
-    if (q.length < 2) return 0;
+function initialsRuns(q: string, qMask: number, h: Hay): number {
+    if (q.length < 2 || (qMask & h.mask) !== qMask) return 0;
     let qi = 0;
     let runs = 0;
     let last = -2;
@@ -159,11 +236,11 @@ export function score(q: Query, h: Hay): number {
     const at = h.text.indexOf(q.text);
     if (at >= 0) return h.starts[at] ? 900 : 800;
     if (q.tokens.length) {
-        const t = tokensScore(q.tokens, h.words);
+        const t = tokensScore(q, h);
         // 500 + up to 3 per word, fewer typos ranking higher
         if (t) return 500 + (t * 100) / (3 * q.tokens.length);
     }
-    const runs = initialsRuns(q.compact, h);
+    const runs = initialsRuns(q.compact, q.compactMask, h);
     if (runs) return 100 + 300 / runs;
     return 0;
 }
