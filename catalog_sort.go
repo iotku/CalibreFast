@@ -43,10 +43,14 @@ var sortLabels = map[string]string{
 
 // The sorts each kind of page offers, its default first.
 var (
-	latestSorts   = []string{sortByAdded, sortByTitle, sortByAuthor, sortBySeries, sortByPublished, sortByRating}
-	filteredSorts = []string{sortByTitle, sortByAuthor, sortBySeries, sortByAdded, sortByPublished, sortByRating}
-	seriesSorts   = []string{sortBySeries, sortByTitle, sortByAdded, sortByPublished, sortByRating}
-	searchSorts   = []string{sortByBest, sortByTitle, sortByAuthor, sortBySeries, sortByAdded, sortByPublished, sortByRating}
+	// The Latest page is only ever newest added first, for now: the grid
+	// names the order, without a select (templates/grid-sort.html). The
+	// API still sorts it the other ways.
+	latestSorts    = []string{sortByAdded}
+	latestAPISorts = []string{sortByAdded, sortByTitle, sortByAuthor, sortBySeries, sortByPublished, sortByRating}
+	filteredSorts  = []string{sortByTitle, sortByAuthor, sortBySeries, sortByAdded, sortByPublished, sortByRating}
+	seriesSorts    = []string{sortBySeries, sortByTitle, sortByAdded, sortByPublished, sortByRating}
+	searchSorts    = []string{sortByBest, sortByTitle, sortByAuthor, sortBySeries, sortByAdded, sortByPublished, sortByRating}
 )
 
 // pickSort is the requested sort if it's one of allowed, else the default
@@ -201,7 +205,7 @@ func latestOrder(c *catalog, key string) []int32 {
 // latestSortedHandler: GET /api/latest?sort=…&page=N, a page of Latest in
 // another order than the page files' (newest added first).
 func latestSortedHandler(w http.ResponseWriter, r *http.Request) {
-	key := pickSort(r, latestSorts)
+	key := pickSort(r, latestAPISorts)
 	page, _ := strconv.Atoi(r.URL.Query().Get("page"))
 	page = max(page, 1)
 	c := currentCatalog()

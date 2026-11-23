@@ -13,12 +13,12 @@
     <script src="/static/vendor/htmx.org@4.0.1/dist/ext/hx-preload.min.js"></script>
 </head>
 <body>
-{{ $tb := topbar "Active" .Active "Title" .Display "Sub" .Sub }}
+{{ $tb := topbar "Active" .Active }}
 {{ template "topbar-start" $tb }}
         {{/* The page's actions. Your own (pin to home, add to a shelf) are
-             icons in the bar; the library's (missing book, mark complete,
-             Hardcover, feature, group: editors and admins) are in the
-             Manage menu. On a phone, or a bar too full for them (nav.ts:
+             icons in the bar, with Add Placeholder; the library's (the
+             Manage sidebar, feature, Hardcover: editors and admins) are in
+             the Manage menu. On a phone, or a bar too full for them (nav.ts:
              tb-fold), both go into that menu, behind ⋯, so the pager and
              the user menu stay on screen. */}}
 {{ $own := false }}{{ $feat := false }}{{ $kind := "page" }}{{ with .Label }}{{ $kind = . }}{{ end }}{{ with .Extra }}{{ if .Shelf }}{{ $kind = "shelf" }}{{ end }}{{ end }}{{ with .Extra }}{{ if or .Shelf .TagPin .SeriesPin .SeriesShelf }}{{ $own = true }}{{ end }}{{ if and .Shelf .CanFeature }}{{ $feat = true }}{{ end }}{{ end }}
@@ -74,11 +74,25 @@
         <div class="tb-manage-menu">
 {{ if or .Writable .CanVerify $feat }}
         <button type="button" id="manage-toggle" class="btn-group-toggle" aria-expanded="false" aria-controls="manage-panel"
-                title="Manage this {{ $kind }}: select its books{{ if .CanVerify }}, how many books the series has{{ end }}{{ if or .Writable $feat }}, feature it{{ end }}{{ if .Writable }}, its name, picture and grouped values{{ end }}">
+                title="Manage this {{ $kind }}: select its books{{ if .CanVerify }}, how many books the series has{{ end }}{{ if .Writable }}, its name, picture and grouped values{{ end }}">
             <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="3" y="4" width="18" height="16" rx="2"/><path d="M15 4v16"/></svg>
             <span class="tb-label">Manage {{ capitalize $kind }}</span>
         </button>
 {{ end }}
+{{ if and .Writable .Category }}
+        <button type="button" id="feature-toggle" class="btn-group-toggle" aria-pressed="{{ .Featured }}"
+                data-category="{{ .Category }}" data-key="{{ .Key }}"
+                title="Show this {{ .Label }} at the top of the {{ .Label }} list, for everyone">
+            <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2" stroke-linejoin="round" aria-hidden="true"><path d="M12 3l2.8 5.7 6.2.9-4.5 4.4 1.1 6.2L12 17.3 6.4 20.2l1.1-6.2L3 9.6l6.2-.9z"/></svg>
+            <span class="tb-label">{{ if .Featured }}Featured{{ else }}Feature{{ end }}</span>
+        </button>
+{{ else if $feat }}{{ with .Extra }}{{ with .Shelf }}
+        <button type="button" class="btn-group-toggle shelf-page-btn" data-shelf-action="feature" data-id="{{ .ID }}" aria-pressed="{{ .Featured }}"
+                title="Show this shelf on everyone's home page">
+            <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2" stroke-linejoin="round" aria-hidden="true"><path d="M12 3l2.8 5.7 6.2.9-4.5 4.4 1.1 6.2L12 17.3 6.4 20.2l1.1-6.2L3 9.6l6.2-.9z"/></svg>
+            <span class="tb-label">{{ if .Featured }}Featured{{ else }}Feature{{ end }}</span>
+        </button>
+{{ end }}{{ end }}{{ end }}
 {{ with .Hardcover }}
         <a class="btn-group-toggle" href="{{ . }}" title="{{ if eq $.Category "author" }}Check this author's series on Hardcover{{ else }}Check this series on Hardcover{{ end }}: books missing from the library, and books here without the series">
             <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M4 5a2 2 0 0 1 2-2h12v16H6a2 2 0 0 0-2 2z"/><path d="M4 21V5"/><circle cx="12" cy="10" r="3"/><path d="M14.2 12.2 16 14"/></svg>
@@ -122,32 +136,9 @@
     <div class="manage-panel-body">
     {{/* Shown to editors by select-books.ts, which also starts selecting on a
          Ctrl+click or a long press on a book. */}}
-    <section class="manage-section" id="select-section" aria-labelledby="select-section-title" hidden>
-        <h3 id="select-section-title">Books on this page</h3>
+    <section class="manage-section" id="select-section" aria-label="Select books" hidden>
         <button type="button" id="select-books-btn" class="btn-standard manage-toggle-btn" aria-pressed="false">Select books</button>
-        <p class="manage-hint">Or Ctrl+click a book; on a touch screen, press and hold one.</p>
     </section>
-{{ if or (and .Writable .Category) $feat }}
-    <section class="manage-section" aria-labelledby="feature-section-title">
-        <h3 id="feature-section-title">Featured</h3>
-{{ if and .Writable .Category }}
-            <button type="button" id="feature-toggle" class="btn-standard manage-toggle-btn" aria-pressed="{{ .Featured }}"
-                    data-category="{{ .Category }}" data-key="{{ .Key }}"
-                    title="Show this {{ .Label }} at the top of the {{ .Label }} list, for everyone">
-                <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2" stroke-linejoin="round" aria-hidden="true"><path d="M12 3l2.8 5.7 6.2.9-4.5 4.4 1.1 6.2L12 17.3 6.4 20.2l1.1-6.2L3 9.6l6.2-.9z"/></svg>
-                <span class="tb-label">{{ if .Featured }}Featured{{ else }}Feature{{ end }}</span>
-            </button>
-        <p class="manage-hint">Shown at the top of the {{ .Label }} list, for everyone.</p>
-{{ else }}{{ with .Extra }}{{ with .Shelf }}
-            <button type="button" class="btn-standard manage-toggle-btn shelf-page-btn" data-shelf-action="feature" data-id="{{ .ID }}" aria-pressed="{{ .Featured }}"
-                    title="Show this shelf on everyone's home page">
-                <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2" stroke-linejoin="round" aria-hidden="true"><path d="M12 3l2.8 5.7 6.2.9-4.5 4.4 1.1 6.2L12 17.3 6.4 20.2l1.1-6.2L3 9.6l6.2-.9z"/></svg>
-                <span class="tb-label">{{ if .Featured }}Featured{{ else }}Feature{{ end }}</span>
-            </button>
-        <p class="manage-hint">Shown on everyone's home page.</p>
-{{ end }}{{ end }}{{ end }}
-    </section>
-{{ end }}
 {{ if .CanVerify }}
     <section id="series-verify" class="manage-section series-verify" data-series="{{ .Name }}" aria-labelledby="series-verify-title">
         <div class="manage-section-head">
@@ -236,6 +227,9 @@
     </div>
 </aside>
 {{ end }}
+{{/* The page's name, held under the top bar while the grid scrolls
+     (app-htmx.ts counts it in the header's height). */}}
+<div class="page-head"><h1 title="{{ .Display }}">{{ .Display }}{{ with .Sub }} <span class="page-head-sub">{{ . }}</span>{{ end }}</h1></div>
 {{/* An author's profile may come from Hardcover after the page has loaded
      (hardcover_authors.go, web/author-profile.ts): the header is rendered
      again into #agg-header. */}}
