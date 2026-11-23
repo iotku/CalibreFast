@@ -182,8 +182,8 @@ func TestFilteredSorts(t *testing.T) {
 	}
 }
 
-// The select shows only allow-listed values; whatever ?sort= holds never
-// reaches the page.
+// Latest is always newest added first, from the page files: it names its
+// order, with no select, and whatever ?sort= holds never reaches the page.
 func TestGridSortTemplate(t *testing.T) {
 	sortFixture(t)
 	t.Chdir(t.TempDir())
@@ -194,17 +194,22 @@ func TestGridSortTemplate(t *testing.T) {
 		if strings.Contains(out, "<script>alert") {
 			t.Errorf("%q reached the page", q)
 		}
-		if !strings.Contains(out, `class="grid-sort"`) || !strings.Contains(out, `data-sort-kind="latest"`) {
-			t.Errorf("%q: no sort select", q)
+		if !strings.Contains(out, `Sorted by <span class="grid-sort-fixed">Recently added</span>`) || strings.Contains(out, "grid-sort-select") {
+			t.Errorf("%q: not a fixed sort", q)
 		}
-		wantURL := `data-page-url="/pages/page{n}.json`
-		if q == "?sort=title" {
-			wantURL = `data-page-url="/api/latest?sort=title&page={n}"`
-		}
-		if !strings.Contains(out, wantURL) {
+		if !strings.Contains(out, `data-page-url="/pages/page{n}.json`) {
 			i := strings.Index(out, "data-page-url")
-			t.Errorf("%q: page URL not %s: %.120s", q, wantURL, out[max(i, 0):])
+			t.Errorf("%q: page URL not the page files': %.120s", q, out[max(i, 0):])
 		}
+	}
+	// Pages with a choice still offer the select, with only allow-listed values.
+	c := categoryByKey("series")
+	mux := http.NewServeMux()
+	mux.HandleFunc("/series/", filteredPageHandler(c))
+	rec := httptest.NewRecorder()
+	mux.ServeHTTP(rec, httptest.NewRequest("GET", `/series/Alpha%20Cycle?sort="><script>alert(1)</script>`, nil))
+	if out := rec.Body.String(); strings.Contains(out, "<script>alert") || !strings.Contains(out, "grid-sort-select") {
+		t.Errorf("series page sort select: %v", strings.Contains(out, "grid-sort-select"))
 	}
 }
 

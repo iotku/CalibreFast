@@ -7,6 +7,9 @@
     --topbar-padding: 6px;
     --topbar-total: calc(var(--topbar-height) + var(--topbar-padding) * 2);
     --page-padding: clamp(12px, 1.5vw, 32px);
+    /* How wide a page's content gets on a wide screen: the book grids,
+       Discover and the aggregate pages share it, so they line up. */
+    --content-max: 1600px;
     --gap-small: 4px;
     --gap-medium: 8px;
     --gap-large: 12px;
@@ -207,8 +210,56 @@ input[type="number"],
     display: grid;
     grid-template-columns: repeat(6, 1fr);
     gap: 10px;
-    max-width: 2800px;
+    max-width: var(--content-max);
     margin: var(--topbar-total) auto 0;
+}
+
+/* A page's name (Latest, Authors, an author, a series, a shelf, …),
+   above its description, held under the top bar as the page scrolls. app-htmx.ts
+   counts it in the header's height. Lined up with the grid's left edge,
+   as the description below it is. */
+.page-head {
+    position: sticky;
+    top: var(--topbar-total);
+    z-index: 900; /* under the bar's menus and the Manage sidebar */
+    margin: var(--topbar-total) calc(-1 * var(--page-padding)) 0;
+    padding: 0.5rem var(--page-padding);
+    background: var(--bg-primary);
+    border-bottom: 1px solid var(--border-subtle);
+}
+
+.page-head h1 {
+    max-width: var(--content-max); /* the grid's: lined up with its left edge */
+    margin: 0 auto;
+    font-size: 1.35rem;
+    font-weight: 600;
+    line-height: 1.3;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+}
+
+.page-head-sub {
+    font-size: 0.65em;
+    font-weight: 400;
+    color: var(--text-muted);
+    font-family: var(--mono, ui-monospace, monospace);
+}
+
+.page-head ~ .agg-header-wrap > .agg-header {
+    margin-top: 1rem;
+}
+
+.page-head ~ .grid-sort {
+    margin-top: 0.5rem;
+}
+
+.page-head ~ #books {
+    margin-top: 0.75rem;
+}
+
+.page-head ~ #aggregate-page {
+    padding-top: 1rem;
 }
 
 /* The rows outside the rendered window (web/app-htmx.ts): painted as empty
@@ -244,7 +295,7 @@ input[type="number"],
 .discover {
     --row-gap: 10px;
     --row-cols: 6;
-    max-width: 2800px;
+    max-width: var(--content-max);
     margin: var(--topbar-total) auto 0;
     display: flex;
     flex-direction: column;
@@ -848,16 +899,6 @@ body:not(.home-editing) .greeting-off:not(:has(.greeting-stats-slot:not([hidden]
     }
 }
 
-@media (min-width: 1800px) {
-    .discover {
-        --row-cols: 8;
-    }
-}
-@media (min-width: 2000px) {
-    .discover {
-        --row-cols: 10;
-    }
-}
 @media (max-width: 900px) {
     .discover {
         --row-cols: 4;
@@ -1271,19 +1312,6 @@ body:not(.home-editing) .greeting-off:not(:has(.greeting-stats-slot:not([hidden]
     border-radius: var(--radius-medium);
 }
 
-
-/* Wideboys */
-@media (min-width: 2000px) {
-    #books {
-        grid-template-columns: repeat(10, minmax(0, 1fr));
-    }
-}
-
-@media (min-width: 1800px) {
-    #books {
-        grid-template-columns: repeat(8, minmax(0, 1fr));
-    }
-}
 
 /* ============================================
    Tablet and Mobile
@@ -2778,7 +2806,7 @@ body.book-standalone {
    Sort select above a grid (templates/grid-sort.html)
    ============================================ */
 .grid-sort {
-    max-width: 2800px;
+    max-width: var(--content-max);
     margin: var(--topbar-total) auto 0;
     display: flex;
     justify-content: flex-end;
@@ -2808,7 +2836,7 @@ body.book-standalone {
    Page-Specific - Search
    ============================================ */
 .search-intro {
-    max-width: 2800px;
+    max-width: var(--content-max);
     margin: var(--topbar-total) auto 0;
     font-size: 0.9rem;
 }
@@ -2879,17 +2907,11 @@ body.book-standalone {
 /* ============================================
    Page-Specific - Aggregate
    ============================================ */
+/* The body's padding at the sides, as the book grids have. */
 #aggregate-page {
-    padding: calc(var(--topbar-total) + 1rem) 2rem 2rem;
-    max-width: 1200px;
+    padding: calc(var(--topbar-total) + 1rem) 0 2rem;
+    max-width: var(--content-max);
     margin: 0 auto;
-}
-
-@media (max-width: 640px) {
-    #aggregate-page {
-        padding-left: 16px;
-        padding-right: 16px;
-    }
 }
 
 .agg-cloud {
@@ -3271,14 +3293,32 @@ body.book-standalone {
     white-space: pre-line;
 }
 
-/* An entry's picture and description on its filtered page */
+/* An entry's picture and description on its filtered page, from the
+   grid's left edge, under its name (.page-head). An author's series sit
+   to the right of the description where there's room for them, else
+   wrap below it. */
 .agg-header {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 1rem 2rem;
+    align-items: flex-start;
+    max-width: var(--content-max);
+    margin: calc(var(--topbar-total) + 1rem) auto 1rem;
+}
+
+.agg-header-main {
     display: flex;
     gap: 1rem;
     align-items: flex-start;
-    max-width: 1200px;
-    margin: calc(var(--topbar-total) + 1rem) auto 1rem;
-    padding: 0 var(--page-padding, 16px);
+    flex: 0 1 auto;
+    min-width: 0;
+    max-width: 100%;
+}
+
+.agg-header > .agg-header-series {
+    flex: 1 1 320px;
+    min-width: 0;
+    align-content: flex-start;
 }
 
 .agg-header + #books,
@@ -3376,8 +3416,13 @@ body.book-standalone {
    beside the text, the description shows four lines until "More" is opened,
    and the series chips scroll sideways instead of wrapping. */
 @media (max-width: 640px) {
-    .agg-header {
+    .agg-header,
+    .agg-header-main {
         gap: 0.75rem;
+    }
+
+    .agg-header > .agg-header-series {
+        flex-basis: 100%;
     }
 
     .agg-header-img {
@@ -5404,7 +5449,7 @@ label.group-row span {
    reached: the Reading list's cards, as in the library (.book), with the
    books not kept on this device as placeholders. */
 .offline-main {
-    max-width: 1400px;
+    max-width: var(--content-max);
     margin: var(--topbar-total) auto 0;
     padding-top: 0.75rem;
 }

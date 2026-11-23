@@ -1,10 +1,13 @@
 {{/*
 The sort select above a book grid (catalog_sort.go: gridSort). Changing it
 reloads the page with ?sort= (web/grid-sort.ts), which also remembers the
-choice in this browser for pages of the same Kind. Nothing when the page has
-no sorts.
+choice in this browser for pages of the same Kind. With one sort (Latest),
+just its name; nothing when the page has no sorts.
 */}}
 {{ define "grid-sort" }}{{ if .Options }}
+{{ if eq (len .Options) 1 }}
+<div class="grid-sort"><span>Sorted by <span class="grid-sort-fixed">{{ (index .Options 0).Label }}</span></span></div>
+{{ else }}
 <div class="grid-sort" data-sort-kind="{{ .Kind }}" data-sort-default="{{ .Default }}" data-sort-current="{{ .Current }}">
     <label>Sort by
         <select class="grid-sort-select" name="sort">
@@ -14,4 +17,4 @@ no sorts.
         </select>
     </label>
 </div>
-{{ end }}{{ end }}
+{{ end }}{{ end }}{{ end }}

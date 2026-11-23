@@ -115,7 +115,9 @@ let badgeTimer: ReturnType<typeof setTimeout> | undefined;
 let historyTimer: ReturnType<typeof setTimeout> | undefined;
 let historyPending = false; // the anchor moved since the URL was written
 
-const headerHeight = (): number => document.querySelector<HTMLElement>(".top-bar")?.offsetHeight ?? 0;
+/** The top bar, and the page's name held under it (.page-head, a filtered page's). */
+const headerHeight = (): number =>
+    (document.querySelector<HTMLElement>(".top-bar")?.offsetHeight ?? 0) + (document.querySelector<HTMLElement>(".page-head")?.offsetHeight ?? 0);
 const clamp = (n: number, lo: number, hi: number): number => Math.max(lo, Math.min(n, hi));
 
 /** px of the grid above the screen (under the top bar or scrolled off): row r is at the top when this is r * rowH. */
