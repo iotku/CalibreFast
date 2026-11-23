@@ -9,9 +9,11 @@
     <link rel="stylesheet" href="{{ asset "style.css" }}">
 </head>
 <body>
-{{ $tb := topbar "Active" .Active "Title" .Title "NavTitle" true }}
+{{ $tb := topbar "Active" .Active }}
 {{ template "topbar-start" $tb }}
 {{ template "topbar-end" $tb }}
+{{/* The page's name, held under the top bar, as on the book grids. */}}
+<div class="page-head"><h1>{{ .Title }}</h1></div>
 <main id="aggregate-page" data-src="{{ .DataURL }}" data-prefix="{{ .Prefix }}" data-tiers="{{ .Tiers }}">
     {{/* Finds every entry, single-book ones too (web/aggregate.ts). */}}
     <div class="agg-search">

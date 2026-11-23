@@ -186,7 +186,7 @@ type LibraryInfo struct {
 // IndexPageData is passed to index.html.
 type IndexPageData struct {
 	Title      string
-	Heading    string // shown in the top bar
+	Heading    string // the page's name, above the grid
 	Active     string // top-bar nav item
 	TotalBooks int
 	PagesDir   string // where the page files are: "/pages/", "/pages/shuffle/"

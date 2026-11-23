@@ -13,10 +13,12 @@
         <script src="/static/vendor/htmx.org@4.0.1/dist/ext/hx-preload.min.js"></script>
     </head>
     <body>
-{{ $tb := topbar "Title" .Heading "Active" .Active "NavTitle" (eq .Active "latest") }}
+{{ $tb := topbar "Active" .Active }}
 {{ template "topbar-start" $tb }}
 {{ template "topbar-pager" }}
 {{ template "topbar-end" $tb }}
+        {{/* The page's name, held under the top bar, as on the filtered pages. */}}
+        <div class="page-head"><h1>{{ .Heading }}</h1></div>
         {{ template "grid-sort" .Sort }}
         <div id="books" data-page-url="{{ with .PageURL }}{{ . }}&page={n}{{ else }}{{ .PagesDir }}page{n}.json?v={{ .Version }}{{ end }}" data-page-size="{{ booksPerPage }}" data-total-books="{{ .TotalBooks }}"{{ with .EmptyText }} data-empty-text="{{ . }}"{{ end }}></div>
         <div id="book-modal" class="modal-overlay">

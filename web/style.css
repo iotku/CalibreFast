@@ -214,8 +214,8 @@ input[type="number"],
     margin: var(--topbar-total) auto 0;
 }
 
-/* A filtered page's name (an author, a series, a shelf, …), above its
-   description, held under the top bar as the grid scrolls. app-htmx.ts
+/* A page's name (Latest, Authors, an author, a series, a shelf, …),
+   above its description, held under the top bar as the page scrolls. app-htmx.ts
    counts it in the header's height. Lined up with the grid's left edge,
    as the description below it is. */
 .page-head {
@@ -256,6 +256,10 @@ input[type="number"],
 
 .page-head ~ #books {
     margin-top: 0.75rem;
+}
+
+.page-head ~ #aggregate-page {
+    padding-top: 1rem;
 }
 
 /* The rows outside the rendered window (web/app-htmx.ts): painted as empty
