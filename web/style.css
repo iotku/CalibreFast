@@ -3962,10 +3962,17 @@ body.book-standalone {
 
 /* Folded, on a phone or a bar still too full (nav.ts: tb-fold): your own
    actions join the Manage menu, and its button is ⋯. */
+.site-bar.tb-fold .tb-actions {
+    position: static;
+}
+
 .site-bar.tb-fold .tb-actions-pop {
     position: absolute;
     top: calc(100% + 8px);
-    left: 0; /* under ⋯, near the left of a folded bar */
+    /* Against the screen, not the button: never past either edge, and on a
+       very narrow one the full width. */
+    left: auto;
+    right: 8px;
     max-width: calc(100vw - 16px);
     z-index: 1000;
     display: flex;
@@ -4049,10 +4056,15 @@ body.book-standalone {
 }
 
 @media (max-width: 640px) {
+    .site-bar .tb-actions {
+        position: static;
+    }
+
     .site-bar .tb-actions-pop {
         position: absolute;
         top: calc(100% + 8px);
-        left: 0; /* under ⋯, near the left of a folded bar */
+        left: auto; /* against the screen (the bar is fixed), not the button */
+        right: 8px;
         max-width: calc(100vw - 16px);
         z-index: 1000;
         display: flex;
