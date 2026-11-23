@@ -13,6 +13,7 @@ import (
 	"path/filepath"
 	"regexp"
 	"strings"
+	"time"
 
 	"github.com/iotku/CalibreFast/pkg/imageutil"
 	"github.com/iotku/CalibreFast/pkg/langcodes"
@@ -47,11 +48,16 @@ type aggImage struct {
 	ext  string // "jpg" or "svg"
 }
 
-// AggregateMeta is an entry's description and picture.
+// AggregateMeta is an entry's description and picture, and an author's
+// years when an editor set them (YearsSet; 0: not known).
 type AggregateMeta struct {
 	Description string
 	Image       string // file name in aggregateImagesDir, "" for none
+	YearsSet    bool
+	Born, Died  int
 }
+
+func (m AggregateMeta) empty() bool { return m.Description == "" && m.Image == "" && !m.YearsSet }
 
 func (m AggregateMeta) imageURL() string {
 	if m.Image == "" {
@@ -66,15 +72,15 @@ func aggregateMetaFor(cat, name string) (AggregateMeta, bool) {
 	if appDB == nil {
 		return m, false
 	}
-	err := appDB.QueryRow(`SELECT description, image FROM aggregate_meta WHERE category = ? AND name = ?`, cat, name).
-		Scan(&m.Description, &m.Image)
+	err := appDB.QueryRow(`SELECT description, image, years_set, born_year, death_year FROM aggregate_meta WHERE category = ? AND name = ?`, cat, name).
+		Scan(&m.Description, &m.Image, &m.YearsSet, &m.Born, &m.Died)
 	if err != nil {
 		if !errors.Is(err, sql.ErrNoRows) {
 			log.Printf("aggregate meta %s/%s: %v", cat, name, err)
 		}
 		return m, false
 	}
-	return m, m.Description != "" || m.Image != ""
+	return m, !m.empty()
 }
 
 // aggregateImage is the picture to save for an uploaded image's bytes: an
@@ -149,14 +155,40 @@ func removeUnusedAggregateImage(name string) {
 }
 
 // metaEdit is a change to an entry's meta: nil Description leaves it as
-// it is, Image replaces the picture, RemoveImage drops it.
+// it is, Image replaces the picture, RemoveImage drops it. Years (an
+// author's), when not nil, are what the page shows from now on; nil
+// Years.Set goes back to Hardcover's.
 type metaEdit struct {
 	Description *string
 	Image       *aggImage
 	RemoveImage bool
+	Years       *metaYears
 }
 
-func (e metaEdit) empty() bool { return e.Description == nil && e.Image == nil && !e.RemoveImage }
+type metaYears struct {
+	Set        bool
+	Born, Died int
+}
+
+func (e metaEdit) empty() bool {
+	return e.Description == nil && e.Image == nil && !e.RemoveImage && e.Years == nil
+}
+
+// checkYears: a year of birth and of death that may be shown (0: not known).
+func checkYears(born, died int) error {
+	this := time.Now().Year()
+	switch {
+	case born < 0 || born > this:
+		return fmt.Errorf("the year of birth must be between 1 and %d", this)
+	case died < 0 || died > this:
+		return fmt.Errorf("the year of death must be between 1 and %d", this)
+	case born > 0 && died > 0 && died < born:
+		return errors.New("the year of death is before the year of birth")
+	case born > 0 && died > 0 && died-born > 130:
+		return errors.New("that's more than 130 years")
+	}
+	return nil
+}
 
 // setAggregateMeta applies e to the entry cat/name. A row left with no
 // description and no picture is deleted.
@@ -172,6 +204,15 @@ func setAggregateMeta(cat, name string, e metaEdit) error {
 			return fmt.Errorf("the description is too long (at most %d characters)", aggregateDescriptionMax)
 		}
 	}
+	if y := e.Years; y != nil {
+		if err := checkYears(y.Born, y.Died); err != nil {
+			return err
+		}
+		m.YearsSet, m.Born, m.Died = y.Set, y.Born, y.Died
+		if !y.Set {
+			m.Born, m.Died = 0, 0
+		}
+	}
 	if e.RemoveImage {
 		m.Image = ""
 	}
@@ -183,15 +224,17 @@ func setAggregateMeta(cat, name string, e metaEdit) error {
 		m.Image = img
 	}
 	var err error
-	if m.Description == "" && m.Image == "" {
+	if m.empty() {
 		_, err = appDB.Exec(`DELETE FROM aggregate_meta WHERE category = ? AND name = ?`, cat, name)
 	} else {
 		_, err = appDB.Exec(`
-			INSERT INTO aggregate_meta (category, name, description, image, updated_at) VALUES (?, ?, ?, ?, ?)
+			INSERT INTO aggregate_meta (category, name, description, image, years_set, born_year, death_year, updated_at)
+			VALUES (?, ?, ?, ?, ?, ?, ?, ?)
 			ON CONFLICT (category, name) DO UPDATE SET
-				name = excluded.name, description = excluded.description,
-				image = excluded.image, updated_at = excluded.updated_at`,
-			cat, name, m.Description, m.Image, nowUnix())
+				name = excluded.name, description = excluded.description, image = excluded.image,
+				years_set = excluded.years_set, born_year = excluded.born_year, death_year = excluded.death_year,
+				updated_at = excluded.updated_at`,
+			cat, name, m.Description, m.Image, m.YearsSet, m.Born, m.Died, nowUnix())
 	}
 	if err != nil {
 		return err

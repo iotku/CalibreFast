@@ -423,6 +423,8 @@ export interface GroupEdit {
     /** Absent: left as it is. */
     description?: string;
     removeImage?: boolean;
+    /** An author's years of birth and death (0: not known). Absent: left as they are. */
+    years?: { born: number; died: number };
 }
 
 /** PUT /api/groups/{cat}/{value} response (Go: groupPutHandler). */

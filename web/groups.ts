@@ -79,6 +79,11 @@ function init(panel: HTMLElement, sidebar: HTMLElement): void {
     const addInput = byId("group-add", HTMLInputElement);
     const nameInput = byId("group-name", HTMLInputElement);
     const descInput = byId("group-description", HTMLTextAreaElement);
+    // An author's years (absent elsewhere).
+    const bornInput = document.querySelector<HTMLInputElement>("#group-born");
+    const diedInput = document.querySelector<HTMLInputElement>("#group-died");
+    const initialBorn = bornInput?.value ?? "";
+    const initialDied = diedInput?.value ?? "";
     const status = byId("group-status");
     const saveBtn = byId("group-save", HTMLButtonElement);
     const lower = (s: string): string => s.toLowerCase();
@@ -112,8 +117,20 @@ function init(panel: HTMLElement, sidebar: HTMLElement): void {
         return descInput.value.trim() !== initialDesc.trim();
     }
 
+    function yearsDirty(): boolean {
+        return (bornInput?.value.trim() ?? "") !== initialBorn || (diedInput?.value.trim() ?? "") !== initialDied;
+    }
+
+    /** A year field's value: 0 when empty, null when it isn't a year. */
+    function yearOf(input: HTMLInputElement | null): number | null {
+        const v = input?.value.trim() ?? "";
+        if (v === "") return 0;
+        const n = Number(v);
+        return Number.isInteger(n) && n > 0 && n <= new Date().getFullYear() ? n : null;
+    }
+
     function dirty(): boolean {
-        return groupDirty() || descDirty() || newImage !== null || removeImage;
+        return groupDirty() || descDirty() || yearsDirty() || newImage !== null || removeImage;
     }
 
     // The saved picture stays in the <img> the server rendered; a new pick
@@ -298,6 +315,19 @@ function init(panel: HTMLElement, sidebar: HTMLElement): void {
         }
         if (descDirty()) edit.description = descInput.value.trim();
         if (removeImage && !newImage) edit.removeImage = true;
+        if (yearsDirty()) {
+            const born = yearOf(bornInput);
+            const died = yearOf(diedInput);
+            if (born === null || died === null) {
+                setStatus("Years must be whole years, no later than this one.", true);
+                return;
+            }
+            if (born && died && died < born) {
+                setStatus("The year of death is before the year of birth.", true);
+                return;
+            }
+            edit.years = { born, died };
+        }
         let init: RequestInit;
         if (newImage) {
             const form = new FormData();
@@ -345,6 +375,8 @@ function init(panel: HTMLElement, sidebar: HTMLElement): void {
     addInput.addEventListener("blur", closeSuggestions);
     nameInput.addEventListener("input", render);
     descInput.addEventListener("input", render);
+    bornInput?.addEventListener("input", render);
+    diedInput?.addEventListener("input", render);
     byId("group-image-pick").addEventListener("click", () => imageFile.click());
     imageFile.addEventListener("change", () => {
         const file = imageFile.files?.[0];
@@ -365,6 +397,8 @@ function init(panel: HTMLElement, sidebar: HTMLElement): void {
         members = initial.map((value) => ({ value, removed: false, added: false }));
         nameInput.value = initialName;
         descInput.value = initialDesc;
+        if (bornInput) bornInput.value = initialBorn;
+        if (diedInput) diedInput.value = initialDied;
         newImage = null;
         removeImage = false;
         imageFile.value = "";

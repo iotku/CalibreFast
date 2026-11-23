@@ -90,17 +90,35 @@ func (a *hcAuthor) hardcoverURL() string {
 
 // years: "1948–2015", "born 1948", "died 1616", or "".
 func (a *hcAuthor) years() string {
-	switch {
-	case a == nil:
+	if a == nil {
 		return ""
-	case a.Born > 0 && a.Died > 0:
-		return fmt.Sprintf("%d–%d", a.Born, a.Died)
-	case a.Born > 0:
-		return fmt.Sprintf("born %d", a.Born)
-	case a.Died > 0:
-		return fmt.Sprintf("died %d", a.Died)
+	}
+	return lifeYears(a.Born, a.Died)
+}
+
+// lifeYears: "1948–2015", "born 1948", "died 1616", or "" (0: not known).
+func lifeYears(born, died int) string {
+	switch {
+	case born > 0 && died > 0:
+		return fmt.Sprintf("%d–%d", born, died)
+	case born > 0:
+		return fmt.Sprintf("born %d", born)
+	case died > 0:
+		return fmt.Sprintf("died %d", died)
 	}
 	return ""
+}
+
+// lifeAge: "Age 77", or "Died at 41"; "" without a year of birth. From the
+// years alone, so it may be one more than the true age.
+func lifeAge(born, died int, now time.Time) string {
+	switch {
+	case born <= 0:
+		return ""
+	case died > 0:
+		return fmt.Sprintf("Died at %d", died-born)
+	}
+	return fmt.Sprintf("Age %d", now.Year()-born)
 }
 
 // needsLookup: the author was never looked up, or the last lookup failed
@@ -413,7 +431,11 @@ func hcAuthorNameVariants(name string) []string {
 
 // AuthorProfile is what the author's page shows of Hardcover's lookup.
 type AuthorProfile struct {
-	Years        string // "1948–2015"
+	Years string // "1948–2015"
+	Age   string // "Age 77", "Died at 41"
+	// Born and Died: the years shown (0: not known), for the Manage
+	// sidebar's fields (filtered.html).
+	Born, Died   int
 	HardcoverURL string // their Hardcover page, "" for none
 	// FromHardcover: the bio or the picture shown is Hardcover's.
 	FromHardcover bool
@@ -438,8 +460,13 @@ func hcFillAuthorProfile(r *http.Request, data *FilteredPageData) {
 		if data.ImageURL == "" && a.imageURL() != "" {
 			data.ImageURL, p.FromHardcover = a.imageURL(), true
 		}
-		p.Years, p.HardcoverURL = a.years(), a.hardcoverURL()
+		p.Born, p.Died, p.HardcoverURL = a.Born, a.Died, a.hardcoverURL()
 	}
+	// An editor's years win over Hardcover's.
+	if m, ok := aggregateMetaFor(data.Category, data.Name); ok && m.YearsSet {
+		p.Born, p.Died = m.Born, m.Died
+	}
+	p.Years, p.Age = lifeYears(p.Born, p.Died), lifeAge(p.Born, p.Died, hcNow())
 	q := "?" + url.Values{"name": {data.Name}}.Encode()
 	if hardcoverEnabled() {
 		if currentUser(r) != nil && a.needsLookup() && data.TotalBooks > data.Missing {
@@ -556,7 +583,7 @@ func (p *AuthorProfile) Shows() bool {
 
 // descLeadMax: a description longer than this shows its first part, the
 // rest behind "More".
-const descLeadMax = 600
+const descLeadMax = 300
 
 // splitDescription: a long description's first paragraphs (about
 // descLeadMax/2 at least, cut at a sentence when one paragraph is long),

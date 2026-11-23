@@ -3326,12 +3326,34 @@ body.book-standalone {
     margin-top: 0;
 }
 
+.agg-header-figure {
+    margin: 0;
+    flex: none;
+    width: 160px;
+    display: flex;
+    flex-direction: column;
+    gap: 0.4rem;
+}
+
 .agg-header-img {
     width: 160px;
     max-height: 160px;
     object-fit: cover;
     border-radius: var(--radius-medium);
     flex: none;
+}
+
+.agg-header-figure .agg-header-years {
+    display: flex;
+    flex-direction: column;
+    text-align: center;
+    font-size: 0.85em;
+    line-height: 1.35;
+}
+
+.agg-header-age {
+    color: var(--text-primary);
+    font-weight: 600;
 }
 
 .agg-header-body {
@@ -3425,9 +3447,14 @@ body.book-standalone {
         flex-basis: 100%;
     }
 
+    .agg-header-figure,
     .agg-header-img {
         width: 80px;
         max-height: 80px;
+    }
+
+    .agg-header-figure {
+        max-height: none;
     }
 
     .agg-header-body {
@@ -4434,6 +4461,12 @@ body:has(.manage-panel:not([hidden])) {
 .group-field .input-search {
     width: 100%;
     box-sizing: border-box;
+}
+
+.group-years {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 0.5rem;
 }
 
 .group-field textarea {
