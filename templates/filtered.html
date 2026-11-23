@@ -103,7 +103,6 @@
         </div>
         </div>
 {{ end }}
-{{ template "topbar-pager" }}
 {{ with .Extra }}{{ with .Arrange }}{{ if gt $.TotalBooks 1 }}
         {{/* Arrange the books: drag or move them (list-edit.ts, list_order.go). */}}
         <button type="button" class="tb-icon edit-toggle" id="list-edit" data-arrange="{{ . }}" aria-pressed="false" aria-label="Arrange books" title="Arrange books">
@@ -243,7 +242,7 @@
 {{ end }}
 {{/* The page's name, held under the top bar while the grid scrolls
      (app-htmx.ts counts it in the header's height). */}}
-<div class="page-head"><h1 title="{{ .Display }}">{{ .Display }}{{ with .Sub }} <span class="page-head-sub">{{ . }}</span>{{ end }}</h1></div>
+<div class="page-head"><div class="page-head-row"><h1 title="{{ .Display }}">{{ .Display }}{{ with .Sub }} <span class="page-head-sub">{{ . }}</span>{{ end }}</h1>{{ template "page-pager" (gt .TotalBooks booksPerPage) }}</div></div>
 {{/* An author's profile may come from Hardcover after the page has loaded
      (hardcover_authors.go, web/author-profile.ts): the header is rendered
      again into #agg-header. */}}

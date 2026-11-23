@@ -1,6 +1,6 @@
 {{/*
 Shared top bar for every page except the readers. Page-specific tools (the
-pager, the Group button, …) go between the two halves:
+Group button, …) go between the two halves:
 
     {{ $tb := topbar "Active" "authors" "Title" .Display }}
     {{ template "topbar-start" $tb }}
@@ -67,12 +67,14 @@ pages stay the same for everyone and cacheable.
 <script type="module" src="{{ asset "nav.js" }}"></script>
 {{ end }}
 
-{{/* Page navigation for the scrolling book grids (web/app-htmx.ts). */}}
-{{ define "topbar-pager" }}
-        <div class="tb-pager">
+{{/* Page navigation for the scrolling book grids (web/app-htmx.ts), on the
+     right of the page's sticky heading. Given whether there's more than one
+     page: with one, it's left hidden. */}}
+{{ define "page-pager" }}
+        <div class="page-pager"{{ if not . }} hidden{{ end }}>
             <button id="prev-page" class="tb-icon" aria-label="Previous page">&lsaquo;</button>
             <input id="page-input" type="number" min="1" value="1" class="input-page" aria-label="Page" />
-            <span class="tb-pager-total">/ <span id="total-pages">—</span></span>
+            <span class="page-pager-total">/ <span id="total-pages">—</span></span>
             <button id="next-page" class="tb-icon" aria-label="Next page">&rsaquo;</button>
         </div>
 {{ end }}

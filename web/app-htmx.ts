@@ -18,7 +18,8 @@
  *   data-page-size   books per page
  *   data-total-books
  *   data-empty-text
- * Page nav controls (#page-input, #prev-page, #next-page) are optional.
+ * Page nav controls (#page-input, #prev-page, #next-page; the page-pager
+ * template, in the page's sticky heading) are optional.
  *
  * The URL keeps ?page=N, the page at the top of the screen; history.state
  * keeps the exact book, so a reload or back/forward returns to the same row.
@@ -159,6 +160,8 @@ window.addEventListener("DOMContentLoaded", () => {
     if (sortRedirecting) return; // going to this page in the remembered order
     if (totalPagesEl) totalPagesEl.textContent = String(totalPages);
     if (pageInputEl) pageInputEl.max = String(totalPages); // arrow keys clamp natively
+    // In the page's heading; only worth showing with more than one page.
+    pageInputEl?.closest<HTMLElement>(".page-pager")?.toggleAttribute("hidden", totalPages <= 1);
     updateNavigationButtons();
     if (!total) return setStatus(cfg["emptyText"] ?? "No books found.");
 

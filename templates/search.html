@@ -15,8 +15,9 @@
 <body>
 {{ $tb := topbar "Query" .Query }}
 {{ template "topbar-start" $tb }}
-{{ template "topbar-pager" }}
 {{ template "topbar-end" $tb }}
+{{/* The page's name, held under the top bar, as on the other grids. */}}
+<div class="page-head"><div class="page-head-row"><h1>{{ if .Query }}Results for “{{ .Query }}”{{ else }}Search{{ end }}</h1>{{ template "page-pager" (and .Query (gt .TotalBooks booksPerPage)) }}</div></div>
 <div class="search-intro">
 {{ range $i, $g := .Links }}
     {{/* The first 20; "Show all" (web/search-links.ts) unhides the rest. */}}
