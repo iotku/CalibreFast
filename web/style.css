@@ -213,8 +213,8 @@ input[type="number"],
 
 /* A filtered page's name (an author, a series, a shelf, …), above its
    description, held under the top bar as the grid scrolls. app-htmx.ts
-   counts it in the header's height. Lined up with the description when
-   there is one, else with the grid. */
+   counts it in the header's height. Lined up with the grid's left edge,
+   as the description below it is. */
 .page-head {
     position: sticky;
     top: var(--topbar-total);
@@ -226,7 +226,7 @@ input[type="number"],
 }
 
 .page-head h1 {
-    max-width: 2800px;
+    max-width: 2800px; /* the grid's: lined up with its left edge */
     margin: 0 auto;
     font-size: 1.35rem;
     font-weight: 600;
@@ -234,12 +234,6 @@ input[type="number"],
     white-space: nowrap;
     overflow: hidden;
     text-overflow: ellipsis;
-}
-
-.page-head:has(+ .agg-header-wrap > .agg-header) h1 {
-    max-width: 1200px;
-    padding: 0 var(--page-padding);
-    box-sizing: border-box;
 }
 
 .page-head-sub {
@@ -3321,14 +3315,32 @@ body.book-standalone {
     white-space: pre-line;
 }
 
-/* An entry's picture and description on its filtered page */
+/* An entry's picture and description on its filtered page, from the
+   grid's left edge, under its name (.page-head). An author's series sit
+   to the right of the description where there's room for them, else
+   wrap below it. */
 .agg-header {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 1rem 2rem;
+    align-items: flex-start;
+    max-width: 2800px;
+    margin: calc(var(--topbar-total) + 1rem) auto 1rem;
+}
+
+.agg-header-main {
     display: flex;
     gap: 1rem;
     align-items: flex-start;
-    max-width: 1200px;
-    margin: calc(var(--topbar-total) + 1rem) auto 1rem;
-    padding: 0 var(--page-padding, 16px);
+    flex: 0 1 auto;
+    min-width: 0;
+    max-width: 100%;
+}
+
+.agg-header > .agg-header-series {
+    flex: 1 1 320px;
+    min-width: 0;
+    align-content: flex-start;
 }
 
 .agg-header + #books,
@@ -3426,8 +3438,13 @@ body.book-standalone {
    beside the text, the description shows four lines until "More" is opened,
    and the series chips scroll sideways instead of wrapping. */
 @media (max-width: 640px) {
-    .agg-header {
+    .agg-header,
+    .agg-header-main {
         gap: 0.75rem;
+    }
+
+    .agg-header > .agg-header-series {
+        flex-basis: 100%;
     }
 
     .agg-header-img {

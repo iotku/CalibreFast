@@ -3,7 +3,11 @@
      status. In filtered.html, and alone from POST /api/authors/profile. */}}
 {{ define "agg-header" }}
 {{ if or .Description .ImageURL .Series .SeriesStatus (and .Profile .Profile.Shows) }}
+{{/* The picture and text on the left; the series beside them where
+     there's room, else below (style.css: .agg-header). */}}
 <header class="agg-header">
+    {{ if or .ImageURL .Description .SeriesStatus (and .Profile .Profile.Shows) }}
+    <div class="agg-header-main">
     {{ if .ImageURL }}<img class="agg-header-img" src="{{ .ImageURL }}" alt="">{{ end }}
     <div class="agg-header-body">
     {{ with .SeriesStatus }}<p class="agg-header-status" id="series-status">
@@ -22,12 +26,14 @@
         {{ else if .HardcoverURL }}<a href="{{ .HardcoverURL }}" rel="noopener noreferrer" target="_blank">On Hardcover</a>{{ end }}
         {{ with .Refresh }}<button type="button" class="btn-link" data-profile-refresh="{{ . }}">Look up again</button>{{ end }}
     </p>{{ end }}{{ end }}
+    </div>
+    </div>
+    {{ end }}
     {{ with .Series }}
     <nav class="agg-header-series" aria-label="Series">
         {{ range . }}<a class="agg-chip" href="{{ .Href }}">{{ .Name }}{{ with .Status }}{{ template "agg-coverage" . }}{{ end }}<span class="agg-count">{{ .Count }}</span></a>{{ end }}
     </nav>
     {{ end }}
-    </div>
 </header>
 {{ end }}
 {{ end }}
