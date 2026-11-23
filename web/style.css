@@ -228,9 +228,52 @@ input[type="number"],
     border-bottom: 1px solid var(--border-subtle);
 }
 
-.page-head h1 {
+.page-head-row {
     max-width: var(--content-max); /* the grid's: lined up with its left edge */
     margin: 0 auto;
+    display: flex;
+    align-items: center;
+    gap: 1rem;
+    min-height: 36px;
+}
+
+/* Which page of the grid, and a jump to another (app-htmx.ts). */
+.page-pager {
+    display: flex;
+    align-items: center;
+    gap: 4px;
+    flex: none;
+    margin-left: auto;
+    font-size: 0.9rem;
+    color: var(--text-secondary);
+}
+
+.page-pager[hidden] {
+    display: none;
+}
+
+.page-pager .input-page {
+    width: 52px;
+    height: 32px;
+    padding: 0 4px;
+}
+
+.page-head .page-pager .tb-icon {
+    width: 32px;
+    height: 32px;
+    min-width: 32px;
+    cursor: pointer;
+}
+
+.page-pager .tb-icon:disabled {
+    opacity: 0.35;
+    cursor: default;
+}
+
+.page-head h1 {
+    flex: 1;
+    min-width: 0;
+    margin: 0;
     font-size: 1.35rem;
     font-weight: 600;
     line-height: 1.3;
@@ -255,6 +298,10 @@ input[type="number"],
 }
 
 .page-head ~ #books {
+    margin-top: 0.75rem;
+}
+
+.page-head ~ .search-intro {
     margin-top: 0.75rem;
 }
 
@@ -796,7 +843,7 @@ body:not(.home-editing) .greeting-off:not(:has(.greeting-stats-slot:not([hidden]
 .list-editing #books,
 .list-editing #status,
 .list-editing #scroll-badge,
-.list-editing .tb-pager {
+.list-editing .page-pager {
     display: none !important;
 }
 .arrange {
@@ -1465,7 +1512,6 @@ body:not(.home-editing) .greeting-off:not(:has(.greeting-stats-slot:not([hidden]
 }
 
 .tb-tools,
-.tb-pager,
 .tb-user {
     display: flex;
     align-items: center;
@@ -1483,18 +1529,6 @@ body:not(.home-editing) .greeting-off:not(:has(.greeting-stats-slot:not([hidden]
     margin-right: auto;
 }
 
-.tb-pager {
-    gap: 4px;
-    font-size: 0.9rem;
-    color: var(--text-secondary);
-}
-
-.site-bar .tb-pager .input-page {
-    width: 52px;
-    height: 36px;
-    padding: 0 4px;
-}
-
 .tb-user {
     justify-content: flex-end;
 }
@@ -1509,7 +1543,8 @@ body:not(.home-editing) .greeting-off:not(:has(.greeting-stats-slot:not([hidden]
     height: 6px;
 }
 
-.site-bar .tb-icon {
+.site-bar .tb-icon,
+.page-pager .tb-icon {
     width: 36px;
     height: 36px;
     min-width: 36px;
@@ -1526,6 +1561,7 @@ body:not(.home-editing) .greeting-off:not(:has(.greeting-stats-slot:not([hidden]
 }
 
 .site-bar .tb-icon:hover,
+.page-pager .tb-icon:hover:not(:disabled),
 .site-bar .tb-icon[aria-current="page"],
 .site-bar .tb-icon[aria-expanded="true"] {
     color: var(--text-primary);
@@ -1835,13 +1871,10 @@ body:not(.home-editing) .greeting-off:not(:has(.greeting-stats-slot:not([hidden]
     }
 
 
-    .site-bar .tb-pager .input-page {
-        width: 40px;
+    .page-pager .input-page {
+        width: 44px;
     }
 
-    /* Phones scroll; the page box is still there to jump. */
-    .tb-pager #prev-page,
-    .tb-pager #next-page,
     .site-bar .btn-group-toggle .tb-label {
         display: none;
     }
@@ -1850,13 +1883,11 @@ body:not(.home-editing) .greeting-off:not(:has(.greeting-stats-slot:not([hidden]
 
 /* A bar with more in it than fits (nav.ts adds these, a step at a time, to
    keep the user menu on screen). tb-tight: as on a phone, the shortcuts
-   (all in the user menu too), the user name and the pager's arrows go;
+   (all in the user menu too) and the user name go;
    tb-tighter: the browse links go into the ☰ menu (above); tb-tightest:
    the search box becomes its icon. */
 .site-bar.tb-tight .tb-shortcut,
-.site-bar.tb-tight .tb-user-name,
-.site-bar.tb-tight .tb-pager #prev-page,
-.site-bar.tb-tight .tb-pager #next-page {
+.site-bar.tb-tight .tb-user-name {
     display: none !important;
 }
 
