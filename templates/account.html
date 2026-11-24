@@ -106,7 +106,7 @@
         <p class="sync-intro">Users can link their own <a href="https://hardcover.app" target="_blank" rel="noopener noreferrer">Hardcover</a> accounts here, so what they read is tracked there too. It isn't set up on this server.</p>
         <ol class="sync-steps">
             <li>On Hardcover, open <b>Settings → Hardcover API → Developer Apps</b> and create an app of type <b>Mobile, desktop, or CLI</b>. Name it after this server: users see that name when they approve it.</li>
-            <li>Turn on <b>Device Authorization Grant</b>, leave <b>Redirect URIs</b> empty, and allow the scopes <code>read:me read:library write:library read:catalog</code>.</li>
+            <li>Turn on <b>Device Authorization Grant</b>, leave <b>Redirect URIs</b> empty, and allow the scopes <code>{{ .Scopes }}</code>.</li>
             <li>Start CalibreFast with the app's client ID in <code>CF_HARDCOVER_CLIENT_ID</code>.</li>
         </ol>
         <p class="auth-muted">Only admins see this. Each server needs its own app; don't reuse another server's client ID. No token or secret is needed. <code>-no-hardcover-sync</code> hides it.</p>
