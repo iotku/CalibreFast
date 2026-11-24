@@ -29,6 +29,14 @@
         </p>
     </section>
 
+    {{/* Favorite authors, series, … (web/aggregate-fav.ts, from the list
+         favorites.ts keeps). */}}
+    <section id="account-favs" class="auth-card account-favs" hidden>
+        <h2>Favorites</h2>
+        <p class="account-favs-empty auth-muted">Star an author or series on its page to keep it here.</p>
+        <div class="account-favs-list"></div>
+    </section>
+
     <section class="auth-card">
         <h2>{{ if .User.HasPass }}Change password{{ else }}Set a password{{ end }}</h2>
         <form method="post" action="/account" class="auth-form">
@@ -283,5 +291,6 @@
     </section>
 </main>
 {{ if .Hardcover }}<script type="module" src="{{ asset "hardcover-link.js" }}"></script>{{ end }}
+<script type="module" src="{{ asset "aggregate-fav.js" }}"></script>
 </body>
 </html>

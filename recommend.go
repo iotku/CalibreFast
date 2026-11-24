@@ -18,6 +18,11 @@ package main
 //     marked in any way, or said they're not interested in, are left out.
 //   - Next in series first: for a series the user is reading or finished
 //     a book of, the next book after the furthest one they're on.
+//   - Favorites (aggregate_favorites.go): a favorite tag scores as if a
+//     starred book had it; a favorite author's or publisher's books are
+//     candidates too, with a bonus (an author's beats a seed author's); a
+//     favorite series the user hasn't started offers its first book with
+//     the next-in-series ones. Favorites alone are enough for a list.
 //   - Pages: the whole ranked list, a row at a time. Refresh steps to the
 //     next page, and after the last back to the first with a new seed.
 //
@@ -41,7 +46,59 @@ const (
 	recAuthorBonus  = 0.5  // of the best tag's score
 	recJitter       = 0.15 // up to this share of a score, at random (the seed's)
 	recSeriesMax    = 6
+
+	recFavTagWeight      = 3   // a favorite tag: as a starred seed with it
+	recFavAuthorBonus    = 1.0 // of the best tag's score
+	recFavPublisherBonus = 0.25
+	recPerFav            = 1000 // candidates from favorite authors and publishers, in all
 )
+
+// recFavs: a user's favorites, by kind, as browsed (lower case).
+type recFavs map[string]map[string]bool
+
+func (f recFavs) has(kind, name string) bool {
+	if f[kind] == nil {
+		return false
+	}
+	g, _, _ := groups.resolve(kind, name)
+	return f[kind][strings.ToLower(g)]
+}
+
+// ids: which of names (catalog ids to raw names) are favorites of kind.
+func (f recFavs) ids(kind string, names map[int32]string) map[int32]bool {
+	out := map[int32]bool{}
+	if len(f[kind]) == 0 {
+		return out
+	}
+	for id, n := range names {
+		if f.has(kind, n) {
+			out[id] = true
+		}
+	}
+	return out
+}
+
+// userRecFavs: u's favorites for ranking.
+func userRecFavs(u *User) (recFavs, error) {
+	rows, err := appDB.Query(`SELECT kind, name FROM aggregate_favorites WHERE user_id = ? AND removed_at IS NULL`, u.ID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	f := recFavs{}
+	for rows.Next() {
+		var kind, name string
+		if err := rows.Scan(&kind, &name); err != nil {
+			return nil, err
+		}
+		g, _, _ := groups.resolve(kind, name)
+		if f[kind] == nil {
+			f[kind] = map[string]bool{}
+		}
+		f[kind][strings.ToLower(g)] = true
+	}
+	return f, rows.Err()
+}
 
 // recSeed is one of the user's books recommendations start from.
 type recSeed struct {
@@ -204,12 +261,13 @@ func (l recList) page(page int) []recBook {
 // many pages there are, and the user's strongest tags. hide: books the user
 // isn't interested in. A page past the last is the first.
 func recommend(m readingMarks, hide map[string]bool, rng *rand.Rand, page int) (recs []recBook, pages int, tags []string) {
-	l, tags := rankRecs(m, hide, rng)
+	l, tags := rankRecs(m, nil, hide, rng)
 	return l.page(page), l.pages(), tags
 }
 
 // rankRecs works out the user's whole ranked list, and their strongest tags.
-func rankRecs(m readingMarks, hide map[string]bool, rng *rand.Rand) (l recList, tags []string) {
+// favs: the user's favorites (nil: none).
+func rankRecs(m readingMarks, favs recFavs, hide map[string]bool, rng *rand.Rand) (l recList, tags []string) {
 	ix := currentRecIndex()
 	c := ix.cat
 	tags = []string{}
@@ -237,7 +295,16 @@ func rankRecs(m readingMarks, hide map[string]bool, rng *rand.Rand) (l recList, 
 	for _, u := range m.Dropped {
 		marked[u] = true
 	}
-	if len(weight) == 0 {
+	favAuthors := favs.ids("author", c.authorNames)
+	favPublishers := favs.ids("publisher", c.publisherNames)
+	favSeries := favs.ids("series", c.seriesNames)
+	favTags := map[int32]bool{}
+	for e, n := range ix.names {
+		if favs.has("tag", n) {
+			favTags[int32(e)] = true
+		}
+	}
+	if len(weight) == 0 && len(favAuthors)+len(favPublishers)+len(favSeries)+len(favTags) == 0 {
 		return l, tags
 	}
 
@@ -294,6 +361,18 @@ func rankRecs(m readingMarks, hide map[string]bool, rng *rand.Rand) (l recList, 
 			}
 		}
 	}
+	// A favorite series not started: its first book not read.
+	for series := range favSeries {
+		if _, started := furthest[series]; started {
+			continue
+		}
+		for _, slot := range ix.series[series] {
+			if !progress[c.books[slot].UUID] {
+				nexts = append(nexts, seriesNext{slot, ""})
+				break
+			}
+		}
+	}
 	slices.SortFunc(nexts, func(a, b seriesNext) int { return cmp.Compare(c.books[a.slot].Title, c.books[b.slot].Title) })
 	shown := map[int32]bool{}
 	var series []recBook
@@ -315,12 +394,19 @@ func rankRecs(m readingMarks, hide map[string]bool, rng *rand.Rand) (l recList, 
 		}
 	}
 	score := map[int32]float64{}
+	idf := func(e int32) float64 {
+		if n := len(ix.postings[e]); n > 0 {
+			return math.Log(float64(total) / float64(n))
+		}
+		return 0
+	}
 	for _, s := range seeds {
 		for _, e := range s.tags {
-			if n := len(ix.postings[e]); n > 0 {
-				score[e] += s.w * math.Log(float64(total)/float64(n))
-			}
+			score[e] += s.w * idf(e)
 		}
+	}
+	for e := range favTags {
+		score[e] += recFavTagWeight * idf(e)
 	}
 	top := make([]int32, 0, len(score))
 	for e, sc := range score {
@@ -337,10 +423,30 @@ func rankRecs(m readingMarks, hide map[string]bool, rng *rand.Rand) (l recList, 
 	for _, e := range top[:min(len(top), recAffinityTags)] {
 		tags = append(tags, ix.names[e])
 	}
-	if len(top) == 0 {
+	if len(top) == 0 && len(favAuthors)+len(favPublishers) == 0 {
 		return l, tags
 	}
-	best := score[top[0]]
+	best := 1.0 // with only favorite authors or publishers, their bonus alone
+	if len(top) > 0 {
+		best = score[top[0]]
+	}
+	// bonus: what b's authors and publisher add to its score.
+	bonus := func(b *catalogBook) float64 {
+		bn := 0.0
+		for _, a := range b.AuthorIDs {
+			if favAuthors[a] {
+				bn = recFavAuthorBonus
+				break
+			}
+			if seedAuthors[a] {
+				bn = recAuthorBonus
+			}
+		}
+		if favPublishers[b.Publisher] {
+			bn += recFavPublisherBonus
+		}
+		return bn * best
+	}
 
 	// Candidates: the top tags' books.
 	type cand struct {
@@ -360,11 +466,34 @@ func rankRecs(m readingMarks, hide map[string]bool, rng *rand.Rand) (l recList, 
 			for _, t := range ix.bookTags(b) {
 				sc += score[t]
 			}
+			sc += bonus(b)
+			sc *= 1 + recJitter*rng.Float64()
+			cands = append(cands, cand{slot, sc})
+		}
+	}
+	// Candidates: favorite authors' and publishers' books.
+	if len(favAuthors)+len(favPublishers) > 0 {
+		n := 0
+		for _, slot := range c.shuffle {
+			if n >= recPerFav {
+				break
+			}
+			b := &c.books[slot]
+			if b.Removed || seen[slot] || shown[slot] || marked[b.UUID] || hide[b.UUID] {
+				continue
+			}
+			fav := favPublishers[b.Publisher]
 			for _, a := range b.AuthorIDs {
-				if seedAuthors[a] {
-					sc += recAuthorBonus * best
-					break
-				}
+				fav = fav || favAuthors[a]
+			}
+			if !fav {
+				continue
+			}
+			seen[slot] = true
+			n++
+			sc := bonus(b)
+			for _, t := range ix.bookTags(b) {
+				sc += score[t]
 			}
 			sc *= 1 + recJitter*rng.Float64()
 			cands = append(cands, cand{slot, sc})

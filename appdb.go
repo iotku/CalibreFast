@@ -737,6 +737,36 @@ var migrations = []string{
 	ALTER TABLE aggregate_meta ADD COLUMN born_year  INTEGER NOT NULL DEFAULT 0;
 	ALTER TABLE aggregate_meta ADD COLUMN death_year INTEGER NOT NULL DEFAULT 0;
 	`,
+	// 44: authors, series, tags, publishers and languages a user favorited
+	// (aggregate_favorites.go), by the name they're browsed as. origin,
+	// hc_ref and removed_at, and hardcover_aggregate_matches, are for
+	// importing favorites from Hardcover (not yet built): an imported row
+	// is tombstoned (removed_at) rather than deleted, so a later import
+	// doesn't bring it back; hc_ref is the Hardcover entry we created, the
+	// only kind we may remove there. users.favs_changed (unix ms) tells
+	// browsers when their cached list is stale (/api/me).
+	`
+	CREATE TABLE aggregate_favorites (
+		user_id    INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+		kind       TEXT    NOT NULL,
+		name       TEXT    NOT NULL COLLATE NOCASE,
+		origin     TEXT    NOT NULL DEFAULT 'local',
+		hc_ref     INTEGER,
+		removed_at INTEGER,
+		created_at INTEGER NOT NULL,
+		PRIMARY KEY (user_id, kind, name)
+	);
+	CREATE TABLE hardcover_aggregate_matches (
+		user_id    INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+		kind       TEXT    NOT NULL,
+		hc_id      INTEGER NOT NULL,
+		local_name TEXT COLLATE NOCASE,
+		decision   TEXT    NOT NULL CHECK (decision IN ('match', 'reject')),
+		created_at INTEGER NOT NULL,
+		UNIQUE (user_id, kind, hc_id, local_name)
+	);
+	ALTER TABLE users ADD COLUMN favs_changed INTEGER NOT NULL DEFAULT 0;
+	`,
 }
 
 // openAppDB opens (creating if needed) and migrates the app database.

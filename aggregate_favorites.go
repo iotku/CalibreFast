@@ -1,0 +1,242 @@
+package main
+
+// Favorite authors, series, tags, publishers and languages: per user, by
+// the name the value is browsed as (after groups), like tag and series pins.
+//
+//   - PUT / DELETE /api/me/favorites/{kind}/{name}: favorite or not. Only
+//     values in the library can be favorited. A row whose value later
+//     leaves the library (or is grouped away) is kept but not listed.
+//   - GET /api/me/favorites: the user's favorites with their links and
+//     counts. Pages stay the same for everyone: the browser keeps this
+//     list (web/favorites.ts) and asks again only when /api/me's `favs`
+//     (users.favs_changed) differs from the one it kept.
+//   - Favorites weigh in Recommended for you (recommend.go) and are shown
+//     on the aggregate pages and /account.
+//
+// Rows imported from Hardcover (origin 'hardcover', not built yet) are
+// tombstoned on removal (removed_at) so a later import doesn't add them
+// again; favoriting one again clears it.
+
+import (
+	"database/sql"
+	"net/http"
+	"strings"
+	"time"
+)
+
+const maxAggFavorites = 500
+
+// aggFavorite is one of the user's favorites as listed.
+type aggFavorite struct {
+	Kind  string `json:"kind"`
+	Name  string `json:"name"`
+	Label string `json:"label,omitempty"` // a language's display name
+	Href  string `json:"href"`
+	Count int    `json:"count"`
+}
+
+// aggValue: the library's value of category c browsed as raw (after
+// groups), or ok false when there's none. From the aggregate cache: no
+// library read.
+func aggValue(c *category, raw string) (it AggregateItem, ok bool) {
+	raw = strings.TrimSpace(raw)
+	if raw == "" || len(raw) > maxDiscoverTagNameLen || strings.ContainsRune(raw, 0) {
+		return it, false
+	}
+	name, _, _ := groups.resolve(c.Key, raw)
+	for _, v := range getAggregateData(c).All {
+		if strings.EqualFold(v.Name, name) {
+			return v, true
+		}
+	}
+	return it, false
+}
+
+// aggFavNames: u's live rows of kind that are browsed as name (a raw name
+// grouped since counts as its group).
+func aggFavNames(u *User, kind, name string) ([]string, error) {
+	rows, err := scanStrings(appDB.Query(`SELECT name FROM aggregate_favorites
+		WHERE user_id = ? AND kind = ? AND removed_at IS NULL`, u.ID, kind))
+	if err != nil {
+		return nil, err
+	}
+	var out []string
+	for _, n := range rows {
+		if g, _, _ := groups.resolve(kind, n); strings.EqualFold(g, name) {
+			out = append(out, n)
+		}
+	}
+	return out, nil
+}
+
+// userAggFavorites: u's favorites that are in the library, newest first,
+// each value once.
+func userAggFavorites(u *User) ([]aggFavorite, error) {
+	rows, err := appDB.Query(`SELECT kind, name FROM aggregate_favorites
+		WHERE user_id = ? AND removed_at IS NULL ORDER BY created_at DESC, name`, u.ID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	out := []aggFavorite{}
+	seen := map[string]bool{}
+	for rows.Next() {
+		var kind, name string
+		if err := rows.Scan(&kind, &name); err != nil {
+			return nil, err
+		}
+		c := categoryByKey(kind)
+		if c == nil {
+			continue
+		}
+		v, ok := aggValue(c, name)
+		key := kind + "/" + strings.ToLower(v.Name)
+		if !ok || seen[key] {
+			continue
+		}
+		seen[key] = true
+		out = append(out, aggFavorite{Kind: kind, Name: v.Name, Label: v.Display, Href: c.href(v.Name), Count: v.Count})
+	}
+	return out, rows.Err()
+}
+
+// favsChanged: when u's favorites last changed (unix ms), for /api/me.
+func favsChanged(u *User) int64 {
+	var t int64
+	_ = appDB.QueryRow(`SELECT favs_changed FROM users WHERE id = ?`, u.ID).Scan(&t)
+	return t
+}
+
+// aggFavTarget: the request's category and value, or a 404 written.
+func aggFavTarget(w http.ResponseWriter, r *http.Request) (*category, AggregateItem, bool) {
+	c := categoryByKey(r.PathValue("kind"))
+	if c == nil {
+		http.Error(w, "no such kind", http.StatusNotFound)
+		return nil, AggregateItem{}, false
+	}
+	v, ok := aggValue(c, r.PathValue("name"))
+	if !ok {
+		http.Error(w, "no such "+c.Label, http.StatusNotFound)
+		return nil, AggregateItem{}, false
+	}
+	return c, v, true
+}
+
+// PUT /api/me/favorites/{kind}/{name}
+func aggFavoriteHandler(w http.ResponseWriter, r *http.Request) {
+	c, v, ok := aggFavTarget(w, r)
+	if !ok {
+		return
+	}
+	u := currentUser(r)
+	have, err := aggFavNames(u, c.Key, v.Name)
+	if err != nil {
+		http.Error(w, "could not save", http.StatusInternalServerError)
+		return
+	}
+	if len(have) > 0 {
+		w.WriteHeader(http.StatusNoContent)
+		return
+	}
+	var n int
+	if err := appDB.QueryRow(`SELECT COUNT(*) FROM aggregate_favorites WHERE user_id = ? AND removed_at IS NULL`, u.ID).Scan(&n); err != nil {
+		http.Error(w, "could not save", http.StatusInternalServerError)
+		return
+	}
+	if n >= maxAggFavorites {
+		http.Error(w, "too many favorites", http.StatusConflict)
+		return
+	}
+	now := time.Now().UnixMilli()
+	tx, err := appDB.Begin()
+	if err != nil {
+		http.Error(w, "could not save", http.StatusInternalServerError)
+		return
+	}
+	defer tx.Rollback()
+	if _, err := tx.Exec(`INSERT INTO aggregate_favorites (user_id, kind, name, created_at) VALUES (?, ?, ?, ?)
+		ON CONFLICT (user_id, kind, name) DO UPDATE SET removed_at = NULL, created_at = excluded.created_at`,
+		u.ID, c.Key, v.Name, now); err != nil {
+		http.Error(w, "could not save", http.StatusInternalServerError)
+		return
+	}
+	if err := touchFavs(tx, u.ID, now); err != nil || tx.Commit() != nil {
+		http.Error(w, "could not save", http.StatusInternalServerError)
+		return
+	}
+	w.WriteHeader(http.StatusNoContent)
+}
+
+// DELETE /api/me/favorites/{kind}/{name}: under any name browsed as this
+// one. Takes values no longer in the library too, so nothing is stuck.
+func aggUnfavoriteHandler(w http.ResponseWriter, r *http.Request) {
+	c := categoryByKey(r.PathValue("kind"))
+	raw := strings.TrimSpace(r.PathValue("name"))
+	if c == nil || raw == "" {
+		http.Error(w, "not found", http.StatusNotFound)
+		return
+	}
+	u := currentUser(r)
+	name, _, _ := groups.resolve(c.Key, raw)
+	names, err := aggFavNames(u, c.Key, name)
+	if err != nil {
+		http.Error(w, "could not save", http.StatusInternalServerError)
+		return
+	}
+	if len(names) == 0 {
+		w.WriteHeader(http.StatusNoContent)
+		return
+	}
+	now := time.Now().UnixMilli()
+	tx, err := appDB.Begin()
+	if err != nil {
+		http.Error(w, "could not save", http.StatusInternalServerError)
+		return
+	}
+	defer tx.Rollback()
+	for _, n := range names {
+		// Imported rows are kept as tombstones; our own go.
+		if _, err := tx.Exec(`UPDATE aggregate_favorites SET removed_at = ?
+			WHERE user_id = ? AND kind = ? AND name = ? AND origin <> 'local'`, now, u.ID, c.Key, n); err != nil {
+			http.Error(w, "could not save", http.StatusInternalServerError)
+			return
+		}
+		if _, err := tx.Exec(`DELETE FROM aggregate_favorites
+			WHERE user_id = ? AND kind = ? AND name = ? AND origin = 'local'`, u.ID, c.Key, n); err != nil {
+			http.Error(w, "could not save", http.StatusInternalServerError)
+			return
+		}
+	}
+	if err := touchFavs(tx, u.ID, now); err != nil || tx.Commit() != nil {
+		http.Error(w, "could not save", http.StatusInternalServerError)
+		return
+	}
+	w.WriteHeader(http.StatusNoContent)
+}
+
+// touchFavs: u's favorites changed (and with them, their recommendations:
+// the row as last shown is dropped so the next one is ranked afresh).
+func touchFavs(tx *sql.Tx, userID, now int64) error {
+	if _, err := tx.Exec(`UPDATE users SET favs_changed = MAX(favs_changed + 1, ?) WHERE id = ?`, now, userID); err != nil {
+		return err
+	}
+	_, err := tx.Exec(`UPDATE rec_state SET shown = NULL WHERE user_id = ?`, userID)
+	return err
+}
+
+// GET /api/me/favorites
+func aggFavoritesHandler(w http.ResponseWriter, r *http.Request) {
+	u := currentUser(r)
+	favs, err := userAggFavorites(u)
+	if err != nil {
+		http.Error(w, "query failed", http.StatusInternalServerError)
+		return
+	}
+	writeJSON(w, http.StatusOK, map[string]any{"favs": favsChanged(u), "favorites": favs})
+}
+
+func registerAggregateFavoriteRoutes() {
+	http.HandleFunc("GET /api/me/favorites", requireUser(aggFavoritesHandler))
+	http.HandleFunc("PUT /api/me/favorites/{kind}/{name}", requireUser(aggFavoriteHandler))
+	http.HandleFunc("DELETE /api/me/favorites/{kind}/{name}", requireUser(aggUnfavoriteHandler))
+}

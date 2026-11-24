@@ -1,0 +1,191 @@
+package main
+
+import (
+	"encoding/json"
+	"fmt"
+	"math/rand/v2"
+	"net/http"
+	"testing"
+)
+
+func favMux() *http.ServeMux {
+	mux := http.NewServeMux()
+	mux.HandleFunc("GET /api/me", meHandler)
+	mux.HandleFunc("GET /api/me/favorites", requireUser(aggFavoritesHandler))
+	mux.HandleFunc("PUT /api/me/favorites/{kind}/{name}", requireUser(aggFavoriteHandler))
+	mux.HandleFunc("DELETE /api/me/favorites/{kind}/{name}", requireUser(aggUnfavoriteHandler))
+	return mux
+}
+
+// favFixture: a library with two authors and a series, and its caches.
+func favFixture(t *testing.T) (herbert, other string) {
+	t.Helper()
+	db := catalogFixture(t)
+	setupTestAppDB(t)
+	t.Chdir(t.TempDir())
+	herbert = addTestBook(t, db, "Dune", []string{"Frank Herbert"}, []string{"Fiction"}, "Dune", "epub")
+	other = addTestBook(t, db, "Elsewhere", []string{"Someone Else"}, []string{"Fiction"}, "", "epub")
+	if err := writeLibraryPages(); err != nil {
+		t.Fatal(err)
+	}
+	refreshAllCaches()
+	return herbert, other
+}
+
+func TestAggregateFavorites(t *testing.T) {
+	favFixture(t)
+	alice, _ := createUser("alice", "a long enough password", false)
+	bob, _ := createUser("bob", "a long enough password", false)
+	mux := favMux()
+	do := func(u *User, method, path string, want int) []byte {
+		t.Helper()
+		rec := call(t, mux, u, method, path, "")
+		if rec.Code != want {
+			t.Fatalf("%s %s: %d %s (want %d)", method, path, rec.Code, rec.Body, want)
+		}
+		return rec.Body.Bytes()
+	}
+	list := func(u *User) []aggFavorite {
+		t.Helper()
+		var got struct {
+			Favs      int64         `json:"favs"`
+			Favorites []aggFavorite `json:"favorites"`
+		}
+		if err := json.Unmarshal(do(u, "GET", "/api/me/favorites", 200), &got); err != nil {
+			t.Fatal(err)
+		}
+		return got.Favorites
+	}
+	stamp := func(u *User) int64 {
+		t.Helper()
+		var me struct {
+			Favs int64 `json:"favs"`
+		}
+		if err := json.Unmarshal(do(u, "GET", "/api/me", 200), &me); err != nil {
+			t.Fatal(err)
+		}
+		return me.Favs
+	}
+
+	do(nil, "PUT", "/api/me/favorites/author/Frank%20Herbert", 401)
+	do(alice, "PUT", "/api/me/favorites/nope/Frank%20Herbert", 404)
+	do(alice, "PUT", "/api/me/favorites/author/Nobody%20At%20All", 404)
+	do(alice, "GET", "/api/me/favorites/author/Frank%20Herbert", 405)
+
+	s0 := stamp(alice)
+	do(alice, "PUT", "/api/me/favorites/author/frank%20herbert", 204) // any case: the library's name kept
+	do(alice, "PUT", "/api/me/favorites/author/Frank%20Herbert", 204)
+	do(alice, "PUT", "/api/me/favorites/series/Dune", 204)
+	got := list(alice)
+	if len(got) != 2 || got[0].Name != "Dune" || got[1].Name != "Frank Herbert" || got[1].Href != "/author/Frank%20Herbert" || got[1].Count != 1 {
+		t.Fatalf("list: %+v", got)
+	}
+	s1 := stamp(alice)
+	if s1 <= s0 {
+		t.Fatalf("stamp didn't change: %d -> %d", s0, s1)
+	}
+	if len(list(bob)) != 0 {
+		t.Fatal("bob sees alice's favorites")
+	}
+
+	do(alice, "DELETE", "/api/me/favorites/author/FRANK%20HERBERT", 204)
+	if got := list(alice); len(got) != 1 || got[0].Kind != "series" {
+		t.Fatalf("after delete: %+v", got)
+	}
+	if s2 := stamp(alice); s2 <= s1 {
+		t.Fatalf("stamp didn't change on delete: %d -> %d", s1, s2)
+	}
+	var n int
+	favRow(t, `SELECT COUNT(*) FROM aggregate_favorites WHERE user_id = ? AND kind = 'author'`, alice.ID, &n)
+	if n != 0 {
+		t.Fatalf("a local favorite is deleted, not kept: %d rows", n)
+	}
+
+	// An imported row is tombstoned, and favoriting it again revives it.
+	if _, err := appDB.Exec(`INSERT INTO aggregate_favorites (user_id, kind, name, origin, created_at)
+		VALUES (?, 'author', 'Someone Else', 'hardcover', 1)`, alice.ID); err != nil {
+		t.Fatal(err)
+	}
+	do(alice, "DELETE", "/api/me/favorites/author/Someone%20Else", 204)
+	var removed *int64
+	favRow(t, `SELECT removed_at FROM aggregate_favorites WHERE user_id = ? AND name = 'Someone Else'`, alice.ID, &removed)
+	if removed == nil || len(list(alice)) != 1 {
+		t.Fatal("imported row not tombstoned")
+	}
+	do(alice, "PUT", "/api/me/favorites/author/Someone%20Else", 204)
+	if len(list(alice)) != 2 {
+		t.Fatal("tombstoned row not revived")
+	}
+
+	// Deleting the user takes their favorites with them.
+	if _, err := appDB.Exec(`DELETE FROM users WHERE id = ?`, alice.ID); err != nil {
+		t.Fatal(err)
+	}
+	favRow(t, `SELECT COUNT(*) FROM aggregate_favorites WHERE user_id = ?`, alice.ID, &n)
+	if n != 0 {
+		t.Fatalf("%d rows left after the user", n)
+	}
+}
+
+func TestAggregateFavoritesCap(t *testing.T) {
+	favFixture(t)
+	alice, _ := createUser("alice", "a long enough password", false)
+	for i := range maxAggFavorites {
+		if _, err := appDB.Exec(`INSERT INTO aggregate_favorites (user_id, kind, name, created_at) VALUES (?, 'tag', ?, 1)`,
+			alice.ID, fmt.Sprintf("t%d", i)); err != nil {
+			t.Fatal(err)
+		}
+	}
+	if rec := call(t, favMux(), alice, "PUT", "/api/me/favorites/author/Frank%20Herbert", ""); rec.Code != http.StatusConflict {
+		t.Fatalf("past the cap: %d", rec.Code)
+	}
+}
+
+func TestRecommendFavorites(t *testing.T) {
+	db := catalogFixture(t)
+	setupTestAppDB(t)
+	t.Chdir(t.TempDir())
+	add := func(title, author string, tags []string, series string) string {
+		return addTestBook(t, db, title, []string{author}, tags, series, "epub")
+	}
+	liked := add("Liked Author Book", "Liked", []string{"Fiction"}, "")
+	var plain []string
+	for _, title := range []string{"P1", "P2", "P3", "P4", "P5"} {
+		plain = append(plain, add(title, "Plain", []string{"Fiction"}, ""))
+	}
+	saga := add("Saga One", "Saga Writer", []string{"Epic"}, "Saga")
+	if err := writeLibraryPages(); err != nil {
+		t.Fatal(err)
+	}
+	rng := func() *rand.Rand { return rand.New(rand.NewPCG(1, 2)) }
+	none := readingMarks{Reading: map[string]*float64{}}
+
+	// No marks, no favorites: nothing.
+	if l, _ := rankRecs(none, nil, nil, rng()); l.len() != 0 {
+		t.Fatalf("nothing to go on: %d", l.len())
+	}
+	// Favorites alone: the author's book first among the tag's books, and
+	// the favorite series' first book with the next-in-series ones.
+	favs := recFavs{"author": {"liked": true}, "tag": {"fiction": true}, "series": {"saga": true}}
+	l, _ := rankRecs(none, favs, nil, rng())
+	if l.len() == 0 || l.uuid(0) != saga || l.at(0).Kind != "series" {
+		t.Fatalf("first: %+v", l.page(0))
+	}
+	if l.uuid(1) != liked {
+		t.Fatalf("favorite author's book not next: %+v", l.page(0))
+	}
+	// With a seed of the plain author, the favorite author still wins.
+	m := readingMarks{Reading: map[string]*float64{}, Finished: []string{plain[0]}}
+	l, _ = rankRecs(m, recFavs{"author": {"liked": true}}, nil, rng())
+	if l.uuid(0) != liked {
+		t.Fatalf("favorite author vs seed author: %+v", l.page(0))
+	}
+}
+
+// favRow scans one row of the app database into dest.
+func favRow(t *testing.T, q string, arg any, dest any) {
+	t.Helper()
+	if err := appDB.QueryRow(q, arg).Scan(dest); err != nil {
+		t.Fatal(err)
+	}
+}

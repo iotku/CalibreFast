@@ -15,12 +15,15 @@
  *   the finger) and lifting the finger jumps there.
  * - Hovering an entry (or focusing it from the keyboard) previews a few of
  *   its books' covers.
+ * - "Your favorites" (signed in) lists the user's favorites of this kind,
+ *   from the list favorites.ts keeps, so the page stays the same for all.
  */
 
 import { startBookSync } from "./book-sync.js";
 import { byId, el, random } from "./dom.js";
+import { keptFavorites, loadFavorites } from "./favorites.js";
 import { bestScore, fold, type Hay, prepare, prepareQuery } from "./fuzzy.js";
-import type { AggregateEntry, Book } from "./types.js";
+import type { AggFavorite, AggregateEntry, Book } from "./types.js";
 import { colorFromBook, coverUrl } from "./utils.js";
 
 const MAX_RESULTS = 300;
@@ -539,4 +542,33 @@ document.addEventListener("keydown", (e) => {
 window.addEventListener("scroll", hidePreview, { passive: true });
 
 // A library page: books for offline reading that this device is missing (book-sync.ts).
+/** "Your favorites": the user's favorites of this page's kind, as chips. */
+function paintFavorites(list: AggFavorite[] | null): void {
+    const section = document.getElementById("agg-favorites");
+    const chips = section?.querySelector(".agg-chips");
+    if (!section || !chips) return;
+    const kind = page.dataset["kind"] ?? "";
+    const prefix = page.dataset["prefix"] ?? "";
+    const mine = (list ?? []).filter((f) => f.kind === kind);
+    chips.replaceChildren(
+        ...mine.map((f) =>
+            el(
+                "a",
+                { className: "agg-chip", href: prefix + encodeURIComponent(f.name) },
+                f.label || f.name,
+                el("span", { className: "agg-count" }, String(f.count)),
+            ),
+        ),
+    );
+    section.hidden = mine.length === 0;
+}
+
+paintFavorites(keptFavorites());
+void loadFavorites()
+    .then(paintFavorites)
+    .catch(() => {
+        /* offline: the kept list stands */
+    });
+document.addEventListener("cf:favorites", () => paintFavorites(keptFavorites()));
+
 startBookSync();
