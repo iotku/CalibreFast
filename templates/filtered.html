@@ -257,6 +257,9 @@
         <h2 id="fav-{{ .ID }}-h">{{ .Title }}</h2>
         {{ if gt (len .Cards) 1 }}<button type="button" class="row-btn fav-aggs-all" aria-expanded="false" aria-controls="fav-{{ .ID }}-list">Show all</button>{{ end }}
     </header>
+    {{ if .Books }}{{/* Series: drawn as a shelf's series cards (web/aggregate-fav.ts). */}}
+    <div id="fav-{{ .ID }}-list" class="fav-aggs-row fav-books-row row-books" data-books="{{ .Books }}"></div>
+    {{ else }}
     <div id="fav-{{ .ID }}-list" class="fav-aggs-row">
         {{- range .Cards }}
         <a class="fav-agg" href="{{ .Href }}">
@@ -266,6 +269,7 @@
         </a>
         {{- end }}
     </div>
+    {{ end }}
 </section>
 {{ end }}{{ with .FavChips }}
 <section class="fav-chips" aria-labelledby="fav-chips-h">

@@ -223,6 +223,10 @@ func TestFavoritesPageCarousel(t *testing.T) {
 		}
 		return i
 	}
+	// Series: their grid entries, for the page to draw as a shelf's series cards.
+	if !strings.Contains(body, `data-books="[{`) || !strings.Contains(body, `&#34;uuid&#34;:&#34;series:Dune&#34;`) || !strings.Contains(body, `&#34;series_card&#34;:{&#34;name&#34;:&#34;Dune&#34;,&#34;count&#34;:1`) {
+		t.Fatal("series row without its entries")
+	}
 	if rec.Code != 200 || strings.Contains(body, `class="fav-chips"`) || !strings.Contains(body, `src="/author-images/`+img+`"`) ||
 		!(at(`id="fav-author-list"`) < at(`id="fav-series-list"`) && at(`id="fav-series-list"`) < at(`<h2>Books</h2>`) && at(`<h2>Books</h2>`) < at(`id="books"`)) {
 		t.Fatalf("page: %d", rec.Code)

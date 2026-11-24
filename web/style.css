@@ -7603,6 +7603,37 @@ body:has(.manage-panel:not([hidden])) .select-bar {
     margin: 0 0 var(--gap-large, 16px);
 }
 
+/* The series carousel: the grid's cards at Discover's row widths. */
+.fav-aggs-row.fav-books-row {
+    --row-gap: 10px;
+    --row-cols: 6;
+    /* .row-books' width, over .fav-aggs-row's fixed one */
+    grid-auto-columns: calc((100% - (var(--row-cols) - 1) * var(--row-gap)) / var(--row-cols));
+    gap: var(--row-gap);
+    padding-bottom: 14px;
+}
+
+.fav-books-row.fav-aggs-wrap {
+    grid-auto-flow: row;
+    grid-template-columns: repeat(auto-fill, minmax(150px, 1fr));
+}
+
+@media (max-width: 900px) {
+    .fav-aggs-row.fav-books-row {
+        --row-cols: 4;
+        --row-gap: 6px;
+    }
+}
+
+@media (max-width: 600px) {
+    .fav-aggs-row.fav-books-row {
+        --row-cols: 2.4;
+    }
+    .fav-books-row.fav-aggs-wrap {
+        grid-template-columns: repeat(2, 1fr);
+    }
+}
+
 .fav-books-head {
     margin-top: var(--gap-large, 16px);
 }

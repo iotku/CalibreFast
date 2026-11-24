@@ -11,9 +11,10 @@ package main
 //     list (web/favorites.ts) and asks again only when /api/me's `favs`
 //     (users.favs_changed) differs from the one it kept.
 //   - Favorites weigh in Recommended for you (recommend.go) and are shown
-//     on the aggregate pages, /account and /me/favorites: authors and
-//     series each a carousel of cards with their pictures above the
-//     favorite books, other kinds as chips under them.
+//     on the aggregate pages, /account and /me/favorites: authors (with
+//     their pictures) and series (as a shelf shows a series: the first
+//     book's cover under a "Series · N books" banner) each a carousel
+//     above the favorite books, other kinds as chips under them.
 //
 // Rows imported from Hardcover (origin 'hardcover', not built yet) are
 // tombstoned on removal (removed_at) so a later import doesn't add them
@@ -22,6 +23,7 @@ package main
 import (
 	"cmp"
 	"database/sql"
+	"encoding/json"
 	"net/http"
 	"slices"
 	"strings"
@@ -146,6 +148,10 @@ type favRow struct {
 	ID    string // "author": the row's element ids
 	Title string // "Authors"
 	Cards []favCard
+	// Books: series rows only, the series' grid entries (seriesEntry, as a
+	// shelf has them) as JSON, which the page draws as the grid draws a
+	// shelf's series (bookCard in web/utils.ts) in place of Cards.
+	Books string
 }
 
 // addFavSections puts u's favorites for /me/favorites in extra:
@@ -167,6 +173,19 @@ func addFavSections(u *User, extra map[string]any) error {
 			if c.Kind == key {
 				row.Cards = append(row.Cards, c)
 			}
+		}
+		if key == "series" {
+			books := []Book{}
+			for _, c := range row.Cards {
+				if b, ok := seriesEntry(c.Name); ok {
+					books = append(books, b)
+				}
+			}
+			js, err := json.Marshal(books)
+			if err != nil {
+				return err
+			}
+			row.Books = string(js)
 		}
 		if len(row.Cards) > 0 {
 			rows = append(rows, row)

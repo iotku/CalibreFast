@@ -5,14 +5,16 @@
  * The markup is the same for everyone and starts hidden; it's shown to
  * signed-in users from their favorites (favorites.ts).
  *
- * Also /me/favorites' carousels of favorite authors and of series
- * (rendered by the server, filtered.html): they drag sideways like
+ * Also /me/favorites' carousels of favorite authors (rendered by the
+ * server, filtered.html) and of series (drawn here from their grid entries
+ * with bookCard, as a shelf's series are): they drag sideways like
  * Discover's rows, and each one's "Show all" wraps it to show every card.
  */
 import { el, errorMessage, icon } from "./dom.js";
 import { setupDragScroll } from "./drag-scroll.js";
 import { isFavorite, keptFavorites, loadFavorites, setFavorite } from "./favorites.js";
-import type { AggFavorite } from "./types.js";
+import type { AggFavorite, Book } from "./types.js";
+import { bookCard, setupCoverStates } from "./utils.js";
 
 const STAR = "M12 3l2.7 5.6 6.1.9-4.4 4.3 1 6.1L12 17l-5.4 2.9 1-6.1-4.4-4.3 6.1-.9z";
 
@@ -99,6 +101,17 @@ document.addEventListener("click", async (e) => {
     }
 });
 
+// Series rows: their entries as a shelf's series cards, the same as anywhere else.
+for (const row of document.querySelectorAll<HTMLElement>(".fav-books-row[data-books]")) {
+    let books: Book[] = [];
+    try {
+        books = JSON.parse(row.dataset["books"] ?? "[]") as Book[];
+    } catch {
+        /* nothing to show */
+    }
+    setupCoverStates(row);
+    row.replaceChildren(...books.map((b) => bookCard(b, true)));
+}
 if (document.querySelector(".fav-aggs-row")) setupDragScroll(document.body, ".fav-aggs-row");
 for (const all of document.querySelectorAll<HTMLButtonElement>(".fav-aggs-all")) {
     const row = document.getElementById(all.getAttribute("aria-controls") ?? "");
