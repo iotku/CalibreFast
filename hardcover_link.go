@@ -218,6 +218,7 @@ type hcAccountView struct {
 	Problems  []hcSharedBook // shared books that can't be sent (not found, or failing)
 	Unshared  []hcSharedBook // sharing every book: those left out, newest first
 	Follows   *hcFollowsView // the authors followed on Hardcover (hardcover_follows.go)
+	Scopes    string         // "off": the scopes the app must allow (hardcover.SyncScopes)
 }
 
 // hcSharedBook is a book a user shared, for the account page's list.
@@ -276,7 +277,7 @@ func hcView(u *User, notice string) *hcAccountView {
 			return &hcAccountView{State: "disabled", Notice: notice, Username: l.Username, LinkedAt: formatDay(l.LinkedAt.Unix())}
 		}
 		if u.IsAdmin && !noHardcover && !noHardcoverSync && hcRevoker == nil {
-			return &hcAccountView{State: "off", Notice: notice}
+			return &hcAccountView{State: "off", Notice: notice, Scopes: hardcover.SyncScopes}
 		}
 		if notice != "" {
 			return &hcAccountView{State: "gone", Notice: notice}

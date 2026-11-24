@@ -1,6 +1,11 @@
 package main
 
-import "testing"
+import (
+	"strings"
+	"testing"
+
+	"github.com/iotku/CalibreFast/pkg/hardcover"
+)
 
 func TestHardcoverRelinkNotification(t *testing.T) {
 	u, _, _ := setupHardcoverSync(t)
@@ -62,5 +67,29 @@ func TestHardcoverRelinkNotification(t *testing.T) {
 	}
 	if got := joinAnd([]string{"a", "b", "c"}); got != "a, b and c" {
 		t.Fatalf("joinAnd: %q", got)
+	}
+}
+
+// The admin's setup steps name every scope linking asks for, from the same
+// constant, so they can't fall behind it.
+func TestHardcoverSetupScopes(t *testing.T) {
+	setupTestAppDB(t)
+	origOAuth, origRevoker := hcOAuth, hcRevoker
+	hcOAuth, hcRevoker = nil, nil
+	t.Cleanup(func() { hcOAuth, hcRevoker = origOAuth, origRevoker })
+	admin, err := createUser("admin", "a long enough password", true)
+	if err != nil {
+		t.Fatal(err)
+	}
+	v := hcView(admin, "")
+	if v == nil || v.State != "off" || v.Scopes != hardcover.SyncScopes {
+		t.Fatalf("view: %+v", v)
+	}
+	var b strings.Builder
+	if err := templates.ExecuteTemplate(&b, "account.html", AuthPageData{Title: "t", User: admin, Hardcover: v}); err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(b.String(), "<code>"+hardcover.SyncScopes+"</code>") {
+		t.Fatal("the setup steps don't list the scopes")
 	}
 }
