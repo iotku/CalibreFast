@@ -64,6 +64,7 @@ form.addEventListener("submit", (e) => {
         date: field("date"),
         subjects: field("subjects"),
         isbn: field("isbn"),
+        hardcover: field("hardcover"),
         description: field("description"),
     };
     const btn = form.querySelector<HTMLButtonElement>('button[type="submit"]');

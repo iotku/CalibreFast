@@ -179,6 +179,8 @@ func placeholderReplacedForSavers(p *placeholder, bookUUID string) {
 	if appDB == nil || bookUUID == "" {
 		return
 	}
+	// After the Saved moves to the book: it's sent as that.
+	defer hcPlaceholderReplaced(p.UUID, bookUUID)
 	savers, err := placeholderSavers(p.UUID)
 	if err != nil {
 		log.Printf("placeholder %s: its savers: %v", p.UUID, err)

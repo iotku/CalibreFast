@@ -4,8 +4,12 @@
  * its sync stands, and, when Hardcover couldn't find it or found the wrong
  * book, choosing the right one (from the menu, or the button itself when
  * it wasn't found). The choice is the user's own, for their sync only
- * (hardcover_book.go). Built with el()/textContent: titles and errors
- * come from Hardcover and the library.
+ * (hardcover_book.go). A placeholder's page has it too
+ * (placeholder-hardcover.ts): Saved, it's sent as want to read, and its
+ * Hardcover book is the library's, not the user's: the first to choose
+ * it names it for everyone, and after that only an editor changes it
+ * (hardcover_placeholder.go). Built with el()/textContent: titles and
+ * errors come from Hardcover and the library.
  */
 import { api, el, errorMessage } from "./dom.js";
 import { paintSync, SYNC_ICONS, type SyncLook } from "./sync-split.js";
@@ -26,6 +30,10 @@ interface Status {
     sent_at?: number;
     match?: Match;
     query: string;
+    /** A placeholder: a book not in the library yet. */
+    placeholder?: boolean;
+    /** The user may choose its Hardcover book (false: a placeholder's is set, and they're no editor). */
+    can_choose: boolean;
 }
 
 interface Found {
@@ -60,6 +68,8 @@ function look(st: Status): SyncLook {
         case "off":
             return { icon: SYNC_ICONS.sync, label: "Sync to Hardcover", title: "Send this book's reading status to your Hardcover account", on: false, pressed };
         case "not_found":
+            if (!st.can_choose)
+                return { icon: SYNC_ICONS.problem, label: "Not found on Hardcover", title: off, on: true, pressed, problem: true };
             return { icon: SYNC_ICONS.problem, label: "Find on Hardcover", title: "Hardcover couldn't find this book: choose it", on: false, problem: true };
         case "failing":
             return { icon: SYNC_ICONS.problem, label: "Hardcover sync failing", title: off, on: true, pressed, problem: true };
@@ -67,6 +77,9 @@ function look(st: Status): SyncLook {
             return { icon: SYNC_ICONS.sync, label: "Syncing to Hardcover", title: off, on: true, pressed };
         case "no_status":
             return { icon: SYNC_ICONS.sync, label: "Sharing with Hardcover", title: off, on: true, pressed };
+        case "sent":
+            if (st.placeholder) return { icon: SYNC_ICONS.sync, label: "On your Want to Read", title: off, on: true, pressed };
+            return { icon: SYNC_ICONS.sync, label: "Synced to Hardcover", title: off, on: true, pressed };
         default:
             return { icon: SYNC_ICONS.sync, label: "Synced to Hardcover", title: off, on: true, pressed };
     }
@@ -80,16 +93,18 @@ function menuOptions(st: Status, picking: boolean): HTMLOptionElement[] {
         opt("on", "Sync to Hardcover", { selected: st.shared }),
         opt("off", "Don't sync to Hardcover", { selected: !st.shared }),
     ];
-    if (st.shared) {
+    if (st.shared && st.can_choose) {
         const label = picking
             ? "Close the Hardcover search"
-            : st.state === "not_found"
+            : st.state === "not_found" || (st.placeholder && !st.match)
               ? "Find it on Hardcover…"
               : st.match
-                ? "Wrong book? Choose another…"
+                ? st.placeholder
+                    ? "Change its Hardcover book…"
+                    : "Wrong book? Choose another…"
                 : "Choose the book on Hardcover…";
         opts.push(opt("pick", label));
-        if (st.match?.chosen) opts.push(opt("reset", "Use the library's match"));
+        if (st.match?.chosen && !st.placeholder) opts.push(opt("reset", "Use the library's match"));
     }
     if (st.all) opts.push(opt("account", "Sharing for every book…"));
     return opts;
@@ -103,6 +118,11 @@ export function wireHardcoverBook(controls: HTMLElement, uuid: string): (() => v
     if (!btn || !menu || !out) return null;
     const base = `/api/me/books/${encodeURIComponent(uuid)}/hardcover`;
     let picking = false;
+    /**
+     * Just shared a placeholder: once it's known whether Hardcover found it
+     * from its ISBN, search for it if it didn't (`final`: the last look).
+     */
+    let autoFind = false;
     /** How it stands, as last painted: what the button and menu act on. */
     let current: Status | null = null;
     /** Before the first answer: as the server rendered it. */
@@ -112,10 +132,16 @@ export function wireHardcoverBook(controls: HTMLElement, uuid: string): (() => v
             all: !!menu.querySelector('option[value="account"]'),
             state: btn.classList.contains("is-on") ? "waiting" : "off",
             query: "",
+            can_choose: true,
         };
 
-    const paint = (st: Status): void => {
+    const paint = (st: Status, final = false): void => {
         current = st;
+        let search = false;
+        if (autoFind && st.placeholder && st.shared && (final || st.state !== "waiting")) {
+            autoFind = false;
+            if (!st.match && st.can_choose) picking = search = true;
+        }
         paintSync(btn, look(st));
         menu.replaceChildren(...menuOptions(st, picking));
         menu.value = st.shared ? "on" : "off";
@@ -128,7 +154,8 @@ export function wireHardcoverBook(controls: HTMLElement, uuid: string): (() => v
                 parts.push(st.all ? "Left out: you share every book but this one" : "Nothing about this book is sent to Hardcover");
                 break;
             case "no_status":
-                parts.push("Shared. Set want to read, reading or read to send it");
+                parts.push(st.placeholder ? "Shared. Save it to send it as want to read" : "Shared. Set want to read, reading or read to send it");
+                if (st.placeholder && st.match) parts.push(...matchText());
                 break;
             case "waiting":
                 parts.push("Waiting to be sent", ...matchText());
@@ -143,6 +170,7 @@ export function wireHardcoverBook(controls: HTMLElement, uuid: string): (() => v
             case "not_found":
                 line.classList.add("book-hardcover-problem");
                 parts.push("Hardcover couldn't find this book from its ISBN or Hardcover link, so nothing was sent.");
+                if (st.placeholder && !st.can_choose) parts.push(" An editor can set its Hardcover book.");
                 break;
         }
         if (st.all && st.state !== "off") parts.push(" (you share every book: ", el("a", { href: "/account#hardcover", className: "meta-link", textContent: "change" }), ")");
@@ -151,6 +179,7 @@ export function wireHardcoverBook(controls: HTMLElement, uuid: string): (() => v
         const kids: Node[] = [line];
         if (st.shared && picking) kids.push(picker(st));
         out.replaceChildren(...kids);
+        if (search) out.querySelector<HTMLFormElement>(".book-hardcover-picker")?.requestSubmit();
     };
 
     const share = async (on: boolean): Promise<void> => {
@@ -159,6 +188,7 @@ export function wireHardcoverBook(controls: HTMLElement, uuid: string): (() => v
         try {
             await api("PUT", base, { share: on });
             if (!on) picking = false;
+            autoFind = on && !!current?.placeholder;
         } catch (err) {
             out.replaceChildren(el("span", { className: "book-hardcover-note book-hardcover-problem", textContent: errorMessage(err) }));
         } finally {
@@ -166,7 +196,7 @@ export function wireHardcoverBook(controls: HTMLElement, uuid: string): (() => v
             menu.disabled = false;
         }
         refresh();
-        if (on) setTimeout(refresh, 3000);
+        if (on) setTimeout(() => refresh(true), 3000);
     };
 
     const togglePicker = (): void => {
@@ -178,7 +208,7 @@ export function wireHardcoverBook(controls: HTMLElement, uuid: string): (() => v
 
     btn.addEventListener("click", () => {
         const st = known();
-        if (st.state === "not_found") return togglePicker();
+        if (st.state === "not_found" && st.can_choose) return togglePicker();
         void share(!st.shared);
     });
 
@@ -244,8 +274,9 @@ export function wireHardcoverBook(controls: HTMLElement, uuid: string): (() => v
         });
         const note = el("p", {
             className: "book-hardcover-note",
-            textContent:
-                "Searching sends what you type to Hardcover. The match is yours: it changes what's sent to your account only, not the library. If the wrong book was already sent, remove it on Hardcover.",
+            textContent: st.placeholder
+                ? `Searching sends what you type to Hardcover. The book you pick becomes this placeholder's Hardcover book, for everyone who syncs it${st.match ? "" : "; after that, only an editor can change it"}. If the wrong book was already sent, remove it on Hardcover.`
+                : "Searching sends what you type to Hardcover. The match is yours: it changes what's sent to your account only, not the library. If the wrong book was already sent, remove it on Hardcover.",
         });
         return el("div", { className: "book-hardcover-pick" }, form, msg, results, note);
     };
@@ -259,10 +290,13 @@ export function wireHardcoverBook(controls: HTMLElement, uuid: string): (() => v
         }
     };
 
-    const refresh = (): void => {
-        api<Status>("GET", base).then(paint, () => {
-            /* keep what the server rendered */
-        });
+    const refresh = (final = false): void => {
+        api<Status>("GET", base).then(
+            (st) => paint(st, final),
+            () => {
+                /* keep what the server rendered */
+            },
+        );
     };
 
     refresh();

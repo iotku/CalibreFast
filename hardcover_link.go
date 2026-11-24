@@ -480,7 +480,7 @@ func hardcoverAccountHandler(w http.ResponseWriter, r *http.Request) {
 // shares a book with the user's Hardcover account, or stops sharing it.
 func hardcoverShareHandler(w http.ResponseWriter, r *http.Request) {
 	u := currentUser(r)
-	uuid, ok := requireBook(w, r)
+	uuid, ok := requireSyncBook(w, r)
 	if !ok {
 		return
 	}

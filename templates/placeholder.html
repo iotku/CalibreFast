@@ -38,6 +38,7 @@
             <div class="ph-actions ph-actions-start">
                 {{ template "placeholder-save" . }}
             </div>
+            {{ with .HardcoverSync }}<div class="ph-hardcover" data-ph-hardcover="{{ $.UUID }}">{{ template "book-hardcover" . }}</div>{{ end }}
             {{ end }}
             {{ if .Writable }}
             <div class="ph-actions ph-actions-start">
@@ -68,6 +69,7 @@
                 <label class="ph-num">Published <input type="date" name="date" value="{{ .Meta.Date }}"></label>
             </div>
             <label>ISBN <input type="text" name="isbn" value="{{ .ISBN }}" autocomplete="off" inputmode="numeric"></label>
+            <label>Hardcover <input type="text" name="hardcover" value="{{ .HardcoverField }}" autocomplete="off" placeholder="hardcover.app/books/… link, or the book's id"></label>
             <div class="ph-field">Tags <input type="text" name="subjects" value="{{ .Tags }}"></div>
             <label>Description <textarea name="description" rows="5">{{ .Meta.Description }}</textarea></label>
             <p id="ph-status" class="auth-notice" role="status" hidden></p>
@@ -81,6 +83,7 @@
 </main>
 {{ if .Writable }}<script type="module" src="{{ asset "placeholder.js" }}"></script>{{ end }}
 {{ if .SignedIn }}<script type="module" src="{{ asset "placeholder-save.js" }}"></script>{{ end }}
+{{ if .HardcoverSync }}<script type="module" src="{{ asset "placeholder-hardcover.js" }}"></script>{{ end }}
 </body>
 </html>
 

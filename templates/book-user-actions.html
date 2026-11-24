@@ -25,31 +25,7 @@
     </div>
     {{/* where you are in the book, or who set the status: under the cover */}}
     <span class="book-status-note" data-progress="{{ .Progress }}">{{ if .Progress }}{{ .Progress }}{{ else if and .Status (eq .StatusSource "auto") }}set by the reader{{ end }}</span>
-    {{ with .Hardcover }}
-    {{/* Sharing this book with the user's Hardcover account
-         (hardcover_link.go): Sync (a toggle) with its menu as the caret,
-         like Save's; hardcover-book.ts repaints it from how the sync
-         stands, and adds choosing the book on Hardcover. The CSS puts it
-         under the offline control, below the Read/Download buttons. */}}
-    <div class="book-hardcover" data-hardcover>
-        <div class="sync-split">
-            <button type="button" class="btn-action btn-sync btn-hardcover{{ if .Shared }} is-on{{ end }}" data-hardcover-toggle
-                aria-pressed="{{ .Shared }}"
-                title="{{ if .Shared }}Stop sending this book to Hardcover{{ else }}Send this book's reading status to your Hardcover account{{ end }}">
-                <span>{{ if .Shared }}Synced to Hardcover{{ else }}Sync to Hardcover{{ end }}</span>
-            </button>
-            <select class="sync-menu" data-hardcover-menu title="Hardcover sync" aria-label="Hardcover sync">
-                <option value="on" {{ if .Shared }}selected{{ end }}>Sync to Hardcover</option>
-                <option value="off" {{ if not .Shared }}selected{{ end }}>Don't sync to Hardcover</option>
-                {{ if .All }}<option value="account">Sharing for every book…</option>{{ end }}
-            </select>
-        </div>
-        {{/* filled in by hardcover-book.ts: how the sync stands, and choosing the book */}}
-        <div class="book-hardcover-status sync-note" data-hardcover-status>
-            <span class="book-hardcover-note">{{ if and .All (not .Shared) }}Left out: you share every book but this one{{ else if .All }}You share every book: <a href="/account#hardcover" class="meta-link">change</a>{{ else if .Shared }}Sent to your Hardcover account as it changes{{ else }}Nothing about this book is sent to Hardcover{{ end }}</span>
-        </div>
-    </div>
-    {{ end }}
+    {{ with .Hardcover }}{{ template "book-hardcover" . }}{{ end }}
     <details class="book-shelves">
         <summary>Shelves<span class="book-shelves-count">{{ if .OnShelves }} ({{ .OnShelves }}){{ end }}</span></summary>
         <div class="book-shelves-list">
@@ -92,4 +68,32 @@
         <button type="button" class="btn-action series-shelf-add">Add</button>
     </div>
 </div>
+{{ end }}
+
+{{/* Sync to Hardcover (bookHardcover): a book's (book-user-actions,
+     above) or a placeholder's (placeholder.html). */}}
+{{ define "book-hardcover" }}
+    {{/* Sharing this book with the user's Hardcover account
+         (hardcover_link.go): Sync (a toggle) with its menu as the caret,
+         like Save's; hardcover-book.ts repaints it from how the sync
+         stands, and adds choosing the book on Hardcover. The CSS puts it
+         under the offline control, below the Read/Download buttons. */}}
+    <div class="book-hardcover" data-hardcover>
+        <div class="sync-split">
+            <button type="button" class="btn-action btn-sync btn-hardcover{{ if .Shared }} is-on{{ end }}" data-hardcover-toggle
+                aria-pressed="{{ .Shared }}"
+                title="{{ if .Shared }}Stop sending this book to Hardcover{{ else }}Send this book's reading status to your Hardcover account{{ end }}">
+                <span>{{ if .Shared }}Synced to Hardcover{{ else }}Sync to Hardcover{{ end }}</span>
+            </button>
+            <select class="sync-menu" data-hardcover-menu title="Hardcover sync" aria-label="Hardcover sync">
+                <option value="on" {{ if .Shared }}selected{{ end }}>Sync to Hardcover</option>
+                <option value="off" {{ if not .Shared }}selected{{ end }}>Don't sync to Hardcover</option>
+                {{ if .All }}<option value="account">Sharing for every book…</option>{{ end }}
+            </select>
+        </div>
+        {{/* filled in by hardcover-book.ts: how the sync stands, and choosing the book */}}
+        <div class="book-hardcover-status sync-note" data-hardcover-status>
+            <span class="book-hardcover-note">{{ if and .All (not .Shared) }}Left out: you share every book but this one{{ else if .All }}You share every book: <a href="/account#hardcover" class="meta-link">change</a>{{ else if .Shared }}Sent to your Hardcover account as it changes{{ else }}Nothing about this book is sent to Hardcover{{ end }}</span>
+        </div>
+    </div>
 {{ end }}
