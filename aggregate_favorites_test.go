@@ -251,3 +251,40 @@ func TestFavoritesPageCarousel(t *testing.T) {
 		t.Fatal("carousel or books heading without favorites")
 	}
 }
+
+// Discover's "New from authors you follow": the newest books by the user's
+// favorite authors, without those finished or dropped.
+func TestFollowedBooks(t *testing.T) {
+	db := catalogFixture(t)
+	setupTestAppDB(t)
+	t.Chdir(t.TempDir())
+	add := func(title, author, added string) string {
+		uuid := addTestBook(t, db, title, []string{author}, []string{"Fiction"}, "", "epub")
+		mustExec(t, db, `UPDATE books SET timestamp = ? WHERE uuid = ?`, added, uuid)
+		return uuid
+	}
+	old := add("Old One", "Liked", "2001-01-01 00:00:00+00:00")
+	newest := add("Newest", "Liked", "2024-01-01 00:00:00+00:00")
+	read := add("Read Already", "Liked", "2023-01-01 00:00:00+00:00")
+	add("Someone Else's", "Other", "2025-01-01 00:00:00+00:00")
+	if err := writeLibraryPages(); err != nil {
+		t.Fatal(err)
+	}
+	refreshAllCaches()
+	alice, _ := createUser("alice", "a long enough password", false)
+	marks := readingMarks{Reading: map[string]*float64{}, Finished: []string{read}}
+
+	if books, following, err := followedBooks(alice, marks, 20); err != nil || following || len(books) != 0 {
+		t.Fatalf("no favorites: %v %v %v", books, following, err)
+	}
+	if rec := call(t, favMux(), alice, "PUT", "/api/me/favorites/author/Liked", ""); rec.Code != 204 {
+		t.Fatalf("PUT: %d", rec.Code)
+	}
+	books, following, err := followedBooks(alice, marks, 20)
+	if err != nil || !following || len(books) != 2 || books[0].UUID != newest || books[1].UUID != old {
+		t.Fatalf("followed: %+v %v %v", books, following, err)
+	}
+	if books, _, _ := followedBooks(alice, marks, 1); len(books) != 1 || books[0].UUID != newest {
+		t.Fatalf("limit: %+v", books)
+	}
+}
