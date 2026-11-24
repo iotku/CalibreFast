@@ -19,7 +19,7 @@ package main
 //   - The author's Hardcover id: the star's (an import or an earlier send
 //     stored it), else a lookup's (hardcover_authors), else Hardcover's
 //     authors with the star's name or its group members' (AuthorsByName),
-//     if exactly one matches as hcNameKey has it. Otherwise the author is set
+//     if exactly one matches as textkey.Name has it. Otherwise the author is set
 //     aside, shown on the account page with "Try again".
 //   - Before following or unfollowing, Hardcover is asked whether the user
 //     follows them, so nothing is followed twice, and a follow made here is
@@ -36,6 +36,7 @@ import (
 	"time"
 
 	"github.com/iotku/CalibreFast/pkg/hardcover"
+	"github.com/iotku/CalibreFast/pkg/textkey"
 )
 
 // hcFollowPrefs: what a user chose about follows on Hardcover.
@@ -134,7 +135,7 @@ func hcAuthorID(ctx context.Context, c *hardcover.Client, name string) (int64, e
 	names := slices.Compact(append([]string{g}, members...))
 	keys := map[string]bool{}
 	for _, n := range names {
-		keys[hcNameKey(n)] = true
+		keys[textkey.Name(n)] = true
 	}
 	found, err := c.AuthorsByName(ctx, names)
 	if err != nil {
@@ -142,7 +143,7 @@ func hcAuthorID(ctx context.Context, c *hardcover.Client, name string) (int64, e
 	}
 	var ids []int64
 	for _, a := range found {
-		if keys[hcNameKey(a.Name)] && !slices.Contains(ids, a.ID) {
+		if keys[textkey.Name(a.Name)] && !slices.Contains(ids, a.ID) {
 			ids = append(ids, a.ID)
 		}
 	}

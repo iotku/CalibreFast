@@ -39,6 +39,7 @@ import (
 
 	"github.com/iotku/CalibreFast/pkg/hardcover"
 	"github.com/iotku/CalibreFast/pkg/imageutil"
+	"github.com/iotku/CalibreFast/pkg/textkey"
 )
 
 const (
@@ -294,14 +295,14 @@ func hcFindAuthor(ctx context.Context, members []string) (*hardcover.Author, err
 	keys := map[string]bool{}
 	var names []string
 	for _, m := range members {
-		keys[hcNameKey(m)] = true
+		keys[textkey.Name(m)] = true
 		for _, v := range hcAuthorNameVariants(m) {
 			if !slices.Contains(names, v) {
 				names = append(names, v)
 			}
 		}
 	}
-	same := func(a hardcover.Author) bool { return keys[hcNameKey(a.Name)] }
+	same := func(a hardcover.Author) bool { return keys[textkey.Name(a.Name)] }
 
 	cands, err := hcClient.AuthorsByName(ctx, names)
 	if err != nil {
@@ -315,9 +316,9 @@ func hcFindAuthor(ctx context.Context, members []string) (*hardcover.Author, err
 		}
 		var ids []int64
 		for _, h := range hits {
-			ok := keys[hcNameKey(h.Name)]
+			ok := keys[textkey.Name(h.Name)]
 			for _, alt := range h.Alternates {
-				ok = ok || keys[hcNameKey(alt)]
+				ok = ok || keys[textkey.Name(alt)]
 			}
 			if ok && len(ids) < 5 {
 				ids = append(ids, h.ID)

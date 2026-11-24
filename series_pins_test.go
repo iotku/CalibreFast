@@ -236,7 +236,6 @@ func TestOnDeck(t *testing.T) {
 	}
 }
 
-
 // Downloads ahead of time: On Deck first, then Saved, N in all.
 func TestSavedBooksOnDeck(t *testing.T) {
 	_, wheel, other := seriesFixture(t)

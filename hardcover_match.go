@@ -12,11 +12,10 @@ import (
 	"slices"
 	"strconv"
 	"strings"
-	"unicode"
 
 	"github.com/iotku/CalibreFast/pkg/hardcover"
 	"github.com/iotku/CalibreFast/pkg/isbn"
-	"golang.org/x/text/unicode/norm"
+	"github.com/iotku/CalibreFast/pkg/textkey"
 )
 
 // hcLibBook is a library book as matching sees it.
@@ -162,7 +161,7 @@ func hcTrimTitle(title string) string {
 }
 
 func hcFoldTitle(t string) string {
-	k := foldWords(t)
+	k := textkey.Fold(t)
 	for _, a := range []string{"the ", "a ", "an "} {
 		if strings.HasPrefix(k, a) && len(k) > len(a) {
 			k = k[len(a):]
@@ -172,63 +171,25 @@ func hcFoldTitle(t string) string {
 	return k
 }
 
-// hcNameKey is an author's name for matching: "James S.A. Corey",
-// "james s. a. corey" and "Corey, James S. A." are the same.
-func hcNameKey(name string) string {
-	words := strings.Fields(foldWords(strings.ReplaceAll(name, ".", " ")))
-	slices.Sort(words)
-	return strings.Join(words, " ")
-}
-
 // hcSeriesKey is a series' name for comparing: case, accents, punctuation
 // and a leading "The" don't count. Unlike a title, what follows a colon
 // does ("Doctor Who: Target Books" isn't "Doctor Who: BBC Radio").
 func hcSeriesKey(name string) string {
-	k := foldWords(name)
+	k := textkey.Fold(name)
 	if strings.HasPrefix(k, "the ") && len(k) > 4 {
 		k = k[4:]
 	}
 	return k
 }
 
-// foldWords lower-cases s, drops accents and punctuation ("&" is "and")
-// and collapses spaces.
-func foldWords(s string) string {
-	var b strings.Builder
-	space := true
-	for _, r := range norm.NFD.String(s) {
-		switch {
-		case unicode.Is(unicode.Mn, r):
-			continue
-		case r == '&':
-			if !space {
-				b.WriteByte(' ')
-			}
-			b.WriteString("and ")
-			space = true
-		case unicode.IsLetter(r) || unicode.IsDigit(r):
-			b.WriteRune(unicode.ToLower(r))
-			space = false
-		case r == '\'' || r == '’' || r == '.':
-			// "Caliban's" = "Calibans"; "S.A." = "SA"
-		default:
-			if !space {
-				b.WriteByte(' ')
-				space = true
-			}
-		}
-	}
-	return strings.TrimSpace(b.String())
-}
-
 func hcSharesAuthor(a, b []string) bool {
 	for _, x := range a {
-		kx := hcNameKey(x)
+		kx := textkey.Name(x)
 		if kx == "" {
 			continue
 		}
 		for _, y := range b {
-			if hcNameKey(y) == kx {
+			if textkey.Name(y) == kx {
 				return true
 			}
 		}

@@ -4,6 +4,7 @@ import (
 	"testing"
 
 	"github.com/iotku/CalibreFast/pkg/hardcover"
+	"github.com/iotku/CalibreFast/pkg/textkey"
 )
 
 func pos(f float64) *float64 { return &f }
@@ -21,7 +22,7 @@ func TestHCTitleKey(t *testing.T) {
 			t.Errorf("hcTitleKey(%q) = %q, want %q", in, got, want)
 		}
 	}
-	if hcNameKey("James S.A. Corey") != hcNameKey("james s. a. corey") {
+	if textkey.Name("James S.A. Corey") != textkey.Name("james s. a. corey") {
 		t.Error("author initials don't match")
 	}
 }
@@ -275,7 +276,7 @@ func TestHCKeys(t *testing.T) {
 		t.Error("a leading The counts in a series name")
 	}
 	for _, n := range []string{"Corey, James S. A.", "James S.A. Corey", "james s a corey"} {
-		if hcNameKey(n) != hcNameKey("James S. A. Corey") {
+		if textkey.Name(n) != textkey.Name("James S. A. Corey") {
 			t.Errorf("%q isn't James S. A. Corey", n)
 		}
 	}

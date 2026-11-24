@@ -90,7 +90,7 @@ func TestManifest(t *testing.T) {
 	}
 	var m struct {
 		Name, Display string
-		Icons                   []struct{ Src, Sizes, Purpose string }
+		Icons         []struct{ Src, Sizes, Purpose string }
 	}
 	if err := json.Unmarshal(rec.Body.Bytes(), &m); err != nil {
 		t.Fatal(err)

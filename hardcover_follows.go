@@ -8,7 +8,7 @@ package main
 //
 //   - starred: the library author it is, starred. Matched by the Hardcover
 //     id an author lookup stored (hardcover_authors.hc_id), else by name as
-//     hcNameKey has it (case, accents, periods, word order and "Last,
+//     textkey.Name has it (case, accents, periods, word order and "Last,
 //     First" don't count), through groups, so it stars the author as
 //     browsed. A choice the user made (below) comes first.
 //   - waiting: no such author here: starred under Hardcover's name all the
@@ -38,6 +38,7 @@ import (
 	"time"
 
 	"github.com/iotku/CalibreFast/pkg/hardcover"
+	"github.com/iotku/CalibreFast/pkg/textkey"
 )
 
 // errHCFollowScope: the link predates follows: it has to be made again.
@@ -46,24 +47,11 @@ var errHCFollowScope = errors.New("link Hardcover again to allow reading the aut
 // hcFollowsImportTime bounds an import (each thousand follows is a request).
 const hcFollowsImportTime = time.Minute
 
-// hcAuthorIndex: the library's authors as browsed, by hcNameKey of their
+// hcAuthorIndex: the library's authors as browsed, by textkey.Name of their
 // name and their group members' names, and by surname and first initial.
 type hcAuthorIndex struct {
 	exact map[string][]string
 	loose map[string][]string
-}
-
-// hcLooseKey: surname and first initial ("tolkien j"), or "" for a name of
-// one word.
-func hcLooseKey(name string) string {
-	if last, first, ok := strings.Cut(name, ","); ok {
-		name = first + " " + last
-	}
-	words := strings.Fields(foldWords(strings.ReplaceAll(name, ".", " ")))
-	if len(words) < 2 {
-		return ""
-	}
-	return words[len(words)-1] + " " + words[0][:1]
 }
 
 func libraryAuthorIndex() hcAuthorIndex {
@@ -75,8 +63,8 @@ func libraryAuthorIndex() hcAuthorIndex {
 	}
 	for _, it := range getAggregateData(categoryByKey("author")).All {
 		for _, n := range append([]string{it.Name}, it.Members...) {
-			add(ix.exact, hcNameKey(n), it.Name)
-			add(ix.loose, hcLooseKey(n), it.Name)
+			add(ix.exact, textkey.Name(n), it.Name)
+			add(ix.loose, textkey.LooseName(n), it.Name)
 		}
 	}
 	return ix
@@ -134,14 +122,14 @@ func hcClassifyFollow(tx *sql.Tx, userID int64, f hardcover.FollowedAuthor, ix h
 	} else if !errors.Is(err, sql.ErrNoRows) {
 		return hcFollowOutcome{}, err
 	}
-	switch exact := ok(ix.exact[hcNameKey(f.Name)]); len(exact) {
+	switch exact := ok(ix.exact[textkey.Name(f.Name)]); len(exact) {
 	case 1:
 		return hcFollowOutcome{state: "starred", local: exact[0]}, nil
 	case 0:
 	default:
 		return hcFollowOutcome{state: "confirm", candidates: exact}, nil
 	}
-	if near := ok(ix.loose[hcLooseKey(f.Name)]); len(near) > 0 {
+	if near := ok(ix.loose[textkey.LooseName(f.Name)]); len(near) > 0 {
 		return hcFollowOutcome{state: "confirm", candidates: near}, nil
 	}
 	return hcFollowOutcome{state: "waiting", local: f.Name}, nil
@@ -427,12 +415,12 @@ func hcLoadFollowsView(userID int64) *hcFollowsView {
 
 // hcWakeWaitingStars: authors that just got books here (gained), as
 // browsed. A star imported from Hardcover under a name the library didn't
-// have, matching one of them as an import would (hcNameKey), becomes that
+// have, matching one of them as an import would (textkey.Name), becomes that
 // author's, before anyone is told about the books (notifyFavoriteGains).
 func hcWakeWaitingStars(gained []string) error {
 	byKey := map[string]string{}
 	for _, a := range gained {
-		byKey[hcNameKey(a)] = a
+		byKey[textkey.Name(a)] = a
 	}
 	rows, err := appDB.Query(`SELECT user_id, name FROM aggregate_favorites WHERE kind = 'author' AND origin = 'hardcover' AND removed_at IS NULL`)
 	if err != nil {
@@ -449,7 +437,7 @@ func hcWakeWaitingStars(gained []string) error {
 			rows.Close()
 			return err
 		}
-		if to, ok := byKey[hcNameKey(w.from)]; ok && !strings.EqualFold(to, w.from) {
+		if to, ok := byKey[textkey.Name(w.from)]; ok && !strings.EqualFold(to, w.from) {
 			w.to = to
 			wakes = append(wakes, w)
 		}

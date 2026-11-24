@@ -15,7 +15,7 @@ package main
 //	rating:4                Calibre's rating: 4 stars or more; rating:=4.5
 //	                        exactly 4½, rating:0 unrated
 //
-// Text is compared without case, accents or punctuation (foldWords), and a
+// Text is compared without case, accents or punctuation (textkey.Fold), and a
 // word matches the start of a word ("tolk" finds Tolkien); words of four
 // letters or more also match inside a word ("hobbit" finds "Hobbits'").
 // Books are ranked by where they matched (title, then author, series, tag,
@@ -37,6 +37,7 @@ import (
 
 	"github.com/iotku/CalibreFast/pkg/isbn"
 	"github.com/iotku/CalibreFast/pkg/langcodes"
+	"github.com/iotku/CalibreFast/pkg/textkey"
 )
 
 const (
@@ -113,7 +114,7 @@ func parseSearch(q string) []searchTerm {
 		}
 		rest = strings.TrimSpace(rest)
 		t.raw = strings.TrimSpace(tok)
-		t.phrase = foldWords(t.raw)
+		t.phrase = textkey.Fold(t.raw)
 		if t.field == fieldAny || t.field == fieldISBN {
 			t.isbn = isbn.Normalize(t.raw)
 		}
@@ -176,7 +177,7 @@ func searchHay(names ...string) string {
 	var b strings.Builder
 	b.WriteByte('\x1f')
 	for _, n := range names {
-		if f := foldWords(n); f != "" {
+		if f := textkey.Fold(n); f != "" {
 			b.WriteString(" " + f + " \x1f")
 		}
 	}
@@ -227,10 +228,10 @@ func newSearchIndex(c *catalog) *searchIndex {
 	for i := range c.books {
 		b := &c.books[i]
 		ix.titles[i] = searchHay(b.Title)
-		ix.sorts[i] = foldWords(b.Sort)
+		ix.sorts[i] = textkey.Fold(b.Sort)
 		ix.order[i] = ix.sorts[i]
 		if name := c.seriesNames[b.Series]; b.Series != 0 && name != "" {
-			ix.order[i] = foldWords(name)
+			ix.order[i] = textkey.Fold(name)
 		}
 	}
 	return ix
