@@ -7595,15 +7595,24 @@ body:has(.manage-panel:not([hidden])) .select-bar {
 
 /* /me/favorites: favorite authors, series, … above the books, a row that
    scrolls sideways, or all of them wrapped ("Show all"). */
+/* The favorites sections hold to the grid's column, as the page's title
+   and the grid do. */
+.fav-sections {
+    max-width: var(--content-max);
+    margin: 0.75rem auto 0;
+}
+
 .fav-aggs {
-    margin: var(--gap-large, 16px) 0;
+    margin: 0 0 var(--gap-large, 16px);
 }
 
 .fav-chips {
     margin: 0 0 var(--gap-large, 16px);
 }
 
-/* The series carousel: the grid's cards at Discover's row widths. */
+/* The series carousel: in the grid's column, so its cards are the grid's
+   width (#books: 6, 4 and 2 across; a little of the next card shows on
+   phones, as on Discover). */
 .fav-aggs-row.fav-books-row {
     --row-gap: 10px;
     --row-cols: 6;
@@ -7613,15 +7622,19 @@ body:has(.manage-panel:not([hidden])) .select-bar {
     padding-bottom: 14px;
 }
 
+/* Shown whole: the grid's columns (#books). */
 .fav-books-row.fav-aggs-wrap {
     grid-auto-flow: row;
-    grid-template-columns: repeat(auto-fill, minmax(150px, 1fr));
+    grid-template-columns: repeat(6, 1fr);
 }
 
 @media (max-width: 900px) {
     .fav-aggs-row.fav-books-row {
         --row-cols: 4;
         --row-gap: 6px;
+    }
+    .fav-books-row.fav-aggs-wrap {
+        grid-template-columns: repeat(4, 1fr);
     }
 }
 
@@ -7635,7 +7648,7 @@ body:has(.manage-panel:not([hidden])) .select-bar {
 }
 
 .fav-books-head {
-    margin-top: var(--gap-large, 16px);
+    margin: 0;
 }
 
 .fav-chips .agg-chip {
