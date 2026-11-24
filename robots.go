@@ -51,7 +51,3 @@ func robotsMeta() template.HTML {
 	}
 	return `<meta name="robots" content="` + robotsNoIndex + `">`
 }
-
-func registerRobotsRoutes() {
-	http.HandleFunc("GET /robots.txt", robotsTxtHandler)
-}

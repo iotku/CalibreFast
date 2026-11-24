@@ -11,7 +11,7 @@ import (
 func followStep(t *testing.T) {
 	t.Helper()
 	for range 20 {
-		if ran, _ := hcFollowStep(context.Background()); !ran {
+		if ran, _ := hcSync.FollowStep(context.Background()); !ran {
 			return
 		}
 	}
@@ -80,7 +80,7 @@ func TestHardcoverFollowPush(t *testing.T) {
 	}
 	// Turned on: the stars made here go (not the imported one); a follow is
 	// noted on the star.
-	if err := hcSaveFollowPrefs(u.ID, true, true); err != nil {
+	if err := hcSync.SaveFollowPrefs(u.ID, true, true); err != nil {
 		t.Fatal(err)
 	}
 	if q := queued(); !slices.Equal(q, []string{"follow:Frank Herbert"}) {
@@ -100,13 +100,14 @@ func TestHardcoverFollowPush(t *testing.T) {
 	do("PUT", "/api/me/favorites/author/Common%20Name")
 	do("PUT", "/api/me/favorites/author/Nobody%20Known")
 	followStep(t)
-	_, problems, here := hcFollowQueueView(u.ID)
+	fv := hcSync.Follows(u.ID)
+	problems, here := fv.Problems, fv.FollowedHere
 	if len(problems) != 2 || problems[0].Name != "Common Name" || problems[0].Error != "several authors on Hardcover have this name" ||
 		problems[1].Error != "not found on Hardcover" || here != 1 {
 		t.Fatalf("set aside: %+v %d", problems, here)
 	}
 	f.authorsNamed["Nobody Known"] = []int64{905}
-	if err := hcRetryFollow(u.ID, "Nobody Known"); err != nil {
+	if err := hcSync.RetryFollow(u.ID, "Nobody Known"); err != nil {
 		t.Fatal(err)
 	}
 	followStep(t)
@@ -164,7 +165,7 @@ func TestHardcoverFollowPush(t *testing.T) {
 
 	// Following turned off: what waits to follow is dropped; unfollowing
 	// on asking still works.
-	if err := hcSaveFollowPrefs(u.ID, false, false); err != nil {
+	if err := hcSync.SaveFollowPrefs(u.ID, false, false); err != nil {
 		t.Fatal(err)
 	}
 	do("PUT", "/api/me/favorites/author/Frank%20Herbert")
@@ -178,7 +179,7 @@ func TestHardcoverFollowPush(t *testing.T) {
 	if !slices.Equal(f.unfollowed, []int64{900, 904, 901}) {
 		t.Fatalf("unfollow with following off: %v", f.unfollowed)
 	}
-	if p := hcLoadFollowPrefs(u.ID); p.Share || p.UnfollowDefault || !p.CanWrite {
+	if p := hcSync.LoadFollowPrefs(u.ID); p.Share || p.UnfollowDefault || !p.CanWrite {
 		t.Fatalf("prefs: %+v", p)
 	}
 	ans.Stars = true
@@ -186,7 +187,7 @@ func TestHardcoverFollowPush(t *testing.T) {
 		t.Fatalf("flags with following off: %+v %v", ans, err)
 	}
 	// Unlinking drops what waits.
-	if _, err := hcUnlinkAccount(u.ID); err != nil {
+	if _, err := hcSync.Unlink(u.ID); err != nil {
 		t.Fatal(err)
 	}
 	if q := queued(); len(q) != 0 {

@@ -44,13 +44,6 @@ func addFormatPath(it *pendingImport) string {
 	return "/book/add-format/" + it.Into + "/" + it.ID
 }
 
-func registerAddFormatRoutes() {
-	http.HandleFunc("POST /book/add-format/{uuid}", requireEditor(addFormatUploadHandler))
-	http.HandleFunc("GET /book/add-format/{uuid}/{id}", requireEditor(addFormatPage))
-	http.HandleFunc("GET /book/add-format/{uuid}/{id}/metadata", requireEditor(addFormatMetadataHandler))
-	http.HandleFunc("POST /book/add-format/{uuid}/{id}/apply", requireEditor(afterBulkEdits(addFormatApplyHandler)))
-}
-
 // incomingMergeBook is the new files waiting in the queue, as a merge's
 // "book".
 func incomingMergeBook(it *pendingImport) *mergeBook {

@@ -137,7 +137,7 @@ func userFavCards(u *User) ([]favCard, error) {
 			card.ImageURL = m.imageURL()
 		}
 		if card.ImageURL == "" && f.Kind == "author" {
-			card.ImageURL = hcAuthorFor(f.Name).imageURL()
+			card.ImageURL = hcAuthorImageURL(hcAuthors.For(f.Name))
 		}
 		out = append(out, card)
 	}
@@ -319,7 +319,7 @@ func aggFavoriteHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	if c.Key == "author" {
-		hcQueueFollow(u.ID, v.Name, "follow", 0) // if they chose to (hardcover_follow_push.go)
+		hcSync.QueueFollow(u.ID, v.Name, "follow", 0) // if they chose to (internal/hardcoversync/follow_push.go)
 	}
 	w.WriteHeader(http.StatusNoContent)
 }
@@ -327,7 +327,7 @@ func aggFavoriteHandler(w http.ResponseWriter, r *http.Request) {
 // DELETE /api/me/favorites/{kind}/{name}: under any name browsed as this
 // one. Takes values no longer in the library too, so nothing is stuck.
 // ?hardcover=1 (an author): also unfollow it on Hardcover, as the user
-// ticked in the unstar dialog (hardcover_follow_push.go).
+// ticked in the unstar dialog (internal/hardcoversync/follow_push.go).
 func aggUnfavoriteHandler(w http.ResponseWriter, r *http.Request) {
 	c := categoryByKey(r.PathValue("kind"))
 	raw := strings.TrimSpace(r.PathValue("name"))
@@ -376,7 +376,7 @@ func aggUnfavoriteHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	if c.Key == "author" && r.URL.Query().Get("hardcover") == "1" {
-		hcQueueFollow(u.ID, name, "unfollow", hcID)
+		hcSync.QueueFollow(u.ID, name, "unfollow", hcID)
 	}
 	w.WriteHeader(http.StatusNoContent)
 }
@@ -399,12 +399,12 @@ func aggFavoritesHandler(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "query failed", http.StatusInternalServerError)
 		return
 	}
-	// For the unstar dialog (hardcover_follow_push.go): which authors are
+	// For the unstar dialog (internal/hardcoversync/follow_push.go): which authors are
 	// followed on Hardcover, whether the user's link can unfollow, and
 	// whether its box starts ticked.
-	p := hcLoadFollowPrefs(u.ID)
+	p := hcSync.LoadFollowPrefs(u.ID)
 	if p.CanWrite {
-		followed := hcFollowedHere(u.ID)
+		followed := hcSync.FollowedHere(u.ID)
 		for i := range favs {
 			favs[i].HCFollowed = favs[i].Kind == "author" && followed[strings.ToLower(favs[i].Name)]
 		}
@@ -422,10 +422,4 @@ func bumpFavs(userID int64) {
 	if _, err := appDB.Exec(`UPDATE users SET favs_changed = MAX(favs_changed + 1, ?) WHERE id = ?`, time.Now().UnixMilli(), userID); err != nil {
 		log.Println("favorites:", err)
 	}
-}
-
-func registerAggregateFavoriteRoutes() {
-	http.HandleFunc("GET /api/me/favorites", requireUser(aggFavoritesHandler))
-	http.HandleFunc("PUT /api/me/favorites/{kind}/{name}", requireUser(aggFavoriteHandler))
-	http.HandleFunc("DELETE /api/me/favorites/{kind}/{name}", requireUser(aggUnfavoriteHandler))
 }

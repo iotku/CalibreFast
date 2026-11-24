@@ -1,5 +1,5 @@
 /**
- * The account page's Hardcover section (hardcover_link.go) while a sign-in
+ * The account page's Hardcover section (hardcover_account.go) while a sign-in
  * is in progress: it asks the server every few seconds whether the code was
  * entered on Hardcover, and shows the page again once it was (or failed).
  * Everything shown is rendered by the server; nothing here builds HTML.

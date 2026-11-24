@@ -22,6 +22,7 @@ import (
 	"time"
 	"unicode"
 
+	"github.com/iotku/CalibreFast/internal/hardcoversync"
 	"golang.org/x/crypto/bcrypt"
 )
 
@@ -467,7 +468,7 @@ type AuthPageData struct {
 	SyncKey      *syncKeyInfo // nil: no sync key
 	NewSyncKey   string       // shown once, right after it is generated
 	SyncNotice   string
-	Hardcover    *hcAccountView // reading sync to Hardcover (hardcover_link.go); nil: off on this server
+	Hardcover    *hardcoversync.AccountView // reading sync to Hardcover (internal/hardcoversync/link.go); nil: off on this server
 	// Deleting the account (account_delete.go): when it would be purged if
 	// deleted now, and whether the user is the only admin (who can't).
 	DeletePurgeDay string
@@ -859,33 +860,6 @@ func runCreateUser(name string, admin bool) error {
 		return err
 	}
 	return nil
-}
-
-// registerAuthRoutes wires sign-in, account and admin endpoints.
-func registerAuthRoutes() {
-	http.HandleFunc("/login", loginHandler)
-	http.HandleFunc("POST /register", registerHandler)
-	http.HandleFunc("POST /logout", logoutHandler)
-	http.HandleFunc("GET /api/me", meHandler)
-	http.HandleFunc("/account", requireUser(accountHandler))
-	http.HandleFunc("GET /admin/users", requireAdminUser(adminUsersPage))
-	http.HandleFunc("POST /api/admin/users", requireAdminUser(adminCreateUser))
-	http.HandleFunc("PATCH /api/admin/users/{id}", requireAdminUser(adminUpdateUser))
-	http.HandleFunc("DELETE /api/admin/users/{id}", requireAdminUser(adminDeleteUser))
-	http.HandleFunc("POST /api/admin/users/{id}/restore", requireAdminUser(adminRestoreUser))
-	http.HandleFunc("POST /account/delete", requireUser(deleteOwnAccountHandler))
-	registerOAuthRoutes()
-	registerUserDataRoutes()
-	registerProgressRoutes()
-	registerGuestImportRoutes()
-	registerAnnotationRoutes()
-	registerShelfRoutes()
-	registerDiscoverAdminRoutes()
-	registerLinkRoutes()
-	registerKosyncRoutes(http.DefaultServeMux)
-	registerPrefsRoutes()
-	registerStatsRoutes()
-	registerNotificationRoutes()
 }
 
 func withUserCtx(r *http.Request, u *User) context.Context {

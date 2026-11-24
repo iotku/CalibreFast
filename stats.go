@@ -389,10 +389,3 @@ func statsPage(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Cache-Control", "no-store")
 	logErr(templates.ExecuteTemplate(w, "stats.html", map[string]any{"Title": SiteTitle}), "render stats")
 }
-
-func registerStatsRoutes() {
-	http.HandleFunc("GET /me/stats", requireUser(statsPage))
-	http.HandleFunc("GET /api/me/stats", requireUser(statsHandler))
-	http.HandleFunc("PUT /api/me/activity", requireUser(activityPutHandler))
-	http.HandleFunc("DELETE /api/me/activity", requireUser(activityDeleteHandler))
-}

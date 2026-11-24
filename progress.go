@@ -15,6 +15,8 @@ import (
 	"net/http"
 	"strings"
 	"time"
+
+	"github.com/iotku/CalibreFast/internal/hardcoversync"
 )
 
 const (
@@ -121,7 +123,7 @@ func progressPutHandler(w http.ResponseWriter, r *http.Request) {
 		status = "finished"
 	}
 	_ = setStatus(u.ID, uuid, status, "auto")
-	hcSyncTouch(u.ID, uuid, hcProgressDelay) // hardcover_sync.go
+	hcSync.Touch(u.ID, uuid, hardcoversync.ProgressDelay) // internal/hardcoversync/sync.go
 
 	stored, err := getProgress(u.ID, uuid, in.Format)
 	if err != nil {
@@ -202,17 +204,4 @@ func bookmarkDeleteHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	w.WriteHeader(http.StatusNoContent)
-}
-
-func registerProgressRoutes() {
-	http.HandleFunc("GET /api/me/reading", requireUser(readingHandler))
-	http.HandleFunc("GET /api/me/home", requireUser(homeHandler))
-	registerHomeLayoutRoutes()
-	http.HandleFunc("GET /api/books", booksHandler)
-	http.HandleFunc("GET /api/tag-strip", tagStripHandler)
-	http.HandleFunc("GET /api/me/progress/{uuid}", requireUser(progressGetHandler))
-	http.HandleFunc("PUT /api/me/progress/{uuid}", requireUser(progressPutHandler))
-	http.HandleFunc("GET /api/me/bookmarks/{uuid}", requireUser(bookmarksGetHandler))
-	http.HandleFunc("PUT /api/me/bookmarks/{uuid}/{id}", requireUser(bookmarkPutHandler))
-	http.HandleFunc("DELETE /api/me/bookmarks/{uuid}/{id}", requireUser(bookmarkDeleteHandler))
 }

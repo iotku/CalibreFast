@@ -8,7 +8,7 @@ package main
 //     per author or series per batch of changes, with how many books
 //     (favorite_author / favorite_series, aggregate_favorites_notify.go).
 //   - Their Hardcover link was made before linking asked for something new:
-//     link again to use it (hardcover_relink, hardcover_relink.go).
+//     link again to use it (hardcover_relink, internal/hardcoversync/relink.go).
 //
 // Saving books that aren't in the library yet, and being told when they are.
 //
@@ -180,7 +180,7 @@ func placeholderReplacedForSavers(p *placeholder, bookUUID string) {
 		return
 	}
 	// After the Saved moves to the book: it's sent as that.
-	defer hcPlaceholderReplaced(p.UUID, bookUUID)
+	defer placeholderReplacedForSyncs(p.UUID, bookUUID)
 	savers, err := placeholderSavers(p.UUID)
 	if err != nil {
 		log.Printf("placeholder %s: its savers: %v", p.UUID, err)
@@ -303,12 +303,4 @@ func notificationsClearHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	w.WriteHeader(http.StatusNoContent)
-}
-
-func registerNotificationRoutes() {
-	http.HandleFunc("GET /me/notifications", requireUser(notificationsPage))
-	http.HandleFunc("GET /api/me/notifications", requireUser(notificationsHandler))
-	http.HandleFunc("POST /api/me/notifications/seen", requireUser(notificationsSeenHandler))
-	http.HandleFunc("DELETE /api/me/notifications/{id}", requireUser(notificationDeleteHandler))
-	http.HandleFunc("DELETE /api/me/notifications", requireUser(notificationsClearHandler))
 }

@@ -16,6 +16,7 @@ import (
 	"sync"
 	"sync/atomic"
 
+	"github.com/iotku/CalibreFast/internal/hardcoverauthors"
 	"github.com/iotku/CalibreFast/pkg/langcodes"
 )
 
@@ -191,7 +192,7 @@ type FilteredPageData struct {
 	Missing        int
 	NewPlaceholder string
 	// Hardcover: where editors identify this series, or this author's
-	// series, on Hardcover (hardcover.go); "" when it isn't set up.
+	// series, on Hardcover (internal/hardcoverseries); "" when it isn't set up.
 	Hardcover string
 	// A series: how much of it is here (series_complete.go), and for
 	// editors,
@@ -204,7 +205,7 @@ type FilteredPageData struct {
 	TotalBooks                   int
 	EmptyText                    string         // shown when there are no books (default: "No books found.")
 	Series                       []AuthorSeries // an author's series, shown above the books
-	Profile                      *AuthorProfile // an author's, from Hardcover (hardcover_authors.go)
+	Profile                      *AuthorProfile // an author's, from Hardcover (author_profile.go)
 	Extra                        map[string]any // page-specific extras (e.g. shelf controls)
 	// FavKind: the category's key when the entry can be favorited (the ★
 	// after its name, web/aggregate-fav.ts); the same for everyone.
@@ -912,9 +913,9 @@ func groupPutHandler(w http.ResponseWriter, r *http.Request) {
 			http.Error(w, err.Error(), http.StatusBadRequest)
 			return
 		}
-		hc := hcAuthorFor(newName)
-		if !hc.found() {
-			hc = &hcAuthor{}
+		hc := hcAuthors.For(newName)
+		if !hc.Found() {
+			hc = &hardcoverauthors.Author{}
 		}
 		if y.Born == hc.Born && y.Died == hc.Died {
 			y = &metaYears{} // Hardcover's, kept up to date with it
@@ -934,25 +935,14 @@ func groupPutHandler(w http.ResponseWriter, r *http.Request) {
 	}), "encode group")
 }
 
-// registerCategoryRoutes wires aggregate pages, filtered pages, JSON APIs and
-// the group editor API for every category.
-func registerCategoryRoutes() {
-	for _, c := range categories {
-		c := c
-		http.HandleFunc("/"+c.Plural, aggregatePageHandler(c))
-		http.HandleFunc("/"+c.URLPrefix+"/", filteredPageHandler(c))
-		http.HandleFunc("/api/"+c.Plural, func(w http.ResponseWriter, r *http.Request) {
-			aggregateHandler(w, c)
-		})
-	}
-	http.HandleFunc("GET /api/groups", func(w http.ResponseWriter, r *http.Request) {
-		w.Header().Set("Content-Type", "application/json")
-		logErr(json.NewEncoder(w).Encode(groups.snapshot()), "encode groups")
-	})
-	http.HandleFunc("GET /api/groups/{cat}/values", groupValuesHandler)
-	http.HandleFunc("GET /api/languages/codes", languageCodesHandler)
-	http.HandleFunc("PUT /api/groups/{cat}/{value...}", requireWrites(groupPutHandler))
-	http.HandleFunc("PUT /api/aggregates/{cat}/featured/{value...}", requireWrites(featuredHandler))
-	http.HandleFunc("DELETE /api/aggregates/{cat}/featured/{value...}", requireWrites(featuredHandler))
-	http.HandleFunc("GET /"+aggregateImagesDir+"/{file}", aggregateImageHandler)
+// aggregateAPIHandler serves /api/{plural}: the category's entries as
+// JSON.
+func aggregateAPIHandler(c *category) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) { aggregateHandler(w, c) }
+}
+
+// groupsHandler serves GET /api/groups: every group, as JSON.
+func groupsHandler(w http.ResponseWriter, r *http.Request) {
+	w.Header().Set("Content-Type", "application/json")
+	logErr(json.NewEncoder(w).Encode(groups.snapshot()), "encode groups")
 }

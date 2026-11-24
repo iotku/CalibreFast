@@ -478,7 +478,7 @@ export interface HardcoverCandidate {
     evidence?: "isbn" | "author" | "title";
 }
 
-/** A queued request to Hardcover (Go: hcJob in hardcover.go). */
+/** A queued request to Hardcover (Go: Job in internal/hardcoverseries). */
 export interface HardcoverJob {
     id: number;
     kind: "candidates" | "link" | "refresh" | "batch";

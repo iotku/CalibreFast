@@ -15,6 +15,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/iotku/CalibreFast/pkg/hardcover"
 	"github.com/iotku/CalibreFast/pkg/opf"
 )
 
@@ -22,6 +23,7 @@ import (
 const (
 	OpenLibrary = "Open Library"
 	GoogleBooks = "Google Books"
+	Hardcover   = "Hardcover"
 )
 
 // maxSearchMatches is how many books a title search offers.
@@ -40,6 +42,10 @@ type Config struct {
 	// GoogleKey is a Google Books API key. Without one, Google counts
 	// requests against a shared quota that's usually used up.
 	GoogleKey string
+
+	// Hardcover makes Hardcover a source; nil: it isn't one. Its own budget
+	// and cache apply, not Limits and Cache.
+	Hardcover *hardcover.Client
 
 	// Limits holds a Limiter per source (OpenLibrary, GoogleBooks). A
 	// missing one gets the default: Open Library 1/s, burst 20, 1000 a day
@@ -60,6 +66,7 @@ type Client struct {
 	olCovers    string
 	googleBooks string
 	googleKey   string
+	hardcover   *hardcover.Client
 	cache       *Cache
 	limits      map[string]*Limiter // by source name
 	logf        func(format string, args ...any)
@@ -80,6 +87,7 @@ func New(cfg Config) *Client {
 		olCovers:    or(cfg.CoversURL, "https://covers.openlibrary.org"),
 		googleBooks: or(cfg.GoogleURL, "https://www.googleapis.com/books/v1"),
 		googleKey:   cfg.GoogleKey,
+		hardcover:   cfg.Hardcover,
 		cache:       cfg.Cache,
 		limits:      map[string]*Limiter{},
 		logf:        cfg.Logf,
@@ -128,7 +136,8 @@ func (q Query) key() string {
 // Match is one book a source found.
 type Match struct {
 	Meta *opf.Metadata
-	// CoverID is an Open Library cover id (for FetchCover), or 0.
+	// CoverID is the id FetchCover takes for this source's cover (Open
+	// Library: a cover id; Hardcover: the book id), or 0 for none.
 	CoverID int64
 	// HasISBN: one of its editions has the ISBN given to MarkISBN.
 	HasISBN bool
@@ -138,7 +147,7 @@ type Match struct {
 
 // Result is a source's answer.
 type Result struct {
-	Source  string  // OpenLibrary or GoogleBooks
+	Source  string  // OpenLibrary, GoogleBooks or Hardcover
 	Matches []Match // best first; none: no match, or an error
 	Error   string
 }
@@ -154,7 +163,8 @@ func (res Result) MarkISBN(isbn13 string) Result {
 	return res
 }
 
-// Lookup asks one source (OpenLibrary or GoogleBooks). Answers, including "no match", are cached; errors
+// Lookup asks one source (OpenLibrary, GoogleBooks or Hardcover). Answers,
+// including "no match", are cached (Hardcover's by its own client); errors
 // aren't.
 func (c *Client) Lookup(ctx context.Context, source string, q Query) Result {
 	key := source + "\x00" + q.key()
@@ -164,6 +174,7 @@ func (c *Client) Lookup(ctx context.Context, source string, q Query) Result {
 	fn := map[string]func(context.Context, Query) ([]Match, error){
 		OpenLibrary: c.openLibraryLookup,
 		GoogleBooks: c.googleBooksLookup,
+		Hardcover:   c.hardcoverLookup,
 	}[source]
 	if fn == nil {
 		return Result{Source: source, Error: "unknown source"}
@@ -177,7 +188,10 @@ func (c *Client) Lookup(ctx context.Context, source string, q Query) Result {
 		m.Meta.Subjects = opf.UniqueTags(m.Meta.Subjects)
 	}
 	res := Result{Source: source, Matches: matches} // none: no match
-	c.cache.put(key, res)
+	// Hardcover's client caches its answers with the covers they name.
+	if source != Hardcover {
+		c.cache.put(key, res)
+	}
 	return res
 }
 

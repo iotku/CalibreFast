@@ -6,7 +6,7 @@ package main
 // Open Library: by ISBN when the book has one, else (or when the ISBN finds
 // nothing) by title and author, which can find several books. Google Books
 // (only with an API key, CF_GOOGLE_BOOKS_KEY) and Hardcover (only with
-// CF_HARDCOVER_TOKEN; lookup_hardcover.go) only when the admin asks for
+// CF_HARDCOVER_TOKEN, hardcover.go) only when the admin asks for
 // them (Google often has the best description, Hardcover the series). The
 // matches the admin picks become options in the editor, next to "current"
 // and the uploaded formats. Nothing is written until the admin applies
@@ -22,8 +22,8 @@ package main
 //     User-Agent
 //   - answers are cached; each service has its own rate and daily limits
 //     (metalookup.Limiter), and a 429 pauses it for its Retry-After
-//   - covers come from Open Library only, fetched by the server, and only
-//     when the admin asks
+//   - covers come from Open Library or Hardcover, fetched by the server, and
+//     only when the admin asks
 //   - -no-lookups turns everything off; -no-google-books turns off Google,
 //     as does having no CF_GOOGLE_BOOKS_KEY
 //
@@ -44,6 +44,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/iotku/CalibreFast/pkg/hardcover"
 	"github.com/iotku/CalibreFast/pkg/isbn"
 	"github.com/iotku/CalibreFast/pkg/metalookup"
 )
@@ -61,23 +62,26 @@ const (
 	googleBooksName = metalookup.GoogleBooks
 )
 
-// hardcoverName is Hardcover as a lookup source (lookup_hardcover.go).
-const hardcoverName = "Hardcover"
+// hardcoverName is Hardcover as a lookup source. It uses the same client
+// and request budget as series on Hardcover (hardcover.go): a lookup is two
+// requests.
+const hardcoverName = metalookup.Hardcover
 
 var lookupSources = map[string]string{"openlibrary": openLibraryName, "google": googleBooksName, "hardcover": hardcoverName}
 
 // googleBooksKey is CF_GOOGLE_BOOKS_KEY: Google Books is offered only with one.
 var googleBooksKey string
 
-// bookLookups asks Open Library and Google Books (configureLookups sets it up
-// with the API key).
-var bookLookups = newBookLookups("")
+// bookLookups asks Open Library, Google Books and Hardcover (configureLookups
+// sets it up with the API key and the Hardcover client).
+var bookLookups = newBookLookups("", nil)
 
-func newBookLookups(googleKey string) *metalookup.Client {
+func newBookLookups(googleKey string, hc *hardcover.Client) *metalookup.Client {
 	return metalookup.New(metalookup.Config{
 		HTTPClient: &http.Client{Timeout: 15 * time.Second},
 		UserAgent:  lookupUserAgent,
 		GoogleKey:  googleKey,
+		Hardcover:  hc,
 		Cache:      metalookup.NewCache(24*time.Hour, 500),
 		Limits: map[string]*metalookup.Limiter{
 			// An Open Library lookup is up to 7 requests (edition, work,
@@ -115,8 +119,8 @@ func appVersion() string {
 // quota that's usually used up, and Open Library is the focus anyway.
 func configureLookups() {
 	googleBooksKey = os.Getenv("CF_GOOGLE_BOOKS_KEY")
-	bookLookups = newBookLookups(googleBooksKey)
 	configureHardcover()
+	bookLookups = newBookLookups(googleBooksKey, hcClient)
 	configureHardcoverSync()
 	switch {
 	case noLookups:
@@ -198,10 +202,6 @@ func lookupHandler(w http.ResponseWriter, r *http.Request) {
 	ctx, cancel := context.WithTimeout(r.Context(), 20*time.Second)
 	defer cancel()
 	w.Header().Set("Content-Type", "application/json")
-	if name == hardcoverName {
-		logErr(json.NewEncoder(w).Encode(hardcoverLookup(ctx, q)), "could not encode lookup result")
-		return
-	}
 	res := bookLookups.Lookup(ctx, name, q)
 	if want := isbn.Normalize(r.URL.Query().Get("match_isbn")); want != "" && q.ISBN == "" {
 		res = res.MarkISBN(want)
@@ -217,39 +217,43 @@ func newLookupResult(res metalookup.Result) lookupResult {
 	for _, m := range res.Matches {
 		out.Matches = append(out.Matches, lookupMatch{
 			Option:  &UploadedBookMeta{OPFMetadata: *m.Meta, Format: res.Source},
-			Cover:   olCoverURL(m.CoverID),
+			Cover:   lookupCoverURL(res.Source, m.CoverID),
 			HasISBN: m.HasISBN,
 		})
 	}
 	return out
 }
 
-// olCoverURL is a cover id's URL through /metadata/lookup/cover; no cover id,
-// no cover to offer.
-func olCoverURL(id int64) string {
-	if id <= 0 {
-		return ""
+// coverSources are the sources with covers, as /metadata/lookup/cover names
+// them (?src=).
+var coverSources = map[string]string{"openlibrary": openLibraryName, "hardcover": hardcoverName}
+
+// lookupCoverURL is a source's cover id's URL through /metadata/lookup/cover;
+// no cover id, no cover to offer.
+func lookupCoverURL(source string, id int64) string {
+	for src, name := range coverSources {
+		if name == source && id > 0 {
+			return fmt.Sprintf("/metadata/lookup/cover?src=%s&id=%d", src, id)
+		}
 	}
-	return fmt.Sprintf("/metadata/lookup/cover?src=openlibrary&id=%d", id)
+	return ""
 }
 
-// lookupCoverHandler: GET /metadata/lookup/cover?src=openlibrary&id=…
+// lookupCoverHandler: GET /metadata/lookup/cover?src=openlibrary|hardcover&id=…
 // fetches a cover for the editor's cover picker, when the admin asks for it.
-// The URL is built from those values, so it can't be pointed anywhere else,
-// and the browser never contacts Open Library.
+// Only the id is taken: Open Library's URL is built from it, Hardcover's is
+// the one its lookup gave for that book, so it can't be pointed anywhere
+// else, and the browser never contacts either.
 func lookupCoverHandler(w http.ResponseWriter, r *http.Request) {
 	q := r.URL.Query()
-	if q.Get("src") == "hardcover" && hardcoverEnabled() {
-		hardcoverCoverHandler(w, r)
-		return
-	}
-	if q.Get("src") != "openlibrary" {
+	source, ok := coverSources[q.Get("src")]
+	if !ok || (source == hardcoverName && !hardcoverEnabled()) {
 		http.Error(w, "unknown cover", http.StatusBadRequest)
 		return
 	}
 	ctx, cancel := context.WithTimeout(r.Context(), 20*time.Second)
 	defer cancel()
-	img, ctype, err := bookLookups.FetchCover(ctx, q.Get("id"))
+	img, ctype, err := bookLookups.FetchCover(ctx, source, q.Get("id"))
 	switch {
 	case errors.Is(err, metalookup.ErrBadCoverID):
 		http.Error(w, "unknown cover", http.StatusBadRequest)

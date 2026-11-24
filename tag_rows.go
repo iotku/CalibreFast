@@ -378,11 +378,3 @@ func discoverAdminPage(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Cache-Control", "private, no-store")
 	logErr(templates.ExecuteTemplate(w, "admin-discover.html", map[string]any{"Title": SiteTitle}), "render discover settings")
 }
-
-func registerDiscoverAdminRoutes() {
-	http.HandleFunc("GET /admin/discover", requireAdminUser(discoverAdminPage))
-	http.HandleFunc("GET /api/admin/discover", requireAdminUser(discoverSettingsHandler))
-	http.HandleFunc("PUT /api/admin/discover/settings", requireAdminUser(discoverSettingsPutHandler))
-	http.HandleFunc("PUT /api/admin/discover/tags/{name}", requireAdminUser(discoverTagPutHandler))
-	http.HandleFunc("DELETE /api/admin/discover/tags/{name}", requireAdminUser(discoverTagDeleteHandler))
-}

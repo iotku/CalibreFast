@@ -27,12 +27,12 @@ func TestHardcoverPlaceholderLink(t *testing.T) {
 	hcClient, allowWrites, dataDir = hardcover.New(hardcover.Config{URL: "https://127.0.0.1:1/", Token: "test-token"}), true, t.TempDir()
 	t.Cleanup(func() { hcClient, allowWrites, dataDir = origClient, origWrites, origData; placeholdersChanged() })
 	pratchett := []string{"Terry Pratchett"}
-	if err := hcSaveLink("Discworld", &hardcover.SeriesDetail{Series: hardcover.Series{ID: 9, Name: "Discworld", Slug: "discworld"},
+	if err := hcLinks.SaveLink("Discworld", &hardcover.SeriesDetail{Series: hardcover.Series{ID: 9, Name: "Discworld", Slug: "discworld"},
 		Entries: []hardcover.Entry{
 			{BookID: 1, Slug: "mort", Title: "Mort", Position: pos(1), Authors: pratchett},
 			{BookID: 27, Slug: "the-last-hero", Title: "The Last Hero", Position: pos(27), Authors: pratchett},
 			{BookID: 28, Slug: "the-truth", Title: "The Truth", Position: pos(25), Authors: pratchett},
-		}}, nil); err != nil {
+		}}, 0); err != nil {
 		t.Fatal(err)
 	}
 	admin, _ := createUser("boss", "a long enough password", true)

@@ -37,16 +37,6 @@ const bulkMaxBooks = 50000
 // bulkMu: one bulk edit or merge at a time.
 var bulkMu sync.Mutex
 
-func registerBulkEditRoutes() {
-	http.HandleFunc("GET /library/edit", requireEditor(bulkEditPage))
-	http.HandleFunc("GET /api/library/table", requireEditor(libraryTableHandler))
-	http.HandleFunc("POST /api/library/bulk", requireEditor(bulkEditHandler))
-	http.HandleFunc("GET /api/library/bulk/jobs", requireEditor(bulkJobsHandler))
-	http.HandleFunc("GET /api/library/bulk/failures", requireEditor(bulkFailuresHandler))
-	http.HandleFunc("POST /api/library/bulk/failures/dismiss", requireEditor(bulkFailuresDismissHandler))
-	http.HandleFunc("POST /api/library/repair-formats", requireWrites(afterBulkEdits(repairFormatsHandler)))
-}
-
 // repairFormatsHandler adds metadata.db rows for files in book folders it
 // doesn't list (addUnlistedFormats): for the books named, or, with no
 // uuids, every such book.

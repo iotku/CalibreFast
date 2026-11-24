@@ -731,12 +731,6 @@ func revertImportDiscard(e *editLogEntry, by *User) error {
 // The admin's activity page
 // ---------------------------------------------------------------------------
 
-func registerEditLogRoutes() {
-	http.HandleFunc("GET /admin/activity", requireAdminUser(activityPage))
-	http.HandleFunc("GET /api/admin/activity", requireAdminUser(activityHandler))
-	http.HandleFunc("POST /api/admin/activity/revert", requireWrites(afterBulkEdits(activityRevertHandler)))
-}
-
 const activityPageSize = 200
 
 type activityPageData struct {

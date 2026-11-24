@@ -9,7 +9,7 @@ package main
 //     numbered: all #1, or #0), or both (series_verified). Works with no
 //     online service at all.
 //   - hardcover: the series is linked to Hardcover and every numbered book
-//     on its list, less those dismissed, is here (hardcover.go).
+//     on its list, less those dismissed, is here (internal/hardcoverseries).
 //
 // An editor's word wins over Hardcover's list. The statuses are worked
 // out again only when the catalog, a group, a link, a dismissal or a
@@ -26,6 +26,8 @@ import (
 	"sync"
 	"sync/atomic"
 	"time"
+
+	"github.com/iotku/CalibreFast/internal/hardcoverseries"
 )
 
 // Where a status comes from.
@@ -206,7 +208,7 @@ func seriesShape(members []string) (books, top int, numbered bool) {
 	cat := currentCatalog()
 	for i := range cat.books {
 		b := &cat.books[i]
-		if b.Removed || b.Series == 0 || !hcInMembers(cat.seriesNames[b.Series], members) {
+		if b.Removed || b.Series == 0 || !hardcoverseries.InMembers(cat.seriesNames[b.Series], members) {
 			continue
 		}
 		books++
@@ -337,9 +339,4 @@ func seriesUnverifyHandler(w http.ResponseWriter, r *http.Request) {
 	seriesStatusChanged()
 	gapsSeriesChanged(members...)
 	w.WriteHeader(http.StatusNoContent)
-}
-
-func registerSeriesStatusRoutes() {
-	http.HandleFunc("POST /api/series/verified", requireEditor(seriesVerifyHandler))
-	http.HandleFunc("DELETE /api/series/verified", requireEditor(seriesUnverifyHandler))
 }

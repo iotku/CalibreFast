@@ -80,7 +80,7 @@ const readOnlyMessage = "This library is read-only. Restart the server with -all
 // server-wide kill switch) AND a signed-in admin. Anonymous visitors and
 // regular users can never modify metadata.db or files in the library.
 // These are the changes only admins make; editors get requireEditor's
-// routes (auth.go), whose changes an admin can undo (editlog.go).
+// routes (routes.go), whose changes an admin can undo (editlog.go).
 func requireWrites(h http.HandlerFunc) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		// Anyone but an admin gets the same 404 as an unknown path, so the
@@ -477,7 +477,7 @@ func main() {
 	if allowWrites {
 		startHardcover() // requests to Hardcover left from the last run (hardcover.go)
 	}
-	startHardcoverSync() // users' reading, to their Hardcover accounts (hardcover_sync.go)
+	startHardcoverSync() // users' reading, to their Hardcover accounts (internal/hardcoversync/sync.go)
 	startAccountPurge()  // accounts their owners deleted, once they can't be restored (account_delete.go)
 	startBackups()       // the app database daily, metadata.db weekly (backup.go)
 	serveLibraryHTTP()
@@ -643,177 +643,85 @@ func latestHandler(w http.ResponseWriter, r *http.Request) {
 	logErr(templates.ExecuteTemplate(w, "index.html", data), "render latest page")
 }
 
+// libraryInfoHandler serves /library-info: how many books, and pages of
+// them, the library has.
+func libraryInfoHandler(w http.ResponseWriter, r *http.Request) {
+	logErr(json.NewEncoder(w).Encode(LibraryInfo{
+		TotalBooks: int(totalBooks.Load()),
+		PageSize:   booksPerPage,
+		TotalPages: (int(totalBooks.Load()) + booksPerPage - 1) / booksPerPage,
+	}), "could not encode library info")
+}
+
 func serveLibraryHTTP() {
-	http.HandleFunc("/", indexHandler)
-	http.HandleFunc("GET /latest", latestHandler)
-	http.HandleFunc("GET /api/latest", latestSortedHandler)
-	http.HandleFunc("GET /shuffle", shuffleHandler)
-	registerRobotsRoutes()
-
-	// serve generated json pages
-	http.Handle("/pages/", servePages("pages"))
-
-	http.HandleFunc("/library-info", func(w http.ResponseWriter, r *http.Request) {
-		logErr(json.NewEncoder(w).Encode(LibraryInfo{
-			TotalBooks: int(totalBooks.Load()),
-			PageSize:   booksPerPage,
-			TotalPages: (int(totalBooks.Load()) + booksPerPage - 1) / booksPerPage,
-		}), "could not encode library info")
-	})
-
-	// Scripts, styles and libraries (assets.go): cached for good.
-	http.HandleFunc("GET /static/dist/", serveAsset)
-	http.HandleFunc("GET /static/vendor/", serveAsset)
-	http.HandleFunc("GET /static/icons/", serveAsset) // the app's icons (sw.go)
-
-	// server cover getter
-	http.HandleFunc("/cover/", coverHandler)            // Full cover image
-	http.HandleFunc("/cover-thumb/", coverThumbHandler) // Thumbnail cover image
-	go runThumbBacklog()                                // thumbnails of cancelled requests, made when idle
-
-	// server get formats
-	http.HandleFunc("/formats/", formatsHandler)
-
-	// Downloads
-	http.HandleFunc("/download/", requireReader(downloadHandler))
-	registerConvertedReadRoutes() // AZW3 and MOBI as EPUB, for the reader (convert_read.go)
-
-	// Uploads, covers and the metadata editor (editors and admins)
-	registerBookEditRoutes()
-
-	// The watch folder's import queue (imports.go)
-	registerImportRoutes()
-
-	// Removing books, and the Recycling Bin (recycle.go)
-	registerRecycleRoutes()
-
-	// What was changed, by whom, and undoing it (editlog.go)
-	registerEditLogRoutes()
-
-	// Merging books, and the bulk metadata editor (merge.go, bulk_edit.go)
-	registerMergeRoutes()
-	registerAddFormatRoutes()
-	registerPlaceholderRoutes()
-	registerHardcoverRoutes()
-	registerAuthorProfileRoutes()
-	registerSeriesStatusRoutes()
-	registerBulkEditRoutes()
-	registerLibraryRepairRoutes()
-	registerNotDuplicateRoutes()
-
-	// Book Display
-	http.HandleFunc("/book/get/", bookHandler)
-
-	http.HandleFunc("GET /search", searchPageHandler)
-	http.HandleFunc("GET /api/search", searchHandler)
-
-	http.HandleFunc("/read", requireReader(readerPage("reader.html", true)))
-	http.HandleFunc("/read-pdf", requireReader(readerPage("reader-pdf.html", false)))
-
-	http.HandleFunc("/view/", requireReader(viewHandler))
-
-	// authors/publishers/tags/languages: aggregate pages, filtered pages,
-	// JSON APIs and the group editor API
-	registerCategoryRoutes()
-	registerWorkerRoutes() // offline reading (sw.go)
-
-	// Server status and the admin's Stop button (server.go)
-	registerServerRoutes()
-	registerBackupRoutes()
-
-	http.HandleFunc(cspReportPath, requireUser(cspReportHandler)) // csp.go
-	registerAuthRoutes()
+	go runThumbBacklog() // thumbnails of cancelled requests, made when idle
+	registerRoutes()     // routes.go
 	serve(":"+hostPort, securityHeaders(robotsHeader(csrfProtect(withAuth(http.DefaultServeMux)))))
 }
 
-// registerBookEditRoutes: uploads, covers, the metadata editor and
-// lookups, for editors and admins (requireEditor).
-func registerBookEditRoutes() {
-	// Uploads
-	http.HandleFunc("/upload", requireEditor(uploadHandler))
+// bookEditPage serves /book/edit/{uuid}: the metadata editor for one
+// book.
+func bookEditPage(w http.ResponseWriter, r *http.Request) {
+	uuid := r.PathValue("uuid")
+	if uuid == "" {
+		http.Error(w, "Missing UUID", http.StatusBadRequest)
+		return
+	}
 
-	// Cover upload and management
-	http.HandleFunc("/upload-cover/{uuid}", requireEditor(uploadCoverHandler))
-	http.HandleFunc("/cover-status/{uuid}", coverStatusHandler)
-	http.HandleFunc("/revert-cover/{uuid}", requireEditor(revertCoverHandler))
-
-	// Individual Book metadata editor
-	http.HandleFunc("/book/edit/{uuid}", requireEditor(func(w http.ResponseWriter, r *http.Request) {
-		uuid := r.PathValue("uuid")
-		if uuid == "" {
-			http.Error(w, "Missing UUID", http.StatusBadRequest)
-			return
-		}
-
-		bookPath, ok := uuidPathIndex.Load(uuid)
-		if !ok {
-			var err error
-			bookPath, err = resolveBookPath(uuid)
-			if err != nil {
-				http.Error(w, "book not found", http.StatusNotFound)
-				return
-			}
-		}
-
-		opfPath := filepath.Join(baseDir, bookPath.(string), "metadata.opf")
-		existingOPF, err := opf.Load(opfPath)
+	bookPath, ok := uuidPathIndex.Load(uuid)
+	if !ok {
+		var err error
+		bookPath, err = resolveBookPath(uuid)
 		if err != nil {
-			http.Error(w, "Failed to load metadata.opf: "+err.Error(), http.StatusInternalServerError)
+			http.Error(w, "book not found", http.StatusNotFound)
 			return
 		}
+	}
 
-		// A missing or odd date must not block editing.
-		var dateStr, rawDate string
-		if raw := strings.TrimSpace(existingOPF.Metadata.Date); raw != "" {
-			if parsedDate, err := opf.ParseAnyDate(raw); err == nil {
-				dateStr = parsedDate.Format("2006-01-02")
-			} else {
-				rawDate = raw
-			}
-		}
+	opfPath := filepath.Join(baseDir, bookPath.(string), "metadata.opf")
+	existingOPF, err := opf.Load(opfPath)
+	if err != nil {
+		http.Error(w, "Failed to load metadata.opf: "+err.Error(), http.StatusInternalServerError)
+		return
+	}
 
-		coverStat, cErr := os.Stat(filepath.Join(baseDir, bookPath.(string), "cover.jpg"))
-		var coverModTime int64
-		if cErr == nil {
-			coverModTime = coverStat.ModTime().UnixNano()
-		}
-
-		EditBookPageData := EditBookPageData{
-			UUID:         uuid,
-			Metadata:     &existingOPF.Metadata,
-			Date:         dateStr,
-			RawDate:      rawDate,
-			CoverModTime: coverModTime,
-			ReadLink:     previewReadLink("uuid", uuid, extractFormats(resolveFormats(uuid, baseDir, bookPath.(string)))),
-			Lookups:      !noLookups,
-			GoogleBooks:  googleBooksEnabled(),
-			Hardcover:    hardcoverEnabled(),
-		}
-		if dup, err := libraryBookDuplicates(calibreDB, baseDir, uuid); err != nil {
-			log.Printf("edit %s: duplicate check: %v", uuid, err)
+	// A missing or odd date must not block editing.
+	var dateStr, rawDate string
+	if raw := strings.TrimSpace(existingOPF.Metadata.Date); raw != "" {
+		if parsedDate, err := opf.ParseAnyDate(raw); err == nil {
+			dateStr = parsedDate.Format("2006-01-02")
 		} else {
-			EditBookPageData.Duplicates = dup
+			rawDate = raw
 		}
+	}
 
-		err = templates.ExecuteTemplate(w, "book-edit.html", EditBookPageData)
-		if err != nil {
-			http.Error(w, err.Error(), 500)
-		}
-	}))
+	coverStat, cErr := os.Stat(filepath.Join(baseDir, bookPath.(string), "cover.jpg"))
+	var coverModTime int64
+	if cErr == nil {
+		coverModTime = coverStat.ModTime().UnixNano()
+	}
 
-	// Get metadata options for a book
-	http.HandleFunc("/metadata/{uuid}", afterBookEdits(GetOptionsForBook))
+	EditBookPageData := EditBookPageData{
+		UUID:         uuid,
+		Metadata:     &existingOPF.Metadata,
+		Date:         dateStr,
+		RawDate:      rawDate,
+		CoverModTime: coverModTime,
+		ReadLink:     previewReadLink("uuid", uuid, extractFormats(resolveFormats(uuid, baseDir, bookPath.(string)))),
+		Lookups:      !noLookups,
+		GoogleBooks:  googleBooksEnabled(),
+		Hardcover:    hardcoverEnabled(),
+	}
+	if dup, err := libraryBookDuplicates(calibreDB, baseDir, uuid); err != nil {
+		log.Printf("edit %s: duplicate check: %v", uuid, err)
+	} else {
+		EditBookPageData.Duplicates = dup
+	}
 
-	// Apply updated metadata to a book
-	http.HandleFunc("/metadata/{uuid}/apply", requireEditor(afterBookEdits(applyMetadataHandler)))
-
-	// ISBNs found in the book's own files (isbn.go)
-	http.HandleFunc("/metadata/{uuid}/isbns", requireEditor(isbnCandidatesHandler))
-
-	// Metadata from Open Library and Google Books, and Open Library covers
-	// (lookup.go)
-	http.HandleFunc("GET /metadata/lookup", requireEditor(requireLookups(lookupHandler)))
-	http.HandleFunc("GET /metadata/lookup/cover", requireEditor(requireLookups(lookupCoverHandler)))
+	err = templates.ExecuteTemplate(w, "book-edit.html", EditBookPageData)
+	if err != nil {
+		http.Error(w, err.Error(), 500)
+	}
 }
 
 func logErr(err error, why string) {

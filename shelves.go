@@ -395,19 +395,3 @@ func shelfPageHandler(w http.ResponseWriter, r *http.Request) {
 		},
 	})
 }
-
-func registerShelfRoutes() {
-	http.HandleFunc("GET /shelves", shelvesPageHandler)
-	http.HandleFunc("GET /shelf/{id}", shelfPageHandler)
-	http.HandleFunc("GET /api/shelves", shelvesListHandler)
-	http.HandleFunc("POST /api/shelves", requireUser(shelfCreateHandler))
-	http.HandleFunc("PATCH /api/shelves/{id}", requireUser(shelfUpdateHandler))
-	http.HandleFunc("DELETE /api/shelves/{id}", requireUser(shelfDeleteHandler))
-	http.HandleFunc("PUT /api/shelves/{id}/books/{uuid}", requireUser(shelfAddBookHandler))
-	http.HandleFunc("DELETE /api/shelves/{id}/books/{uuid}", requireUser(shelfRemoveBookHandler))
-	registerShelfSeriesRoutes()
-	registerShelfPinRoutes()
-	registerSeriesPinRoutes()
-	registerAggregateFavoriteRoutes()
-	registerListOrderRoutes()
-}

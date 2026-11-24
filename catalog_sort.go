@@ -18,6 +18,8 @@ import (
 	"strconv"
 	"strings"
 	"sync"
+
+	"github.com/iotku/CalibreFast/pkg/textkey"
 )
 
 // Sort keys. User input is only ever compared against these.
@@ -111,13 +113,13 @@ func catalogSortKeys(c *catalog) *sortKeys {
 	k := &sortKeys{cat: c, title: make([]string, n), author: make([]string, n), series: make([]string, n), pub: make([]string, n)}
 	for i := range c.books {
 		b := &c.books[i]
-		k.title[i] = foldWords(cmp.Or(b.Sort, b.Title))
+		k.title[i] = textkey.Fold(cmp.Or(b.Sort, b.Title))
 		if len(b.AuthorIDs) > 0 {
 			id := b.AuthorIDs[0]
-			k.author[i] = foldWords(cmp.Or(c.authorSorts[id], c.authorNames[id]))
+			k.author[i] = textkey.Fold(cmp.Or(c.authorSorts[id], c.authorNames[id]))
 		}
 		if b.Series != 0 {
-			k.series[i] = foldWords(c.seriesNames[b.Series])
+			k.series[i] = textkey.Fold(c.seriesNames[b.Series])
 		}
 		k.pub[i] = seriesDate(b.PubDate)
 	}

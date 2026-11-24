@@ -472,8 +472,3 @@ func backupDownloadHandler(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Content-Disposition", `attachment; filename="`+file+`"`)
 	http.ServeContent(w, r, "", b.At, f)
 }
-
-func registerBackupRoutes() {
-	http.HandleFunc("POST /api/admin/backups", requireAdminUser(backupNowHandler))
-	http.HandleFunc("GET /api/admin/backups/{name}", requireAdminUser(backupDownloadHandler))
-}

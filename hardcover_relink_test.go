@@ -31,42 +31,42 @@ func TestHardcoverRelinkNotification(t *testing.T) {
 		}
 	}
 	// Linking just now isn't news; a link from before this code is.
-	hcNotifyRelink()
+	hcSync.NotifyRelink()
 	if n := relinks(); len(n) != 0 {
 		t.Fatalf("new link: %+v", n)
 	}
 	set(`UPDATE hardcover_links SET relink_notified = '' WHERE user_id = ?`, u.ID)
-	hcNotifyRelink()
+	hcSync.NotifyRelink()
 	n := relinks()
 	if len(n) != 1 || n[0].Title != "bring in the authors you follow there and follow the authors you star here" || n[0].Href != "/account#hardcover" {
 		t.Fatalf("old link: %+v", n)
 	}
 	// Once: not again at the next start, nor once dismissed.
-	hcNotifyRelink()
+	hcSync.NotifyRelink()
 	set(`DELETE FROM notifications WHERE user_id = ?`, u.ID)
-	hcNotifyRelink()
+	hcSync.NotifyRelink()
 	if n := relinks(); len(n) != 0 {
 		t.Fatalf("told twice: %+v", n)
 	}
 	// Linking asks for something new again: told again.
 	set(`UPDATE hardcover_links SET relink_notified = 'read:me' WHERE user_id = ?`, u.ID)
-	hcNotifyRelink()
+	hcSync.NotifyRelink()
 	if n := relinks(); len(n) != 1 {
 		t.Fatalf("next change: %+v", n)
 	}
 	// Linking again: done with.
-	hcRelinked(u.ID)
+	if _, err := hcSync.Unlink(u.ID); err != nil {
+		t.Fatal(err)
+	}
+	linkHardcover(t, u)
 	if n := relinks(); len(n) != 0 {
 		t.Fatalf("relinked: %+v", n)
 	}
 	// A link with everything already: nothing to tell.
 	set(`UPDATE hardcover_links SET relink_notified = '', scope = scope || ' read:social write:social' WHERE user_id = ?`, u.ID)
-	hcNotifyRelink()
+	hcSync.NotifyRelink()
 	if n := relinks(); len(n) != 0 {
 		t.Fatalf("all scopes: %+v", n)
-	}
-	if got := joinAnd([]string{"a", "b", "c"}); got != "a, b and c" {
-		t.Fatalf("joinAnd: %q", got)
 	}
 }
 
@@ -74,9 +74,9 @@ func TestHardcoverRelinkNotification(t *testing.T) {
 // constant, so they can't fall behind it.
 func TestHardcoverSetupScopes(t *testing.T) {
 	setupTestAppDB(t)
-	origOAuth, origRevoker := hcOAuth, hcRevoker
-	hcOAuth, hcRevoker = nil, nil
-	t.Cleanup(func() { hcOAuth, hcRevoker = origOAuth, origRevoker })
+	origSync, origClientID := hcSync, hcSyncClientID
+	hcSync, hcSyncClientID = nil, ""
+	t.Cleanup(func() { hcSync, hcSyncClientID = origSync, origClientID })
 	admin, err := createUser("admin", "a long enough password", true)
 	if err != nil {
 		t.Fatal(err)

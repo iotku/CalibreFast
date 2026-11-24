@@ -1,5 +1,5 @@
 {{/* The top of an entry's filtered page: its picture and description, an
-     author's series and Hardcover profile (hardcover_authors.go), a series'
+     author's series and Hardcover profile (author_profile.go), a series'
      status. In filtered.html, and alone from POST /api/authors/profile. */}}
 {{ define "agg-header" }}
 {{ if or .Description .ImageURL .Series .SeriesStatus (and .Profile .Profile.Shows) }}

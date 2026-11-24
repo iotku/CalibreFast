@@ -7,7 +7,7 @@
  *
  * Taking the star off an author the user follows on Hardcover asks first,
  * with "Also unfollow on Hardcover" ticked as they chose on /account
- * (hardcover_follow_push.go); unticked, Hardcover isn't touched.
+ * (internal/hardcoversync/follow_push.go); unticked, Hardcover isn't touched.
  *
  * Also /me/favorites' carousels of favorite authors (rendered by the
  * server, filtered.html) and of series (drawn here from their grid entries

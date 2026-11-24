@@ -205,9 +205,3 @@ func markNewAccount(w http.ResponseWriter, r *http.Request) {
 		Secure: secureCookies(r), SameSite: http.SameSiteLaxMode,
 	})
 }
-
-func registerPrefsRoutes() {
-	http.HandleFunc("GET /preferences", preferencesPage)
-	http.HandleFunc("PUT /api/me/prefs", requireUser(putPrefsHandler))
-	http.HandleFunc("GET /api/me/saved-books", requireUser(savedBooksHandler))
-}

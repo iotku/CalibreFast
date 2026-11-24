@@ -374,12 +374,6 @@ func mergeIDs(r *http.Request) (ids []string, keep string) {
 	return ids, keep
 }
 
-func registerMergeRoutes() {
-	http.HandleFunc("GET /book/merge", requireEditor(mergePage))
-	http.HandleFunc("GET /merge/metadata", requireEditor(mergeMetadataHandler))
-	http.HandleFunc("POST /merge/apply", requireEditor(afterBulkEdits(mergeApplyHandler)))
-}
-
 func mergePage(w http.ResponseWriter, r *http.Request) {
 	ids, keep := mergeIDs(r)
 	books, err := loadMergeBooks(ids)
@@ -873,7 +867,7 @@ func mergeReaderData(keep string, others []string, same map[string][]string) (in
 	if err := tx.Commit(); err != nil {
 		return 0, err
 	}
-	hcSyncMerged(keep, others)
+	hcSync.Merged(keep, others)
 	return dropped, nil
 }
 

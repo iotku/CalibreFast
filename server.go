@@ -167,7 +167,7 @@ func serve(addr string, h http.Handler) {
 	}
 	stopBulkEdits(time.Now().Add(shutdownTimeout))          // bulk_queue.go
 	stopHardcover(time.Now().Add(5 * time.Second))          // hardcover.go
-	stopHardcoverSync(time.Now().Add(5 * time.Second))      // hardcover_sync.go
+	stopHardcoverSync(time.Now().Add(5 * time.Second))      // internal/hardcoversync/sync.go
 	imports.stopItemWriter(time.Now().Add(shutdownTimeout)) // imports_edit_queue.go
 	closeDatabases()
 	log.Println("stopped")
@@ -310,12 +310,4 @@ func serverStopHandler(w http.ResponseWriter, r *http.Request) {
 	_ = json.NewEncoder(w).Encode(map[string]bool{"stopping": true, "restarts": underSystemd()})
 	// Shutdown waits for this request to finish, so the answer gets out.
 	requestStop("asked by admin " + u.Username)
-}
-
-func registerServerRoutes() {
-	http.HandleFunc("GET /admin/server", requireAdminUser(serverPage))
-	http.HandleFunc("GET /admin/server/live", requireAdminUser(serverLive))
-	http.HandleFunc("POST /api/admin/server/stop", requireAdminUser(serverStopHandler))
-	http.HandleFunc("POST /api/admin/server/update", requireAdminUser(serverUpdateStart)) // server_update.go
-	http.HandleFunc("GET /api/admin/server/update", requireAdminUser(serverUpdateStatus))
 }

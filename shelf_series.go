@@ -223,12 +223,6 @@ func shelfRemoveSeriesHandler(w http.ResponseWriter, r *http.Request) {
 	w.WriteHeader(http.StatusNoContent)
 }
 
-func registerShelfSeriesRoutes() {
-	http.HandleFunc("PUT /api/shelves/{id}/series/{name...}", requireUser(shelfAddSeriesHandler))
-	http.HandleFunc("DELETE /api/shelves/{id}/series/{name...}", requireUser(shelfRemoveSeriesHandler))
-	http.HandleFunc("GET /series-popup/{name...}", seriesPopupHandler)
-}
-
 // seriesPopupBook: a line of the series popup's list.
 type seriesPopupBook struct {
 	UUID, Title, Index string

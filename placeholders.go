@@ -51,8 +51,8 @@ import (
 	"time"
 
 	"github.com/google/uuid"
-	"github.com/iotku/CalibreFast/pkg/hardcover"
 	"github.com/iotku/CalibreFast/pkg/opf"
+	"github.com/iotku/CalibreFast/pkg/textkey"
 )
 
 const placeholderCoversDir = "placeholder-covers"
@@ -62,7 +62,7 @@ type placeholder struct {
 	UUID      string
 	Meta      OPFMetadata // Series and SeriesIndex hold its series
 	Cover     string      // file in placeholderCoversDir, "" for none
-	Source    string      // "manual", or "hardcover" (hardcover.go)
+	Source    string      // "manual", or "hardcover" (internal/hardcoverseries)
 	CreatedAt int64
 	UpdatedAt int64
 }
@@ -294,14 +294,14 @@ func removeUnusedPlaceholderCover(name string) {
 // "(Series #n)" aside; a subtitle on one side only is allowed) by one of
 // the same authors ("Pratchett, Terry" is "Terry Pratchett").
 func placeholderTitleMatch(p *placeholder, title string, authors []string) bool {
-	pt, bt := hcFullTitleKey(p.Meta.Title), hcFullTitleKey(title)
+	pt, bt := textkey.FullTitle(p.Meta.Title), textkey.FullTitle(title)
 	if pt == "" || bt == "" {
 		return false
 	}
-	if pt != bt && hcTitleKey(title) != pt && hcTitleKey(p.Meta.Title) != bt {
+	if pt != bt && textkey.Title(title) != pt && textkey.Title(p.Meta.Title) != bt {
 		return false
 	}
-	return hcSharesAuthor(p.Meta.Creators, authors)
+	return textkey.SharesName(p.Meta.Creators, authors)
 }
 
 // placeholderForNewBook: the placeholder a book about to be added stands
@@ -360,7 +360,7 @@ func placeholderNumberMatch(p *placeholder, series string, index float64, author
 			return false
 		}
 	}
-	if knownAuthors(p.Meta.Creators) && knownAuthors(authors) && !hcSharesAuthor(p.Meta.Creators, authors) {
+	if knownAuthors(p.Meta.Creators) && knownAuthors(authors) && !textkey.SharesName(p.Meta.Creators, authors) {
 		return false
 	}
 	return !libraryHasSeriesNumber(series, index)
@@ -685,7 +685,7 @@ type PlaceholderPageData struct {
 	Authors string // "A & B"
 	Tags    string // "a, b"
 	ISBN    string
-	// HardcoverField: the editor's Hardcover field (hcPlaceholderField).
+	// HardcoverField: the editor's Hardcover field (placeholder_sync.go).
 	HardcoverField string
 	// HardcoverSync: the signed-in user's Sync to Hardcover (as on a
 	// book's page; hardcover_placeholder.go); nil when not linked.
@@ -711,7 +711,7 @@ type MissingPageData struct {
 	Title  string
 	Series []missingSeries // placeholders by series, those with none last
 	Gaps   []seriesGap
-	// Hardcover: series linked to Hardcover, when it is set up (hardcover.go).
+	// Hardcover: series linked to Hardcover, when it is set up (internal/hardcoverseries).
 	Hardcover *MissingHardcover
 	Count     int
 	Writable  bool
@@ -833,7 +833,7 @@ func placeholderPageData(p *placeholder, r *http.Request) PlaceholderPageData {
 		Authors:        p.authors(),
 		Tags:           strings.Join(p.Meta.Subjects, ", "),
 		ISBN:           placeholderISBN(p.Meta),
-		HardcoverField: hcPlaceholderField(p.Meta),
+		HardcoverField: hcPlaceholders.FieldValue(p.Meta),
 		HardcoverURL:   hcMetaURL(p.Meta),
 		CoverURL:       p.coverURL(),
 		CoverHue:       coverHue(p.UUID),
@@ -844,8 +844,8 @@ func placeholderPageData(p *placeholder, r *http.Request) PlaceholderPageData {
 		d.SignedIn = true
 		status, _ := readStatus(u.ID, p.UUID)
 		d.Saved = status == "wanted"
-		if hardcoverSyncEnabled() && hcIsLinked(u.ID) {
-			d.HardcoverSync = &bookHardcover{Shared: hcShared(u.ID, p.UUID), All: hcLoadShare(u.ID).All}
+		if hardcoverSyncEnabled() && hcSync.IsLinked(u.ID) {
+			d.HardcoverSync = &bookHardcover{Shared: hcSync.Shared(u.ID, p.UUID), All: hcSync.LoadShare(u.ID).All}
 		}
 	}
 	if p.Meta.Series != "" {
@@ -966,7 +966,7 @@ func missingPageHandler(w http.ResponseWriter, r *http.Request) {
 // placeholderMetaFromRequest: the editor's form, as for a library book
 // (ApplyMetadataRequest), plus an ISBN and its Hardcover book (an id or a
 // hardcover.app link; nil when the form didn't have the field, "" to
-// clear it: hcPlaceholderFieldIDs).
+// clear it: placeholderSyncField).
 func placeholderMetaFromRequest(r *http.Request) (OPFMetadata, *string, error) {
 	var req struct {
 		ApplyMetadataRequest
@@ -995,21 +995,6 @@ func placeholderMetaFromRequest(r *http.Request) (OPFMetadata, *string, error) {
 	return m, req.Hardcover, err
 }
 
-// placeholderHardcoverField sets m's Hardcover identifiers from the
-// editor's field (nil: left as they are). ed: the book Hardcover said it
-// is, when it was asked.
-func placeholderHardcoverField(r *http.Request, m *OPFMetadata, field *string) (*hardcover.Edition, error) {
-	if field == nil {
-		return nil, nil
-	}
-	ids, ed, err := hcPlaceholderFieldIDs(r.Context(), *field)
-	if err != nil {
-		return nil, err
-	}
-	m.Identifiers = append(withoutHCIdentifiers(m.Identifiers), ids...)
-	return ed, nil
-}
-
 // POST /api/placeholders: a new placeholder.
 func placeholderCreateHandler(w http.ResponseWriter, r *http.Request) {
 	m, hc, err := placeholderMetaFromRequest(r)
@@ -1017,7 +1002,7 @@ func placeholderCreateHandler(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, err.Error(), http.StatusBadRequest)
 		return
 	}
-	if _, err := placeholderHardcoverField(r, &m, hc); err != nil {
+	if err := placeholderSyncField(r.Context(), hcPlaceholders, &m, hc); err != nil {
 		http.Error(w, err.Error(), http.StatusBadRequest)
 		return
 	}
@@ -1062,13 +1047,12 @@ func placeholderUpdateHandler(w http.ResponseWriter, r *http.Request) {
 	}
 	m.Identifiers = append(kept, m.Identifiers...)
 	// Its Hardcover book: an editor's word, for everyone who syncs it
-	// (hardcover_placeholder.go).
-	ed, err := placeholderHardcoverField(r, &m, hc)
-	if err != nil {
+	// (placeholder_sync.go).
+	if err := placeholderSyncField(r.Context(), hcPlaceholders, &m, hc); err != nil {
 		http.Error(w, err.Error(), http.StatusBadRequest)
 		return
 	}
-	hcChanged := !hcSameIdentifiers(p.Meta, m)
+	hcChanged := !sameSyncIDs(p.Meta, m, hcPlaceholders)
 	p.Meta = m
 	if err := savePlaceholder(p, nil); err != nil {
 		log.Println("placeholder:", err)
@@ -1076,7 +1060,7 @@ func placeholderUpdateHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	if hcChanged {
-		hcPlaceholderBookChanged(p.UUID, ed, 0)
+		hcPlaceholders.IdentityChanged(p.UUID, 0)
 	}
 	logEdit(currentUser(r), "edit placeholder", logKindPlaceholder, p.UUID, p.Meta.Title, before, snapPlaceholder(p))
 	writeJSON(w, http.StatusOK, map[string]string{"uuid": p.UUID, "url": p.href()})
@@ -1249,18 +1233,8 @@ func withPlaceholder(m OPFMetadata, p *placeholder) OPFMetadata {
 	return m
 }
 
-func registerPlaceholderRoutes() {
-	http.HandleFunc("GET /missing", requireEditor(missingPageHandler))
-	http.HandleFunc("GET /missing/new", requireEditor(newPlaceholderPageHandler))
-	http.HandleFunc("GET /missing/{uuid}", placeholderPageHandler)
-	http.HandleFunc("GET /"+placeholderCoversDir+"/{file}", func(w http.ResponseWriter, r *http.Request) {
-		serveHashedImage(w, r, placeholderCoversDir)
-	})
-	http.HandleFunc("POST /api/placeholders", requireEditor(placeholderCreateHandler))
-	http.HandleFunc("PUT /api/placeholders/{uuid}", requireEditor(placeholderUpdateHandler))
-	http.HandleFunc("DELETE /api/placeholders/{uuid}", requireEditor(placeholderDeleteHandler))
-	http.HandleFunc("POST /api/placeholders/{uuid}/cover", requireEditor(placeholderCoverHandler))
-	http.HandleFunc("DELETE /api/placeholders/{uuid}/cover", requireEditor(placeholderCoverHandler))
-	http.HandleFunc("POST /api/placeholders/{uuid}/files", requireEditor(placeholderFilesHandler))
-	http.HandleFunc("POST /api/placeholders/{uuid}/restore", requireEditor(placeholderRestoreHandler))
+// placeholderCoverImageHandler serves GET /placeholder-covers/{file}: a
+// placeholder's cover, kept under its hash.
+func placeholderCoverImageHandler(w http.ResponseWriter, r *http.Request) {
+	serveHashedImage(w, r, placeholderCoversDir)
 }

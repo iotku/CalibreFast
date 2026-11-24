@@ -5,6 +5,8 @@ import (
 	"errors"
 	"slices"
 	"testing"
+
+	"github.com/iotku/CalibreFast/internal/hardcoversync"
 )
 
 // Importing the authors followed on Hardcover as starred authors.
@@ -34,15 +36,15 @@ func TestHardcoverFollowsImport(t *testing.T) {
 	ctx := context.Background()
 
 	// Linked before follows could be read: link again first.
-	if _, err := hcImportFollows(ctx, u.ID); !errors.Is(err, errHCFollowScope) {
+	if _, err := hcSync.ImportFollows(ctx, u.ID); !errors.Is(err, hardcoversync.ErrFollowScope) {
 		t.Fatalf("old link: %v", err)
 	}
 	if _, err := appDB.Exec(`UPDATE hardcover_links SET scope = scope || ' read:social write:social' WHERE user_id = ?`, u.ID); err != nil {
 		t.Fatal(err)
 	}
 
-	res, err := hcImportFollows(ctx, u.ID)
-	if err != nil || res != (hcFollowsResult{Total: 4, Starred: 2, Waiting: 1, Confirm: 1, Added: 3}) {
+	res, err := hcSync.ImportFollows(ctx, u.ID)
+	if err != nil || res != (hardcoversync.FollowsResult{Total: 4, Starred: 2, Waiting: 1, Confirm: 1, Added: 3}) {
 		t.Fatalf("import: %+v %v", res, err)
 	}
 	stars := func() []string {
@@ -60,39 +62,39 @@ func TestHardcoverFollowsImport(t *testing.T) {
 	if got := stars(); !slices.Equal(got, want) {
 		t.Fatalf("stars: %v", got)
 	}
-	v := hcLoadFollowsView(u.ID)
+	v := hcSync.Follows(u.ID)
 	if !v.CanRead || v.Total != 4 || len(v.Confirm) != 1 || !slices.Equal(v.Confirm[0].Candidates, []string{"Ursula K. Le Guin"}) {
 		t.Fatalf("view: %+v", v)
 	}
 
 	// The near match: only what was offered can be chosen; choosing stars it,
 	// undoing takes the star off and offers it again; "none" leaves it waiting.
-	if err := hcFollowDecision(u.ID, 902, "Frank Herbert", false); !errors.Is(err, errHCNoFollow) {
+	if err := hcSync.FollowDecision(u.ID, 902, "Frank Herbert", false); !errors.Is(err, hardcoversync.ErrNoFollow) {
 		t.Fatalf("not offered: %v", err)
 	}
-	if err := hcFollowDecision(u.ID, 902, "Ursula K. Le Guin", false); err != nil {
+	if err := hcSync.FollowDecision(u.ID, 902, "Ursula K. Le Guin", false); err != nil {
 		t.Fatal(err)
 	}
 	if got := stars(); !slices.Contains(got, "Ursula K. Le Guin/hardcover/902") {
 		t.Fatalf("chosen: %v", got)
 	}
-	if v := hcLoadFollowsView(u.ID); len(v.Confirm) != 0 || !slices.ContainsFunc(v.Starred, func(r hcFollowRow) bool { return r.HCID == 902 && r.Decided }) {
+	if v := hcSync.Follows(u.ID); len(v.Confirm) != 0 || !slices.ContainsFunc(v.Starred, func(r hardcoversync.FollowRow) bool { return r.HCID == 902 && r.Decided }) {
 		t.Fatalf("after choosing: %+v", v)
 	}
-	if err := hcFollowDecision(u.ID, 902, "", true); err != nil {
+	if err := hcSync.FollowDecision(u.ID, 902, "", true); err != nil {
 		t.Fatal(err)
 	}
-	if got := stars(); slices.Contains(got, "Ursula K. Le Guin/hardcover/902") || len(hcLoadFollowsView(u.ID).Confirm) != 1 {
+	if got := stars(); slices.Contains(got, "Ursula K. Le Guin/hardcover/902") || len(hcSync.Follows(u.ID).Confirm) != 1 {
 		t.Fatalf("undone: %v", got)
 	}
-	if err := hcFollowDecision(u.ID, 902, "", false); err != nil {
+	if err := hcSync.FollowDecision(u.ID, 902, "", false); err != nil {
 		t.Fatal(err)
 	}
 	if got := stars(); !slices.Contains(got, "Ursula Le Guin/hardcover/902") {
 		t.Fatalf("none of these: %v", got)
 	}
 	// And the choice holds on the next import.
-	if res, err := hcImportFollows(ctx, u.ID); err != nil || res.Confirm != 0 || res.Added != 0 {
+	if res, err := hcSync.ImportFollows(ctx, u.ID); err != nil || res.Confirm != 0 || res.Added != 0 {
 		t.Fatalf("again: %+v %v", res, err)
 	}
 
@@ -100,7 +102,7 @@ func TestHardcoverFollowsImport(t *testing.T) {
 	if rec := call(t, favMux(), u, "DELETE", "/api/me/favorites/author/J.%20R.%20R.%20Tolkien", ""); rec.Code != 204 {
 		t.Fatalf("unstar: %d", rec.Code)
 	}
-	if res, err := hcImportFollows(ctx, u.ID); err != nil || res.Skipped != 1 || slices.ContainsFunc(stars(), func(s string) bool { return s[0] == 'J' }) {
+	if res, err := hcSync.ImportFollows(ctx, u.ID); err != nil || res.Skipped != 1 || slices.ContainsFunc(stars(), func(s string) bool { return s[0] == 'J' }) {
 		t.Fatalf("taken off: %+v %v %v", res, err, stars())
 	}
 
@@ -121,10 +123,10 @@ func TestHardcoverFollowsImport(t *testing.T) {
 	}
 
 	// Unlinking forgets the import, not the stars.
-	if _, err := hcUnlinkAccount(u.ID); err != nil {
+	if _, err := hcSync.Unlink(u.ID); err != nil {
 		t.Fatal(err)
 	}
-	if v := hcLoadFollowsView(u.ID); v.Total != 0 || len(stars()) != 3 {
+	if v := hcSync.Follows(u.ID); v.Total != 0 || len(stars()) != 3 {
 		t.Fatalf("unlinked: %+v %v", v, stars())
 	}
 }

@@ -13,9 +13,6 @@ import (
 	"github.com/iotku/CalibreFast/pkg/hardcover"
 )
 
-// hcSlugScheme names a Hardcover book slug in identifiers.
-const hcSlugScheme = "hardcover"
-
 func identifierValue(m OPFMetadata, scheme string) string {
 	for _, id := range m.Identifiers {
 		if strings.EqualFold(id.Scheme, scheme) {
@@ -28,16 +25,16 @@ func identifierValue(m OPFMetadata, scheme string) string {
 // hcBookSlug: m's Hardcover slug, from its identifier or, with only a
 // Hardcover book id, from its series' saved list; "" when neither has one.
 func hcBookSlug(m OPFMetadata) string {
-	if s := identifierValue(m, hcSlugScheme); hardcover.ValidSlug(s) {
+	if s := identifierValue(m, hardcover.SlugScheme); hardcover.ValidSlug(s) {
 		return s
 	}
-	id, err := strconv.ParseInt(identifierValue(m, hcIdentifierScheme), 10, 64)
+	id, err := strconv.ParseInt(identifierValue(m, hardcover.IDScheme), 10, 64)
 	if err != nil || id <= 0 || appDB == nil || strings.TrimSpace(m.Series) == "" {
 		return ""
 	}
 	name, _, _ := groups.resolve("series", m.Series)
 	for _, n := range []string{name, m.Series} {
-		l, err := hcLinkFor(n)
+		l, err := hcLinks.LinkFor(n)
 		if err != nil || l == nil || l.Snapshot == nil {
 			continue
 		}
@@ -64,11 +61,11 @@ func hcMetaURL(m OPFMetadata) string {
 // the series' list knows it.
 func hcIdentifiers(m OPFMetadata) []opfIdentifier {
 	var out []opfIdentifier
-	if id := identifierValue(m, hcIdentifierScheme); id != "" {
-		out = append(out, opfIdentifier{Scheme: hcIdentifierScheme, Value: id})
+	if id := identifierValue(m, hardcover.IDScheme); id != "" {
+		out = append(out, opfIdentifier{Scheme: hardcover.IDScheme, Value: id})
 	}
 	if s := hcBookSlug(m); s != "" {
-		out = append(out, opfIdentifier{Scheme: hcSlugScheme, Value: s})
+		out = append(out, opfIdentifier{Scheme: hardcover.SlugScheme, Value: s})
 	}
 	return out
 }

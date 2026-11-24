@@ -33,6 +33,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/iotku/CalibreFast/internal/hardcoversync"
 	"github.com/iotku/CalibreFast/pkg/koreader"
 	"github.com/iotku/CalibreFast/pkg/kosync"
 )
@@ -282,7 +283,7 @@ func kosyncPutHandler(w http.ResponseWriter, r *http.Request, u *User) {
 			status = "finished"
 		}
 		_ = setStatus(u.ID, b.UUID, status, "auto")
-		hcSyncTouch(u.ID, b.UUID, hcProgressDelay) // hardcover_sync.go
+		hcSync.Touch(u.ID, b.UUID, hardcoversync.ProgressDelay) // internal/hardcoversync/sync.go
 	}
 	writeJSON(w, http.StatusOK, map[string]any{"document": doc, "timestamp": now / 1000})
 }
@@ -343,20 +344,6 @@ func kosyncWrongURLHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	kosyncError(w, http.StatusUnauthorized, kosync.ErrUnauthorized, msg)
-}
-
-func registerKosyncRoutes(mux *http.ServeMux) {
-	mux.HandleFunc("GET "+kosync.Prefix+"/healthcheck", kosyncHealthHandler)
-	mux.HandleFunc("POST "+kosync.Prefix+"/users/create", kosyncRegisterHandler)
-	mux.HandleFunc("GET "+kosync.Prefix+"/users/auth", kosyncAuth(kosyncAuthorizeHandler))
-	mux.HandleFunc("PUT "+kosync.Prefix+"/syncs/progress", kosyncAuth(kosyncPutHandler))
-	mux.HandleFunc("GET "+kosync.Prefix+"/syncs/progress/{document}", kosyncAuth(kosyncGetHandler))
-	mux.HandleFunc("POST /users/create", kosyncWrongURLHandler)
-	mux.HandleFunc("GET /users/auth", kosyncWrongURLHandler)
-	mux.HandleFunc("PUT /syncs/progress", kosyncWrongURLHandler)
-	mux.HandleFunc("GET /syncs/progress/{document}", kosyncWrongURLHandler)
-	mux.HandleFunc("POST /account/sync-key", requireUser(syncKeyHandler))
-	registerHardcoverSyncRoutes(mux)
 }
 
 // ---------------------------------------------------------------------------

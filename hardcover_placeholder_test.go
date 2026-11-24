@@ -7,6 +7,7 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/iotku/CalibreFast/internal/hardcoversync"
 	"github.com/iotku/CalibreFast/pkg/hardcover"
 )
 
@@ -30,9 +31,9 @@ func TestHardcoverPlaceholderSync(t *testing.T) {
 		}
 		return rec.Body.Bytes()
 	}
-	state := func(id string) hcBookStatus {
+	state := func(id string) hardcoversync.BookStatus {
 		t.Helper()
-		var st hcBookStatus
+		var st hardcoversync.BookStatus
 		if err := json.Unmarshal(do("GET", "/api/me/books/"+id+"/hardcover", "", 200), &st); err != nil {
 			t.Fatal(err)
 		}
@@ -66,10 +67,10 @@ func TestHardcoverPlaceholderSync(t *testing.T) {
 	// The first to choose names it, for the placeholder, not just for them.
 	do("PUT", base+"/match", `{"book_id":60}`, 200)
 	ph := placeholderByUUID(p.UUID)
-	if identifierValue(ph.Meta, hcIdentifierScheme) != "60" || identifierValue(ph.Meta, hcSlugScheme) != "the-right-book" {
+	if identifierValue(ph.Meta, hardcover.IDScheme) != "60" || identifierValue(ph.Meta, hardcover.SlugScheme) != "the-right-book" {
 		t.Fatalf("placeholder's identifiers: %+v", ph.Meta.Identifiers)
 	}
-	if _, ok := hcUserMatch(u.ID, p.UUID); ok {
+	if _, ok := hcSync.UserMatch(u.ID, p.UUID); ok {
 		t.Error("stored as the user's own match")
 	}
 	step(t)
@@ -88,7 +89,7 @@ func TestHardcoverPlaceholderSync(t *testing.T) {
 	if rec := call(t, mux, &editor, "PUT", base+"/match", `{"book_id":60}`); rec.Code != 200 {
 		t.Errorf("editor: %d %s", rec.Code, rec.Body)
 	}
-	if err := hcSetPlaceholderBook(p.UUID, hardcover.Edition{BookID: 61}, u, true, 0); err != errHCPlaceholderSet {
+	if err := hcSetPlaceholderBook(p.UUID, hardcover.Edition{BookID: 61}, u, true, 0); err != errPlaceholderSyncSet {
 		t.Errorf("a second claim: %v", err)
 	}
 
@@ -103,7 +104,7 @@ func TestHardcoverPlaceholderSync(t *testing.T) {
 		t.Fatal(err)
 	}
 	step(t)
-	if got := identifierValue(placeholderByUUID(q.UUID).Meta, hcIdentifierScheme); got != "50" {
+	if got := identifierValue(placeholderByUUID(q.UUID).Meta, hardcover.IDScheme); got != "50" {
 		t.Errorf("found by ISBN: hardcover-id %q", got)
 	}
 	if b := f.books[50]; b == nil || b.status != hardcover.StatusWantToRead || b.edition != 501 {
@@ -114,8 +115,8 @@ func TestHardcoverPlaceholderSync(t *testing.T) {
 	if err := replacePlaceholder(q.UUID, books[1]); err != nil {
 		t.Fatal(err)
 	}
-	if !hcIsBookShared(u.ID, books[1]) || hcIsBookShared(u.ID, q.UUID) {
-		t.Errorf("sharing didn't move: book %v, placeholder %v", hcIsBookShared(u.ID, books[1]), hcIsBookShared(u.ID, q.UUID))
+	if !hcSync.IsBookShared(u.ID, books[1]) || hcSync.IsBookShared(u.ID, q.UUID) {
+		t.Errorf("sharing didn't move: book %v, placeholder %v", hcSync.IsBookShared(u.ID, books[1]), hcSync.IsBookShared(u.ID, q.UUID))
 	}
 	var n int
 	_ = appDB.QueryRow(`SELECT COUNT(*) FROM hardcover_sync WHERE book_uuid = ?`, q.UUID).Scan(&n)
@@ -155,7 +156,7 @@ func TestPlaceholderHardcoverField(t *testing.T) {
 	}
 	put("60", 200)
 	m := placeholderByUUID(p.UUID).Meta
-	if identifierValue(m, hcIdentifierScheme) != "60" || placeholderISBN(m) == "" {
+	if identifierValue(m, hardcover.IDScheme) != "60" || placeholderISBN(m) == "" {
 		t.Fatalf("by id: %+v", m.Identifiers)
 	}
 	var n int
@@ -163,15 +164,15 @@ func TestPlaceholderHardcoverField(t *testing.T) {
 	if n != 0 {
 		t.Error("the old lookup was kept")
 	}
-	if got := hcPlaceholderField(m); got != "60" {
+	if got := hcPlaceholders.FieldValue(m); got != "60" {
 		t.Errorf("field shows %q", got)
 	}
 	put("https://hardcover.app/books/the-right-book", 200)
 	m = placeholderByUUID(p.UUID).Meta
-	if identifierValue(m, hcSlugScheme) != "the-right-book" || identifierValue(m, hcIdentifierScheme) != "" {
+	if identifierValue(m, hardcover.SlugScheme) != "the-right-book" || identifierValue(m, hardcover.IDScheme) != "" {
 		t.Fatalf("by link: %+v", m.Identifiers)
 	}
-	if got := hcPlaceholderField(m); got != "https://hardcover.app/books/the-right-book" {
+	if got := hcPlaceholders.FieldValue(m); got != "https://hardcover.app/books/the-right-book" {
 		t.Errorf("field shows %q", got)
 	}
 	for _, bad := range []string{"javascript:alert(1)", "https://evil.example/books/x", "-3"} {
@@ -186,10 +187,10 @@ func TestPlaceholderHardcoverField(t *testing.T) {
 	if rec := call(t, mux, admin, "PUT", "/api/placeholders/"+p.UUID, `{"title":"Later"}`); rec.Code != 200 {
 		t.Fatal(rec.Code)
 	}
-	if identifierValue(placeholderByUUID(p.UUID).Meta, hcIdentifierScheme) != "60" {
+	if identifierValue(placeholderByUUID(p.UUID).Meta, hardcover.IDScheme) != "60" {
 		t.Error("dropped by a form without the field")
 	}
-	if _, _, err := hcPlaceholderFieldIDs(context.Background(), strings.Repeat("9", 30)); err == nil {
+	if _, err := hcPlaceholders.ParseField(context.Background(), strings.Repeat("9", 30)); err == nil {
 		t.Error("an id too big was taken")
 	}
 }

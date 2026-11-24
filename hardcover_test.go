@@ -12,6 +12,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/iotku/CalibreFast/internal/hardcoverseries"
 	"github.com/iotku/CalibreFast/pkg/hardcover"
 )
 
@@ -83,9 +84,9 @@ func hardcoverMux() *http.ServeMux {
 	wrap := func(h http.HandlerFunc) http.HandlerFunc { return requireEditor(requireLookups(requireHardcover(h))) }
 	mux.HandleFunc("GET /missing/hardcover", wrap(hardcoverReviewPage))
 	mux.HandleFunc("GET /missing/hardcover/author", wrap(hardcoverAuthorPage))
-	mux.HandleFunc("POST /api/hardcover/candidates", wrap(hardcoverJobHandler(hcJobCandidates)))
-	mux.HandleFunc("POST /api/hardcover/link", wrap(hardcoverJobHandler(hcJobLink)))
-	mux.HandleFunc("POST /api/hardcover/refresh", wrap(hardcoverJobHandler(hcJobRefresh)))
+	mux.HandleFunc("POST /api/hardcover/candidates", wrap(hardcoverJobHandler(hardcoverseries.JobCandidates)))
+	mux.HandleFunc("POST /api/hardcover/link", wrap(hardcoverJobHandler(hardcoverseries.JobLink)))
+	mux.HandleFunc("POST /api/hardcover/refresh", wrap(hardcoverJobHandler(hardcoverseries.JobRefresh)))
 	mux.HandleFunc("POST /api/hardcover/batch", wrap(hardcoverBatchHandler))
 	mux.HandleFunc("GET /api/hardcover/jobs", wrap(hardcoverJobsHandler))
 	mux.HandleFunc("DELETE /api/hardcover/jobs/{id}", wrap(hardcoverCancelJobHandler))
@@ -126,15 +127,15 @@ func TestHardcoverSeries(t *testing.T) {
 	step := func() {
 		t.Helper()
 		for range 20 {
-			if ran, _ := hcStep(context.Background()); !ran {
+			if ran, _ := hcLinks.Step(context.Background()); !ran {
 				return
 			}
 		}
 		t.Fatal("queue doesn't empty")
 	}
-	job := func(id int64) *hcJob {
+	job := func(id int64) *hardcoverseries.Job {
 		t.Helper()
-		j, err := hcJobByID(id)
+		j, err := hcLinks.JobByID(id)
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -173,7 +174,7 @@ func TestHardcoverSeries(t *testing.T) {
 		t.Error("the same request queued twice")
 	}
 	step()
-	var cands hcCandidates
+	var cands hardcoverseries.Candidates
 	if j := job(a.Job.ID); j.State != "done" || json.Unmarshal(j.Result, &cands) != nil ||
 		len(cands.Candidates) != 2 || cands.Candidates[0].ID != 77 || !cands.Candidates[0].Sure || cands.Candidates[1].Sure ||
 		cands.Candidates[0].URL != "https://hardcover.app/series/other" {
@@ -187,7 +188,7 @@ func TestHardcoverSeries(t *testing.T) {
 	if j := job(a.Job.ID); j.State != "done" {
 		t.Fatalf("link: %+v", j)
 	}
-	l, _ := hcLinkFor("other")
+	l, _ := hcLinks.LinkFor("other")
 	if l == nil || l.HCID != 77 || l.Snapshot == nil || len(l.Snapshot.Entries) != 5 || l.CheckedAt != clock.now().Unix() {
 		t.Fatalf("link %+v", l)
 	}
@@ -209,7 +210,7 @@ func TestHardcoverSeries(t *testing.T) {
 		}
 	}
 	s, _ := hcSeries("Other")
-	rev, err := hcReviewFor(s, l)
+	rev, err := hcLinks.ReviewFor(s, l)
 	if err != nil || len(rev.Present) != 2 || len(rev.Untagged) != 1 || rev.Untagged[0].Book.UUID != four || !rev.Untagged[0].Checked ||
 		len(rev.Missing) != 2 || !rev.Missing[0].Checked || rev.Missing[1].Checked {
 		t.Fatalf("review %+v %v (books %v)", rev, err, other)
@@ -262,10 +263,10 @@ func TestHardcoverSeries(t *testing.T) {
 	if held.State != "held" || held.NotBefore != midnight.Unix() {
 		t.Fatalf("over the limit: %+v", held)
 	}
-	hcSaveUsage()
+	hcLinks.SaveUsage()
 	hcClient = hardcover.New(hardcover.Config{URL: srv.URL, Token: "test-token", UserAgent: "test", Now: clock.now,
 		Budget: hardcover.NewBudget(60, 10, 8)})
-	hcRestoreUsage() // as after a restart
+	hcLinks.RestoreUsage() // as after a restart
 	step()
 	if j := job(a.Job.ID); j.State != "held" {
 		t.Fatalf("after a restart, before midnight: %+v", j)
@@ -289,20 +290,20 @@ func TestHardcoverSeries(t *testing.T) {
 	do(admin, "POST", "/api/hardcover/batch", `{"author":"Writer","series":["Not Theirs"]}`, http.StatusBadRequest)
 	do(admin, "POST", "/api/hardcover/batch", `{"author":"Writer","series":["Other","Wheel"]}`, http.StatusOK)
 	step()
-	var jobs struct{ Jobs []*hcJob }
+	var jobs struct{ Jobs []*hardcoverseries.Job }
 	if err := json.Unmarshal(do(admin, "GET", "/api/hardcover/jobs?ids=1,2,3,4,5,6,7,8,9,10,11,12", "", http.StatusOK), &jobs); err != nil {
 		t.Fatal(err)
 	}
-	var wheel, oth *hcJob
+	var wheel, oth *hardcoverseries.Job
 	for _, j := range jobs.Jobs {
-		if j.Kind == hcJobBatch && j.Series == "Wheel" {
+		if j.Kind == hardcoverseries.JobBatch && j.Series == "Wheel" {
 			wheel = j
 		}
-		if j.Kind == hcJobBatch && j.Series == "Other" {
+		if j.Kind == hardcoverseries.JobBatch && j.Series == "Other" {
 			oth = j
 		}
 	}
-	var lr hcLinkResult
+	var lr hardcoverseries.LinkResult
 	if wheel == nil || wheel.State != "done" || json.Unmarshal(wheel.Result, &lr) != nil || !lr.NeedsChoice || lr.Linked {
 		t.Fatalf("batch Wheel: %+v", wheel)
 	}
@@ -331,11 +332,11 @@ func TestHardcoverNotAMatch(t *testing.T) {
 	hcClient, allowWrites = hardcover.New(hardcover.Config{URL: "https://127.0.0.1:1/", Token: "test-token"}), true
 	t.Cleanup(func() { hcClient, allowWrites = origClient, origWrites; placeholdersChanged() })
 	pratchett := []string{"Terry Pratchett"}
-	if err := hcSaveLink("Discworld", &hardcover.SeriesDetail{Series: hardcover.Series{ID: 9, Name: "Discworld", Slug: "discworld"},
+	if err := hcLinks.SaveLink("Discworld", &hardcover.SeriesDetail{Series: hardcover.Series{ID: 9, Name: "Discworld", Slug: "discworld"},
 		Entries: []hardcover.Entry{
 			{BookID: 1, Title: "Mort", Position: pos(1), Authors: pratchett},
 			{BookID: 27, Title: "The Last Hero", Position: pos(27), Authors: pratchett, Released: "2001-01-01"},
-		}}, nil); err != nil {
+		}}, 0); err != nil {
 		t.Fatal(err)
 	}
 	admin, _ := createUser("boss", "a long enough password", true)
@@ -353,17 +354,17 @@ func TestHardcoverNotAMatch(t *testing.T) {
 		}
 		return rec.Body.String()
 	}
-	review := func() hcReview {
+	review := func() hardcoverseries.Review {
 		t.Helper()
 		s, _ := hcSeries("Discworld")
-		l, _ := hcLinkFor("Discworld")
-		rev, err := hcReviewFor(s, l)
+		l, _ := hcLinks.LinkFor("Discworld")
+		rev, err := hcLinks.ReviewFor(s, l)
 		if err != nil {
 			t.Fatal(err)
 		}
 		return rev
 	}
-	if rev := review(); len(rev.Untagged) != 1 || rev.Untagged[0].Book.UUID != aaron || rev.Untagged[0].Strength != hcWeak {
+	if rev := review(); len(rev.Untagged) != 1 || rev.Untagged[0].Book.UUID != aaron || rev.Untagged[0].Strength != hardcoverseries.MatchWeak {
 		t.Fatalf("before: %+v", rev.Untagged)
 	}
 	if !strings.Contains(do(admin, "GET", "/missing/hardcover?series=Discworld", "", http.StatusOK), `data-notmatch="27"`) {
