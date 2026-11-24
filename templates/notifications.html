@@ -28,6 +28,8 @@
                     {{ if eq .Kind "favorite_author" }}
                     {{ if gt .Count 1 }}<a href="{{ .Href }}" class="meta-link">{{ .Count }} new books by {{ .Subject }}</a>, an author you follow.
                     {{ else }}<a href="{{ .Href }}" class="meta-link">{{ .Title }}</a>, by {{ .Subject }}, an author you follow, is new in the library.{{ end }}
+                    {{ else if eq .Kind "hardcover_relink" }}
+                    <a href="{{ .Href }}" class="meta-link">Link Hardcover again</a> to {{ .Title }}: your link was made before CalibreFast could ask for that.
                     {{ else if eq .Kind "favorite_series" }}
                     {{ if gt .Count 1 }}<a href="{{ .Href }}" class="meta-link">{{ .Count }} new books in {{ .Subject }}</a>, a series you follow.
                     {{ else }}<a href="{{ .Href }}" class="meta-link">{{ .Title }}</a> is new in {{ .Subject }}, a series you follow.{{ end }}

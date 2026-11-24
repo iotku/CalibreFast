@@ -330,7 +330,7 @@ function init(bar: HTMLElement): void {
     }
     interface Notice {
         id: number;
-        /** placeholder_added, favorite_author or favorite_series (notifications.go). */
+        /** placeholder_added, favorite_author, favorite_series or hardcover_relink (notifications.go). */
         kind: string;
         title: string;
         on_deck: boolean;
@@ -347,6 +347,8 @@ function init(bar: HTMLElement): void {
         switch (n.kind) {
             case "favorite_author":
                 return many ? [`${n.count} new books by ${subject}`, "An author you follow"] : [n.title, `New, by ${subject}`];
+            case "hardcover_relink":
+                return ["Link Hardcover again", `To ${n.title}`];
             case "favorite_series":
                 return many ? [`${n.count} new books in ${subject}`, "A series you follow"] : [n.title, `New in ${subject}`];
             default:
