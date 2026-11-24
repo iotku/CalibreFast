@@ -7,10 +7,8 @@ Hardcover's API offers. Research only; nothing here is built yet.
 Sources are the files of Hardcover's API documentation repository,
 [hardcoverapp/hardcover-docs](https://github.com/hardcoverapp/hardcover-docs),
 read on 2026-11-24: `schema.graphql`, `capability-scopes.json`,
-`field-descriptions.json` and `row-limits.json`. docs.hardcover.app and
-api.hardcover.app couldn't be reached from where this was written, so
-**nothing below has been tried against the live API** (see "Not yet
-confirmed").
+`field-descriptions.json` and `row-limits.json`; then checked against the
+live API with read-only queries (see "Checked against the live API").
 
 ## What exists
 
@@ -42,7 +40,7 @@ type documents its `object_type` as a constant (`field-descriptions.json`):
 `'Publisher'`. These are the class names of a Rails-style polymorphic
 association, which is what `followable_type`/`followable_id` is, so
 following an author is almost certainly `followable_type: "Author"` and a
-series `"Series"`. **Confirm before relying on it.**
+series `"Series"`. Confirmed for authors (below).
 
 **Mutations** (`mutation_root`):
 
@@ -109,17 +107,30 @@ does this already).
   linked account (a `share_favorites`-style setting), and only offered once
   the link carries `read:social` / `write:social`.
 
-**Go**, on both import and push, pending the two checks below.
+**Go**, on both import and push.
 
-## Not yet confirmed
+## Checked against the live API (2026-11-24, read-only)
 
-1. That `followable_type` is `"Author"` / `"Series"`: one read of a test
-   account's `follows` after following an author and a series on the site.
-2. That Hardcover lets a third-party OAuth app request `read:social` and
-   `write:social` (its discovery document's `scopes_supported`,
-   https://api.hardcover.app/.well-known/oauth-authorization-server), and
-   whether personal API tokens carry them.
-3. Rate limits for these calls: not in the documentation files read; the
+1. **`followable_type` for an author is `"Author"`.** A personal API token's
+   `follows(where: {user_id: {_eq: <me.id>}})` returned the account's one
+   follow, made by following an author on hardcover.app, as
+   `{followable_type: "Author", followable_id: <the author's id>,
+   author: {id, name, slug}, series: null}`. The relationship fills in the
+   author, so an import needs no second query. `me` answers a list of one
+   user (`me { id }` → `[{id}]`).
+2. **`"Series"` isn't confirmed live**: the account followed no series. It
+   rests on the same documentation pattern that held for authors
+   (`object_type` "Always 'Series'"). Check it with one follow before
+   shipping series sync, or ship authors first.
+3. **The scopes can be asked for.** Hardcover's OAuth discovery document
+   (https://api.hardcover.app/.well-known/oauth-authorization-server) lists
+   `read:social` and `write:social` in `scopes_supported`, beside the ones
+   reading sync uses, and the device-code grant we use. A personal API token
+   could read `follows` with no setup.
+4. **Every request needs a token**, even `{__typename}` ("No Authorization
+   header", HTTP 400).
+5. Rate limits for these calls aren't documented in the files read; the
    client's existing per-token `Budget` applies either way.
 
-Each needs the live API: api.hardcover.app reachable, and a token for (1).
+No mutation was tried; `insert_follow` / `delete_follow` are known from the
+schema only.
