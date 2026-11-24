@@ -39,6 +39,10 @@ type homeAnswer struct {
 	// Recommended for you, and the user's strongest tags (recommend.go).
 	Recommended []recBook `json:"recommended"`
 	Tags        []string  `json:"tags"`
+	// New from authors you follow (aggregate_favorites.go), and whether the
+	// user has favorite authors (none: the row says how to get some).
+	Followed  []Book `json:"followed"`
+	Following bool   `json:"following"`
 	// How the user arranged the page, and the tags they want no "More in"
 	// rows for (home_layout.go).
 	Layout     homeLayout `json:"layout"`
@@ -89,6 +93,10 @@ func homeHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	if ans.Recommended, ans.Tags, err = userRecommend(currentUser(r), marks); err != nil {
+		http.Error(w, "query failed", http.StatusInternalServerError)
+		return
+	}
+	if ans.Followed, ans.Following, err = followedBooks(currentUser(r), marks, homeRowMax); err != nil {
 		http.Error(w, "query failed", http.StatusInternalServerError)
 		return
 	}

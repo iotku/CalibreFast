@@ -1,5 +1,13 @@
 package main
 
+// Notifications: the bar's bell counts the unseen ones, /me/notifications
+// lists them. Two kinds of news:
+//
+//   - A saved placeholder is in the library now (below).
+//   - An author or series the user starred gained a book: one notification
+//     per author or series per batch of changes, with how many books
+//     (favorite_author / favorite_series, aggregate_favorites_notify.go).
+//
 // Saving books that aren't in the library yet, and being told when they are.
 //
 // A placeholder (placeholders.go) can be Saved like a library book: its
@@ -38,6 +46,8 @@ import (
 
 const (
 	notifyPlaceholderAdded = "placeholder_added"
+	notifyFavoriteAuthor   = "favorite_author"
+	notifyFavoriteSeries   = "favorite_series"
 	// notificationsMax: the most kept per user; older ones are dropped.
 	notificationsMax = 200
 )
@@ -52,13 +62,17 @@ type notification struct {
 	CreatedAt int64  `json:"created_at"` // unix seconds
 	Seen      bool   `json:"seen"`
 	Href      string `json:"href"`
+	// Subject: the author or series a favorite_* notification is about;
+	// Count: how many of its books are new (BookUUID and Title: one of them).
+	Subject string `json:"subject,omitempty"`
+	Count   int    `json:"count"`
 }
 
 // addNotification stores one for userID, dropping the oldest beyond
-// notificationsMax.
-func addNotification(ex execer, userID int64, kind, bookUUID, title string, onDeck bool) error {
-	if _, err := ex.Exec(`INSERT INTO notifications (user_id, kind, book_uuid, title, on_deck, created_at) VALUES (?, ?, ?, ?, ?, ?)`,
-		userID, kind, bookUUID, title, onDeck, nowUnix()); err != nil {
+// notificationsMax. subject and count: see notification.
+func addNotification(ex execer, userID int64, kind, bookUUID, title string, onDeck bool, subject string, count int) error {
+	if _, err := ex.Exec(`INSERT INTO notifications (user_id, kind, book_uuid, title, on_deck, subject, count, created_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
+		userID, kind, bookUUID, title, onDeck, subject, count, nowUnix()); err != nil {
 		return err
 	}
 	_, err := ex.Exec(`DELETE FROM notifications WHERE user_id = ? AND id NOT IN
@@ -76,7 +90,7 @@ func unseenNotifications(userID int64) int {
 }
 
 func userNotifications(userID int64) ([]notification, error) {
-	rows, err := appDB.Query(`SELECT id, kind, book_uuid, title, on_deck, created_at, seen_at IS NOT NULL
+	rows, err := appDB.Query(`SELECT id, kind, book_uuid, title, on_deck, subject, count, created_at, seen_at IS NOT NULL
 		FROM notifications WHERE user_id = ? ORDER BY created_at DESC, id DESC`, userID)
 	if err != nil {
 		return nil, err
@@ -85,10 +99,15 @@ func userNotifications(userID int64) ([]notification, error) {
 	out := []notification{}
 	for rows.Next() {
 		var n notification
-		if err := rows.Scan(&n.ID, &n.Kind, &n.BookUUID, &n.Title, &n.OnDeck, &n.CreatedAt, &n.Seen); err != nil {
+		if err := rows.Scan(&n.ID, &n.Kind, &n.BookUUID, &n.Title, &n.OnDeck, &n.Subject, &n.Count, &n.CreatedAt, &n.Seen); err != nil {
 			return nil, err
 		}
-		if n.BookUUID != "" {
+		switch {
+		case n.Count > 1 && n.Kind == notifyFavoriteAuthor:
+			n.Href = categoryByKey("author").href(n.Subject) // several: the author's page
+		case n.Count > 1 && n.Kind == notifyFavoriteSeries:
+			n.Href = categoryByKey("series").href(n.Subject)
+		case n.BookUUID != "":
 			n.Href = "/book/get/" + url.PathEscape(n.BookUUID)
 		}
 		out = append(out, n)
@@ -201,7 +220,7 @@ func moveSavedPlaceholder(uid int64, p *placeholder, bookUUID string) error {
 			return err
 		}
 	}
-	if err := addNotification(tx, uid, notifyPlaceholderAdded, bookUUID, p.Meta.Title, onDeck); err != nil {
+	if err := addNotification(tx, uid, notifyPlaceholderAdded, bookUUID, p.Meta.Title, onDeck, "", 1); err != nil {
 		return err
 	}
 	return tx.Commit()

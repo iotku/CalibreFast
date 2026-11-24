@@ -421,6 +421,7 @@ func catalogFlush() error {
 	libraryCatalog.Store(next)
 	gapsCatalogChanged(old, next, append(reread, removed...)) // only their series (series_gaps.go)
 	placeholdersCatalogChanged(next, reread)                  // a book edited to be a placeholder's (placeholder_resolve.go)
+	favoritesCatalogChanged(old, next, reread)                // news for those who starred its authors or series (aggregate_favorites_notify.go)
 	scheduleCatalogSnapshot()
 	refreshFeatured() // a title or cover on a featured shelf
 	refreshTagRows()  // the tags' counts

@@ -216,6 +216,40 @@ func addFavSections(u *User, extra map[string]any) error {
 	return nil
 }
 
+// followedBooks: Discover's "New from authors you follow" (home.go): the
+// newest added books by u's favorite authors (after groups), up to n,
+// leaving out those u finished or dropped; and whether u has any favorite
+// authors in the library at all. From the catalog: no library read.
+func followedBooks(u *User, m readingMarks, n int) (books []Book, following bool, err error) {
+	favs, err := userRecFavs(u)
+	if err != nil {
+		return nil, false, err
+	}
+	c := currentCatalog()
+	authors := favs.ids("author", c.authorNames)
+	books = []Book{}
+	if len(authors) == 0 {
+		return books, false, nil
+	}
+	done := map[string]bool{}
+	for _, uuid := range slices.Concat(m.Finished, m.Dropped) {
+		done[uuid] = true
+	}
+	for _, slot := range latestOrder(c, "") {
+		if len(books) >= n {
+			break
+		}
+		b := &c.books[slot]
+		if done[b.UUID] {
+			continue
+		}
+		if slices.ContainsFunc(b.AuthorIDs, func(a int32) bool { return authors[a] }) {
+			books = append(books, b.Book)
+		}
+	}
+	return books, true, nil
+}
+
 // favsChanged: when u's favorites last changed (unix ms), for /api/me.
 func favsChanged(u *User) int64 {
 	var t int64

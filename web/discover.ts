@@ -506,6 +506,9 @@ interface HomeAnswer {
     shelves?: HomeShelf[];
     recommended?: RecBook[];
     tags?: string[];
+    /** New from authors you follow, and whether the user has favorite authors. */
+    followed?: Book[];
+    following?: boolean;
     layout?: Layout;
     hidden_tags?: string[];
 }
@@ -571,6 +574,9 @@ function showHome(h: HomeAnswer): void {
     }
     showShelves(h.shelves ?? [], true);
     showRecommended(h.recommended ?? []);
+    // With no favorite authors, the row says how to get some; with some
+    // whose books are all read, it's hidden.
+    fillRow("row-followed", h.followed ?? [], { hint: !h.following, all: !!h.following });
     affinityTags = (h.tags ?? []).map((t) => t.toLowerCase());
     showHiddenTags();
     recheckTagRows();
@@ -866,11 +872,11 @@ interface Layout {
 }
 
 /** The rows' order by default; "pins" stands for the pinned rows. */
-const DEFAULT_ORDER = ["k:reading", "k:wanted", "pins", "k:recommended", "k:shuffle", "k:latest", "k:tags"];
+const DEFAULT_ORDER = ["k:reading", "k:wanted", "pins", "k:recommended", "k:followed", "k:shuffle", "k:latest", "k:tags"];
 /** Sections that can be turned off (Go: homeSections). */
-const TOGGLEABLE = ["greeting", "stats", "wanted", "recommended", "shuffle", "latest", "tags"];
+const TOGGLEABLE = ["greeting", "stats", "wanted", "recommended", "followed", "shuffle", "latest", "tags"];
 /** Rows only a signed-in user has. */
-const ACCOUNT_ROWS = ["row-wanted", "row-recommended"];
+const ACCOUNT_ROWS = ["row-wanted", "row-recommended", "row-followed"];
 
 let layout: Layout = { order: [], hidden: [] };
 /** Tags the user wants no "More in" rows for. */

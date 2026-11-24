@@ -29,7 +29,8 @@ import (
 // "wanted" is the "On deck / Saved for later" row (On deck was a row of its
 // own; a layout that hid it doesn't hide the combined one).
 // "stats" is the reading stats summary in the greeting (stats-data.ts).
-var homeSections = []string{"greeting", "stats", "wanted", "recommended", "shuffle", "latest", "tags"}
+// "followed" is New from authors you follow (aggregate_favorites.go).
+var homeSections = []string{"greeting", "stats", "wanted", "recommended", "followed", "shuffle", "latest", "tags"}
 
 const maxLayoutID = 300 // bytes: "t:" and a tag name (or "r:" and a series')
 
