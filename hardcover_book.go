@@ -74,6 +74,22 @@ type hcBookStatus struct {
 	Match   *hcMatchView `json:"match,omitempty"`
 	// Query: what to search Hardcover for, to start with.
 	Query string `json:"query"`
+	// Placeholder: a book not in the library yet, sent as want to read
+	// (hardcover_placeholder.go). Its Hardcover book is the library's,
+	// not the user's: CanChoose when it has none yet, or for an editor.
+	Placeholder bool `json:"placeholder,omitempty"`
+	CanChoose   bool `json:"can_choose"`
+}
+
+// hcBookStateFor: hcBookState, with what the request's user may change.
+func hcBookStateFor(r *http.Request, userID int64, uuid string) hcBookStatus {
+	st := hcBookState(userID, uuid)
+	st.CanChoose = true
+	if p := placeholderByUUID(uuid); p != nil {
+		st.Placeholder = true
+		st.CanChoose = hcPlaceholderBookID(p) == 0 || canEditLibrary(r)
+	}
+	return st
 }
 
 // hcMatchView: the Hardcover book a library book is sent as.
@@ -96,6 +112,9 @@ func hcBookState(userID int64, uuid string) hcBookStatus {
 		if appDB.QueryRow(`SELECT hc_book_id, slug, title FROM hardcover_books WHERE book_uuid = ? AND hc_book_id > 0`, uuid).
 			Scan(&ed.BookID, &ed.Slug, &ed.Title) == nil {
 			st.Match = &hcMatchView{BookID: ed.BookID, Slug: ed.Slug, Title: ed.Title}
+		} else if p := placeholderByUUID(uuid); p != nil && hcPlaceholderBookID(p) > 0 {
+			// Not looked up yet: as the placeholder names it.
+			st.Match = &hcMatchView{BookID: hcPlaceholderBookID(p), Slug: hcBookSlug(p.Meta), Title: p.Meta.Title}
 		}
 	}
 	if !st.Shared {
@@ -167,7 +186,7 @@ func hcLinkTarget(q string) (slug string, id int64, ok bool) {
 // it writes the error and answers false.
 func hcBookFor(w http.ResponseWriter, r *http.Request) (*User, string, bool) {
 	u := currentUser(r)
-	uuid, ok := requireBook(w, r)
+	uuid, ok := requireSyncBook(w, r)
 	if !ok {
 		return nil, "", false
 	}
@@ -184,7 +203,7 @@ func hardcoverBookStatusHandler(w http.ResponseWriter, r *http.Request) {
 	if !ok {
 		return
 	}
-	writeJSON(w, http.StatusOK, hcBookState(u.ID, uuid))
+	writeJSON(w, http.StatusOK, hcBookStateFor(r, u.ID, uuid))
 }
 
 // hardcoverBookSearchHandler: GET /api/me/books/{uuid}/hardcover/search?q=
@@ -256,6 +275,16 @@ func hardcoverBookMatchHandler(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "Turn on Sync to Hardcover first.", http.StatusConflict)
 		return
 	}
+	ph := placeholderByUUID(uuid)
+	if ph != nil && r.Method == http.MethodDelete {
+		http.Error(w, "A placeholder's Hardcover book is the library's: choose another instead.", http.StatusBadRequest)
+		return
+	}
+	editor := canEditLibrary(r)
+	if ph != nil && !editor && hcPlaceholderBookID(ph) > 0 {
+		http.Error(w, "This book already has its Hardcover book; an editor can change it.", http.StatusForbidden)
+		return
+	}
 	if r.Method == http.MethodDelete {
 		if _, err := appDB.Exec(`DELETE FROM hardcover_user_books WHERE user_id = ? AND book_uuid = ?`, u.ID, uuid); err != nil {
 			log.Println("hardcover match:", err)
@@ -263,7 +292,7 @@ func hardcoverBookMatchHandler(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 		hcResend(u.ID, uuid)
-		writeJSON(w, http.StatusOK, hcBookState(u.ID, uuid))
+		writeJSON(w, http.StatusOK, hcBookStateFor(r, u.ID, uuid))
 		return
 	}
 	var req struct {
@@ -286,13 +315,24 @@ func hardcoverBookMatchHandler(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "Hardcover has no such book.", http.StatusNotFound)
 		return
 	}
-	if err := hcSetUserMatch(u.ID, uuid, ed); err != nil {
+	if ph != nil {
+		// The placeholder's own identifiers, for everyone: the first to
+		// choose names it; after that, only an editor changes it.
+		if err := hcSetPlaceholderBook(uuid, ed, u, !editor, u.ID); errors.Is(err, errHCPlaceholderSet) {
+			http.Error(w, "Someone chose its Hardcover book a moment ago; an editor can change it.", http.StatusConflict)
+			return
+		} else if err != nil {
+			log.Println("hardcover match:", err)
+			http.Error(w, "could not save", http.StatusInternalServerError)
+			return
+		}
+	} else if err := hcSetUserMatch(u.ID, uuid, ed); err != nil {
 		log.Println("hardcover match:", err)
 		http.Error(w, "could not save", http.StatusInternalServerError)
 		return
 	}
 	hcResend(u.ID, uuid)
-	writeJSON(w, http.StatusOK, hcBookState(u.ID, uuid))
+	writeJSON(w, http.StatusOK, hcBookStateFor(r, u.ID, uuid))
 }
 
 // hcProblemBooks: the books userID shares that can't be sent (not found,
@@ -324,6 +364,9 @@ func hcProblemBooks(userID int64) []hcSharedBook {
 func hcBookTitle(uuid string) (title, authors string, ok bool) {
 	if b, ok := currentCatalog().lookup(uuid); ok {
 		return b.Title, b.Authors, true
+	}
+	if p := placeholderByUUID(uuid); p != nil {
+		return p.Meta.Title, p.authors(), true
 	}
 	err := calibreDB.QueryRow(`SELECT b.title, COALESCE((SELECT group_concat(a.name, ' & ') FROM books_authors_link l
 		JOIN authors a ON a.id = l.author WHERE l.book = b.id), '') FROM books b WHERE b.uuid = ?`, uuid).Scan(&title, &authors)

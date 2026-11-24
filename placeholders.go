@@ -51,6 +51,7 @@ import (
 	"time"
 
 	"github.com/google/uuid"
+	"github.com/iotku/CalibreFast/pkg/hardcover"
 	"github.com/iotku/CalibreFast/pkg/opf"
 )
 
@@ -684,6 +685,11 @@ type PlaceholderPageData struct {
 	Authors string // "A & B"
 	Tags    string // "a, b"
 	ISBN    string
+	// HardcoverField: the editor's Hardcover field (hcPlaceholderField).
+	HardcoverField string
+	// HardcoverSync: the signed-in user's Sync to Hardcover (as on a
+	// book's page; hardcover_placeholder.go); nil when not linked.
+	HardcoverSync *bookHardcover
 	// HardcoverURL: its page on Hardcover (hardcover_ids.go), or "".
 	HardcoverURL string
 	CoverURL     string
@@ -820,23 +826,27 @@ func placeholderISBN(m OPFMetadata) string {
 
 func placeholderPageData(p *placeholder, r *http.Request) PlaceholderPageData {
 	d := PlaceholderPageData{
-		Title:        p.Meta.Title + " — " + SiteTitle,
-		UUID:         p.UUID,
-		Meta:         p.Meta,
-		Index:        p.Meta.SeriesIndex,
-		Authors:      p.authors(),
-		Tags:         strings.Join(p.Meta.Subjects, ", "),
-		ISBN:         placeholderISBN(p.Meta),
-		HardcoverURL: hcMetaURL(p.Meta),
-		CoverURL:     p.coverURL(),
-		CoverHue:     coverHue(p.UUID),
-		Source:       p.Source,
-		Writable:     canEditLibrary(r),
+		Title:          p.Meta.Title + " — " + SiteTitle,
+		UUID:           p.UUID,
+		Meta:           p.Meta,
+		Index:          p.Meta.SeriesIndex,
+		Authors:        p.authors(),
+		Tags:           strings.Join(p.Meta.Subjects, ", "),
+		ISBN:           placeholderISBN(p.Meta),
+		HardcoverField: hcPlaceholderField(p.Meta),
+		HardcoverURL:   hcMetaURL(p.Meta),
+		CoverURL:       p.coverURL(),
+		CoverHue:       coverHue(p.UUID),
+		Source:         p.Source,
+		Writable:       canEditLibrary(r),
 	}
 	if u := currentUser(r); u != nil {
 		d.SignedIn = true
 		status, _ := readStatus(u.ID, p.UUID)
 		d.Saved = status == "wanted"
+		if hardcoverSyncEnabled() && hcIsLinked(u.ID) {
+			d.HardcoverSync = &bookHardcover{Shared: hcShared(u.ID, p.UUID), All: hcLoadShare(u.ID).All}
+		}
 	}
 	if p.Meta.Series != "" {
 		d.SeriesHref = categoryByKey("series").href(p.Meta.Series)
@@ -954,14 +964,20 @@ func missingPageHandler(w http.ResponseWriter, r *http.Request) {
 // ---------------------------------------------------------------------------
 
 // placeholderMetaFromRequest: the editor's form, as for a library book
-// (ApplyMetadataRequest), plus an ISBN.
-func placeholderMetaFromRequest(r *http.Request) (OPFMetadata, error) {
+// (ApplyMetadataRequest), plus an ISBN and its Hardcover book (an id or a
+// hardcover.app link; nil when the form didn't have the field, "" to
+// clear it: hcPlaceholderFieldIDs).
+func placeholderMetaFromRequest(r *http.Request) (OPFMetadata, *string, error) {
 	var req struct {
 		ApplyMetadataRequest
-		ISBN string `json:"isbn"`
+		ISBN      string  `json:"isbn"`
+		Hardcover *string `json:"hardcover"`
 	}
 	if err := json.NewDecoder(http.MaxBytesReader(nil, r.Body, 1<<20)).Decode(&req); err != nil {
-		return OPFMetadata{}, fmt.Errorf("invalid JSON: %w", err)
+		return OPFMetadata{}, nil, fmt.Errorf("invalid JSON: %w", err)
+	}
+	if req.Hardcover != nil && len(*req.Hardcover) > 500 {
+		return OPFMetadata{}, nil, errors.New("Hardcover: give the book's id, or its link on hardcover.app")
 	}
 	m := metadataFromRequest(req.ApplyMetadataRequest)
 	if strings.TrimSpace(req.Creators) == "" {
@@ -975,13 +991,33 @@ func placeholderMetaFromRequest(r *http.Request) (OPFMetadata, error) {
 	if strings.TrimSpace(req.Date) == "" {
 		m.Date = ""
 	}
-	return cleanPlaceholderMeta(m)
+	m, err := cleanPlaceholderMeta(m)
+	return m, req.Hardcover, err
+}
+
+// placeholderHardcoverField sets m's Hardcover identifiers from the
+// editor's field (nil: left as they are). ed: the book Hardcover said it
+// is, when it was asked.
+func placeholderHardcoverField(r *http.Request, m *OPFMetadata, field *string) (*hardcover.Edition, error) {
+	if field == nil {
+		return nil, nil
+	}
+	ids, ed, err := hcPlaceholderFieldIDs(r.Context(), *field)
+	if err != nil {
+		return nil, err
+	}
+	m.Identifiers = append(withoutHCIdentifiers(m.Identifiers), ids...)
+	return ed, nil
 }
 
 // POST /api/placeholders: a new placeholder.
 func placeholderCreateHandler(w http.ResponseWriter, r *http.Request) {
-	m, err := placeholderMetaFromRequest(r)
+	m, hc, err := placeholderMetaFromRequest(r)
 	if err != nil {
+		http.Error(w, err.Error(), http.StatusBadRequest)
+		return
+	}
+	if _, err := placeholderHardcoverField(r, &m, hc); err != nil {
 		http.Error(w, err.Error(), http.StatusBadRequest)
 		return
 	}
@@ -1011,7 +1047,7 @@ func placeholderUpdateHandler(w http.ResponseWriter, r *http.Request) {
 	if p == nil {
 		return
 	}
-	m, err := placeholderMetaFromRequest(r)
+	m, hc, err := placeholderMetaFromRequest(r)
 	if err != nil {
 		http.Error(w, err.Error(), http.StatusBadRequest)
 		return
@@ -1025,11 +1061,22 @@ func placeholderUpdateHandler(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 	m.Identifiers = append(kept, m.Identifiers...)
+	// Its Hardcover book: an editor's word, for everyone who syncs it
+	// (hardcover_placeholder.go).
+	ed, err := placeholderHardcoverField(r, &m, hc)
+	if err != nil {
+		http.Error(w, err.Error(), http.StatusBadRequest)
+		return
+	}
+	hcChanged := !hcSameIdentifiers(p.Meta, m)
 	p.Meta = m
 	if err := savePlaceholder(p, nil); err != nil {
 		log.Println("placeholder:", err)
 		http.Error(w, "could not save", http.StatusInternalServerError)
 		return
+	}
+	if hcChanged {
+		hcPlaceholderBookChanged(p.UUID, ed, 0)
 	}
 	logEdit(currentUser(r), "edit placeholder", logKindPlaceholder, p.UUID, p.Meta.Title, before, snapPlaceholder(p))
 	writeJSON(w, http.StatusOK, map[string]string{"uuid": p.UUID, "url": p.href()})

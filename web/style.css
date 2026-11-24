@@ -6400,6 +6400,15 @@ body:has(.manage-panel:not([hidden])) .select-bar {
     justify-content: flex-start;
 }
 
+/* Sync to Hardcover on a placeholder's page (hardcover-book.ts) */
+.ph-hardcover {
+    max-width: 24rem;
+}
+
+.ph-hardcover .book-hardcover {
+    margin-top: 0;
+}
+
 .ph-actions .btn-danger {
     margin-right: auto;
 }

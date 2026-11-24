@@ -408,8 +408,8 @@ func hcSyncStatus(userID int64, uuid, status string) {
 }
 
 func hcSyncMark(userID int64, uuid, status string, delay time.Duration) {
-	if appDB == nil || placeholderByUUID(uuid) != nil || !hcIsLinked(userID) || !hcShared(userID, uuid) {
-		return // a placeholder (saved: notifications.go) isn't a book Hardcover can be told about
+	if appDB == nil || !hcIsLinked(userID) || !hcShared(userID, uuid) {
+		return
 	}
 	now := hcNow()
 	today := now.Format(time.DateOnly)
@@ -622,7 +622,7 @@ func hcLoadSyncRow(userID int64, uuid string) hcSyncRow {
 // being read, how far along they are; and the dates the read started and
 // finished. A status cleared here is left as it is on Hardcover.
 func hcPushBook(ctx context.Context, userID int64, uuid string) error {
-	if !bookExists(uuid) {
+	if !hcSyncable(uuid) {
 		_, err := appDB.Exec(`DELETE FROM hardcover_sync WHERE user_id = ? AND book_uuid = ?`, userID, uuid)
 		return err
 	}
@@ -654,6 +654,7 @@ func hcPushBook(ctx context.Context, userID int64, uuid string) error {
 	if !found {
 		return &hcSkip{hcNotFound}
 	}
+	hcClaimPlaceholder(uuid, ed, userID) // the first to find it names it for everyone
 	row := hcLoadSyncRow(userID, uuid)
 	if !share.Dates {
 		row.StartedOn, row.FinishedOn = "", ""
@@ -791,6 +792,10 @@ func hcResolveBook(ctx context.Context, c *hardcover.Client, uuid string) (hardc
 
 // hcBookKeys: a library book's ISBN-13s, Hardcover book id and slug.
 func hcBookKeys(uuid string) (isbns []string, hcID int64, slug string, err error) {
+	if p := placeholderByUUID(uuid); p != nil {
+		isbns, hcID, slug = hcPlaceholderKeys(p)
+		return isbns, hcID, slug, nil
+	}
 	rows, err := calibreDB.Query(`SELECT i.type, i.val FROM identifiers i JOIN books b ON b.id = i.book
 		WHERE b.uuid = ? AND lower(i.type) IN ('isbn', ?, ?)`, uuid, hcIdentifierScheme, hcSlugScheme)
 	if err != nil {
