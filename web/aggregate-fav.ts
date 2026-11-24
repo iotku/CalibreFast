@@ -1,5 +1,5 @@
 /**
- * The ★ favorite buttons (`.agg-fav`, data-kind and data-name) after an
+ * The ★ favorite buttons (`.agg-fav`, data-kind and data-name) before an
  * entry's name on its page (templates/agg-fav.html, in filtered.html), and
  * the user's favorites on /account (`#account-favs`), each with its own ★.
  * The markup is the same for everyone and starts hidden; it's shown to

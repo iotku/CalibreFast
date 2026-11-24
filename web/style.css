@@ -7542,7 +7542,7 @@ body:has(.manage-panel:not([hidden])) .select-bar {
     display: inline-flex;
     vertical-align: -0.15em;
     padding: 2px;
-    margin-left: 0.15em;
+    margin: 0 0.1em 0 -2px; /* before the name: the star's edge on the page's */
     color: var(--text-muted);
     background: none;
     border: none;
