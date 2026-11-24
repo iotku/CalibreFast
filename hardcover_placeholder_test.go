@@ -66,7 +66,7 @@ func TestHardcoverPlaceholderSync(t *testing.T) {
 	// The first to choose names it, for the placeholder, not just for them.
 	do("PUT", base+"/match", `{"book_id":60}`, 200)
 	ph := placeholderByUUID(p.UUID)
-	if identifierValue(ph.Meta, hcIdentifierScheme) != "60" || identifierValue(ph.Meta, hcSlugScheme) != "the-right-book" {
+	if identifierValue(ph.Meta, hardcover.IDScheme) != "60" || identifierValue(ph.Meta, hardcover.SlugScheme) != "the-right-book" {
 		t.Fatalf("placeholder's identifiers: %+v", ph.Meta.Identifiers)
 	}
 	if _, ok := hcUserMatch(u.ID, p.UUID); ok {
@@ -103,7 +103,7 @@ func TestHardcoverPlaceholderSync(t *testing.T) {
 		t.Fatal(err)
 	}
 	step(t)
-	if got := identifierValue(placeholderByUUID(q.UUID).Meta, hcIdentifierScheme); got != "50" {
+	if got := identifierValue(placeholderByUUID(q.UUID).Meta, hardcover.IDScheme); got != "50" {
 		t.Errorf("found by ISBN: hardcover-id %q", got)
 	}
 	if b := f.books[50]; b == nil || b.status != hardcover.StatusWantToRead || b.edition != 501 {
@@ -155,7 +155,7 @@ func TestPlaceholderHardcoverField(t *testing.T) {
 	}
 	put("60", 200)
 	m := placeholderByUUID(p.UUID).Meta
-	if identifierValue(m, hcIdentifierScheme) != "60" || placeholderISBN(m) == "" {
+	if identifierValue(m, hardcover.IDScheme) != "60" || placeholderISBN(m) == "" {
 		t.Fatalf("by id: %+v", m.Identifiers)
 	}
 	var n int
@@ -168,7 +168,7 @@ func TestPlaceholderHardcoverField(t *testing.T) {
 	}
 	put("https://hardcover.app/books/the-right-book", 200)
 	m = placeholderByUUID(p.UUID).Meta
-	if identifierValue(m, hcSlugScheme) != "the-right-book" || identifierValue(m, hcIdentifierScheme) != "" {
+	if identifierValue(m, hardcover.SlugScheme) != "the-right-book" || identifierValue(m, hardcover.IDScheme) != "" {
 		t.Fatalf("by link: %+v", m.Identifiers)
 	}
 	if got := hcPlaceholderField(m); got != "https://hardcover.app/books/the-right-book" {
@@ -186,7 +186,7 @@ func TestPlaceholderHardcoverField(t *testing.T) {
 	if rec := call(t, mux, admin, "PUT", "/api/placeholders/"+p.UUID, `{"title":"Later"}`); rec.Code != 200 {
 		t.Fatal(rec.Code)
 	}
-	if identifierValue(placeholderByUUID(p.UUID).Meta, hcIdentifierScheme) != "60" {
+	if identifierValue(placeholderByUUID(p.UUID).Meta, hardcover.IDScheme) != "60" {
 		t.Error("dropped by a form without the field")
 	}
 	if _, _, err := hcPlaceholderFieldIDs(context.Background(), strings.Repeat("9", 30)); err == nil {

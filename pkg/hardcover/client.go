@@ -834,3 +834,11 @@ func (c *Client) fillBookDetails(ctx context.Context, d *SeriesDetail, owner map
 	}
 	return nil
 }
+
+// Identifier schemes for a book's place on Hardcover, in OPF metadata.
+const (
+	// SlugScheme is the book's slug, as Calibre's Hardcover plugin names it.
+	SlugScheme = "hardcover"
+	// IDScheme is the book's numeric id.
+	IDScheme = "hardcover-id"
+)

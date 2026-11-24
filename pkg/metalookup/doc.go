@@ -1,5 +1,6 @@
-// Package metalookup looks books up on Open Library and Google Books and
-// returns what they know as OPF metadata (package opf).
+// Package metalookup looks books up on Open Library, Google Books and (given
+// a pkg/hardcover client) Hardcover, and returns what they know as OPF
+// metadata (package opf).
 //
 // Open Library is asked by ISBN (the edition, its work and its authors) or by
 // title and author (a search, as works, up to 5 matches). Google Books is

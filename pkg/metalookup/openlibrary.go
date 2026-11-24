@@ -270,19 +270,27 @@ var olCoverIDRe = regexp.MustCompile(`^[0-9]{1,12}$`)
 
 // Errors from FetchCover.
 var (
-	// ErrBadCoverID: the id isn't an Open Library cover id.
+	// ErrBadCoverID: the id isn't one of the source's cover ids.
 	ErrBadCoverID = errors.New("unknown cover")
-	// ErrNoCover: Open Library has no image for the id.
+	// ErrNoCover: the source has no image for the id.
 	ErrNoCover = errors.New("no cover")
 	// ErrCoverUnreadable: the image couldn't be read, or is over 10 MiB.
 	ErrCoverUnreadable = errors.New("cover unavailable")
 )
 
-// FetchCover fetches Open Library's large cover image for a cover id (a
-// Match's CoverID, as a string), within Open Library's limits. The URL is
-// built here from the id, so it can't be pointed anywhere else. It returns
-// the image and its Content-Type.
-func (c *Client) FetchCover(ctx context.Context, id string) ([]byte, string, error) {
+// FetchCover fetches a source's cover for an id (a Match's CoverID, as a
+// string): Open Library's large image, within its limits, or the image a
+// Hardcover lookup named for that book. The URL is never the caller's: Open
+// Library's is built here from the id, Hardcover's is the one it gave. It
+// returns the image and its Content-Type.
+func (c *Client) FetchCover(ctx context.Context, source, id string) ([]byte, string, error) {
+	switch source {
+	case OpenLibrary:
+	case Hardcover:
+		return c.hardcoverCover(ctx, id)
+	default:
+		return nil, "", ErrBadCoverID
+	}
 	if !olCoverIDRe.MatchString(id) {
 		return nil, "", ErrBadCoverID
 	}

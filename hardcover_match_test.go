@@ -70,7 +70,7 @@ func TestHCMatchSeries(t *testing.T) {
 		// Abaddon's Gate already has a placeholder (series and number).
 		{UUID: "ph3", Meta: OPFMetadata{Title: "Book three", Series: "the expanse", SeriesIndex: "3"}},
 		// Tiamat's Wrath: made from Hardcover before.
-		{UUID: "ph8", Meta: OPFMetadata{Title: "TW", Identifiers: []opfIdentifier{{Scheme: hcIdentifierScheme, Value: "9"}}}},
+		{UUID: "ph8", Meta: OPFMetadata{Title: "TW", Identifiers: []opfIdentifier{{Scheme: hardcover.IDScheme, Value: "9"}}}},
 	}
 	rev := hcMatchSeries(d, lib, phs, map[int64]bool{8: true})
 

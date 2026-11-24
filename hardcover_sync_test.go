@@ -85,8 +85,8 @@ type fakeHardcoverAccount struct {
 	followed     map[int64]int64
 	authorsNamed map[string][]int64
 	unfollowed   []int64
-	ops     []string
-	lastObj map[string]map[string]any
+	ops          []string
+	lastObj      map[string]map[string]any
 }
 
 type fakeUserBook struct {

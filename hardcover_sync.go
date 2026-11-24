@@ -797,7 +797,7 @@ func hcBookKeys(uuid string) (isbns []string, hcID int64, slug string, err error
 		return isbns, hcID, slug, nil
 	}
 	rows, err := calibreDB.Query(`SELECT i.type, i.val FROM identifiers i JOIN books b ON b.id = i.book
-		WHERE b.uuid = ? AND lower(i.type) IN ('isbn', ?, ?)`, uuid, hcIdentifierScheme, hcSlugScheme)
+		WHERE b.uuid = ? AND lower(i.type) IN ('isbn', ?, ?)`, uuid, hardcover.IDScheme, hardcover.SlugScheme)
 	if err != nil {
 		return nil, 0, "", err
 	}
@@ -812,11 +812,11 @@ func hcBookKeys(uuid string) (isbns []string, hcID int64, slug string, err error
 			if n := isbn.Normalize(val); n != "" {
 				isbns = append(isbns, n)
 			}
-		case hcIdentifierScheme:
+		case hardcover.IDScheme:
 			if id, err := strconv.ParseInt(strings.TrimSpace(val), 10, 64); err == nil && id > 0 {
 				hcID = id
 			}
-		case hcSlugScheme:
+		case hardcover.SlugScheme:
 			if s := strings.TrimSpace(val); hardcover.ValidSlug(s) {
 				slug = s
 			}

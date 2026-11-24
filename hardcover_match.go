@@ -491,7 +491,7 @@ func hcPlaceholderFor(e *hardcover.Entry, members []string, phs []*placeholder) 
 	key := hcFullTitleKey(e.Title)
 	for _, p := range phs {
 		for _, x := range p.Meta.Identifiers {
-			if strings.EqualFold(x.Scheme, hcIdentifierScheme) && x.Value == id {
+			if strings.EqualFold(x.Scheme, hardcover.IDScheme) && x.Value == id {
 				return p
 			}
 		}
@@ -504,6 +504,3 @@ func hcPlaceholderFor(e *hardcover.Entry, members []string, phs []*placeholder) 
 	}
 	return nil
 }
-
-// hcIdentifierScheme names a Hardcover book id in a placeholder's identifiers.
-const hcIdentifierScheme = "hardcover-id"

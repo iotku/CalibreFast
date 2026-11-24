@@ -297,14 +297,14 @@ func TestMarkISBN(t *testing.T) {
 
 func TestFetchCover(t *testing.T) {
 	f := newFakeLookupServers(t)
-	img, ctype, err := f.lookup.FetchCover(context.Background(), "7427319")
+	img, ctype, err := f.lookup.FetchCover(context.Background(), OpenLibrary, "7427319")
 	if err != nil || ctype != "image/jpeg" || !strings.Contains(string(img), "fake jpeg") {
 		t.Errorf("cover: %q %q %v", img, ctype, err)
 	}
-	if _, _, err := f.lookup.FetchCover(context.Background(), "1"); !errors.Is(err, ErrNoCover) {
+	if _, _, err := f.lookup.FetchCover(context.Background(), OpenLibrary, "1"); !errors.Is(err, ErrNoCover) {
 		t.Errorf("non-image answer: %v, want ErrNoCover", err)
 	}
-	if _, _, err := f.lookup.FetchCover(context.Background(), "../../x"); !errors.Is(err, ErrBadCoverID) {
+	if _, _, err := f.lookup.FetchCover(context.Background(), OpenLibrary, "../../x"); !errors.Is(err, ErrBadCoverID) {
 		t.Errorf("bad id: %v, want ErrBadCoverID", err)
 	}
 }

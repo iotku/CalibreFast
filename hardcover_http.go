@@ -816,9 +816,9 @@ func hcPlaceholderMeta(e *hardcover.Entry, series string) OPFMetadata {
 	if len(e.Released) >= 4 {
 		m.Date = e.Released
 	}
-	m.Identifiers = []opfIdentifier{{Scheme: hcIdentifierScheme, Value: strconv.FormatInt(e.BookID, 10)}}
+	m.Identifiers = []opfIdentifier{{Scheme: hardcover.IDScheme, Value: strconv.FormatInt(e.BookID, 10)}}
 	if hardcover.ValidSlug(e.Slug) { // for a link to its page
-		m.Identifiers = append(m.Identifiers, opfIdentifier{Scheme: hcSlugScheme, Value: e.Slug})
+		m.Identifiers = append(m.Identifiers, opfIdentifier{Scheme: hardcover.SlugScheme, Value: e.Slug})
 	}
 	if len(e.ISBNs) > 0 {
 		m.Identifiers = append(m.Identifiers, opfIdentifier{Scheme: "ISBN", Value: e.ISBNs[0]})

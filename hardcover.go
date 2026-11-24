@@ -81,7 +81,7 @@ func configureHardcover() {
 }
 
 // hardcoverEnabled: series can be identified on Hardcover, and books looked
-// up there (lookup_hardcover.go).
+// up there (pkg/metalookup/hardcover.go).
 func hardcoverEnabled() bool { return !noLookups && !noHardcover && hcClient != nil }
 
 func requireHardcover(h http.HandlerFunc) http.HandlerFunc {
@@ -272,7 +272,7 @@ func hcLibraryIdentifiers(lib *hcLibrary, x *hcTitleIndex, d *hardcover.SeriesDe
 		}
 	}
 	for chunk := range slices.Chunk(vals, 400) {
-		args := append([]any{hcSlugScheme, hcIdentifierScheme}, chunk...)
+		args := append([]any{hardcover.SlugScheme, hardcover.IDScheme}, chunk...)
 		rows, err := calibreDB.Query(`SELECT book, lower(type), trim(val) FROM identifiers WHERE lower(type) IN (?, ?) AND lower(trim(val)) IN (?`+
 			strings.Repeat(",?", len(chunk)-1)+`)`, args...)
 		if err != nil {
@@ -290,7 +290,7 @@ func hcLibraryIdentifiers(lib *hcLibrary, x *hcTitleIndex, d *hardcover.SeriesDe
 				continue
 			}
 			b := x.libBook(slot)
-			if typ == hcSlugScheme {
+			if typ == hardcover.SlugScheme {
 				k := strings.ToLower(val)
 				lib.byHCSlug[k] = append(lib.byHCSlug[k], b)
 			} else if n, err := strconv.ParseInt(val, 10, 64); err == nil && n > 0 {

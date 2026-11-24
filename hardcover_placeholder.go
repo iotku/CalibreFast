@@ -43,7 +43,7 @@ func hcSyncable(uuid string) bool {
 // hcPlaceholderBookID: the Hardcover book id placeholder p is known by, 0
 // for none.
 func hcPlaceholderBookID(p *placeholder) int64 {
-	id, err := strconv.ParseInt(identifierValue(p.Meta, hcIdentifierScheme), 10, 64)
+	id, err := strconv.ParseInt(identifierValue(p.Meta, hardcover.IDScheme), 10, 64)
 	if err != nil || id <= 0 {
 		return 0
 	}
@@ -59,7 +59,7 @@ func hcPlaceholderKeys(p *placeholder) (isbns []string, hcID int64, slug string)
 			}
 		}
 	}
-	if s := identifierValue(p.Meta, hcSlugScheme); hardcover.ValidSlug(s) {
+	if s := identifierValue(p.Meta, hardcover.SlugScheme); hardcover.ValidSlug(s) {
 		slug = s
 	}
 	return isbns, hcPlaceholderBookID(p), slug
@@ -67,9 +67,9 @@ func hcPlaceholderKeys(p *placeholder) (isbns []string, hcID int64, slug string)
 
 // hcEditionIdentifiers: the identifiers that name Hardcover book ed.
 func hcEditionIdentifiers(ed hardcover.Edition) []opfIdentifier {
-	ids := []opfIdentifier{{Scheme: hcIdentifierScheme, Value: strconv.FormatInt(ed.BookID, 10)}}
+	ids := []opfIdentifier{{Scheme: hardcover.IDScheme, Value: strconv.FormatInt(ed.BookID, 10)}}
 	if hardcover.ValidSlug(ed.Slug) {
-		ids = append(ids, opfIdentifier{Scheme: hcSlugScheme, Value: ed.Slug})
+		ids = append(ids, opfIdentifier{Scheme: hardcover.SlugScheme, Value: ed.Slug})
 	}
 	return ids
 }
@@ -78,7 +78,7 @@ func hcEditionIdentifiers(ed hardcover.Edition) []opfIdentifier {
 func withoutHCIdentifiers(ids []opfIdentifier) []opfIdentifier {
 	var out []opfIdentifier
 	for _, id := range ids {
-		if !strings.EqualFold(id.Scheme, hcIdentifierScheme) && !strings.EqualFold(id.Scheme, hcSlugScheme) {
+		if !strings.EqualFold(id.Scheme, hardcover.IDScheme) && !strings.EqualFold(id.Scheme, hardcover.SlugScheme) {
 			out = append(out, id)
 		}
 	}
@@ -108,7 +108,7 @@ func hcSetPlaceholderBook(id string, ed hardcover.Edition, by *User, onlyIfUnset
 		}
 		return errHCPlaceholderSet
 	}
-	if hcPlaceholderBookID(cur) == ed.BookID && identifierValue(cur.Meta, hcSlugScheme) == ed.Slug {
+	if hcPlaceholderBookID(cur) == ed.BookID && identifierValue(cur.Meta, hardcover.SlugScheme) == ed.Slug {
 		hcPlaceholderMu.Unlock()
 		return nil
 	}
@@ -199,23 +199,23 @@ func hcPlaceholderFieldIDs(ctx context.Context, field string) (ids []opfIdentifi
 		return hcEditionIdentifiers(found), &found, nil
 	}
 	if id > 0 {
-		return []opfIdentifier{{Scheme: hcIdentifierScheme, Value: strconv.FormatInt(id, 10)}}, nil, nil
+		return []opfIdentifier{{Scheme: hardcover.IDScheme, Value: strconv.FormatInt(id, 10)}}, nil, nil
 	}
-	return []opfIdentifier{{Scheme: hcSlugScheme, Value: slug}}, nil, nil
+	return []opfIdentifier{{Scheme: hardcover.SlugScheme, Value: slug}}, nil, nil
 }
 
 // hcPlaceholderField: what the editor's Hardcover field starts with.
 func hcPlaceholderField(m OPFMetadata) string {
-	if s := identifierValue(m, hcSlugScheme); hardcover.ValidSlug(s) {
+	if s := identifierValue(m, hardcover.SlugScheme); hardcover.ValidSlug(s) {
 		return "https://hardcover.app/books/" + s
 	}
-	return identifierValue(m, hcIdentifierScheme)
+	return identifierValue(m, hardcover.IDScheme)
 }
 
 // hcSameIdentifiers: a and b name the same Hardcover book the same way.
 func hcSameIdentifiers(a, b OPFMetadata) bool {
-	return identifierValue(a, hcIdentifierScheme) == identifierValue(b, hcIdentifierScheme) &&
-		identifierValue(a, hcSlugScheme) == identifierValue(b, hcSlugScheme)
+	return identifierValue(a, hardcover.IDScheme) == identifierValue(b, hardcover.IDScheme) &&
+		identifierValue(a, hardcover.SlugScheme) == identifierValue(b, hardcover.SlugScheme)
 }
 
 // hcPlaceholderReplaced: library book bookUUID has replaced placeholder
