@@ -180,7 +180,7 @@ func placeholderReplacedForSavers(p *placeholder, bookUUID string) {
 		return
 	}
 	// After the Saved moves to the book: it's sent as that.
-	defer hcSync.PlaceholderReplaced(p.UUID, bookUUID)
+	defer placeholderReplacedForSyncs(p.UUID, bookUUID)
 	savers, err := placeholderSavers(p.UUID)
 	if err != nil {
 		log.Printf("placeholder %s: its savers: %v", p.UUID, err)

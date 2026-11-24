@@ -380,7 +380,7 @@ func hardcoverBookMatchHandler(w http.ResponseWriter, r *http.Request) {
 	if ph != nil {
 		// The placeholder's own identifiers, for everyone: the first to
 		// choose names it; after that, only an editor changes it.
-		if err := hcSetPlaceholderBook(uuid, ed, u, !editor, u.ID); errors.Is(err, errHCPlaceholderSet) {
+		if err := hcSetPlaceholderBook(uuid, ed, u, !editor, u.ID); errors.Is(err, errPlaceholderSyncSet) {
 			http.Error(w, "Someone chose its Hardcover book a moment ago; an editor can change it.", http.StatusConflict)
 			return
 		} else if err != nil {

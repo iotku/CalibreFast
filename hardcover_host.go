@@ -95,7 +95,7 @@ func hcView(u *User, notice string) *hardcoversync.AccountView {
 // hcHost is hardcoversync.Host.
 type hcHost struct{}
 
-func (hcHost) Syncable(uuid string) bool { return hcSyncable(uuid) }
+func (hcHost) Syncable(uuid string) bool { return syncableBook(uuid) }
 
 func (hcHost) BookKeys(uuid string) ([]string, int64, string, error) { return hcBookKeys(uuid) }
 

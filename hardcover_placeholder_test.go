@@ -89,7 +89,7 @@ func TestHardcoverPlaceholderSync(t *testing.T) {
 	if rec := call(t, mux, &editor, "PUT", base+"/match", `{"book_id":60}`); rec.Code != 200 {
 		t.Errorf("editor: %d %s", rec.Code, rec.Body)
 	}
-	if err := hcSetPlaceholderBook(p.UUID, hardcover.Edition{BookID: 61}, u, true, 0); err != errHCPlaceholderSet {
+	if err := hcSetPlaceholderBook(p.UUID, hardcover.Edition{BookID: 61}, u, true, 0); err != errPlaceholderSyncSet {
 		t.Errorf("a second claim: %v", err)
 	}
 
@@ -164,7 +164,7 @@ func TestPlaceholderHardcoverField(t *testing.T) {
 	if n != 0 {
 		t.Error("the old lookup was kept")
 	}
-	if got := hcPlaceholderField(m); got != "60" {
+	if got := hcPlaceholders.FieldValue(m); got != "60" {
 		t.Errorf("field shows %q", got)
 	}
 	put("https://hardcover.app/books/the-right-book", 200)
@@ -172,7 +172,7 @@ func TestPlaceholderHardcoverField(t *testing.T) {
 	if identifierValue(m, hardcover.SlugScheme) != "the-right-book" || identifierValue(m, hardcover.IDScheme) != "" {
 		t.Fatalf("by link: %+v", m.Identifiers)
 	}
-	if got := hcPlaceholderField(m); got != "https://hardcover.app/books/the-right-book" {
+	if got := hcPlaceholders.FieldValue(m); got != "https://hardcover.app/books/the-right-book" {
 		t.Errorf("field shows %q", got)
 	}
 	for _, bad := range []string{"javascript:alert(1)", "https://evil.example/books/x", "-3"} {
@@ -190,7 +190,7 @@ func TestPlaceholderHardcoverField(t *testing.T) {
 	if identifierValue(placeholderByUUID(p.UUID).Meta, hardcover.IDScheme) != "60" {
 		t.Error("dropped by a form without the field")
 	}
-	if _, _, err := hcPlaceholderFieldIDs(context.Background(), strings.Repeat("9", 30)); err == nil {
+	if _, err := hcPlaceholders.ParseField(context.Background(), strings.Repeat("9", 30)); err == nil {
 		t.Error("an id too big was taken")
 	}
 }
