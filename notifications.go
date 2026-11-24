@@ -7,6 +7,8 @@ package main
 //   - An author or series the user starred gained a book: one notification
 //     per author or series per batch of changes, with how many books
 //     (favorite_author / favorite_series, aggregate_favorites_notify.go).
+//   - Their Hardcover link was made before linking asked for something new:
+//     link again to use it (hardcover_relink, hardcover_relink.go).
 //
 // Saving books that aren't in the library yet, and being told when they are.
 //
@@ -48,6 +50,7 @@ const (
 	notifyPlaceholderAdded = "placeholder_added"
 	notifyFavoriteAuthor   = "favorite_author"
 	notifyFavoriteSeries   = "favorite_series"
+	notifyHardcoverRelink  = "hardcover_relink"
 	// notificationsMax: the most kept per user; older ones are dropped.
 	notificationsMax = 200
 )
@@ -103,6 +106,8 @@ func userNotifications(userID int64) ([]notification, error) {
 			return nil, err
 		}
 		switch {
+		case n.Kind == notifyHardcoverRelink:
+			n.Href = "/account#hardcover"
 		case n.Count > 1 && n.Kind == notifyFavoriteAuthor:
 			n.Href = categoryByKey("author").href(n.Subject) // several: the author's page
 		case n.Count > 1 && n.Kind == notifyFavoriteSeries:

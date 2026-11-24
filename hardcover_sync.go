@@ -194,6 +194,9 @@ func hcSaveAccount(userID int64, me hardcover.Me, t *hardcover.Token) error {
 			access_token = excluded.access_token, refresh_token = excluded.refresh_token, access_expires = excluded.access_expires,
 			scope = excluded.scope, linked_at = excluded.linked_at, broken = ''`,
 		userID, me.ID, me.Username, acc, ref, t.Expires.Unix(), t.Scope, hcNow().Unix())
+	if err == nil {
+		hcRelinked(userID) // the "link again" notification, if any, is done with
+	}
 	return err
 }
 
@@ -529,6 +532,7 @@ func startHardcoverSync() {
 	if !hardcoverSyncEnabled() {
 		return
 	}
+	hcNotifyRelink() // links older than what linking asks for now (hardcover_relink.go)
 	ctx, cancel := context.WithCancel(context.Background())
 	hcSync.Lock()
 	hcSync.cancel, hcSync.done = cancel, make(chan struct{})

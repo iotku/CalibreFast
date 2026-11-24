@@ -812,6 +812,12 @@ var migrations = []string{
 		PRIMARY KEY (user_id, name)
 	);
 	`,
+	// 48: the permissions (scopes) a user was told to link Hardcover again
+	// for (hardcover_relink.go), so they're told once per change of what
+	// linking asks for.
+	`
+	ALTER TABLE hardcover_links ADD COLUMN relink_notified TEXT NOT NULL DEFAULT '';
+	`,
 }
 
 // openAppDB opens (creating if needed) and migrates the app database.
