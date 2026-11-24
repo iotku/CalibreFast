@@ -11,8 +11,9 @@ package main
 //     list (web/favorites.ts) and asks again only when /api/me's `favs`
 //     (users.favs_changed) differs from the one it kept.
 //   - Favorites weigh in Recommended for you (recommend.go) and are shown
-//     on the aggregate pages, /account and, as a carousel of cards with
-//     their pictures, above the favorite books on /me/favorites.
+//     on the aggregate pages, /account and /me/favorites: authors and
+//     series as a carousel of cards with their pictures above the favorite
+//     books, other kinds as chips under it.
 //
 // Rows imported from Hardcover (origin 'hardcover', not built yet) are
 // tombstoned on removal (removed_at) so a later import doesn't add them

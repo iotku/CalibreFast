@@ -7599,6 +7599,15 @@ body:has(.manage-panel:not([hidden])) .select-bar {
     margin: var(--gap-large, 16px) 0;
 }
 
+.fav-chips {
+    margin: 0 0 var(--gap-large, 16px);
+}
+
+.fav-chips .agg-chip {
+    padding: 4px 10px;
+    font-size: 0.85rem;
+}
+
 .fav-aggs .row-btn {
     flex-shrink: 0;
     white-space: nowrap;

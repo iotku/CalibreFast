@@ -247,13 +247,14 @@
      (hardcover_authors.go, web/author-profile.ts): the header is rendered
      again into #agg-header. */}}
 <div id="agg-header" class="agg-header-wrap"{{ with .Profile }}{{ with .Lookup }} data-profile-lookup="{{ . }}"{{ end }}{{ end }}>{{ template "agg-header" . }}</div>
-{{/* /me/favorites: the user's favorite authors, series, … as a carousel
-     above their favorite books; "Show all" lays them all out
+{{/* /me/favorites: the user's favorite authors and series as a carousel
+     above their favorite books ("Show all" lays them all out), and their
+     favorite tags, publishers and languages as chips below it
      (aggregate_favorites.go, web/aggregate-fav.ts). */}}
-{{ with .Extra }}{{ with .FavAggs }}
+{{ with .Extra }}{{ with .FavCarousel }}
 <section class="fav-aggs" aria-labelledby="fav-aggs-h">
     <header class="row-head">
-        <h2 id="fav-aggs-h">Authors, series &amp; more</h2>
+        <h2 id="fav-aggs-h">Authors &amp; series</h2>
         {{ if gt (len .) 1 }}<button type="button" class="row-btn" id="fav-aggs-all" aria-expanded="false" aria-controls="fav-aggs-list">Show all</button>{{ end }}
     </header>
     <div id="fav-aggs-list" class="fav-aggs-row">
@@ -263,6 +264,14 @@
             <span class="fav-agg-name">{{ or .Label .Name }}</span>
             <span class="fav-agg-meta">{{ .KindLabel }} · {{ count .Count "book" "books" }}</span>
         </a>
+        {{- end }}
+    </div>
+</section>
+{{ end }}{{ with .FavChips }}
+<section class="fav-chips" aria-label="Favorite tags, publishers and languages">
+    <div class="agg-chips">
+        {{- range . }}
+        <a class="agg-chip" href="{{ .Href }}" title="{{ .KindLabel }}">{{ or .Label .Name }}<span class="agg-count">{{ .Count }}</span></a>
         {{- end }}
     </div>
 </section>
@@ -282,7 +291,7 @@
 {{ if or .Writable .CanVerify $feat }}<script type="module" src="{{ asset "manage-panel.js" }}"></script>{{ end }}
 {{ with .Profile }}{{ if or .Lookup .Refresh }}<script type="module" src="{{ asset "author-profile.js" }}"></script>{{ end }}{{ end }}
 {{ with .Extra }}{{ if or .Shelf .TagPin .SeriesPin }}<script type="module" src="{{ asset "shelf-page.js" }}"></script>{{ end }}{{ end }}
-{{ if .FavKind }}<script type="module" src="{{ asset "aggregate-fav.js" }}"></script>{{ else }}{{ with .Extra }}{{ if .FavAggs }}<script type="module" src="{{ asset "aggregate-fav.js" }}"></script>{{ end }}{{ end }}{{ end }}
+{{ if .FavKind }}<script type="module" src="{{ asset "aggregate-fav.js" }}"></script>{{ else }}{{ with .Extra }}{{ if .FavCarousel }}<script type="module" src="{{ asset "aggregate-fav.js" }}"></script>{{ end }}{{ end }}{{ end }}
 {{ with .Extra }}{{ if and .Arrange (gt $.TotalBooks 1) }}<script type="module" src="{{ asset "list-edit.js" }}"></script>{{ end }}{{ end }}
 </body>
 </html>

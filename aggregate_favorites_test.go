@@ -214,9 +214,18 @@ func TestFavoritesPageCarousel(t *testing.T) {
 	}
 	rec := call(t, mux, alice, "GET", "/me/favorites", "")
 	body := rec.Body.String()
-	if rec.Code != 200 || !strings.Contains(body, `id="fav-aggs-list"`) || !strings.Contains(body, `src="/author-images/`+img+`"`) ||
+	if rec.Code != 200 || !strings.Contains(body, `id="fav-aggs-list"`) || strings.Contains(body, `class="fav-chips"`) || !strings.Contains(body, `src="/author-images/`+img+`"`) ||
 		strings.Index(body, `id="fav-aggs-list"`) > strings.Index(body, `id="books"`) {
 		t.Fatalf("page: %d", rec.Code)
+	}
+	// A tag: a chip, not a card.
+	if rec := call(t, mux, alice, "PUT", "/api/me/favorites/tag/Fiction", ""); rec.Code != 204 {
+		t.Fatalf("PUT tag: %d", rec.Code)
+	}
+	body = call(t, mux, alice, "GET", "/me/favorites", "").Body.String()
+	list := body[strings.Index(body, `id="fav-aggs-list"`):strings.Index(body, `class="fav-chips"`)]
+	if strings.Contains(list, "Fiction") || !strings.Contains(body, `<a class="agg-chip" href="/tag/Fiction" title="Tag">Fiction`) {
+		t.Fatal("tag not a chip under the carousel")
 	}
 	// None: no carousel.
 	bob, _ := createUser("bob", "a long enough password", false)

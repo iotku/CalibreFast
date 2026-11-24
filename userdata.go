@@ -222,13 +222,23 @@ func meListHandler(w http.ResponseWriter, r *http.Request) {
 	case "favorites":
 		l := favoritesList(u)
 		if r.URL.Query().Get("api") != "1" {
-			// The favorite authors, series, … above the books (aggregate_favorites.go).
+			// The favorite authors and series as a carousel above the books,
+			// and the rest (tags, …: rarely a picture) as chips below it
+			// (aggregate_favorites.go).
 			cards, err := userFavCards(u)
 			if err != nil {
 				http.Error(w, "query failed", http.StatusInternalServerError)
 				return
 			}
-			l.Extra["FavAggs"] = cards
+			var carousel, chips []favCard
+			for _, c := range cards {
+				if c.Kind == "author" || c.Kind == "series" {
+					carousel = append(carousel, c)
+				} else {
+					chips = append(chips, c)
+				}
+			}
+			l.Extra["FavCarousel"], l.Extra["FavChips"] = carousel, chips
 		}
 		serveUUIDList(w, r, l)
 	case "saved": // the "wanted" status
