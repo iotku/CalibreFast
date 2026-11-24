@@ -34,7 +34,7 @@ func hcBookSlug(m OPFMetadata) string {
 	}
 	name, _, _ := groups.resolve("series", m.Series)
 	for _, n := range []string{name, m.Series} {
-		l, err := hcLinkFor(n)
+		l, err := hcLinks.LinkFor(n)
 		if err != nil || l == nil || l.Snapshot == nil {
 			continue
 		}

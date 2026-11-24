@@ -18,6 +18,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/iotku/CalibreFast/internal/hardcoverseries"
 	"github.com/iotku/CalibreFast/pkg/hardcover"
 	"github.com/iotku/CalibreFast/pkg/textkey"
 )
@@ -173,7 +174,6 @@ func TestHardcoverAuthorProfiles(t *testing.T) {
 	clock := &hcTestClock{t: time.Date(2026, 11, 19, 12, 0, 0, 0, time.UTC)}
 	origClient, origNow, origAwait, origWrites, origData := hcClient, hcNow, hcAwaitTime, allowWrites, dataDir
 	hcNow, hcAwaitTime, allowWrites, dataDir = clock.now, 0, true, t.TempDir()
-	hcQueue.nextAuthor = time.Time{}
 	newClient := func(daily int) {
 		hcClient = hardcover.New(hardcover.Config{URL: "https://api.hardcover.app/v1/graphql", Token: "test-token", UserAgent: "test",
 			Now: clock.now, HTTPClient: httpClient, Budget: hardcover.NewBudget(600, 100, daily)})
@@ -181,7 +181,6 @@ func TestHardcoverAuthorProfiles(t *testing.T) {
 	newClient(100)
 	t.Cleanup(func() {
 		hcClient, hcNow, hcAwaitTime, allowWrites, dataDir = origClient, origNow, origAwait, origWrites, origData
-		hcQueue.nextAuthor = time.Time{}
 	})
 
 	admin, _ := createUser("boss", "a long enough password", true)
@@ -190,7 +189,7 @@ func TestHardcoverAuthorProfiles(t *testing.T) {
 	mux.HandleFunc("POST /api/authors/profile", requireUser(requireLookups(requireHardcover(authorProfileHandler(false)))))
 	mux.HandleFunc("POST /api/authors/profile/refresh", requireEditor(requireLookups(requireHardcover(authorProfileHandler(true)))))
 	mux.HandleFunc("GET /author-images/{file}", authorImageHandler)
-	mux.HandleFunc("POST /api/hardcover/refresh", requireEditor(requireLookups(requireHardcover(hardcoverJobHandler(hcJobRefresh)))))
+	mux.HandleFunc("POST /api/hardcover/refresh", requireEditor(requireLookups(requireHardcover(hardcoverJobHandler(hardcoverseries.JobRefresh)))))
 	do := func(u *User, method, path string, want int) string {
 		t.Helper()
 		rec := call(t, mux, u, method, path, "")
@@ -201,7 +200,7 @@ func TestHardcoverAuthorProfiles(t *testing.T) {
 	}
 	step := func() bool {
 		t.Helper()
-		ran, _ := hcStep(context.Background())
+		ran, _ := hcLinks.Step(context.Background())
 		return ran
 	}
 	jobsOf := func(state string) int {
@@ -290,7 +289,7 @@ func TestHardcoverAuthorProfiles(t *testing.T) {
 	// Author lookups are spread out; editors' requests don't wait for them.
 	do(alice, "POST", "/api/authors/profile?name=J.+R.+R.+Tolkien", http.StatusAccepted)
 	do(alice, "POST", "/api/authors/profile?name=Nobody+Atall", http.StatusAccepted)
-	if _, err := hcEnqueue(hcJobRefresh, "Other", "", hcPayload{}, admin); err != nil {
+	if _, err := hcLinks.Enqueue(hardcoverseries.JobRefresh, "Other", "", hardcoverseries.Payload{}, hcUserID(admin)); err != nil {
 		t.Fatal(err)
 	}
 	clock.set(clock.now().Add(5 * time.Second))
@@ -300,14 +299,14 @@ func TestHardcoverAuthorProfiles(t *testing.T) {
 	if series != "failed" {
 		t.Errorf("series request waited behind authors: %s", series)
 	}
-	if ran, next := hcStep(context.Background()); ran || !next.Equal(time.Date(2026, 11, 19, 12, 0, 20, 0, time.UTC)) {
+	if ran, next := hcLinks.Step(context.Background()); ran || !next.Equal(time.Date(2026, 11, 19, 12, 0, 20, 0, time.UTC)) {
 		t.Fatalf("author lookup not spaced: ran %v, next %v", ran, next)
 	}
 	clock.set(clock.now().Add(15 * time.Second))
 	if !step() {
 		t.Fatal("Tolkien didn't run")
 	}
-	if ran, _ := hcStep(context.Background()); ran {
+	if ran, _ := hcLinks.Step(context.Background()); ran {
 		t.Fatal("two author lookups together")
 	}
 	// Tolkien: found by search under "J.R.R. Tolkien"; a picture not on
@@ -325,7 +324,7 @@ func TestHardcoverAuthorProfiles(t *testing.T) {
 	if jobsOf("held") != 1 {
 		t.Fatalf("not held near the limit: held %d", jobsOf("held"))
 	}
-	hcEnqueue(hcJobRefresh, "Wheel", "", hcPayload{}, admin)
+	hcLinks.Enqueue(hardcoverseries.JobRefresh, "Wheel", "", hardcoverseries.Payload{}, hcUserID(admin))
 	step()
 	_ = appDB.QueryRow(`SELECT state FROM hardcover_jobs WHERE kind = 'refresh' AND series = 'Wheel'`).Scan(&series)
 	if series != "failed" {

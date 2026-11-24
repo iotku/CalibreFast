@@ -60,15 +60,15 @@ func openTestAppDB(t *testing.T) *sql.DB {
 }
 
 // setupTestAppDB installs a fresh app DB as the global appDB for one test,
-// with Hardcover reading sync on it (off, as on a server without a client
-// id), restoring the previous ones when the test ends.
+// with Hardcover reading sync (off, as on a server without a client id)
+// and series links on it, restoring the previous ones when the test ends.
 func setupTestAppDB(t *testing.T) {
 	t.Helper()
 	db := openTestAppDB(t)
-	orig, origSync := appDB, hcSync
+	orig, origSync, origLinks := appDB, hcSync, hcLinks
 	appDB = db
-	hcSync = newHCSync(hardcoversync.Config{})
-	t.Cleanup(func() { db.Close(); appDB, hcSync = orig, origSync })
+	hcSync, hcLinks = newHCSync(hardcoversync.Config{}), newHCLinks()
+	t.Cleanup(func() { db.Close(); appDB, hcSync, hcLinks = orig, origSync, origLinks })
 	resetKosyncCaches()
 }
 

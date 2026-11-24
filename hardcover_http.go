@@ -1,6 +1,6 @@
 package main
 
-// Hardcover's pages and API (hardcover.go): the review of a series
+// Hardcover's pages and API (internal/hardcoverseries): the review of a series
 // (/missing/hardcover?series=), an author's series for a batch
 // (/missing/hardcover/author?author=), and the requests behind them. Editors
 // only, on a server with -allow-writes, lookups on and a token set.
@@ -18,6 +18,7 @@ import (
 	"time"
 
 	"github.com/google/uuid"
+	"github.com/iotku/CalibreFast/internal/hardcoverseries"
 	"github.com/iotku/CalibreFast/pkg/hardcover"
 	"github.com/iotku/CalibreFast/pkg/textkey"
 )
@@ -25,6 +26,14 @@ import (
 // hcAwaitTime: how long a click waits for its request before answering
 // that it is queued (the page then polls).
 var hcAwaitTime = 5 * time.Second
+
+// hcUserID is u's id, or 0 for none.
+func hcUserID(u *User) int64 {
+	if u == nil {
+		return 0
+	}
+	return u.ID
+}
 
 // HardcoverUsage is the plan's use, for the pages.
 type HardcoverUsage struct {
@@ -87,7 +96,7 @@ type HardcoverJobView struct {
 	Review string
 }
 
-func hcJobView(j *hcJob) HardcoverJobView {
+func hcJobView(j *hardcoverseries.Job) HardcoverJobView {
 	v := HardcoverJobView{ID: j.ID, Kind: j.Kind, Series: j.Series, State: j.State, Error: j.Error, Review: hcReviewURL(j.Series)}
 	if j.State == "held" && j.NotBefore > 0 {
 		v.Until = time.Unix(j.NotBefore, 0).UTC().Format("Jan 2 15:04 UTC")
@@ -97,23 +106,13 @@ func hcJobView(j *hcJob) HardcoverJobView {
 
 // hcOpenJobs: the jobs waiting or running (for one series, when given).
 func hcOpenJobs(series string) []HardcoverJobView {
-	q := `SELECT ` + hcJobCols + ` FROM hardcover_jobs WHERE state IN ('queued', 'held', 'running') AND kind != ?`
-	args := []any{hcJobAuthor}
-	if series != "" {
-		q += ` AND series = ?`
-		args = append(args, series)
-	}
-	rows, err := appDB.Query(q+` ORDER BY id LIMIT 200`, args...)
+	jobs, err := hcLinks.OpenJobs(series)
 	if err != nil {
 		log.Println("hardcover jobs:", err)
-		return nil
 	}
-	defer rows.Close()
 	var out []HardcoverJobView
-	for rows.Next() {
-		if j, err := scanHCJob(rows); err == nil {
-			out = append(out, hcJobView(j))
-		}
+	for _, j := range jobs {
+		out = append(out, hcJobView(j))
 	}
 	return out
 }
@@ -133,7 +132,7 @@ type HardcoverReviewData struct {
 	Parts      []hcPartView // when it is linked to several
 	Checked    string       // "3 days ago"
 	Stale      bool
-	Review     hcReview
+	Review     hardcoverseries.Review
 	Complete   bool
 	Rows       hcReviewRows
 	Usage      HardcoverUsage
@@ -181,10 +180,10 @@ func hcBookURL(e *hardcover.Entry) string {
 	return "https://hardcover.app/books/" + e.Slug
 }
 
-func hcRow(s hcSuggestion, write string) hcReviewRow {
+func hcRow(s hardcoverseries.Suggestion, write string) hcReviewRow {
 	r := hcReviewRow{Strength: s.Strength, Note: s.Note, Checked: s.Checked}
 	if e := s.Entry; e != nil {
-		r.HCBookID, r.Position, r.Title, r.Released, r.HCURL = e.BookID, hcPositionText(e.Position), e.Title, e.Released, hcBookURL(e)
+		r.HCBookID, r.Position, r.Title, r.Released, r.HCURL = e.BookID, hardcoverseries.PositionText(e.Position), e.Title, e.Released, hcBookURL(e)
 		r.Authors = strings.Join(e.Authors, " & ")
 	}
 	if b := s.Book; b != nil {
@@ -205,12 +204,12 @@ func hcRow(s hcSuggestion, write string) hcReviewRow {
 
 // hcSameBook: the library book has the Hardcover book's title and one of
 // its authors, so the row needn't show it again.
-func hcSameBook(s hcSuggestion) bool {
+func hcSameBook(s hardcoverseries.Suggestion) bool {
 	return s.Book != nil && s.Entry != nil && textkey.FullTitle(s.Book.Title) == textkey.FullTitle(s.Entry.Title) &&
 		textkey.SharesName(s.Book.Authors, s.Entry.Authors)
 }
 
-func hcReviewRowsFor(rev hcReview, write string) hcReviewRows {
+func hcReviewRowsFor(rev hardcoverseries.Review, write string) hcReviewRows {
 	var rows hcReviewRows
 	for _, s := range rev.Present {
 		r := hcRow(s, write)
@@ -277,24 +276,24 @@ func hardcoverReviewPage(w http.ResponseWriter, r *http.Request) {
 		Usage:      hcUsageNow(),
 		Jobs:       hcOpenJobs(s.Name),
 	}
-	l, err := hcLinkFor(s.Name)
+	l, err := hcLinks.LinkFor(s.Name)
 	if err != nil {
 		log.Println("hardcover:", err)
 		d.Error = "Couldn't read this series' link."
 	}
 	if l != nil {
-		d.Linked, d.HCName, d.HCURL, d.Checked, d.Stale = true, l.HCName, l.hardcoverURL(), hcAgo(l.CheckedAt), l.stale()
+		d.Linked, d.HCName, d.HCURL, d.Checked, d.Stale = true, l.HCName, l.URL(), hcAgo(l.CheckedAt), l.Stale(hcNow())
 		if len(l.Parts) > 1 {
 			for _, p := range l.Parts {
-				d.Parts = append(d.Parts, hcPartView{Name: p.Name, Author: p.Author, Books: p.Books, URL: p.url()})
+				d.Parts = append(d.Parts, hcPartView{Name: p.Name, Author: p.Author, Books: p.Books, URL: p.URL()})
 			}
 		}
-		if d.Review, err = hcReviewFor(s, l); err != nil {
+		if d.Review, err = hcLinks.ReviewFor(s, l); err != nil {
 			log.Println("hardcover review:", err)
 			d.Error = "Couldn't match the list against the library."
 		}
 		d.Rows = hcReviewRowsFor(d.Review, s.Write)
-		d.Complete = d.Review.complete()
+		d.Complete = d.Review.Complete()
 	}
 	w.Header().Set("Cache-Control", "no-store")
 	logErr(templates.ExecuteTemplate(w, "hardcover-review.html", d), "hardcover review page")
@@ -338,8 +337,8 @@ func hardcoverAuthorPage(w http.ResponseWriter, r *http.Request) {
 		AuthorHref: categoryByKey("author").href(name), Usage: hcUsageNow(), Max: hcBatchMax}
 	for _, s := range authorSeries(members) {
 		row := hcAuthorSeriesRow{Name: s.Name, Href: s.Href, Count: s.Count, Review: hcReviewURL(s.Name)}
-		if l, err := hcLinkFor(s.Name); err == nil && l != nil {
-			row.Linked, row.HCName, row.Checked, row.Stale = true, l.HCName, hcAgo(l.CheckedAt), l.stale()
+		if l, err := hcLinks.LinkFor(s.Name); err == nil && l != nil {
+			row.Linked, row.HCName, row.Checked, row.Stale = true, l.HCName, hcAgo(l.CheckedAt), l.Stale(hcNow())
 			row.Status, _ = hcStatusOf(s.Name)
 		}
 		d.Series = append(d.Series, row)
@@ -374,16 +373,16 @@ func missingHardcover() *MissingHardcover {
 		return nil
 	}
 	m := &MissingHardcover{Enabled: true, Usage: hcUsageNow(), Jobs: hcOpenJobs("")}
-	links, err := hcAllLinks()
+	links, err := hcLinks.AllLinks()
 	if err != nil {
 		log.Println("hardcover:", err)
 	}
 	for _, l := range links {
-		row := hcMissingRow{Name: l.Name, Review: hcReviewURL(l.Name), HCName: l.HCName, Checked: hcAgo(l.CheckedAt), Stale: l.stale()}
+		row := hcMissingRow{Name: l.Name, Review: hcReviewURL(l.Name), HCName: l.HCName, Checked: hcAgo(l.CheckedAt), Stale: l.Stale(hcNow())}
 		if s, ok := hcSeries(l.Name); ok {
-			if rev, err := hcReviewFor(s, l); err == nil {
-				row.Pending = rev.pending()
-				row.Status = rev.status()
+			if rev, err := hcLinks.ReviewFor(s, l); err == nil {
+				row.Pending = rev.Pending()
+				row.Status = hcReviewStatus(rev)
 			}
 		}
 		if row.Status.Complete && row.Pending == 0 {
@@ -410,13 +409,13 @@ func hcDecode(w http.ResponseWriter, r *http.Request, v any) bool {
 
 // hcJobAnswer: a job as the API answers it, with the plan's use.
 type hcJobAnswer struct {
-	Job   *hcJob         `json:"job"`
-	Until string         `json:"until,omitempty"`
-	Usage HardcoverUsage `json:"usage"`
+	Job   *hardcoverseries.Job `json:"job"`
+	Until string               `json:"until,omitempty"`
+	Usage HardcoverUsage       `json:"usage"`
 }
 
 func hcAnswerJob(w http.ResponseWriter, r *http.Request, id int64) {
-	j, err := hcAwait(r.Context(), id, hcAwaitTime)
+	j, err := hcLinks.Await(r.Context(), id, hcAwaitTime)
 	if err != nil {
 		log.Println("hardcover:", err)
 		http.Error(w, "couldn't read the request's state", http.StatusInternalServerError)
@@ -445,8 +444,8 @@ func hardcoverJobHandler(kind string) http.HandlerFunc {
 			http.Error(w, "no such series in the library", http.StatusNotFound)
 			return
 		}
-		p := hcPayload{}
-		if kind == hcJobLink {
+		p := hardcoverseries.Payload{}
+		if kind == hardcoverseries.JobLink {
 			ids := req.HCIDs
 			if req.HCID > 0 {
 				ids = append(ids, req.HCID)
@@ -462,7 +461,7 @@ func hardcoverJobHandler(kind string) http.HandlerFunc {
 			}
 			p.HCIDs = ids
 		}
-		id, err := hcEnqueue(kind, s.Name, "", p, currentUser(r))
+		id, err := hcLinks.Enqueue(kind, s.Name, "", p, hcUserID(currentUser(r)))
 		if err != nil {
 			log.Println("hardcover:", err)
 			http.Error(w, "couldn't queue the request", http.StatusInternalServerError)
@@ -480,7 +479,7 @@ func hardcoverUnlinkHandler(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "no such series in the library", http.StatusNotFound)
 		return
 	}
-	if err := hcUnlink(s.Name); err != nil {
+	if err := hcLinks.Unlink(s.Name); err != nil {
 		log.Println("hardcover:", err)
 		http.Error(w, "couldn't unlink", http.StatusInternalServerError)
 		return
@@ -520,7 +519,7 @@ func hardcoverBatchHandler(w http.ResponseWriter, r *http.Request) {
 	batch := uuid.NewString()
 	var ids []int64
 	for _, n := range names {
-		id, err := hcEnqueue(hcJobBatch, n, batch, hcPayload{}, currentUser(r))
+		id, err := hcLinks.Enqueue(hardcoverseries.JobBatch, n, batch, hardcoverseries.Payload{}, hcUserID(currentUser(r)))
 		if err != nil {
 			log.Println("hardcover:", err)
 			http.Error(w, "couldn't queue the requests", http.StatusInternalServerError)
@@ -533,13 +532,13 @@ func hardcoverBatchHandler(w http.ResponseWriter, r *http.Request) {
 
 // GET /api/hardcover/jobs?ids=1,2: those requests' states.
 func hardcoverJobsHandler(w http.ResponseWriter, r *http.Request) {
-	jobs := []*hcJob{}
+	jobs := []*hardcoverseries.Job{}
 	for _, s := range strings.Split(r.URL.Query().Get("ids"), ",") {
 		id, err := strconv.ParseInt(strings.TrimSpace(s), 10, 64)
 		if err != nil || len(jobs) >= 100 {
 			continue
 		}
-		if j, err := hcJobByID(id); err == nil {
+		if j, err := hcLinks.JobByID(id); err == nil {
 			jobs = append(jobs, j)
 		}
 	}
@@ -553,18 +552,16 @@ func hardcoverCancelJobHandler(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "bad id", http.StatusBadRequest)
 		return
 	}
-	res, err := appDB.Exec(`UPDATE hardcover_jobs SET state = 'failed', error = 'cancelled', finished_at = ? WHERE id = ? AND state IN ('queued', 'held')`,
-		hcNow().Unix(), id)
+	ok, err := hcLinks.Cancel(id)
 	if err != nil {
 		log.Println("hardcover:", err)
 		http.Error(w, "couldn't cancel", http.StatusInternalServerError)
 		return
 	}
-	if n, _ := res.RowsAffected(); n == 0 {
+	if !ok {
 		http.Error(w, "that request isn't waiting", http.StatusConflict)
 		return
 	}
-	hcNotify(id)
 	w.WriteHeader(http.StatusNoContent)
 }
 
@@ -599,12 +596,12 @@ func hardcoverApplyHandler(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "no such series in the library", http.StatusNotFound)
 		return
 	}
-	l, err := hcLinkFor(s.Name)
+	l, err := hcLinks.LinkFor(s.Name)
 	if err != nil || l == nil || l.Snapshot == nil {
 		http.Error(w, "the series isn't linked to Hardcover", http.StatusConflict)
 		return
 	}
-	rev, err := hcReviewFor(s, l)
+	rev, err := hcLinks.ReviewFor(s, l)
 	if err != nil {
 		log.Println("hardcover apply:", err)
 		http.Error(w, "couldn't match the list against the library", http.StatusInternalServerError)
@@ -635,7 +632,7 @@ func hardcoverApplyHandler(w http.ResponseWriter, r *http.Request) {
 	// Series tags: only books the review matched to that entry.
 	tags := map[string]*hardcover.Entry{}
 	for _, sg := range slices.Concat(rev.Untagged, rev.Present) {
-		if sg.Book != nil && sg.Entry != nil && (sg.Fix || !hcInMembers(sg.Book.Series, s.Members)) {
+		if sg.Book != nil && sg.Entry != nil && (sg.Fix || !hardcoverseries.InMembers(sg.Book.Series, s.Members)) {
 			tags[sg.Book.UUID+"\x00"+strconv.FormatInt(sg.Entry.BookID, 10)] = sg.Entry
 		}
 	}
@@ -651,7 +648,7 @@ func hardcoverApplyHandler(w http.ResponseWriter, r *http.Request) {
 			done[t.UUID] = true
 			name := s.Write
 			edit := &bulkEdit{Series: &name}
-			if pos := hcPositionText(e.Position); pos != "" {
+			if pos := hardcoverseries.PositionText(e.Position); pos != "" {
 				edit.SeriesIndex = &pos
 			}
 			if _, err := queueBulkEdit([]string{t.UUID}, edit, u); err != nil {
@@ -675,7 +672,7 @@ func hardcoverApplyHandler(w http.ResponseWriter, r *http.Request) {
 			dismiss = append(dismiss, id)
 		}
 	}
-	if n, err := hcDismiss(s.Name, dismiss); err != nil {
+	if n, err := hcLinks.Dismiss(s.Name, dismiss); err != nil {
 		log.Println("hardcover dismiss:", err)
 		res.Errors = append(res.Errors, "couldn't save the dismissals")
 	} else {
@@ -686,7 +683,7 @@ func hardcoverApplyHandler(w http.ResponseWriter, r *http.Request) {
 
 // hcMakePlaceholder makes a placeholder for e, a book of series s, from
 // what Hardcover says about it. Errors are fit to show.
-func hcMakePlaceholder(e *hardcover.Entry, s hcSeriesInfo, u *User) (*placeholder, error) {
+func hcMakePlaceholder(e *hardcover.Entry, s hardcoverseries.SeriesInfo, u *User) (*placeholder, error) {
 	m, err := cleanPlaceholderMeta(hcPlaceholderMeta(e, s.Write))
 	if err != nil {
 		return nil, fmt.Errorf("%q: %v", e.Title, err)
@@ -718,12 +715,12 @@ func hardcoverNotMatchHandler(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "no such series in the library", http.StatusNotFound)
 		return
 	}
-	l, err := hcLinkFor(s.Name)
+	l, err := hcLinks.LinkFor(s.Name)
 	if err != nil || l == nil || l.Snapshot == nil {
 		http.Error(w, "the series isn't linked to Hardcover", http.StatusConflict)
 		return
 	}
-	rev, err := hcReviewFor(s, l)
+	rev, err := hcLinks.ReviewFor(s, l)
 	if err != nil {
 		log.Println("hardcover not a match:", err)
 		http.Error(w, "couldn't match the list against the library", http.StatusInternalServerError)
@@ -741,17 +738,16 @@ func hardcoverNotMatchHandler(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "that match isn't suggested any more: reload the page", http.StatusConflict)
 		return
 	}
-	if _, err := appDB.Exec(`INSERT OR IGNORE INTO hardcover_not_match (name, hc_book_id, uuid) VALUES (?, ?, ?)`, s.Name, e.BookID, req.UUID); err != nil {
+	if err := hcLinks.NotMatch(s.Name, e.BookID, req.UUID); err != nil {
 		log.Println("hardcover not a match:", err)
 		http.Error(w, "couldn't save", http.StatusInternalServerError)
 		return
 	}
-	seriesStatusChanged()
 	var res struct {
 		Placeholder string `json:"placeholder,omitempty"`
 		Error       string `json:"error,omitempty"`
 	}
-	if ph := hcPlaceholderFor(e, s.Members, allPlaceholders()); ph != nil {
+	if ph := hardcoverseries.PlaceholderFor(e, s.Members, hcPlaceholderViews(allPlaceholders())); ph != nil {
 		res.Placeholder = ph.UUID
 	} else if p, err := hcMakePlaceholder(e, s, currentUser(r)); err != nil {
 		res.Error = err.Error()
@@ -782,14 +778,14 @@ func hardcoverUndismissHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	if len(req.IDs) > 0 || len(req.NotMatch) == 0 {
-		if err := hcRestore(s.Name, req.IDs); err != nil {
+		if err := hcLinks.Restore(s.Name, req.IDs); err != nil {
 			log.Println("hardcover:", err)
 			http.Error(w, "couldn't save", http.StatusInternalServerError)
 			return
 		}
 	}
 	var entries []hardcover.Entry
-	if l, err := hcLinkFor(s.Name); err == nil && l != nil && l.Snapshot != nil {
+	if l, err := hcLinks.LinkFor(s.Name); err == nil && l != nil && l.Snapshot != nil {
 		entries = l.Snapshot.Entries
 	}
 	for _, m := range req.NotMatch {
@@ -801,7 +797,7 @@ func hardcoverUndismissHandler(w http.ResponseWriter, r *http.Request) {
 				break
 			}
 		}
-		if err := hcRestoreMatch(s.Name, m.UUID, ids); err != nil {
+		if err := hcLinks.RestoreMatch(s.Name, m.UUID, ids); err != nil {
 			log.Println("hardcover:", err)
 			http.Error(w, "couldn't save", http.StatusInternalServerError)
 			return
@@ -813,7 +809,7 @@ func hardcoverUndismissHandler(w http.ResponseWriter, r *http.Request) {
 // hcPlaceholderMeta: a placeholder for a missing book of the series
 // (written as series), from what Hardcover says about it.
 func hcPlaceholderMeta(e *hardcover.Entry, series string) OPFMetadata {
-	m := OPFMetadata{Title: e.Title, Creators: slices.Clone(e.Authors), Series: series, SeriesIndex: hcPositionText(e.Position)}
+	m := OPFMetadata{Title: e.Title, Creators: slices.Clone(e.Authors), Series: series, SeriesIndex: hardcoverseries.PositionText(e.Position)}
 	if len(e.Released) >= 4 {
 		m.Date = e.Released
 	}
@@ -831,9 +827,9 @@ func registerHardcoverRoutes() {
 	wrap := func(h http.HandlerFunc) http.HandlerFunc { return requireEditor(requireLookups(requireHardcover(h))) }
 	http.HandleFunc("GET /missing/hardcover", wrap(hardcoverReviewPage))
 	http.HandleFunc("GET /missing/hardcover/author", wrap(hardcoverAuthorPage))
-	http.HandleFunc("POST /api/hardcover/candidates", wrap(hardcoverJobHandler(hcJobCandidates)))
-	http.HandleFunc("POST /api/hardcover/link", wrap(hardcoverJobHandler(hcJobLink)))
-	http.HandleFunc("POST /api/hardcover/refresh", wrap(hardcoverJobHandler(hcJobRefresh)))
+	http.HandleFunc("POST /api/hardcover/candidates", wrap(hardcoverJobHandler(hardcoverseries.JobCandidates)))
+	http.HandleFunc("POST /api/hardcover/link", wrap(hardcoverJobHandler(hardcoverseries.JobLink)))
+	http.HandleFunc("POST /api/hardcover/refresh", wrap(hardcoverJobHandler(hardcoverseries.JobRefresh)))
 	http.HandleFunc("DELETE /api/hardcover/link", wrap(hardcoverUnlinkHandler))
 	http.HandleFunc("POST /api/hardcover/batch", wrap(hardcoverBatchHandler))
 	http.HandleFunc("GET /api/hardcover/jobs", wrap(hardcoverJobsHandler))

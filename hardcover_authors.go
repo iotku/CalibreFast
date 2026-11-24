@@ -11,7 +11,7 @@ package main
 // asks for it again. Pictures are fetched once and served from our own
 // origin (<datadir>/author-images), never hot-linked.
 //
-// The lookups go through the Hardcover queue (hardcover.go) as "author"
+// The lookups go through the Hardcover queue (internal/hardcoverseries) as "author"
 // jobs, behind every editor's series request, and are spread out: one at
 // most every hcAuthorSpacing, so a queue of them (say, held overnight
 // while the plan's daily limit was used up) trickles out rather than
@@ -37,6 +37,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/iotku/CalibreFast/internal/hardcoverseries"
 	"github.com/iotku/CalibreFast/pkg/hardcover"
 	"github.com/iotku/CalibreFast/pkg/imageutil"
 	"github.com/iotku/CalibreFast/pkg/textkey"
@@ -193,7 +194,7 @@ func hcRequestAuthor(name string, by *User) (int64, error) {
 	if !hcAuthorFor(name).needsLookup() {
 		return 0, nil
 	}
-	return hcEnqueue(hcJobAuthor, name, "", hcPayload{}, by)
+	return hcLinks.Enqueue(hcJobAuthor, name, "", hardcoverseries.Payload{}, hcUserID(by))
 }
 
 // ---------------------------------------------------------------------------
@@ -209,10 +210,9 @@ type hcAuthorResult struct {
 // hcAuthorHeld: author lookups wait for the day's limit to reset, leaving
 // what's left of it to editors. Unlike a hardcover.WaitError it holds
 // only author jobs.
-type hcAuthorHeld struct{ until time.Time }
-
-func (e *hcAuthorHeld) Error() string {
-	return "most of today's Hardcover limit is used; author lookups wait until " + e.until.UTC().Format("15:04 UTC")
+func hcAuthorHeld(until time.Time) error {
+	return &hardcoverseries.HeldError{Until: until,
+		Reason: "most of today's Hardcover limit is used; author lookups wait until " + until.UTC().Format("15:04 UTC")}
 }
 
 // hcAuthorBudgetLeft: whether an author lookup may spend from today's
@@ -232,7 +232,7 @@ func hcAuthorBudgetLeft() (bool, time.Time) {
 
 func hcLookupAuthor(ctx context.Context, name string) (any, error) {
 	if ok, until := hcAuthorBudgetLeft(); !ok {
-		return nil, &hcAuthorHeld{until}
+		return nil, hcAuthorHeld(until)
 	}
 	_, members, _ := groups.resolve("author", name)
 	if len(members) == 0 {
@@ -483,18 +483,18 @@ func hcFillAuthorProfile(r *http.Request, data *FilteredPageData) {
 }
 
 // hcFillSeriesDescription adds the description Hardcover gave a linked
-// series (fetched with its books, hardcover.go) where the page has none of
+// series (fetched with its books, internal/hardcoverseries) where the page has none of
 // its own. Plain text, shown escaped like an author's bio.
 func hcFillSeriesDescription(data *FilteredPageData) {
 	if data.Category != "series" || data.Description != "" || appDB == nil {
 		return
 	}
-	l, err := hcLinkFor(data.Name)
+	l, err := hcLinks.LinkFor(data.Name)
 	if err != nil || l == nil || l.Snapshot == nil || l.Snapshot.Description == "" {
 		return
 	}
 	data.Description = l.Snapshot.Description
-	data.Profile = &AuthorProfile{FromHardcover: true, HardcoverURL: l.hardcoverURL()}
+	data.Profile = &AuthorProfile{FromHardcover: true, HardcoverURL: l.URL()}
 }
 
 // authorHeaderData is what the top of the author's page shows, for
@@ -553,7 +553,7 @@ func authorProfileHandler(refresh bool) http.HandlerFunc {
 			return
 		}
 		if id != 0 {
-			if j, err := hcAwait(r.Context(), id, hcAwaitTime); err != nil || j.State != "done" && j.State != "failed" {
+			if j, err := hcLinks.Await(r.Context(), id, hcAwaitTime); err != nil || j.State != "done" && j.State != "failed" {
 				w.Header().Set("Cache-Control", "no-store")
 				w.WriteHeader(http.StatusAccepted)
 				return

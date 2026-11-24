@@ -102,7 +102,7 @@ The metadata editor's lookup bar sends a book's ISBN (**Search ISBN**) or its ti
 
 ### Hardcover series
 
-With `CF_HARDCOVER_TOKEN` set, editors can link a series to Hardcover and review its book list (`hardcover.go`, `/missing/hardcover`). This tells Hardcover what series are in your library.
+With `CF_HARDCOVER_TOKEN` set, editors can link a series to Hardcover and review its book list (`internal/hardcoverseries`, `/missing/hardcover`). This tells Hardcover what series are in your library.
 
 - **What is sent:** the series' name (and its group's member names), the names of Hardcover series it may be, up to 50 ISBNs of its books in the library, and Hardcover ids. Nothing about other books, users or the library. Requests go only to `api.hardcover.app`, with the generic User-Agent.
 - **Only on a click:** one series, or the series of one author that the editor ticks (at most 25). The whole library is never scanned, and nothing runs on page load. Lists are fetched again only when asked; each shows when it was fetched.

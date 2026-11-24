@@ -188,7 +188,8 @@ func (c *Client) Lookup(ctx context.Context, source string, q Query) Result {
 		m.Meta.Subjects = opf.UniqueTags(m.Meta.Subjects)
 	}
 	res := Result{Source: source, Matches: matches} // none: no match
-	if source != Hardcover { // its client caches answers with the covers they name
+	// Hardcover's client caches its answers with the covers they name.
+	if source != Hardcover {
 		c.cache.put(key, res)
 	}
 	return res

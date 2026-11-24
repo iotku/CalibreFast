@@ -191,7 +191,7 @@ type FilteredPageData struct {
 	Missing        int
 	NewPlaceholder string
 	// Hardcover: where editors identify this series, or this author's
-	// series, on Hardcover (hardcover.go); "" when it isn't set up.
+	// series, on Hardcover (internal/hardcoverseries); "" when it isn't set up.
 	Hardcover string
 	// A series: how much of it is here (series_complete.go), and for
 	// editors,

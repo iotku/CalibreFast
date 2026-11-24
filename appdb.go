@@ -453,7 +453,7 @@ var migrations = []string{
 		updated_at INTEGER NOT NULL
 	);
 	`,
-	// 26: series linked to Hardcover (hardcover.go): the Hardcover series a
+	// 26: series linked to Hardcover (internal/hardcoverseries): the Hardcover series a
 	// series (as browsed, after groups) is, and its book list as last
 	// fetched; suggestions an editor turned down; the queue of requests to
 	// Hardcover, held while its plan's limits are used up; and the day's
@@ -523,7 +523,7 @@ var migrations = []string{
 	);
 	`,
 	// 29: library books an editor said aren't a Hardcover book of the
-	// series (hardcover.go): never matched to it again.
+	// series (internal/hardcoverseries): never matched to it again.
 	`
 	CREATE TABLE hardcover_not_match (
 		name       TEXT    NOT NULL COLLATE NOCASE,

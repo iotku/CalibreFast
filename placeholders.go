@@ -62,7 +62,7 @@ type placeholder struct {
 	UUID      string
 	Meta      OPFMetadata // Series and SeriesIndex hold its series
 	Cover     string      // file in placeholderCoversDir, "" for none
-	Source    string      // "manual", or "hardcover" (hardcover.go)
+	Source    string      // "manual", or "hardcover" (internal/hardcoverseries)
 	CreatedAt int64
 	UpdatedAt int64
 }
@@ -711,7 +711,7 @@ type MissingPageData struct {
 	Title  string
 	Series []missingSeries // placeholders by series, those with none last
 	Gaps   []seriesGap
-	// Hardcover: series linked to Hardcover, when it is set up (hardcover.go).
+	// Hardcover: series linked to Hardcover, when it is set up (internal/hardcoverseries).
 	Hardcover *MissingHardcover
 	Count     int
 	Writable  bool

@@ -1,4 +1,4 @@
-// Hardcover series (hardcover.go, hardcover_http.go): finding a series on
+// Hardcover series (internal/hardcoverseries, hardcover_http.go): finding a series on
 // Hardcover and linking it, fetching its list again, applying the review,
 // checking an author's series together, and the queue of requests waiting
 // for Hardcover's limits. Editors only. Everything Hardcover sends is
