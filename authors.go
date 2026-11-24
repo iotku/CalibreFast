@@ -23,6 +23,10 @@ import "strings"
 // metadata.db is a comma.
 const authorNameSQL = `replace(a.name, '|', ',')`
 
+// authorNameSQLt is authorNameSQL for alias t (the category pages,
+// aggregate.go).
+const authorNameSQLt = `replace(t.name, '|', ',')`
+
 // authorDBName is a name as Calibre stores it in authors.name.
 func authorDBName(name string) string {
 	return strings.ReplaceAll(name, ",", "|")

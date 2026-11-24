@@ -1,8 +1,12 @@
 package main
 
 import (
+	"encoding/json"
+	"net/http/httptest"
+	"net/url"
 	"os"
 	"reflect"
+	"strings"
 	"testing"
 
 	"github.com/iotku/CalibreFast/pkg/opf"
@@ -102,6 +106,33 @@ func TestAuthorNamesWithCommas(t *testing.T) {
 	table, err := tableBooks(db, []string{uuid})
 	if err != nil || len(table) != 1 || table[0].Authors != want {
 		t.Errorf("bulk editor authors: %v %v, want %q", table, err, want)
+	}
+
+	// The Authors page lists "Battey, Nick", and its link (/author/Battey,
+	// Nick, as the book popup links it too) finds the book.
+	c := categoryByKey("author")
+	found := false
+	for _, it := range queryRawItems(c) {
+		if strings.Contains(it.Name, "|") {
+			t.Errorf("Authors page lists %q", it.Name)
+		}
+		found = found || it.Name == "Battey, Nick"
+	}
+	if !found {
+		t.Errorf("Authors page doesn't list %q", "Battey, Nick")
+	}
+	if n := countBooks(c, []string{"Battey, Nick"}); n != 1 {
+		t.Errorf("countBooks(Battey, Nick) = %d, want 1", n)
+	}
+	rec := httptest.NewRecorder()
+	filteredBooksHandler(rec, httptest.NewRequest("GET", "/author/"+url.PathEscape("Battey, Nick")+"?api=1", nil), c)
+	var page []Book
+	_ = json.Unmarshal(rec.Body.Bytes(), &page)
+	if len(page) != 1 || page[0].UUID != uuid {
+		t.Errorf("/author/Battey, Nick: %s", rec.Body.String())
+	}
+	if _, authors, ok := hcBookTitle(uuid); ok && authors != want {
+		t.Errorf("hardcover book authors = %q, want %q", authors, want)
 	}
 
 	// The same name again is the same author, and so is a row an older

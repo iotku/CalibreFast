@@ -22,6 +22,16 @@ This is where past bugs came from (code scanning alert 23: a tag name with `"` b
 - Elements with `hx-*` attributes added from script need `htmx.process(container)` after insertion.
 - Trusted Types are **enforced** on every page (`csp.go`): a plain string at an HTML or script sink throws, and the server logs `csp refused: …`. Policies live only in `web/trusted.ts`, and their names must be listed in `trustedTypesPolicyNames` (`TestTrustedTypesPolicyNames`). Don't widen a policy (above all the reader's `default` one) or add a pass-through policy to make an error go away: build the DOM instead. `-trusted-types-report-only` is an emergency switch, not a fix.
 
+## Author names with commas ("|" in metadata.db)
+
+This keeps coming back. Calibre stores a comma in an author's name as `|`: "Ashton, Hugh" is `Ashton| Hugh` in `authors.name`. Calibre itself turns `|` back into `,` whenever it reads a name, and so must we. Everything above the database (the catalog, book popup, links like `/author/Ashton, Hugh`, groups, favorites) uses the comma form.
+
+- **Reading** `authors.name`: never select `a.name` / `t.name` raw. Use `authorNameSQL` (alias `a`) or `authorNameSQLt` (alias `t`, the category pages' `NameSQL`), both in `authors.go`, or `bookAuthorsSQL` for "A & B".
+- **Matching** a name from a URL, form or JSON: compare it against that same expression (`WHERE ` + authorNameSQL + ` = ?`), not `a.name = ?`, or the book popup's links lead to empty pages.
+- **Writing**: `upsertAuthor` / `authorDBName` store the `|` form. Don't insert into `authors` any other way.
+- `authors.sort` and `books.author_sort` keep a real comma; only `authors.name` uses `|`.
+- `TestAuthorNamesWithCommas` (authors_test.go) covers the grid, bulk editor, Authors page, `/author/{name}` and Hardcover's book lookup. A new place that reads or matches author names gets a check there. `TestNoRawAuthorNameSQL` fails on a SQL literal that names `authors` and uses `a.name`/`t.name` outside `replace(`; it can't see names built with `fmt.Sprintf`, so those need the behaviour test.
+
 ## Server side
 
 - Pages use `html/template`, which escapes by context. **Don't** convert data to `template.HTML`, `template.HTMLAttr`, `template.URL`, `template.JS` or `template.CSS` unless it has just been through a sanitizer (as with `descriptionPolicy`). Don't build HTML with `fmt.Sprintf` or `+` and write it out raw.
