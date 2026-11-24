@@ -22,6 +22,7 @@ import (
 	"time"
 	"unicode"
 
+	"github.com/iotku/CalibreFast/internal/hardcoversync"
 	"golang.org/x/crypto/bcrypt"
 )
 
@@ -467,7 +468,7 @@ type AuthPageData struct {
 	SyncKey      *syncKeyInfo // nil: no sync key
 	NewSyncKey   string       // shown once, right after it is generated
 	SyncNotice   string
-	Hardcover    *hcAccountView // reading sync to Hardcover (hardcover_link.go); nil: off on this server
+	Hardcover    *hardcoversync.AccountView // reading sync to Hardcover (internal/hardcoversync/link.go); nil: off on this server
 	// Deleting the account (account_delete.go): when it would be purged if
 	// deleted now, and whether the user is the only admin (who can't).
 	DeletePurgeDay string

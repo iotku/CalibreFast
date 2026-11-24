@@ -477,7 +477,7 @@ func main() {
 	if allowWrites {
 		startHardcover() // requests to Hardcover left from the last run (hardcover.go)
 	}
-	startHardcoverSync() // users' reading, to their Hardcover accounts (hardcover_sync.go)
+	startHardcoverSync() // users' reading, to their Hardcover accounts (internal/hardcoversync/sync.go)
 	startAccountPurge()  // accounts their owners deleted, once they can't be restored (account_delete.go)
 	startBackups()       // the app database daily, metadata.db weekly (backup.go)
 	serveLibraryHTTP()

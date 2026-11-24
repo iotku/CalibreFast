@@ -844,8 +844,8 @@ func placeholderPageData(p *placeholder, r *http.Request) PlaceholderPageData {
 		d.SignedIn = true
 		status, _ := readStatus(u.ID, p.UUID)
 		d.Saved = status == "wanted"
-		if hardcoverSyncEnabled() && hcIsLinked(u.ID) {
-			d.HardcoverSync = &bookHardcover{Shared: hcShared(u.ID, p.UUID), All: hcLoadShare(u.ID).All}
+		if hardcoverSyncEnabled() && hcSync.IsLinked(u.ID) {
+			d.HardcoverSync = &bookHardcover{Shared: hcSync.Shared(u.ID, p.UUID), All: hcSync.LoadShare(u.ID).All}
 		}
 	}
 	if p.Meta.Series != "" {
@@ -1076,7 +1076,7 @@ func placeholderUpdateHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	if hcChanged {
-		hcPlaceholderBookChanged(p.UUID, ed, 0)
+		hcSync.BookChanged(p.UUID, ed, 0)
 	}
 	logEdit(currentUser(r), "edit placeholder", logKindPlaceholder, p.UUID, p.Meta.Title, before, snapPlaceholder(p))
 	writeJSON(w, http.StatusOK, map[string]string{"uuid": p.UUID, "url": p.href()})

@@ -1,7 +1,7 @@
-package main
+package hardcoversync
 
 // Reading sync to users' own Hardcover accounts: a user who links their
-// account (hardcover_link.go) has their reading status, progress and dates
+// account (link.go) has their reading status, progress and dates
 // sent there as they change here. Only one way: nothing on Hardcover is
 // read back, apart from the user's entry for the book being sent, and
 // nothing there is ever deleted.
@@ -10,7 +10,7 @@ package main
 // sends them. The row says only that the book is due: what's sent is the
 // book's state when it's sent, so many changes (page turns) go as one, and
 // their order can't come out wrong. Progress waits a few minutes for more
-// (hcProgressDelay); a status goes at once.
+// (ProgressDelay); a status goes at once.
 //
 // Each user's requests go with their own token, so within their own plan's
 // limits (a Budget per user). A user over them, or whose sign-in Hardcover
@@ -22,90 +22,33 @@ import (
 	"errors"
 	"log"
 	"math"
-	"os"
 	"strconv"
-	"strings"
 	"sync"
 	"time"
 
 	"github.com/iotku/CalibreFast/pkg/hardcover"
-	"github.com/iotku/CalibreFast/pkg/isbn"
-)
-
-var (
-	// noHardcoverSync (-no-hardcover-sync) turns off linking Hardcover
-	// accounts, and sending to linked ones.
-	noHardcoverSync bool
-	// hcOAuth signs users in to Hardcover; nil when sync is off.
-	hcOAuth *hardcover.OAuth
-	// hcRevoker ends sign-ins when users unlink, even with sync turned off
-	// (nil only with no client id at all): a user can always take back
-	// the access they gave.
-	hcRevoker *hardcover.OAuth
-	// hcUserBudget is a user's plan limits (Hardcover's are per token).
-	hcUserBudget = hardcover.FreePlan
-	// hcSyncURL is the GraphQL endpoint for users' clients ("": Hardcover's;
-	// tests set it).
-	hcSyncURL string
 )
 
 const (
-	// hcProgressDelay: progress waits this long for more before it's sent.
-	hcProgressDelay = 3 * time.Minute
-	// hcRefreshBefore: an access token this close to expiring is renewed.
-	hcRefreshBefore = 24 * time.Hour
-	// hcFoundTTL, hcMissTTL: how long a book's place on Hardcover (or its
+	// ProgressDelay: progress waits this long for more before it's sent.
+	ProgressDelay = 3 * time.Minute
+	// refreshBefore: an access token this close to expiring is renewed.
+	refreshBefore = 24 * time.Hour
+	// foundTTL, missTTL: how long a book's place on Hardcover (or its
 	// absence) is trusted before it's looked up again.
-	hcFoundTTL = 30 * 24 * time.Hour
-	hcMissTTL  = 7 * 24 * time.Hour
-	// hcMaxBackoff caps the wait after repeated failures.
-	hcMaxBackoff = 24 * time.Hour
+	foundTTL = 30 * 24 * time.Hour
+	missTTL  = 7 * 24 * time.Hour
+	// maxBackoff caps the wait after repeated failures.
+	maxBackoff = 24 * time.Hour
 )
 
-// configureHardcoverSync reads the server's own OAuth app on Hardcover
-// (CF_HARDCOVER_CLIENT_ID). No client id ships with CalibreFast: a public
-// client has no secret, so anyone could start sign-ins under a shared one.
-// With one app per server, the approval screen on Hardcover names who
-// actually runs the server, and only that admin answers for it.
-func configureHardcoverSync() {
-	hcOAuth, hcRevoker = nil, nil
-	id := strings.TrimSpace(os.Getenv("CF_HARDCOVER_CLIENT_ID"))
-	if id != "" {
-		hcRevoker = &hardcover.OAuth{ClientID: id, UserAgent: lookupUserAgent}
-	}
-	switch {
-	case noHardcover || noHardcoverSync:
-		return
-	case id == "":
-		return
-	}
-	hcOAuth = &hardcover.OAuth{ClientID: id, UserAgent: lookupUserAgent}
-}
+// Enabled: users may link Hardcover accounts.
+func (s *Service) Enabled() bool { return s != nil && s.oauth != nil }
 
-// hardcoverSyncEnabled: users may link Hardcover accounts.
-func hardcoverSyncEnabled() bool { return hcOAuth != nil }
-
-var hcSync = struct {
-	sync.Mutex
-	linked  map[int64]bool // users with a working link
-	clients map[int64]*hardcover.Client
-	tokens  map[int64]*sync.Mutex // one refresh at a time per user
-	pending map[int64]*hcPendingLink
-	wake    chan struct{}
-	cancel  context.CancelFunc
-	done    chan struct{}
-}{
-	linked:  map[int64]bool{},
-	clients: map[int64]*hardcover.Client{},
-	tokens:  map[int64]*sync.Mutex{},
-	pending: map[int64]*hcPendingLink{},
-	wake:    make(chan struct{}, 1),
-}
-
-// hcLoadLinked reads which users have a working link.
-func hcLoadLinked() {
+// loadLinked reads which users have a working link.
+func (s *Service) loadLinked() {
 	linked := map[int64]bool{}
-	if rows, err := appDB.Query(`SELECT user_id FROM hardcover_links WHERE broken = ''`); err == nil {
+	if rows, err := s.db.Query(`SELECT user_id FROM hardcover_links WHERE broken = ''`); err == nil {
 		for rows.Next() {
 			var id int64
 			if rows.Scan(&id) == nil {
@@ -114,32 +57,40 @@ func hcLoadLinked() {
 		}
 		rows.Close()
 	}
-	hcSync.Lock()
-	hcSync.linked = linked
-	hcSync.clients = map[int64]*hardcover.Client{}
-	hcSync.Unlock()
+	s.mu.Lock()
+	s.linked = linked
+	s.clients = map[int64]*hardcover.Client{}
+	s.mu.Unlock()
 }
 
-func hcIsLinked(userID int64) bool {
-	hcSync.Lock()
-	defer hcSync.Unlock()
-	return hcSync.linked[userID]
-}
-
-func hcSetLinked(userID int64, on bool) {
-	hcSync.Lock()
-	if on {
-		hcSync.linked[userID] = true
-	} else {
-		delete(hcSync.linked, userID)
+// IsLinked: userID has a working link.
+func (s *Service) IsLinked(userID int64) bool {
+	if s == nil {
+		return false
 	}
-	delete(hcSync.clients, userID)
-	hcSync.Unlock()
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	return s.linked[userID]
 }
 
-func hcSyncWake() {
+func (s *Service) setLinked(userID int64, on bool) {
+	s.mu.Lock()
+	if on {
+		s.linked[userID] = true
+	} else {
+		delete(s.linked, userID)
+	}
+	delete(s.clients, userID)
+	s.mu.Unlock()
+}
+
+// Wake has the worker look for work now.
+func (s *Service) Wake() {
+	if s == nil {
+		return
+	}
 	select {
-	case hcSync.wake <- struct{}{}:
+	case s.wake <- struct{}{}:
 	default:
 	}
 }
@@ -148,8 +99,8 @@ func hcSyncWake() {
 // Tokens
 // ---------------------------------------------------------------------------
 
-// hcAccount is a user's link, tokens still sealed.
-type hcAccount struct {
+// account is a user's link, tokens still sealed.
+type account struct {
 	UserID, HCUserID int64
 	Username         string
 	access, refresh  string
@@ -158,10 +109,10 @@ type hcAccount struct {
 	Broken           string
 }
 
-func hcLoadAccount(userID int64) (*hcAccount, error) {
-	l := hcAccount{UserID: userID}
+func (s *Service) loadAccount(userID int64) (*account, error) {
+	l := account{UserID: userID}
 	var exp, at int64
-	err := appDB.QueryRow(`SELECT hc_user_id, hc_username, access_token, refresh_token, access_expires, linked_at, broken
+	err := s.db.QueryRow(`SELECT hc_user_id, hc_username, access_token, refresh_token, access_expires, linked_at, broken
 		FROM hardcover_links WHERE user_id = ?`, userID).
 		Scan(&l.HCUserID, &l.Username, &l.access, &l.refresh, &exp, &at, &l.Broken)
 	if errors.Is(err, sql.ErrNoRows) {
@@ -174,130 +125,130 @@ func hcLoadAccount(userID int64) (*hcAccount, error) {
 	return &l, nil
 }
 
-func hcSealContext(column string, userID int64) string {
+func sealContext(column string, userID int64) string {
 	return "hardcover_links." + column + ":" + strconv.FormatInt(userID, 10)
 }
 
-// hcSaveAccount stores a new sign-in for userID.
-func hcSaveAccount(userID int64, me hardcover.Me, t *hardcover.Token) error {
-	acc, err := sealSecret(hcSealContext("access_token", userID), t.Access)
+// saveAccount stores a new sign-in for userID.
+func (s *Service) saveAccount(userID int64, me hardcover.Me, t *hardcover.Token) error {
+	acc, err := s.host.Seal(sealContext("access_token", userID), t.Access)
 	if err != nil {
 		return err
 	}
-	ref, err := sealSecret(hcSealContext("refresh_token", userID), t.Refresh)
+	ref, err := s.host.Seal(sealContext("refresh_token", userID), t.Refresh)
 	if err != nil {
 		return err
 	}
-	_, err = appDB.Exec(`INSERT INTO hardcover_links (user_id, hc_user_id, hc_username, access_token, refresh_token, access_expires, scope, linked_at)
+	_, err = s.db.Exec(`INSERT INTO hardcover_links (user_id, hc_user_id, hc_username, access_token, refresh_token, access_expires, scope, linked_at)
 		VALUES (?, ?, ?, ?, ?, ?, ?, ?)
 		ON CONFLICT (user_id) DO UPDATE SET hc_user_id = excluded.hc_user_id, hc_username = excluded.hc_username,
 			access_token = excluded.access_token, refresh_token = excluded.refresh_token, access_expires = excluded.access_expires,
 			scope = excluded.scope, linked_at = excluded.linked_at, broken = ''`,
-		userID, me.ID, me.Username, acc, ref, t.Expires.Unix(), t.Scope, hcNow().Unix())
+		userID, me.ID, me.Username, acc, ref, t.Expires.Unix(), t.Scope, s.now().Unix())
 	if err == nil {
-		hcRelinked(userID) // the "link again" notification, if any, is done with
+		s.relinked(userID) // the "link again" notification, if any, is done with
 	}
 	return err
 }
 
-// hcSaveTokens stores a renewed pair.
-func hcSaveTokens(userID int64, t *hardcover.Token) error {
-	acc, err := sealSecret(hcSealContext("access_token", userID), t.Access)
+// saveTokens stores a renewed pair.
+func (s *Service) saveTokens(userID int64, t *hardcover.Token) error {
+	acc, err := s.host.Seal(sealContext("access_token", userID), t.Access)
 	if err != nil {
 		return err
 	}
-	ref, err := sealSecret(hcSealContext("refresh_token", userID), t.Refresh)
+	ref, err := s.host.Seal(sealContext("refresh_token", userID), t.Refresh)
 	if err != nil {
 		return err
 	}
-	_, err = appDB.Exec(`UPDATE hardcover_links SET access_token = ?, refresh_token = ?, access_expires = ? WHERE user_id = ?`,
+	_, err = s.db.Exec(`UPDATE hardcover_links SET access_token = ?, refresh_token = ?, access_expires = ? WHERE user_id = ?`,
 		acc, ref, t.Expires.Unix(), userID)
 	return err
 }
 
-// hcMarkBroken records that a user's link no longer works: nothing more is
+// markBroken records that a user's link no longer works: nothing more is
 // sent for them until they link again, and its tokens (refused, spent or
 // unreadable) are deleted. The username and why stay, for the account page.
-func hcMarkBroken(userID int64, why string) {
-	if _, err := appDB.Exec(`UPDATE hardcover_links SET broken = ?, access_token = '', refresh_token = '', access_expires = 0 WHERE user_id = ?`,
+func (s *Service) markBroken(userID int64, why string) {
+	if _, err := s.db.Exec(`UPDATE hardcover_links SET broken = ?, access_token = '', refresh_token = '', access_expires = 0 WHERE user_id = ?`,
 		why, userID); err != nil {
 		log.Println("hardcover sync:", err)
 	}
-	hcSetLinked(userID, false)
+	s.setLinked(userID, false)
 	log.Printf("hardcover sync: user %d's link stopped working: %s", userID, why)
 }
 
-var errHCNotLinked = errors.New("Hardcover isn't linked")
+var ErrNotLinked = errors.New("Hardcover isn't linked")
 
-// hcTokenFunc gives userID's access token, renewing it when it's about to
+// tokenFunc gives userID's access token, renewing it when it's about to
 // expire or Hardcover refused it (force). A refresh token works once, so
 // renewals are one at a time, and the new pair is stored before the new
 // access token is used.
-func hcTokenFunc(userID int64) func(ctx context.Context, force bool) (string, error) {
+func (s *Service) tokenFunc(userID int64) func(ctx context.Context, force bool) (string, error) {
 	return func(ctx context.Context, force bool) (string, error) {
-		hcSync.Lock()
-		mu := hcSync.tokens[userID]
+		s.mu.Lock()
+		mu := s.tokens[userID]
 		if mu == nil {
 			mu = &sync.Mutex{}
-			hcSync.tokens[userID] = mu
+			s.tokens[userID] = mu
 		}
-		hcSync.Unlock()
+		s.mu.Unlock()
 		mu.Lock()
 		defer mu.Unlock()
-		l, err := hcLoadAccount(userID)
+		l, err := s.loadAccount(userID)
 		if err != nil {
 			return "", err
 		}
 		if l == nil || l.Broken != "" {
-			return "", errHCNotLinked
+			return "", ErrNotLinked
 		}
-		if !force && l.Expires.Sub(hcNow()) > hcRefreshBefore {
-			acc, err := openSecret(hcSealContext("access_token", userID), l.access)
+		if !force && l.Expires.Sub(s.now()) > refreshBefore {
+			acc, err := s.host.Open(sealContext("access_token", userID), l.access)
 			if err == nil {
 				return acc, nil
 			}
 		}
-		if hcOAuth == nil {
+		if s.oauth == nil {
 			return "", errors.New("Hardcover sync is off on this server")
 		}
-		ref, err := openSecret(hcSealContext("refresh_token", userID), l.refresh)
+		ref, err := s.host.Open(sealContext("refresh_token", userID), l.refresh)
 		if err != nil {
-			hcMarkBroken(userID, "its sign-in can't be read on this server; link Hardcover again")
+			s.markBroken(userID, "its sign-in can't be read on this server; link Hardcover again")
 			return "", err
 		}
-		t, err := hcOAuth.Refresh(ctx, ref)
+		t, err := s.oauth.Refresh(ctx, ref)
 		if errors.Is(err, hardcover.ErrInvalidGrant) {
-			hcMarkBroken(userID, "Hardcover ended the sign-in (revoked, or unused for six months); link Hardcover again")
+			s.markBroken(userID, "Hardcover ended the sign-in (revoked, or unused for six months); link Hardcover again")
 			return "", hardcover.ErrSignedOut
 		}
 		if err != nil {
 			return "", err
 		}
-		if err := hcSaveTokens(userID, t); err != nil {
+		if err := s.saveTokens(userID, t); err != nil {
 			// The old refresh token is spent; without the new one the link
 			// can't be renewed next time.
-			hcMarkBroken(userID, "its renewed sign-in couldn't be saved; link Hardcover again")
+			s.markBroken(userID, "its renewed sign-in couldn't be saved; link Hardcover again")
 			return "", err
 		}
 		return t.Access, nil
 	}
 }
 
-// hcUserClient is the client that acts as userID on Hardcover.
-func hcUserClient(userID int64) *hardcover.Client {
-	hcSync.Lock()
-	defer hcSync.Unlock()
-	if c := hcSync.clients[userID]; c != nil {
+// UserClient is the client that acts as userID on Hardcover.
+func (s *Service) UserClient(userID int64) *hardcover.Client {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	if c := s.clients[userID]; c != nil {
 		return c
 	}
 	c := hardcover.New(hardcover.Config{
-		URL:       hcSyncURL,
-		TokenFunc: hcTokenFunc(userID),
-		UserAgent: lookupUserAgent,
-		Budget:    hcUserBudget(),
-		Now:       hcNow,
+		URL:       s.syncURL,
+		TokenFunc: s.tokenFunc(userID),
+		UserAgent: s.userAgent,
+		Budget:    s.budget(),
+		Now:       s.clock,
 	})
-	hcSync.clients[userID] = c
+	s.clients[userID] = c
 	return c
 }
 
@@ -305,33 +256,36 @@ func hcUserClient(userID int64) *hardcover.Client {
 // Changes: recorded as they're made
 // ---------------------------------------------------------------------------
 
-// hcShare is what a user chose to send to Hardcover. Nothing is sent
+// Share is what a user chose to send to Hardcover. Nothing is sent
 // about a book they haven't shared (not even to look it up there), unless
 // they chose to share every book; progress and dates only if they chose.
-type hcShare struct {
+type Share struct {
 	All, Progress, Dates bool
 }
 
-func hcLoadShare(userID int64) hcShare {
-	var s hcShare
-	_ = appDB.QueryRow(`SELECT share_all, share_progress, share_dates FROM hardcover_links WHERE user_id = ?`, userID).
-		Scan(&s.All, &s.Progress, &s.Dates)
-	return s
+func (s *Service) LoadShare(userID int64) Share {
+	var sh Share
+	if s == nil {
+		return sh
+	}
+	_ = s.db.QueryRow(`SELECT share_all, share_progress, share_dates FROM hardcover_links WHERE user_id = ?`, userID).
+		Scan(&sh.All, &sh.Progress, &sh.Dates)
+	return sh
 }
 
-// hcSaveShare stores a user's choices. Going back from every book to
+// SaveShare stores a user's choices. Going back from every book to
 // chosen ones drops what was waiting to be sent about the others.
-func hcSaveShare(userID int64, s hcShare) error {
-	tx, err := appDB.Begin()
+func (s *Service) SaveShare(userID int64, sh Share) error {
+	tx, err := s.db.Begin()
 	if err != nil {
 		return err
 	}
 	defer tx.Rollback()
 	if _, err := tx.Exec(`UPDATE hardcover_links SET share_all = ?, share_progress = ?, share_dates = ? WHERE user_id = ?`,
-		s.All, s.Progress, s.Dates, userID); err != nil {
+		sh.All, sh.Progress, sh.Dates, userID); err != nil {
 		return err
 	}
-	if !s.All {
+	if !sh.All {
 		if _, err := tx.Exec(`DELETE FROM hardcover_sync WHERE user_id = ? AND book_uuid NOT IN
 			(SELECT book_uuid FROM hardcover_shared WHERE user_id = ?)`, userID, userID); err != nil {
 			return err
@@ -340,29 +294,32 @@ func hcSaveShare(userID int64, s hcShare) error {
 	return tx.Commit()
 }
 
-// hcShared: the user lets this book be sent: they shared it, or they
+// Shared: the user lets this book be sent: they shared it, or they
 // share every book and didn't leave this one out (hardcover_unshared).
-func hcShared(userID int64, uuid string) bool {
+func (s *Service) Shared(userID int64, uuid string) bool {
+	if s == nil {
+		return false
+	}
 	var one int
-	return appDB.QueryRow(`SELECT 1 FROM hardcover_links l WHERE l.user_id = ?1 AND (
+	return s.db.QueryRow(`SELECT 1 FROM hardcover_links l WHERE l.user_id = ?1 AND (
 		EXISTS (SELECT 1 FROM hardcover_shared s WHERE s.user_id = ?1 AND s.book_uuid = ?2)
 		OR (l.share_all = 1 AND NOT EXISTS (SELECT 1 FROM hardcover_unshared x WHERE x.user_id = ?1 AND x.book_uuid = ?2)))`,
 		userID, uuid).Scan(&one) == nil
 }
 
-// hcIsBookShared: the user chose this book (hardcover_shared), whether or
+// IsBookShared: the user chose this book (hardcover_shared), whether or
 // not they share every book.
-func hcIsBookShared(userID int64, uuid string) bool {
+func (s *Service) IsBookShared(userID int64, uuid string) bool {
 	var one int
-	return appDB.QueryRow(`SELECT 1 FROM hardcover_shared WHERE user_id = ? AND book_uuid = ?`, userID, uuid).Scan(&one) == nil
+	return s.db.QueryRow(`SELECT 1 FROM hardcover_shared WHERE user_id = ? AND book_uuid = ?`, userID, uuid).Scan(&one) == nil
 }
 
-// hcSetBookShared shares a book with Hardcover (it's sent now, as it
+// SetBookShared shares a book with Hardcover (it's sent now, as it
 // stands) or stops sharing it (nothing more is sent; what was sent stays
 // on Hardcover). For a user who shares every book, stopping leaves this
 // one out of it (hardcover_unshared) until they share it again.
-func hcSetBookShared(userID int64, uuid string, on bool) error {
-	tx, err := appDB.Begin()
+func (s *Service) SetBookShared(userID int64, uuid string, on bool) error {
+	tx, err := s.db.Begin()
 	if err != nil {
 		return err
 	}
@@ -372,20 +329,20 @@ func hcSetBookShared(userID int64, uuid string, on bool) error {
 			return err
 		}
 		if _, err := tx.Exec(`INSERT OR IGNORE INTO hardcover_shared (user_id, book_uuid, shared_at) VALUES (?, ?, ?)`,
-			userID, uuid, hcNow().Unix()); err != nil {
+			userID, uuid, s.now().Unix()); err != nil {
 			return err
 		}
 		if err := tx.Commit(); err != nil {
 			return err
 		}
-		hcSyncTouch(userID, uuid, 0)
+		s.Touch(userID, uuid, 0)
 		return nil
 	}
 	if _, err := tx.Exec(`DELETE FROM hardcover_shared WHERE user_id = ? AND book_uuid = ?`, userID, uuid); err != nil {
 		return err
 	}
 	if _, err := tx.Exec(`INSERT OR IGNORE INTO hardcover_unshared (user_id, book_uuid, unshared_at)
-		SELECT user_id, ?, ? FROM hardcover_links WHERE user_id = ? AND share_all = 1`, uuid, hcNow().Unix(), userID); err != nil {
+		SELECT user_id, ?, ? FROM hardcover_links WHERE user_id = ? AND share_all = 1`, uuid, s.now().Unix(), userID); err != nil {
 		return err
 	}
 	if _, err := tx.Exec(`DELETE FROM hardcover_sync WHERE user_id = ? AND book_uuid = ?`, userID, uuid); err != nil {
@@ -394,30 +351,30 @@ func hcSetBookShared(userID int64, uuid string, on bool) error {
 	return tx.Commit()
 }
 
-// hcSyncTouch marks a user's book as due to be sent after delay (or
+// Touch marks a user's book as due to be sent after delay (or
 // sooner, if it was due sooner already). Nothing for users who haven't
 // linked Hardcover, nor for books they haven't shared: not even a note.
-func hcSyncTouch(userID int64, uuid string, delay time.Duration) {
-	hcSyncMark(userID, uuid, "", delay)
+func (s *Service) Touch(userID int64, uuid string, delay time.Duration) {
+	s.mark(userID, uuid, "", delay)
 }
 
-// hcSyncStatus records a status change, with the date it starts or ends a
+// Status records a status change, with the date it starts or ends a
 // read, and sends it at once.
-func hcSyncStatus(userID int64, uuid, status string) {
-	hcSyncMark(userID, uuid, status, 0)
+func (s *Service) Status(userID int64, uuid, status string) {
+	s.mark(userID, uuid, status, 0)
 }
 
-func hcSyncMark(userID int64, uuid, status string, delay time.Duration) {
-	if appDB == nil || !hcIsLinked(userID) || !hcShared(userID, uuid) {
+func (s *Service) mark(userID int64, uuid, status string, delay time.Duration) {
+	if s == nil || !s.IsLinked(userID) || !s.Shared(userID, uuid) {
 		return
 	}
-	now := hcNow()
+	now := s.now()
 	today := now.Format(time.DateOnly)
 	due := now.Add(delay).Unix()
 	// A new read (reading, after nothing or a finished or dropped read)
 	// starts today; finishing or dropping ends it today (only a finish's
 	// date is sent). Pausing keeps the read going.
-	_, err := appDB.Exec(`INSERT INTO hardcover_sync (user_id, book_uuid, due_at, started_on, finished_on)
+	_, err := s.db.Exec(`INSERT INTO hardcover_sync (user_id, book_uuid, due_at, started_on, finished_on)
 		VALUES (?1, ?2, ?3, CASE WHEN ?4 = 'reading' THEN ?5 ELSE '' END, CASE WHEN ?4 IN ('finished', 'dropped') THEN ?5 ELSE '' END)
 		ON CONFLICT (user_id, book_uuid) DO UPDATE SET
 			due_at = CASE WHEN due_at > 0 AND due_at < excluded.due_at THEN due_at ELSE excluded.due_at END,
@@ -430,25 +387,25 @@ func hcSyncMark(userID int64, uuid, status string, delay time.Duration) {
 		log.Println("hardcover sync:", err)
 		return
 	}
-	hcSyncWake()
+	s.Wake()
 }
 
-// hcSyncBackfill queues a user's books being read (or paused), finished
+// Backfill queues a user's books being read (or paused), finished
 // or dropped that they share, for a first sync. How many.
-func hcSyncBackfill(userID int64) (int, error) {
-	res, err := appDB.Exec(`INSERT INTO hardcover_sync (user_id, book_uuid, due_at, finished_on)
+func (s *Service) Backfill(userID int64) (int, error) {
+	res, err := s.db.Exec(`INSERT INTO hardcover_sync (user_id, book_uuid, due_at, finished_on)
 		SELECT user_id, book_uuid, ?1, CASE WHEN status = 'finished' THEN date(updated_at, 'unixepoch', 'localtime') ELSE '' END
 		FROM reading_status r WHERE user_id = ?2 AND status IN ('reading', 'paused', 'finished', 'dropped')
 			AND (book_uuid IN (SELECT book_uuid FROM hardcover_shared WHERE user_id = ?2)
 				OR ((SELECT share_all FROM hardcover_links WHERE user_id = ?2) = 1
 					AND book_uuid NOT IN (SELECT book_uuid FROM hardcover_unshared WHERE user_id = ?2)))
 		ON CONFLICT (user_id, book_uuid) DO UPDATE SET due_at = excluded.due_at, attempts = 0, changes = changes + 1`,
-		hcNow().Unix(), userID)
+		s.now().Unix(), userID)
 	if err != nil {
 		return 0, err
 	}
 	n, _ := res.RowsAffected()
-	hcSyncWake()
+	s.Wake()
 	return int(n), nil
 }
 
@@ -456,25 +413,25 @@ func hcSyncBackfill(userID int64) (int, error) {
 // The worker
 // ---------------------------------------------------------------------------
 
-// hcSkip: the book can't be sent (not on Hardcover); no retry.
-type hcSkip struct{ why string }
+// skipError: the book can't be sent (not on Hardcover); no retry.
+type skipError struct{ why string }
 
-func (e *hcSkip) Error() string { return e.why }
+func (e *skipError) Error() string { return e.why }
 
-// hcSyncStep sends the book due longest. ran: it tried one; next: when
+// Step sends the book due longest. ran: it tried one; next: when
 // the next is due (zero: none).
-func hcSyncStep(ctx context.Context) (ran bool, next time.Time) {
-	now := hcNow()
+func (s *Service) Step(ctx context.Context) (ran bool, next time.Time) {
+	now := s.now()
 	var userID int64
 	var uuid string
 	var attempts, changes int
-	err := appDB.QueryRow(`SELECT s.user_id, s.book_uuid, s.attempts, s.changes FROM hardcover_sync s
+	err := s.db.QueryRow(`SELECT s.user_id, s.book_uuid, s.attempts, s.changes FROM hardcover_sync s
 		JOIN hardcover_links l ON l.user_id = s.user_id AND l.broken = ''
 		JOIN users u ON u.id = s.user_id AND u.deleted_at IS NULL
 		WHERE s.due_at > 0 AND s.due_at <= ? ORDER BY s.due_at LIMIT 1`, now.Unix()).Scan(&userID, &uuid, &attempts, &changes)
 	if errors.Is(err, sql.ErrNoRows) {
 		var nb sql.NullInt64
-		_ = appDB.QueryRow(`SELECT MIN(s.due_at) FROM hardcover_sync s
+		_ = s.db.QueryRow(`SELECT MIN(s.due_at) FROM hardcover_sync s
 			JOIN hardcover_links l ON l.user_id = s.user_id AND l.broken = ''
 			JOIN users u ON u.id = s.user_id AND u.deleted_at IS NULL WHERE s.due_at > 0`).Scan(&nb)
 		if nb.Valid {
@@ -487,33 +444,33 @@ func hcSyncStep(ctx context.Context) (ran bool, next time.Time) {
 		return false, now.Add(time.Minute)
 	}
 	pctx, cancel := context.WithTimeout(ctx, time.Minute)
-	err = hcPushBook(pctx, userID, uuid)
+	err = s.pushBook(pctx, userID, uuid)
 	cancel()
 	var wait *hardcover.WaitError
-	var skip *hcSkip
+	var skip *skipError
 	switch {
 	case ctx.Err() != nil:
 		// Stopping: it stays due.
 	case err == nil:
 		// Unless it changed again while it was being sent.
-		_, err = appDB.Exec(`UPDATE hardcover_sync SET due_at = 0, attempts = 0, error = '' WHERE user_id = ? AND book_uuid = ? AND changes = ?`,
+		_, err = s.db.Exec(`UPDATE hardcover_sync SET due_at = 0, attempts = 0, error = '' WHERE user_id = ? AND book_uuid = ? AND changes = ?`,
 			userID, uuid, changes)
 	case errors.As(err, &wait):
 		// This user's plan is used up for now: everything of theirs waits.
-		_, err = appDB.Exec(`UPDATE hardcover_sync SET due_at = ? WHERE user_id = ? AND due_at > 0 AND due_at < ?`,
+		_, err = s.db.Exec(`UPDATE hardcover_sync SET due_at = ? WHERE user_id = ? AND due_at > 0 AND due_at < ?`,
 			wait.Until.Unix(), userID, wait.Until.Unix())
 	case errors.As(err, &skip):
 		log.Printf("hardcover sync: user %d, book %s: not sent: %s", userID, uuid, skip.why)
-		_, err = appDB.Exec(`UPDATE hardcover_sync SET due_at = 0, attempts = 0, error = ? WHERE user_id = ? AND book_uuid = ?`,
+		_, err = s.db.Exec(`UPDATE hardcover_sync SET due_at = 0, attempts = 0, error = ? WHERE user_id = ? AND book_uuid = ?`,
 			skip.why, userID, uuid)
-	case errors.Is(err, errHCNotLinked) || errors.Is(err, hardcover.ErrSignedOut):
+	case errors.Is(err, ErrNotLinked) || errors.Is(err, hardcover.ErrSignedOut):
 		// Marked broken; the rows wait for a new link.
 		err = nil
 	default:
-		backoff := min(time.Minute*time.Duration(math.Pow(4, float64(min(attempts, 6)))), hcMaxBackoff)
+		backoff := min(time.Minute*time.Duration(math.Pow(4, float64(min(attempts, 6)))), maxBackoff)
 		msg := err.Error() // never holds a token (pkg/hardcover's errors don't)
 		log.Printf("hardcover sync: user %d, book %s: %s; trying again in %s", userID, uuid, msg, backoff)
-		_, err = appDB.Exec(`UPDATE hardcover_sync SET due_at = ?, attempts = attempts + 1, error = ? WHERE user_id = ? AND book_uuid = ?`,
+		_, err = s.db.Exec(`UPDATE hardcover_sync SET due_at = ?, attempts = attempts + 1, error = ? WHERE user_id = ? AND book_uuid = ?`,
 			now.Add(backoff).Unix(), msg, userID, uuid)
 	}
 	if err != nil {
@@ -524,20 +481,16 @@ func hcSyncStep(ctx context.Context) (ran bool, next time.Time) {
 
 // startHardcoverSync starts the worker. It needs no -allow-writes: it
 // changes nothing in the library.
-func startHardcoverSync() {
-	if appDB == nil {
+func (s *Service) Start() {
+	if !s.Enabled() {
 		return
 	}
-	hcLoadLinked()
-	if !hardcoverSyncEnabled() {
-		return
-	}
-	hcNotifyRelink() // links older than what linking asks for now (hardcover_relink.go)
+	s.NotifyRelink() // links older than what linking asks for now (relink.go)
 	ctx, cancel := context.WithCancel(context.Background())
-	hcSync.Lock()
-	hcSync.cancel, hcSync.done = cancel, make(chan struct{})
-	done := hcSync.done
-	hcSync.Unlock()
+	s.mu.Lock()
+	s.cancel, s.done = cancel, make(chan struct{})
+	done := s.done
+	s.mu.Unlock()
 	go func() {
 		defer close(done)
 		defer func() {
@@ -546,11 +499,11 @@ func startHardcoverSync() {
 			}
 		}()
 		for {
-			ran, next := hcSyncStep(ctx)
+			ran, next := s.Step(ctx)
 			if !ran && ctx.Err() == nil {
-				// Then follows (hardcover_follow_push.go), when no book is due.
+				// Then follows (follow_push.go), when no book is due.
 				var nextFollow time.Time
-				ran, nextFollow = hcFollowStep(ctx)
+				ran, nextFollow = s.FollowStep(ctx)
 				if next.IsZero() || (!nextFollow.IsZero() && nextFollow.Before(next)) {
 					next = nextFollow
 				}
@@ -568,7 +521,7 @@ func startHardcoverSync() {
 			select {
 			case <-ctx.Done():
 				return
-			case <-hcSync.wake:
+			case <-s.wake:
 			case <-time.After(wait):
 			}
 		}
@@ -576,13 +529,16 @@ func startHardcoverSync() {
 }
 
 // stopHardcoverSync stops the worker and any sign-ins in progress.
-func stopHardcoverSync(deadline time.Time) {
-	hcSync.Lock()
-	cancel, done := hcSync.cancel, hcSync.done
-	for _, p := range hcSync.pending {
+func (s *Service) Stop(deadline time.Time) {
+	if s == nil {
+		return
+	}
+	s.mu.Lock()
+	cancel, done := s.cancel, s.done
+	for _, p := range s.pending {
 		p.cancel()
 	}
-	hcSync.Unlock()
+	s.mu.Unlock()
 	if cancel == nil {
 		return
 	}
@@ -597,7 +553,7 @@ func stopHardcoverSync(deadline time.Time) {
 // Sending a book
 // ---------------------------------------------------------------------------
 
-var hcStatusIDs = map[string]int{
+var statusIDs = map[string]int{
 	"wanted":   hardcover.StatusWantToRead,
 	"paused":   hardcover.StatusPaused,
 	"dropped":  hardcover.StatusDNF,
@@ -605,61 +561,61 @@ var hcStatusIDs = map[string]int{
 	"finished": hardcover.StatusRead,
 }
 
-// hcSyncRow is what's kept of a user's book between sends.
-type hcSyncRow struct {
+// syncRow is what's kept of a user's book between sends.
+type syncRow struct {
 	StartedOn, FinishedOn string
 	SentStatus, SentPages int
 }
 
-func hcLoadSyncRow(userID int64, uuid string) hcSyncRow {
-	var r hcSyncRow
-	_ = appDB.QueryRow(`SELECT started_on, finished_on, sent_status, sent_pages FROM hardcover_sync WHERE user_id = ? AND book_uuid = ?`,
+func (s *Service) loadSyncRow(userID int64, uuid string) syncRow {
+	var r syncRow
+	_ = s.db.QueryRow(`SELECT started_on, finished_on, sent_status, sent_pages FROM hardcover_sync WHERE user_id = ? AND book_uuid = ?`,
 		userID, uuid).Scan(&r.StartedOn, &r.FinishedOn, &r.SentStatus, &r.SentPages)
 	return r
 }
 
-// hcPushBook sends a user's book as it stands: its status and, while it's
+// pushBook sends a user's book as it stands: its status and, while it's
 // being read, how far along they are; and the dates the read started and
 // finished. A status cleared here is left as it is on Hardcover.
-func hcPushBook(ctx context.Context, userID int64, uuid string) error {
-	if !hcSyncable(uuid) {
-		_, err := appDB.Exec(`DELETE FROM hardcover_sync WHERE user_id = ? AND book_uuid = ?`, userID, uuid)
+func (s *Service) pushBook(ctx context.Context, userID int64, uuid string) error {
+	if !s.host.Syncable(uuid) {
+		_, err := s.db.Exec(`DELETE FROM hardcover_sync WHERE user_id = ? AND book_uuid = ?`, userID, uuid)
 		return err
 	}
-	link, err := hcLoadAccount(userID)
+	link, err := s.loadAccount(userID)
 	if err != nil {
 		return err
 	}
 	if link == nil || link.Broken != "" {
-		return errHCNotLinked
+		return ErrNotLinked
 	}
-	if !hcShared(userID, uuid) {
+	if !s.Shared(userID, uuid) {
 		// No longer shared: nothing is sent.
-		_, err := appDB.Exec(`DELETE FROM hardcover_sync WHERE user_id = ? AND book_uuid = ?`, userID, uuid)
+		_, err := s.db.Exec(`DELETE FROM hardcover_sync WHERE user_id = ? AND book_uuid = ?`, userID, uuid)
 		return err
 	}
-	share := hcLoadShare(userID)
-	status, _ := readStatus(userID, uuid)
-	want, ok := hcStatusIDs[status]
+	share := s.LoadShare(userID)
+	status := s.host.ReadStatus(userID, uuid)
+	want, ok := statusIDs[status]
 	if !ok {
 		return nil
 	}
-	c := hcUserClient(userID)
-	ed, found := hcUserMatch(userID, uuid)
+	c := s.UserClient(userID)
+	ed, found := s.UserMatch(userID, uuid)
 	if !found {
-		if ed, found, err = hcResolveBook(ctx, c, uuid); err != nil {
+		if ed, found, err = s.resolveBook(ctx, c, uuid); err != nil {
 			return err
 		}
 	}
 	if !found {
-		return &hcSkip{hcNotFound}
+		return &skipError{NotFoundMsg}
 	}
-	hcClaimPlaceholder(uuid, ed, userID) // the first to find it names it for everyone
-	row := hcLoadSyncRow(userID, uuid)
+	s.host.ClaimPlaceholder(uuid, ed, userID) // the first to find it names it for everyone
+	row := s.loadSyncRow(userID, uuid)
 	if !share.Dates {
 		row.StartedOn, row.FinishedOn = "", ""
 	} else {
-		row.StartedOn, row.FinishedOn = hcReadDates(userID, uuid, row)
+		row.StartedOn, row.FinishedOn = s.readDates(userID, uuid, row)
 	}
 
 	ub, err := c.UserBook(ctx, link.HCUserID, ed.BookID)
@@ -703,12 +659,12 @@ func hcPushBook(ctx context.Context, userID int64, uuid string) error {
 			if pages <= 0 {
 				pages = ed.Pages
 			}
-			if p, ok := latestProgress(userID, uuid)[uuid]; ok && pages > 1 && share.Progress {
+			if percent, at, ok := s.host.Progress(userID, uuid); ok && pages > 1 && share.Progress {
 				// Short of the last page: reaching it would finish the read
 				// on Hardcover, and here a book is finished by its status.
-				n := min(int(math.Round(p.Percent*float64(pages))), pages-1)
+				n := min(int(math.Round(percent*float64(pages))), pages-1)
 				if n > 0 && n != ub.ProgressPages {
-					u.ProgressPages, u.ActionAt = n, time.UnixMilli(p.UpdatedAt)
+					u.ProgressPages, u.ActionAt = n, at
 					sentPages = n
 				}
 			}
@@ -727,18 +683,18 @@ func hcPushBook(ctx context.Context, userID int64, uuid string) error {
 			return err
 		}
 	}
-	_, err = appDB.Exec(`UPDATE hardcover_sync SET sent_status = ?, sent_pages = ?, sent_at = ? WHERE user_id = ? AND book_uuid = ?`,
-		want, sentPages, hcNow().Unix(), userID, uuid)
+	_, err = s.db.Exec(`UPDATE hardcover_sync SET sent_status = ?, sent_pages = ?, sent_at = ? WHERE user_id = ? AND book_uuid = ?`,
+		want, sentPages, s.now().Unix(), userID, uuid)
 	return err
 }
 
-// hcReadDates: when the read started and finished, as recorded while the
+// readDates: when the read started and finished, as recorded while the
 // book was shared, else as the reading stats recorded them (stats.go).
-func hcReadDates(userID int64, uuid string, row hcSyncRow) (started, finished string) {
+func (s *Service) readDates(userID int64, uuid string, row syncRow) (started, finished string) {
 	started, finished = row.StartedOn, row.FinishedOn
 	day := func(kind string, after int64) (string, int64) {
 		var at sql.NullInt64
-		_ = appDB.QueryRow(`SELECT MAX(at) FROM reading_events WHERE user_id = ? AND book_uuid = ? AND kind = ? AND at >= ?`,
+		_ = s.db.QueryRow(`SELECT MAX(at) FROM reading_events WHERE user_id = ? AND book_uuid = ? AND kind = ? AND at >= ?`,
 			userID, uuid, kind, after).Scan(&at)
 		if !at.Valid {
 			return "", 0
@@ -754,79 +710,44 @@ func hcReadDates(userID int64, uuid string, row hcSyncRow) (started, finished st
 	return started, finished
 }
 
-// hcResolveBook finds which Hardcover book and edition a library book is,
+// resolveBook finds which Hardcover book and edition a library book is,
 // from its ISBNs and Hardcover identifiers; kept, found or not, for a
 // while. It asks with the server's own token when there is one, else with
 // the user's.
-func hcResolveBook(ctx context.Context, c *hardcover.Client, uuid string) (hardcover.Edition, bool, error) {
+func (s *Service) resolveBook(ctx context.Context, c *hardcover.Client, uuid string) (hardcover.Edition, bool, error) {
 	var ed hardcover.Edition
 	var at int64
-	err := appDB.QueryRow(`SELECT hc_book_id, hc_edition_id, pages, slug, title, resolved_at FROM hardcover_books WHERE book_uuid = ?`, uuid).
+	err := s.db.QueryRow(`SELECT hc_book_id, hc_edition_id, pages, slug, title, resolved_at FROM hardcover_books WHERE book_uuid = ?`, uuid).
 		Scan(&ed.BookID, &ed.EditionID, &ed.Pages, &ed.Slug, &ed.Title, &at)
 	if err == nil {
-		ttl := hcFoundTTL
+		ttl := foundTTL
 		if ed.BookID == 0 {
-			ttl = hcMissTTL
+			ttl = missTTL
 		}
-		if hcNow().Sub(time.Unix(at, 0)) < ttl {
+		if s.now().Sub(time.Unix(at, 0)) < ttl {
 			return ed, ed.BookID > 0, nil
 		}
 	}
-	isbns, hcID, slug, err := hcBookKeys(uuid)
+	isbns, hcID, slug, err := s.host.BookKeys(uuid)
 	if err != nil {
 		return ed, false, err
 	}
-	ed, found, err := hcCatalogClient(c).FindEdition(ctx, isbns, hcID, slug)
+	ed, found, err := s.CatalogClient(c).FindEdition(ctx, isbns, hcID, slug)
 	if err != nil {
 		return ed, false, err
 	}
 	if !found {
 		ed = hardcover.Edition{}
 	}
-	_, err = appDB.Exec(`INSERT INTO hardcover_books (book_uuid, hc_book_id, hc_edition_id, pages, slug, title, resolved_at) VALUES (?, ?, ?, ?, ?, ?, ?)
+	_, err = s.db.Exec(`INSERT INTO hardcover_books (book_uuid, hc_book_id, hc_edition_id, pages, slug, title, resolved_at) VALUES (?, ?, ?, ?, ?, ?, ?)
 		ON CONFLICT (book_uuid) DO UPDATE SET hc_book_id = excluded.hc_book_id, hc_edition_id = excluded.hc_edition_id,
 			pages = excluded.pages, slug = excluded.slug, title = excluded.title, resolved_at = excluded.resolved_at`,
-		uuid, ed.BookID, ed.EditionID, ed.Pages, ed.Slug, ed.Title, hcNow().Unix())
+		uuid, ed.BookID, ed.EditionID, ed.Pages, ed.Slug, ed.Title, s.now().Unix())
 	return ed, found, err
 }
 
-// hcBookKeys: a library book's ISBN-13s, Hardcover book id and slug.
-func hcBookKeys(uuid string) (isbns []string, hcID int64, slug string, err error) {
-	if p := placeholderByUUID(uuid); p != nil {
-		isbns, hcID, slug = hcPlaceholderKeys(p)
-		return isbns, hcID, slug, nil
-	}
-	rows, err := calibreDB.Query(`SELECT i.type, i.val FROM identifiers i JOIN books b ON b.id = i.book
-		WHERE b.uuid = ? AND lower(i.type) IN ('isbn', ?, ?)`, uuid, hardcover.IDScheme, hardcover.SlugScheme)
-	if err != nil {
-		return nil, 0, "", err
-	}
-	defer rows.Close()
-	for rows.Next() {
-		var typ, val string
-		if err := rows.Scan(&typ, &val); err != nil {
-			return nil, 0, "", err
-		}
-		switch strings.ToLower(typ) {
-		case "isbn":
-			if n := isbn.Normalize(val); n != "" {
-				isbns = append(isbns, n)
-			}
-		case hardcover.IDScheme:
-			if id, err := strconv.ParseInt(strings.TrimSpace(val), 10, 64); err == nil && id > 0 {
-				hcID = id
-			}
-		case hardcover.SlugScheme:
-			if s := strings.TrimSpace(val); hardcover.ValidSlug(s) {
-				slug = s
-			}
-		}
-	}
-	return isbns, hcID, slug, rows.Err()
-}
-
-// hcSyncSummary is what the account page shows of a user's sync.
-type hcSyncSummary struct {
+// SyncSummary is what the account page shows of a user's sync.
+type SyncSummary struct {
 	Waiting  int    `json:"waiting"`
 	Failing  int    `json:"failing"`
 	Skipped  int    `json:"skipped"` // not found on Hardcover
@@ -834,38 +755,42 @@ type hcSyncSummary struct {
 	LastErr  string `json:"last_error,omitempty"`
 }
 
-func hcSummary(userID int64) hcSyncSummary {
-	var s hcSyncSummary
+// Summary is what the account page shows of userID's sync.
+func (s *Service) Summary(userID int64) SyncSummary {
+	var sum SyncSummary
 	var last int64
-	_ = appDB.QueryRow(`SELECT
+	_ = s.db.QueryRow(`SELECT
 			COUNT(*) FILTER (WHERE due_at > 0),
 			COUNT(*) FILTER (WHERE due_at > 0 AND attempts > 0),
 			COUNT(*) FILTER (WHERE due_at = 0 AND error != ''),
 			COALESCE(MAX(sent_at), 0)
-		FROM hardcover_sync WHERE user_id = ?`, userID).Scan(&s.Waiting, &s.Failing, &s.Skipped, &last)
+		FROM hardcover_sync WHERE user_id = ?`, userID).Scan(&sum.Waiting, &sum.Failing, &sum.Skipped, &last)
 	if last > 0 {
-		s.LastSent = formatDay(last)
+		sum.LastSent = formatDay(last)
 	}
-	_ = appDB.QueryRow(`SELECT error FROM hardcover_sync WHERE user_id = ? AND due_at > 0 AND attempts > 0 ORDER BY due_at LIMIT 1`, userID).Scan(&s.LastErr)
-	return s
+	_ = s.db.QueryRow(`SELECT error FROM hardcover_sync WHERE user_id = ? AND due_at > 0 AND attempts > 0 ORDER BY due_at LIMIT 1`, userID).Scan(&sum.LastErr)
+	return sum
 }
 
-// hcSyncMerged queues a book others were merged into, for every linked
+// Merged queues a book others were merged into, for every linked
 // user with a status for it: it may be a different book on Hardcover. A
 // user who shared one of the others shares the book kept.
-func hcSyncMerged(keep string, others []string) {
+func (s *Service) Merged(keep string, others []string) {
+	if s == nil {
+		return
+	}
 	for _, o := range others {
-		_, _ = appDB.Exec(`INSERT OR IGNORE INTO hardcover_shared (user_id, book_uuid, shared_at)
+		_, _ = s.db.Exec(`INSERT OR IGNORE INTO hardcover_shared (user_id, book_uuid, shared_at)
 			SELECT user_id, ?, shared_at FROM hardcover_shared WHERE book_uuid = ?`, keep, o)
 		// Left out of every book: the book kept is too, unless the user shared one of them.
-		_, _ = appDB.Exec(`INSERT OR IGNORE INTO hardcover_unshared (user_id, book_uuid, unshared_at)
+		_, _ = s.db.Exec(`INSERT OR IGNORE INTO hardcover_unshared (user_id, book_uuid, unshared_at)
 			SELECT x.user_id, ?1, x.unshared_at FROM hardcover_unshared x WHERE x.book_uuid = ?2
 				AND NOT EXISTS (SELECT 1 FROM hardcover_shared s WHERE s.user_id = x.user_id AND s.book_uuid = ?1)`, keep, o)
-		_, _ = appDB.Exec(`INSERT OR IGNORE INTO hardcover_user_books (user_id, book_uuid, hc_book_id, hc_edition_id, pages, slug, title, chosen_at)
+		_, _ = s.db.Exec(`INSERT OR IGNORE INTO hardcover_user_books (user_id, book_uuid, hc_book_id, hc_edition_id, pages, slug, title, chosen_at)
 			SELECT user_id, ?, hc_book_id, hc_edition_id, pages, slug, title, chosen_at FROM hardcover_user_books WHERE book_uuid = ?`, keep, o)
-		_, _ = appDB.Exec(`DELETE FROM hardcover_user_books WHERE book_uuid = ?`, o)
+		_, _ = s.db.Exec(`DELETE FROM hardcover_user_books WHERE book_uuid = ?`, o)
 	}
-	rows, err := appDB.Query(`SELECT user_id FROM reading_status WHERE book_uuid = ?`, keep)
+	rows, err := s.db.Query(`SELECT user_id FROM reading_status WHERE book_uuid = ?`, keep)
 	if err != nil {
 		return
 	}
@@ -878,6 +803,6 @@ func hcSyncMerged(keep string, others []string) {
 	}
 	rows.Close()
 	for _, id := range users {
-		hcSyncTouch(id, keep, 0)
+		s.Touch(id, keep, 0)
 	}
 }

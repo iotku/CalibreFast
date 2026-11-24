@@ -6,6 +6,8 @@ import (
 	"net/url"
 	"strings"
 	"time"
+
+	"github.com/iotku/CalibreFast/internal/hardcoversync"
 )
 
 // Users can delete their own accounts. A deleted account isn't removed at
@@ -88,12 +90,7 @@ func markAccountDeleted(id int64) (int64, error) {
 	if err := tx.Commit(); err != nil {
 		return 0, err
 	}
-	hcSync.Lock()
-	if p := hcSync.pending[id]; p != nil {
-		p.cancel()
-		delete(hcSync.pending, id)
-	}
-	hcSync.Unlock()
+	hcSync.CancelLink(id)
 	return now, nil
 }
 
@@ -117,7 +114,7 @@ func adminRestoreUser(w http.ResponseWriter, r *http.Request) {
 	if u != nil {
 		log.Printf("admin %s restored the deleted account %s", currentUser(r).Username, u.Username)
 	}
-	hcSyncWake() // anything they read before deleting it can be sent again
+	hcSync.Wake() // anything they read before deleting it can be sent again
 	writeJSON(w, http.StatusOK, u)
 }
 
@@ -135,7 +132,7 @@ func deletedAccountView(u User) deletedAccount {
 // purgeUser deletes an account and everything in it (the tables reference
 // users ON DELETE CASCADE), ending its Hardcover sign-in there first.
 func purgeUser(u *User) error {
-	if revoke, err := hcUnlinkAccount(u.ID); err != nil || revoke == hcRevokeFailed {
+	if revoke, err := hcSync.Unlink(u.ID); err != nil || revoke == hardcoversync.RevokeFailed {
 		log.Printf("deleting user %s: their Hardcover sign-in couldn't be revoked (it's deleted here): %v", u.Username, err)
 	}
 	_, err := appDB.Exec(`DELETE FROM users WHERE id = ?`, u.ID)

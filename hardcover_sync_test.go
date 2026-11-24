@@ -4,6 +4,7 @@ import (
 	"cmp"
 	"context"
 	"encoding/json"
+	"fmt"
 	"io"
 	"net/http"
 	"net/http/httptest"
@@ -16,6 +17,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/iotku/CalibreFast/internal/hardcoversync"
 	"github.com/iotku/CalibreFast/pkg/hardcover"
 )
 
@@ -275,27 +277,29 @@ func (f *fakeHardcoverAccount) opsSince(n int) []string {
 	return append([]string(nil), f.ops[n:]...)
 }
 
+// hcTestSyncConfig is the Service's configuration in setupHardcoverSync,
+// for a test to make it again (with sync turned off, say).
+var hcTestSyncConfig hardcoversync.Config
+
 func setupHardcoverSync(t *testing.T) (*User, []string, *fakeHardcoverAccount) {
 	t.Helper()
 	u, books := setupLibraryAndUser(t, 2)
 	useTestSecretKey(t)
 	f := newFakeHardcoverAccount(t)
-	origOAuth, origRevoker, origURL, origClient, origPoll, origBudget := hcOAuth, hcRevoker, hcSyncURL, hcClient, hcPollInterval, hcUserBudget
-	hcUserBudget = func() *hardcover.Budget { return hardcover.NewBudget(600, 100, 10000) }
-	hcOAuth = &hardcover.OAuth{ClientID: "cid", DeviceURL: f.srv.URL + "/device", TokenURL: f.srv.URL + "/token",
+	origSync, origClient, origClientID := hcSync, hcClient, hcSyncClientID
+	oauth := &hardcover.OAuth{ClientID: "cid", DeviceURL: f.srv.URL + "/device", TokenURL: f.srv.URL + "/token",
 		RevokeURL: f.srv.URL + "/revoke", UserAgent: "CalibreFast/test"}
-	hcRevoker = hcOAuth
-	hcSyncURL, hcClient = f.srv.URL+"/graphql", nil
-	hcPollInterval = func(time.Duration) time.Duration { return 5 * time.Millisecond }
+	hcTestSyncConfig = hardcoversync.Config{
+		OAuth: oauth, Revoker: oauth, SyncURL: f.srv.URL + "/graphql",
+		Budget:       func() *hardcover.Budget { return hardcover.NewBudget(600, 100, 10000) },
+		PollInterval: func(time.Duration) time.Duration { return 5 * time.Millisecond },
+	}
+	hcClient, hcSyncClientID = nil, "cid"
+	hcSync = newHCSync(hcTestSyncConfig)
 	t.Cleanup(func() {
 		stopHardcoverSync(time.Now().Add(time.Second))
-		hcOAuth, hcRevoker, hcSyncURL, hcClient, hcPollInterval, hcUserBudget = origOAuth, origRevoker, origURL, origClient, origPoll, origBudget
-		hcLoadLinked()
-		hcSync.Lock()
-		hcSync.pending, hcSync.tokens = map[int64]*hcPendingLink{}, map[int64]*sync.Mutex{}
-		hcSync.Unlock()
+		hcSync, hcClient, hcSyncClientID = origSync, origClient, origClientID
 	})
-	hcLoadLinked()
 	// The first book has an ISBN Hardcover knows.
 	if _, err := calibreDB.Exec(`INSERT INTO identifiers (book, type, val) SELECT id, 'isbn', '978-0-316-12908-4' FROM books WHERE uuid = ?`, books[0]); err != nil {
 		t.Fatal(err)
@@ -305,14 +309,14 @@ func setupHardcoverSync(t *testing.T) (*User, []string, *fakeHardcoverAccount) {
 
 func linkHardcover(t *testing.T, u *User) {
 	t.Helper()
-	p, err := hcStartLink(u.ID)
+	p, err := hcSync.StartLink(u.ID)
 	if err != nil || p.UserCode != "WXYZ-0001" {
 		t.Fatalf("start: %+v %v", p, err)
 	}
 	if v := hcView(u, ""); v.State != "pending" || v.UserCode != "WXYZ-0001" || v.VerifyURL != hardcover.VerificationURL || v.OpenURL != hardcover.VerificationURL {
 		t.Errorf("pending view: %+v", v)
 	}
-	for i := 0; !hcIsLinked(u.ID); i++ {
+	for i := 0; !hcSync.IsLinked(u.ID); i++ {
 		if i > 400 {
 			t.Fatalf("not linked: %+v", hcView(u, ""))
 		}
@@ -324,7 +328,7 @@ func linkHardcover(t *testing.T, u *User) {
 func step(t *testing.T) {
 	t.Helper()
 	for range 10 {
-		if ran, _ := hcSyncStep(context.Background()); !ran {
+		if ran, _ := hcSync.Step(context.Background()); !ran {
 			return
 		}
 	}
@@ -366,7 +370,7 @@ func TestHardcoverSyncLinkAndSend(t *testing.T) {
 	if err := setStatus(u.ID, books[0], "reading", "manual"); err != nil {
 		t.Fatal(err)
 	}
-	hcSyncTouch(u.ID, books[0], 0)
+	hcSync.Touch(u.ID, books[0], 0)
 	step(t)
 	_ = appDB.QueryRow(`SELECT COUNT(*) FROM hardcover_sync`).Scan(&n)
 	if got := f.opsSince(ops0); len(got) != 0 || n != 0 || f.books[50] != nil {
@@ -375,7 +379,7 @@ func TestHardcoverSyncLinkAndSend(t *testing.T) {
 
 	// Shared: sent at once as it stands, as Currently Reading with its
 	// edition. Progress and dates aren't chosen yet.
-	if err := hcSetBookShared(u.ID, books[0], true); err != nil {
+	if err := hcSync.SetBookShared(u.ID, books[0], true); err != nil {
 		t.Fatal(err)
 	}
 	if _, err := appDB.Exec(`INSERT INTO reading_progress (user_id, book_uuid, format, position, percent, updated_at) VALUES (?, ?, 'epub', 'x', 0.2, ?)`,
@@ -393,11 +397,11 @@ func TestHardcoverSyncLinkAndSend(t *testing.T) {
 
 	// Progress, once chosen, waits a few minutes, then goes as pages,
 	// short of the end.
-	if err := hcSaveShare(u.ID, hcShare{Progress: true, Dates: true}); err != nil {
+	if err := hcSync.SaveShare(u.ID, hardcoversync.Share{Progress: true, Dates: true}); err != nil {
 		t.Fatal(err)
 	}
 	_, _ = appDB.Exec(`UPDATE reading_progress SET percent = 0.5`)
-	hcSyncTouch(u.ID, books[0], hcProgressDelay)
+	hcSync.Touch(u.ID, books[0], hardcoversync.ProgressDelay)
 	ops := len(f.ops)
 	step(t)
 	if got := f.opsSince(ops); len(got) != 0 {
@@ -409,7 +413,7 @@ func TestHardcoverSyncLinkAndSend(t *testing.T) {
 		t.Errorf("progress pages %d, want 150 (ops %v)", b.reads[0].pages, f.opsSince(ops))
 	}
 	_, _ = appDB.Exec(`UPDATE reading_progress SET percent = 0.999`)
-	hcSyncTouch(u.ID, books[0], 0)
+	hcSync.Touch(u.ID, books[0], 0)
 	step(t)
 	if b.reads[0].pages != 299 || b.status != 2 {
 		t.Errorf("near the end: %d pages, status %d: the last page would finish it on Hardcover", b.reads[0].pages, b.status)
@@ -424,7 +428,7 @@ func TestHardcoverSyncLinkAndSend(t *testing.T) {
 		t.Errorf("finished: %+v", b)
 	}
 	ops = len(f.ops)
-	hcSyncTouch(u.ID, books[0], 0)
+	hcSync.Touch(u.ID, books[0], 0)
 	step(t)
 	if got := f.opsSince(ops); len(got) != 1 || got[0] != "UserBook" {
 		t.Errorf("unchanged book sent again: %v", got)
@@ -444,11 +448,11 @@ func TestHardcoverSyncLinkAndSend(t *testing.T) {
 	if err := setStatus(u.ID, books[0], "reading", "manual"); err != nil {
 		t.Fatal(err)
 	}
-	if err := hcSetBookShared(u.ID, books[0], false); err != nil {
+	if err := hcSync.SetBookShared(u.ID, books[0], false); err != nil {
 		t.Fatal(err)
 	}
 	ops = len(f.ops)
-	hcSyncTouch(u.ID, books[0], 0)
+	hcSync.Touch(u.ID, books[0], 0)
 	step(t)
 	_ = appDB.QueryRow(`SELECT COUNT(*) FROM hardcover_sync WHERE book_uuid = ?`, books[0]).Scan(&n)
 	if got := f.opsSince(ops); len(got) != 0 || n != 0 || b.status != 3 {
@@ -463,18 +467,18 @@ func TestHardcoverSyncLinkAndSend(t *testing.T) {
 
 	// Every book, once chosen: a book Hardcover doesn't know is skipped,
 	// and said so. Going back to chosen books drops what waited for others.
-	if err := hcSaveShare(u.ID, hcShare{All: true}); err != nil {
+	if err := hcSync.SaveShare(u.ID, hardcoversync.Share{All: true}); err != nil {
 		t.Fatal(err)
 	}
 	if err := setStatus(u.ID, books[1], "reading", "manual"); err != nil {
 		t.Fatal(err)
 	}
 	step(t)
-	if s := hcSummary(u.ID); s.Skipped != 1 || s.Waiting != 0 {
+	if s := hcSync.Summary(u.ID); s.Skipped != 1 || s.Waiting != 0 {
 		t.Errorf("summary: %+v", s)
 	}
-	hcSyncTouch(u.ID, books[0], time.Hour)
-	if err := hcSaveShare(u.ID, hcShare{}); err != nil {
+	hcSync.Touch(u.ID, books[0], time.Hour)
+	if err := hcSync.SaveShare(u.ID, hardcoversync.Share{}); err != nil {
 		t.Fatal(err)
 	}
 	_ = appDB.QueryRow(`SELECT COUNT(*) FROM hardcover_sync`).Scan(&n)
@@ -483,8 +487,8 @@ func TestHardcoverSyncLinkAndSend(t *testing.T) {
 	}
 
 	// Unlinking forgets the choices too.
-	_ = hcSetBookShared(u.ID, books[0], true)
-	if _, err := hcUnlinkAccount(u.ID); err != nil {
+	_ = hcSync.SetBookShared(u.ID, books[0], true)
+	if _, err := hcSync.Unlink(u.ID); err != nil {
 		t.Fatal(err)
 	}
 	_ = appDB.QueryRow(`SELECT COUNT(*) FROM hardcover_shared`).Scan(&n)
@@ -509,10 +513,10 @@ func TestHardcoverShareAPI(t *testing.T) {
 	if rec := put(`{}`); rec.Code != http.StatusBadRequest {
 		t.Errorf("no choice: %d", rec.Code)
 	}
-	if rec := put(`{"share":true}`); rec.Code != 200 || !strings.Contains(rec.Body.String(), `"share":true`) || !hcIsBookShared(u.ID, books[0]) {
+	if rec := put(`{"share":true}`); rec.Code != 200 || !strings.Contains(rec.Body.String(), `"share":true`) || !hcSync.IsBookShared(u.ID, books[0]) {
 		t.Errorf("share: %d %s", rec.Code, rec.Body)
 	}
-	if rec := put(`{"share":false}`); rec.Code != 200 || hcIsBookShared(u.ID, books[0]) {
+	if rec := put(`{"share":false}`); rec.Code != 200 || hcSync.IsBookShared(u.ID, books[0]) {
 		t.Errorf("unshare: %d %s", rec.Code, rec.Body)
 	}
 	mux := http.NewServeMux()
@@ -538,26 +542,26 @@ func TestHardcoverShareAPI(t *testing.T) {
 func TestHardcoverShareAllLeaveOut(t *testing.T) {
 	u, books, _ := setupHardcoverSync(t)
 	linkHardcover(t, u)
-	if err := hcSaveShare(u.ID, hcShare{All: true}); err != nil {
+	if err := hcSync.SaveShare(u.ID, hardcoversync.Share{All: true}); err != nil {
 		t.Fatal(err)
 	}
-	if !hcShared(u.ID, books[0]) || !hcShared(u.ID, books[1]) {
+	if !hcSync.Shared(u.ID, books[0]) || !hcSync.Shared(u.ID, books[1]) {
 		t.Fatal("every book should be shared")
 	}
 	if err := setStatus(u.ID, books[0], "reading", "manual"); err != nil {
 		t.Fatal(err)
 	}
-	if err := hcSetBookShared(u.ID, books[0], false); err != nil {
+	if err := hcSync.SetBookShared(u.ID, books[0], false); err != nil {
 		t.Fatal(err)
 	}
 	var n int
 	_ = appDB.QueryRow(`SELECT COUNT(*) FROM hardcover_sync WHERE book_uuid = ?`, books[0]).Scan(&n)
-	if hcShared(u.ID, books[0]) || !hcShared(u.ID, books[1]) || n != 0 {
-		t.Errorf("left out: shared=%v other=%v, %d rows waiting", hcShared(u.ID, books[0]), hcShared(u.ID, books[1]), n)
+	if hcSync.Shared(u.ID, books[0]) || !hcSync.Shared(u.ID, books[1]) || n != 0 {
+		t.Errorf("left out: shared=%v other=%v, %d rows waiting", hcSync.Shared(u.ID, books[0]), hcSync.Shared(u.ID, books[1]), n)
 	}
 	// Not queued by a change, nor by a backfill.
-	hcSyncTouch(u.ID, books[0], 0)
-	if _, err := hcSyncBackfill(u.ID); err != nil {
+	hcSync.Touch(u.ID, books[0], 0)
+	if _, err := hcSync.Backfill(u.ID); err != nil {
 		t.Fatal(err)
 	}
 	_ = appDB.QueryRow(`SELECT COUNT(*) FROM hardcover_sync WHERE book_uuid = ?`, books[0]).Scan(&n)
@@ -568,21 +572,21 @@ func TestHardcoverShareAllLeaveOut(t *testing.T) {
 		t.Errorf("account page's list: %+v", v.Unshared)
 	}
 	// Going back to chosen books and then to every book keeps it out.
-	_ = hcSaveShare(u.ID, hcShare{})
-	_ = hcSaveShare(u.ID, hcShare{All: true})
-	if hcShared(u.ID, books[0]) {
+	_ = hcSync.SaveShare(u.ID, hardcoversync.Share{})
+	_ = hcSync.SaveShare(u.ID, hardcoversync.Share{All: true})
+	if hcSync.Shared(u.ID, books[0]) {
 		t.Errorf("left out forgotten when sharing every book again")
 	}
 	// A merge: the book kept is left out too.
-	hcSyncMerged(books[1], []string{books[0]})
-	if hcShared(u.ID, books[1]) {
+	hcSync.Merged(books[1], []string{books[0]})
+	if hcSync.Shared(u.ID, books[1]) {
 		t.Errorf("merged book should be left out")
 	}
 	// Shared again: sent again.
-	if err := hcSetBookShared(u.ID, books[0], true); err != nil {
+	if err := hcSync.SetBookShared(u.ID, books[0], true); err != nil {
 		t.Fatal(err)
 	}
-	if !hcShared(u.ID, books[0]) {
+	if !hcSync.Shared(u.ID, books[0]) {
 		t.Errorf("shared again, but not shared")
 	}
 	_ = appDB.QueryRow(`SELECT COUNT(*) FROM hardcover_unshared WHERE book_uuid = ?`, books[0]).Scan(&n)
@@ -590,7 +594,7 @@ func TestHardcoverShareAllLeaveOut(t *testing.T) {
 		t.Errorf("still listed as left out")
 	}
 	// Unlinking forgets it.
-	if _, err := hcUnlinkAccount(u.ID); err != nil {
+	if _, err := hcSync.Unlink(u.ID); err != nil {
 		t.Fatal(err)
 	}
 	_ = appDB.QueryRow(`SELECT COUNT(*) FROM hardcover_unshared`).Scan(&n)
@@ -603,15 +607,15 @@ func TestHardcoverShareAllLeaveOut(t *testing.T) {
 func TestHardcoverUnshareChosenOnly(t *testing.T) {
 	u, books, _ := setupHardcoverSync(t)
 	linkHardcover(t, u)
-	_ = hcSetBookShared(u.ID, books[0], true)
-	_ = hcSetBookShared(u.ID, books[0], false)
+	_ = hcSync.SetBookShared(u.ID, books[0], true)
+	_ = hcSync.SetBookShared(u.ID, books[0], false)
 	var n int
 	_ = appDB.QueryRow(`SELECT COUNT(*) FROM hardcover_unshared`).Scan(&n)
 	if n != 0 {
 		t.Errorf("unsharing a chosen book left it out of every book")
 	}
-	_ = hcSaveShare(u.ID, hcShare{All: true})
-	if !hcShared(u.ID, books[0]) {
+	_ = hcSync.SaveShare(u.ID, hardcoversync.Share{All: true})
+	if !hcSync.Shared(u.ID, books[0]) {
 		t.Errorf("sharing every book should include it")
 	}
 }
@@ -619,7 +623,7 @@ func TestHardcoverUnshareChosenOnly(t *testing.T) {
 func TestHardcoverSyncTokens(t *testing.T) {
 	u, books, f := setupHardcoverSync(t)
 	linkHardcover(t, u)
-	if err := hcSaveShare(u.ID, hcShare{All: true}); err != nil {
+	if err := hcSync.SaveShare(u.ID, hardcoversync.Share{All: true}); err != nil {
 		t.Fatal(err)
 	}
 	first := f.refresh
@@ -633,8 +637,9 @@ func TestHardcoverSyncTokens(t *testing.T) {
 	if f.refresh == first || f.books[50] == nil || f.books[50].status != 1 {
 		t.Fatalf("not renewed or not sent: %+v", f.books[50])
 	}
-	l, _ := hcLoadAccount(u.ID)
-	if got, err := openSecret(hcSealContext("refresh_token", u.ID), l.refresh); err != nil || got != f.refresh {
+	var sealed string
+	_ = appDB.QueryRow(`SELECT refresh_token FROM hardcover_links WHERE user_id = ?`, u.ID).Scan(&sealed)
+	if got, err := openSecret(fmt.Sprintf("hardcover_links.refresh_token:%d", u.ID), sealed); err != nil || got != f.refresh {
 		t.Errorf("the new refresh token wasn't kept: %v", err)
 	}
 
@@ -647,7 +652,7 @@ func TestHardcoverSyncTokens(t *testing.T) {
 		t.Fatal(err)
 	}
 	step(t)
-	if v := hcView(u, ""); v.State != "broken" || hcIsLinked(u.ID) {
+	if v := hcView(u, ""); v.State != "broken" || hcSync.IsLinked(u.ID) {
 		t.Errorf("after refusal: %+v", v)
 	}
 	var acc, ref string
@@ -656,7 +661,7 @@ func TestHardcoverSyncTokens(t *testing.T) {
 		t.Errorf("a broken link kept its tokens")
 	}
 	ops := len(f.ops)
-	if ran, _ := hcSyncStep(context.Background()); ran || len(f.opsSince(ops)) != 0 {
+	if ran, _ := hcSync.Step(context.Background()); ran || len(f.opsSince(ops)) != 0 {
 		t.Error("a broken link was tried again")
 	}
 
@@ -665,7 +670,7 @@ func TestHardcoverSyncTokens(t *testing.T) {
 	f.mu.Lock()
 	f.refuseRefresh = false
 	f.mu.Unlock()
-	if revoke, err := hcUnlinkAccount(u.ID); err != nil || revoke != hcRevokeNone {
+	if revoke, err := hcSync.Unlink(u.ID); err != nil || revoke != hardcoversync.RevokeNone {
 		t.Fatal(revoke, err)
 	}
 	var n int
@@ -676,14 +681,14 @@ func TestHardcoverSyncTokens(t *testing.T) {
 
 	// A working link is revoked on Hardcover when unlinked.
 	linkHardcover(t, u)
-	if revoke, err := hcUnlinkAccount(u.ID); err != nil || revoke != hcRevoked || len(f.revoked) != 1 {
+	if revoke, err := hcSync.Unlink(u.ID); err != nil || revoke != hardcoversync.Revoked || len(f.revoked) != 1 {
 		t.Errorf("unlink: %v %v, revoked %v", revoke, err, f.revoked)
 	}
 
 	// Hardcover unreachable: it's still deleted here, and the user is told.
 	linkHardcover(t, u)
 	f.srv.Config.Handler = http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) { w.WriteHeader(503) })
-	if revoke, err := hcUnlinkAccount(u.ID); err != nil || revoke != hcRevokeFailed {
+	if revoke, err := hcSync.Unlink(u.ID); err != nil || revoke != hardcoversync.RevokeFailed {
 		t.Errorf("unlink, Hardcover down: %v %v", revoke, err)
 	}
 	_ = appDB.QueryRow(`SELECT COUNT(*) FROM hardcover_links`).Scan(&n)
@@ -695,17 +700,17 @@ func TestHardcoverSyncTokens(t *testing.T) {
 func TestHardcoverSyncChangeWhileSending(t *testing.T) {
 	u, books, _ := setupHardcoverSync(t)
 	linkHardcover(t, u)
-	if err := hcSetBookShared(u.ID, books[0], true); err != nil {
+	if err := hcSync.SetBookShared(u.ID, books[0], true); err != nil {
 		t.Fatal(err)
 	}
 	_, _ = appDB.Exec(`DELETE FROM hardcover_sync`)
-	hcSyncTouch(u.ID, books[0], hcProgressDelay)
+	hcSync.Touch(u.ID, books[0], hardcoversync.ProgressDelay)
 	var due int64
 	_ = appDB.QueryRow(`SELECT due_at FROM hardcover_sync`).Scan(&due)
 	if time.Until(time.Unix(due, 0)) < 2*time.Minute {
 		t.Errorf("progress not delayed")
 	}
-	hcSyncStatus(u.ID, books[0], "reading")
+	hcSync.Status(u.ID, books[0], "reading")
 	_ = appDB.QueryRow(`SELECT due_at FROM hardcover_sync`).Scan(&due)
 	if time.Until(time.Unix(due, 0)) > time.Second {
 		t.Errorf("a status change waited for progress")
@@ -713,16 +718,16 @@ func TestHardcoverSyncChangeWhileSending(t *testing.T) {
 	// A change made while a send is under way stays due.
 	var changes int
 	_ = appDB.QueryRow(`SELECT changes FROM hardcover_sync`).Scan(&changes)
-	hcSyncTouch(u.ID, books[0], 0)
+	hcSync.Touch(u.ID, books[0], 0)
 	_, _ = appDB.Exec(`UPDATE hardcover_sync SET due_at = 0, attempts = 0, error = '' WHERE changes = ?`, changes)
 	_ = appDB.QueryRow(`SELECT due_at FROM hardcover_sync`).Scan(&due)
 	if due == 0 {
 		t.Error("a change made during a send was lost")
 	}
 	// Dates: a re-read starts anew.
-	hcSyncStatus(u.ID, books[0], "finished")
+	hcSync.Status(u.ID, books[0], "finished")
 	_, _ = appDB.Exec(`UPDATE hardcover_sync SET started_on = '2020-01-01'`)
-	hcSyncStatus(u.ID, books[0], "reading")
+	hcSync.Status(u.ID, books[0], "reading")
 	var started, finished string
 	_ = appDB.QueryRow(`SELECT started_on, finished_on FROM hardcover_sync`).Scan(&started, &finished)
 	if started != time.Now().Format(time.DateOnly) || finished != "" {
@@ -762,7 +767,7 @@ func TestHardcoverRoutes(t *testing.T) {
 	if rec.Code != http.StatusUnauthorized && rec.Code != http.StatusSeeOther {
 		t.Errorf("signed out: %d", rec.Code)
 	}
-	if hcPending(u.ID) != nil {
+	if hcSync.Pending(u.ID) != nil {
 		t.Error("a signed-out request started a sign-in")
 	}
 	rec = httptest.NewRecorder()
@@ -773,7 +778,10 @@ func TestHardcoverRoutes(t *testing.T) {
 	// Off on the server: linking is refused, but a user linked from
 	// before still sees it and can unlink, which revokes it.
 	linkHardcover(t, u)
-	hcOAuth = nil // hcRevoker stays: the client id is still known
+	stopHardcoverSync(time.Now().Add(time.Second))
+	off := hcTestSyncConfig
+	off.OAuth = nil // the revoker stays: the client id is still known
+	hcSync = newHCSync(off)
 	post := func(action string) *httptest.ResponseRecorder {
 		rec := httptest.NewRecorder()
 		req := httptest.NewRequest("POST", "/account/hardcover", strings.NewReader("action="+action))
@@ -793,7 +801,8 @@ func TestHardcoverRoutes(t *testing.T) {
 	if rec := post("unlink"); rec.Code != http.StatusSeeOther || !strings.Contains(rec.Header().Get("Location"), "signed+out") {
 		t.Errorf("unlink with sync off: %d %s", rec.Code, rec.Header().Get("Location"))
 	}
-	if l, _ := hcLoadAccount(u.ID); l != nil {
+	var links int
+	if _ = appDB.QueryRow(`SELECT COUNT(*) FROM hardcover_links WHERE user_id = ?`, u.ID).Scan(&links); links != 0 {
 		t.Error("still linked")
 	}
 }
@@ -814,10 +823,10 @@ func TestHardcoverBookMatch(t *testing.T) {
 		mux.ServeHTTP(rec, asUser(httptest.NewRequest(method, path, rd), u))
 		return rec
 	}
-	state := func() hcBookStatus {
+	state := func() hardcoversync.BookStatus {
 		t.Helper()
 		rec := call("GET", "/api/me/books/"+books[1]+"/hardcover", "")
-		var st hcBookStatus
+		var st hardcoversync.BookStatus
 		if rec.Code != 200 || json.Unmarshal(rec.Body.Bytes(), &st) != nil {
 			t.Fatalf("status: %d %s", rec.Code, rec.Body)
 		}
@@ -851,7 +860,7 @@ func TestHardcoverBookMatch(t *testing.T) {
 	if st := state(); st.State != "not_found" || st.Match != nil || st.Query == "" {
 		t.Fatalf("not found: %+v", st)
 	}
-	if p := hcProblemBooks(u.ID); len(p) != 1 || p[0].UUID != books[1] {
+	if p := hcSync.ProblemBooks(u.ID); len(p) != 1 || p[0].UUID != books[1] {
 		t.Errorf("account page problems: %+v", p)
 	}
 
@@ -867,7 +876,7 @@ func TestHardcoverBookMatch(t *testing.T) {
 		t.Errorf("by link: %d %s", rec.Code, rec.Body)
 	}
 	for _, q := range []string{"https://evil.example/books/the-right-book", "javascript:alert(1)", "https://hardcover.app/books/../x"} {
-		if slug, id, ok := hcLinkTarget(q); ok {
+		if slug, id, ok := hardcoversync.LinkTarget(q); ok {
 			t.Errorf("%q taken as a link: %q %d", q, slug, id)
 		}
 	}
@@ -891,7 +900,7 @@ func TestHardcoverBookMatch(t *testing.T) {
 	if b := f.books[60]; b == nil || b.status != hardcover.StatusReading || b.edition != 601 {
 		t.Fatalf("not sent as the chosen book: %+v", f.books[60])
 	}
-	if p := hcProblemBooks(u.ID); len(p) != 0 {
+	if p := hcSync.ProblemBooks(u.ID); len(p) != 0 {
 		t.Errorf("still a problem: %+v", p)
 	}
 	// The library is left alone, and other users aren't affected.
@@ -900,7 +909,7 @@ func TestHardcoverBookMatch(t *testing.T) {
 	if ids != 0 {
 		t.Errorf("the library's identifiers changed: %d", ids)
 	}
-	if _, ok := hcUserMatch(u.ID+1, books[1]); ok {
+	if _, ok := hcSync.UserMatch(u.ID+1, books[1]); ok {
 		t.Error("another user got the match")
 	}
 
@@ -914,13 +923,13 @@ func TestHardcoverBookMatch(t *testing.T) {
 	}
 
 	// Unlinking forgets the user's matches too.
-	if err := hcSetUserMatch(u.ID, books[1], hardcover.Edition{BookID: 60}); err != nil {
+	if err := hcSync.SetUserMatch(u.ID, books[1], hardcover.Edition{BookID: 60}); err != nil {
 		t.Fatal(err)
 	}
-	if _, err := hcUnlinkAccount(u.ID); err != nil {
+	if _, err := hcSync.Unlink(u.ID); err != nil {
 		t.Fatal(err)
 	}
-	if _, ok := hcUserMatch(u.ID, books[1]); ok {
+	if _, ok := hcSync.UserMatch(u.ID, books[1]); ok {
 		t.Error("a match outlived the link")
 	}
 }
@@ -929,7 +938,7 @@ func TestHardcoverBookMatch(t *testing.T) {
 func TestHardcoverSyncPausedDropped(t *testing.T) {
 	u, books, f := setupHardcoverSync(t)
 	linkHardcover(t, u)
-	if err := hcSetBookShared(u.ID, books[0], true); err != nil {
+	if err := hcSync.SetBookShared(u.ID, books[0], true); err != nil {
 		t.Fatal(err)
 	}
 	for _, c := range []struct {

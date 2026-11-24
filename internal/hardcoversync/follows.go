@@ -1,4 +1,4 @@
-package main
+package hardcoversync
 
 // Importing the authors a user follows on Hardcover as starred authors
 // (aggregate_favorites.go), from the account page. Read-only on Hardcover;
@@ -14,7 +14,7 @@ package main
 //   - waiting: no such author here: starred under Hardcover's name all the
 //     same. Such a star isn't listed while the library has no books by that
 //     name; when one arrives (or an author whose name matches the same way:
-//     hcWakeWaitingStars), the star becomes the library author's and the
+//     WakeWaitingStars), the star becomes the library author's and the
 //     user is told (aggregate_favorites_notify.go).
 //   - confirm: only near matches (the same surname and first initial, or
 //     several authors matching): the user picks one, or says it's none of
@@ -41,27 +41,27 @@ import (
 	"github.com/iotku/CalibreFast/pkg/textkey"
 )
 
-// errHCFollowScope: the link predates follows: it has to be made again.
-var errHCFollowScope = errors.New("link Hardcover again to allow reading the authors you follow")
+// ErrFollowScope: the link predates follows: it has to be made again.
+var ErrFollowScope = errors.New("link Hardcover again to allow reading the authors you follow")
 
-// hcFollowsImportTime bounds an import (each thousand follows is a request).
-const hcFollowsImportTime = time.Minute
+// followsImportTime bounds an import (each thousand follows is a request).
+const followsImportTime = time.Minute
 
-// hcAuthorIndex: the library's authors as browsed, by textkey.Name of their
+// authorIndex: the library's authors as browsed, by textkey.Name of their
 // name and their group members' names, and by surname and first initial.
-type hcAuthorIndex struct {
+type authorIndex struct {
 	exact map[string][]string
 	loose map[string][]string
 }
 
-func libraryAuthorIndex() hcAuthorIndex {
-	ix := hcAuthorIndex{exact: map[string][]string{}, loose: map[string][]string{}}
+func (s *Service) libraryAuthorIndex() authorIndex {
+	ix := authorIndex{exact: map[string][]string{}, loose: map[string][]string{}}
 	add := func(m map[string][]string, k, name string) {
 		if k != "" && !slices.Contains(m[k], name) {
 			m[k] = append(m[k], name)
 		}
 	}
-	for _, it := range getAggregateData(categoryByKey("author")).All {
+	for _, it := range s.host.LibraryAuthors() {
 		for _, n := range append([]string{it.Name}, it.Members...) {
 			add(ix.exact, textkey.Name(n), it.Name)
 			add(ix.loose, textkey.LooseName(n), it.Name)
@@ -70,20 +70,20 @@ func libraryAuthorIndex() hcAuthorIndex {
 	return ix
 }
 
-// hcFollowOutcome: what a followed author becomes (see the top).
-type hcFollowOutcome struct {
-	state      string // starred, waiting, confirm (skipped: after hcStarFollow)
+// followOutcome: what a followed author becomes (see the top).
+type followOutcome struct {
+	state      string // starred, waiting, confirm (skipped: after starFollow)
 	local      string // the name to star
 	candidates []string
 }
 
-// hcClassifyFollow decides what f becomes for userID: the user's own
+// classifyFollow decides what f becomes for userID: the user's own
 // choice, else the author's stored Hardcover id, else its name.
-func hcClassifyFollow(tx *sql.Tx, userID int64, f hardcover.FollowedAuthor, ix hcAuthorIndex) (hcFollowOutcome, error) {
+func (s *Service) classifyFollow(tx *sql.Tx, userID int64, f hardcover.FollowedAuthor, ix authorIndex) (followOutcome, error) {
 	rows, err := tx.Query(`SELECT COALESCE(local_name, ''), decision FROM hardcover_aggregate_matches
 		WHERE user_id = ? AND kind = 'author' AND hc_id = ?`, userID, f.AuthorID)
 	if err != nil {
-		return hcFollowOutcome{}, err
+		return followOutcome{}, err
 	}
 	rejected := map[string]bool{}
 	none := false
@@ -91,12 +91,12 @@ func hcClassifyFollow(tx *sql.Tx, userID int64, f hardcover.FollowedAuthor, ix h
 		var local, decision string
 		if err := rows.Scan(&local, &decision); err != nil {
 			rows.Close()
-			return hcFollowOutcome{}, err
+			return followOutcome{}, err
 		}
 		switch {
 		case decision == "match":
 			rows.Close()
-			return hcFollowOutcome{state: "starred", local: local}, nil
+			return followOutcome{state: "starred", local: local}, nil
 		case local == "":
 			none = true // "none of these": not in the library
 		default:
@@ -105,10 +105,10 @@ func hcClassifyFollow(tx *sql.Tx, userID int64, f hardcover.FollowedAuthor, ix h
 	}
 	rows.Close()
 	if err := rows.Err(); err != nil {
-		return hcFollowOutcome{}, err
+		return followOutcome{}, err
 	}
 	if none {
-		return hcFollowOutcome{state: "waiting", local: f.Name}, nil
+		return followOutcome{state: "waiting", local: f.Name}, nil
 	}
 	ok := func(names []string) []string {
 		return slices.DeleteFunc(slices.Clone(names), func(n string) bool { return rejected[strings.ToLower(n)] })
@@ -116,29 +116,29 @@ func hcClassifyFollow(tx *sql.Tx, userID int64, f hardcover.FollowedAuthor, ix h
 	// A lookup already tied a library author to this Hardcover author.
 	var looked string
 	if err := tx.QueryRow(`SELECT name FROM hardcover_authors WHERE hc_id = ? LIMIT 1`, f.AuthorID).Scan(&looked); err == nil {
-		if v, found := aggValue(categoryByKey("author"), looked); found && !rejected[strings.ToLower(v.Name)] {
-			return hcFollowOutcome{state: "starred", local: v.Name}, nil
+		if name, found := s.host.AuthorAsBrowsed(looked); found && !rejected[strings.ToLower(name)] {
+			return followOutcome{state: "starred", local: name}, nil
 		}
 	} else if !errors.Is(err, sql.ErrNoRows) {
-		return hcFollowOutcome{}, err
+		return followOutcome{}, err
 	}
 	switch exact := ok(ix.exact[textkey.Name(f.Name)]); len(exact) {
 	case 1:
-		return hcFollowOutcome{state: "starred", local: exact[0]}, nil
+		return followOutcome{state: "starred", local: exact[0]}, nil
 	case 0:
 	default:
-		return hcFollowOutcome{state: "confirm", candidates: exact}, nil
+		return followOutcome{state: "confirm", candidates: exact}, nil
 	}
 	if near := ok(ix.loose[textkey.LooseName(f.Name)]); len(near) > 0 {
-		return hcFollowOutcome{state: "confirm", candidates: near}, nil
+		return followOutcome{state: "confirm", candidates: near}, nil
 	}
-	return hcFollowOutcome{state: "waiting", local: f.Name}, nil
+	return followOutcome{state: "waiting", local: f.Name}, nil
 }
 
-// hcStarFollow stars name for userID as imported from Hardcover author
+// starFollow stars name for userID as imported from Hardcover author
 // hcID. added: a new star; skipped: the user took this star off before.
-func hcStarFollow(tx *sql.Tx, userID, hcID int64, name string) (added, skipped bool, err error) {
-	g, _, _ := groups.resolve("author", name)
+func (s *Service) starFollow(tx *sql.Tx, userID, hcID int64, name string) (added, skipped bool, err error) {
+	g, _ := s.host.ResolveAuthor(name)
 	rows, err := tx.Query(`SELECT name, removed_at IS NOT NULL FROM aggregate_favorites WHERE user_id = ? AND kind = 'author'`, userID)
 	if err != nil {
 		return false, false, err
@@ -153,7 +153,7 @@ func hcStarFollow(tx *sql.Tx, userID, hcID int64, name string) (added, skipped b
 			rows.Close()
 			return false, false, err
 		}
-		if hg, _, _ := groups.resolve("author", have); strings.EqualFold(hg, g) {
+		if hg, _ := s.host.ResolveAuthor(have); strings.EqualFold(hg, g) {
 			if gone {
 				removed = true
 			} else {
@@ -179,7 +179,7 @@ func hcStarFollow(tx *sql.Tx, userID, hcID int64, name string) (added, skipped b
 	if err := tx.QueryRow(`SELECT COUNT(*) FROM aggregate_favorites WHERE user_id = ? AND removed_at IS NULL`, userID).Scan(&total); err != nil {
 		return false, false, err
 	}
-	if total >= maxAggFavorites {
+	if total >= s.host.MaxFavorites() {
 		return false, true, nil
 	}
 	_, err = tx.Exec(`INSERT INTO aggregate_favorites (user_id, kind, name, origin, hc_id, created_at) VALUES (?, 'author', ?, 'hardcover', ?, ?)`,
@@ -187,16 +187,16 @@ func hcStarFollow(tx *sql.Tx, userID, hcID int64, name string) (added, skipped b
 	return err == nil, false, err
 }
 
-// hcApplyFollow classifies f, stars it if that's what it becomes, and
+// applyFollow classifies f, stars it if that's what it becomes, and
 // keeps the outcome in hardcover_follows. added: a star was added.
-func hcApplyFollow(tx *sql.Tx, userID int64, f hardcover.FollowedAuthor, ix hcAuthorIndex) (state string, added bool, err error) {
-	out, err := hcClassifyFollow(tx, userID, f, ix)
+func (s *Service) applyFollow(tx *sql.Tx, userID int64, f hardcover.FollowedAuthor, ix authorIndex) (state string, added bool, err error) {
+	out, err := s.classifyFollow(tx, userID, f, ix)
 	if err != nil {
 		return "", false, err
 	}
 	if out.state == "starred" || out.state == "waiting" {
 		var skipped bool
-		if added, skipped, err = hcStarFollow(tx, userID, f.AuthorID, out.local); err != nil {
+		if added, skipped, err = s.starFollow(tx, userID, f.AuthorID, out.local); err != nil {
 			return "", false, err
 		}
 		if skipped {
@@ -215,40 +215,40 @@ func hcApplyFollow(tx *sql.Tx, userID int64, f hardcover.FollowedAuthor, ix hcAu
 	return out.state, added, err
 }
 
-// hcFollowsResult: an import's outcome, by what the follows became.
-type hcFollowsResult struct {
+// FollowsResult: an import's outcome, by what the follows became.
+type FollowsResult struct {
 	Total, Starred, Waiting, Confirm, Skipped, Added int
 }
 
-// hcCanReadFollows: userID's link may read their follows.
-func hcCanReadFollows(userID int64) bool {
+// canReadFollows: userID's link may read their follows.
+func (s *Service) canReadFollows(userID int64) bool {
 	var scope string
-	_ = appDB.QueryRow(`SELECT scope FROM hardcover_links WHERE user_id = ? AND broken = ''`, userID).Scan(&scope)
+	_ = s.db.QueryRow(`SELECT scope FROM hardcover_links WHERE user_id = ? AND broken = ''`, userID).Scan(&scope)
 	return hardcover.HasScope(scope, "read:social")
 }
 
-// hcImportFollows reads the authors userID follows on Hardcover and stars
+// ImportFollows reads the authors userID follows on Hardcover and stars
 // them here (see the top).
-func hcImportFollows(ctx context.Context, userID int64) (hcFollowsResult, error) {
-	var res hcFollowsResult
-	acc, err := hcLoadAccount(userID)
+func (s *Service) ImportFollows(ctx context.Context, userID int64) (FollowsResult, error) {
+	var res FollowsResult
+	acc, err := s.loadAccount(userID)
 	if err != nil {
 		return res, err
 	}
 	if acc == nil {
 		return res, errors.New("Hardcover isn't linked")
 	}
-	if !hcCanReadFollows(userID) {
-		return res, errHCFollowScope
+	if !s.canReadFollows(userID) {
+		return res, ErrFollowScope
 	}
-	ctx, cancel := context.WithTimeout(ctx, hcFollowsImportTime)
+	ctx, cancel := context.WithTimeout(ctx, followsImportTime)
 	defer cancel()
-	follows, err := hcUserClient(userID).FollowedAuthors(ctx, acc.HCUserID)
+	follows, err := s.UserClient(userID).FollowedAuthors(ctx, acc.HCUserID)
 	if err != nil {
 		return res, err
 	}
-	ix := libraryAuthorIndex()
-	tx, err := appDB.Begin()
+	ix := s.libraryAuthorIndex()
+	tx, err := s.db.Begin()
 	if err != nil {
 		return res, err
 	}
@@ -259,7 +259,7 @@ func hcImportFollows(ctx context.Context, userID int64) (hcFollowsResult, error)
 		return res, err
 	}
 	for _, f := range follows {
-		state, added, err := hcApplyFollow(tx, userID, f, ix)
+		state, added, err := s.applyFollow(tx, userID, f, ix)
 		if err != nil {
 			return res, err
 		}
@@ -278,18 +278,18 @@ func hcImportFollows(ctx context.Context, userID int64) (hcFollowsResult, error)
 			res.Skipped++
 		}
 	}
-	if err := touchFavs(tx, userID, time.Now().UnixMilli()); err != nil {
+	if err := s.host.TouchFavorites(tx, userID, time.Now().UnixMilli()); err != nil {
 		return res, err
 	}
 	return res, tx.Commit()
 }
 
-// hcFollowDecision records the user's choice for followed author hcID
+// FollowDecision records the user's choice for followed author hcID
 // (from the last import): local, a library author offered for it; or ""
 // for none of those offered. Undo (undo true) forgets the choices made for
 // it, and takes off the star it made. Then the follow is decided again.
-func hcFollowDecision(userID, hcID int64, local string, undo bool) error {
-	tx, err := appDB.Begin()
+func (s *Service) FollowDecision(userID, hcID int64, local string, undo bool) error {
+	tx, err := s.db.Begin()
 	if err != nil {
 		return err
 	}
@@ -299,7 +299,7 @@ func hcFollowDecision(userID, hcID int64, local string, undo bool) error {
 	err = tx.QueryRow(`SELECT hc_name, follow_id, candidates FROM hardcover_follows WHERE user_id = ? AND hc_id = ?`, userID, hcID).
 		Scan(&f.Name, &f.FollowID, &cands)
 	if errors.Is(err, sql.ErrNoRows) {
-		return errHCNoFollow
+		return ErrNoFollow
 	}
 	if err != nil {
 		return err
@@ -318,7 +318,7 @@ func hcFollowDecision(userID, hcID int64, local string, undo bool) error {
 		var offered []string
 		_ = json.Unmarshal([]byte(cands), &offered)
 		if local != "" && !slices.Contains(offered, local) {
-			return errHCNoFollow // only what was offered
+			return ErrNoFollow // only what was offered
 		}
 		if local != "" {
 			if _, err := tx.Exec(`INSERT OR IGNORE INTO hardcover_aggregate_matches (user_id, kind, hc_id, local_name, decision, created_at)
@@ -338,20 +338,20 @@ func hcFollowDecision(userID, hcID int64, local string, undo bool) error {
 			return err
 		}
 	}
-	if _, _, err := hcApplyFollow(tx, userID, f, libraryAuthorIndex()); err != nil {
+	if _, _, err := s.applyFollow(tx, userID, f, s.libraryAuthorIndex()); err != nil {
 		return err
 	}
-	if err := touchFavs(tx, userID, time.Now().UnixMilli()); err != nil {
+	if err := s.host.TouchFavorites(tx, userID, time.Now().UnixMilli()); err != nil {
 		return err
 	}
 	return tx.Commit()
 }
 
-// errHCNoFollow: no such followed author to decide on (or not that choice).
-var errHCNoFollow = errors.New("no such followed author")
+// ErrNoFollow: no such followed author to decide on (or not that choice).
+var ErrNoFollow = errors.New("no such followed author")
 
-// hcFollowRow is a followed author on the account page.
-type hcFollowRow struct {
+// FollowRow is a followed author on the account page.
+type FollowRow struct {
 	HCID       int64
 	Name       string // Hardcover's
 	Local      string // its star's name
@@ -359,26 +359,26 @@ type hcFollowRow struct {
 	Decided    bool // a choice the user made (undoable)
 }
 
-// hcFollowsView: the last import, and sending stars there
-// (hardcover_follow_push.go), for the account page.
-type hcFollowsView struct {
-	Push         hcFollowPrefs
+// FollowsView: the last import, and sending stars there
+// (follow_push.go), for the account page.
+type FollowsView struct {
+	Push         FollowPrefs
 	ToSend       int // changes waiting to be sent
 	FollowedHere int // stars followed on Hardcover from here
-	Problems     []hcFollowProblem
+	Problems     []FollowProblem
 	CanRead      bool
 	Total        int
-	Starred      []hcFollowRow
-	Waiting      []hcFollowRow
-	Confirm      []hcFollowRow
+	Starred      []FollowRow
+	Waiting      []FollowRow
+	Confirm      []FollowRow
 	Skipped      int
 	LastSeen     string
 }
 
-func hcLoadFollowsView(userID int64) *hcFollowsView {
-	v := &hcFollowsView{CanRead: hcCanReadFollows(userID), Push: hcLoadFollowPrefs(userID)}
-	v.ToSend, v.Problems, v.FollowedHere = hcFollowQueueView(userID)
-	rows, err := appDB.Query(`SELECT f.hc_id, f.hc_name, f.state, f.local_name, f.candidates, f.seen_at,
+func (s *Service) Follows(userID int64) *FollowsView {
+	v := &FollowsView{CanRead: s.canReadFollows(userID), Push: s.LoadFollowPrefs(userID)}
+	v.ToSend, v.Problems, v.FollowedHere = s.followQueueView(userID)
+	rows, err := s.db.Query(`SELECT f.hc_id, f.hc_name, f.state, f.local_name, f.candidates, f.seen_at,
 			EXISTS (SELECT 1 FROM hardcover_aggregate_matches m WHERE m.user_id = f.user_id AND m.kind = 'author' AND m.hc_id = f.hc_id)
 		FROM hardcover_follows f WHERE f.user_id = ? ORDER BY f.hc_name COLLATE NOCASE`, userID)
 	if err != nil {
@@ -387,7 +387,7 @@ func hcLoadFollowsView(userID int64) *hcFollowsView {
 	defer rows.Close()
 	var last int64
 	for rows.Next() {
-		var r hcFollowRow
+		var r FollowRow
 		var state, cands string
 		var seen int64
 		if rows.Scan(&r.HCID, &r.Name, &state, &r.Local, &cands, &seen, &r.Decided) != nil {
@@ -413,16 +413,19 @@ func hcLoadFollowsView(userID int64) *hcFollowsView {
 	return v
 }
 
-// hcWakeWaitingStars: authors that just got books here (gained), as
+// WakeWaitingStars: authors that just got books here (gained), as
 // browsed. A star imported from Hardcover under a name the library didn't
 // have, matching one of them as an import would (textkey.Name), becomes that
 // author's, before anyone is told about the books (notifyFavoriteGains).
-func hcWakeWaitingStars(gained []string) error {
+func (s *Service) WakeWaitingStars(gained []string) error {
+	if s == nil {
+		return nil
+	}
 	byKey := map[string]string{}
 	for _, a := range gained {
 		byKey[textkey.Name(a)] = a
 	}
-	rows, err := appDB.Query(`SELECT user_id, name FROM aggregate_favorites WHERE kind = 'author' AND origin = 'hardcover' AND removed_at IS NULL`)
+	rows, err := s.db.Query(`SELECT user_id, name FROM aggregate_favorites WHERE kind = 'author' AND origin = 'hardcover' AND removed_at IS NULL`)
 	if err != nil {
 		return err
 	}
@@ -446,7 +449,7 @@ func hcWakeWaitingStars(gained []string) error {
 	if err := rows.Err(); err != nil || len(wakes) == 0 {
 		return err
 	}
-	tx, err := appDB.Begin()
+	tx, err := s.db.Begin()
 	if err != nil {
 		return err
 	}
@@ -463,7 +466,7 @@ func hcWakeWaitingStars(gained []string) error {
 		if _, err := tx.Exec(`UPDATE hardcover_follows SET state = 'starred', local_name = ? WHERE user_id = ? AND state = 'waiting' AND local_name = ?`, w.to, w.uid, w.from); err != nil {
 			return err
 		}
-		if err := touchFavs(tx, w.uid, now); err != nil {
+		if err := s.host.TouchFavorites(tx, w.uid, now); err != nil {
 			return err
 		}
 	}

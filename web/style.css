@@ -7751,7 +7751,7 @@ body:has(.manage-panel:not([hidden])) .select-bar {
     }
 }
 
-/* Authors followed on Hardcover (account.html, hardcover_follows.go) */
+/* Authors followed on Hardcover (account.html, internal/hardcoversync/follows.go) */
 #hardcover-follows {
     margin: 1.25rem 0 0.5rem;
     font-size: 1rem;

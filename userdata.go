@@ -429,7 +429,7 @@ func setStatus(userID int64, uuid, status, source string) error {
 	if _, err = claimMarkChange(appDB, userID, uuid, "status", nowMilli()); err != nil {
 		return err
 	}
-	hcSyncStatus(userID, uuid, status) // hardcover_sync.go
+	hcSync.Status(userID, uuid, status) // internal/hardcoversync/sync.go
 	return nil
 }
 
@@ -466,7 +466,7 @@ func setManualStatus(userID int64, uuid, status string, at int64) (bool, error) 
 	if err := tx.Commit(); err != nil {
 		return false, err
 	}
-	hcSyncStatus(userID, uuid, status) // hardcover_sync.go
+	hcSync.Status(userID, uuid, status) // internal/hardcoversync/sync.go
 	return true, nil
 }
 
@@ -528,7 +528,7 @@ type BookUserActionsData struct {
 	SeriesShelves   []shelfMark
 	SeriesOnShelves int
 	// Hardcover: whether the book is sent to the user's Hardcover account
-	// (hardcover_sync.go); nil when they haven't linked one.
+	// (internal/hardcoversync/sync.go); nil when they haven't linked one.
 	Hardcover *bookHardcover
 }
 
@@ -552,8 +552,8 @@ func bookUserActionsHandler(w http.ResponseWriter, r *http.Request) {
 		if p, ok := latestProgress(u.ID, uuid)[uuid]; ok {
 			data.Progress = progressNote(uuid, p, time.Now())
 		}
-		if hardcoverSyncEnabled() && hcIsLinked(u.ID) {
-			data.Hardcover = &bookHardcover{Shared: hcShared(u.ID, uuid), All: hcLoadShare(u.ID).All}
+		if hardcoverSyncEnabled() && hcSync.IsLinked(u.ID) {
+			data.Hardcover = &bookHardcover{Shared: hcSync.Shared(u.ID, uuid), All: hcSync.LoadShare(u.ID).All}
 		}
 		data.Shelves = shelfMarks(u, uuid)
 		for _, s := range data.Shelves {

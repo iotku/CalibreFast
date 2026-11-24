@@ -4,7 +4,7 @@
  * its sync stands, and, when Hardcover couldn't find it or found the wrong
  * book, choosing the right one (from the menu, or the button itself when
  * it wasn't found). The choice is the user's own, for their sync only
- * (hardcover_book.go). A placeholder's page has it too
+ * (hardcover_account.go). A placeholder's page has it too
  * (placeholder-hardcover.ts): Saved, it's sent as want to read, and its
  * Hardcover book is the library's, not the user's: the first to choose
  * it names it for everyone, and after that only an editor changes it

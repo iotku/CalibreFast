@@ -873,7 +873,7 @@ func mergeReaderData(keep string, others []string, same map[string][]string) (in
 	if err := tx.Commit(); err != nil {
 		return 0, err
 	}
-	hcSyncMerged(keep, others)
+	hcSync.Merged(keep, others)
 	return dropped, nil
 }
 

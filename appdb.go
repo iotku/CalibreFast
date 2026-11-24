@@ -584,7 +584,7 @@ var migrations = []string{
 	INSERT INTO reading_events (user_id, book_uuid, kind, at)
 		SELECT user_id, book_uuid, 'finished', updated_at FROM reading_status WHERE status = 'finished';
 	`,
-	// 34: reading sync to users' own Hardcover accounts (hardcover_sync.go).
+	// 34: reading sync to users' own Hardcover accounts (internal/hardcoversync/sync.go).
 	// hardcover_links: a user's sign-in, its tokens sealed (secretbox.go),
 	// and what they chose to share: nothing is sent but the books in
 	// hardcover_shared, unless share_all; progress and dates only if chosen.
@@ -713,7 +713,7 @@ var migrations = []string{
 	CREATE INDEX reading_status_book ON reading_status (book_uuid);
 	`,
 	// 41: books a user who shares every book with Hardcover left out
-	// (hardcover_sync.go): exceptions to hardcover_links.share_all, set
+	// (internal/hardcoversync/sync.go): exceptions to hardcover_links.share_all, set
 	// from the book's Sync to Hardcover. Nothing about them is sent.
 	`
 	CREATE TABLE hardcover_unshared (
@@ -775,7 +775,7 @@ var migrations = []string{
 	ALTER TABLE notifications ADD COLUMN count   INTEGER NOT NULL DEFAULT 1;
 	`,
 	// 46: the authors a user follows on Hardcover, as last imported
-	// (hardcover_follows.go): what each became here (a starred library
+	// (internal/hardcoversync/follows.go): what each became here (a starred library
 	// author, a star waiting for the author's books, or a choice for the
 	// user to make), so the account page can list them without asking
 	// Hardcover. A star's Hardcover author id (aggregate_favorites.hc_id).
@@ -794,7 +794,7 @@ var migrations = []string{
 	ALTER TABLE aggregate_favorites ADD COLUMN hc_id INTEGER;
 	`,
 	// 47: sending starred authors to Hardcover as follows, and unfollowing
-	// when the user asks as they take a star off (hardcover_follow_push.go):
+	// when the user asks as they take a star off (internal/hardcoversync/follow_push.go):
 	// whether to follow (share_follows, off until turned on), whether the
 	// unstar dialog's "Also unfollow on Hardcover" starts ticked
 	// (unfollow_default), and what waits to be sent, one row per author.
@@ -813,7 +813,7 @@ var migrations = []string{
 	);
 	`,
 	// 48: the permissions (scopes) a user was told to link Hardcover again
-	// for (hardcover_relink.go), so they're told once per change of what
+	// for (internal/hardcoversync/relink.go), so they're told once per change of what
 	// linking asks for.
 	`
 	ALTER TABLE hardcover_links ADD COLUMN relink_notified TEXT NOT NULL DEFAULT '';

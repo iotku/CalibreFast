@@ -33,6 +33,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/iotku/CalibreFast/internal/hardcoversync"
 	"github.com/iotku/CalibreFast/pkg/koreader"
 	"github.com/iotku/CalibreFast/pkg/kosync"
 )
@@ -282,7 +283,7 @@ func kosyncPutHandler(w http.ResponseWriter, r *http.Request, u *User) {
 			status = "finished"
 		}
 		_ = setStatus(u.ID, b.UUID, status, "auto")
-		hcSyncTouch(u.ID, b.UUID, hcProgressDelay) // hardcover_sync.go
+		hcSync.Touch(u.ID, b.UUID, hardcoversync.ProgressDelay) // internal/hardcoversync/sync.go
 	}
 	writeJSON(w, http.StatusOK, map[string]any{"document": doc, "timestamp": now / 1000})
 }

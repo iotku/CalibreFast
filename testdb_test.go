@@ -6,6 +6,8 @@ import (
 	"path/filepath"
 	"sync"
 	"testing"
+
+	"github.com/iotku/CalibreFast/internal/hardcoversync"
 )
 
 // The fully migrated app DB is built once per test binary and kept in memory;
@@ -58,13 +60,15 @@ func openTestAppDB(t *testing.T) *sql.DB {
 }
 
 // setupTestAppDB installs a fresh app DB as the global appDB for one test,
-// restoring the previous one when the test ends.
+// with Hardcover reading sync on it (off, as on a server without a client
+// id), restoring the previous ones when the test ends.
 func setupTestAppDB(t *testing.T) {
 	t.Helper()
 	db := openTestAppDB(t)
-	orig := appDB
+	orig, origSync := appDB, hcSync
 	appDB = db
-	t.Cleanup(func() { db.Close(); appDB = orig })
+	hcSync = newHCSync(hardcoversync.Config{})
+	t.Cleanup(func() { db.Close(); appDB, hcSync = orig, origSync })
 	resetKosyncCaches()
 }
 

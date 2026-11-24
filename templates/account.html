@@ -203,7 +203,7 @@
                 <li>It appears on Hardcover as if you'd done it there, so your Hardcover privacy settings decide who sees it.</li>
             </ul>
         </details>
-        {{/* Authors followed on Hardcover, starred here (hardcover_follows.go). */}}
+        {{/* Authors followed on Hardcover, starred here (internal/hardcoversync/follows.go). */}}
         {{ with .Follows }}
         <h3 id="hardcover-follows">Authors you follow</h3>
         {{ if .CanRead }}
@@ -255,7 +255,7 @@
         </details>
         {{ end }}
         {{ end }}
-        {{/* Sending stars to Hardcover as follows (hardcover_follow_push.go). */}}
+        {{/* Sending stars to Hardcover as follows (internal/hardcoversync/follow_push.go). */}}
         {{ if .Push.CanWrite }}
         <form method="post" action="/account/hardcover#hardcover-follows" class="follow-settings">
             <input type="hidden" name="action" value="follows-settings">

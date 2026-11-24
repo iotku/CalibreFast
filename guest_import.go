@@ -26,6 +26,8 @@ import (
 	"slices"
 	"strings"
 	"time"
+
+	"github.com/iotku/CalibreFast/internal/hardcoversync"
 )
 
 const (
@@ -388,7 +390,7 @@ func importGuestBook(userID int64, b guestBook, usePosition bool) error {
 		if err := setStatus(userID, b.UUID, status, "auto"); err != nil {
 			return err
 		}
-		hcSyncTouch(userID, b.UUID, hcProgressDelay) // hardcover_sync.go
+		hcSync.Touch(userID, b.UUID, hardcoversync.ProgressDelay) // internal/hardcoversync/sync.go
 	}
 	return nil
 }

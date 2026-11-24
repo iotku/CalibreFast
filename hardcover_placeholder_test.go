@@ -7,6 +7,7 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/iotku/CalibreFast/internal/hardcoversync"
 	"github.com/iotku/CalibreFast/pkg/hardcover"
 )
 
@@ -30,9 +31,9 @@ func TestHardcoverPlaceholderSync(t *testing.T) {
 		}
 		return rec.Body.Bytes()
 	}
-	state := func(id string) hcBookStatus {
+	state := func(id string) hardcoversync.BookStatus {
 		t.Helper()
-		var st hcBookStatus
+		var st hardcoversync.BookStatus
 		if err := json.Unmarshal(do("GET", "/api/me/books/"+id+"/hardcover", "", 200), &st); err != nil {
 			t.Fatal(err)
 		}
@@ -69,7 +70,7 @@ func TestHardcoverPlaceholderSync(t *testing.T) {
 	if identifierValue(ph.Meta, hardcover.IDScheme) != "60" || identifierValue(ph.Meta, hardcover.SlugScheme) != "the-right-book" {
 		t.Fatalf("placeholder's identifiers: %+v", ph.Meta.Identifiers)
 	}
-	if _, ok := hcUserMatch(u.ID, p.UUID); ok {
+	if _, ok := hcSync.UserMatch(u.ID, p.UUID); ok {
 		t.Error("stored as the user's own match")
 	}
 	step(t)
@@ -114,8 +115,8 @@ func TestHardcoverPlaceholderSync(t *testing.T) {
 	if err := replacePlaceholder(q.UUID, books[1]); err != nil {
 		t.Fatal(err)
 	}
-	if !hcIsBookShared(u.ID, books[1]) || hcIsBookShared(u.ID, q.UUID) {
-		t.Errorf("sharing didn't move: book %v, placeholder %v", hcIsBookShared(u.ID, books[1]), hcIsBookShared(u.ID, q.UUID))
+	if !hcSync.IsBookShared(u.ID, books[1]) || hcSync.IsBookShared(u.ID, q.UUID) {
+		t.Errorf("sharing didn't move: book %v, placeholder %v", hcSync.IsBookShared(u.ID, books[1]), hcSync.IsBookShared(u.ID, q.UUID))
 	}
 	var n int
 	_ = appDB.QueryRow(`SELECT COUNT(*) FROM hardcover_sync WHERE book_uuid = ?`, q.UUID).Scan(&n)

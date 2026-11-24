@@ -15,6 +15,8 @@ import (
 	"net/http"
 	"strings"
 	"time"
+
+	"github.com/iotku/CalibreFast/internal/hardcoversync"
 )
 
 const (
@@ -121,7 +123,7 @@ func progressPutHandler(w http.ResponseWriter, r *http.Request) {
 		status = "finished"
 	}
 	_ = setStatus(u.ID, uuid, status, "auto")
-	hcSyncTouch(u.ID, uuid, hcProgressDelay) // hardcover_sync.go
+	hcSync.Touch(u.ID, uuid, hardcoversync.ProgressDelay) // internal/hardcoversync/sync.go
 
 	stored, err := getProgress(u.ID, uuid, in.Format)
 	if err != nil {
