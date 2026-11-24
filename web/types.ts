@@ -90,6 +90,8 @@ export interface AggFavorite {
     label?: string;
     href: string;
     count: number;
+    /** An author the user follows on Hardcover, as far as the server knows. */
+    hc_followed?: boolean;
 }
 
 /** A library value suggestion (Go: groupValuesHandler). */

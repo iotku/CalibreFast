@@ -192,7 +192,7 @@ func hcUnlinkAccount(userID int64) (hcRevoke, error) {
 	}
 	hcSetLinked(userID, false)
 	// The stars imported from Hardcover stay: they're the user's now.
-	for _, table := range []string{"hardcover_sync", "hardcover_shared", "hardcover_unshared", "hardcover_user_books", "hardcover_follows", "hardcover_links"} {
+	for _, table := range []string{"hardcover_sync", "hardcover_shared", "hardcover_unshared", "hardcover_user_books", "hardcover_follows", "hardcover_follow_queue", "hardcover_links"} {
 		if _, err := appDB.Exec(`DELETE FROM `+table+` WHERE user_id = ?`, userID); err != nil {
 			return revoke, err
 		}
@@ -416,6 +416,26 @@ func hardcoverAccountHandler(w http.ResponseWriter, r *http.Request) {
 			}
 			back(msg + ".")
 		}
+	case "follows-settings":
+		// Following on Hardcover the authors starred here, and the unstar
+		// dialog's default (hardcover_follow_push.go).
+		if !hcIsLinked(u.ID) {
+			back("Link Hardcover first.")
+			return
+		}
+		if err := hcSaveFollowPrefs(u.ID, r.FormValue("share_follows") == "on", r.FormValue("unfollow_default") == "on"); err != nil {
+			log.Println("hardcover follows settings:", err)
+			http.Error(w, "could not save", http.StatusInternalServerError)
+			return
+		}
+		back("Saved.")
+	case "follow-retry":
+		if err := hcRetryFollow(u.ID, r.FormValue("name")); err != nil {
+			log.Println("hardcover follow retry:", err)
+			http.Error(w, "could not save", http.StatusInternalServerError)
+			return
+		}
+		back("Trying again.")
 	case "follow-choose", "follow-none", "follow-undo":
 		hcID, err := strconv.ParseInt(r.FormValue("hc_id"), 10, 64)
 		if err != nil || hcID <= 0 {

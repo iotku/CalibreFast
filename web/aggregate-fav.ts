@@ -5,6 +5,10 @@
  * The markup is the same for everyone and starts hidden; it's shown to
  * signed-in users from their favorites (favorites.ts).
  *
+ * Taking the star off an author the user follows on Hardcover asks first,
+ * with "Also unfollow on Hardcover" ticked as they chose on /account
+ * (hardcover_follow_push.go); unticked, Hardcover isn't touched.
+ *
  * Also /me/favorites' carousels of favorite authors (rendered by the
  * server, filtered.html) and of series (drawn here from their grid entries
  * with bookCard, as a shelf's series are): they drag sideways like
@@ -12,7 +16,7 @@
  */
 import { el, errorMessage, icon } from "./dom.js";
 import { setupDragScroll } from "./drag-scroll.js";
-import { isFavorite, keptFavorites, loadFavorites, setFavorite } from "./favorites.js";
+import { hardcoverUnfollow, isFavorite, keptFavorites, loadFavorites, setFavorite } from "./favorites.js";
 import type { AggFavorite, Book } from "./types.js";
 import { bookCard, setupCoverStates } from "./utils.js";
 
@@ -87,13 +91,55 @@ void loadFavorites()
         /* offline: the kept list stands */
     });
 
+/**
+ * Asks before taking the star off name, an author followed on Hardcover:
+ * null (cancelled), or whether to unfollow them there too.
+ */
+function confirmUnstar(name: string, ticked: boolean): Promise<{ unfollow: boolean } | null> {
+    return new Promise((resolve) => {
+        const box = el("input", { type: "checkbox", checked: ticked });
+        const title = el("h2", { id: "unstar-title" }, "Remove ", el("b", {}, name), " from your favorites?");
+        const label = el("label", { className: "unstar-hardcover" }, box, " Also unfollow on Hardcover");
+        const note = el("p", { className: "auth-muted" }, "You follow this author on Hardcover. Untick to keep following them there.");
+        const cancel = el("button", { type: "button", className: "btn-action" }, "Cancel");
+        const go = el("button", { type: "submit", className: "btn-action btn-action-read" }, "Remove");
+        const form = el("form", { method: "dialog" }, title, label, note, el("div", { className: "delete-actions" }, cancel, go));
+        const dialog = el("dialog", { className: "delete-dialog unstar-dialog" }, form);
+        dialog.setAttribute("aria-labelledby", "unstar-title");
+        let answer: { unfollow: boolean } | null = null;
+        cancel.addEventListener("click", () => dialog.close());
+        form.addEventListener("submit", () => {
+            answer = { unfollow: box.checked };
+        });
+        dialog.addEventListener("close", () => {
+            dialog.remove();
+            resolve(answer);
+        });
+        document.body.append(dialog);
+        dialog.showModal();
+        go.focus();
+    });
+}
+
 document.addEventListener("click", async (e) => {
     const btn = (e.target as Element | null)?.closest<HTMLButtonElement>(".agg-fav");
     if (!btn || btn.disabled) return;
     const on = btn.getAttribute("aria-pressed") !== "true";
+    const kind = btn.dataset["kind"] ?? "";
+    const name = btn.dataset["name"] ?? "";
+    let unfollow = false;
+    const hc = hardcoverUnfollow();
+    if (!on && kind === "author" && hc.can) {
+        const fav = (keptFavorites() ?? []).find((f) => f.kind === kind && f.name.toLowerCase() === name.toLowerCase());
+        if (fav?.hc_followed) {
+            const answer = await confirmUnstar(fav.label || fav.name, hc.ticked);
+            if (!answer) return;
+            unfollow = answer.unfollow;
+        }
+    }
     btn.disabled = true;
     try {
-        paint(await setFavorite(btn.dataset["kind"] ?? "", btn.dataset["name"] ?? "", on));
+        paint(await setFavorite(kind, name, on, unfollow));
     } catch (err) {
         alert(errorMessage(err));
     } finally {

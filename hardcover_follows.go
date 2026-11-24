@@ -371,19 +371,25 @@ type hcFollowRow struct {
 	Decided    bool // a choice the user made (undoable)
 }
 
-// hcFollowsView: the last import, for the account page.
+// hcFollowsView: the last import, and sending stars there
+// (hardcover_follow_push.go), for the account page.
 type hcFollowsView struct {
-	CanRead  bool
-	Total    int
-	Starred  []hcFollowRow
-	Waiting  []hcFollowRow
-	Confirm  []hcFollowRow
-	Skipped  int
-	LastSeen string
+	Push         hcFollowPrefs
+	ToSend       int // changes waiting to be sent
+	FollowedHere int // stars followed on Hardcover from here
+	Problems     []hcFollowProblem
+	CanRead      bool
+	Total        int
+	Starred      []hcFollowRow
+	Waiting      []hcFollowRow
+	Confirm      []hcFollowRow
+	Skipped      int
+	LastSeen     string
 }
 
 func hcLoadFollowsView(userID int64) *hcFollowsView {
-	v := &hcFollowsView{CanRead: hcCanReadFollows(userID)}
+	v := &hcFollowsView{CanRead: hcCanReadFollows(userID), Push: hcLoadFollowPrefs(userID)}
+	v.ToSend, v.Problems, v.FollowedHere = hcFollowQueueView(userID)
 	rows, err := appDB.Query(`SELECT f.hc_id, f.hc_name, f.state, f.local_name, f.candidates, f.seen_at,
 			EXISTS (SELECT 1 FROM hardcover_aggregate_matches m WHERE m.user_id = f.user_id AND m.kind = 'author' AND m.hc_id = f.hc_id)
 		FROM hardcover_follows f WHERE f.user_id = ? ORDER BY f.hc_name COLLATE NOCASE`, userID)

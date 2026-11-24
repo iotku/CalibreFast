@@ -7783,3 +7783,28 @@ body:has(.manage-panel:not([hidden])) .select-bar {
     cursor: pointer;
     font: inherit;
 }
+
+/* Taking the star off an author followed on Hardcover (aggregate-fav.ts) */
+.unstar-dialog h2 {
+    margin: 0 0 0.75rem;
+    font-size: 1.1rem;
+}
+
+.unstar-hardcover {
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+    font-weight: 600;
+}
+
+.unstar-dialog .auth-muted {
+    margin: 0.4rem 0 1rem;
+}
+
+.follow-settings {
+    display: flex;
+    flex-direction: column;
+    align-items: flex-start;
+    gap: 0.5rem;
+    margin: 1rem 0 0.5rem;
+}

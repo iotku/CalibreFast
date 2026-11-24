@@ -24,6 +24,7 @@ import (
 	"cmp"
 	"database/sql"
 	"encoding/json"
+	"log"
 	"net/http"
 	"slices"
 	"strings"
@@ -40,6 +41,9 @@ type aggFavorite struct {
 	Label string `json:"label,omitempty"` // a language's display name
 	Href  string `json:"href"`
 	Count int    `json:"count"`
+	// HCFollowed: an author the user follows on Hardcover, as far as is
+	// known here (hcFollowedHere).
+	HCFollowed bool `json:"hc_followed,omitempty"`
 }
 
 // aggValue: the library's value of category c browsed as raw (after
@@ -314,11 +318,16 @@ func aggFavoriteHandler(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "could not save", http.StatusInternalServerError)
 		return
 	}
+	if c.Key == "author" {
+		hcQueueFollow(u.ID, v.Name, "follow", 0) // if they chose to (hardcover_follow_push.go)
+	}
 	w.WriteHeader(http.StatusNoContent)
 }
 
 // DELETE /api/me/favorites/{kind}/{name}: under any name browsed as this
 // one. Takes values no longer in the library too, so nothing is stuck.
+// ?hardcover=1 (an author): also unfollow it on Hardcover, as the user
+// ticked in the unstar dialog (hardcover_follow_push.go).
 func aggUnfavoriteHandler(w http.ResponseWriter, r *http.Request) {
 	c := categoryByKey(r.PathValue("kind"))
 	raw := strings.TrimSpace(r.PathValue("name"))
@@ -344,7 +353,12 @@ func aggUnfavoriteHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	defer tx.Rollback()
+	var hcID int64 // the author's Hardcover id, if known, for unfollowing
 	for _, n := range names {
+		var id sql.NullInt64
+		if err := tx.QueryRow(`SELECT hc_id FROM aggregate_favorites WHERE user_id = ? AND kind = ? AND name = ?`, u.ID, c.Key, n).Scan(&id); err == nil && id.Valid && hcID == 0 {
+			hcID = id.Int64
+		}
 		// Imported rows are kept as tombstones; our own go.
 		if _, err := tx.Exec(`UPDATE aggregate_favorites SET removed_at = ?
 			WHERE user_id = ? AND kind = ? AND name = ? AND origin <> 'local'`, now, u.ID, c.Key, n); err != nil {
@@ -360,6 +374,9 @@ func aggUnfavoriteHandler(w http.ResponseWriter, r *http.Request) {
 	if err := touchFavs(tx, u.ID, now); err != nil || tx.Commit() != nil {
 		http.Error(w, "could not save", http.StatusInternalServerError)
 		return
+	}
+	if c.Key == "author" && r.URL.Query().Get("hardcover") == "1" {
+		hcQueueFollow(u.ID, name, "unfollow", hcID)
 	}
 	w.WriteHeader(http.StatusNoContent)
 }
@@ -382,7 +399,26 @@ func aggFavoritesHandler(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "query failed", http.StatusInternalServerError)
 		return
 	}
-	writeJSON(w, http.StatusOK, map[string]any{"favs": favsChanged(u), "favorites": favs})
+	// For the unstar dialog (hardcover_follow_push.go): which authors are
+	// followed on Hardcover, whether the user's link can unfollow, and
+	// whether its box starts ticked.
+	p := hcLoadFollowPrefs(u.ID)
+	if p.CanWrite {
+		followed := hcFollowedHere(u.ID)
+		for i := range favs {
+			favs[i].HCFollowed = favs[i].Kind == "author" && followed[strings.ToLower(favs[i].Name)]
+		}
+	}
+	writeJSON(w, http.StatusOK, map[string]any{"favs": favsChanged(u), "favorites": favs,
+		"hc_unfollow": p.CanWrite, "hc_unfollow_default": p.UnfollowDefault})
+}
+
+// bumpFavs: something the favorites answer shows changed besides the
+// stars (a follow on Hardcover, a setting): browsers ask for it again.
+func bumpFavs(userID int64) {
+	if _, err := appDB.Exec(`UPDATE users SET favs_changed = MAX(favs_changed + 1, ?) WHERE id = ?`, time.Now().UnixMilli(), userID); err != nil {
+		log.Println("favorites:", err)
+	}
 }
 
 func registerAggregateFavoriteRoutes() {

@@ -80,6 +80,11 @@ type fakeHardcoverAccount struct {
 
 	books   map[int64]*fakeUserBook // by book id
 	follows string                  // FollowedAuthors' follows, as JSON (hardcover_follows_test.go)
+	// Follow sending (hardcover_follow_push_test.go): the user's follows by
+	// author id (the follow's id), and the authors AuthorsByName finds.
+	followed     map[int64]int64
+	authorsNamed map[string][]int64
+	unfollowed   []int64
 	ops     []string
 	lastObj map[string]map[string]any
 }
@@ -155,6 +160,35 @@ func (f *fakeHardcoverAccount) serve(w http.ResponseWriter, r *http.Request) {
 		io.WriteString(w, `{"data":{"me":[{"id":77,"username":"hc-reader"}]}}`)
 	case "FollowedAuthors":
 		io.WriteString(w, `{"data":{"follows":`+cmp.Or(f.follows, "[]")+`}}`)
+	case "IsFollowing":
+		if id, ok := f.followed[num(req.Variables["author"])]; ok {
+			io.WriteString(w, `{"data":{"follows":[{"id":`+itoa(id)+`}]}}`)
+			return
+		}
+		io.WriteString(w, `{"data":{"follows":[]}}`)
+	case "FollowAuthor":
+		a := num(req.Variables["author"])
+		id := 7000 + a
+		if f.followed == nil {
+			f.followed = map[int64]int64{}
+		}
+		f.followed[a] = id
+		io.WriteString(w, `{"data":{"insert_follow":{"id":`+itoa(id)+`,"error":null}}}`)
+	case "UnfollowAuthor":
+		a := num(req.Variables["author"])
+		f.unfollowed = append(f.unfollowed, a)
+		delete(f.followed, a)
+		io.WriteString(w, `{"data":{"delete_follow":{"success":true,"error":null}}}`)
+	case "AuthorsByName":
+		names, _ := req.Variables["names"].([]any)
+		var out []string
+		for _, n := range names {
+			s, _ := n.(string)
+			for _, id := range f.authorsNamed[s] {
+				out = append(out, `{"id":`+itoa(id)+`,"name":"`+s+`","slug":"a","books_count":1,"users_count":1}`)
+			}
+		}
+		io.WriteString(w, `{"data":{"authors":[`+strings.Join(out, ",")+`]}}`)
 	case "SyncEditions":
 		io.WriteString(w, `{"data":{"editions":[{"id":501,"book_id":50,"isbn_13":"9780316129084","pages":300}]}}`)
 	case "SyncBooks":
