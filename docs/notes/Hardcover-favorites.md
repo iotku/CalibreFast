@@ -2,7 +2,8 @@
 
 Phase 0 of syncing CalibreFast's favorite authors and series
 (`aggregate_favorites.go`) with Hardcover's **Follow** feature: what
-Hardcover's API offers. Research only; nothing here is built yet.
+Hardcover's API offers. **Built since:** importing followed authors
+(`hardcover_follows.go`); sending stars to Hardcover is next.
 
 Sources are the files of Hardcover's API documentation repository,
 [hardcoverapp/hardcover-docs](https://github.com/hardcoverapp/hardcover-docs),

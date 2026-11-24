@@ -1,6 +1,7 @@
 package main
 
 import (
+	"cmp"
 	"context"
 	"encoding/json"
 	"io"
@@ -78,6 +79,7 @@ type fakeHardcoverAccount struct {
 	revoked         []string
 
 	books   map[int64]*fakeUserBook // by book id
+	follows string                  // FollowedAuthors' follows, as JSON (hardcover_follows_test.go)
 	ops     []string
 	lastObj map[string]map[string]any
 }
@@ -151,6 +153,8 @@ func (f *fakeHardcoverAccount) serve(w http.ResponseWriter, r *http.Request) {
 	switch op {
 	case "Me":
 		io.WriteString(w, `{"data":{"me":[{"id":77,"username":"hc-reader"}]}}`)
+	case "FollowedAuthors":
+		io.WriteString(w, `{"data":{"follows":`+cmp.Or(f.follows, "[]")+`}}`)
 	case "SyncEditions":
 		io.WriteString(w, `{"data":{"editions":[{"id":501,"book_id":50,"isbn_13":"9780316129084","pages":300}]}}`)
 	case "SyncBooks":

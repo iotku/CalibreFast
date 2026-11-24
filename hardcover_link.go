@@ -14,6 +14,7 @@ import (
 	"log"
 	"net/http"
 	"net/url"
+	"strconv"
 	"time"
 
 	"github.com/iotku/CalibreFast/pkg/hardcover"
@@ -190,7 +191,8 @@ func hcUnlinkAccount(userID int64) (hcRevoke, error) {
 		}
 	}
 	hcSetLinked(userID, false)
-	for _, table := range []string{"hardcover_sync", "hardcover_shared", "hardcover_unshared", "hardcover_user_books", "hardcover_links"} {
+	// The stars imported from Hardcover stay: they're the user's now.
+	for _, table := range []string{"hardcover_sync", "hardcover_shared", "hardcover_unshared", "hardcover_user_books", "hardcover_follows", "hardcover_links"} {
 		if _, err := appDB.Exec(`DELETE FROM `+table+` WHERE user_id = ?`, userID); err != nil {
 			return revoke, err
 		}
@@ -215,6 +217,7 @@ type hcAccountView struct {
 	Shared    []hcSharedBook // the books shared, newest first
 	Problems  []hcSharedBook // shared books that can't be sent (not found, or failing)
 	Unshared  []hcSharedBook // sharing every book: those left out, newest first
+	Follows   *hcFollowsView // the authors followed on Hardcover (hardcover_follows.go)
 }
 
 // hcSharedBook is a book a user shared, for the account page's list.
@@ -310,6 +313,7 @@ func hcView(u *User, notice string) *hcAccountView {
 	if v.Share.All {
 		v.Unshared = hcUnsharedBooks(userID)
 	}
+	v.Follows = hcLoadFollowsView(userID)
 	return v
 }
 
@@ -387,6 +391,53 @@ func hardcoverAccountHandler(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 		back("Saved. It applies to what's sent from now on.")
+	case "follows":
+		// Star the authors followed on Hardcover (hardcover_follows.go).
+		if !hcIsLinked(u.ID) {
+			back("Link Hardcover first.")
+			return
+		}
+		res, err := hcImportFollows(r.Context(), u.ID)
+		switch {
+		case errors.Is(err, errHCFollowScope):
+			back("To bring in the authors you follow, link Hardcover again: it will ask to let CalibreFast see who you follow.")
+		case err != nil:
+			log.Println("hardcover follows:", err)
+			back("Couldn't get the authors you follow from Hardcover: " + err.Error())
+		case res.Total == 0:
+			back("You don't follow any authors on Hardcover yet.")
+		default:
+			msg := fmt.Sprintf("%d followed author(s): %d starred here", res.Total, res.Starred)
+			if res.Waiting > 0 {
+				msg += fmt.Sprintf(", %d waiting for their books to arrive", res.Waiting)
+			}
+			if res.Confirm > 0 {
+				msg += fmt.Sprintf(", %d for you to confirm below", res.Confirm)
+			}
+			back(msg + ".")
+		}
+	case "follow-choose", "follow-none", "follow-undo":
+		hcID, err := strconv.ParseInt(r.FormValue("hc_id"), 10, 64)
+		if err != nil || hcID <= 0 {
+			http.Error(w, "bad author", http.StatusBadRequest)
+			return
+		}
+		local := ""
+		if action == "follow-choose" {
+			if local = r.FormValue("name"); local == "" {
+				http.Error(w, "bad author", http.StatusBadRequest)
+				return
+			}
+		}
+		switch err := hcFollowDecision(u.ID, hcID, local, action == "follow-undo"); {
+		case errors.Is(err, errHCNoFollow):
+			back("That author isn't in your followed authors any more: import them again.")
+		case err != nil:
+			log.Println("hardcover follow choice:", err)
+			http.Error(w, "could not save", http.StatusInternalServerError)
+		default:
+			back("Saved.")
+		}
 	case "backfill":
 		if !hcIsLinked(u.ID) {
 			back("Link Hardcover first.")

@@ -91,6 +91,15 @@ func favoritesCatalogChanged(old, next *catalog, uuids []string) {
 // notifyFavoriteGains tells each user who starred a gained author or
 // series, one notification per author or series.
 func notifyFavoriteGains(gains []favGain) error {
+	// Stars imported from Hardcover waiting for these authors are theirs
+	// now (hardcover_follows.go), so their users are told too.
+	var gainedAuthors []string
+	for _, g := range gains {
+		gainedAuthors = append(gainedAuthors, g.authors...)
+	}
+	if err := hcWakeWaitingStars(gainedAuthors); err != nil {
+		log.Printf("favorites: waiting stars: %v", err)
+	}
 	rows, err := appDB.Query(`SELECT user_id, kind, name FROM aggregate_favorites
 		WHERE removed_at IS NULL AND kind IN ('author', 'series')`)
 	if err != nil {

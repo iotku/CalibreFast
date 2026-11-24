@@ -774,6 +774,25 @@ var migrations = []string{
 	ALTER TABLE notifications ADD COLUMN subject TEXT    NOT NULL DEFAULT '';
 	ALTER TABLE notifications ADD COLUMN count   INTEGER NOT NULL DEFAULT 1;
 	`,
+	// 46: the authors a user follows on Hardcover, as last imported
+	// (hardcover_follows.go): what each became here (a starred library
+	// author, a star waiting for the author's books, or a choice for the
+	// user to make), so the account page can list them without asking
+	// Hardcover. A star's Hardcover author id (aggregate_favorites.hc_id).
+	`
+	CREATE TABLE hardcover_follows (
+		user_id    INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+		hc_id      INTEGER NOT NULL,              -- Hardcover's author id
+		hc_name    TEXT    NOT NULL,
+		follow_id  INTEGER NOT NULL,              -- the follow's own id on Hardcover
+		state      TEXT    NOT NULL,              -- starred, waiting, confirm, skipped
+		local_name TEXT    NOT NULL DEFAULT '',   -- the star's name (starred, waiting)
+		candidates TEXT    NOT NULL DEFAULT '[]', -- JSON library authors to choose from (confirm)
+		seen_at    INTEGER NOT NULL,
+		PRIMARY KEY (user_id, hc_id)
+	);
+	ALTER TABLE aggregate_favorites ADD COLUMN hc_id INTEGER;
+	`,
 }
 
 // openAppDB opens (creating if needed) and migrates the app database.

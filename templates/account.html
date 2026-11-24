@@ -197,10 +197,71 @@
                 <li>For a shared book: <b>Want to read</b>, <b>Reading</b> and <b>Finished</b> become the same statuses on Hardcover, as soon as you set them here or start or finish it in a reader.</li>
                 <li>Only if you chose them above: how far along you are (as pages, a few minutes after you stop turning them, one page short of the end), and the dates you started and finished.</li>
                 <li>Never sent: your favorites, shelves, highlights, notes, bookmarks, other books, or anything about other people here.</li>
-                <li>Nothing is ever deleted on Hardcover, and nothing there is copied back here. Clearing a status, or no longer sharing a book, leaves what was sent there; change it on Hardcover if you want it gone.</li>
+                <li>Nothing is ever deleted on Hardcover. Clearing a status, or no longer sharing a book, leaves what was sent there; change it on Hardcover if you want it gone.</li>
+                <li>Nothing on Hardcover is copied here, except the authors you follow, when you ask for them below.</li>
                 <li>It appears on Hardcover as if you'd done it there, so your Hardcover privacy settings decide who sees it.</li>
             </ul>
         </details>
+        {{/* Authors followed on Hardcover, starred here (hardcover_follows.go). */}}
+        {{ with .Follows }}
+        <h3 id="hardcover-follows">Authors you follow</h3>
+        {{ if .CanRead }}
+        <p class="sync-intro">Star the authors you follow on Hardcover here, so you see them in your favorites and hear when their books arrive. Authors this library doesn't have yet are starred too, and show up once a book by them does. Taking a star off here keeps it off; nothing changes on Hardcover.</p>
+        {{ if .Total }}
+        <p class="auth-muted">Last brought in {{ .LastSeen }}: {{ .Total }} followed, {{ len .Starred }} starred{{ with .Waiting }}, {{ len . }} waiting for their books{{ end }}{{ with .Confirm }}, {{ len . }} to confirm{{ end }}{{ with .Skipped }}, {{ . }} you took off here{{ end }}.</p>
+        {{ end }}
+        <form method="post" action="/account/hardcover#hardcover-follows">
+            <input type="hidden" name="action" value="follows">
+            <button type="submit" class="btn-standard">{{ if .Total }}Bring them in again{{ else }}Bring in the authors I follow{{ end }}</button>
+        </form>
+        {{ with .Confirm }}
+        <p class="sync-intro">Which author here is it? These names are close, but not the same:</p>
+        <ul class="follow-confirm">
+            {{ range . }}
+            <li>
+                <span><b>{{ .Name }}</b> on Hardcover is</span>
+                {{ $id := .HCID }}
+                {{ range .Candidates }}
+                <form method="post" action="/account/hardcover#hardcover-follows">
+                    <input type="hidden" name="action" value="follow-choose">
+                    <input type="hidden" name="hc_id" value="{{ $id }}">
+                    <input type="hidden" name="name" value="{{ . }}">
+                    <button type="submit" class="btn-standard">{{ . }}</button>
+                </form>
+                {{ end }}
+                <form method="post" action="/account/hardcover#hardcover-follows">
+                    <input type="hidden" name="action" value="follow-none">
+                    <input type="hidden" name="hc_id" value="{{ $id }}">
+                    <button type="submit" class="btn-standard">None of these</button>
+                </form>
+            </li>
+            {{ end }}
+        </ul>
+        {{ end }}
+        {{ if or .Starred .Waiting }}
+        <details class="sync-details">
+            <summary>The authors brought in</summary>
+            <ul class="follow-list">
+                {{ range .Starred }}
+                <li>{{ .Name }}{{ if ne .Name .Local }} → {{ .Local }}{{ end }}{{ if .Decided }} <span class="auth-muted">(your choice)</span>
+                    <form method="post" action="/account/hardcover#hardcover-follows"><input type="hidden" name="action" value="follow-undo"><input type="hidden" name="hc_id" value="{{ .HCID }}"><button type="submit" class="link-button">Undo</button></form>{{ end }}</li>
+                {{ end }}
+                {{ range .Waiting }}
+                <li>{{ .Name }} <span class="auth-muted">(no books here yet{{ if .Decided }}; you said it's none of those offered{{ end }})</span>
+                    {{ if .Decided }}<form method="post" action="/account/hardcover#hardcover-follows"><input type="hidden" name="action" value="follow-undo"><input type="hidden" name="hc_id" value="{{ .HCID }}"><button type="submit" class="link-button">Undo</button></form>{{ end }}</li>
+                {{ end }}
+            </ul>
+        </details>
+        {{ end }}
+        {{ else }}
+        <p class="sync-intro">You can star the authors you follow on Hardcover here, to see them in your favorites and hear when their books arrive. Your link was made before CalibreFast could ask for that: link again, and Hardcover will ask you to let CalibreFast see who you follow.</p>
+        <form method="post" action="/account/hardcover#hardcover">
+            <input type="hidden" name="action" value="link">
+            <button type="submit" class="btn-standard">Link again</button>
+        </form>
+        {{ end }}
+        {{ end }}
+
         <div class="sync-actions">
             {{ if .Share.All }}
             <form method="post" action="/account/hardcover#hardcover">
@@ -227,7 +288,7 @@
             <li>Choose which books to share: turn on <b>Sync to Hardcover</b> on a book's page. Or, here, choose to share every book.</li>
         </ol>
         <p class="auth-muted">Linking shares nothing by itself: no book is sent until you choose it. You need a Hardcover account (it's free). You never give CalibreFast your Hardcover password, and you can unlink at any time.</p>
-        <p class="auth-muted">What you allow: CalibreFast may see who you are on Hardcover, and read and change your Hardcover library. It keeps that sign-in encrypted on this server, but whoever runs this server could use it, so link only if you trust them. Unlinking ends it.</p>
+        <p class="auth-muted">What you allow: CalibreFast may see who you are on Hardcover, read and change your Hardcover library, and see and change who you follow (it only reads that for now, when you ask it to bring in the authors you follow). It keeps that sign-in encrypted on this server, but whoever runs this server could use it, so link only if you trust them. Unlinking ends it.</p>
         {{ end }}
         <div class="sync-actions">
             <form method="post" action="/account/hardcover#hardcover">

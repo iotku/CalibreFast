@@ -35,10 +35,11 @@ const (
 	VerificationURL = "https://hardcover.app/link"
 )
 
-// SyncScopes are the scopes reading sync asks for: who the user is, their
-// library (to find a book's entry) and writing to it, and the catalog (to
-// find a book and its edition).
-const SyncScopes = "read:me read:library write:library read:catalog"
+// SyncScopes are the scopes linking an account asks for: who the user is,
+// their library (to find a book's entry) and writing to it, the catalog
+// (to find a book and its edition), and their follows (FollowScopes: the
+// authors they follow, imported as starred authors).
+const SyncScopes = "read:me read:library write:library read:catalog " + FollowScopes
 
 // OAuth signs users in. Zero URLs are Hardcover's.
 type OAuth struct {
