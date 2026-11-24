@@ -19,14 +19,22 @@
             <h1>Notifications</h1>
             {{ if .Notifications }}<button type="button" class="btn-standard" id="notifications-clear">Dismiss all</button>{{ end }}
         </div>
-        <p class="auth-muted notifications-empty"{{ if .Notifications }} hidden{{ end }}>Nothing new. Save a book that isn't in the library yet (on its page) to be told here when it arrives.</p>
+        <p class="auth-muted notifications-empty"{{ if .Notifications }} hidden{{ end }}>Nothing new. Star an author or series (the ★ by its name on its page) to be told here when it gets a new book, or save a book that isn't in the library yet to be told when it arrives.</p>
         {{ if .Notifications }}
         <ul class="notification-list">
             {{ range .Notifications }}
             <li class="notification{{ if not .Seen }} is-new{{ end }}" data-id="{{ .ID }}">
                 <div class="notification-text">
+                    {{ if eq .Kind "favorite_author" }}
+                    {{ if gt .Count 1 }}<a href="{{ .Href }}" class="meta-link">{{ .Count }} new books by {{ .Subject }}</a>, an author you follow.
+                    {{ else }}<a href="{{ .Href }}" class="meta-link">{{ .Title }}</a>, by {{ .Subject }}, an author you follow, is new in the library.{{ end }}
+                    {{ else if eq .Kind "favorite_series" }}
+                    {{ if gt .Count 1 }}<a href="{{ .Href }}" class="meta-link">{{ .Count }} new books in {{ .Subject }}</a>, a series you follow.
+                    {{ else }}<a href="{{ .Href }}" class="meta-link">{{ .Title }}</a> is new in {{ .Subject }}, a series you follow.{{ end }}
+                    {{ else }}
                     {{ if .Href }}<a href="{{ .Href }}" class="meta-link">{{ .Title }}</a>{{ else }}{{ .Title }}{{ end }}, which you saved, is in the library now.
                     {{ if .OnDeck }}You finished the book before it, so it's On deck.{{ else }}It's in your Saved books.{{ end }}
+                    {{ end }}
                     <span class="notification-when">{{ .When }}</span>
                 </div>
                 <button type="button" class="tb-icon notification-dismiss" aria-label="Dismiss" title="Dismiss">

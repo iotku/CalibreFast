@@ -330,10 +330,28 @@ function init(bar: HTMLElement): void {
     }
     interface Notice {
         id: number;
+        /** placeholder_added, favorite_author or favorite_series (notifications.go). */
+        kind: string;
         title: string;
         on_deck: boolean;
         seen: boolean;
         href: string;
+        /** favorite_*: the author or series, and how many of its books are new. */
+        subject?: string;
+        count: number;
+    }
+    /** A notice's headline and the line under it. */
+    function noticeText(n: Notice): [headline: string, note: string] {
+        const many = n.count > 1;
+        const subject = n.subject ?? "";
+        switch (n.kind) {
+            case "favorite_author":
+                return many ? [`${n.count} new books by ${subject}`, "An author you follow"] : [n.title, `New, by ${subject}`];
+            case "favorite_series":
+                return many ? [`${n.count} new books in ${subject}`, "A series you follow"] : [n.title, `New in ${subject}`];
+            default:
+                return [n.title, n.on_deck ? "In the library, and On deck" : "In the library, in Saved"];
+        }
     }
     function makeSyncButton(name: string): SyncButton {
         const ns = "http://www.w3.org/2000/svg";
@@ -392,15 +410,16 @@ function init(bar: HTMLElement): void {
         const showNotices = (ns: Notice[]): void => {
             notices.replaceChildren(
                 ...ns.slice(0, NOTICES_SHOWN).map((n) => {
-                    // href is a path the server built (/book/get/{uuid}); checked all the same.
+                    // href is a path the server built (/book/get/{uuid}, an author's or series' page); checked all the same.
                     const href = /^\/(?![\/\\])/.test(n.href) ? n.href : "";
-                    const title = href ? el("a", { href, className: "tb-notice-title", textContent: n.title }) : el("span", { className: "tb-notice-title", textContent: n.title });
-                    const dismiss = el("button", { type: "button", className: "tb-notice-dismiss", title: "Dismiss", ariaLabel: `Dismiss: ${n.title}` });
+                    const [headline, note] = noticeText(n);
+                    const title = href ? el("a", { href, className: "tb-notice-title", textContent: headline }) : el("span", { className: "tb-notice-title", textContent: headline });
+                    const dismiss = el("button", { type: "button", className: "tb-notice-dismiss", title: "Dismiss", ariaLabel: `Dismiss: ${headline}` });
                     dismiss.append(icon(CROSS));
                     const item = el(
                         "li",
                         { className: n.seen ? "tb-notice" : "tb-notice is-new" },
-                        el("span", { className: "tb-notice-text" }, title, el("span", { className: "tb-notice-note", textContent: n.on_deck ? "In the library, and On deck" : "In the library, in Saved" })),
+                        el("span", { className: "tb-notice-text" }, title, el("span", { className: "tb-notice-note", textContent: note })),
                         dismiss,
                     );
                     dismiss.addEventListener("click", (e) => {

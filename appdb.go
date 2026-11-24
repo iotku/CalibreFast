@@ -767,6 +767,13 @@ var migrations = []string{
 	);
 	ALTER TABLE users ADD COLUMN favs_changed INTEGER NOT NULL DEFAULT 0;
 	`,
+	// 45: a notification's author or series (subject) and how many books
+	// it's about (count), for "new books by an author you follow"
+	// (aggregate_favorites_notify.go).
+	`
+	ALTER TABLE notifications ADD COLUMN subject TEXT    NOT NULL DEFAULT '';
+	ALTER TABLE notifications ADD COLUMN count   INTEGER NOT NULL DEFAULT 1;
+	`,
 }
 
 // openAppDB opens (creating if needed) and migrates the app database.
