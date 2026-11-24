@@ -32,23 +32,26 @@ type category struct {
 	Title     string // aggregate page title
 	Label     string // singular, for UI text: "language"
 	Table     string // entity table
-	NameCol   string // display/value column in Table
+	// NameSQL: the value as shown and matched, an expression over Table
+	// (alias t). Authors' names go through replace(): metadata.db keeps a
+	// comma as "|" (authors.go), so never compare t.name to a name directly.
+	NameSQL   string
 	LinkTable string // books_<x>_link
 	LinkCol   string // column in LinkTable referencing Table.id
 	// ShowSingles: the aggregate page lists values with a single book too
 	// (otherwise only the search box finds them).
 	ShowSingles bool
 	// SortCol: Table's column to order A–Z by ("Tolkien, J. R. R."), or ""
-	// for NameCol.
+	// for NameSQL.
 	SortCol string
 }
 
 var categories = []*category{
-	{"author", "authors", "author", "Authors", "author", "authors", "name", "books_authors_link", "author", false, "sort"},
-	{"publisher", "publishers", "publisher", "Publishers", "publisher", "publishers", "name", "books_publishers_link", "publisher", false, "sort"},
-	{"tag", "tags", "tag", "Tags", "tag", "tags", "name", "books_tags_link", "tag", false, ""},
-	{"language", "languages", "lang", "Languages", "language", "languages", "lang_code", "books_languages_link", "lang_code", true, ""},
-	{"series", "series", "series", "Series", "series", "series", "name", "books_series_link", "series", false, "sort"},
+	{"author", "authors", "author", "Authors", "author", "authors", authorNameSQLt, "books_authors_link", "author", false, "sort"},
+	{"publisher", "publishers", "publisher", "Publishers", "publisher", "publishers", "t.name", "books_publishers_link", "publisher", false, "sort"},
+	{"tag", "tags", "tag", "Tags", "tag", "tags", "t.name", "books_tags_link", "tag", false, ""},
+	{"language", "languages", "lang", "Languages", "language", "languages", "t.lang_code", "books_languages_link", "lang_code", true, ""},
+	{"series", "series", "series", "Series", "series", "series", "t.name", "books_series_link", "series", false, "sort"},
 }
 
 // sorts: the orders c's filtered pages offer (catalog_sort.go), the default
@@ -294,8 +297,8 @@ func countBooks(c *category, values []string) int {
 		SELECT COUNT(DISTINCT x.book)
 		FROM %s x
 		JOIN %s t ON t.id = x.%s
-		WHERE t.%s IN (%s)`,
-		c.LinkTable, c.Table, c.LinkCol, c.NameCol, placeholders(len(values)))
+		WHERE %s IN (%s)`,
+		c.LinkTable, c.Table, c.LinkCol, c.NameSQL, placeholders(len(values)))
 	var n int
 	if err := calibreDB.QueryRow(query, toArgs(values)...).Scan(&n); err != nil {
 		log.Printf("countBooks(%s): %v", c.Key, err)
@@ -311,12 +314,12 @@ func queryRawItems(c *category) []AggregateItem {
 		sortExpr = "COALESCE(t." + c.SortCol + ", '')"
 	}
 	query := fmt.Sprintf(`
-		SELECT t.%s, %s, COUNT(x.book) AS count
+		SELECT %s, %s, COUNT(x.book) AS count
 		FROM %s t
 		JOIN %s x ON x.%s = t.id
 		GROUP BY t.id
 		ORDER BY count DESC`,
-		c.NameCol, sortExpr, c.Table, c.LinkTable, c.LinkCol)
+		c.NameSQL, sortExpr, c.Table, c.LinkTable, c.LinkCol)
 
 	rows, err := calibreDB.Query(query)
 	if err != nil {
@@ -582,11 +585,11 @@ func filteredBooksHandler(w http.ResponseWriter, r *http.Request, c *category) {
 		FROM books b
 		JOIN %s x ON x.book = b.id
 		JOIN %s t ON t.id = x.%s
-		WHERE t.%s IN (%s)
+		WHERE %s IN (%s)
 		GROUP BY b.id
 		ORDER BY %s
 		LIMIT ? OFFSET ?`,
-		c.LinkTable, c.Table, c.LinkCol, c.NameCol, placeholders(len(members)), c.bookOrder(key))
+		c.LinkTable, c.Table, c.LinkCol, c.NameSQL, placeholders(len(members)), c.bookOrder(key))
 
 	args := append(toArgs(members), booksPerPage, offset)
 	rows, err := calibreDB.Query(query, args...)

@@ -209,7 +209,7 @@ func hcBookTitle(uuid string) (title, authors string, ok bool) {
 	if p := placeholderByUUID(uuid); p != nil {
 		return p.Meta.Title, p.authors(), true
 	}
-	err := calibreDB.QueryRow(`SELECT b.title, COALESCE((SELECT group_concat(a.name, ' & ') FROM books_authors_link l
+	err := calibreDB.QueryRow(`SELECT b.title, COALESCE((SELECT group_concat(`+authorNameSQL+`, ' & ') FROM books_authors_link l
 		JOIN authors a ON a.id = l.author WHERE l.book = b.id), '') FROM books b WHERE b.uuid = ?`, uuid).Scan(&title, &authors)
 	return title, authors, err == nil
 }

@@ -598,10 +598,10 @@ func filteredPageWithPlaceholders(c *category, members []string, phs []*placehol
 		FROM books b
 		JOIN %s x ON x.book = b.id
 		JOIN %s t ON t.id = x.%s
-		WHERE t.%s IN (%s)
+		WHERE %s IN (%s)
 		GROUP BY b.id
 		ORDER BY %s`,
-		c.LinkTable, c.Table, c.LinkCol, c.NameCol, placeholders(len(members)), c.bookOrder(key))
+		c.LinkTable, c.Table, c.LinkCol, c.NameSQL, placeholders(len(members)), c.bookOrder(key))
 	rows, err := calibreDB.Query(query, toArgs(members)...)
 	if err != nil {
 		return nil, err
