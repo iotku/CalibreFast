@@ -7573,6 +7573,21 @@ body:has(.manage-panel:not([hidden])) .select-bar {
     gap: 6px;
 }
 
+.account-favs .agg-chip {
+    align-items: center;
+    padding-right: 6px;
+}
+
+.account-favs .agg-chip a {
+    color: inherit;
+    text-decoration: none;
+}
+
+.account-favs .agg-chip a:hover,
+.account-favs .agg-chip a:focus-visible {
+    text-decoration: underline;
+}
+
 .account-favs h3 {
     margin: 0.8rem 0 0.4rem;
     font-size: 0.85rem;
