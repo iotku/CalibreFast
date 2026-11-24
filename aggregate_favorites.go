@@ -11,17 +11,21 @@ package main
 //     list (web/favorites.ts) and asks again only when /api/me's `favs`
 //     (users.favs_changed) differs from the one it kept.
 //   - Favorites weigh in Recommended for you (recommend.go) and are shown
-//     on the aggregate pages and /account.
+//     on the aggregate pages, /account and, as a carousel of cards with
+//     their pictures, above the favorite books on /me/favorites.
 //
 // Rows imported from Hardcover (origin 'hardcover', not built yet) are
 // tombstoned on removal (removed_at) so a later import doesn't add them
 // again; favoriting one again clears it.
 
 import (
+	"cmp"
 	"database/sql"
 	"net/http"
+	"slices"
 	"strings"
 	"time"
+	"unicode/utf8"
 )
 
 const maxAggFavorites = 500
@@ -98,6 +102,42 @@ func userAggFavorites(u *User) ([]aggFavorite, error) {
 		out = append(out, aggFavorite{Kind: kind, Name: v.Name, Label: v.Display, Href: c.href(v.Name), Count: v.Count})
 	}
 	return out, rows.Err()
+}
+
+// favCard is a favorite in the carousel on /me/favorites (filtered.html).
+type favCard struct {
+	aggFavorite
+	KindLabel string // "Author"
+	ImageURL  string // the entry's picture (aggregate_meta, else an author's from Hardcover), "" for none
+	Initial   string // shown in place of a picture
+}
+
+// userFavCards: u's favorites as cards, by kind (authors first), newest first.
+func userFavCards(u *User) ([]favCard, error) {
+	favs, err := userAggFavorites(u)
+	if err != nil {
+		return nil, err
+	}
+	out := make([]favCard, 0, len(favs))
+	for _, f := range favs {
+		c := categoryByKey(f.Kind)
+		label := cmp.Or(f.Label, f.Name)
+		card := favCard{aggFavorite: f, KindLabel: strings.ToUpper(c.Label[:1]) + c.Label[1:]}
+		if r, _ := utf8.DecodeRuneInString(label); r != utf8.RuneError {
+			card.Initial = strings.ToUpper(string(r))
+		}
+		if m, ok := aggregateMetaFor(f.Kind, f.Name); ok {
+			card.ImageURL = m.imageURL()
+		}
+		if card.ImageURL == "" && f.Kind == "author" {
+			card.ImageURL = hcAuthorFor(f.Name).imageURL()
+		}
+		out = append(out, card)
+	}
+	// Authors first, then by the categories' order; newest first in each.
+	kindAt := func(k string) int { return slices.IndexFunc(categories, func(c *category) bool { return c.Key == k }) }
+	slices.SortStableFunc(out, func(a, b favCard) int { return kindAt(a.Kind) - kindAt(b.Kind) })
+	return out, nil
 }
 
 // favsChanged: when u's favorites last changed (unix ms), for /api/me.

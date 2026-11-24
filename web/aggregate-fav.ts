@@ -4,8 +4,13 @@
  * the user's favorites on /account (`#account-favs`), each with its own ★.
  * The markup is the same for everyone and starts hidden; it's shown to
  * signed-in users from their favorites (favorites.ts).
+ *
+ * Also /me/favorites' carousel of favorite authors, series, … (rendered by
+ * the server, filtered.html): it drags sideways like Discover's rows, and
+ * "Show all" wraps it to show every one.
  */
 import { el, errorMessage, icon } from "./dom.js";
+import { setupDragScroll } from "./drag-scroll.js";
 import { isFavorite, keptFavorites, loadFavorites, setFavorite } from "./favorites.js";
 import type { AggFavorite } from "./types.js";
 
@@ -93,3 +98,14 @@ document.addEventListener("click", async (e) => {
         btn.disabled = false;
     }
 });
+
+const favRow = document.getElementById("fav-aggs-list");
+if (favRow?.parentElement) {
+    setupDragScroll(favRow.parentElement, ".fav-aggs-row");
+    const all = document.getElementById("fav-aggs-all");
+    all?.addEventListener("click", () => {
+        const open = favRow.classList.toggle("fav-aggs-wrap");
+        all.setAttribute("aria-expanded", String(open));
+        all.textContent = open ? "Show fewer" : "Show all";
+    });
+}

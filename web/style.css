@@ -7592,3 +7592,95 @@ body:has(.manage-panel:not([hidden])) .select-bar {
     margin: 0.8rem 0 0.4rem;
     font-size: 0.85rem;
 }
+
+/* /me/favorites: favorite authors, series, … above the books, a row that
+   scrolls sideways, or all of them wrapped ("Show all"). */
+.fav-aggs {
+    margin: var(--gap-large, 16px) 0;
+}
+
+.fav-aggs .row-btn {
+    flex-shrink: 0;
+    white-space: nowrap;
+    padding: 0 var(--gap-large); /* text only: not the narrow screens' icon circle */
+}
+
+.fav-aggs-row {
+    display: grid;
+    grid-auto-flow: column;
+    grid-auto-columns: 132px;
+    gap: 12px;
+    overflow-x: auto;
+    overscroll-behavior-x: contain;
+    scrollbar-width: thin;
+    scrollbar-color: var(--border-medium) transparent;
+    padding-bottom: 8px;
+}
+
+.fav-aggs-row.fav-aggs-wrap {
+    grid-auto-flow: row;
+    grid-template-columns: repeat(auto-fill, minmax(104px, 1fr));
+    overflow-x: visible;
+}
+
+.fav-agg {
+    display: flex;
+    flex-direction: column;
+    gap: 2px;
+    min-width: 0;
+    color: var(--text-primary);
+    text-decoration: none;
+}
+
+.fav-agg-img {
+    width: 100%;
+    max-width: 132px;
+    margin-inline: auto;
+    aspect-ratio: 1;
+    margin-bottom: 4px;
+    object-fit: cover;
+    border-radius: 50%;
+    background: var(--bg-elevated);
+    border: 1px solid var(--border-light);
+}
+
+.fav-agg-initial {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 2.6rem;
+    font-weight: 600;
+    color: var(--text-muted);
+    user-select: none;
+}
+
+.fav-agg-name,
+.fav-agg-meta {
+    overflow: hidden;
+    text-align: center;
+    white-space: nowrap;
+    text-overflow: ellipsis;
+}
+
+.fav-agg-name {
+    font-weight: 600;
+}
+
+.fav-agg-meta {
+    font-size: 0.8rem;
+    color: var(--text-muted);
+}
+
+.fav-agg:hover .fav-agg-name,
+.fav-agg:focus-visible .fav-agg-name {
+    text-decoration: underline;
+}
+
+@media (max-width: 640px) {
+    .fav-aggs-row {
+        grid-auto-columns: 104px;
+    }
+    .fav-agg-initial {
+        font-size: 2rem;
+    }
+}

@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"math/rand/v2"
 	"net/http"
+	"strings"
 	"testing"
 )
 
@@ -187,5 +188,39 @@ func favRow(t *testing.T, q string, arg any, dest any) {
 	t.Helper()
 	if err := appDB.QueryRow(q, arg).Scan(dest); err != nil {
 		t.Fatal(err)
+	}
+}
+
+// /me/favorites: the favorite authors, series, … as cards above the books,
+// authors first, with an author's picture from Hardcover where there is one.
+func TestFavoritesPageCarousel(t *testing.T) {
+	favFixture(t)
+	alice, _ := createUser("alice", "a long enough password", false)
+	mux := favMux()
+	mux.HandleFunc("GET /me/{list}", requireUser(meListHandler))
+	for _, p := range []string{"/api/me/favorites/series/Dune", "/api/me/favorites/author/Frank%20Herbert"} {
+		if rec := call(t, mux, alice, "PUT", p, ""); rec.Code != 204 {
+			t.Fatalf("PUT %s: %d", p, rec.Code)
+		}
+	}
+	img := "0123456789abcdef0123456789abcdef.jpg"
+	if _, err := appDB.Exec(`INSERT INTO hardcover_authors (name, hc_id, image, checked_at) VALUES ('Frank Herbert', 1, ?, 1)`, img); err != nil {
+		t.Fatal(err)
+	}
+	cards, err := userFavCards(alice)
+	if err != nil || len(cards) != 2 || cards[0].Name != "Frank Herbert" || cards[0].ImageURL != "/author-images/"+img ||
+		cards[1].Name != "Dune" || cards[1].ImageURL != "" || cards[1].Initial != "D" || cards[1].KindLabel != "Series" {
+		t.Fatalf("cards: %+v %v", cards, err)
+	}
+	rec := call(t, mux, alice, "GET", "/me/favorites", "")
+	body := rec.Body.String()
+	if rec.Code != 200 || !strings.Contains(body, `id="fav-aggs-list"`) || !strings.Contains(body, `src="/author-images/`+img+`"`) ||
+		strings.Index(body, `id="fav-aggs-list"`) > strings.Index(body, `id="books"`) {
+		t.Fatalf("page: %d", rec.Code)
+	}
+	// None: no carousel.
+	bob, _ := createUser("bob", "a long enough password", false)
+	if body := call(t, mux, bob, "GET", "/me/favorites", "").Body.String(); strings.Contains(body, "fav-aggs-list") {
+		t.Fatal("carousel without favorites")
 	}
 }
