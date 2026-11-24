@@ -16,7 +16,7 @@
  */
 import { el, errorMessage, icon } from "./dom.js";
 import { setupDragScroll } from "./drag-scroll.js";
-import { hardcoverUnfollow, isFavorite, keptFavorites, loadFavorites, setFavorite } from "./favorites.js";
+import { freshFavorites, hardcoverUnfollow, isFavorite, keptFavorites, loadFavorites, setFavorite } from "./favorites.js";
 import type { AggFavorite, Book } from "./types.js";
 import { bookCard, setupCoverStates } from "./utils.js";
 
@@ -128,10 +128,16 @@ document.addEventListener("click", async (e) => {
     const kind = btn.dataset["kind"] ?? "";
     const name = btn.dataset["name"] ?? "";
     let unfollow = false;
-    const hc = hardcoverUnfollow();
-    if (!on && kind === "author" && hc.can) {
-        const fav = (keptFavorites() ?? []).find((f) => f.kind === kind && f.name.toLowerCase() === name.toLowerCase());
-        if (fav?.hc_followed) {
+    if (!on && kind === "author") {
+        // Ask the server, not the kept list: the follow made on starring is
+        // sent in the background, after the list was kept.
+        btn.disabled = true;
+        const list = await freshFavorites().catch(() => keptFavorites() ?? []);
+        btn.disabled = false;
+        const hc = hardcoverUnfollow();
+        const fav = list.find((f) => f.kind === kind && f.name.toLowerCase() === name.toLowerCase());
+        // Followed there, or about to be (an unfollow then takes the place of the follow waiting).
+        if (hc.can && fav && (fav.hc_followed || hc.followStars)) {
             const answer = await confirmUnstar(fav.label || fav.name, hc.ticked);
             if (!answer) return;
             unfollow = answer.unfollow;

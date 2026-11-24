@@ -410,7 +410,10 @@ func aggFavoritesHandler(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 	writeJSON(w, http.StatusOK, map[string]any{"favs": favsChanged(u), "favorites": favs,
-		"hc_unfollow": p.CanWrite, "hc_unfollow_default": p.UnfollowDefault})
+		"hc_unfollow": p.CanWrite, "hc_unfollow_default": p.UnfollowDefault,
+		// Authors starred here are followed there, if not yet (it's sent in
+		// the background): the dialog asks for them too.
+		"hc_follow_stars": p.CanWrite && p.Share})
 }
 
 // bumpFavs: something the favorites answer shows changed besides the
