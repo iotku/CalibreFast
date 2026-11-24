@@ -148,6 +148,7 @@ func sortByCoverage(items []AggregateDisplayItem) {
 // AggregatePageData is passed to aggregate.html for server-side rendering.
 type AggregatePageData struct {
 	Title    string
+	Kind     string // the category's key, "author": favorites (web/aggregate.ts)
 	Active   string // top-bar nav item: the category's plural, e.g. "authors"
 	Label    string // "author", for the search box
 	Prefix   string // filtered page path prefix: "/author/"
@@ -205,6 +206,9 @@ type FilteredPageData struct {
 	Series                       []AuthorSeries // an author's series, shown above the books
 	Profile                      *AuthorProfile // an author's, from Hardcover (hardcover_authors.go)
 	Extra                        map[string]any // page-specific extras (e.g. shelf controls)
+	// FavKind: the category's key when the entry can be favorited (the ★
+	// after its name, web/aggregate-fav.ts); the same for everyone.
+	FavKind string
 }
 
 // SearchPageData is passed to search.html.
@@ -703,6 +707,9 @@ func filteredPageHandler(c *category) http.HandlerFunc {
 		if groups.readOnly != nil {
 			data.GroupsError = groups.readOnly.Error()
 		}
+		if inLibrary > 0 {
+			data.FavKind = c.Key
+		}
 		// A tag can be pinned to the user's home page (shelf_pins.go), and
 		// so can a series (series_pins.go).
 		if u := currentUser(r); u != nil && c.Key == "tag" && inLibrary > 0 {
@@ -760,6 +767,7 @@ func aggregatePageHandler(c *category) http.HandlerFunc {
 		}
 		data := AggregatePageData{
 			Title:    c.Title,
+			Kind:     c.Key,
 			Active:   c.Plural,
 			Label:    c.Label,
 			Prefix:   "/" + c.URLPrefix + "/",

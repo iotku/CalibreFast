@@ -652,6 +652,9 @@ func meHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	me["prefs"] = prefs
+	// When the user's favorite authors etc. last changed: the browser's
+	// kept list (web/favorites.ts) is asked for again when this differs.
+	me["favs"] = favsChanged(u)
 	// Unseen notifications: the bar's bell (notifications.go).
 	if n := unseenNotifications(u.ID); n > 0 {
 		me["notifications"] = n

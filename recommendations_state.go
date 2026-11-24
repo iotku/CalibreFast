@@ -142,7 +142,11 @@ func userRecommend(u *User, marks readingMarks) (recs []recBook, tags []string, 
 	if err != nil {
 		return nil, nil, err
 	}
-	l, tags := rankRecs(marks, hide, rand.New(rand.NewPCG(seed, 0)))
+	favs, err := userRecFavs(u) // aggregate_favorites.go
+	if err != nil {
+		return nil, nil, err
+	}
+	l, tags := rankRecs(marks, favs, hide, rand.New(rand.NewPCG(seed, 0)))
 	changed := true
 	if shown == nil {
 		recs = l.page(page)
@@ -179,12 +183,17 @@ func recNextHandler(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "query failed", http.StatusInternalServerError)
 		return
 	}
-	l, _ := rankRecs(marks, hide, rand.New(rand.NewPCG(seed, 0)))
+	favs, err := userRecFavs(u)
+	if err != nil {
+		http.Error(w, "query failed", http.StatusInternalServerError)
+		return
+	}
+	l, _ := rankRecs(marks, favs, hide, rand.New(rand.NewPCG(seed, 0)))
 	page++
 	if page >= l.pages() {
 		// Past the last page: the first again, ranked with new randomness.
 		page, seed = 0, rand.Uint64()>>1 // fits SQLite's signed integer
-		l, _ = rankRecs(marks, hide, rand.New(rand.NewPCG(seed, 0)))
+		l, _ = rankRecs(marks, favs, hide, rand.New(rand.NewPCG(seed, 0)))
 	}
 	// A blank row filled from the page: what was on screen comes last.
 	onScreen := map[string]bool{}

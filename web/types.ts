@@ -78,6 +78,18 @@ export interface MeResponse {
     reading_same?: boolean;
     /** The account's preferences (Go: userPrefs; prefs.ts). */
     prefs?: { format: "last" | "epub" | "pdf"; track_reading?: boolean; daily_pages?: number; yearly_books?: number; goal_notice?: boolean };
+    /** When the user's favorite authors etc. last changed (unix ms; favorites.ts). */
+    favs?: number;
+}
+
+/** A favorite author, series, tag, publisher or language (Go: aggFavorite). */
+export interface AggFavorite {
+    kind: string;
+    name: string;
+    /** A language's display name. */
+    label?: string;
+    href: string;
+    count: number;
 }
 
 /** A library value suggestion (Go: groupValuesHandler). */

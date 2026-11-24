@@ -242,7 +242,7 @@
 {{ end }}
 {{/* The page's name, held under the top bar while the grid scrolls
      (app-htmx.ts counts it in the header's height). */}}
-<div class="page-head"><div class="page-head-row"><h1 title="{{ .Display }}">{{ .Display }}{{ with .Sub }} <span class="page-head-sub">{{ . }}</span>{{ end }}</h1>{{ template "page-pager" (gt .TotalBooks booksPerPage) }}</div></div>
+<div class="page-head"><div class="page-head-row"><h1 title="{{ .Display }}">{{ with .FavKind }}{{ template "agg-fav" (dict "Kind" . "Name" $.Name) }} {{ end }}{{ .Display }}{{ with .Sub }} <span class="page-head-sub">{{ . }}</span>{{ end }}</h1>{{ template "page-pager" (gt .TotalBooks booksPerPage) }}</div></div>
 {{/* An author's profile may come from Hardcover after the page has loaded
      (hardcover_authors.go, web/author-profile.ts): the header is rendered
      again into #agg-header. */}}
@@ -262,6 +262,7 @@
 {{ if or .Writable .CanVerify $feat }}<script type="module" src="{{ asset "manage-panel.js" }}"></script>{{ end }}
 {{ with .Profile }}{{ if or .Lookup .Refresh }}<script type="module" src="{{ asset "author-profile.js" }}"></script>{{ end }}{{ end }}
 {{ with .Extra }}{{ if or .Shelf .TagPin .SeriesPin }}<script type="module" src="{{ asset "shelf-page.js" }}"></script>{{ end }}{{ end }}
+{{ if .FavKind }}<script type="module" src="{{ asset "aggregate-fav.js" }}"></script>{{ end }}
 {{ with .Extra }}{{ if and .Arrange (gt $.TotalBooks 1) }}<script type="module" src="{{ asset "list-edit.js" }}"></script>{{ end }}{{ end }}
 </body>
 </html>

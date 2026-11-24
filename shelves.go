@@ -408,5 +408,6 @@ func registerShelfRoutes() {
 	registerShelfSeriesRoutes()
 	registerShelfPinRoutes()
 	registerSeriesPinRoutes()
+	registerAggregateFavoriteRoutes()
 	registerListOrderRoutes()
 }

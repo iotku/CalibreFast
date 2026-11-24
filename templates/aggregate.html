@@ -14,7 +14,7 @@
 {{ template "topbar-end" $tb }}
 {{/* The page's name, held under the top bar, as on the book grids. */}}
 <div class="page-head"><div class="page-head-row"><h1>{{ .Title }}</h1></div></div>
-<main id="aggregate-page" data-src="{{ .DataURL }}" data-prefix="{{ .Prefix }}" data-tiers="{{ .Tiers }}">
+<main id="aggregate-page" data-src="{{ .DataURL }}" data-prefix="{{ .Prefix }}" data-tiers="{{ .Tiers }}" data-kind="{{ .Kind }}">
     {{/* Finds every entry, single-book ones too (web/aggregate.ts). */}}
     <div class="agg-search">
         <input id="agg-search" class="input-search" type="search" placeholder="Find a {{ .Label }}…" aria-label="Find a {{ .Label }}"
@@ -23,6 +23,14 @@
     </div>
     <div id="agg-results" class="agg-cloud" hidden aria-live="polite"></div>
     <div id="agg-browse">
+        {{/* The user's favorites of this kind, filled from their kept list
+             (web/aggregate.ts, favorites.ts): the page is the same for everyone. */}}
+        {{ if not .CompleteOnly }}
+        <section id="agg-favorites" class="agg-featured" aria-labelledby="agg-fav-h" hidden>
+            <h2 class="agg-heading" id="agg-fav-h">★ Your favorites</h2>
+            <div class="agg-chips"></div>
+        </section>
+        {{ end }}
         {{ with .Featured }}
         <section class="agg-featured" aria-label="Featured">
             <h2 class="agg-heading">Featured</h2>
