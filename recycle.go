@@ -1100,14 +1100,6 @@ func parseAge(s string) (time.Duration, error) {
 // HTTP
 // ---------------------------------------------------------------------------
 
-func registerRecycleRoutes() {
-	http.HandleFunc("GET /recycle-bin", requireEditor(recycleBinPage))
-	http.HandleFunc("GET /api/recycle-bin", requireEditor(recycleBinHandler))
-	http.HandleFunc("POST /api/recycle-bin/{batch}/restore", requireEditor(afterBulkEdits(recycleRestoreHandler)))
-	http.HandleFunc("POST /api/library/delete", requireEditor(afterBulkEdits(recycleDeleteHandler)))
-	http.HandleFunc("POST /api/library/books/{uuid}/formats/{format}/remove", requireEditor(afterBulkEdits(recycleFormatHandler)))
-}
-
 func recycleBinPage(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Cache-Control", "no-store")
 	logErr(templates.ExecuteTemplate(w, "recycle-bin.html", PageData{Title: SiteTitle}), "render recycle-bin")

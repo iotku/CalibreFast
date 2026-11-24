@@ -757,13 +757,3 @@ func featuredOrderHandler(w http.ResponseWriter, r *http.Request) {
 	refreshFeatured()
 	w.WriteHeader(http.StatusNoContent)
 }
-
-func registerShelfPinRoutes() {
-	http.HandleFunc("PUT /api/me/pins/{id}", requireUser(pinHandler))
-	http.HandleFunc("DELETE /api/me/pins/{id}", requireUser(unpinHandler))
-	http.HandleFunc("PUT /api/me/pins", requireUser(pinOrderHandler))
-	http.HandleFunc("PUT /api/me/tag-pins/{name}", requireUser(tagPinHandler))
-	http.HandleFunc("DELETE /api/me/tag-pins/{name}", requireUser(tagUnpinHandler))
-	http.HandleFunc("PUT /api/me/shelves/order", requireUser(shelfOrderHandler))
-	http.HandleFunc("PUT /api/admin/featured-shelves", requireAdminUser(featuredOrderHandler))
-}

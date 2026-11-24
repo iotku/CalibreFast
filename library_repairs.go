@@ -21,12 +21,6 @@ import (
 	"net/http"
 )
 
-func registerLibraryRepairRoutes() {
-	http.HandleFunc("GET /admin/repairs", requireWrites(libraryRepairsPage))
-	http.HandleFunc("GET /api/admin/repairs", requireWrites(libraryRepairsCheck))
-	http.HandleFunc("POST /api/admin/repairs/format-names", requireWrites(afterBulkEdits(repairFormatNamesHandler)))
-}
-
 func libraryRepairsPage(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Cache-Control", "no-store")
 	logErr(templates.ExecuteTemplate(w, "library-repairs.html", PageData{Title: SiteTitle}), "render library-repairs")

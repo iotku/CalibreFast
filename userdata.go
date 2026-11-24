@@ -575,13 +575,3 @@ func bookUserActionsHandler(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Cache-Control", "private, no-store")
 	logErr(templates.ExecuteTemplate(w, "book-user-actions", data), "render book user actions")
 }
-
-func registerUserDataRoutes() {
-	http.HandleFunc("GET /me/{list}", requireUser(meListHandler))
-	http.HandleFunc("GET /book/me/{uuid}", bookUserActionsHandler)
-	http.HandleFunc("GET /api/me/books/{uuid}", requireUser(bookStateHandler))
-	http.HandleFunc("PUT /api/me/books/{uuid}/favorite", requireUser(setFavoriteHandler))
-	http.HandleFunc("PUT /api/me/books/{uuid}/status", requireUser(setStatusHandler))
-	http.HandleFunc("PUT /api/me/books/{uuid}/not-interested", requireUser(setNotInterestedHandler))
-	http.HandleFunc("POST /api/me/recommended/next", requireUser(recNextHandler))
-}

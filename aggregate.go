@@ -935,25 +935,14 @@ func groupPutHandler(w http.ResponseWriter, r *http.Request) {
 	}), "encode group")
 }
 
-// registerCategoryRoutes wires aggregate pages, filtered pages, JSON APIs and
-// the group editor API for every category.
-func registerCategoryRoutes() {
-	for _, c := range categories {
-		c := c
-		http.HandleFunc("/"+c.Plural, aggregatePageHandler(c))
-		http.HandleFunc("/"+c.URLPrefix+"/", filteredPageHandler(c))
-		http.HandleFunc("/api/"+c.Plural, func(w http.ResponseWriter, r *http.Request) {
-			aggregateHandler(w, c)
-		})
-	}
-	http.HandleFunc("GET /api/groups", func(w http.ResponseWriter, r *http.Request) {
-		w.Header().Set("Content-Type", "application/json")
-		logErr(json.NewEncoder(w).Encode(groups.snapshot()), "encode groups")
-	})
-	http.HandleFunc("GET /api/groups/{cat}/values", groupValuesHandler)
-	http.HandleFunc("GET /api/languages/codes", languageCodesHandler)
-	http.HandleFunc("PUT /api/groups/{cat}/{value...}", requireWrites(groupPutHandler))
-	http.HandleFunc("PUT /api/aggregates/{cat}/featured/{value...}", requireWrites(featuredHandler))
-	http.HandleFunc("DELETE /api/aggregates/{cat}/featured/{value...}", requireWrites(featuredHandler))
-	http.HandleFunc("GET /"+aggregateImagesDir+"/{file}", aggregateImageHandler)
+// aggregateAPIHandler serves /api/{plural}: the category's entries as
+// JSON.
+func aggregateAPIHandler(c *category) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) { aggregateHandler(w, c) }
+}
+
+// groupsHandler serves GET /api/groups: every group, as JSON.
+func groupsHandler(w http.ResponseWriter, r *http.Request) {
+	w.Header().Set("Content-Type", "application/json")
+	logErr(json.NewEncoder(w).Encode(groups.snapshot()), "encode groups")
 }

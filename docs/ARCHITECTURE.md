@@ -24,6 +24,10 @@ A feature of the app too big for the root but tied to its data lives in a packag
 - [`internal/hardcoverauthors`](../internal/hardcoverauthors): author profiles looked up on Hardcover, run as background jobs in the series queue (see below).
 - [`pkg/textkey`](../pkg/textkey): text folded for comparing and sorting (case, accents, punctuation), and keys for matching book titles, series names and people's names.
 
+## Routes
+
+Every route is registered in `routes.go`: method, path, guard and handler, grouped by area (browsing and reading, editing, Hardcover, accounts, the server). Handlers stay with their feature. Add new routes there, with their guard; `registerRoutes` is called once from `serveLibraryHTTP`, and tests register a group on their own mux with `withMux`.
+
 ## Data sources
 
 - **`metadata.db`** (Calibre's SQLite database) is the index for listing, searching and filtering.

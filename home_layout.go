@@ -159,9 +159,3 @@ func unhideTagHandler(w http.ResponseWriter, r *http.Request) {
 	}
 	w.WriteHeader(http.StatusNoContent)
 }
-
-func registerHomeLayoutRoutes() {
-	http.HandleFunc("PUT /api/me/home-layout", requireUser(homeLayoutHandler))
-	http.HandleFunc("PUT /api/me/hidden-tags/{name}", requireUser(hideTagHandler))
-	http.HandleFunc("DELETE /api/me/hidden-tags/{name}", requireUser(unhideTagHandler))
-}

@@ -1000,30 +1000,6 @@ type importQueue struct {
 	Items    []importSummary `json:"items"`
 }
 
-func registerImportRoutes() {
-	http.HandleFunc("GET /import", requireEditor(importQueuePage))
-	http.HandleFunc("GET /api/imports", requireEditor(importQueueHandler))
-	http.HandleFunc("GET /import/edit", requireEditor(importEditPage))
-	http.HandleFunc("GET /api/imports/table", requireEditor(importTableHandler))
-	http.HandleFunc("POST /api/imports/bulk", requireEditor(importBulkHandler))
-	http.HandleFunc("GET /import/{id}", requireEditor(importReviewPage))
-	http.HandleFunc("GET /import/{id}/metadata", requireEditor(importMetadataHandler))
-	http.HandleFunc("POST /import/{id}/apply", requireEditor(importApplyHandler))
-	http.HandleFunc("POST /import/{id}/discard", requireEditor(importDiscardHandler))
-	http.HandleFunc("POST /api/imports/discard-existing", requireEditor(importDiscardExistingHandler))
-	http.HandleFunc("POST /import/{id}/accept", requireWrites(importAcceptHandler))
-	http.HandleFunc("POST /api/imports/accept-done", requireWrites(importAcceptDoneHandler))
-	http.HandleFunc("POST /import/{id}/discard-identical", requireEditor(importDiscardIdenticalHandler))
-	http.HandleFunc("/import/{id}/isbns", requireEditor(importISBNsHandler))
-	http.HandleFunc("GET /import/{id}/formats", requireEditor(importFormatsHandler))
-	http.HandleFunc("GET /import/{id}/file/{format}", requireEditor(importFileHandler))
-	http.HandleFunc("GET /import/{id}/as-epub/{format}", requireEditor(importAsEPUBHandler)) // convert_read.go
-	http.HandleFunc("GET /import/{id}/cover", requireEditor(importCoverHandler))
-	http.HandleFunc("POST /import/{id}/cover", requireEditor(importSaveCoverHandler))
-	http.HandleFunc("GET /import/{id}/cover/status", requireEditor(importCoverStatusHandler))
-	http.HandleFunc("POST /import/{id}/cover/revert", requireEditor(importRevertCoverHandler))
-}
-
 // importFromRequest is the waiting book a request names, or nil after
 // answering 404.
 func importFromRequest(w http.ResponseWriter, r *http.Request) *pendingImport {

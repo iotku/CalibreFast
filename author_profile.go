@@ -250,12 +250,6 @@ func authorImageHandler(w http.ResponseWriter, r *http.Request) {
 	serveHashedImage(w, r, hcAuthorImagesDir)
 }
 
-func registerAuthorProfileRoutes() {
-	http.HandleFunc("POST /api/authors/profile", requireUser(requireLookups(requireHardcover(authorProfileHandler(false)))))
-	http.HandleFunc("POST /api/authors/profile/refresh", requireEditor(requireLookups(requireHardcover(authorProfileHandler(true)))))
-	http.HandleFunc("GET /"+hcAuthorImagesDir+"/{file}", authorImageHandler)
-}
-
 // Shows: the profile has something to show in the header.
 func (p *AuthorProfile) Shows() bool {
 	return p != nil && (p.Years != "" || p.HardcoverURL != "" || p.FromHardcover || p.Refresh != "")

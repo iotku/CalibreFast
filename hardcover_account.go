@@ -215,16 +215,6 @@ func hardcoverShareHandler(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, http.StatusOK, map[string]bool{"share": hcSync.Shared(u.ID, uuid), "all": hcSync.LoadShare(u.ID).All})
 }
 
-func registerHardcoverSyncRoutes(mux *http.ServeMux) {
-	mux.HandleFunc("PUT /api/me/books/{uuid}/hardcover", requireUser(hardcoverShareHandler))
-	mux.HandleFunc("GET /api/me/books/{uuid}/hardcover", requireUser(hardcoverBookStatusHandler))
-	mux.HandleFunc("GET /api/me/books/{uuid}/hardcover/search", requireUser(hardcoverBookSearchHandler))
-	mux.HandleFunc("PUT /api/me/books/{uuid}/hardcover/match", requireUser(hardcoverBookMatchHandler))
-	mux.HandleFunc("DELETE /api/me/books/{uuid}/hardcover/match", requireUser(hardcoverBookMatchHandler))
-	mux.HandleFunc("POST /account/hardcover", requireUser(hardcoverAccountHandler))
-	mux.HandleFunc("GET /api/me/hardcover", requireUser(hardcoverStatusHandler))
-}
-
 // hcBookStateFor: hcSync.BookState, with what the request's user may change.
 func hcBookStateFor(r *http.Request, userID int64, uuid string) hardcoversync.BookStatus {
 	st := hcSync.BookState(userID, uuid)

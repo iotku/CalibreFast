@@ -304,11 +304,3 @@ func notificationsClearHandler(w http.ResponseWriter, r *http.Request) {
 	}
 	w.WriteHeader(http.StatusNoContent)
 }
-
-func registerNotificationRoutes() {
-	http.HandleFunc("GET /me/notifications", requireUser(notificationsPage))
-	http.HandleFunc("GET /api/me/notifications", requireUser(notificationsHandler))
-	http.HandleFunc("POST /api/me/notifications/seen", requireUser(notificationsSeenHandler))
-	http.HandleFunc("DELETE /api/me/notifications/{id}", requireUser(notificationDeleteHandler))
-	http.HandleFunc("DELETE /api/me/notifications", requireUser(notificationsClearHandler))
-}

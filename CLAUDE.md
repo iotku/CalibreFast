@@ -27,7 +27,7 @@ This is where past bugs came from (code scanning alert 23: a tag name with `"` b
 - Pages use `html/template`, which escapes by context. **Don't** convert data to `template.HTML`, `template.HTMLAttr`, `template.URL`, `template.JS` or `template.CSS` unless it has just been through a sanitizer (as with `descriptionPolicy`). Don't build HTML with `fmt.Sprintf` or `+` and write it out raw.
 - SQL: always `?` placeholders, never string concatenation of values. Identifiers (column names, sort orders) come from fixed allow-lists only.
 - File paths: a library path built from metadata must stay inside the library. Use the existing helpers and reject `..`, absolute paths and NUL bytes. Never serve a book's inner files (from inside an EPUB) from our origin as a page.
-- Every state-changing handler rejects GET (CSRF protection relies on it) and checks permissions server-side (`requireUser`, `requireEditor`, `requireWrites`, `requireAdminUser`). Hiding a button is not access control.
+- Every state-changing handler rejects GET (CSRF protection relies on it) and checks permissions server-side (`requireUser`, `requireEditor`, `requireWrites`, `requireAdminUser`). Routes and their guards are all in `routes.go`; add new ones there. Hiding a button is not access control.
 - Responses that echo data as JSON use `encoding/json`, never hand-built JSON strings.
 - Don't log secrets: passwords, session tokens, sync keys, one-time links or OAuth codes.
 

@@ -72,10 +72,6 @@ func readerLink(param, id, format, extra string) string {
 	return path + q
 }
 
-func registerConvertedReadRoutes() {
-	http.HandleFunc("GET /book/as-epub/{uuid}/{format}", requireReader(asEPUBHandler))
-}
-
 func asEPUBHandler(w http.ResponseWriter, r *http.Request) {
 	uuid := r.PathValue("uuid")
 	format := strings.ToLower(r.PathValue("format"))

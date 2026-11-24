@@ -155,10 +155,3 @@ func storeAnnotation(userID int64, uuid, id string, in annotationRec) error {
 		userID, uuid, id, in.Format, in.Anchor, in.Text, in.Note, in.Color, in.Chapter, in.Page, in.CreatedAt, in.UpdatedAt, in.Deleted)
 	return err
 }
-
-func registerAnnotationRoutes() {
-	http.HandleFunc("GET /api/me/annotations/{uuid}", requireUser(annotationsGetHandler))
-	http.HandleFunc("PUT /api/me/annotations/{uuid}/{id}", requireUser(annotationPutHandler))
-	http.HandleFunc("GET /api/me/annotations/{uuid}/koreader", requireUser(koreaderExportHandler))
-	http.HandleFunc("POST /api/me/annotations/{uuid}/koreader", requireUser(koreaderImportHandler))
-}

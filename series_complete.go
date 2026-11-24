@@ -340,8 +340,3 @@ func seriesUnverifyHandler(w http.ResponseWriter, r *http.Request) {
 	gapsSeriesChanged(members...)
 	w.WriteHeader(http.StatusNoContent)
 }
-
-func registerSeriesStatusRoutes() {
-	http.HandleFunc("POST /api/series/verified", requireEditor(seriesVerifyHandler))
-	http.HandleFunc("DELETE /api/series/verified", requireEditor(seriesUnverifyHandler))
-}

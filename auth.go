@@ -862,33 +862,6 @@ func runCreateUser(name string, admin bool) error {
 	return nil
 }
 
-// registerAuthRoutes wires sign-in, account and admin endpoints.
-func registerAuthRoutes() {
-	http.HandleFunc("/login", loginHandler)
-	http.HandleFunc("POST /register", registerHandler)
-	http.HandleFunc("POST /logout", logoutHandler)
-	http.HandleFunc("GET /api/me", meHandler)
-	http.HandleFunc("/account", requireUser(accountHandler))
-	http.HandleFunc("GET /admin/users", requireAdminUser(adminUsersPage))
-	http.HandleFunc("POST /api/admin/users", requireAdminUser(adminCreateUser))
-	http.HandleFunc("PATCH /api/admin/users/{id}", requireAdminUser(adminUpdateUser))
-	http.HandleFunc("DELETE /api/admin/users/{id}", requireAdminUser(adminDeleteUser))
-	http.HandleFunc("POST /api/admin/users/{id}/restore", requireAdminUser(adminRestoreUser))
-	http.HandleFunc("POST /account/delete", requireUser(deleteOwnAccountHandler))
-	registerOAuthRoutes()
-	registerUserDataRoutes()
-	registerProgressRoutes()
-	registerGuestImportRoutes()
-	registerAnnotationRoutes()
-	registerShelfRoutes()
-	registerDiscoverAdminRoutes()
-	registerLinkRoutes()
-	registerKosyncRoutes(http.DefaultServeMux)
-	registerPrefsRoutes()
-	registerStatsRoutes()
-	registerNotificationRoutes()
-}
-
 func withUserCtx(r *http.Request, u *User) context.Context {
 	return context.WithValue(r.Context(), userKey, u)
 }

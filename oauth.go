@@ -543,12 +543,6 @@ func fetchGoogleUser(ctx context.Context, p *oauthProvider, token string) (*oaut
 	return &oauthUser{Subject: u.Sub, Email: email, Name: u.Name}, nil
 }
 
-func registerOAuthRoutes() {
-	http.HandleFunc("GET /auth/{provider}/start", oauthStart)
-	http.HandleFunc("GET /auth/{provider}/callback", oauthCallback)
-	http.HandleFunc("POST /auth/{provider}/unlink", requireUser(oauthUnlink))
-}
-
 func identitiesFor(userID int64) []Identity {
 	rows, err := appDB.Query(`SELECT provider, subject, email, login FROM identities WHERE user_id = ? ORDER BY provider`, userID)
 	if err != nil {

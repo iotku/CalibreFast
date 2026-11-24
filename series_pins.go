@@ -284,10 +284,3 @@ func onDeckDismissHandler(w http.ResponseWriter, r *http.Request) {
 	}
 	w.WriteHeader(http.StatusNoContent)
 }
-
-func registerSeriesPinRoutes() {
-	http.HandleFunc("PUT /api/me/series-pins/{name}", requireUser(seriesPinHandler))
-	http.HandleFunc("DELETE /api/me/series-pins/{name}", requireUser(seriesUnpinHandler))
-	http.HandleFunc("PATCH /api/me/series-pins/{name}", requireUser(seriesPinPatchHandler))
-	http.HandleFunc("DELETE /api/me/on-deck/{uuid}", requireUser(onDeckDismissHandler))
-}

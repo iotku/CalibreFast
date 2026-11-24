@@ -360,10 +360,3 @@ func claimInviteForOAuth(token string) (bool, error) {
 	}
 	return link.InviteAdmin, nil
 }
-
-func registerLinkRoutes() {
-	http.HandleFunc("/l/{token}", linkHandler)
-	http.HandleFunc("GET /api/admin/links", requireAdminUser(adminListLinks))
-	http.HandleFunc("POST /api/admin/links", requireAdminUser(adminCreateLink))
-	http.HandleFunc("DELETE /api/admin/links/{id}", requireAdminUser(adminRevokeLink))
-}

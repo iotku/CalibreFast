@@ -1233,18 +1233,8 @@ func withPlaceholder(m OPFMetadata, p *placeholder) OPFMetadata {
 	return m
 }
 
-func registerPlaceholderRoutes() {
-	http.HandleFunc("GET /missing", requireEditor(missingPageHandler))
-	http.HandleFunc("GET /missing/new", requireEditor(newPlaceholderPageHandler))
-	http.HandleFunc("GET /missing/{uuid}", placeholderPageHandler)
-	http.HandleFunc("GET /"+placeholderCoversDir+"/{file}", func(w http.ResponseWriter, r *http.Request) {
-		serveHashedImage(w, r, placeholderCoversDir)
-	})
-	http.HandleFunc("POST /api/placeholders", requireEditor(placeholderCreateHandler))
-	http.HandleFunc("PUT /api/placeholders/{uuid}", requireEditor(placeholderUpdateHandler))
-	http.HandleFunc("DELETE /api/placeholders/{uuid}", requireEditor(placeholderDeleteHandler))
-	http.HandleFunc("POST /api/placeholders/{uuid}/cover", requireEditor(placeholderCoverHandler))
-	http.HandleFunc("DELETE /api/placeholders/{uuid}/cover", requireEditor(placeholderCoverHandler))
-	http.HandleFunc("POST /api/placeholders/{uuid}/files", requireEditor(placeholderFilesHandler))
-	http.HandleFunc("POST /api/placeholders/{uuid}/restore", requireEditor(placeholderRestoreHandler))
+// placeholderCoverImageHandler serves GET /placeholder-covers/{file}: a
+// placeholder's cover, kept under its hash.
+func placeholderCoverImageHandler(w http.ResponseWriter, r *http.Request) {
+	serveHashedImage(w, r, placeholderCoversDir)
 }

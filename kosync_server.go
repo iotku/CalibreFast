@@ -346,20 +346,6 @@ func kosyncWrongURLHandler(w http.ResponseWriter, r *http.Request) {
 	kosyncError(w, http.StatusUnauthorized, kosync.ErrUnauthorized, msg)
 }
 
-func registerKosyncRoutes(mux *http.ServeMux) {
-	mux.HandleFunc("GET "+kosync.Prefix+"/healthcheck", kosyncHealthHandler)
-	mux.HandleFunc("POST "+kosync.Prefix+"/users/create", kosyncRegisterHandler)
-	mux.HandleFunc("GET "+kosync.Prefix+"/users/auth", kosyncAuth(kosyncAuthorizeHandler))
-	mux.HandleFunc("PUT "+kosync.Prefix+"/syncs/progress", kosyncAuth(kosyncPutHandler))
-	mux.HandleFunc("GET "+kosync.Prefix+"/syncs/progress/{document}", kosyncAuth(kosyncGetHandler))
-	mux.HandleFunc("POST /users/create", kosyncWrongURLHandler)
-	mux.HandleFunc("GET /users/auth", kosyncWrongURLHandler)
-	mux.HandleFunc("PUT /syncs/progress", kosyncWrongURLHandler)
-	mux.HandleFunc("GET /syncs/progress/{document}", kosyncWrongURLHandler)
-	mux.HandleFunc("POST /account/sync-key", requireUser(syncKeyHandler))
-	registerHardcoverSyncRoutes(mux)
-}
-
 // ---------------------------------------------------------------------------
 // Account page: generate, replace and revoke the sync key
 // ---------------------------------------------------------------------------

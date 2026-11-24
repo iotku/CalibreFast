@@ -17,6 +17,7 @@ CalibreFast has accounts, but it's a personal project: the authentication code i
   - removed books and files go to the Recycling Bin; placeholders are only marked removed; a book discarded from the import queue is moved to `imports-discarded` beside the queue's folder; none of these can be emptied from the web;
   - an admin sees every change at **Activity** (`/admin/activity`) and can undo one, or all of one user's since a moment. An undo is skipped where someone else has changed the same thing since, and is itself logged (and undoable).
   - So a stolen editor session can be cleaned up: disable the account (which signs it out), then undo its changes since it was taken.
+- Every route and the guard that enforces this (`requireUser`, `requireReader`, `requireEditor`, `requireWrites`, `requireAdminUser`) is listed in one file, `routes.go`, so who may call what can be reviewed in one place.
 - Personal data (favorites, reading status, progress, bookmarks, highlights and notes, personal shelves, reading stats) is visible only to its owner. Reading stats (pages and time read per day, when books were started and finished; `stats.go`) can be turned off and deleted by their owner in Preferences. Global shelves are visible to everyone who can browse.
 
 ### Modes

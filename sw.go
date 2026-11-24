@@ -151,9 +151,3 @@ func manifestHandler(w http.ResponseWriter, r *http.Request) {
 		"icons":            icons,
 	}), "write manifest")
 }
-
-func registerWorkerRoutes() {
-	http.HandleFunc("GET /sw.js", serveWorker)
-	http.HandleFunc("GET /offline", offlineHandler)
-	http.HandleFunc("GET /manifest.webmanifest", manifestHandler)
-}

@@ -311,11 +311,3 @@ func serverStopHandler(w http.ResponseWriter, r *http.Request) {
 	// Shutdown waits for this request to finish, so the answer gets out.
 	requestStop("asked by admin " + u.Username)
 }
-
-func registerServerRoutes() {
-	http.HandleFunc("GET /admin/server", requireAdminUser(serverPage))
-	http.HandleFunc("GET /admin/server/live", requireAdminUser(serverLive))
-	http.HandleFunc("POST /api/admin/server/stop", requireAdminUser(serverStopHandler))
-	http.HandleFunc("POST /api/admin/server/update", requireAdminUser(serverUpdateStart)) // server_update.go
-	http.HandleFunc("GET /api/admin/server/update", requireAdminUser(serverUpdateStatus))
-}

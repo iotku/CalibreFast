@@ -423,9 +423,3 @@ func bumpFavs(userID int64) {
 		log.Println("favorites:", err)
 	}
 }
-
-func registerAggregateFavoriteRoutes() {
-	http.HandleFunc("GET /api/me/favorites", requireUser(aggFavoritesHandler))
-	http.HandleFunc("PUT /api/me/favorites/{kind}/{name}", requireUser(aggFavoriteHandler))
-	http.HandleFunc("DELETE /api/me/favorites/{kind}/{name}", requireUser(aggUnfavoriteHandler))
-}

@@ -139,8 +139,3 @@ func wantedInOrder(u *User) ([]string, error) {
 	}
 	return uuids, err
 }
-
-func registerListOrderRoutes() {
-	http.HandleFunc("PUT /api/me/lists/{list}/order", requireUser(listOrderHandler))
-	http.HandleFunc("PUT /api/shelves/{id}/order", requireUser(shelfBookOrderHandler))
-}

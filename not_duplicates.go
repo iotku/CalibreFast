@@ -23,11 +23,6 @@ type notDuplicateSet struct {
 	UUIDs []string `json:"uuids"`
 }
 
-func registerNotDuplicateRoutes() {
-	http.HandleFunc("POST /api/library/not-duplicates", requireEditor(markNotDuplicatesHandler))
-	http.HandleFunc("DELETE /api/library/not-duplicates/{id}", requireEditor(unmarkNotDuplicatesHandler))
-}
-
 // notDuplicateSets reads every set.
 func notDuplicateSets() ([]notDuplicateSet, error) {
 	out := []notDuplicateSet{}

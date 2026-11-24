@@ -399,9 +399,3 @@ func accountImportPage(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Cache-Control", "private, no-store")
 	logErr(templates.ExecuteTemplate(w, "account-import.html", PageData{Title: "Reading on this device — " + SiteTitle}), "render import page")
 }
-
-func registerGuestImportRoutes() {
-	http.HandleFunc("GET /account/import", requireUser(accountImportPage))
-	http.HandleFunc("POST /api/me/import/preview", requireUser(guestImportPreviewHandler))
-	http.HandleFunc("POST /api/me/import", requireUser(guestImportHandler))
-}

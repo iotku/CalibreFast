@@ -822,19 +822,3 @@ func hcPlaceholderMeta(e *hardcover.Entry, series string) OPFMetadata {
 	}
 	return m
 }
-
-func registerHardcoverRoutes() {
-	wrap := func(h http.HandlerFunc) http.HandlerFunc { return requireEditor(requireLookups(requireHardcover(h))) }
-	http.HandleFunc("GET /missing/hardcover", wrap(hardcoverReviewPage))
-	http.HandleFunc("GET /missing/hardcover/author", wrap(hardcoverAuthorPage))
-	http.HandleFunc("POST /api/hardcover/candidates", wrap(hardcoverJobHandler(hardcoverseries.JobCandidates)))
-	http.HandleFunc("POST /api/hardcover/link", wrap(hardcoverJobHandler(hardcoverseries.JobLink)))
-	http.HandleFunc("POST /api/hardcover/refresh", wrap(hardcoverJobHandler(hardcoverseries.JobRefresh)))
-	http.HandleFunc("DELETE /api/hardcover/link", wrap(hardcoverUnlinkHandler))
-	http.HandleFunc("POST /api/hardcover/batch", wrap(hardcoverBatchHandler))
-	http.HandleFunc("GET /api/hardcover/jobs", wrap(hardcoverJobsHandler))
-	http.HandleFunc("DELETE /api/hardcover/jobs/{id}", wrap(hardcoverCancelJobHandler))
-	http.HandleFunc("POST /api/hardcover/apply", wrap(hardcoverApplyHandler))
-	http.HandleFunc("POST /api/hardcover/undismiss", wrap(hardcoverUndismissHandler))
-	http.HandleFunc("POST /api/hardcover/notmatch", wrap(hardcoverNotMatchHandler))
-}
