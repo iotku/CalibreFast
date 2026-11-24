@@ -3425,7 +3425,7 @@ body.book-standalone {
     margin-bottom: 0.5rem;
 }
 
-/* An author's years and where their profile came from (hardcover_authors.go) */
+/* An author's years and where their profile came from (author_profile.go) */
 .agg-header-years {
     margin: 0;
     color: var(--text-secondary);

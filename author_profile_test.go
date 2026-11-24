@@ -12,55 +12,15 @@ import (
 	"net/http/httptest"
 	"os"
 	"path/filepath"
-	"slices"
 	"strings"
 	"sync/atomic"
 	"testing"
 	"time"
 
+	"github.com/iotku/CalibreFast/internal/hardcoverauthors"
 	"github.com/iotku/CalibreFast/internal/hardcoverseries"
 	"github.com/iotku/CalibreFast/pkg/hardcover"
-	"github.com/iotku/CalibreFast/pkg/textkey"
 )
-
-func TestAuthorNameVariants(t *testing.T) {
-	for name, want := range map[string][]string{
-		"J. R. R. Tolkien":   {"J. R. R. Tolkien", "J.R.R. Tolkien"},
-		"J.R.R. Tolkien":     {"J.R.R. Tolkien", "J. R. R. Tolkien"},
-		"Le Guin, Ursula K.": {"Le Guin, Ursula K.", "Ursula K. Le Guin"},
-		"Terry Pratchett":    {"Terry Pratchett"},
-	} {
-		got := hcAuthorNameVariants(name)
-		for _, w := range want {
-			if !slices.Contains(got, w) {
-				t.Errorf("%q: %q lacks %q", name, got, w)
-			}
-		}
-	}
-}
-
-func TestPickAuthor(t *testing.T) {
-	a := hardcover.Author{ID: 1, Name: "John Smith", UsersCount: 900, Titles: []string{"Famous Book"}}
-	b := hardcover.Author{ID: 2, Name: "John Smith", UsersCount: 10, Titles: []string{"The Quiet Garden: A Novel"}}
-	c := hardcover.Author{ID: 3, Name: "John Smith", UsersCount: 400, Titles: []string{"Other"}}
-	// The one whose books the library has, however little read.
-	if p := hcPickAuthor([]hardcover.Author{a, b}, map[string]bool{textkey.Title("Quiet Garden"): true}); p == nil || p.ID != 2 {
-		t.Errorf("by books: %+v", p)
-	}
-	// None of theirs here: only one far more read than the next.
-	if p := hcPickAuthor([]hardcover.Author{a, b}, nil); p == nil || p.ID != 1 {
-		t.Errorf("far more read: %+v", p)
-	}
-	if p := hcPickAuthor([]hardcover.Author{a, c}, nil); p != nil {
-		t.Errorf("ambiguous taken: %+v", p)
-	}
-	if p := hcPickAuthor([]hardcover.Author{c}, nil); p == nil || p.ID != 3 {
-		t.Errorf("only one: %+v", p)
-	}
-	if hcPickAuthor(nil, nil) != nil {
-		t.Error("none")
-	}
-}
 
 func TestSplitDescription(t *testing.T) {
 	if l, m := splitDescription("short"); l != "short" || m != "" {
@@ -226,7 +186,7 @@ func TestHardcoverAuthorProfiles(t *testing.T) {
 	if !step() {
 		t.Fatal("didn't run")
 	}
-	a := hcAuthorFor("John Smith")
+	a := hcAuthors.For("John Smith")
 	if a == nil || a.HCID != 12 || a.Slug != "john-smith-2" || a.Born != 1950 || a.Died != 0 || a.Image == "" ||
 		a.Bio != "Wrote gardens & hedges.\n\nSecond paragraph." {
 		t.Fatalf("John Smith: %+v", a)
@@ -251,7 +211,7 @@ func TestHardcoverAuthorProfiles(t *testing.T) {
 	if strings.Contains(page, "data-profile-refresh") {
 		t.Error("refresh offered to a reader")
 	}
-	if requests.Load() != 1 || hcAuthorFor("John Smith").CheckedAt != clock.now().Unix() {
+	if requests.Load() != 1 || hcAuthors.For("John Smith").CheckedAt != clock.now().Unix() {
 		t.Error("asked again")
 	}
 	// An admin's own description wins; Hardcover's picture still shows.
@@ -311,7 +271,7 @@ func TestHardcoverAuthorProfiles(t *testing.T) {
 	}
 	// Tolkien: found by search under "J.R.R. Tolkien"; a picture not on
 	// hardcover.app isn't fetched.
-	if a := hcAuthorFor("J. R. R. Tolkien"); a == nil || a.HCID != 21 || a.Image != "" || a.years() != "1892–1973" {
+	if a := hcAuthors.For("J. R. R. Tolkien"); a == nil || a.HCID != 21 || a.Image != "" || a.Years() != "1892–1973" {
 		t.Fatalf("Tolkien: %+v", a)
 	}
 
@@ -332,7 +292,7 @@ func TestHardcoverAuthorProfiles(t *testing.T) {
 	}
 	clock.set(time.Date(2026, 11, 20, 0, 0, 1, 0, time.UTC))
 	step()
-	if a := hcAuthorFor("Nobody Atall"); a == nil || a.HCID != 0 {
+	if a := hcAuthors.For("Nobody Atall"); a == nil || a.HCID != 0 {
 		t.Fatalf("after the reset: %+v (held %d)", a, jobsOf("held"))
 	}
 	// Not found is kept too.
@@ -347,7 +307,7 @@ func TestHardcoverAuthorProfiles(t *testing.T) {
 	// Editors can have it looked up again.
 	do(alice, "POST", "/api/authors/profile/refresh?name=John+Smith", http.StatusNotFound)
 	do(admin, "POST", "/api/authors/profile/refresh?name=John+Smith", http.StatusAccepted)
-	if hcAuthorFor("John Smith") != nil || jobsOf("queued") != 1 {
+	if hcAuthors.For("John Smith") != nil || jobsOf("queued") != 1 {
 		t.Error("refresh didn't forget and queue")
 	}
 	if _, err := os.Stat(filepath.Join(dataDir, hcAuthorImagesDir, a.Image)); !os.IsNotExist(err) {
@@ -356,7 +316,7 @@ func TestHardcoverAuthorProfiles(t *testing.T) {
 
 	// Author lookups aren't listed among the series requests.
 	for _, j := range hcOpenJobs("") {
-		if j.Kind == hcJobAuthor {
+		if j.Kind == hardcoverauthors.JobKind {
 			t.Errorf("author job listed: %+v", j)
 		}
 	}

@@ -16,6 +16,7 @@ import (
 	"sync"
 	"time"
 
+	"github.com/iotku/CalibreFast/internal/hardcoverauthors"
 	"github.com/iotku/CalibreFast/internal/hardcoverseries"
 	"github.com/iotku/CalibreFast/pkg/hardcover"
 	"github.com/iotku/CalibreFast/pkg/isbn"
@@ -40,7 +41,8 @@ const hcMaxParts = 60
 func configureHardcover() {
 	token := os.Getenv("CF_HARDCOVER_TOKEN")
 	hcClient = nil
-	hcLinks = newHCLinks()
+	hcAuthors = newHCAuthors()
+	hcLinks = newHCLinks(hcAuthors)
 	switch {
 	case noLookups:
 		return
@@ -354,24 +356,33 @@ var (
 	hcLinks *hardcoverseries.Service
 )
 
-// newHCLinks makes the Service on the app database; nil without it.
-func newHCLinks() *hardcoverseries.Service {
+// hcEnabledClient is the server's Hardcover client while Hardcover is
+// enabled; nil otherwise.
+func hcEnabledClient() *hardcover.Client {
+	if hardcoverEnabled() {
+		return hcClient
+	}
+	return nil
+}
+
+// newHCLinks makes the Service on the app database, with authors' lookups
+// as its background jobs; nil without the database.
+func newHCLinks(authors *hardcoverauthors.Service) *hardcoverseries.Service {
 	if appDB == nil {
 		return nil
 	}
+	var bg *hardcoverseries.Background
+	if authors != nil {
+		bg = &hardcoverseries.Background{
+			Kind: hardcoverauthors.JobKind, Spacing: hardcoverauthors.Spacing, Run: authors.Lookup,
+		}
+	}
 	return hardcoverseries.New(hardcoverseries.Config{
-		DB:   appDB,
-		Host: hcSeriesHost{},
-		Client: func() *hardcover.Client {
-			if hardcoverEnabled() {
-				return hcClient
-			}
-			return nil
-		},
-		Now: func() time.Time { return hcNow() },
-		Background: &hardcoverseries.Background{
-			Kind: hcJobAuthor, Spacing: hcAuthorSpacing, Run: hcLookupAuthor,
-		},
+		DB:         appDB,
+		Host:       hcSeriesHost{},
+		Client:     hcEnabledClient,
+		Now:        func() time.Time { return hcNow() },
+		Background: bg,
 	})
 }
 

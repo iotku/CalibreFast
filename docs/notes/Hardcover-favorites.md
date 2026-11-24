@@ -80,7 +80,7 @@ relationship, its `name` and `slug`). CalibreFast already keeps Hardcover
 ids by name:
 
 - authors: `hardcover_authors (name → hc_id, hc_slug, hc_name)`, filled when
-  an author's profile is looked up (`hardcover_authors.go`);
+  an author's profile is looked up (`internal/hardcoverauthors`);
 - series: `hardcover_series (name → hc_id, hc_slug, hc_name)`, set when a
   series is linked to Hardcover (`hcSaveLink`, `hardcover.go`).
 

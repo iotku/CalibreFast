@@ -137,7 +137,7 @@ func userFavCards(u *User) ([]favCard, error) {
 			card.ImageURL = m.imageURL()
 		}
 		if card.ImageURL == "" && f.Kind == "author" {
-			card.ImageURL = hcAuthorFor(f.Name).imageURL()
+			card.ImageURL = hcAuthorImageURL(hcAuthors.For(f.Name))
 		}
 		out = append(out, card)
 	}

@@ -540,7 +540,7 @@ var migrations = []string{
 	// '' when removed by hand), so the placeholder's page leads to it.
 	`ALTER TABLE placeholders ADD COLUMN replaced_by TEXT NOT NULL DEFAULT '';`,
 	// 32: authors looked up on Hardcover for their page's profile
-	// (hardcover_authors.go), kept for good: hc_id 0 is "not found there".
+	// (internal/hardcoverauthors), kept for good: hc_id 0 is "not found there".
 	`
 	CREATE TABLE hardcover_authors (
 		name       TEXT    PRIMARY KEY COLLATE NOCASE, -- as browsed (a group's name)

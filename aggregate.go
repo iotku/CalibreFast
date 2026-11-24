@@ -16,6 +16,7 @@ import (
 	"sync"
 	"sync/atomic"
 
+	"github.com/iotku/CalibreFast/internal/hardcoverauthors"
 	"github.com/iotku/CalibreFast/pkg/langcodes"
 )
 
@@ -204,7 +205,7 @@ type FilteredPageData struct {
 	TotalBooks                   int
 	EmptyText                    string         // shown when there are no books (default: "No books found.")
 	Series                       []AuthorSeries // an author's series, shown above the books
-	Profile                      *AuthorProfile // an author's, from Hardcover (hardcover_authors.go)
+	Profile                      *AuthorProfile // an author's, from Hardcover (author_profile.go)
 	Extra                        map[string]any // page-specific extras (e.g. shelf controls)
 	// FavKind: the category's key when the entry can be favorited (the ★
 	// after its name, web/aggregate-fav.ts); the same for everyone.
@@ -912,9 +913,9 @@ func groupPutHandler(w http.ResponseWriter, r *http.Request) {
 			http.Error(w, err.Error(), http.StatusBadRequest)
 			return
 		}
-		hc := hcAuthorFor(newName)
-		if !hc.found() {
-			hc = &hcAuthor{}
+		hc := hcAuthors.For(newName)
+		if !hc.Found() {
+			hc = &hardcoverauthors.Author{}
 		}
 		if y.Born == hc.Born && y.Died == hc.Died {
 			y = &metaYears{} // Hardcover's, kept up to date with it

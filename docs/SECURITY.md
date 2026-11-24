@@ -113,7 +113,7 @@ With `CF_HARDCOVER_TOKEN` set, editors can link a series to Hardcover and review
 
 ### Hardcover author profiles
 
-With `CF_HARDCOVER_TOKEN` set, the first time a signed-in user opens an author's page, the server looks the author up on Hardcover once (`hardcover_authors.go`) and keeps the answer. This tells Hardcover the names of authors in your library. Only the author's name (or their group's member names) is sent, and only for authors with books in the library, through the same queue and limits as series, after editors' requests and never past 80% of the day's limit. The picture is fetched from `https://…hardcover.app` only, without the token, re-encoded as JPEG and served from our origin. The bio is reduced to plain text and escaped by `html/template`. `-no-hardcover` turns it off too.
+With `CF_HARDCOVER_TOKEN` set, the first time a signed-in user opens an author's page, the server looks the author up on Hardcover once (`internal/hardcoverauthors`) and keeps the answer. This tells Hardcover the names of authors in your library. Only the author's name (or their group's member names) is sent, and only for authors with books in the library, through the same queue and limits as series, after editors' requests and never past 80% of the day's limit. The picture is fetched from `https://…hardcover.app` only, without the token, re-encoded as JPEG and served from our origin. The bio is reduced to plain text and escaped by `html/template`. `-no-hardcover` turns it off too.
 
 ### Hardcover reading sync
 

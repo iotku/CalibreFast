@@ -1,5 +1,5 @@
 // An author's page (templates/filtered.html): the first time it's opened,
-// ask the server to look the author up on Hardcover (hardcover_authors.go).
+// ask the server to look the author up on Hardcover (author_profile.go).
 // The server answers the top of the page rendered again once Hardcover has
 // (200), or nothing while the lookup waits in its queue (202): it is kept
 // either way, and shows the next time the page is opened. Editors can have

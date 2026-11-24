@@ -21,6 +21,7 @@ A feature of the app too big for the root but tied to its data lives in a packag
 - [`pkg/filehash`](../pkg/filehash): cached SHA-256 of files.
 - [`internal/hardcoverseries`](../internal/hardcoverseries): series linked to Hardcover, their reviews, and the queue of the server's requests to Hardcover (see below).
 - [`internal/hardcoversync`](../internal/hardcoversync): reading sync to users' own Hardcover accounts, linking them, and their followed authors (see below).
+- [`internal/hardcoverauthors`](../internal/hardcoverauthors): author profiles looked up on Hardcover, run as background jobs in the series queue (see below).
 - [`pkg/textkey`](../pkg/textkey): text folded for comparing and sorting (case, accents, punctuation), and keys for matching book titles, series names and people's names.
 
 ## Data sources
@@ -257,11 +258,11 @@ Both are behind `requireWrites` and only add options to the metadata editor (`we
 
 ### Author profiles from Hardcover
 
-`hardcover_authors.go`; client in `pkg/hardcover/authors.go`. The top of an author's page (`agg-header` in `templates/author-profile.html`) shows Hardcover's picture, bio and years where the entry has no description or picture of its own (`aggregate_meta` wins, field by field), with a link to their Hardcover page.
+`internal/hardcoverauthors` (the lookup and its table), page in `author_profile.go`; client in `pkg/hardcover/authors.go`. The top of an author's page (`agg-header` in `templates/author-profile.html`) shows Hardcover's picture, bio and years where the entry has no description or picture of its own (`aggregate_meta` wins, field by field), with a link to their Hardcover page.
 
 - **On demand, kept for good:** the page carries `data-profile-lookup` when a signed-in user opens it and the author was never looked up. `web/author-profile.ts` POSTs `/api/authors/profile?name=`, which queues an `author` job (only for authors with books here), waits up to `hcAwaitTime`, and answers the header rendered again (200) or 202 while it waits; then it shows on the next visit. What Hardcover answers, found (`hc_id` > 0) or not (0), stays in `hardcover_authors` and is never asked again; a failed lookup (`hc_id` -1) may be retried after a day. Editors get **Look up again** (`/api/authors/profile/refresh`). Pictures are fetched once (only `https` on `hardcover.app`, raster only, without the token), re-encoded as JPEG into `<datadir>/author-images` and served from there.
-- **Matching:** `AuthorsByName` with the name's spellings (`hcAuthorNameVariants`: "Last, First", initials with and without spaces), one request; if none, `SearchAuthors` keeping hits whose name or alternate name is the same (`textkey.Name`) and `AuthorsByID`, two more. Of several, the one with most of the library's titles among their 40 most read books, else one only if far more read than the next (`hcPickAuthor`). Bios are made plain text (tags and footnote marks dropped) and shown escaped, the first part with the rest behind **More**.
-- **Budget:** author jobs share the Hardcover queue but run after every editor request, at most one every `hcAuthorSpacing` (20 s), so a backlog trickles out. They leave the last `hcAuthorReserve` (20%) of the day's limit to editors: past that, author jobs alone are held until the limit resets (`hcAuthorHeld`), then go out one at a time again. They aren't listed among the series requests.
+- **Matching:** `AuthorsByName` with the name's spellings (`nameVariants`: "Last, First", initials with and without spaces), one request; if none, `SearchAuthors` keeping hits whose name or alternate name is the same (`textkey.Name`) and `AuthorsByID`, two more. Of several, the one with most of the library's titles among their 40 most read books, else one only if far more read than the next (`pickAuthor`). Bios are made plain text (tags and footnote marks dropped) and shown escaped, the first part with the rest behind **More**.
+- **Budget:** author jobs share the Hardcover queue but run after every editor request, at most one every `hardcoverauthors.Spacing` (20 s), so a backlog trickles out. They leave the last `hardcoverauthors.Reserve` (20%) of the day's limit to editors: past that, author jobs alone are held until the limit resets (`hardcoverauthors.Held`), then go out one at a time again. They aren't listed among the series requests.
 
 ### Reading sync to users' Hardcover accounts
 
