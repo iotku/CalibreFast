@@ -3,7 +3,11 @@
 Phase 0 of syncing CalibreFast's favorite authors and series
 (`aggregate_favorites.go`) with Hardcover's **Follow** feature: what
 Hardcover's API offers. **Built since:** importing followed authors
-(`hardcover_follows.go`); sending stars to Hardcover is next.
+(`hardcover_follows.go`), and following starred authors there, with
+unfollowing when the user asks as they take a star off
+(`hardcover_follow_push.go`). Unlike the plan below, an unfollow isn't
+limited to follows CalibreFast made: the user is asked each time (the box
+starts ticked unless they chose otherwise), and it applies to any follow.
 
 Sources are the files of Hardcover's API documentation repository,
 [hardcoverapp/hardcover-docs](https://github.com/hardcoverapp/hardcover-docs),

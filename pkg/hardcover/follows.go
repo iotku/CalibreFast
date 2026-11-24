@@ -8,6 +8,8 @@ package hardcover
 
 import (
 	"context"
+	"errors"
+	"fmt"
 	"strings"
 )
 
@@ -72,4 +74,76 @@ func (c *Client) FollowedAuthors(ctx context.Context, user int64) ([]FollowedAut
 			return out, nil
 		}
 	}
+}
+
+var (
+	qIsFollowing = query{`query IsFollowing($user: bigint!, $author: bigint!) {
+  follows(where: {user_id: {_eq: $user}, followable_type: {_eq: "Author"}, followable_id: {_eq: $author}}, limit: 1) { id }
+}`, 1}
+
+	qFollowAuthor = query{`mutation FollowAuthor($author: Int!) {
+  insert_follow(followable_id: $author, followable_type: "Author") { id error }
+}`, 1}
+
+	qUnfollowAuthor = query{`mutation UnfollowAuthor($author: Int!) {
+  delete_follow(followable_id: $author, followable_type: "Author") { success error }
+}`, 1}
+)
+
+func init() {
+	for name, q := range map[string]query{
+		"FollowedAuthors": qFollowedAuthors, "IsFollowing": qIsFollowing,
+		"FollowAuthor": qFollowAuthor, "UnfollowAuthor": qUnfollowAuthor,
+	} {
+		allQueries[name] = q
+	}
+}
+
+// IsFollowing answers user's follow of author's id, or 0 when they don't
+// follow them.
+func (c *Client) IsFollowing(ctx context.Context, user, author int64) (int64, error) {
+	var data struct {
+		Follows []struct {
+			ID flexInt `json:"id"`
+		} `json:"follows"`
+	}
+	if err := c.post(ctx, qIsFollowing, map[string]any{"user": user, "author": author}, &data); err != nil {
+		return 0, err
+	}
+	if len(data.Follows) == 0 {
+		return 0, nil
+	}
+	return int64(data.Follows[0].ID), nil
+}
+
+// FollowAuthor follows the author with this id as the token's user, and
+// answers the follow's id.
+func (c *Client) FollowAuthor(ctx context.Context, author int64) (int64, error) {
+	var data struct {
+		R mutationResult `json:"insert_follow"`
+	}
+	if err := c.post(ctx, qFollowAuthor, map[string]any{"author": author}, &data); err != nil {
+		return 0, err
+	}
+	return data.R.check("follow the author")
+}
+
+// UnfollowAuthor stops the token's user following the author with this id.
+func (c *Client) UnfollowAuthor(ctx context.Context, author int64) error {
+	var data struct {
+		R struct {
+			Success bool    `json:"success"`
+			Error   *string `json:"error"`
+		} `json:"delete_follow"`
+	}
+	if err := c.post(ctx, qUnfollowAuthor, map[string]any{"author": author}, &data); err != nil {
+		return err
+	}
+	if data.R.Error != nil && *data.R.Error != "" {
+		return fmt.Errorf("Hardcover couldn't unfollow the author: %s", clip(*data.R.Error))
+	}
+	if !data.R.Success {
+		return errors.New("Hardcover didn't unfollow the author")
+	}
+	return nil
 }

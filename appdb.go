@@ -793,6 +793,25 @@ var migrations = []string{
 	);
 	ALTER TABLE aggregate_favorites ADD COLUMN hc_id INTEGER;
 	`,
+	// 47: sending starred authors to Hardcover as follows, and unfollowing
+	// when the user asks as they take a star off (hardcover_follow_push.go):
+	// whether to follow (share_follows, off until turned on), whether the
+	// unstar dialog's "Also unfollow on Hardcover" starts ticked
+	// (unfollow_default), and what waits to be sent, one row per author.
+	`
+	ALTER TABLE hardcover_links ADD COLUMN share_follows    INTEGER NOT NULL DEFAULT 0;
+	ALTER TABLE hardcover_links ADD COLUMN unfollow_default INTEGER NOT NULL DEFAULT 1;
+	CREATE TABLE hardcover_follow_queue (
+		user_id  INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+		name     TEXT    NOT NULL COLLATE NOCASE, -- the starred author, as browsed
+		op       TEXT    NOT NULL CHECK (op IN ('follow', 'unfollow')),
+		hc_id    INTEGER NOT NULL DEFAULT 0,      -- Hardcover's author id, when known
+		due_at   INTEGER NOT NULL,                -- unix seconds; 0: set aside (error says why)
+		attempts INTEGER NOT NULL DEFAULT 0,
+		error    TEXT    NOT NULL DEFAULT '',
+		PRIMARY KEY (user_id, name)
+	);
+	`,
 }
 
 // openAppDB opens (creating if needed) and migrates the app database.

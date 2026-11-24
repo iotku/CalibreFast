@@ -543,6 +543,14 @@ func startHardcoverSync() {
 		}()
 		for {
 			ran, next := hcSyncStep(ctx)
+			if !ran && ctx.Err() == nil {
+				// Then follows (hardcover_follow_push.go), when no book is due.
+				var nextFollow time.Time
+				ran, nextFollow = hcFollowStep(ctx)
+				if next.IsZero() || (!nextFollow.IsZero() && nextFollow.Before(next)) {
+					next = nextFollow
+				}
+			}
 			if ctx.Err() != nil {
 				return
 			}
