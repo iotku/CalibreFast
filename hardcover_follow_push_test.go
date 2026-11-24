@@ -119,6 +119,7 @@ func TestHardcoverFollowPush(t *testing.T) {
 		Favorites []aggFavorite `json:"favorites"`
 		Unfollow  bool          `json:"hc_unfollow"`
 		Default   bool          `json:"hc_unfollow_default"`
+		Stars     bool          `json:"hc_follow_stars"`
 	}
 	if err := json.Unmarshal(call(t, mux, u, "GET", "/api/me/favorites", "").Body.Bytes(), &ans); err != nil {
 		t.Fatal(err)
@@ -127,7 +128,7 @@ func TestHardcoverFollowPush(t *testing.T) {
 	for _, fv := range ans.Favorites {
 		followed[fv.Name] = fv.HCFollowed
 	}
-	if !ans.Unfollow || !ans.Default || !followed["Frank Herbert"] || !followed["Ursula K. Le Guin"] || !followed["Imported Author"] || followed["Common Name"] {
+	if !ans.Unfollow || !ans.Default || !ans.Stars || !followed["Frank Herbert"] || !followed["Ursula K. Le Guin"] || !followed["Imported Author"] || followed["Common Name"] {
 		t.Fatalf("flags: %+v", ans)
 	}
 
@@ -179,6 +180,10 @@ func TestHardcoverFollowPush(t *testing.T) {
 	}
 	if p := hcLoadFollowPrefs(u.ID); p.Share || p.UnfollowDefault || !p.CanWrite {
 		t.Fatalf("prefs: %+v", p)
+	}
+	ans.Stars = true
+	if err := json.Unmarshal(call(t, mux, u, "GET", "/api/me/favorites", "").Body.Bytes(), &ans); err != nil || ans.Stars || ans.Default {
+		t.Fatalf("flags with following off: %+v %v", ans, err)
 	}
 	// Unlinking drops what waits.
 	if _, err := hcUnlinkAccount(u.ID); err != nil {

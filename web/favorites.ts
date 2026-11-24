@@ -16,13 +16,24 @@ interface Kept {
     /** The user's Hardcover link can unfollow, and the unstar dialog's box starts ticked. */
     hcUnfollow?: boolean;
     hcUnfollowDefault?: boolean;
+    /** Authors starred here are followed on Hardcover (perhaps not yet: it's sent in the background). */
+    hcFollowStars?: boolean;
 }
 
 /** The unstar dialog's Hardcover choice, for the user last seen (null: not offered). */
-export function hardcoverUnfollow(): { can: boolean; ticked: boolean } {
+export function hardcoverUnfollow(): { can: boolean; ticked: boolean; followStars: boolean } {
     const owner = lastKnownUser();
     const k = owner === null ? null : read(owner);
-    return { can: !!k?.hcUnfollow, ticked: k?.hcUnfollowDefault ?? true };
+    return { can: !!k?.hcUnfollow, ticked: k?.hcUnfollowDefault ?? true, followStars: !!k?.hcFollowStars };
+}
+
+/**
+ * The list as the server has it now, kept. Before taking a star off an
+ * author: a follow sent to Hardcover since the list was kept (in the
+ * background, after starring) isn't in the kept one yet.
+ */
+export async function freshFavorites(): Promise<AggFavorite[]> {
+    return refresh(owner ?? lastKnownUser() ?? "");
 }
 
 const NAME = "favorites";
@@ -64,8 +75,17 @@ export async function loadFavorites(): Promise<AggFavorite[] | null> {
 }
 
 async function refresh(who: string): Promise<AggFavorite[]> {
-    const got = await api<{ favs: number; favorites: AggFavorite[]; hc_unfollow?: boolean; hc_unfollow_default?: boolean }>("GET", "/api/me/favorites");
-    write(who, { favs: got.favs, list: got.favorites, hcUnfollow: !!got.hc_unfollow, hcUnfollowDefault: got.hc_unfollow_default ?? true });
+    const got = await api<{ favs: number; favorites: AggFavorite[]; hc_unfollow?: boolean; hc_unfollow_default?: boolean; hc_follow_stars?: boolean }>(
+        "GET",
+        "/api/me/favorites",
+    );
+    write(who, {
+        favs: got.favs,
+        list: got.favorites,
+        hcUnfollow: !!got.hc_unfollow,
+        hcUnfollowDefault: got.hc_unfollow_default ?? true,
+        hcFollowStars: !!got.hc_follow_stars,
+    });
     document.dispatchEvent(new CustomEvent("cf:favorites"));
     return got.favorites;
 }
