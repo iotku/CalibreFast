@@ -12,8 +12,8 @@ package main
 //     (users.favs_changed) differs from the one it kept.
 //   - Favorites weigh in Recommended for you (recommend.go) and are shown
 //     on the aggregate pages, /account and /me/favorites: authors and
-//     series as a carousel of cards with their pictures above the favorite
-//     books, other kinds as chips under it.
+//     series each a carousel of cards with their pictures above the
+//     favorite books, other kinds as chips under them.
 //
 // Rows imported from Hardcover (origin 'hardcover', not built yet) are
 // tombstoned on removal (removed_at) so a later import doesn't add them
@@ -139,6 +139,62 @@ func userFavCards(u *User) ([]favCard, error) {
 	kindAt := func(k string) int { return slices.IndexFunc(categories, func(c *category) bool { return c.Key == k }) }
 	slices.SortStableFunc(out, func(a, b favCard) int { return kindAt(a.Kind) - kindAt(b.Kind) })
 	return out, nil
+}
+
+// favRow is a carousel of favorite cards on /me/favorites: authors, or series.
+type favRow struct {
+	ID    string // "author": the row's element ids
+	Title string // "Authors"
+	Cards []favCard
+}
+
+// addFavSections puts u's favorites for /me/favorites in extra:
+// FavRows (a carousel each for authors and series, those with any),
+// FavChips (the other kinds) under the heading FavChipsTitle ("Tags &
+// publishers"), and FavBooks when there's any of them, for a heading
+// over the books.
+func addFavSections(u *User, extra map[string]any) error {
+	cards, err := userFavCards(u)
+	if err != nil {
+		return err
+	}
+	var rows []favRow
+	var chips []favCard
+	var chipKinds []string
+	for _, key := range []string{"author", "series"} {
+		row := favRow{ID: key, Title: categoryByKey(key).Title}
+		for _, c := range cards {
+			if c.Kind == key {
+				row.Cards = append(row.Cards, c)
+			}
+		}
+		if len(row.Cards) > 0 {
+			rows = append(rows, row)
+		}
+	}
+	for _, c := range cards {
+		if c.Kind == "author" || c.Kind == "series" {
+			continue
+		}
+		chips = append(chips, c)
+		if t := categoryByKey(c.Kind).Title; !slices.Contains(chipKinds, t) {
+			chipKinds = append(chipKinds, t)
+		}
+	}
+	extra["FavRows"], extra["FavChips"] = rows, chips
+	// "Tags", "Tags & publishers", "Tags, publishers & languages"
+	for i := 1; i < len(chipKinds); i++ {
+		chipKinds[i] = strings.ToLower(chipKinds[i])
+	}
+	switch n := len(chipKinds); n {
+	case 0:
+	case 1:
+		extra["FavChipsTitle"] = chipKinds[0]
+	default:
+		extra["FavChipsTitle"] = strings.Join(chipKinds[:n-1], ", ") + " & " + chipKinds[n-1]
+	}
+	extra["FavBooks"] = len(cards) > 0
+	return nil
 }
 
 // favsChanged: when u's favorites last changed (unix ms), for /api/me.

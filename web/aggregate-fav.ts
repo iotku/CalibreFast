@@ -5,9 +5,9 @@
  * The markup is the same for everyone and starts hidden; it's shown to
  * signed-in users from their favorites (favorites.ts).
  *
- * Also /me/favorites' carousel of favorite authors, series, … (rendered by
- * the server, filtered.html): it drags sideways like Discover's rows, and
- * "Show all" wraps it to show every one.
+ * Also /me/favorites' carousels of favorite authors and of series
+ * (rendered by the server, filtered.html): they drag sideways like
+ * Discover's rows, and each one's "Show all" wraps it to show every card.
  */
 import { el, errorMessage, icon } from "./dom.js";
 import { setupDragScroll } from "./drag-scroll.js";
@@ -99,13 +99,19 @@ document.addEventListener("click", async (e) => {
     }
 });
 
-const favRow = document.getElementById("fav-aggs-list");
-if (favRow?.parentElement) {
-    setupDragScroll(favRow.parentElement, ".fav-aggs-row");
-    const all = document.getElementById("fav-aggs-all");
-    all?.addEventListener("click", () => {
-        const open = favRow.classList.toggle("fav-aggs-wrap");
+if (document.querySelector(".fav-aggs-row")) setupDragScroll(document.body, ".fav-aggs-row");
+for (const all of document.querySelectorAll<HTMLButtonElement>(".fav-aggs-all")) {
+    const row = document.getElementById(all.getAttribute("aria-controls") ?? "");
+    if (!row) continue;
+    // Only offered while the row doesn't show every card already.
+    const fits = (): void => {
+        all.hidden = !row.classList.contains("fav-aggs-wrap") && row.scrollWidth <= row.clientWidth;
+    };
+    all.addEventListener("click", () => {
+        const open = row.classList.toggle("fav-aggs-wrap");
         all.setAttribute("aria-expanded", String(open));
         all.textContent = open ? "Show fewer" : "Show all";
+        fits();
     });
+    new ResizeObserver(fits).observe(row);
 }

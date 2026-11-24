@@ -97,7 +97,7 @@ func TestAggregateFavorites(t *testing.T) {
 		t.Fatalf("stamp didn't change on delete: %d -> %d", s1, s2)
 	}
 	var n int
-	favRow(t, `SELECT COUNT(*) FROM aggregate_favorites WHERE user_id = ? AND kind = 'author'`, alice.ID, &n)
+	favScan(t, `SELECT COUNT(*) FROM aggregate_favorites WHERE user_id = ? AND kind = 'author'`, alice.ID, &n)
 	if n != 0 {
 		t.Fatalf("a local favorite is deleted, not kept: %d rows", n)
 	}
@@ -109,7 +109,7 @@ func TestAggregateFavorites(t *testing.T) {
 	}
 	do(alice, "DELETE", "/api/me/favorites/author/Someone%20Else", 204)
 	var removed *int64
-	favRow(t, `SELECT removed_at FROM aggregate_favorites WHERE user_id = ? AND name = 'Someone Else'`, alice.ID, &removed)
+	favScan(t, `SELECT removed_at FROM aggregate_favorites WHERE user_id = ? AND name = 'Someone Else'`, alice.ID, &removed)
 	if removed == nil || len(list(alice)) != 1 {
 		t.Fatal("imported row not tombstoned")
 	}
@@ -122,7 +122,7 @@ func TestAggregateFavorites(t *testing.T) {
 	if _, err := appDB.Exec(`DELETE FROM users WHERE id = ?`, alice.ID); err != nil {
 		t.Fatal(err)
 	}
-	favRow(t, `SELECT COUNT(*) FROM aggregate_favorites WHERE user_id = ?`, alice.ID, &n)
+	favScan(t, `SELECT COUNT(*) FROM aggregate_favorites WHERE user_id = ?`, alice.ID, &n)
 	if n != 0 {
 		t.Fatalf("%d rows left after the user", n)
 	}
@@ -183,8 +183,8 @@ func TestRecommendFavorites(t *testing.T) {
 	}
 }
 
-// favRow scans one row of the app database into dest.
-func favRow(t *testing.T, q string, arg any, dest any) {
+// favScan scans one row of the app database into dest.
+func favScan(t *testing.T, q string, arg any, dest any) {
 	t.Helper()
 	if err := appDB.QueryRow(q, arg).Scan(dest); err != nil {
 		t.Fatal(err)
@@ -214,22 +214,31 @@ func TestFavoritesPageCarousel(t *testing.T) {
 	}
 	rec := call(t, mux, alice, "GET", "/me/favorites", "")
 	body := rec.Body.String()
-	if rec.Code != 200 || !strings.Contains(body, `id="fav-aggs-list"`) || strings.Contains(body, `class="fav-chips"`) || !strings.Contains(body, `src="/author-images/`+img+`"`) ||
-		strings.Index(body, `id="fav-aggs-list"`) > strings.Index(body, `id="books"`) {
+	// Authors, then series, each its own carousel, then the books' heading.
+	at := func(sub string) int {
+		t.Helper()
+		i := strings.Index(body, sub)
+		if i < 0 {
+			t.Fatalf("no %s on the page", sub)
+		}
+		return i
+	}
+	if rec.Code != 200 || strings.Contains(body, `class="fav-chips"`) || !strings.Contains(body, `src="/author-images/`+img+`"`) ||
+		!(at(`id="fav-author-list"`) < at(`id="fav-series-list"`) && at(`id="fav-series-list"`) < at(`<h2>Books</h2>`) && at(`<h2>Books</h2>`) < at(`id="books"`)) {
 		t.Fatalf("page: %d", rec.Code)
 	}
-	// A tag: a chip, not a card.
+	// A tag: a chip under its heading, between the carousels and the books.
 	if rec := call(t, mux, alice, "PUT", "/api/me/favorites/tag/Fiction", ""); rec.Code != 204 {
 		t.Fatalf("PUT tag: %d", rec.Code)
 	}
 	body = call(t, mux, alice, "GET", "/me/favorites", "").Body.String()
-	list := body[strings.Index(body, `id="fav-aggs-list"`):strings.Index(body, `class="fav-chips"`)]
-	if strings.Contains(list, "Fiction") || !strings.Contains(body, `<a class="agg-chip" href="/tag/Fiction" title="Tag">Fiction`) {
-		t.Fatal("tag not a chip under the carousel")
+	if strings.Contains(body[:at(`class="fav-chips"`)], ">Fiction") || !strings.Contains(body, `<a class="agg-chip" href="/tag/Fiction" title="Tag">Fiction`) ||
+		!(at(`id="fav-series-list"`) < at(`id="fav-chips-h">Tags</h2>`) && at(`id="fav-chips-h">Tags</h2>`) < at(`<h2>Books</h2>`)) {
+		t.Fatal("tag not a chip between the carousels and the books")
 	}
 	// None: no carousel.
 	bob, _ := createUser("bob", "a long enough password", false)
-	if body := call(t, mux, bob, "GET", "/me/favorites", "").Body.String(); strings.Contains(body, "fav-aggs-list") {
-		t.Fatal("carousel without favorites")
+	if body := call(t, mux, bob, "GET", "/me/favorites", "").Body.String(); strings.Contains(body, "fav-aggs") || strings.Contains(body, "<h2>Books</h2>") {
+		t.Fatal("carousel or books heading without favorites")
 	}
 }

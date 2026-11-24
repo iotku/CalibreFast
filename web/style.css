@@ -7603,6 +7603,10 @@ body:has(.manage-panel:not([hidden])) .select-bar {
     margin: 0 0 var(--gap-large, 16px);
 }
 
+.fav-books-head {
+    margin-top: var(--gap-large, 16px);
+}
+
 .fav-chips .agg-chip {
     padding: 4px 10px;
     font-size: 0.85rem;
