@@ -11,17 +11,24 @@ package main
 //     list (web/favorites.ts) and asks again only when /api/me's `favs`
 //     (users.favs_changed) differs from the one it kept.
 //   - Favorites weigh in Recommended for you (recommend.go) and are shown
-//     on the aggregate pages and /account.
+//     on the aggregate pages, /account and /me/favorites: authors (with
+//     their pictures) and series (as a shelf shows a series: the first
+//     book's cover under a "Series · N books" banner) each a carousel
+//     above the favorite books, other kinds as chips under them.
 //
 // Rows imported from Hardcover (origin 'hardcover', not built yet) are
 // tombstoned on removal (removed_at) so a later import doesn't add them
 // again; favoriting one again clears it.
 
 import (
+	"cmp"
 	"database/sql"
+	"encoding/json"
 	"net/http"
+	"slices"
 	"strings"
 	"time"
+	"unicode/utf8"
 )
 
 const maxAggFavorites = 500
@@ -98,6 +105,115 @@ func userAggFavorites(u *User) ([]aggFavorite, error) {
 		out = append(out, aggFavorite{Kind: kind, Name: v.Name, Label: v.Display, Href: c.href(v.Name), Count: v.Count})
 	}
 	return out, rows.Err()
+}
+
+// favCard is a favorite in the carousel on /me/favorites (filtered.html).
+type favCard struct {
+	aggFavorite
+	KindLabel string // "Author"
+	ImageURL  string // the entry's picture (aggregate_meta, else an author's from Hardcover), "" for none
+	Initial   string // shown in place of a picture
+}
+
+// userFavCards: u's favorites as cards, by kind (authors first), newest first.
+func userFavCards(u *User) ([]favCard, error) {
+	favs, err := userAggFavorites(u)
+	if err != nil {
+		return nil, err
+	}
+	out := make([]favCard, 0, len(favs))
+	for _, f := range favs {
+		c := categoryByKey(f.Kind)
+		label := cmp.Or(f.Label, f.Name)
+		card := favCard{aggFavorite: f, KindLabel: strings.ToUpper(c.Label[:1]) + c.Label[1:]}
+		if r, _ := utf8.DecodeRuneInString(label); r != utf8.RuneError {
+			card.Initial = strings.ToUpper(string(r))
+		}
+		if m, ok := aggregateMetaFor(f.Kind, f.Name); ok {
+			card.ImageURL = m.imageURL()
+		}
+		if card.ImageURL == "" && f.Kind == "author" {
+			card.ImageURL = hcAuthorFor(f.Name).imageURL()
+		}
+		out = append(out, card)
+	}
+	// Authors first, then by the categories' order; newest first in each.
+	kindAt := func(k string) int { return slices.IndexFunc(categories, func(c *category) bool { return c.Key == k }) }
+	slices.SortStableFunc(out, func(a, b favCard) int { return kindAt(a.Kind) - kindAt(b.Kind) })
+	return out, nil
+}
+
+// favRow is a carousel of favorite cards on /me/favorites: authors, or series.
+type favRow struct {
+	ID    string // "author": the row's element ids
+	Title string // "Authors"
+	Cards []favCard
+	// Books: series rows only, the series' grid entries (seriesEntry, as a
+	// shelf has them) as JSON, which the page draws as the grid draws a
+	// shelf's series (bookCard in web/utils.ts) in place of Cards.
+	Books string
+}
+
+// addFavSections puts u's favorites for /me/favorites in extra:
+// FavRows (a carousel each for authors and series, those with any),
+// FavChips (the other kinds) under the heading FavChipsTitle ("Tags &
+// publishers"), and FavBooks when there's any of them, for a heading
+// over the books.
+func addFavSections(u *User, extra map[string]any) error {
+	cards, err := userFavCards(u)
+	if err != nil {
+		return err
+	}
+	var rows []favRow
+	var chips []favCard
+	var chipKinds []string
+	for _, key := range []string{"author", "series"} {
+		row := favRow{ID: key, Title: categoryByKey(key).Title}
+		for _, c := range cards {
+			if c.Kind == key {
+				row.Cards = append(row.Cards, c)
+			}
+		}
+		if key == "series" {
+			books := []Book{}
+			for _, c := range row.Cards {
+				if b, ok := seriesEntry(c.Name); ok {
+					books = append(books, b)
+				}
+			}
+			js, err := json.Marshal(books)
+			if err != nil {
+				return err
+			}
+			row.Books = string(js)
+		}
+		if len(row.Cards) > 0 {
+			rows = append(rows, row)
+		}
+	}
+	for _, c := range cards {
+		if c.Kind == "author" || c.Kind == "series" {
+			continue
+		}
+		chips = append(chips, c)
+		if t := categoryByKey(c.Kind).Title; !slices.Contains(chipKinds, t) {
+			chipKinds = append(chipKinds, t)
+		}
+	}
+	extra["FavRows"], extra["FavChips"] = rows, chips
+	// "Tags", "Tags & publishers", "Tags, publishers & languages"
+	for i := 1; i < len(chipKinds); i++ {
+		chipKinds[i] = strings.ToLower(chipKinds[i])
+	}
+	switch n := len(chipKinds); n {
+	case 0:
+	case 1:
+		extra["FavChipsTitle"] = chipKinds[0]
+	default:
+		extra["FavChipsTitle"] = strings.Join(chipKinds[:n-1], ", ") + " & " + chipKinds[n-1]
+	}
+	extra["FavBooks"] = len(cards) > 0
+	return nil
 }
 
 // favsChanged: when u's favorites last changed (unix ms), for /api/me.

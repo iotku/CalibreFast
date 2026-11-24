@@ -247,6 +247,42 @@
      (hardcover_authors.go, web/author-profile.ts): the header is rendered
      again into #agg-header. */}}
 <div id="agg-header" class="agg-header-wrap"{{ with .Profile }}{{ with .Lookup }} data-profile-lookup="{{ . }}"{{ end }}{{ end }}>{{ template "agg-header" . }}</div>
+{{/* /me/favorites: the user's favorite authors and series, a carousel
+     each above their favorite books ("Show all" lays one out whole), their
+     favorite tags, publishers and languages as chips, then a heading over
+     the books (aggregate_favorites.go: addFavSections; web/aggregate-fav.ts). */}}
+{{ with .Extra }}{{ range .FavRows }}
+<section class="fav-aggs" aria-labelledby="fav-{{ .ID }}-h">
+    <header class="row-head">
+        <h2 id="fav-{{ .ID }}-h">{{ .Title }}</h2>
+        {{ if gt (len .Cards) 1 }}<button type="button" class="row-btn fav-aggs-all" aria-expanded="false" aria-controls="fav-{{ .ID }}-list">Show all</button>{{ end }}
+    </header>
+    {{ if .Books }}{{/* Series: drawn as a shelf's series cards (web/aggregate-fav.ts). */}}
+    <div id="fav-{{ .ID }}-list" class="fav-aggs-row fav-books-row row-books" data-books="{{ .Books }}"></div>
+    {{ else }}
+    <div id="fav-{{ .ID }}-list" class="fav-aggs-row">
+        {{- range .Cards }}
+        <a class="fav-agg" href="{{ .Href }}">
+            {{- if .ImageURL }}<img class="fav-agg-img" src="{{ .ImageURL }}" alt="" loading="lazy">{{ else }}<span class="fav-agg-img fav-agg-initial" aria-hidden="true">{{ .Initial }}</span>{{ end -}}
+            <span class="fav-agg-name">{{ or .Label .Name }}</span>
+            <span class="fav-agg-meta">{{ .KindLabel }} · {{ count .Count "book" "books" }}</span>
+        </a>
+        {{- end }}
+    </div>
+    {{ end }}
+</section>
+{{ end }}{{ with .FavChips }}
+<section class="fav-chips" aria-labelledby="fav-chips-h">
+    <header class="row-head"><h2 id="fav-chips-h">{{ $.Extra.FavChipsTitle }}</h2></header>
+    <div class="agg-chips">
+        {{- range . }}
+        <a class="agg-chip" href="{{ .Href }}" title="{{ .KindLabel }}">{{ or .Label .Name }}<span class="agg-count">{{ .Count }}</span></a>
+        {{- end }}
+    </div>
+</section>
+{{ end }}{{ if .FavBooks }}
+<header class="row-head fav-books-head"><h2>Books</h2></header>
+{{ end }}{{ end }}
 {{ template "grid-sort" .Sort }}
 <div id="books" data-page-url="{{ .PageURL }}{{ with .Sort.Options }}&sort={{ $.Sort.Current }}{{ end }}&page={n}" data-page-size="{{ booksPerPage }}" data-total-books="{{ .TotalBooks }}"{{ if .EmptyText }} data-empty-text="{{ .EmptyText }}"{{ end }}></div>
 <p id="status" class="status-message"></p>
@@ -262,7 +298,7 @@
 {{ if or .Writable .CanVerify $feat }}<script type="module" src="{{ asset "manage-panel.js" }}"></script>{{ end }}
 {{ with .Profile }}{{ if or .Lookup .Refresh }}<script type="module" src="{{ asset "author-profile.js" }}"></script>{{ end }}{{ end }}
 {{ with .Extra }}{{ if or .Shelf .TagPin .SeriesPin }}<script type="module" src="{{ asset "shelf-page.js" }}"></script>{{ end }}{{ end }}
-{{ if .FavKind }}<script type="module" src="{{ asset "aggregate-fav.js" }}"></script>{{ end }}
+{{ if .FavKind }}<script type="module" src="{{ asset "aggregate-fav.js" }}"></script>{{ else }}{{ with .Extra }}{{ if .FavRows }}<script type="module" src="{{ asset "aggregate-fav.js" }}"></script>{{ end }}{{ end }}{{ end }}
 {{ with .Extra }}{{ if and .Arrange (gt $.TotalBooks 1) }}<script type="module" src="{{ asset "list-edit.js" }}"></script>{{ end }}{{ end }}
 </body>
 </html>

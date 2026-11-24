@@ -220,7 +220,17 @@ func meListHandler(w http.ResponseWriter, r *http.Request) {
 	u := currentUser(r)
 	switch r.PathValue("list") {
 	case "favorites":
-		serveUUIDList(w, r, favoritesList(u))
+		l := favoritesList(u)
+		if r.URL.Query().Get("api") != "1" {
+			// The favorite authors and series, each a carousel above the
+			// books, and the rest (tags, …: rarely a picture) as chips
+			// (aggregate_favorites.go).
+			if err := addFavSections(u, l.Extra); err != nil {
+				http.Error(w, "query failed", http.StatusInternalServerError)
+				return
+			}
+		}
+		serveUUIDList(w, r, l)
 	case "saved": // the "wanted" status
 		serveUUIDList(w, r, statusList(u, "wanted", "saved", "Saved", "Nothing here yet. Save a book (the bookmark on its cover, or Save in its page) to add it."))
 	case "reading":
