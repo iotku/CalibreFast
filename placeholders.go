@@ -52,6 +52,7 @@ import (
 
 	"github.com/google/uuid"
 	"github.com/iotku/CalibreFast/pkg/opf"
+	"github.com/iotku/CalibreFast/pkg/textkey"
 )
 
 const placeholderCoversDir = "placeholder-covers"
@@ -293,14 +294,14 @@ func removeUnusedPlaceholderCover(name string) {
 // "(Series #n)" aside; a subtitle on one side only is allowed) by one of
 // the same authors ("Pratchett, Terry" is "Terry Pratchett").
 func placeholderTitleMatch(p *placeholder, title string, authors []string) bool {
-	pt, bt := hcFullTitleKey(p.Meta.Title), hcFullTitleKey(title)
+	pt, bt := textkey.FullTitle(p.Meta.Title), textkey.FullTitle(title)
 	if pt == "" || bt == "" {
 		return false
 	}
-	if pt != bt && hcTitleKey(title) != pt && hcTitleKey(p.Meta.Title) != bt {
+	if pt != bt && textkey.Title(title) != pt && textkey.Title(p.Meta.Title) != bt {
 		return false
 	}
-	return hcSharesAuthor(p.Meta.Creators, authors)
+	return textkey.SharesName(p.Meta.Creators, authors)
 }
 
 // placeholderForNewBook: the placeholder a book about to be added stands
@@ -359,7 +360,7 @@ func placeholderNumberMatch(p *placeholder, series string, index float64, author
 			return false
 		}
 	}
-	if knownAuthors(p.Meta.Creators) && knownAuthors(authors) && !hcSharesAuthor(p.Meta.Creators, authors) {
+	if knownAuthors(p.Meta.Creators) && knownAuthors(authors) && !textkey.SharesName(p.Meta.Creators, authors) {
 		return false
 	}
 	return !libraryHasSeriesNumber(series, index)

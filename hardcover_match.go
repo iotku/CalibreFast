@@ -32,8 +32,8 @@ type hcLibBook struct {
 type hcLibrary struct {
 	// inSeries: the books tagged with the series (any member of its group).
 	inSeries []hcLibBook
-	// byTitle: library books with a title key (hcTitleKey or
-	// hcFullTitleKey) of key.
+	// byTitle: library books with a title key (textkey.Title or
+	// textkey.FullTitle) of key.
 	byTitle func(key string) []hcLibBook
 	// byISBN: library books with this ISBN-13.
 	byISBN map[string][]hcLibBook
@@ -121,80 +121,14 @@ func (r *hcReview) pending() int {
 	return n
 }
 
-// hcTitleKey is a title for matching: case, accents, punctuation, a
-// leading article, a subtitle and a trailing "(Series #3)" don't count.
-// Where titles share what comes before their colon ("Doctor Who: Shada",
-// "Doctor Who: The Ark") the subtitle is the title: hcFullTitleKey.
-func hcTitleKey(title string) string {
-	t := hcTrimTitle(title)
-	if i := strings.IndexAny(t, ":"); i > 0 {
-		t = t[:i]
-	}
-	return hcFoldTitle(t)
-}
-
-// hcFullTitleKey is hcTitleKey with the subtitle kept.
-func hcFullTitleKey(title string) string { return hcFoldTitle(hcTrimTitle(title)) }
-
 // hcTitleKeys: the keys a title is found by: its full key, and its key
 // without the subtitle unless that is common (see hcMatchSeries).
 func hcTitleKeys(title string, common map[string]bool) []string {
-	keys := []string{hcFullTitleKey(title)}
-	if k := hcTitleKey(title); k != keys[0] && !common[k] {
+	keys := []string{textkey.FullTitle(title)}
+	if k := textkey.Title(title); k != keys[0] && !common[k] {
 		keys = append(keys, k)
 	}
 	return keys
-}
-
-// hcTrimTitle drops a trailing parenthesized or bracketed part:
-// "(The Expanse #1)".
-func hcTrimTitle(title string) string {
-	t := strings.TrimSpace(title)
-	for _, p := range [][2]string{{"(", ")"}, {"[", "]"}} {
-		if strings.HasSuffix(t, p[1]) {
-			if i := strings.LastIndex(t, p[0]); i > 0 {
-				t = strings.TrimSpace(t[:i])
-			}
-		}
-	}
-	return t
-}
-
-func hcFoldTitle(t string) string {
-	k := textkey.Fold(t)
-	for _, a := range []string{"the ", "a ", "an "} {
-		if strings.HasPrefix(k, a) && len(k) > len(a) {
-			k = k[len(a):]
-			break
-		}
-	}
-	return k
-}
-
-// hcSeriesKey is a series' name for comparing: case, accents, punctuation
-// and a leading "The" don't count. Unlike a title, what follows a colon
-// does ("Doctor Who: Target Books" isn't "Doctor Who: BBC Radio").
-func hcSeriesKey(name string) string {
-	k := textkey.Fold(name)
-	if strings.HasPrefix(k, "the ") && len(k) > 4 {
-		k = k[4:]
-	}
-	return k
-}
-
-func hcSharesAuthor(a, b []string) bool {
-	for _, x := range a {
-		kx := textkey.Name(x)
-		if kx == "" {
-			continue
-		}
-		for _, y := range b {
-			if textkey.Name(y) == kx {
-				return true
-			}
-		}
-	}
-	return false
 }
 
 func hcInMembers(series string, members []string) bool {
@@ -229,7 +163,7 @@ func hcMatchSeries(d *hardcover.SeriesDetail, lib hcLibrary, placeholders []*pla
 	common := map[string]bool{}
 	seen := map[string]bool{}
 	note := func(t string) {
-		if k := hcTitleKey(t); k != hcFullTitleKey(t) {
+		if k := textkey.Title(t); k != textkey.FullTitle(t) {
 			common[k] = common[k] || seen[k]
 			seen[k] = true
 		}
@@ -340,7 +274,7 @@ func hcMatchSeries(d *hardcover.SeriesDetail, lib hcLibrary, placeholders []*pla
 					if used[b.UUID] || lib.refuses(e, b.UUID) {
 						continue
 					}
-					if hcSharesAuthor(b.Authors, e.Authors) {
+					if textkey.SharesName(b.Authors, e.Authors) {
 						take(b, hcByTitle)
 						break
 					}
@@ -449,7 +383,7 @@ func boolInt(b bool) int {
 // one of its authors.
 func hcPlaceholderFor(e *hardcover.Entry, members []string, phs []*placeholder) *placeholder {
 	id := strconv.FormatInt(e.BookID, 10)
-	key := hcFullTitleKey(e.Title)
+	key := textkey.FullTitle(e.Title)
 	for _, p := range phs {
 		for _, x := range p.Meta.Identifiers {
 			if strings.EqualFold(x.Scheme, hardcover.IDScheme) && x.Value == id {
@@ -459,7 +393,7 @@ func hcPlaceholderFor(e *hardcover.Entry, members []string, phs []*placeholder) 
 		if e.Position != nil && hcInMembers(p.Meta.Series, members) && p.index() == *e.Position {
 			return p
 		}
-		if hcFullTitleKey(p.Meta.Title) == key && hcSharesAuthor(p.Meta.Creators, e.Authors) {
+		if textkey.FullTitle(p.Meta.Title) == key && textkey.SharesName(p.Meta.Creators, e.Authors) {
 			return p
 		}
 	}

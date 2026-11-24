@@ -345,7 +345,7 @@ func hcPickAuthor(cands []hardcover.Author, titles map[string]bool) *hardcover.A
 	overlap := func(a hardcover.Author) int {
 		n := 0
 		for _, t := range a.Titles {
-			if titles[hcTitleKey(t)] {
+			if titles[textkey.Title(t)] {
 				n++
 			}
 		}
@@ -368,7 +368,7 @@ func hcPickAuthor(cands []hardcover.Author, titles map[string]bool) *hardcover.A
 	return &best
 }
 
-// hcAuthorTitleKeys: the library's titles by these authors (hcTitleKey).
+// hcAuthorTitleKeys: the library's titles by these authors (textkey.Title).
 func hcAuthorTitleKeys(members []string) map[string]bool {
 	c := currentCatalog()
 	want := map[string]bool{}
@@ -383,7 +383,7 @@ func hcAuthorTitleKeys(members []string) map[string]bool {
 		}
 		for _, a := range b.AuthorIDs {
 			if want[strings.ToLower(c.authorNames[a])] {
-				out[hcTitleKey(b.Title)] = true
+				out[textkey.Title(b.Title)] = true
 				break
 			}
 		}

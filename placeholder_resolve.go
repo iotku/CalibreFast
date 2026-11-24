@@ -15,6 +15,7 @@ import (
 	"strings"
 
 	"github.com/iotku/CalibreFast/pkg/isbn"
+	"github.com/iotku/CalibreFast/pkg/textkey"
 )
 
 // placeholderEditedBook is what a library book is matched against
@@ -36,8 +37,8 @@ func placeholderMatchesEdited(p *placeholder, b placeholderEditedBook) bool {
 		return true
 	}
 	return b.series != "" && strings.EqualFold(strings.TrimSpace(p.Meta.Series), b.series) && p.index() == b.index &&
-		hcFullTitleKey(p.Meta.Title) != "" && (hcFullTitleKey(p.Meta.Title) == hcFullTitleKey(b.title) ||
-		hcTitleKey(b.title) == hcFullTitleKey(p.Meta.Title) || hcTitleKey(p.Meta.Title) == hcFullTitleKey(b.title))
+		textkey.FullTitle(p.Meta.Title) != "" && (textkey.FullTitle(p.Meta.Title) == textkey.FullTitle(b.title) ||
+		textkey.Title(b.title) == textkey.FullTitle(p.Meta.Title) || textkey.Title(p.Meta.Title) == textkey.FullTitle(b.title))
 }
 
 // placeholdersCatalogChanged: next rereads the books in uuids; a

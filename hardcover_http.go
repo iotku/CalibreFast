@@ -19,6 +19,7 @@ import (
 
 	"github.com/google/uuid"
 	"github.com/iotku/CalibreFast/pkg/hardcover"
+	"github.com/iotku/CalibreFast/pkg/textkey"
 )
 
 // hcAwaitTime: how long a click waits for its request before answering
@@ -205,8 +206,8 @@ func hcRow(s hcSuggestion, write string) hcReviewRow {
 // hcSameBook: the library book has the Hardcover book's title and one of
 // its authors, so the row needn't show it again.
 func hcSameBook(s hcSuggestion) bool {
-	return s.Book != nil && s.Entry != nil && hcFullTitleKey(s.Book.Title) == hcFullTitleKey(s.Entry.Title) &&
-		hcSharesAuthor(s.Book.Authors, s.Entry.Authors)
+	return s.Book != nil && s.Entry != nil && textkey.FullTitle(s.Book.Title) == textkey.FullTitle(s.Entry.Title) &&
+		textkey.SharesName(s.Book.Authors, s.Entry.Authors)
 }
 
 func hcReviewRowsFor(rev hcReview, write string) hcReviewRows {

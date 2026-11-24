@@ -63,3 +63,70 @@ func LooseName(name string) string {
 	}
 	return words[len(words)-1] + " " + words[0][:1]
 }
+
+// Title is a book's title for matching: case, accents, punctuation, a
+// leading article, a subtitle and a trailing "(Series #3)" don't count.
+// Where titles share what comes before their colon ("Doctor Who: Shada",
+// "Doctor Who: The Ark") the subtitle is the title: see FullTitle.
+func Title(title string) string {
+	t := trimTitle(title)
+	if i := strings.IndexAny(t, ":"); i > 0 {
+		t = t[:i]
+	}
+	return foldTitle(t)
+}
+
+// FullTitle is Title with the subtitle kept.
+func FullTitle(title string) string { return foldTitle(trimTitle(title)) }
+
+// trimTitle drops a trailing parenthesized or bracketed part:
+// "(The Expanse #1)".
+func trimTitle(title string) string {
+	t := strings.TrimSpace(title)
+	for _, p := range [][2]string{{"(", ")"}, {"[", "]"}} {
+		if strings.HasSuffix(t, p[1]) {
+			if i := strings.LastIndex(t, p[0]); i > 0 {
+				t = strings.TrimSpace(t[:i])
+			}
+		}
+	}
+	return t
+}
+
+func foldTitle(t string) string {
+	k := Fold(t)
+	for _, a := range []string{"the ", "a ", "an "} {
+		if strings.HasPrefix(k, a) && len(k) > len(a) {
+			k = k[len(a):]
+			break
+		}
+	}
+	return k
+}
+
+// Series is a series' name for comparing: case, accents, punctuation and
+// a leading "The" don't count. Unlike a title, what follows a colon does
+// ("Doctor Who: Target Books" isn't "Doctor Who: BBC Radio").
+func Series(name string) string {
+	k := Fold(name)
+	if strings.HasPrefix(k, "the ") && len(k) > 4 {
+		k = k[4:]
+	}
+	return k
+}
+
+// SharesName: some name in a is some name in b, as Name has them.
+func SharesName(a, b []string) bool {
+	for _, x := range a {
+		kx := Name(x)
+		if kx == "" {
+			continue
+		}
+		for _, y := range b {
+			if Name(y) == kx {
+				return true
+			}
+		}
+	}
+	return false
+}

@@ -11,3 +11,9 @@ Keys for comparing and sorting text the way a reader would.
   `"James S.A. Corey"` and `"Corey, James S. A."` match.
 - `LooseName(name)`: surname and first initial (`"tolkien j"`), for near
   matches; `""` for one-word names.
+- `Title(t)` and `FullTitle(t)`: a book title for matching, without a
+  leading article or a trailing `(Series #3)`; `Title` also drops the
+  subtitle.
+- `Series(name)`: a series name for comparing, without a leading "The".
+- `SharesName(a, b)`: some name in `a` is some name in `b`, as `Name` has
+  them.

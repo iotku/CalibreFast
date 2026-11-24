@@ -36,3 +36,21 @@ func TestLooseName(t *testing.T) {
 		}
 	}
 }
+
+func TestTitle(t *testing.T) {
+	for in, want := range map[string][2]string{
+		"The Expanse: Leviathan Wakes (The Expanse #1)": {"expanse", "expanse leviathan wakes"},
+		"A Game of Thrones [Book 1]":                    {"game of thrones", "game of thrones"},
+		"Doctor Who: Shada":                             {"doctor who", "doctor who shada"},
+	} {
+		if got := [2]string{Title(in), FullTitle(in)}; got != want {
+			t.Errorf("%q: %q, want %q", in, got, want)
+		}
+	}
+	if Series("The Expanse") != "expanse" || Series("Doctor Who: Target Books") == Series("Doctor Who: BBC Radio") {
+		t.Error("Series")
+	}
+	if !SharesName([]string{"Corey, James S. A."}, []string{"X", "James S.A. Corey"}) || SharesName([]string{""}, []string{""}) {
+		t.Error("SharesName")
+	}
+}

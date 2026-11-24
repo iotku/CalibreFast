@@ -41,6 +41,7 @@ import (
 
 	"github.com/iotku/CalibreFast/pkg/hardcover"
 	"github.com/iotku/CalibreFast/pkg/isbn"
+	"github.com/iotku/CalibreFast/pkg/textkey"
 )
 
 var (
@@ -166,7 +167,7 @@ func currentHCTitleIndex() *hcTitleIndex {
 		if b.Removed || b.UUID == "" {
 			continue
 		}
-		full, short := hcFullTitleKey(b.Title), hcTitleKey(b.Title)
+		full, short := textkey.FullTitle(b.Title), textkey.Title(b.Title)
 		idx.byTitle[full] = append(idx.byTitle[full], int32(i))
 		if short != full {
 			idx.byTitle[short] = append(idx.byTitle[short], int32(i))
@@ -1029,7 +1030,7 @@ func hcFindCandidates(ctx context.Context, s hcSeriesInfo) ([]hcCandidate, error
 	}
 	names := map[string]bool{}
 	for _, m := range append([]string{s.Name}, s.Members...) {
-		names[hcSeriesKey(m)] = true
+		names[textkey.Series(m)] = true
 	}
 
 	var out []hcCandidate
@@ -1059,14 +1060,14 @@ func hcFindCandidates(ctx context.Context, s hcSeriesInfo) ([]hcCandidate, error
 
 	titles := map[string]bool{}
 	for _, t := range hcSeriesTitles(s) {
-		titles[hcFullTitleKey(t)] = true
+		titles[textkey.FullTitle(t)] = true
 	}
 	authors := hcSeriesAuthors(s)
 
 	// Every series named like the library's, or like one with evidence.
 	var lookup []string
 	for _, c := range out {
-		if (names[hcSeriesKey(c.Name)] || hcEvidence(c, authors, titles) != "") && !slices.Contains(lookup, c.Name) && len(lookup) < 5 {
+		if (names[textkey.Series(c.Name)] || hcEvidence(c, authors, titles) != "") && !slices.Contains(lookup, c.Name) && len(lookup) < 5 {
 			lookup = append(lookup, c.Name)
 		}
 	}
@@ -1089,17 +1090,17 @@ func hcEvidence(c hcCandidate, authors []string, titles map[string]bool) string 
 	switch {
 	case c.Hits > 0:
 		return "isbn"
-	case c.Author != "" && hcSharesAuthor([]string{c.Author}, authors):
+	case c.Author != "" && textkey.SharesName([]string{c.Author}, authors):
 		return "author"
-	case slices.ContainsFunc(c.Books, func(t string) bool { return titles[hcFullTitleKey(t)] }):
+	case slices.ContainsFunc(c.Books, func(t string) bool { return titles[textkey.FullTitle(t)] }):
 		return "title"
 	}
 	return ""
 }
 
 // hcRankCandidates marks out's evidence, groups, Pick and Sure, and sorts
-// them (see hcFindCandidates). names and titles are keys (hcSeriesKey,
-// hcFullTitleKey) of the library series' names and its books' titles.
+// them (see hcFindCandidates). names and titles are keys (textkey.Series,
+// textkey.FullTitle) of the library series' names and its books' titles.
 func hcRankCandidates(out []hcCandidate, names map[string]bool, authors []string, titles map[string]bool) []hcCandidate {
 	type group struct {
 		hits     int
@@ -1111,7 +1112,7 @@ func hcRankCandidates(out []hcCandidate, names map[string]bool, authors []string
 	for i := range out {
 		c := &out[i]
 		c.URL = (&hcLink{Slug: c.Slug}).hardcoverURL()
-		c.Group = hcSeriesKey(c.Name)
+		c.Group = textkey.Series(c.Name)
 		c.Evidence = hcEvidence(*c, authors, titles)
 		g := groups[c.Group]
 		if g == nil {

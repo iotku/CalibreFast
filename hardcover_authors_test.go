@@ -19,6 +19,7 @@ import (
 	"time"
 
 	"github.com/iotku/CalibreFast/pkg/hardcover"
+	"github.com/iotku/CalibreFast/pkg/textkey"
 )
 
 func TestAuthorNameVariants(t *testing.T) {
@@ -42,7 +43,7 @@ func TestPickAuthor(t *testing.T) {
 	b := hardcover.Author{ID: 2, Name: "John Smith", UsersCount: 10, Titles: []string{"The Quiet Garden: A Novel"}}
 	c := hardcover.Author{ID: 3, Name: "John Smith", UsersCount: 400, Titles: []string{"Other"}}
 	// The one whose books the library has, however little read.
-	if p := hcPickAuthor([]hardcover.Author{a, b}, map[string]bool{hcTitleKey("Quiet Garden"): true}); p == nil || p.ID != 2 {
+	if p := hcPickAuthor([]hardcover.Author{a, b}, map[string]bool{textkey.Title("Quiet Garden"): true}); p == nil || p.ID != 2 {
 		t.Errorf("by books: %+v", p)
 	}
 	// None of theirs here: only one far more read than the next.

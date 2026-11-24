@@ -20,7 +20,7 @@ A feature of the app too big for the root but tied to its data lives in a packag
 - [`pkg/imageutil`](../pkg/imageutil): covers, thumbnails, a PDF's first-page picture.
 - [`pkg/filehash`](../pkg/filehash): cached SHA-256 of files.
 - [`internal/hardcoversync`](../internal/hardcoversync): reading sync to users' own Hardcover accounts, linking them, and their followed authors (see below).
-- [`pkg/textkey`](../pkg/textkey): text folded for comparing and sorting (case, accents, punctuation), and keys for matching people's names.
+- [`pkg/textkey`](../pkg/textkey): text folded for comparing and sorting (case, accents, punctuation), and keys for matching book titles, series names and people's names.
 
 ## Data sources
 
