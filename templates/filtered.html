@@ -250,8 +250,9 @@
 {{/* /me/favorites: the user's favorite authors and series, a carousel
      each above their favorite books ("Show all" lays one out whole), their
      favorite tags, publishers and languages as chips, then a heading over
-     the books (aggregate_favorites.go: addFavSections; web/aggregate-fav.ts). */}}
-{{ with .Extra }}{{ range .FavRows }}
+     the books, all in the grid's column (aggregate_favorites.go:
+     addFavSections; web/aggregate-fav.ts). */}}
+{{ with .Extra }}{{ if .FavBooks }}<div class="fav-sections">{{ end }}{{ range .FavRows }}
 <section class="fav-aggs" aria-labelledby="fav-{{ .ID }}-h">
     <header class="row-head">
         <h2 id="fav-{{ .ID }}-h">{{ .Title }}</h2>
@@ -282,7 +283,7 @@
 </section>
 {{ end }}{{ if .FavBooks }}
 <header class="row-head fav-books-head"><h2>Books</h2></header>
-{{ end }}{{ end }}
+</div>{{ end }}{{ end }}
 {{ template "grid-sort" .Sort }}
 <div id="books" data-page-url="{{ .PageURL }}{{ with .Sort.Options }}&sort={{ $.Sort.Current }}{{ end }}&page={n}" data-page-size="{{ booksPerPage }}" data-total-books="{{ .TotalBooks }}"{{ if .EmptyText }} data-empty-text="{{ .EmptyText }}"{{ end }}></div>
 <p id="status" class="status-message"></p>

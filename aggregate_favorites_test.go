@@ -227,6 +227,11 @@ func TestFavoritesPageCarousel(t *testing.T) {
 	if !strings.Contains(body, `data-books="[{`) || !strings.Contains(body, `&#34;uuid&#34;:&#34;series:Dune&#34;`) || !strings.Contains(body, `&#34;series_card&#34;:{&#34;name&#34;:&#34;Dune&#34;,&#34;count&#34;:1`) {
 		t.Fatal("series row without its entries")
 	}
+	// All of it in the grid's column, before the grid.
+	if at(`<div class="fav-sections">`) > at(`id="fav-author-list"`) || at(`<h2>Books</h2>`) > at(`id="books"`) ||
+		!strings.Contains(body[at(`<h2>Books</h2>`):at(`id="books"`)], "</div>") {
+		t.Fatal("favorites sections not in their column")
+	}
 	if rec.Code != 200 || strings.Contains(body, `class="fav-chips"`) || !strings.Contains(body, `src="/author-images/`+img+`"`) ||
 		!(at(`id="fav-author-list"`) < at(`id="fav-series-list"`) && at(`id="fav-series-list"`) < at(`<h2>Books</h2>`) && at(`<h2>Books</h2>`) < at(`id="books"`)) {
 		t.Fatalf("page: %d", rec.Code)
