@@ -89,6 +89,8 @@ type fakeHardcoverAccount struct {
 	unfollowed   []int64
 	ops          []string
 	lastObj      map[string]map[string]any
+	// onGraphQL, if set, runs as each GraphQL request comes in.
+	onGraphQL func()
 }
 
 type fakeUserBook struct {
@@ -120,6 +122,9 @@ func (f *fakeHardcoverAccount) serve(w http.ResponseWriter, r *http.Request) {
 	f.mu.Lock()
 	defer f.mu.Unlock()
 	w.Header().Set("Content-Type", "application/json")
+	if r.URL.Path == "/graphql" && f.onGraphQL != nil {
+		f.onGraphQL()
+	}
 	if r.URL.Path != "/graphql" {
 		_ = r.ParseForm()
 		switch r.URL.Path {
@@ -955,5 +960,95 @@ func TestHardcoverSyncPausedDropped(t *testing.T) {
 		if b == nil || b.status != c.want {
 			t.Fatalf("%s: sent as %+v, want status %d", c.status, b, c.want)
 		}
+	}
+}
+
+// The sync menu's Hardcover line: /api/me/hardcover says whether the worker
+// is sending for the user now and when it last did; /api/me carries a
+// compact state only for users with a link.
+func TestHardcoverSyncIndicator(t *testing.T) {
+	u, books, f := setupHardcoverSync(t)
+	me := func() map[string]json.RawMessage {
+		t.Helper()
+		rec := httptest.NewRecorder()
+		meHandler(rec, asUser(httptest.NewRequest(http.MethodGet, "/api/me", nil), u))
+		var m map[string]json.RawMessage
+		if err := json.Unmarshal(rec.Body.Bytes(), &m); err != nil {
+			t.Fatalf("%v: %s", err, rec.Body)
+		}
+		return m
+	}
+	status := func() hcStatus {
+		t.Helper()
+		rec := httptest.NewRecorder()
+		hardcoverStatusHandler(rec, asUser(httptest.NewRequest(http.MethodGet, "/api/me/hardcover", nil), u))
+		if !strings.Contains(rec.Body.String(), `"busy":`) {
+			t.Errorf("no busy: %s", rec.Body)
+		}
+		var st hcStatus
+		if err := json.Unmarshal(rec.Body.Bytes(), &st); err != nil {
+			t.Fatal(err)
+		}
+		return st
+	}
+
+	// Never linked: nothing in /api/me.
+	if _, ok := me()["hardcover"]; ok {
+		t.Error("/api/me has hardcover for a user who never linked")
+	}
+
+	linkHardcover(t, u)
+	if st := status(); st.State != "linked" || st.Busy || st.LastRun != "" {
+		t.Errorf("before any send: %+v", st)
+	}
+	var ind hardcoversync.Indicator
+	if err := json.Unmarshal(me()["hardcover"], &ind); err != nil || ind.State != "linked" || ind.Busy || ind.Waiting != 0 {
+		t.Errorf("/api/me hardcover: %+v %v", ind, err)
+	}
+
+	// Busy while a book is being sent, not after; then the time it ran.
+	var busyDuring bool
+	f.onGraphQL = func() {
+		if b, _ := hcSync.Activity(u.ID); b {
+			busyDuring = true
+		}
+	}
+	if err := setStatus(u.ID, books[0], "reading", "manual"); err != nil {
+		t.Fatal(err)
+	}
+	if err := hcSync.SetBookShared(u.ID, books[0], true); err != nil {
+		t.Fatal(err)
+	}
+	if err := json.Unmarshal(me()["hardcover"], &ind); err != nil || ind.Waiting != 1 {
+		t.Errorf("waiting before the send: %+v %v", ind, err)
+	}
+	step(t)
+	f.mu.Lock()
+	f.onGraphQL = nil
+	f.mu.Unlock()
+	if !busyDuring {
+		t.Error("not busy while sending")
+	}
+	st := status()
+	if st.Busy || st.LastRun == "" || st.Summary == nil || st.Summary.Waiting != 0 {
+		t.Errorf("after the send: %+v", st)
+	}
+	if _, err := time.Parse(time.RFC3339, st.LastRun); err != nil {
+		t.Errorf("last_run %q: %v", st.LastRun, err)
+	}
+	if err := json.Unmarshal(me()["hardcover"], &ind); err != nil || ind.State != "linked" || ind.Busy || ind.Waiting != 0 || ind.LastSent == "" {
+		t.Errorf("/api/me hardcover after the send: %+v %v", ind, err)
+	}
+
+	// A broken link still shows, as broken.
+	if _, err := appDB.Exec(`UPDATE hardcover_links SET broken = 'signed out' WHERE user_id = ?`, u.ID); err != nil {
+		t.Fatal(err)
+	}
+	hcSync = newHCSync(hcTestSyncConfig) // reads the links again
+	if err := json.Unmarshal(me()["hardcover"], &ind); err != nil || ind.State != "broken" {
+		t.Errorf("/api/me hardcover, broken: %+v %v", ind, err)
+	}
+	if strings.Contains(string(me()["hardcover"]), "hc_") {
+		t.Error("a token in /api/me")
 	}
 }

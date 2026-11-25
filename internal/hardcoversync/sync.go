@@ -443,6 +443,8 @@ func (s *Service) Step(ctx context.Context) (ran bool, next time.Time) {
 		log.Println("hardcover sync:", err)
 		return false, now.Add(time.Minute)
 	}
+	done := s.working(userID)
+	defer done()
 	pctx, cancel := context.WithTimeout(ctx, time.Minute)
 	err = s.pushBook(pctx, userID, uuid)
 	cancel()
@@ -770,6 +772,33 @@ func (s *Service) Summary(userID int64) SyncSummary {
 	}
 	_ = s.db.QueryRow(`SELECT error FROM hardcover_sync WHERE user_id = ? AND due_at > 0 AND attempts > 0 ORDER BY due_at LIMIT 1`, userID).Scan(&sum.LastErr)
 	return sum
+}
+
+// Indicator is the compact state the top bar's sync menu shows.
+type Indicator struct {
+	State    string `json:"state"` // "linked" or "broken"
+	Busy     bool   `json:"busy"`
+	Waiting  int    `json:"waiting"`
+	Failing  int    `json:"failing"`
+	LastSent string `json:"last_sent,omitempty"`
+}
+
+// Indicator is userID's sync state for the top bar: nil unless sync is on
+// and they have a link (working or broken).
+func (s *Service) Indicator(userID int64) *Indicator {
+	if !s.Enabled() {
+		return nil
+	}
+	busy, _ := s.Activity(userID)
+	if !s.IsLinked(userID) {
+		var broken string
+		if err := s.db.QueryRow(`SELECT broken FROM hardcover_links WHERE user_id = ?`, userID).Scan(&broken); err != nil || broken == "" {
+			return nil
+		}
+		return &Indicator{State: "broken"}
+	}
+	sum := s.Summary(userID)
+	return &Indicator{State: "linked", Busy: busy, Waiting: sum.Waiting, Failing: sum.Failing, LastSent: sum.LastSent}
 }
 
 // Merged queues a book others were merged into, for every linked

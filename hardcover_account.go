@@ -33,6 +33,10 @@ type hcStatus struct {
 	Username string                     `json:"username,omitempty"`
 	UserCode string                     `json:"user_code,omitempty"`
 	Summary  *hardcoversync.SyncSummary `json:"summary,omitempty"`
+	// Busy: the worker is sending something of theirs now; LastRun: when it
+	// last finished one (since the server started). Linked only.
+	Busy    bool   `json:"busy"`
+	LastRun string `json:"last_run,omitempty"`
 }
 
 func hardcoverStatusHandler(w http.ResponseWriter, r *http.Request) {
@@ -45,6 +49,11 @@ func hardcoverStatusHandler(w http.ResponseWriter, r *http.Request) {
 	st := hcStatus{State: v.State, Username: v.Username, UserCode: v.UserCode}
 	if v.State == "linked" {
 		st.Summary = &v.Summary
+		busy, last := hcSync.Activity(u.ID)
+		st.Busy = busy
+		if !last.IsZero() {
+			st.LastRun = last.Format(time.RFC3339)
+		}
 	}
 	writeJSON(w, http.StatusOK, st)
 }
