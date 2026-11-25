@@ -86,6 +86,7 @@ func registerLibraryRoutes() {
 
 	http.HandleFunc("GET /search", searchPageHandler)
 	http.HandleFunc("GET /api/search", searchHandler)
+	http.HandleFunc("GET /api/search/suggest", searchSuggestHandler) // the top bar's suggestions
 
 	// The readers
 	http.HandleFunc("/read", requireReader(readerPage("reader.html", true)))
