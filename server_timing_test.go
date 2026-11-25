@@ -24,9 +24,19 @@ func TestServerTiming(t *testing.T) {
 			t.Errorf("%s: Server-Timing %q", name, got)
 		}
 	}
+	// A handler's own stages go between auth and app.
+	rec := httptest.NewRecorder()
+	serverTiming(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		done := timeStage(r, "books")
+		done()
+		w.WriteHeader(http.StatusOK)
+	})).ServeHTTP(rec, httptest.NewRequest("GET", "/", nil))
+	if got := rec.Header().Get("Server-Timing"); !regexp.MustCompile(`^auth;dur=[\d.]+, books;dur=[\d.]+, app;dur=[\d.]+$`).MatchString(got) {
+		t.Errorf("with a stage: %q", got)
+	}
 	// Off (the default): no header.
 	serverTimingHeader = false
-	rec := httptest.NewRecorder()
+	rec = httptest.NewRecorder()
 	serverTiming(http.NotFoundHandler()).ServeHTTP(rec, httptest.NewRequest("GET", "/", nil))
 	if got := rec.Header().Values("Server-Timing"); len(got) != 0 {
 		t.Errorf("without -server-timing: %q", got)

@@ -128,12 +128,16 @@ func savedBooksHandler(w http.ResponseWriter, r *http.Request) {
 	}
 	u := currentUser(r)
 	// Statuses only: nothing here needs reading positions (userStatuses).
+	done := timeStage(r, "marks")
 	marks, active, err := userStatuses(u)
+	done()
 	if err != nil {
 		http.Error(w, "query failed", http.StatusInternalServerError)
 		return
 	}
+	done = timeStage(r, "ondeck")
 	deck, err := onDeck(u, marks, active)
+	done()
 	if err != nil {
 		http.Error(w, "query failed", http.StatusInternalServerError)
 		return
@@ -152,6 +156,7 @@ func savedBooksHandler(w http.ResponseWriter, r *http.Request) {
 	}
 	// The whole list, not just limit rows: placeholders, series and books
 	// already On Deck are skipped, and mustn't take a download's place.
+	done = timeStage(r, "saved")
 	rows, err := appDB.Query(`SELECT book_uuid, updated_at FROM reading_status
 		WHERE user_id = ? AND status = 'wanted' `+wantedOrder, u.ID)
 	if err != nil {
@@ -169,6 +174,8 @@ func savedBooksHandler(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 	rows.Close()
+	done()
+	done = timeStage(r, "books")
 	for len(out) < limit && len(uuids) > 0 {
 		chunk := uuids[:min(len(uuids), limit)]
 		uuids = uuids[len(chunk):]
@@ -187,6 +194,7 @@ func savedBooksHandler(w http.ResponseWriter, r *http.Request) {
 			out = append(out, savedBook{UUID: b.UUID, Title: b.Title, Authors: b.Authors, SavedAt: at[b.UUID]})
 		}
 	}
+	done()
 	writeJSONTagged(w, r, out)
 }
 

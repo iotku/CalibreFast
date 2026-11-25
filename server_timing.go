@@ -11,7 +11,8 @@ package main
 //
 // app is from the request reaching the server to the response's headers
 // (everything before the body is sent); auth is the part of it spent
-// finding the session's user (withAuth).
+// finding the session's user (withAuth). Handlers may add their own stages
+// (timeStage), listed between the two.
 
 import (
 	"context"
@@ -19,6 +20,7 @@ import (
 	"io"
 	"log"
 	"net/http"
+	"strings"
 	"time"
 )
 
@@ -32,8 +34,27 @@ type timingKey struct{}
 
 // requestTiming is filled in as a request goes through the server.
 type requestTiming struct {
-	start time.Time
-	auth  time.Duration
+	start  time.Time
+	auth   time.Duration
+	stages []stageTime
+}
+
+type stageTime struct {
+	name string // a fixed token: our own names, never data
+	dur  time.Duration
+}
+
+// timeStage times part of a handler for the Server-Timing header: call the
+// function it returns when that part is done. name is a fixed token
+// ([a-z-]), our own word for the stage. Only with -server-timing; it costs
+// nothing otherwise.
+func timeStage(r *http.Request, name string) func() {
+	t, ok := r.Context().Value(timingKey{}).(*requestTiming)
+	if !ok || !serverTimingHeader {
+		return func() {}
+	}
+	start := time.Now()
+	return func() { t.stages = append(t.stages, stageTime{name, time.Since(start)}) }
 }
 
 // noteAuthTime records how long the session lookup took (withAuth).
@@ -73,7 +94,13 @@ func (w *timingWriter) WriteHeader(status int) {
 		w.wrote, w.status = true, status
 		w.took = time.Since(w.t.start)
 		if serverTimingHeader {
-			w.Header().Add("Server-Timing", fmt.Sprintf("auth;dur=%.2f, app;dur=%.2f", durMS(w.t.auth), durMS(w.took)))
+			var b strings.Builder
+			fmt.Fprintf(&b, "auth;dur=%.2f", durMS(w.t.auth))
+			for _, s := range w.t.stages {
+				fmt.Fprintf(&b, ", %s;dur=%.2f", s.name, durMS(s.dur))
+			}
+			fmt.Fprintf(&b, ", app;dur=%.2f", durMS(w.took))
+			w.Header().Add("Server-Timing", b.String())
 		}
 	}
 	w.ResponseWriter.WriteHeader(status)

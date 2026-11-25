@@ -127,12 +127,16 @@ func serveUUIDList(w http.ResponseWriter, r *http.Request, l uuidList) {
 		if r.URL.Query().Get("all") == "1" { // the whole list, to arrange (list_order.go)
 			limit, offset = maxArrangeBooks, 0
 		}
+		done := timeStage(r, "list")
 		uuids, err := l.Page(limit, offset)
+		done()
 		if err != nil {
 			http.Error(w, "query failed", http.StatusInternalServerError)
 			return
 		}
+		done = timeStage(r, "books")
 		books, err := booksByUUIDs(uuids)
+		done()
 		if err != nil {
 			http.Error(w, "query failed", http.StatusInternalServerError)
 			return
