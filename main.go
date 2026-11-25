@@ -661,7 +661,7 @@ func libraryInfoHandler(w http.ResponseWriter, r *http.Request) {
 func serveLibraryHTTP() {
 	go runThumbBacklog() // thumbnails of cancelled requests, made when idle
 	registerRoutes()     // routes.go
-	serve(":"+hostPort, securityHeaders(robotsHeader(csrfProtect(withAuth(http.DefaultServeMux)))))
+	serve(":"+hostPort, serverTiming(securityHeaders(robotsHeader(csrfProtect(withAuth(http.DefaultServeMux))))))
 }
 
 // bookEditPage serves /book/edit/{uuid}: the metadata editor for one
