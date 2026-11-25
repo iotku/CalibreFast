@@ -345,7 +345,9 @@ func isPublicAsset(p string) bool {
 // covers or book UUIDs.
 func withAuth(h http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		start := time.Now()
 		u := userFromSession(r)
+		noteAuthTime(r, time.Since(start))
 		if u != nil {
 			r = r.WithContext(context.WithValue(r.Context(), userKey, u))
 		}
