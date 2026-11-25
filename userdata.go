@@ -34,8 +34,9 @@ func bookExists(uuid string) bool {
 // longer in the library are skipped. From the catalog; only books it doesn't
 // have yet (added a moment ago) are read from metadata.db, and that read is
 // a scan of the whole books table (no index on uuid), so a uuid it didn't
-// have either isn't asked about again for a while (notInLibrary): a list
-// holding a book long gone would otherwise pay for one on every request. A
+// have either isn't asked about again until the catalog changes
+// (notInLibrary): a list holding a book long gone would otherwise pay for
+// one on every request. A
 // shelf's series keys are series cards (shelf_series.go).
 func booksByUUIDs(uuids []string) ([]Book, error) {
 	out := make([]Book, 0, len(uuids))
@@ -88,17 +89,18 @@ func booksByUUIDs(uuids []string) ([]Book, error) {
 	return out, nil
 }
 
-// notInLibrary: uuids metadata.db was just asked about and didn't have, so
-// booksByUUIDs skips them for notInLibraryFor. Forgotten sooner when the
-// catalog changes (a book added here is in the new one).
+// notInLibrary: uuids metadata.db was asked about and didn't have, so
+// booksByUUIDs skips them while the catalog is the same one. A book that
+// turns up in the library later (added or restored here) comes with a new
+// catalog, which forgets them; changes made outside CalibreFast are read at
+// the next start, which does too. So a gone book in someone's Reading or
+// Saved list costs one scan per catalog, not one a minute.
 var notInLibrary = &missingUUIDs{}
-
-const notInLibraryFor = time.Minute
 
 type missingUUIDs struct {
 	mu   sync.Mutex
 	cat  *catalog
-	seen map[string]time.Time
+	seen map[string]bool
 }
 
 func (m *missingUUIDs) has(uuid string) bool {
@@ -107,20 +109,19 @@ func (m *missingUUIDs) has(uuid string) bool {
 	if m.cat != currentCatalog() {
 		return false
 	}
-	at, ok := m.seen[uuid]
-	return ok && time.Since(at) < notInLibraryFor
+	return m.seen[uuid]
 }
 
 func (m *missingUUIDs) add(uuid string) {
 	m.mu.Lock()
 	defer m.mu.Unlock()
 	if c := currentCatalog(); m.cat != c || m.seen == nil {
-		m.cat, m.seen = c, map[string]time.Time{}
+		m.cat, m.seen = c, map[string]bool{}
 	}
 	if len(m.seen) >= 10000 { // made-up ids: don't grow without end
 		clear(m.seen)
 	}
-	m.seen[uuid] = time.Now()
+	m.seen[uuid] = true
 }
 
 func booksByUUIDsFromDB(uuids []string) (map[string]Book, error) {
