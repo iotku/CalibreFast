@@ -22,6 +22,10 @@ package main
 // publisher) and how well (the whole name, its start, a word's start, inside
 // a word); equal books are listed series by series, in reading order, and
 // otherwise by title.
+//
+// Placeholders (books not in the library yet, placeholders.go) that match
+// are listed too, after every library book whatever the order: see
+// search_placeholders.go.
 
 import (
 	"cmp"
@@ -281,15 +285,19 @@ func (ix *searchIndex) matcher(t searchTerm) *termMatcher {
 	}
 	if t.field == fieldLang {
 		m.langs = map[int32]bool{}
-		want := langcodes.Canonical(t.raw)
 		for id, code := range ix.cat.langCodes {
-			if strings.EqualFold(code, t.raw) || langcodes.Canonical(code) == want ||
-				matchHay(searchHay(languageLabel(code)), t.phrase) >= matchStart {
+			if t.langMatches(code) {
 				m.langs[id] = true
 			}
 		}
 	}
 	return m
+}
+
+// langMatches: a lang: term names language code ("eng", "en", "english").
+func (t *searchTerm) langMatches(code string) bool {
+	return strings.EqualFold(code, t.raw) || langcodes.Canonical(code) == langcodes.Canonical(t.raw) ||
+		matchHay(searchHay(languageLabel(code)), t.phrase) >= matchStart
 }
 
 func bestOf(ids []int32, m map[int32]int) int {
@@ -386,6 +394,11 @@ type searchResult struct {
 
 	mu     sync.Mutex
 	sorted map[string][]int32 // slots in another order (catalog_sort.go), made once
+
+	// Matching placeholders, best first, and the list they're from
+	// (placeholderCache): placeholders change apart from the catalog.
+	phs     []*placeholder
+	phsFrom *[]*placeholder
 }
 
 // inOrder is the results sorted by key: by relevance (slots) by default.
@@ -706,7 +719,7 @@ func searchPageHandler(w http.ResponseWriter, r *http.Request) {
 		if err != nil {
 			return // the visitor left
 		}
-		data.TotalBooks = len(res.slots)
+		data.TotalBooks = len(res.slots) + len(res.placeholders())
 		data.Links = res.links()
 	}
 	if err := templates.ExecuteTemplate(w, "search.html", data); err != nil {
@@ -729,7 +742,7 @@ func searchHandler(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "search cancelled", http.StatusServiceUnavailable)
 		return
 	}
-	writeJSON(w, http.StatusOK, pageOfSlots(res.ix.cat, res.inOrder(pickSort(r, searchSorts)), page))
+	writeJSON(w, http.StatusOK, res.page(pickSort(r, searchSorts), page))
 }
 
 // The top bar's suggestions while typing (web/search-suggest.ts): the best
