@@ -303,6 +303,20 @@ func TestLibraryCalls(t *testing.T) {
 	if slugs := f.vars["SyncBooks"]["slugs"].([]any); len(slugs) != 0 {
 		t.Errorf("an invalid slug was sent: %v", slugs)
 	}
+	// A book chosen by hand: the edition with the ISBN when it's of that
+	// book; another book's edition with it doesn't change the book.
+	f.reply["SyncEditions"] = `{"data":{"editions":[{"id":70,"book_id":7,"pages":900},{"id":52,"book_id":5,"pages":1312,"book":{"slug":"x","title":"Five"}}]}}`
+	if e, ok, err := c.BookEdition(ctx, 5, []string{"9780262046305"}); err != nil || !ok || e != (Edition{BookID: 5, EditionID: 52, Pages: 1312, Slug: "x", Title: "Five"}) {
+		t.Errorf("chosen, by ISBN: %+v %v %v", e, ok, err)
+	}
+	f.reply["SyncEditions"] = `{"data":{"editions":[{"id":70,"book_id":7,"pages":900}]}}`
+	if e, ok, err := c.BookEdition(ctx, 5, []string{"9780262046305"}); err != nil || !ok || e != (Edition{BookID: 5, EditionID: 50, Pages: 210, Slug: "x", Title: "Five"}) {
+		t.Errorf("chosen, ISBN of another book: %+v %v %v", e, ok, err)
+	}
+	if _, ok, err := c.BookEdition(ctx, 0, []string{"9780262046305"}); ok || err != nil {
+		t.Errorf("chosen, no book: %v %v", ok, err)
+	}
+
 	f.reply["SyncBooks"] = `{"data":{"books":[]}}`
 	if _, ok, err := c.FindEdition(ctx, nil, 0, "missing"); ok || err != nil {
 		t.Errorf("no match: %v %v", ok, err)
