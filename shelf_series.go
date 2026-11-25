@@ -138,21 +138,6 @@ func seriesEntry(name string) (Book, bool) {
 	return b, ok
 }
 
-// shelfEntryLookup finds shelf entries, books and series, in the catalog
-// only (as the home page's rows do): series keys are worked out at once.
-func shelfEntryLookup(c *catalog, keys []string) func(string) (Book, bool) {
-	series := seriesEntries(c, keys)
-	return func(k string) (Book, bool) {
-		if b, ok := series[k]; ok {
-			return b, true
-		}
-		if b, ok := c.lookup(k); ok {
-			return b.Book, true
-		}
-		return Book{}, false
-	}
-}
-
 // seriesShelfMarks: the shelves u can put this series on, and whether it's
 // on each (the series page's and book popup's "Series on shelves").
 func seriesShelfMarks(u *User, name string) []shelfMark {

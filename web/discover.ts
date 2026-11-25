@@ -53,6 +53,7 @@ import {
     agrees,
     applyChange,
     cachedMarks,
+    cardBook,
     coverAction,
     markCard,
     marksFromAnswer,
@@ -538,7 +539,7 @@ interface HomeShelf {
 
 function repaintMarks(only?: string): void {
     for (const card of root.querySelectorAll<HTMLElement>(".book")) {
-        if (!only || card.dataset["uuid"] === only) markCard(card, marks);
+        if (!only || cardBook(card) === only) markCard(card, marks);
     }
 }
 
