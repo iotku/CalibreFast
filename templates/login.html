@@ -28,14 +28,18 @@
     <section class="auth-card">
         {{ if .Signup }}<h2>Already have an account?</h2>{{ else }}<h1>Sign in</h1>
         {{ if .Error }}<p class="auth-error" role="alert">{{ .Error }}</p>{{ end }}{{ end }}
+        {{ if .PasswordsOff }}
+        {{ if .Signup }}{{ else }}<p class="auth-muted">Sign in with your linked account. If you haven't linked one yet, ask an admin for a sign-in link.</p>{{ end }}
+        {{ else }}
         <form method="post" action="/login" class="auth-form">
             <input type="hidden" name="next" value="{{ .Next }}">
             <label>Username <input name="username" type="text" {{ if not .Signup }}value="{{ .Username }}" autofocus{{ end }} autocomplete="username" required></label>
             <label>Password <input name="password" type="password" autocomplete="current-password" required></label>
             <button type="submit" class="btn-standard auth-primary">Sign in</button>
         </form>
+        {{ end }}
         {{ if .Providers }}
-        <div class="auth-divider"><span>or</span></div>
+        {{ if not .PasswordsOff }}<div class="auth-divider"><span>or</span></div>{{ end }}
         <div class="auth-providers">
             {{ range .Providers }}
             <a class="btn-standard auth-provider" href="/auth/{{ . }}/start?next={{ $.Next }}">Continue with {{ if eq . "github" }}GitHub{{ else if eq . "google" }}Google{{ else }}{{ . }}{{ end }}</a>
@@ -46,7 +50,7 @@
 {{ end }}
 
 {{ define "auth-signup" }}
-    {{ if .Registration }}
+    {{ if and .Registration (not .PasswordsOff) }}
     <section class="auth-card">
         {{ if .Signup }}<h1>Create an account</h1>
         {{ if .Error }}<p class="auth-error" role="alert">{{ .Error }}</p>{{ end }}{{ else }}<h2>Create an account</h2>{{ end }}

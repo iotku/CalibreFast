@@ -96,6 +96,17 @@ Accounts are matched by GitHub's or Google's permanent user ID, never by email a
 
 People can unlink a provider from their account page, but CalibreFast won't let them remove their only way to sign in.
 
+## Turning passwords off
+
+`-disable-passwords` makes GitHub/Google (and an admin's [one-time sign-in link](SECURITY.md#one-time-links)) the only ways in. It needs at least one provider set up, or CalibreFast refuses to start.
+
+- **Existing accounts:** passwords stop working but stay stored, so starting without the flag restores them. The sign-in page shows only the provider buttons, and the password form, **Reset password** and registration are gone.
+- **Moving an account over:** an admin gives the user a sign-in link (**Manage users → Sign-in link**). They sign in with it and link GitHub/Google under **Account → Linked sign-ins**. After that **Continue with GitHub/Google** works.
+- **Nothing is created from a bare sign-in** unless `-allow-registrations` is on: GitHub/Google only signs in to an account that's already linked to it. Invite links make a password-less account, which then links a provider.
+- **A reminder stays on every page** for anyone with no password that works and nothing linked, until they link one: otherwise they're locked out once the session ends.
+- **Dropping a sign-in:** a user can unlink GitHub/Google from their account page. For their last one, the page warns they'll lose access, and they must type their username. They stay signed in for the current session, and afterwards need a new sign-in link.
+- **First admin:** create it with `-create-user NAME -admin` and start *without* the flag, sign in, link a provider, then turn the flag on. At startup it warns if no admin has a provider linked.
+
 ## Troubleshooting
 
 | What you see | Likely cause |

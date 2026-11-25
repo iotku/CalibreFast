@@ -71,7 +71,8 @@ byId("add-user", HTMLFormElement).addEventListener("submit", async (e) => {
     try {
         await api("POST", "/api/admin/users", {
             username: field(f, "username").value,
-            password: field(f, "password").value,
+            // No password field where passwords are turned off.
+            password: f.elements.namedItem("password") instanceof HTMLInputElement ? field(f, "password").value : "",
             is_admin: field(f, "is_admin").checked,
             is_editor: field(f, "is_editor").checked,
         });

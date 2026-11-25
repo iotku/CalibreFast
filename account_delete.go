@@ -39,7 +39,7 @@ func deleteOwnAccountHandler(w http.ResponseWriter, r *http.Request) {
 		fail("To delete your account, type your username exactly.", http.StatusBadRequest)
 		return
 	}
-	if u.HasPass {
+	if u.PasswordSignIn() {
 		if !loginLimiter.allow("user:" + strings.ToLower(u.Username)) {
 			fail("Too many attempts. Try again in a few minutes.", http.StatusTooManyRequests)
 			return

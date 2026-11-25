@@ -3,7 +3,7 @@
   "admin-activity.js": "admin-activity-MT77I3BN.js",
   "admin-discover.js": "admin-discover-YH77WPAO.js",
   "admin-server.js": "admin-server-FW64Q5NN.js",
-  "admin-users.js": "admin-users-4C7ZOFQX.js",
+  "admin-users.js": "admin-users-G36IARQU.js",
   "aggregate-fav.js": "aggregate-fav-WRDHYKNY.js",
   "aggregate.js": "aggregate-3ZGDBQRP.js",
   "app-htmx.js": "app-htmx-ADU3QPYM.js",
@@ -24,7 +24,7 @@
   "manage-panel.js": "manage-panel-W5P53HMJ.js",
   "metadata.js": "metadata-JX3C42KH.js",
   "missing.js": "missing-4GXBQ3B5.js",
-  "nav.js": "nav-NG7T2FVX.js",
+  "nav.js": "nav-SC2FYSKI.js",
   "notifications.js": "notifications-2B6H5WLC.js",
   "offline.js": "offline-4LOLY2FS.js",
   "placeholder-hardcover.js": "placeholder-hardcover-EHIJ4SOU.js",
@@ -39,7 +39,7 @@
   "shelf-page.js": "shelf-page-57LZVV5O.js",
   "shelves.js": "shelves-77CR4WOM.js",
   "stats.js": "stats-PV2YJRYO.js",
-  "style.css": "style-37W4NKDT.css",
+  "style.css": "style-SXDZCKTI.css",
   "sw.js": "sw-DEGPIVL2.js",
   "user.js": "user-3B6BV24P.js"
 }

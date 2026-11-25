@@ -4792,6 +4792,13 @@ label.group-row span {
 .guest-offer > span {
     flex: 1 1 260px;
 }
+/* Stays until they link a sign-in (web/nav.ts); stands out from the offer. */
+.signin-warning {
+    border-color: #e88;
+}
+.guest-offer + .signin-warning {
+    margin-top: 5.5rem;
+}
 
 /* Reading on this device (templates/account-import.html) */
 .import-status a {
