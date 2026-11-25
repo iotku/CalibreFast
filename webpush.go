@@ -64,7 +64,6 @@ var pushHosts = []string{
 	"push.services.mozilla.com",       // Firefox
 	"push.apple.com",                  // Safari, iOS home-screen apps
 	"notify.windows.com",              // Edge on Windows
-	"android.googleapis.com",          // older Chrome
 	"updates-autopush.dev.mozaws.net", // Firefox Nightly
 }
 
