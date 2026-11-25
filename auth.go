@@ -675,11 +675,22 @@ func meHandler(w http.ResponseWriter, r *http.Request) {
 		// Where they can't, a reader that gets this has lost its session (it
 		// came from the offline copy), and keeps what's read under the user
 		// last signed in rather than as a guest's (reading-sync.ts).
+		anon := map[string]any{"user": nil, "registration": allowRegistrations, "guest_reading": publicRead}
+		// The admins' announcements, for visitors who see the bar (system_notices.go).
+		if publicCatalog {
+			if ns, _ := activeSystemNotices(time.Now(), false); len(ns) > 0 {
+				anon["system_notices"] = ns
+			}
+		}
 		w.WriteHeader(http.StatusUnauthorized)
-		_ = json.NewEncoder(w).Encode(map[string]any{"user": nil, "registration": allowRegistrations, "guest_reading": publicRead})
+		_ = json.NewEncoder(w).Encode(anon)
 		return
 	}
 	me := map[string]any{"user": u, "can_edit_library": canEditLibrary(r), "can_admin_library": canAdminLibrary(r)}
+	// The admins' announcements: banners above the bar (system_notices.go).
+	if ns, err := activeSystemNotices(time.Now(), false); err == nil && len(ns) > 0 {
+		me["system_notices"] = ns
+	}
 	// No lasting way to sign in: the bar says so until they link one.
 	if signInAtRisk(u) {
 		me["sign_in_at_risk"] = true

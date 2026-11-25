@@ -486,6 +486,9 @@ func registerServerRoutes() {
 }
 
 func registerBackupRoutes() {
+	http.HandleFunc("GET /api/admin/system-notices", requireAdminUser(systemNoticesHandler)) // system_notices.go
+	http.HandleFunc("POST /api/admin/system-notices", requireAdminUser(systemNoticeCreateHandler))
+	http.HandleFunc("DELETE /api/admin/system-notices/{id}", requireAdminUser(systemNoticeDeleteHandler))
 	http.HandleFunc("POST /api/admin/backups", requireAdminUser(backupNowHandler))
 	http.HandleFunc("GET /api/admin/backups/{name}", requireAdminUser(backupDownloadHandler))
 }

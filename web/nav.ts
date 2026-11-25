@@ -21,7 +21,7 @@ for (const code of document.querySelectorAll<HTMLElement>(".same-origin-url")) {
     code.textContent = withPageScheme(code.textContent ?? "");
 }
 import { meRequest } from "./me.js";
-import type { HardcoverIndicator, HardcoverStatus } from "./types.js";
+import type { HardcoverIndicator, HardcoverStatus, SystemNotice } from "./types.js";
 import { clearable } from "./clearable.js";
 import { attachSearchSuggest } from "./search-suggest.js";
 import { noticeCover, noticeText, type Notice } from "./notice-text.js";
@@ -114,6 +114,31 @@ function showSignInWarning(atRisk: boolean): void {
         text: "You can't sign in with a password. Link GitHub or Google to your account, or once this session ends you'll be locked out and need a new sign-in link from an admin.",
         action: { href: "/account#linked-sign-ins", label: "Link a sign-in" },
     });
+}
+
+/** The system alert ids of the admins' notices this page shows (system_notices.go). */
+const noticeAlerts = new Set<string>();
+
+/**
+ * The admins' announcements in force (downtime, a new address, …): a
+ * dismissable banner each until it expires (system-alerts.ts). One ended
+ * or gone since is taken away.
+ */
+function showSystemNotices(ns: SystemNotice[]): void {
+    const now = new Set<string>();
+    for (const n of ns) {
+        const id = `notice-${n.id}`;
+        now.add(id);
+        showSystemAlert({
+            id,
+            text: n.text,
+            expiresAt: n.expires_at,
+            ...(n.link_href ? { action: { href: n.link_href, label: n.link_label || "More" } } : {}),
+        });
+    }
+    for (const id of noticeAlerts) if (!now.has(id)) hideSystemAlert(id);
+    noticeAlerts.clear();
+    for (const id of now) noticeAlerts.add(id);
 }
 
 function init(bar: HTMLElement): void {
@@ -291,6 +316,8 @@ function init(bar: HTMLElement): void {
         hardcover?: HardcoverIndicator | null;
         /** No lasting way to sign in (meHandler's sign_in_at_risk). */
         atRisk?: boolean;
+        /** The admins' announcements in force. */
+        notices?: SystemNotice[];
     }
     const cache = {
         get(): string | null {
@@ -787,6 +814,7 @@ function init(bar: HTMLElement): void {
         if (st.canEdit) document.documentElement.dataset["canEdit"] = "1";
         else delete document.documentElement.dataset["canEdit"];
         document.dispatchEvent(new CustomEvent("cf:me"));
+        showSystemNotices(st.notices ?? []);
         if (userToggle) toggles = toggles.filter((t) => t !== userToggle);
         userToggle = null;
         if (!st.username) {
@@ -954,6 +982,7 @@ function init(bar: HTMLElement): void {
                 notifications: body.notifications ?? 0,
                 hardcover: body.hardcover ?? null,
                 atRisk: !!body.sign_in_at_risk,
+                notices: body.system_notices ?? [],
             };
             const json = JSON.stringify(st);
             cache.set(json);
