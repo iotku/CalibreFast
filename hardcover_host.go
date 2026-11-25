@@ -177,8 +177,9 @@ func hcBookKeys(uuid string) (isbns []string, hcID int64, slug string, err error
 		isbns, hcID, slug = hcPlaceholderKeys(p)
 		return isbns, hcID, slug, nil
 	}
+	where, args := bookWhere(uuid) // by id: no scan of books (catalog.go)
 	rows, err := calibreDB.Query(`SELECT i.type, i.val FROM identifiers i JOIN books b ON b.id = i.book
-		WHERE b.uuid = ? AND lower(i.type) IN ('isbn', ?, ?)`, uuid, hardcover.IDScheme, hardcover.SlugScheme)
+		WHERE `+where+` AND lower(i.type) IN ('isbn', ?, ?)`, append(args, hardcover.IDScheme, hardcover.SlugScheme)...)
 	if err != nil {
 		return nil, 0, "", err
 	}

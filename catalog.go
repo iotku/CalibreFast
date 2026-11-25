@@ -80,6 +80,28 @@ func currentCatalog() *catalog {
 	return newCatalog()
 }
 
+// known: whether the catalog has this uuid at all, removed or not. A
+// removed book's row is gone from metadata.db: no use asking it.
+func (c *catalog) known(uuid string) bool {
+	_, ok := c.byUUID[uuid]
+	return ok
+}
+
+// bookWhere: the condition (alias b) and its args that find uuid's row in
+// metadata.db. Calibre has no index on books.uuid, so "b.uuid = ?" reads
+// the whole table (tens of ms in a big library, more on network storage);
+// a book the catalog knows is found by its id instead, one index lookup.
+// The uuid is checked too: the id may be a moment out of date (a book
+// restored from the Recycling Bin gets a new one before the catalog
+// catches up), and then nothing is found rather than another book.
+func bookWhere(uuid string) (string, []any) {
+	c := currentCatalog()
+	if i, ok := c.byUUID[uuid]; ok && c.books[i].ID != 0 {
+		return "b.id = ? AND b.uuid = ?", []any{c.books[i].ID, uuid}
+	}
+	return "b.uuid = ?", []any{uuid}
+}
+
 // lookup returns the book with this uuid, unless it isn't known or was removed.
 // The result shares its slices with the catalog: don't modify them.
 func (c *catalog) lookup(uuid string) (catalogBook, bool) {
