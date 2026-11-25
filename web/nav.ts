@@ -97,21 +97,23 @@ function showGuestOffer(user: string, books: number): void {
 }
 
 /**
- * The strip under the top bar for someone who can't sign in again: no
+ * The alert under the top bar for someone who can't sign in again: no
  * password that works here and no linked GitHub/Google, so only the admin's
- * one-time link got them in. It stays on every page until they link one.
+ * one-time link got them in. It can't be dismissed and is on every page with
+ * the bar (not the readers) until they link one. Its own class, not
+ * .guest-offer: showGuestOffer clears that one.
  */
 function showSignInWarning(atRisk: boolean): void {
-    document.querySelector(".signin-warning")?.remove();
+    document.querySelector(".signin-alert")?.remove();
     if (!atRisk) return;
     document.querySelector(".site-bar")?.after(
         el(
             "div",
-            { className: "guest-offer signin-warning", role: "alert" },
+            { className: "signin-alert", role: "alert" },
             el("span", {
                 textContent: "You can't sign in with a password. Link GitHub or Google to your account, or once this session ends you'll be locked out and need a new sign-in link from an admin.",
             }),
-            el("a", { className: "btn-standard btn-primary", href: "/account#linked-sign-ins", textContent: "Link now" }),
+            el("a", { className: "btn-standard btn-primary", href: "/account#linked-sign-ins", textContent: "Link a sign-in" }),
         ),
     );
 }
