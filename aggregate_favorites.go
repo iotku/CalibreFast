@@ -252,7 +252,8 @@ func followedBooks(u *User, m readingMarks, n int) (books []Book, following bool
 	if err != nil {
 		return nil, false, err
 	}
-	c := currentCatalog()
+	ix := currentRecIndex() // their books, indexed (recommend.go)
+	c := ix.cat
 	authors := favs.ids("author", c.authorNames)
 	books = []Book{}
 	if len(authors) == 0 {
@@ -262,15 +263,11 @@ func followedBooks(u *User, m readingMarks, n int) (books []Book, following bool
 	for _, uuid := range slices.Concat(m.Finished, m.Dropped) {
 		done[uuid] = true
 	}
-	for _, slot := range latestOrder(c, "") {
+	for _, slot := range ix.favBooks(authors, nil, ix.latestPos) { // newest added first
 		if len(books) >= n {
 			break
 		}
-		b := &c.books[slot]
-		if done[b.UUID] {
-			continue
-		}
-		if slices.ContainsFunc(b.AuthorIDs, func(a int32) bool { return authors[a] }) {
+		if b := &c.books[slot]; !done[b.UUID] {
 			books = append(books, b.Book)
 		}
 	}
