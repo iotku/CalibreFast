@@ -139,3 +139,23 @@ func TestAggregateCloudInTwoParts(t *testing.T) {
 		seen[h] = true
 	}
 }
+
+// Every kind's favorites are drawn while the page parses (from the kept
+// list), not by aggregate.js afterwards: authors as a carousel, the other
+// kinds as chips, with the page's own kind and link prefix.
+func TestAggregateFavoritesOnFirstPaint(t *testing.T) {
+	for _, kind := range []string{"author", "tag"} {
+		var buf bytes.Buffer
+		data := AggregatePageData{Title: "X", Kind: kind, Label: kind, Prefix: "/" + kind + "/"}
+		if err := templates.ExecuteTemplate(&buf, "aggregate.html", data); err != nil {
+			t.Fatal(err)
+		}
+		page := buf.String()
+		if !strings.Contains(page, `id="agg-favorites"`) || !strings.Contains(page, `s.setAttribute("data-kept","")`) {
+			t.Errorf("%s: favorites not drawn from the kept list on first paint", kind)
+		}
+		if kind == "tag" && !strings.Contains(page, `var K="tag",P="/tag/"`) {
+			t.Errorf("tag: the chips' kind and prefix aren't the page's: %s", page[strings.Index(page, "var K="):][:40])
+		}
+	}
+}
