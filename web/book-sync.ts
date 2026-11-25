@@ -1,6 +1,7 @@
 /**
  * Books downloaded to this device without being opened (book-cache.ts),
- * run from the library pages (startBookSync; not admin pages or editors):
+ * run from the library pages with books (startBookSync; not admin pages,
+ * editors or the category lists):
  *
  *   1. the most recently read keepReadingN Reading books, when the reader
  *      hasn't kept them (a book switched to Reading and left at once, or
@@ -41,7 +42,7 @@ import {
 } from "./book-cache.js";
 import { preferredFormat } from "./last-format.js";
 import { localKey } from "./local-keys.js";
-import { keepCover, readingSnapshot, refreshOfflineReading } from "./offline-books.js";
+import { DECK_ROW_MAX, keepCover, readingSnapshot, refreshOfflineReading, savedListChanged } from "./offline-books.js";
 import { devicePrefs, formatPref } from "./prefs.js";
 import { cachedMarks, statusOf, type Marks } from "./reading.js";
 import {
@@ -56,7 +57,7 @@ import {
     type SavedBook,
 } from "./retention.js";
 import { pageBusy, quietFetch, untilQuiet, watchPage } from "./page-busy.js";
-import { onSyncChange, readSync, writeSync } from "./sync-state.js";
+import { readSync, SYNC_NOW_EVENT, writeSync, type SyncNowDetail } from "./sync-state.js";
 
 /** "yielded": stopped for the page's own loading (page-busy.ts); goes on from there. */
 export type DownloadResult = "ok" | "missing" | "too-big" | "no-room" | "paused" | "yielded";
@@ -411,16 +412,18 @@ async function readingOrder(marks: Marks): Promise<{ uuid: string; title: string
     return (readingSnapshot()?.books ?? []).filter((b) => reading(b.uuid));
 }
 
-/** The first N On deck and Saved books, fetched again at most every SAVED_REFRESH_MS (unchanged: an empty 304). */
+/**
+ * The start of On deck and Saved: the first N to download (n), and at least
+ * as many as Discover's row for the offline page (offline-books.ts), in one
+ * request. Fetched again at most every SAVED_REFRESH_MS (unchanged: an
+ * empty 304). The whole list is kept (retention.ts slices it to N).
+ */
 async function savedToFetch(user: string, n: number, force: boolean): Promise<SavedBook[] | null> {
     const last = savedList(user);
-    if (!n) {
-        if (last?.books.length) writeSavedList(user, { at: Date.now(), books: [] }); // off: none kept
-        return [];
-    }
-    if (!force && last?.limit === n && Date.now() - last.at < SAVED_REFRESH_MS) return last.books;
-    const tag = last?.limit === n ? last.tag : undefined;
-    const res = await quietFetch(`/api/me/saved-books?limit=${n}`, {
+    const limit = Math.max(DECK_ROW_MAX, n);
+    if (!force && last?.limit === limit && Date.now() - last.at < SAVED_REFRESH_MS) return last.books;
+    const tag = last?.limit === limit ? last.tag : undefined;
+    const res = await quietFetch(`/api/me/saved-books?limit=${limit}`, {
         credentials: "same-origin",
         headers: { accept: "application/json", ...(tag ? { "if-none-match": tag } : {}) },
     }).catch(() => null);
@@ -429,7 +432,8 @@ async function savedToFetch(user: string, n: number, force: boolean): Promise<Sa
     if (res.status === 304 && last) books = last.books;
     else if (!res.ok || !(res.headers.get("content-type") ?? "").includes("json")) return last?.books ?? null;
     else books = (await res.json()) as SavedBook[];
-    writeSavedList(user, { at: Date.now(), books, limit: n, tag: res.headers.get("etag") ?? tag ?? "" });
+    writeSavedList(user, { at: Date.now(), books, limit, tag: res.headers.get("etag") ?? tag ?? "" });
+    if (res.status !== 304) await savedListChanged(user).catch(() => {});
     return books;
 }
 
@@ -541,8 +545,9 @@ async function runSync({ marks, force = false, fresh = false }: SyncOptions): Pr
     if (user === null) return;
     const prefs = devicePrefs(user);
     const m = marks ?? cachedMarks();
-    // The Reading list, newest first: at most every 10 minutes, and an empty 304 when unchanged.
-    if (prefs.keepReadingN) await refreshOfflineReading().catch(() => {});
+    // The Reading list, newest first (and the offline page's lists, offline-books.ts):
+    // at most every 10 minutes, and an empty 304 when unchanged.
+    await refreshOfflineReading().catch(() => {});
     const keptBooks = await listBooks().catch(() => []);
     const kept = new Map(keptBooks.map((b) => [b.uuid, b]));
     const jobs: Job[] = [];
@@ -563,7 +568,7 @@ async function runSync({ marks, force = false, fresh = false }: SyncOptions): Pr
         }
     }
     const saved = await savedToFetch(user, prefs.prefetchSavedN, force);
-    for (const b of saved ?? []) {
+    for (const b of (saved ?? []).slice(0, prefs.prefetchSavedN)) {
         const have = kept.get(b.uuid);
         if (have) {
             if (have.savedAt !== b.saved_at) await updateBook(b.uuid, have.format ?? "epub", { savedAt: b.saved_at }).catch(() => {});
@@ -634,21 +639,20 @@ let started = false;
 
 /**
  * A library page: download what's missing once the page has settled, and
- * again when downloads are resumed or the connection comes back. marks:
- * the page's fresh reading marks, if it has them (the grid).
+ * again when nav.ts asks (SYNC_NOW_EVENT: Sync now, downloads resumed, the
+ * connection back). marks: the page's fresh reading marks, if it has them
+ * (the grid).
  */
 export function startBookSync(marks?: Marks): void {
     const go = (opts: SyncOptions = {}): void => void syncBooks(opts);
     if (!started) {
         started = true;
         watchPage(); // downloads give way to this page's own loading (page-busy.ts)
-        let wasPaused = paused();
-        onSyncChange(currentUser(), () => {
-            const now = paused();
-            if (wasPaused && !now) go();
-            wasPaused = now;
+        document.addEventListener(SYNC_NOW_EVENT, (e) => {
+            e.preventDefault(); // this page's run takes it (nav.ts loads none)
+            const { force, done } = (e as CustomEvent<SyncNowDetail>).detail;
+            done(syncBooks({ force }));
         });
-        window.addEventListener("online", () => go());
     }
     if (marks) {
         go({ marks }); // tidying with fresh statuses shouldn't wait; downloads go one at a time anyway

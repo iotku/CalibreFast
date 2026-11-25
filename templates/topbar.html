@@ -53,7 +53,7 @@ pages stay the same for everyone and cacheable.
 
 {{ define "topbar-end" }}
     </div>
-    <div id="user-nav" class="tb-user" data-active="{{ .Active }}">
+    <div id="user-nav" class="tb-user" data-active="{{ .Active }}" data-sync-src="{{ asset "sync-run.js" }}">
         <div class="throbber" role="status" aria-label="Loading account"><span class="throbber-dot"></span><span class="throbber-dot"></span><span class="throbber-dot"></span></div>
     </div>
     {{/* The user part as last drawn (nav.ts keeps it as cf-nav-tree, a JSON

@@ -35,6 +35,20 @@ export const STALE_MS = 10_000;
 export const SYNC_EVENT = "cf:sync";
 
 /**
+ * Run the book downloads now (nav.ts: Sync now, downloads resumed, back
+ * online), asked of the page's own book-sync.ts (startBookSync), which
+ * cancels the event to say it took it and hands its run to done. Not
+ * cancelled: the page has none, and nav.ts loads one (sync-run.ts).
+ */
+export const SYNC_NOW_EVENT = "cf:sync-now";
+
+export interface SyncNowDetail {
+    /** Fetch the Saved list and statuses now, however recently they were. */
+    force: boolean;
+    done: (run: Promise<void>) => void;
+}
+
+/**
  * paused is a key of its own: the downloading tab writes its progress
  * (read, merge, write) every half second, and with paused in the same
  * record, a pause set in another tab in between would be written over.
