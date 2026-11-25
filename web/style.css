@@ -3416,8 +3416,11 @@ body.book-standalone {
     width: min(420px, 100%);
 }
 
+/* Capped on the box too, not only on the wrapper clearable.ts adds once
+   aggregate.js runs: the first paint has the final width, not the page's. */
 .agg-search .input-search {
     width: 100%;
+    max-width: 420px;
     box-sizing: border-box;
 }
 
