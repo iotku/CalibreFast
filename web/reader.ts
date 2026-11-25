@@ -789,20 +789,30 @@ function swipeToTurn(on: EventTarget, doc: Document, view: HTMLElement): void {
         };
     };
     // Turn while the view still sits a screen over, and put it back in the
-    // same frame as epub.js scrolls (its queue turns in a requestAnimationFrame
-    // queued first), so neither page shows twice. Back where it was if the
-    // page didn't move (the first or last page, or epub.js busy too long).
+    // same queued task as epub.js scrolls, so no frame shows either page
+    // twice. It has to be back before epub.js looks: a view shifted left
+    // shrinks the container's scrollWidth by a screen, and epub.js reads that
+    // to choose between the next page and the next chapter, so the
+    // chapter's last page was skipped. Slides back if nothing moved (the
+    // first or last page of the book).
     const turnFrom = (offset: number, side: 1 | -1): void => {
+        const dir = rtl ? -side : side;
         const sc = container.querySelector<HTMLElement>(".epub-container");
-        const before = sc?.scrollLeft;
-        turnSide(side);
-        let frames = 0;
-        const settle = (): void => {
-            if (!view.isConnected || sc?.scrollLeft !== before) shift(0);
-            else if (++frames < 20) requestAnimationFrame(settle);
-            else slide(offset, 0, 0, () => undefined);
-        };
-        requestAnimationFrame(settle);
+        rendition.q
+            .enqueue(() => {
+                shift(0);
+                const before = sc?.scrollLeft;
+                const m = rendition.manager;
+                const done = m && (dir > 0 ? m.next() : m.prev());
+                // A page turn scrolls at once; a new chapter removes this view at once.
+                if (view.isConnected && sc?.scrollLeft === before) {
+                    shift(offset);
+                    slide(offset, 0, 0, () => undefined);
+                }
+                return done;
+            })
+            .then(() => rendition.reportLocation())
+            .catch((e: unknown) => console.error(e));
     };
 
     on.addEventListener(

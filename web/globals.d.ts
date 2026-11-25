@@ -88,6 +88,12 @@ declare namespace EpubJS {
         getContents(): Contents[];
         /** epub.js internal: divisor is columns per screen (2 in a spread); displayed pages count columns. */
         _layout?: { divisor?: number };
+        /** epub.js internal: the queue next()/prev() run on. A task runs whole within one frame. */
+        q: { enqueue<T>(task: () => T): Promise<Awaited<T>> };
+        /** epub.js internal: the view manager behind next()/prev() (unqueued, no "relocated"). */
+        manager?: { next(): Promise<void> | void; prev(): Promise<void> | void };
+        /** epub.js internal: works out where the reader is and emits "relocated". */
+        reportLocation(): Promise<void>;
         /** The chapters on screen: the manager's collection, or [] before there is one. */
         views(): { all(): View[] } | View[];
         hooks: { content: { register(fn: (contents: Contents) => void): void } };
