@@ -77,7 +77,7 @@ export interface MeResponse {
     /** The marks are those the browser has (?have=): not sent again. */
     reading_same?: boolean;
     /** The account's preferences (Go: userPrefs; prefs.ts). */
-    prefs?: { format: "last" | "epub" | "pdf"; track_reading?: boolean; daily_pages?: number; yearly_books?: number; goal_notice?: boolean };
+    prefs?: { format: "last" | "epub" | "pdf"; track_reading?: boolean; daily_pages?: number; yearly_books?: number; goal_notice?: boolean; push_declined?: boolean };
     /** When the user's favorite authors etc. last changed (unix ms; favorites.ts). */
     favs?: number;
     /** Hardcover sync, for the sync menu; only for users with a link, working or broken (Go: hardcoversync.Indicator). */

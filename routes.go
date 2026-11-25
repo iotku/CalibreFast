@@ -466,6 +466,9 @@ func registerNotificationRoutes() {
 	http.HandleFunc("POST /api/me/notifications/seen", requireUser(notificationsSeenHandler))
 	http.HandleFunc("DELETE /api/me/notifications/{id}", requireUser(notificationDeleteHandler))
 	http.HandleFunc("DELETE /api/me/notifications", requireUser(notificationsClearHandler))
+	http.HandleFunc("GET /api/me/push", requireUser(pushInfoHandler))
+	http.HandleFunc("PUT /api/me/push", requireUser(pushSubscribeHandler))
+	http.HandleFunc("DELETE /api/me/push", requireUser(pushUnsubscribeHandler))
 }
 
 // ---------------------------------------------------------------------------

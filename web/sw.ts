@@ -27,7 +27,14 @@
  *     connection.
  * Nothing else is cached: API calls go to the network, and the readers keep
  * their own copies of positions, bookmarks and notes.
+ *
+ * System notifications (webpush.go, push.ts), on devices where the user turned
+ * them on: a push carries nothing, so on one this asks the server for the
+ * user's unseen notifications and shows those it hasn't shown yet. A click
+ * opens the notification's page in the app.
  */
+
+import { noticeText, type Notice } from "./notice-text.js";
 
 // Minimal service worker types (the DOM library doesn't have them).
 interface ExtendableEvent extends Event {
@@ -47,12 +54,35 @@ interface ExtendableMessageEvent extends ExtendableEvent {
 interface SWScope {
     CF_ASSETS?: string[];
     skipWaiting(): Promise<void>;
-    clients: { claim(): Promise<void> };
-    registration: { scope: string };
+    clients: {
+        claim(): Promise<void>;
+        matchAll(o: { type: "window"; includeUncontrolled: boolean }): Promise<SWClient[]>;
+        openWindow(url: string): Promise<SWClient | null>;
+    };
+    registration: {
+        scope: string;
+        showNotification(title: string, o: NotificationOptions): Promise<void>;
+        pushManager: PushManager;
+    };
     addEventListener(type: "install", fn: (e: InstallEvent) => void): void;
     addEventListener(type: "activate", fn: (e: ExtendableEvent) => void): void;
     addEventListener(type: "fetch", fn: (e: FetchEvent) => void): void;
     addEventListener(type: "message", fn: (e: ExtendableMessageEvent) => void): void;
+    addEventListener(type: "push", fn: (e: ExtendableEvent) => void): void;
+    addEventListener(type: "notificationclick", fn: (e: NotificationEvent) => void): void;
+    addEventListener(type: "pushsubscriptionchange", fn: (e: PushSubscriptionChangeEvent) => void): void;
+}
+interface NotificationEvent extends ExtendableEvent {
+    notification: Notification;
+}
+interface PushSubscriptionChangeEvent extends ExtendableEvent {
+    oldSubscription?: PushSubscription | null;
+    newSubscription?: PushSubscription | null;
+}
+interface SWClient {
+    url: string;
+    focus(): Promise<SWClient>;
+    navigate(url: string): Promise<SWClient | null>;
 }
 const sw = self as unknown as SWScope;
 
@@ -292,3 +322,98 @@ async function offlineCover(uuid: string): Promise<Response> {
     const hit = await (await caches.open(COVERS)).match(`/cover-thumb/${uuid}`);
     return hit ?? new Response("", { status: 404 });
 }
+
+// --- System notifications -------------------------------------------------
+
+const PUSH_STATE = "cf-push";
+const PUSH_SHOWN = "/__cf-push-shown"; // the newest notification id shown
+const PUSH_MAX = 3; // more than this: one "N new notifications"
+
+async function lastShown(): Promise<number> {
+    const hit = await (await caches.open(PUSH_STATE)).match(PUSH_SHOWN);
+    return hit ? Number(await hit.text()) || 0 : 0;
+}
+
+async function setLastShown(id: number): Promise<void> {
+    await (await caches.open(PUSH_STATE)).put(PUSH_SHOWN, new Response(String(id)));
+}
+
+/** A same-site path, or "/me/notifications". */
+function localHref(href: unknown): string {
+    return typeof href === "string" && href.startsWith("/") && !href.startsWith("//") && !href.startsWith("/\\")
+        ? href
+        : "/me/notifications";
+}
+
+async function showPushed(): Promise<void> {
+    const res = await fetch("/api/me/notifications", { credentials: "same-origin", cache: "no-store" });
+    if (!res.ok) return; // signed out on this device: nothing of theirs to show
+    const all = (await res.json()) as Notice[];
+    const since = await lastShown();
+    const fresh = all.filter((n) => !n.seen && n.id > since).sort((a, b) => b.id - a.id);
+    if (!fresh.length) return;
+    const icon = "/static/icons/icon-192-v1.png";
+    if (fresh.length > PUSH_MAX) {
+        await sw.registration.showNotification(`${fresh.length} new notifications`, {
+            body: fresh.slice(0, PUSH_MAX).map((n) => noticeText(n)[0]).join("\n"),
+            tag: "cf-notifications",
+            icon,
+            data: { href: "/me/notifications" },
+        });
+    } else {
+        for (const n of fresh) {
+            const [headline, note] = noticeText(n);
+            await sw.registration.showNotification(headline, {
+                body: note,
+                tag: `cf-n-${n.id}`,
+                icon,
+                data: { href: localHref(n.href) },
+            });
+        }
+    }
+    await setLastShown(Math.max(since, ...fresh.map((n) => n.id)));
+}
+
+sw.addEventListener("push", (e) => {
+    e.waitUntil(showPushed().catch((err: unknown) => console.warn("push:", err)));
+});
+
+sw.addEventListener("notificationclick", (e) => {
+    e.notification.close();
+    const href = localHref((e.notification.data as { href?: unknown } | null)?.href);
+    e.waitUntil(
+        (async () => {
+            const wins = await sw.clients.matchAll({ type: "window", includeUncontrolled: true });
+            const win = wins.find((c) => new URL(c.url).origin === location.origin);
+            if (win) {
+                await win.focus();
+                await win.navigate(href);
+            } else {
+                await sw.clients.openWindow(href);
+            }
+        })(),
+    );
+});
+
+// The push service replaced this device's subscription: tell the server.
+sw.addEventListener("pushsubscriptionchange", (e) => {
+    e.waitUntil(
+        (async () => {
+            const send = (method: string, endpoint: string) =>
+                fetch("/api/me/push", {
+                    method,
+                    credentials: "same-origin",
+                    headers: { "Content-Type": "application/json" },
+                    body: JSON.stringify({ endpoint }),
+                });
+            if (e.oldSubscription) await send("DELETE", e.oldSubscription.endpoint).catch(() => undefined);
+            let sub = e.newSubscription ?? null;
+            if (!sub) {
+                const info = (await (await fetch("/api/me/push", { credentials: "same-origin" })).json()) as { enabled: boolean; key?: string };
+                if (!info.enabled || !info.key) return;
+                sub = await sw.registration.pushManager.subscribe({ userVisibleOnly: true, applicationServerKey: info.key });
+            }
+            await send("PUT", sub.endpoint);
+        })().catch((err: unknown) => console.warn("push:", err)),
+    );
+});

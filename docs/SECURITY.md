@@ -136,6 +136,18 @@ A user can link their own Hardcover account on the account page (`internal/hardc
 - **No redirects:** OAuth requests (which carry codes and refresh tokens in their bodies) never follow a redirect.
 - **`-no-hardcover-sync`** (or `-no-hardcover`) turns it off: nothing is sent and nobody can link. Users linked before see that on their account page and can still unlink, which revokes the sign-in at Hardcover (as long as the client id is still set).
 
+## System notifications (Web Push)
+
+Notifications live in the app (the bell menu and `/me/notifications`). A user can also have a device show them as system notifications while the app is closed (`webpush.go`, `web/push.ts`, `web/sw.ts`). That goes through the browser maker's push service (Apple, Google, Mozilla or Microsoft), a third party, so:
+
+- **Off unless the user turns it on, per device:** in **Preferences → System notifications**, or with the one-time offer in the notifications menu, which is shown only in the installed app. The browser's permission prompt only ever follows a click on **Turn on**.
+- **A "no" stands.** **No thanks** is kept on the account (`push_declined`), so no device offers again. When the browser reports notifications as blocked, the app never asks again; only the browser's own settings can change that. Notifications stay in the app either way.
+- **Pushes carry nothing:** no title, author or count, and no encrypted payload. The push service learns only that this server has something for that device, and when. The service worker then fetches the user's unseen notifications from this server (with the device's own session) and shows them. A device that has signed out gets nothing to show.
+- **Kept per device:** only the push service's endpoint (`push_subscriptions`), and no encryption keys. It's deleted when the user turns notifications off, signs out on that device, or deletes their account, and when the service says the endpoint is gone (404/410/403) or after 10 failures in a row.
+- **Where it sends:** only HTTPS endpoints on known push services (`pushHosts`: `fcm.googleapis.com`, `push.services.mozilla.com`, `push.apple.com`, `notify.windows.com` and their subdomains), on port 443, without redirects, so an endpoint can't point the server anywhere else. Endpoints aren't logged.
+- **Signing:** VAPID (RFC 8292), with a P-256 key made the first time and kept in `settings`, sealed with `secrets.key`. If that key is lost, a new one is made and every device's endpoint is dropped; devices subscribe again the next time the app is opened.
+- **`-no-web-push`** turns it off: nothing is sent, nobody can turn it on, and turning it off still works.
+
 ## Writes can conflict with Calibre itself
 
 CalibreFast writes to the same `metadata.db` and book folders that the Calibre desktop app uses. Editing in both at once can lose changes or confuse Calibre. **Close Calibre while editing through CalibreFast.**
@@ -144,7 +156,7 @@ Changes made to the library outside CalibreFast (in Calibre, `calibre-server` or
 
 ## Where data is stored
 
-- **`-datadir`** (default `./data`) holds `calibrefast.db`: accounts, sessions, sync key hashes, favorites, progress (including KOReader devices' positions and names), bookmarks, highlights and notes, shelves, and users' encrypted Hardcover sign-ins. It also caches the fingerprints KOReader uses for library files. `secrets.key` beside it (`0600`) is the key those sign-ins are encrypted with: back it up apart from the database, or not at all.
+- **`-datadir`** (default `./data`) holds `calibrefast.db`: accounts, sessions, sync key hashes, favorites, progress (including KOReader devices' positions and names), bookmarks, highlights and notes, shelves, users' encrypted Hardcover sign-ins, and the push service endpoints of devices that turned on system notifications. It also caches the fingerprints KOReader uses for library files. `secrets.key` beside it (`0600`) is the key those sign-ins are encrypted with: back it up apart from the database, or not at all.
   - The directory is created `0700` and the database file is `0600`, because it holds password hashes and session tokens.
   - **Keep it out of version control** (`/data/` is in `.gitignore`) and back it up separately from the library.
 - **`-datadir/imports`** (or `-import-dir`) holds books from the watch folder (`-watch-dir`) until an editor or admin adds or discards them: the book files themselves, moved out of the watch folder. Only editors and admins on a server with `-allow-writes` can list, download, add or discard them. A discarded book's folder is moved to `imports-discarded` beside it (`<import-dir>-discarded`), never deleted; clear it on the server. The server refuses an `-import-dir` that overlaps the library or holds `-datadir`, and a `-watch-dir` that overlaps the queue.

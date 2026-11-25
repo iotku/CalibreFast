@@ -854,6 +854,20 @@ var migrations = []string{
 		SELECT user_id, id, on_deck, created_at, seen_at FROM notifications;
 	DROP TABLE notifications;
 	`,
+	// 50: system notifications (Web Push, webpush.go), only for a user who
+	// turned them on, one row per device. Only the push service's endpoint
+	// is kept: pushes carry nothing (no keys to encrypt with are needed),
+	// and the service worker fetches the text from this server.
+	`
+	CREATE TABLE push_subscriptions (
+		id         INTEGER PRIMARY KEY,
+		user_id    INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+		endpoint   TEXT    NOT NULL UNIQUE,
+		created_at INTEGER NOT NULL,
+		failures   INTEGER NOT NULL DEFAULT 0
+	);
+	CREATE INDEX push_subscriptions_user ON push_subscriptions (user_id);
+	`,
 }
 
 // openAppDB opens (creating if needed) and migrates the app database.

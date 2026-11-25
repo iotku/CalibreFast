@@ -29,6 +29,10 @@ type userPrefs struct {
 	// GoalNotice: say so in the reader when the daily goal is reached. Off
 	// unless asked for: nothing pops up while reading by default.
 	GoalNotice bool `json:"goal_notice"`
+	// PushDeclined: "No thanks" to system notifications (webpush.go). The
+	// app doesn't offer them again, on any device; they can still be turned
+	// on in preferences.
+	PushDeclined bool `json:"push_declined"`
 }
 
 var prefFormats = []string{"last", "epub", "pdf"}
