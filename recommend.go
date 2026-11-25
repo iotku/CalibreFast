@@ -130,6 +130,16 @@ type recIndex struct {
 	names    []string        // entity -> name
 	postings [][]int32       // entity -> book slots, shuffle order
 	series   map[int32][]int32
+
+	// For favorites (rankRecs, followedBooks): each author's and publisher's
+	// books, the books not removed, and each book's place in the shuffle and
+	// in Latest (newest added first; -1: removed). Going through a few
+	// favorites' books, not every book in the library, on each Home.
+	byAuthor    map[int32][]int32
+	byPublisher map[int32][]int32
+	total       int
+	shufflePos  []int32
+	latestPos   []int32
 }
 
 var (
@@ -172,10 +182,26 @@ func currentRecIndex() *recIndex {
 		ix.entity[id] = n
 	}
 	ix.postings = make([][]int32, len(ix.names))
-	for _, slot := range c.shuffle {
+	ix.byAuthor, ix.byPublisher = map[int32][]int32{}, map[int32][]int32{}
+	ix.shufflePos, ix.latestPos = make([]int32, len(c.books)), make([]int32, len(c.books))
+	for i := range ix.latestPos {
+		ix.latestPos[i] = -1
+	}
+	for i, slot := range c.latest() {
+		ix.latestPos[slot] = int32(i)
+	}
+	for i, slot := range c.shuffle {
+		ix.shufflePos[slot] = int32(i)
 		b := &c.books[slot]
 		if b.Removed {
 			continue
+		}
+		ix.total++
+		for _, a := range b.AuthorIDs {
+			ix.byAuthor[a] = append(ix.byAuthor[a], slot)
+		}
+		if b.Publisher != 0 {
+			ix.byPublisher[b.Publisher] = append(ix.byPublisher[b.Publisher], slot)
 		}
 		for _, e := range ix.bookTags(b) {
 			ix.postings[e] = append(ix.postings[e], slot)
@@ -189,6 +215,29 @@ func currentRecIndex() *recIndex {
 	}
 	recIndexNow.Store(ix)
 	return ix
+}
+
+// favBooks: the books by these authors or from these publishers (removed
+// ones aren't indexed), each once, in pos's order (shufflePos, latestPos).
+func (ix *recIndex) favBooks(authors, publishers map[int32]bool, pos []int32) []int32 {
+	seen := map[int32]bool{}
+	var out []int32
+	add := func(slots []int32) {
+		for _, s := range slots {
+			if !seen[s] {
+				seen[s] = true
+				out = append(out, s)
+			}
+		}
+	}
+	for a := range authors {
+		add(ix.byAuthor[a])
+	}
+	for p := range publishers {
+		add(ix.byPublisher[p])
+	}
+	slices.SortFunc(out, func(a, b int32) int { return cmp.Compare(pos[a], pos[b]) })
+	return out
 }
 
 // bookTags: a book's tags as entities, each once.
@@ -387,12 +436,7 @@ func rankRecs(m readingMarks, favs recFavs, hide map[string]bool, rng *rand.Rand
 	l.series = series
 
 	// Tag affinity.
-	total := 0
-	for i := range c.books {
-		if !c.books[i].Removed {
-			total++
-		}
-	}
+	total := ix.total
 	score := map[int32]float64{}
 	idf := func(e int32) float64 {
 		if n := len(ix.postings[e]); n > 0 {
@@ -474,7 +518,7 @@ func rankRecs(m readingMarks, favs recFavs, hide map[string]bool, rng *rand.Rand
 	// Candidates: favorite authors' and publishers' books.
 	if len(favAuthors)+len(favPublishers) > 0 {
 		n := 0
-		for _, slot := range c.shuffle {
+		for _, slot := range ix.favBooks(favAuthors, favPublishers, ix.shufflePos) { // in shuffle order
 			if n >= recPerFav {
 				break
 			}
