@@ -234,8 +234,18 @@ export async function fetchMarks(first = false): Promise<Marks | null> {
     }
 }
 
+/** The book a card is: a library book's uuid, or a placeholder's (utils.ts placeholderCard). */
+export function cardBook(card: HTMLElement): string | undefined {
+    return card.dataset["uuid"] ?? card.dataset["placeholder"];
+}
+
 /** Mark a card: status ring and bar, and the buttons over its cover. */
 export function markCard(card: HTMLElement, marks: Marks): void {
+    const placeholder = card.dataset["placeholder"];
+    if (placeholder) {
+        markPlaceholder(card, placeholder, marks);
+        return;
+    }
     const uuid = card.dataset["uuid"];
     if (!uuid) return;
     // Same precedence as the right button (rightState).
@@ -249,6 +259,26 @@ export function markCard(card: HTMLElement, marks: Marks): void {
     card.classList.toggle("is-dropped", s === "dropped");
     paintProgress(card, finished ? 1 : reading ? (marks.reading.get(uuid) ?? null) : undefined, finished);
     paintActions(card, uuid, marks);
+}
+
+/**
+ * A placeholder's card (a book not in the library yet) has no progress or
+ * cover buttons; saved (placeholder-save.ts), it has the saved ring and a
+ * bookmark in its "Not in library" banner, always shown.
+ */
+function markPlaceholder(card: HTMLElement, uuid: string, marks: Marks): void {
+    const saved = marks.signedIn && marks.wanted.has(uuid);
+    card.classList.toggle("is-wanted", saved);
+    const link = card.querySelector<HTMLElement>(".placeholder-link");
+    const label = link?.getAttribute("aria-label")?.replace(/, saved$/, "");
+    if (link && label !== undefined) link.setAttribute("aria-label", saved ? `${label}, saved` : label);
+    const banner = card.querySelector<HTMLElement>(".placeholder-banner");
+    const mark = banner?.querySelector(".placeholder-saved");
+    if (!saved) {
+        mark?.remove();
+        return;
+    }
+    if (banner && !mark) banner.prepend(el("span", { className: "placeholder-saved" }, ICONS.wanted()));
 }
 
 function paintProgress(card: HTMLElement, progress: number | null | undefined, finished = false): void {

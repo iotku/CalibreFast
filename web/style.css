@@ -6364,6 +6364,20 @@ body:has(.manage-panel:not([hidden])) .select-bar {
     border-bottom: 1px dashed var(--accent, #c8a96e);
 }
 
+/* Saved (reading.ts markPlaceholder): a bookmark ahead of the banner's text. */
+.placeholder-saved {
+    display: inline-block;
+    margin-right: 0.35em;
+    vertical-align: -0.15em;
+    color: var(--accent, #c8a96e);
+}
+
+.placeholder-saved svg {
+    display: block;
+    width: 1.15em;
+    height: 1.15em;
+}
+
 .placeholder-card .cover-wrapper {
     background: hsl(var(--cover-hue) 15% 22%);
 }
