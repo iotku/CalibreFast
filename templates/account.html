@@ -12,7 +12,7 @@
 {{ $tb := topbar "Title" "Account" }}
 {{ template "topbar-start" $tb }}
 {{ template "topbar-end" $tb }}
-<main class="auth-main">
+<main class="auth-main auth-columns">
     <section class="auth-card">
         <h1>{{ .User.Username }}{{ if .User.IsAdmin }} <span class="auth-badge">admin</span>{{ end }}</h1>
         {{ if .Notice }}<p class="auth-notice" role="status">{{ .Notice }}</p>{{ end }}
@@ -29,6 +29,9 @@
         </p>
     </section>
 
+    {{/* Two columns on a wide screen (.auth-columns): signing in and
+         favorites; devices and Hardcover. One after the other otherwise. */}}
+    <div class="auth-col">
     {{ if .Providers }}
     <section class="auth-card" id="linked-sign-ins">
         <h2>Linked sign-ins</h2>
@@ -95,9 +98,15 @@
     <section id="account-favs" class="auth-card account-favs" hidden>
         <h2>Favorites</h2>
         <p class="account-favs-empty auth-muted">Star an author or series on its page to keep it here.</p>
-        <div class="account-favs-list"></div>
+        {{/* Closed to start with: someone with many favorites gets one line. */}}
+        <details class="sync-details account-favs-more" hidden>
+            <summary class="account-favs-count">Favorites</summary>
+            <div class="account-favs-list"></div>
+        </details>
     </section>
+    </div>
 
+    <div class="auth-col">
     <section class="auth-card" id="device-sync">
         <h2>Device sync</h2>
         {{ if .SyncNotice }}<p class="auth-notice" role="status">{{ .SyncNotice }}</p>{{ end }}
@@ -377,6 +386,7 @@
         {{ end }}
     </section>
     {{ end }}
+    </div>
 
     <section class="auth-card" id="delete-account">
         <h2>Delete account</h2>

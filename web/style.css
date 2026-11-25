@@ -5025,6 +5025,33 @@ label.group-row span {
     width: min(760px, calc(100vw - 32px));
 }
 
+/* Account and Server: a wider column, and on a wide screen two columns of
+   cards (each .auth-col stacks its own, so a long card in one doesn't
+   leave gaps in the other). A card outside them spans both. */
+.auth-main.auth-columns {
+    width: min(600px, calc(100vw - 32px));
+}
+
+.auth-col {
+    display: flex;
+    flex-direction: column;
+    gap: 1.25rem;
+    min-width: 0;
+}
+
+@media (min-width: 960px) {
+    .auth-main.auth-columns {
+        display: grid;
+        grid-template-columns: repeat(2, minmax(0, 1fr));
+        align-items: start;
+        width: min(1160px, calc(100vw - 48px));
+    }
+
+    .auth-columns > :not(.auth-col) {
+        grid-column: 1 / -1;
+    }
+}
+
 .auth-card {
     padding: 1.5rem;
     background: var(--bg-surface);

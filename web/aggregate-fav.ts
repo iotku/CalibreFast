@@ -68,6 +68,12 @@ function paintAccount(list: AggFavorite[]): void {
     const empty = box.querySelector<HTMLElement>(".account-favs-empty");
     box.querySelector(".account-favs-list")?.replaceChildren(...groups);
     if (empty) empty.hidden = groups.length > 0;
+    // The list is folded under a count (open or closed as the user left it).
+    const shown = list.filter((f) => KINDS.some(([kind]) => kind === f.kind)).length;
+    const more = box.querySelector<HTMLElement>(".account-favs-more");
+    if (more) more.hidden = !shown;
+    const count = box.querySelector<HTMLElement>(".account-favs-count");
+    if (count) count.textContent = `${shown} favorite${shown === 1 ? "" : "s"}`;
     box.hidden = false;
 }
 

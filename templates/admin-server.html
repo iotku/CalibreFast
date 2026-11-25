@@ -12,10 +12,27 @@
 {{ $tb := topbar "Active" "admin-server" "Title" "Server" }}
 {{ template "topbar-start" $tb }}
 {{ template "topbar-end" $tb }}
-<main class="auth-main">
-    <section class="auth-card" id="server-page" data-refresh-ms="{{ .RefreshMS }}">
+{{/* Two columns on a wide screen (.auth-columns): how it's running; what
+     to do with it. One after the other otherwise. The live parts are
+     swapped in by id (admin-server.ts), whichever card they're in. */}}
+<main class="auth-main auth-columns" id="server-page" data-refresh-ms="{{ .RefreshMS }}">
+    <div class="auth-col">
+    <section class="auth-card">
         <h1>Server</h1>
-        {{ template "server-live" . }}
+        {{ template "server-facts" . }}
+    </section>
+    <section class="auth-card">
+        <h2>API budgets</h2>
+        {{ template "server-budgets" . }}
+    </section>
+    <section class="auth-card">
+        <h2>Storage</h2>
+        {{ template "server-storage" . }}
+    </section>
+    </div>
+
+    <div class="auth-col">
+    <section class="auth-card">
         <h2>Backups</h2>
         {{ if .Backups.On }}
         <p class="auth-muted">The app's data (accounts, reading, highlights, shelves) is backed up daily, and Calibre's <code>metadata.db</code> weekly when it changed, into <code>{{ .Backups.Dir }}</code>. The newest {{ .Backups.Keep }} of each are kept. Backups hold everyone's accounts and reading: keep them as safe as the server's data folder. The key for users' Hardcover sign-ins (<code>secrets.key</code>) is never in a backup or a download; copies stay in the data folder.</p>
@@ -28,6 +45,8 @@
         {{ else }}
         <p class="auth-muted">Off (<code>-backups=false</code>).</p>
         {{ end }}
+    </section>
+    <section class="auth-card">
         <h2>Update</h2>
         {{ if .NoUpdate }}
         <p class="auth-muted">{{ .NoUpdate }}</p>
@@ -37,6 +56,8 @@
         <p id="update-status" class="auth-notice" role="status" hidden></p>
         <pre id="update-output" class="server-update-output" tabindex="0" aria-label="Build output" hidden></pre>
         {{ end }}
+    </section>
+    <section class="auth-card">
         <h2>Stop the server</h2>
         {{ if .Systemd }}
         <p class="auth-muted">Requests in progress finish first, then the server stops. systemd starts it again if its unit restarts it (<code>Restart=always</code>, as in <code>deploy/systemd/</code>), building anything new first while it's down: <strong>Update</strong> is quicker. Expect up to a minute.</p>
@@ -46,17 +67,24 @@
         <button type="button" id="server-stop" class="btn-standard btn-danger" data-restarts="{{ .Systemd }}">Stop server…</button>
         <p id="server-status" class="auth-notice" role="status" hidden></p>
     </section>
+    </div>
 </main>
 <script type="module" src="{{ asset "admin-server.js" }}"></script>
 </body>
 </html>
-{{ define "server-live" }}
+{{/* The live parts, each in its own card on the page; all of them in
+     /admin/server/live (server-live-all), where only [data-live][id] counts. */}}
+{{ define "server-live" }}{{ template "server-facts" . }}{{ template "server-budgets" . }}{{ template "server-storage" . }}{{ end }}
+
+{{ define "server-facts" }}
         <dl class="sync-facts" id="server-facts" data-live>
             <dt>Version</dt><dd>{{ with .Revision }}<code>{{ . }}</code>{{ else }}unknown{{ end }}{{ with .GoVersion }} · {{ . }}{{ end }}</dd>
             <dt>Running since</dt><dd>{{ .Started }} ({{ .Uptime }})</dd>
             <dt>Started by</dt><dd>{{ if .Systemd }}systemd{{ else }}hand, or a service manager other than systemd{{ end }}</dd>
         </dl>
-        <h2>API budgets</h2>
+{{ end }}
+
+{{ define "server-budgets" }}
         <div class="prefs-storage server-budgets" id="server-budgets" data-live>
             {{- range .Budgets }}
             <div class="prefs-meter">
@@ -77,7 +105,9 @@
             </div>
             {{- end }}
         </div>
-        <h2>Storage</h2>
+{{ end }}
+
+{{ define "server-storage" }}
         <div class="prefs-storage server-storage" id="server-storage" data-live>
             {{- range .Storage }}
             <div class="prefs-meter">
