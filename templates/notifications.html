@@ -47,7 +47,7 @@
 <script type="module" src="{{ asset "notifications.js" }}"></script>
 </body>
 </html>
-{{ define "notification-text" }}<div class="notification-text">
+{{ define "notification-text" }}{{ if and (eq .Kind "placeholder_added") .BookUUID }}<img class="notification-cover" src="/cover-thumb/{{ .BookUUID }}" alt="" width="48" height="68" loading="lazy">{{ end }}<div class="notification-text">
                     {{ if eq .Kind "favorite_author" }}
                     {{ if gt .Count 1 }}<a href="{{ .Href }}" class="meta-link">{{ .Count }} new books by {{ .Subject }}</a>, an author you follow.
                     {{ else }}<a href="{{ .Href }}" class="meta-link">{{ .Title }}</a>, by {{ .Subject }}, an author you follow, is new in the library.{{ end }}
@@ -57,7 +57,8 @@
                     {{ if gt .Count 1 }}<a href="{{ .Href }}" class="meta-link">{{ .Count }} new books in {{ .Subject }}</a>, a series you follow.
                     {{ else }}<a href="{{ .Href }}" class="meta-link">{{ .Title }}</a> is new in {{ .Subject }}, a series you follow.{{ end }}
                     {{ else }}
-                    Saved book added to library: {{ if .Href }}<a href="{{ .Href }}" class="meta-link">{{ .Title }}</a>{{ else }}{{ .Title }}{{ end }}{{ if .Authors }} by {{ .Authors }}{{ end }}{{ if .OnDeck }} · On deck{{ end }}
+                    <span class="notification-head">Saved book added:</span>
+                    <span class="notification-sub">{{ if .Href }}<a href="{{ .Href }}" class="meta-link">{{ .Title }}</a>{{ else }}{{ .Title }}{{ end }}{{ if .Authors }} by {{ .Authors }}{{ end }}{{ if .OnDeck }} · On deck{{ end }}</span>
                     {{ end }}
                     <span class="notification-when">{{ .When }}</span>
                 </div>{{ end }}
