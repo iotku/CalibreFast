@@ -5,7 +5,7 @@
  * search, a filter) runs again; the focus stays in the box. The browser's
  * own search-box ✕ is hidden: Firefox has none, and Chrome's is tiny.
  *
- * Used by the top bar's search, the aggregate pages' "Find a …" box and the
+ * Used by the top bar's search, the aggregate pages' "Find …" box and the
  * bulk editor's search and column filters.
  */
 

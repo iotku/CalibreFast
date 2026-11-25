@@ -85,7 +85,7 @@ function render(): void {
     );
     if (shown.length > 500) {
         const tr = document.createElement("tr");
-        tr.append(el("td", { colSpan: 4, className: "auth-muted" }, `${shown.length - 500} more: narrow the list with Find a tag.`));
+        tr.append(el("td", { colSpan: 4, className: "auth-muted" }, `${shown.length - 500} more: narrow the list with Find Tag.`));
         list.append(tr);
     }
 }

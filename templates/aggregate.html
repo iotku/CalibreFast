@@ -17,7 +17,7 @@
 <main id="aggregate-page" data-src="{{ .DataURL }}" data-prefix="{{ .Prefix }}" data-tiers="{{ .Tiers }}" data-kind="{{ .Kind }}">
     {{/* Finds every entry, single-book ones too (web/aggregate.ts). */}}
     <div class="agg-search">
-        <input id="agg-search" class="input-search" type="search" placeholder="Find a {{ .Label }}…" aria-label="Find a {{ .Label }}"
+        <input id="agg-search" class="input-search" type="search" placeholder="Find {{ capitalize .Label }}…" aria-label="Find {{ capitalize .Label }}"
                autocomplete="off" autocorrect="off" autocapitalize="off" spellcheck="false"
                data-1p-ignore data-lpignore="true" data-form-type="other" />
     </div>
