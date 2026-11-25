@@ -61,6 +61,8 @@ export interface MeResponse {
     can_edit_library?: boolean;
     can_admin_library?: boolean;
     registration?: boolean;
+    /** No lasting way to sign in (no working password, nothing linked): the bar asks them to link GitHub/Google. */
+    sign_in_at_risk?: boolean;
     /** Signed out only: whether visitors who aren't signed in may read here (-public-read). */
     guest_reading?: boolean;
     /**

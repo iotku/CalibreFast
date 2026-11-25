@@ -349,6 +349,7 @@ func main() {
 	flag.BoolVar(&publicRead, "public-read", false, "public read-only mode: anonymous visitors can also read and download books (implies -public)")
 	flag.BoolVar(&allowRobots, "robots-allowed", false, "let search engines index the library (only with -public-read; otherwise robots.txt, X-Robots-Tag and a meta tag on every page tell them to stay out)")
 	flag.BoolVar(&allowRegistrations, "allow-registrations", false, "let anyone create an account from the web interface (only on trusted networks: bots will try)")
+	flag.BoolVar(&passwordsDisabled, "disable-passwords", false, "nobody signs in with a password: only GitHub/Google (needs -public-url and their credentials, see docs/OAUTH.md) or a one-time sign-in link from an admin")
 	flag.BoolVar(&trustedTypesReportOnly, "trusted-types-report-only", false, "only report Trusted Types violations instead of refusing them (a stopgap if a browser feature breaks; see docs/SECURITY.md)")
 	flag.BoolVar(&noLookups, "no-lookups", false, "never look books up online (hides the metadata editor's lookup bar)")
 	flag.BoolVar(&noGoogleBooks, "no-google-books", false, "never offer Google Books in the metadata editor (Open Library only)")
@@ -423,6 +424,7 @@ func main() {
 	}
 	pruneSessions()
 	configureOAuth()
+	checkPasswordsDisabled()
 	configureLookups()
 	if allowWrites {
 		log.Println("-allow-writes: admins can change the library")

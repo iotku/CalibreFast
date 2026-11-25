@@ -74,7 +74,7 @@ Setup steps are in [OAUTH.md](OAUTH.md). In short: set `CF_GITHUB_CLIENT_ID` / `
 
 - **Standard flow:** OAuth 2.0 authorization code flow with PKCE, and a single-use `state` value tied to your browser by a cookie. This prevents login CSRF and replayed callbacks.
 - **Account matching:** by the provider's permanent user ID, **never by email address**. Someone who registers your email with GitHub or Google can't take over your account.
-- **New accounts:** without `-allow-registrations`, a GitHub/Google sign-in only works once you've linked it. Sign in with your password, then use **Account → Linked sign-ins**. With it, an unknown GitHub/Google account gets a new, non-admin user.
+- **New accounts:** without `-allow-registrations`, a GitHub/Google sign-in only works once you've linked it. Sign in with your password (or an admin's sign-in link), then use **Account → Linked sign-ins**. With `-disable-passwords`, password sign-in is refused server-side (`authenticate`), registration and password changes are closed, and accounts have no password to guess; people without a linked provider are warned on every page. Unlinking a last sign-in needs the username typed. With `-allow-registrations`, an unknown GitHub/Google account gets a new, non-admin user.
 - **Unlinking** can't remove your only way to sign in.
 
 ## Cross-site requests

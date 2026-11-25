@@ -28,7 +28,7 @@
                 <td><input type="checkbox" data-field="disabled" {{ if .Disabled }}checked{{ end }} aria-label="Disabled"></td>
                 <td class="admin-actions">
                     <button type="button" class="btn-standard" data-action="signin-link" {{ if .Disabled }}disabled{{ end }}>Sign-in link</button>
-                    <button type="button" class="btn-standard" data-action="password">Reset password</button>
+                    {{ if not $.PasswordsOff }}<button type="button" class="btn-standard" data-action="password">Reset password</button>{{ end }}
                     <button type="button" class="btn-standard" data-action="delete">Delete</button>
                 </td>
             </tr>
@@ -88,7 +88,8 @@
         <h2>Add a user</h2>
         <form id="add-user" class="auth-form">
             <label>Username <input name="username" type="text" pattern="[A-Za-z0-9._\-]{3,32}" required></label>
-            <label>Password <input name="password" type="password" autocomplete="new-password" minlength="10" required></label>
+            {{ if .PasswordsOff }}<p class="auth-muted">Passwords are turned off. They sign in with a sign-in link from you, then link GitHub or Google.</p>
+            {{ else }}<label>Password <input name="password" type="password" autocomplete="new-password" minlength="10" required></label>{{ end }}
             <label class="auth-check"><input name="is_editor" type="checkbox"> Editor (can add, edit, merge and remove books; an admin can undo it all from <a href="/admin/activity">Activity</a>)</label>
             <label class="auth-check"><input name="is_admin" type="checkbox"> Admin (everything, users and settings too)</label>
             <button type="submit" class="btn-standard">Add user</button>

@@ -36,6 +36,11 @@ var (
 	publicRead         bool   // -public-read: anonymous visitors may also read/download (implies -public)
 	allowRegistrations bool   // -allow-registrations: anyone may create an account from the web
 	publicURL          string // -public-url: external base URL (OAuth redirects, Secure cookies)
+	// passwordsDisabled: -disable-passwords. Nobody signs in with a password
+	// (stored hashes are kept, so turning it off again restores them): only
+	// GitHub/Google, or a one-time link from an admin. Accounts can't be
+	// made or changed to have one while it's on.
+	passwordsDisabled bool
 )
 
 const (
@@ -65,12 +70,30 @@ type User struct {
 	DeletedAt int64 `json:"deleted_at,omitempty"`
 }
 
+// PasswordSignIn: whether the user can sign in with a password here: they
+// have one and the server hasn't turned passwords off.
+func (u *User) PasswordSignIn() bool { return u.HasPass && !passwordsDisabled }
+
+// signInAtRisk: the user has no lasting way to sign in. Without a password
+// that works here or a linked GitHub/Google account, only an admin's
+// one-time link gets them in, and once their session ends they're out.
+// False where no provider is set up (there's nothing to link).
+func signInAtRisk(u *User) bool {
+	if u.PasswordSignIn() || len(oauthProviders) == 0 {
+		return false
+	}
+	var n int
+	_ = appDB.QueryRow(`SELECT COUNT(*) FROM identities WHERE user_id = ?`, u.ID).Scan(&n)
+	return n == 0
+}
+
 // Locked: the account can't be used: disabled by an admin, or deleted and
 // waiting to be purged.
 func (u *User) Locked() bool { return u.Disabled || u.DeletedAt != 0 }
 
 var (
 	errBadCredentials = errors.New("invalid username or password")
+	errPasswordsOff   = errors.New("passwords are turned off on this server: sign in with GitHub or Google, or with a sign-in link from an admin")
 	errUsernameTaken  = errors.New("that username is taken")
 	errWeakPassword   = fmt.Errorf("password must be at least %d characters", minPasswordLen)
 	errBadUsername    = errors.New("username must be 3–32 letters, digits, '.', '_' or '-'")
@@ -171,7 +194,7 @@ func authenticate(username, password string) (*User, error) {
 	var deleted sql.NullInt64
 	err := appDB.QueryRow(`SELECT `+userCols+` FROM users WHERE username = ?`, strings.TrimSpace(username)).
 		Scan(&u.ID, &u.Username, &hash, &u.IsAdmin, &u.IsEditor, &u.Disabled, &deleted)
-	if err != nil || !hash.Valid || hash.String == "" {
+	if err != nil || !hash.Valid || hash.String == "" || passwordsDisabled {
 		_ = bcrypt.CompareHashAndPassword(dummyHash, []byte(password))
 		return nil, errBadCredentials
 	}
@@ -463,6 +486,8 @@ type AuthPageData struct {
 	Providers    []string // enabled OAuth providers
 	Registration bool
 	Signup       bool // login.html: creating an account first, signing in under it
+	PasswordsOff bool // -disable-passwords
+	AtRisk       bool // account.html: no lasting way to sign in (signInAtRisk)
 	Identities   []Identity
 	SyncURL      string       // KOReader's custom sync server address (kosync_server.go)
 	SyncKey      *syncKeyInfo // nil: no sync key
@@ -501,8 +526,10 @@ func renderAuthPage(w http.ResponseWriter, name string, data AuthPageData, statu
 	data.Title = SiteTitle
 	data.Providers = enabledProviders()
 	data.Registration = allowRegistrations
-	data.Signup = data.Signup && allowRegistrations
+	data.Signup = data.Signup && allowRegistrations && !passwordsDisabled
+	data.PasswordsOff = passwordsDisabled
 	if data.User != nil {
+		data.AtRisk = signInAtRisk(data.User)
 		data.DeletePurgeDay = time.Now().Add(accountRestoreWindow).Format("2 Jan 2006")
 		data.LastAdmin = data.User.IsAdmin && adminCount() <= 1
 	}
@@ -528,6 +555,11 @@ func loginHandler(w http.ResponseWriter, r *http.Request) {
 	}
 	username := r.FormValue("username")
 	data := AuthPageData{Next: next, Username: username}
+	if passwordsDisabled {
+		data.Error = errPasswordsOff.Error()
+		renderAuthPage(w, "login.html", data, http.StatusForbidden)
+		return
+	}
 	if !loginLimiter.allow("ip:"+clientIP(r)) || !loginLimiter.allow("user:"+strings.ToLower(username)) {
 		data.Error = "Too many sign-in attempts. Try again in a few minutes."
 		renderAuthPage(w, "login.html", data, http.StatusTooManyRequests)
@@ -548,7 +580,7 @@ func loginHandler(w http.ResponseWriter, r *http.Request) {
 }
 
 func registerHandler(w http.ResponseWriter, r *http.Request) {
-	if !allowRegistrations {
+	if !allowRegistrations || passwordsDisabled {
 		http.Error(w, "registration is closed; ask an admin for an account", http.StatusForbidden)
 		return
 	}
@@ -596,6 +628,11 @@ func accountHandler(w http.ResponseWriter, r *http.Request) {
 	data := AuthPageData{User: u, Identities: identitiesFor(u.ID), Notice: r.URL.Query().Get("notice"), Error: r.URL.Query().Get("error")}
 	fillSyncKeyData(&data, r)
 	if r.Method == http.MethodPost {
+		if passwordsDisabled {
+			data.Error = errPasswordsOff.Error()
+			renderAuthPage(w, "account.html", data, http.StatusForbidden)
+			return
+		}
 		// change password (current password required if one is set)
 		if u.HasPass {
 			if _, err := authenticate(u.Username, r.FormValue("current")); err != nil {
@@ -643,6 +680,10 @@ func meHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	me := map[string]any{"user": u, "can_edit_library": canEditLibrary(r), "can_admin_library": canAdminLibrary(r)}
+	// No lasting way to sign in: the bar says so until they link one.
+	if signInAtRisk(u) {
+		me["sign_in_at_risk"] = true
+	}
 	// Books from the watch folder waiting for review (imports.go).
 	if n := imports.count(); canEditLibrary(r) && (n > 0 || watching()) {
 		me["pending_imports"] = n
@@ -707,7 +748,7 @@ func adminUsersPage(w http.ResponseWriter, r *http.Request) {
 	}
 	w.Header().Set("Cache-Control", "no-store")
 	logErr(templates.ExecuteTemplate(w, "admin-users.html", map[string]any{
-		"Title": SiteTitle, "Users": active, "Deleted": deleted, "Me": currentUser(r),
+		"Title": SiteTitle, "Users": active, "Deleted": deleted, "Me": currentUser(r), "PasswordsOff": passwordsDisabled,
 	}), "render admin-users")
 }
 
@@ -728,6 +769,9 @@ func adminCreateUser(w http.ResponseWriter, r *http.Request) {
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
 		http.Error(w, "invalid JSON", http.StatusBadRequest)
 		return
+	}
+	if passwordsDisabled {
+		req.Password = "" // an account for GitHub/Google or a sign-in link
 	}
 	u, err := createUser(req.Username, req.Password, req.Admin)
 	if err != nil {
@@ -781,6 +825,10 @@ func adminUpdateUser(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 	if req.Password != nil {
+		if passwordsDisabled {
+			http.Error(w, errPasswordsOff.Error(), http.StatusBadRequest)
+			return
+		}
 		if err := setPassword(id, *req.Password); err != nil {
 			http.Error(w, err.Error(), http.StatusBadRequest)
 			return

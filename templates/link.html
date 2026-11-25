@@ -34,10 +34,13 @@
         <p class="auth-muted">This invitation works once and expires {{ .Expires }}.</p>
         <form method="post" class="auth-form">
             <label>Username <input name="username" type="text" value="{{ .Username }}" autocomplete="username" pattern="[A-Za-z0-9._\-]{3,32}" required autofocus></label>
+            {{ if not .NoPass }}
             <label>Password <input name="password" type="password" autocomplete="new-password" minlength="10" required></label>
             <label>Repeat password <input name="password2" type="password" autocomplete="new-password" minlength="10" required></label>
+            {{ end }}
             <button type="submit" class="btn-standard auth-primary">Create account</button>
         </form>
+        {{ if .NoPass }}<p class="auth-muted">This server has no passwords. After creating the account, link GitHub or Google to it to sign in again.</p>{{ end }}
         {{ if .Providers }}
         <div class="auth-divider"><span>or</span></div>
         <div class="auth-providers">

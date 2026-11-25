@@ -90,6 +90,7 @@ Then open [http://localhost:8080](http://localhost:8080) and sign in. Add more u
 | `-public` | Let anyone browse the catalog without signing in. **By default the whole library is private:** nothing (not even covers or book IDs) is shown until you sign in. |
 | `-public-read` | Public read-only mode: anyone can also read and download books (implies `-public`) |
 | `-robots-allowed` | Let search engines index the library. Only works with `-public-read`; otherwise robots.txt, an `X-Robots-Tag` header and a meta tag on every page keep them out |
+| `-disable-passwords` | Nobody signs in with a password: only GitHub/Google or an admin's one-time sign-in link. Needs a provider set up ([OAUTH.md](docs/OAUTH.md#turning-passwords-off)). Stored passwords are kept, so turning it off restores them. |
 | `-allow-registrations` | Let anyone create an account from the sign-in page. **Bots will try to sign up:** only use on a trusted network, such as a Tailscale network shared with people you trust. |
 | `-public-url` | Your external URL, e.g. `https://books.example.com` (needed for GitHub/Google sign-in) |
 | `-trusted-types-report-only` | Report Trusted Types violations instead of refusing them (docs/SECURITY.md). Only as a stopgap if something in the browser breaks. |

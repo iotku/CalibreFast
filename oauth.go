@@ -311,11 +311,15 @@ func oauthCallback(w http.ResponseWriter, r *http.Request) {
 	http.Redirect(w, r, pa.Next, http.StatusSeeOther)
 }
 
+// maxLinkedPerProvider: how many GitHub (or Google) accounts one user may
+// link: room for a personal, a work and a school one. Each is a full way in.
+const maxLinkedPerProvider = 3
+
 // msgNewAccount: resolveOAuthUser's message when it made a new account.
 const msgNewAccount = "new account"
 
 var (
-	errNotLinked     = errors.New("no account is linked to that sign-in. Sign in with your password and link it from your account page, or ask an admin")
+	errNotLinked     = errors.New("no account is linked to that sign-in. Sign in another way (your password, or a sign-in link from an admin) and link it from your account page")
 	errLinkedElsewhr = errors.New("that sign-in is already linked to a different account")
 	errDisabled      = errors.New("this account is disabled")
 )
@@ -335,6 +339,11 @@ func resolveOAuthUser(provider string, ou *oauthUser, linkUserID int64, invite s
 			return 0, "", errLinkedElsewhr
 		}
 		if !found {
+			var n int
+			_ = appDB.QueryRow(`SELECT COUNT(*) FROM identities WHERE user_id = ? AND provider = ?`, linkUserID, provider).Scan(&n)
+			if n >= maxLinkedPerProvider {
+				return 0, "", fmt.Errorf("you can link up to %d %s accounts. Unlink one first", maxLinkedPerProvider, provider)
+			}
 			if _, err := appDB.Exec(`INSERT INTO identities (provider, subject, user_id, email, login, created_at) VALUES (?, ?, ?, ?, ?, ?)`,
 				provider, ou.Subject, linkUserID, ou.Email, ou.Login, nowUnix()); err != nil {
 				return 0, "", err
@@ -431,12 +440,25 @@ func oauthUnlink(w http.ResponseWriter, r *http.Request) {
 	provider := r.PathValue("provider")
 	var others int
 	_ = appDB.QueryRow(`SELECT COUNT(*) FROM identities WHERE user_id = ? AND provider <> ?`, u.ID, provider).Scan(&others)
-	if !u.HasPass && others == 0 {
-		http.Redirect(w, r, "/account?error="+url.QueryEscape("Set a password before unlinking your only sign-in method."), http.StatusSeeOther)
+	// The last way to sign in: allowed, but only when they type their
+	// username, as the account page's warning says (like deleting it).
+	lastWay := !u.PasswordSignIn() && others == 0
+	if lastWay && !strings.EqualFold(strings.TrimSpace(r.FormValue("confirm_username")), u.Username) {
+		http.Redirect(w, r, "/account?error="+url.QueryEscape("To unlink your only way to sign in, type your username to confirm.")+"#linked-sign-ins", http.StatusSeeOther)
 		return
 	}
-	_, _ = appDB.Exec(`DELETE FROM identities WHERE user_id = ? AND provider = ?`, u.ID, provider)
-	http.Redirect(w, r, "/account?notice="+url.QueryEscape("Unlinked "+provider+"."), http.StatusSeeOther)
+	res, err := appDB.Exec(`DELETE FROM identities WHERE user_id = ? AND provider = ?`, u.ID, provider)
+	if err != nil {
+		log.Println("oauth unlink:", err)
+		http.Redirect(w, r, "/account?error="+url.QueryEscape("Couldn't unlink. Try again."), http.StatusSeeOther)
+		return
+	}
+	msg := "Unlinked " + provider + "."
+	if n, _ := res.RowsAffected(); n > 0 && lastWay {
+		log.Printf("user %s unlinked their last sign-in (%s): only an admin's sign-in link gets them back in", u.Username, provider)
+		msg += " You're signed in until you sign out or this session ends. After that you can only get back in with a sign-in link from an admin."
+	}
+	http.Redirect(w, r, "/account?notice="+url.QueryEscape(msg), http.StatusSeeOther)
 }
 
 // ---------------------------------------------------------------------------
@@ -557,4 +579,23 @@ func identitiesFor(userID int64) []Identity {
 		}
 	}
 	return out
+}
+
+// checkPasswordsDisabled runs at startup, after configureOAuth, when
+// -disable-passwords is on: without a provider nobody could sign in again,
+// and without a linked admin the first sign-in link is the last way in.
+func checkPasswordsDisabled() {
+	if !passwordsDisabled {
+		return
+	}
+	if len(oauthProviders) == 0 {
+		log.Fatal("-disable-passwords needs GitHub or Google sign-in set up (CF_GITHUB_CLIENT_ID/_SECRET or CF_GOOGLE_CLIENT_ID/_SECRET, and -public-url; see docs/OAUTH.md): nobody could sign in otherwise")
+	}
+	var linked int
+	_ = appDB.QueryRow(`SELECT COUNT(*) FROM users u WHERE u.is_admin = 1 AND u.disabled = 0 AND u.deleted_at IS NULL
+		AND EXISTS (SELECT 1 FROM identities i WHERE i.user_id = u.id)`).Scan(&linked)
+	if linked == 0 {
+		log.Println("WARNING: -disable-passwords: no admin has a GitHub/Google sign-in linked, so none can sign in. Start without it, sign in, link one on the account page, then turn it back on")
+	}
+	log.Println("-disable-passwords: passwords are off; people sign in with GitHub/Google or an admin's sign-in link")
 }

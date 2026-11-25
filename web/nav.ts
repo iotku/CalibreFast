@@ -96,6 +96,26 @@ function showGuestOffer(user: string, books: number): void {
     document.querySelector(".site-bar")?.after(strip);
 }
 
+/**
+ * The strip under the top bar for someone who can't sign in again: no
+ * password that works here and no linked GitHub/Google, so only the admin's
+ * one-time link got them in. It stays on every page until they link one.
+ */
+function showSignInWarning(atRisk: boolean): void {
+    document.querySelector(".signin-warning")?.remove();
+    if (!atRisk) return;
+    document.querySelector(".site-bar")?.after(
+        el(
+            "div",
+            { className: "guest-offer signin-warning", role: "alert" },
+            el("span", {
+                textContent: "You can't sign in with a password. Link GitHub or Google to your account, or once this session ends you'll be locked out and need a new sign-in link from an admin.",
+            }),
+            el("a", { className: "btn-standard btn-primary", href: "/account#linked-sign-ins", textContent: "Link now" }),
+        ),
+    );
+}
+
 function init(bar: HTMLElement): void {
     const user = bar.querySelector<HTMLElement>(".tb-user");
     const active = user?.dataset["active"] ?? "";
@@ -269,6 +289,8 @@ function init(bar: HTMLElement): void {
         notifications?: number;
         /** Hardcover sync; absent for users who never linked. */
         hardcover?: HardcoverIndicator | null;
+        /** No lasting way to sign in (meHandler's sign_in_at_risk). */
+        atRisk?: boolean;
     }
     const cache = {
         get(): string | null {
@@ -754,10 +776,12 @@ function init(bar: HTMLElement): void {
             const prefs = mark(el("a", { className: "tb-icon tb-shortcut", href: "/preferences", title: "Preferences", ariaLabel: "Preferences" }), "preferences");
             prefs.append(icon(SLIDERS));
             userEl.replaceChildren(prefs, signIn);
+            showSignInWarning(false);
             snapshot();
             return;
         }
         const name = st.username;
+        showSignInWarning(!!st.atRisk);
         // Reading done here signed out, not offered to this account yet or
         // put off: say so, under the bar (guest-data.ts, /account/import).
         const guestBooks = offerDeclinedForGood(name) ? 0 : guestBookCount();
@@ -909,6 +933,7 @@ function init(bar: HTMLElement): void {
                 imports: body.pending_imports ?? null,
                 notifications: body.notifications ?? 0,
                 hardcover: body.hardcover ?? null,
+                atRisk: !!body.sign_in_at_risk,
             };
             const json = JSON.stringify(st);
             cache.set(json);

@@ -241,6 +241,7 @@ type LinkPageData struct {
 	Error     string
 	Username  string
 	Providers []string
+	NoPass    bool // -disable-passwords: an invitation makes an account with no password
 	SignedIn  *User
 	Expires   string // human-readable expiry
 }
@@ -248,6 +249,7 @@ type LinkPageData struct {
 func renderLinkPage(w http.ResponseWriter, data LinkPageData, status int) {
 	data.Title = SiteTitle
 	data.Providers = enabledProviders()
+	data.NoPass = passwordsDisabled
 	w.Header().Set("Content-Type", "text/html; charset=utf-8")
 	w.Header().Set("Cache-Control", "no-store")
 	w.Header().Set("Referrer-Policy", "no-referrer")
@@ -302,14 +304,23 @@ func linkHandler(w http.ResponseWriter, r *http.Request) {
 		}
 		log.Printf("sign-in link used for %s", u.Username)
 		next := "/"
-		if !u.HasPass {
+		switch {
+		case signInAtRisk(u):
+			next = "/account?notice=" + url.QueryEscape("Signed in. Link GitHub or Google below, or you won't be able to sign in again.") + "#linked-sign-ins"
+		case !u.PasswordSignIn() && len(oauthProviders) == 0:
+			next = "/account?notice=" + url.QueryEscape("Signed in. This account has no way to sign in again except another link from an admin.")
+		case !u.HasPass:
 			next = "/account?notice=" + url.QueryEscape("Signed in. You can set a password here, or link GitHub/Google, so you can sign in again later.")
 		}
 		http.Redirect(w, r, next, http.StatusSeeOther)
 
 	case "invite":
 		data.Username = r.FormValue("username")
-		if r.FormValue("password") != r.FormValue("password2") {
+		password, password2 := r.FormValue("password"), r.FormValue("password2")
+		if passwordsDisabled {
+			password, password2 = "", "" // no password: they link GitHub/Google next
+		}
+		if password != password2 {
 			data.Error = "Passwords don't match."
 			renderLinkPage(w, data, http.StatusBadRequest)
 			return
@@ -320,17 +331,19 @@ func linkHandler(w http.ResponseWriter, r *http.Request) {
 			renderLinkPage(w, data, http.StatusBadRequest)
 			return
 		}
-		if _, err := hashPassword(r.FormValue("password")); err != nil {
-			data.Error = err.Error()
-			renderLinkPage(w, data, http.StatusBadRequest)
-			return
+		if password != "" {
+			if _, err := hashPassword(password); err != nil {
+				data.Error = err.Error()
+				renderLinkPage(w, data, http.StatusBadRequest)
+				return
+			}
 		}
 		if !claimLink(token) {
 			data.Error = errLinkInvalid.Error()
 			renderLinkPage(w, data, http.StatusGone)
 			return
 		}
-		u, err := createUser(data.Username, r.FormValue("password"), link.InviteAdmin)
+		u, err := createUser(data.Username, password, link.InviteAdmin)
 		if err != nil {
 			unclaimLink(token) // e.g. username taken: let them try another
 			data.Error = err.Error()
@@ -344,6 +357,10 @@ func linkHandler(w http.ResponseWriter, r *http.Request) {
 		}
 		markNewAccount(w, r)
 		log.Printf("invite link used: created %s (admin=%v)", u.Username, u.IsAdmin)
+		if signInAtRisk(u) {
+			http.Redirect(w, r, "/account?notice="+url.QueryEscape("Account created. Link GitHub or Google below, or you won't be able to sign in again.")+"#linked-sign-ins", http.StatusSeeOther)
+			return
+		}
 		http.Redirect(w, r, "/", http.StatusSeeOther)
 	}
 }
