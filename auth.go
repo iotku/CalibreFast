@@ -326,7 +326,7 @@ func canAdminLibrary(r *http.Request) bool {
 // scripts and styles describe every feature, so they, the service worker
 // (whose asset list names them all) and its offline page need a session.
 func isPublicPath(p string) bool {
-	return p == "/login" || p == "/logout" || p == "/register" || p == "/api/me" ||
+	return p == "/login" || p == "/about/privacy" || p == "/about/terms" || p == "/logout" || p == "/register" || p == "/api/me" ||
 		p == "/robots.txt" || strings.HasPrefix(p, "/l/") || isKosyncPath(p) ||
 		strings.HasPrefix(p, "/auth/") || isPublicAsset(p) ||
 		strings.HasPrefix(p, "/"+iconDir+"/") // the app's icons (sw.go)

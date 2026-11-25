@@ -296,6 +296,8 @@ func registerHardcoverSyncRoutes(mux *http.ServeMux) {
 // registerAuthRoutes wires sign-in, account and admin endpoints.
 func registerAuthRoutes() {
 	http.HandleFunc("/login", loginHandler)
+	http.HandleFunc("GET /about/privacy", aboutHandler("privacy", "Privacy notice"))
+	http.HandleFunc("GET /about/terms", aboutHandler("terms", "Terms of use"))
 	http.HandleFunc("POST /register", registerHandler)
 	http.HandleFunc("POST /logout", logoutHandler)
 	http.HandleFunc("GET /api/me", meHandler)

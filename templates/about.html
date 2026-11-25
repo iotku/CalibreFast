@@ -1,0 +1,74 @@
+<!doctype html>
+<html lang="en">
+<head>
+    <meta charset="utf-8">
+    {{/* Like the sign-in page: nothing that says what the service holds,
+         links into it or loads its scripts. */}}
+    <title>{{ .Title }}</title>
+    <meta name="robots" content="noindex, nofollow">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <link rel="stylesheet" href="{{ asset "auth.css" }}">
+</head>
+<body class="auth-body">
+<main class="auth-main auth-bare">
+    <section class="auth-card auth-prose">
+    {{ if eq .Kind "privacy" }}
+        <h1>Privacy notice</h1>
+        <p class="auth-muted">This is a self-hosted, non-commercial service. It is free to use: nobody is charged for it, and it earns no money from advertising or from your information.</p>
+
+        <h2>What we keep</h2>
+        <ul>
+            <li><b>Your account:</b> your username and, if you set one, your password (stored only as a salted hash, never in plain text).</li>
+            <li><b>Sign in with GitHub or Google:</b> if you choose this, we receive your account's ID, email address and display name or username from that provider. We keep them to recognise you when you come back and to show you which account is linked. We ask for no other access, and we don't post, read your files or contacts, or use your account for anything else. The access token the provider gives us is used once, during sign-in, and isn't stored.</li>
+            <li><b>Your use of the service:</b> what you choose to save here, such as favorites, progress, bookmarks, notes, collections, preferences, and device-sync and notification settings.</li>
+            <li><b>Sessions:</b> when you sign in, a cookie keeps you signed in for up to 30 days. A short-lived cookie is also used while you sign in with GitHub or Google. We use no advertising or tracking cookies.</li>
+            <li><b>Server logs:</b> like any web server, this one may log technical details of requests, such as IP addresses and times, to keep the service running and secure.</li>
+        </ul>
+
+        <h2>How it's used</h2>
+        <p>Only to run the service for you: signing you in, keeping your settings and what you saved, and keeping the service secure. Your information isn't sold, used for advertising or shared with anyone else. The exceptions are the sign-in provider you choose to use, and any other service you choose to link yourself, which receives only what that link is for. The administrator can manage accounts on this server.</p>
+
+        <h2>Your choices</h2>
+        <ul>
+            <li>You can unlink GitHub or Google, change your password, and revoke device-sync keys from your account page.</li>
+            <li>You can delete your account from your account page. It signs you out everywhere, and your data is removed for good after a short grace period in which the administrator can restore it if you ask.</li>
+            <li>To ask what is held about you, or to have something corrected or removed, contact this server's administrator.</li>
+        </ul>
+
+        <h2>Changes</h2>
+        <p>This notice may be updated from time to time.</p>
+        <p><a class="meta-link" href="/about/terms">Terms of use</a> · <a class="meta-link" href="/login">Sign in</a></p>
+    {{ else }}
+        <h1>Terms of use</h1>
+        <p class="auth-muted">This is a self-hosted, non-commercial service. It is free to use: nobody is charged for it.</p>
+
+        <h2>Not for sale</h2>
+        <p>Access is never sold. Nobody is authorized to charge for an account or for access, and nobody should be paying for this service. If anyone asks you to pay, don't, and tell the administrator.</p>
+
+        <h2>Access</h2>
+        <p>You may use this service only if its administrator has given you an account or access. Keep your sign-in details private, and tell the administrator if you think someone else has got into your account. You're responsible for what's done with your account.</p>
+
+        <h2>Acceptable use</h2>
+        <ul>
+            <li>Use the service for your own purposes, and respect other people.</li>
+            <li>Don't try to break into the service, overload it, get at other people's accounts, or use it to harm anyone.</li>
+            <li>Don't sell, rent or trade access to the service, or use it for any commercial purpose.</li>
+        </ul>
+
+        <h2>What you add</h2>
+        <p>What you add, such as notes, stays yours; you let the service store it so it can show it back to you. The administrator may remove anything from the service.</p>
+
+        <h2>Suspension</h2>
+        <p>The administrator may limit, suspend or delete an account at any time, for example for misuse or to protect the service.</p>
+
+        <h2>As is</h2>
+        <p>The service is provided as it is, without promises that it will be available, error-free or keep your data. Keep your own copies of anything important. Use it at your own risk.</p>
+
+        <h2>Privacy and changes</h2>
+        <p>How your information is handled is described in the <a class="meta-link" href="/about/privacy">privacy notice</a>. These terms may be updated from time to time; using the service after a change means you accept it.</p>
+        <p><a class="meta-link" href="/about/privacy">Privacy notice</a> · <a class="meta-link" href="/login">Sign in</a></p>
+    {{ end }}
+    </section>
+</main>
+</body>
+</html>
