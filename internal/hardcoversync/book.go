@@ -41,13 +41,25 @@ func (s *Service) UserMatch(userID int64, uuid string) (hardcover.Edition, bool)
 	return ed, err == nil && ed.BookID > 0
 }
 
+// SetUserMatch keeps the book userID chose; its edition is set on their
+// Hardcover entry at the next sync, even if the entry has another.
 func (s *Service) SetUserMatch(userID int64, uuid string, ed hardcover.Edition) error {
-	_, err := s.db.Exec(`INSERT INTO hardcover_user_books (user_id, book_uuid, hc_book_id, hc_edition_id, pages, slug, title, chosen_at)
-		VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+	_, err := s.db.Exec(`INSERT INTO hardcover_user_books (user_id, book_uuid, hc_book_id, hc_edition_id, pages, slug, title, chosen_at, set_edition)
+		VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
 		ON CONFLICT (user_id, book_uuid) DO UPDATE SET hc_book_id = excluded.hc_book_id, hc_edition_id = excluded.hc_edition_id,
-			pages = excluded.pages, slug = excluded.slug, title = excluded.title, chosen_at = excluded.chosen_at`,
-		userID, uuid, ed.BookID, ed.EditionID, ed.Pages, ed.Slug, ed.Title, s.now().Unix())
+			pages = excluded.pages, slug = excluded.slug, title = excluded.title, chosen_at = excluded.chosen_at,
+			set_edition = excluded.set_edition`,
+		userID, uuid, ed.BookID, ed.EditionID, ed.Pages, ed.Slug, ed.Title, s.now().Unix(), ed.EditionID > 0)
 	return err
+}
+
+// editionToSet: the edition userID chose for uuid, if it's yet to be set
+// on their Hardcover entry; else 0.
+func (s *Service) editionToSet(userID int64, uuid string) int64 {
+	var id int64
+	_ = s.db.QueryRow(`SELECT hc_edition_id FROM hardcover_user_books WHERE user_id = ? AND book_uuid = ? AND set_edition`,
+		userID, uuid).Scan(&id)
+	return id
 }
 
 // Resend sends a book again from scratch: its last error is forgotten.

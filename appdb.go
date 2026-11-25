@@ -883,6 +883,12 @@ var migrations = []string{
 	);
 	CREATE INDEX system_notices_expires ON system_notices (expires_at);
 	`,
+	// 52: hardcover_user_books.set_edition: the chosen edition is yet to
+	// be set on the user's existing Hardcover entry (once: after that, an
+	// edition they pick on Hardcover is left alone).
+	`
+	ALTER TABLE hardcover_user_books ADD COLUMN set_edition INTEGER NOT NULL DEFAULT 0;
+	`,
 }
 
 // openAppDB opens (creating if needed) and migrates the app database.

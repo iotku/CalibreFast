@@ -39,7 +39,7 @@ CREATE TABLE hardcover_books (book_uuid TEXT PRIMARY KEY, hc_book_id INTEGER NOT
 	pages INTEGER NOT NULL DEFAULT 0, resolved_at INTEGER NOT NULL, slug TEXT NOT NULL DEFAULT '', title TEXT NOT NULL DEFAULT '');
 CREATE TABLE hardcover_user_books (user_id INTEGER NOT NULL, book_uuid TEXT NOT NULL, hc_book_id INTEGER NOT NULL,
 	hc_edition_id INTEGER NOT NULL DEFAULT 0, pages INTEGER NOT NULL DEFAULT 0, slug TEXT NOT NULL DEFAULT '',
-	title TEXT NOT NULL DEFAULT '', chosen_at INTEGER NOT NULL, PRIMARY KEY (user_id, book_uuid));
+	title TEXT NOT NULL DEFAULT '', chosen_at INTEGER NOT NULL, set_edition INTEGER NOT NULL DEFAULT 0, PRIMARY KEY (user_id, book_uuid));
 CREATE TABLE hardcover_sync (user_id INTEGER NOT NULL, book_uuid TEXT NOT NULL, due_at INTEGER NOT NULL DEFAULT 0,
 	attempts INTEGER NOT NULL DEFAULT 0, changes INTEGER NOT NULL DEFAULT 0, error TEXT NOT NULL DEFAULT '',
 	started_on TEXT NOT NULL DEFAULT '', finished_on TEXT NOT NULL DEFAULT '', sent_status INTEGER NOT NULL DEFAULT 0,
