@@ -69,7 +69,7 @@
                     </div>
                     {{ else if .Merge }}
                     <div class="book-banner-meta">
-                        <span>Merging {{ len .Merge.Books }} books into one. The kept record:</span>
+                        <span>{{ if .Merge.Placeholder }}Merging {{ len .Merge.Books }} book{{ if ne (len .Merge.Books) 1 }}s{{ end }} with a placeholder into one{{ else }}Merging {{ len .Merge.Books }} books into one{{ end }}. The kept record:</span>
                         <span class="uuid-badge">{{.UUID}}</span>
                     </div>
                     {{ else if .Import }}
@@ -136,8 +136,23 @@
 
             {{ with .Merge }}
             <!-- The books being merged: which record, cover and files to keep (merge.go) -->
-            <section id="merge-panel" class="merge-panel" aria-label="Books being merged" data-ids="{{ .IDs }}" data-keep="{{ .Keep }}">
+            <section id="merge-panel" class="merge-panel" aria-label="Books being merged" data-ids="{{ .IDs }}" data-keep="{{ .Keep }}"{{ with .Placeholder }} data-placeholder="{{ .UUID }}"{{ end }}>
                 <ul class="merge-books">
+                    {{ with .Placeholder }}
+                    <!-- A book not in the library yet that the kept book replaces (merge_placeholder.go) -->
+                    <li class="merge-book merge-placeholder">
+                        <span class="merge-letter" aria-label="Placeholder">P</span>
+                        <span class="merge-cover-pick" title="A placeholder's picture isn't used: pick a book's cover">
+                            {{ if .Cover }}<img src="{{ .Cover }}" alt="Picture of {{ .Title }}" loading="lazy" />{{ else }}<span class="merge-nocover">No cover</span>{{ end }}
+                        </span>
+                        <div class="merge-book-info">
+                            <a href="{{ .Href }}" target="_blank" class="merge-book-title">{{ .Title }}</a>
+                            <span class="merge-book-authors">{{ .Authors }}</span>
+                            {{ if .Series }}<span class="merge-book-formats"><span class="uuid-badge">{{ .Series }}</span></span>{{ end }}
+                            <span class="merge-keep auth-muted">Not in the library: the kept book replaces it. Its series, number and Hardcover link start the form below; readers who saved it get the book instead.</span>
+                        </div>
+                    </li>
+                    {{ end }}
                     {{ range .Books }}
                     <li class="merge-book{{ if eq .UUID $.Merge.Keep }} kept{{ end }}">
                         <span class="merge-letter" aria-label="Book {{ .Letter }}">{{ .Letter }}</span>
@@ -254,7 +269,7 @@
             <div id="edit-status" class="edit-status"></div>
 
             <!-- Metadata Edit Form -->
-            <form id="metadata-form" data-uuid="{{.UUID}}"{{ if .Import }} data-import="{{ .Import.ID }}"{{ end }}{{ if .Merge }}{{ if .Merge.Incoming }} data-incoming="{{ .Merge.Incoming }}"{{ if .Merge.FromQueue }} data-from-queue{{ end }}{{ else }} data-merge="{{ .Merge.IDs }}"{{ end }}{{ end }}>
+            <form id="metadata-form" data-uuid="{{.UUID}}"{{ if .Import }} data-import="{{ .Import.ID }}"{{ end }}{{ if .Merge }}{{ if .Merge.Incoming }} data-incoming="{{ .Merge.Incoming }}"{{ if .Merge.FromQueue }} data-from-queue{{ end }}{{ else }} data-merge="{{ .Merge.IDs }}"{{ with .Merge.Placeholder }} data-placeholder="{{ .UUID }}"{{ end }}{{ end }}{{ end }}>
                 <div class="form-grid">
                     <!-- Title, swap button, Author(s): one grid cell so the spacing
                          around the swap button can be set exactly. -->
@@ -393,7 +408,7 @@
 
                 <div class="edit-actions">
                     <div class="action-buttons">
-                        <button type="submit" id="btn-save" class="btn-primary{{ if and .Import .Duplicates.SameFile }} btn-blocked{{ end }}">{{ if and .Merge .Merge.Incoming }}Add files{{ else if .Merge }}Merge {{ len .Merge.Books }} books{{ else if .Import }}Add to library{{ else }}Apply Changes{{ end }}</button>
+                        <button type="submit" id="btn-save" class="btn-primary{{ if and .Import .Duplicates.SameFile }} btn-blocked{{ end }}">{{ if and .Merge .Merge.Incoming }}Add files{{ else if .Merge }}{{ if .Merge.Placeholder }}Merge with placeholder{{ else }}Merge {{ len .Merge.Books }} books{{ end }}{{ else if .Import }}Add to library{{ else }}Apply Changes{{ end }}</button>
                         <button type="button" id="btn-compare" class="btn-secondary">
                             Compare changes
                         </button>
@@ -539,8 +554,9 @@ import { mountMetadataEditor } from {{ asset "metadata.js" }};
                   ? mergeBooks(form.dataset.uuid, form.dataset.merge.split(","), () => ({
                         keep: form.dataset.uuid,
                         uuids: form.dataset.merge.split(","),
+                        ...(form.dataset.placeholder ? { placeholder: form.dataset.placeholder } : {}),
                         ...mergeChoices(),
-                    }))
+                    }), form.dataset.placeholder)
                   : libraryBook(form.dataset.uuid, new URLSearchParams(location.search).get("import"));
             if (mergePanel) {
                 // No cover of the kept book's: the first book's that has one.
@@ -585,6 +601,7 @@ import { mountMetadataEditor } from {{ asset "metadata.js" }};
                     // Another record to keep: the page again, with its metadata as current.
                     if (e.target.name === "merge-keep") {
                         const q = new URLSearchParams({ ids: mergePanel.dataset.ids, keep: e.target.value });
+                        if (mergePanel.dataset.placeholder) q.set("placeholder", mergePanel.dataset.placeholder);
                         location.assign(`/book/merge?${q}`);
                     }
                 });

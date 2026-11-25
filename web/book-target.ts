@@ -83,10 +83,13 @@ export function pendingImport(importId: string): BookTarget {
 /**
  * Several library books being merged into one (Go: merge.go): the editor
  * edits the merged book's metadata, its sources are every book's, and
- * applying merges them. Everything else is the kept book's.
+ * applying merges them. Everything else is the kept book's. placeholder: a
+ * book not in the library yet that the kept book replaces (Go:
+ * merge_placeholder.go); then ids may be the kept book alone.
  */
-export function mergeBooks(keep: string, ids: string[], extra: () => Record<string, unknown>): BookTarget {
-    const q = `ids=${ids.map(encodeURIComponent).join(",")}&keep=${encodeURIComponent(keep)}`;
+export function mergeBooks(keep: string, ids: string[], extra: () => Record<string, unknown>, placeholder?: string): BookTarget {
+    let q = `ids=${ids.map(encodeURIComponent).join(",")}&keep=${encodeURIComponent(keep)}`;
+    if (placeholder) q += `&placeholder=${encodeURIComponent(placeholder)}`;
     return {
         ...libraryBook(keep),
         merge: true,
