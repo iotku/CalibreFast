@@ -29,13 +29,49 @@
         </p>
     </section>
 
-    {{/* Favorite authors, series, … (web/aggregate-fav.ts, from the list
-         favorites.ts keeps). */}}
-    <section id="account-favs" class="auth-card account-favs" hidden>
-        <h2>Favorites</h2>
-        <p class="account-favs-empty auth-muted">Star an author or series on its page to keep it here.</p>
-        <div class="account-favs-list"></div>
+    {{ if .Providers }}
+    <section class="auth-card" id="linked-sign-ins">
+        <h2>Linked sign-ins</h2>
+        {{ if .AtRisk }}
+        <p class="auth-error" role="alert"><b>Link one below to keep your account.</b> You can't sign in with a password, so today you're only in because of a one-time link. Once this session ends, only a new link from an admin gets you back in. Link a GitHub or Google account, then use <b>Continue with</b> it on the sign-in page.</p>
+        {{ else if not .User.PasswordSignIn }}
+        <p class="auth-muted">You sign in with these{{ if .PasswordsOff }}: this server has no passwords{{ else }}: you have no password{{ end }}.</p>
+        {{ end }}
+        <ul class="auth-identities">
+            {{ range .Identities }}
+            <li>
+                <span>{{ .Provider }} — {{ if .Login }}{{ .Login }}{{ else }}{{ .Email }}{{ end }}</span>
+                {{ if or $.User.PasswordSignIn (gt (len $.Identities) 1) }}
+                <form method="post" action="/auth/{{ .Provider }}/unlink"><button class="btn-standard" type="submit">Unlink</button></form>
+                {{ end }}
+            </li>
+            {{ else }}
+            <li class="auth-muted">None yet.</li>
+            {{ end }}
+        </ul>
+        <div class="auth-providers">
+            {{ range .Providers }}
+            <a class="btn-standard auth-provider" href="/auth/{{ . }}/start?link=1">Link {{ if eq . "github" }}GitHub{{ else if eq . "google" }}Google{{ else }}{{ . }}{{ end }}</a>
+            {{ end }}
+        </div>
+        {{ if and (not .User.PasswordSignIn) (eq (len .Identities) 1) }}
+        {{ $id := index .Identities 0 }}
+        <details class="sync-details">
+            <summary>Remove my {{ $id.Provider }} sign-in</summary>
+            <p class="auth-error"><b>You will lose access to your account.</b></p>
+            <ul class="sync-steps">
+                <li>{{ $id.Provider }} is the only way you can sign in{{ if .PasswordsOff }}: this server has no passwords{{ else }}: you have no password{{ end }}.</li>
+                <li>You stay signed in until you sign out or this session ends. After that you can only get back in with a one-time sign-in link from an admin, who may not be reachable.</li>
+                <li>Your books, shelves, progress and everything else stay in the account. Link {{ $id.Provider }} (or another) again once you're back in.</li>
+            </ul>
+            <form method="post" action="/auth/{{ $id.Provider }}/unlink" class="auth-form">
+                <label>Type your username, <b>{{ .User.Username }}</b>, to confirm <input name="confirm_username" type="text" autocomplete="off" autocapitalize="off" spellcheck="false" required></label>
+                <button type="submit" class="btn-standard btn-danger">Remove sign-in and lose access</button>
+            </form>
+        </details>
+        {{ end }}
     </section>
+    {{ end }}
 
     {{ if .PasswordsOff }}
     <section class="auth-card">
@@ -53,6 +89,14 @@
         </form>
     </section>
     {{ end }}
+
+    {{/* Favorite authors, series, … (web/aggregate-fav.ts, from the list
+         favorites.ts keeps). */}}
+    <section id="account-favs" class="auth-card account-favs" hidden>
+        <h2>Favorites</h2>
+        <p class="account-favs-empty auth-muted">Star an author or series on its page to keep it here.</p>
+        <div class="account-favs-list"></div>
+    </section>
 
     <section class="auth-card" id="device-sync">
         <h2>Device sync</h2>
@@ -330,50 +374,6 @@
             </form>
             {{ end }}
         </div>
-        {{ end }}
-    </section>
-    {{ end }}
-
-    {{ if .Providers }}
-    <section class="auth-card" id="linked-sign-ins">
-        <h2>Linked sign-ins</h2>
-        {{ if .AtRisk }}
-        <p class="auth-error" role="alert"><b>Link one below to keep your account.</b> You can't sign in with a password, so today you're only in because of a one-time link. Once this session ends, only a new link from an admin gets you back in. Link a GitHub or Google account, then use <b>Continue with</b> it on the sign-in page.</p>
-        {{ else if not .User.PasswordSignIn }}
-        <p class="auth-muted">You sign in with these{{ if .PasswordsOff }}: this server has no passwords{{ else }}: you have no password{{ end }}.</p>
-        {{ end }}
-        <ul class="auth-identities">
-            {{ range .Identities }}
-            <li>
-                <span>{{ .Provider }} — {{ if .Login }}{{ .Login }}{{ else }}{{ .Email }}{{ end }}</span>
-                {{ if or $.User.PasswordSignIn (gt (len $.Identities) 1) }}
-                <form method="post" action="/auth/{{ .Provider }}/unlink"><button class="btn-standard" type="submit">Unlink</button></form>
-                {{ end }}
-            </li>
-            {{ else }}
-            <li class="auth-muted">None yet.</li>
-            {{ end }}
-        </ul>
-        <div class="auth-providers">
-            {{ range .Providers }}
-            <a class="btn-standard auth-provider" href="/auth/{{ . }}/start?link=1">Link {{ if eq . "github" }}GitHub{{ else if eq . "google" }}Google{{ else }}{{ . }}{{ end }}</a>
-            {{ end }}
-        </div>
-        {{ if and (not .User.PasswordSignIn) (eq (len .Identities) 1) }}
-        {{ $id := index .Identities 0 }}
-        <details class="sync-details">
-            <summary>Remove my {{ $id.Provider }} sign-in</summary>
-            <p class="auth-error"><b>You will lose access to your account.</b></p>
-            <ul class="sync-steps">
-                <li>{{ $id.Provider }} is the only way you can sign in{{ if .PasswordsOff }}: this server has no passwords{{ else }}: you have no password{{ end }}.</li>
-                <li>You stay signed in until you sign out or this session ends. After that you can only get back in with a one-time sign-in link from an admin, who may not be reachable.</li>
-                <li>Your books, shelves, progress and everything else stay in the account. Link {{ $id.Provider }} (or another) again once you're back in.</li>
-            </ul>
-            <form method="post" action="/auth/{{ $id.Provider }}/unlink" class="auth-form">
-                <label>Type your username, <b>{{ .User.Username }}</b>, to confirm <input name="confirm_username" type="text" autocomplete="off" autocapitalize="off" spellcheck="false" required></label>
-                <button type="submit" class="btn-standard btn-danger">Remove sign-in and lose access</button>
-            </form>
-        </details>
         {{ end }}
     </section>
     {{ end }}
