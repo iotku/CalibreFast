@@ -1,7 +1,10 @@
 package main
 
 import (
+	"bytes"
+	"fmt"
 	"slices"
+	"strings"
 	"testing"
 )
 
@@ -56,4 +59,33 @@ func TestAggregateTiers(t *testing.T) {
 		t.Errorf("tierOf(1) = %d, want 1", tierOf(th, 1))
 	}
 	_ = aggregateTiers(nil)
+}
+
+// The order bar and Discover's "Show more" are drawn shown by the server, not
+// un-hidden by aggregate.js once the page is in, so the heading row doesn't
+// jump after first paint. Fewer than a dozen entries: no order bar.
+func TestAggregateControlsOnFirstPaint(t *testing.T) {
+	render := func(n int) string {
+		t.Helper()
+		data := AggregatePageData{Title: "Tags", Kind: "tag", Label: "tag", Prefix: "/tag/",
+			Discover: []AggregateDisplayItem{{Name: "d", Href: "/tag/d", Count: 1, Tier: 1}}}
+		for i := range n {
+			data.Items = append(data.Items, AggregateDisplayItem{Name: fmt.Sprint("t", i), Href: fmt.Sprint("/tag/t", i), Count: 2, Tier: 1})
+		}
+		var buf bytes.Buffer
+		if err := templates.ExecuteTemplate(&buf, "aggregate.html", data); err != nil {
+			t.Fatal(err)
+		}
+		return buf.String()
+	}
+	page := render(12)
+	if !strings.Contains(page, `id="agg-order" class="agg-order" role="group" aria-label="Order">`) {
+		t.Error("12 entries: order bar not shown on first paint")
+	}
+	if !strings.Contains(page, `id="agg-reshuffle" class="agg-pill">`) {
+		t.Error(`"Show more" not shown on first paint`)
+	}
+	if page := render(11); !strings.Contains(page, `aria-label="Order" hidden>`) || strings.Contains(page, `data-order="az"`) {
+		t.Error("11 entries: order bar shown")
+	}
 }
