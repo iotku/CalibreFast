@@ -212,6 +212,49 @@ func TestFavoritesPageCarousel(t *testing.T) {
 		cards[1].Name != "Dune" || cards[1].ImageURL != "" || cards[1].Initial != "D" || cards[1].KindLabel != "Series" {
 		t.Fatalf("cards: %+v %v", cards, err)
 	}
+	// The API: each favorite's picture or initial, and the pages' generation,
+	// for /authors' carousel and the list kept for it (web/favorites.ts).
+	var api struct {
+		Gen       uint64        `json:"gen"`
+		Favorites []aggFavorite `json:"favorites"`
+	}
+	if err := json.Unmarshal(call(t, mux, alice, "GET", "/api/me/favorites", "").Body.Bytes(), &api); err != nil {
+		t.Fatal(err)
+	}
+	byName := map[string]aggFavorite{}
+	for _, f := range api.Favorites {
+		byName[f.Name] = f
+	}
+	if api.Gen != aggregateGen.Load() || byName["Frank Herbert"].ImageURL != "/author-images/"+img ||
+		byName["Dune"].ImageURL != "" || byName["Dune"].Initial != "D" || byName["Frank Herbert"].Initial != "F" {
+		t.Fatalf("api: %+v", api)
+	}
+	if raw := call(t, mux, alice, "GET", "/api/me/favorites", "").Body.String(); !strings.Contains(raw, `"image_url":"/author-images/`+img+`"`) {
+		t.Fatalf("api JSON without image_url: %s", raw)
+	}
+	// /authors: the carousel's section, drawn at once from the kept list by
+	// its inline script; other kinds keep their chips.
+	mux.HandleFunc("GET /authors", aggregatePageHandler(categoryByKey("author")))
+	mux.HandleFunc("GET /tags", aggregatePageHandler(categoryByKey("tag")))
+	authors := call(t, mux, nil, "GET", "/authors", "").Body.String()
+	for _, want := range []string{
+		`<section id="agg-favorites" class="agg-featured fav-aggs"`,
+		`aria-controls="agg-fav-list" hidden>Show all</button>`,
+		`<div id="agg-fav-list" class="fav-aggs-row"></div>`,
+		`localStorage.getItem("cf-u/"+encodeURIComponent(u)+"/favorites")`,
+		`P=/^\/(?![\/\\])/`,
+	} {
+		if !strings.Contains(authors, want) {
+			t.Errorf("/authors without %s", want)
+		}
+	}
+	if i, j := strings.Index(authors, `id="agg-fav-list"`), strings.Index(authors, `cf-u/`); i < 0 || j < i || strings.Contains(authors[j:], "innerHTML") {
+		t.Error("/authors: bootstrap not after the carousel, or uses innerHTML")
+	}
+	if tags := call(t, mux, nil, "GET", "/tags", "").Body.String(); !strings.Contains(tags, `<div class="agg-chips"></div>`) || strings.Contains(tags, "agg-fav-list") {
+		t.Error("/tags: favorites not chips")
+	}
+
 	rec := call(t, mux, alice, "GET", "/me/favorites", "")
 	body := rec.Body.String()
 	// Authors, then series, each its own carousel, then the books' heading.

@@ -12,10 +12,11 @@
  * Also /me/favorites' carousels of favorite authors (rendered by the
  * server, filtered.html) and of series (drawn here from their grid entries
  * with bookCard, as a shelf's series are): they drag sideways like
- * Discover's rows, and each one's "Show all" wraps it to show every card.
+ * Discover's rows, and each one's "Show all" wraps it to show every card
+ * (fav-carousel.ts, shared with /authors' carousel).
  */
 import { el, errorMessage, icon } from "./dom.js";
-import { setupDragScroll } from "./drag-scroll.js";
+import { setupFavRows } from "./fav-carousel.js";
 import { freshFavorites, hardcoverUnfollow, isFavorite, keptFavorites, loadFavorites, setFavorite } from "./favorites.js";
 import type { AggFavorite, Book } from "./types.js";
 import { bookCard, setupCoverStates } from "./utils.js";
@@ -164,19 +165,4 @@ for (const row of document.querySelectorAll<HTMLElement>(".fav-books-row[data-bo
     setupCoverStates(row);
     row.replaceChildren(...books.map((b) => bookCard(b, true)));
 }
-if (document.querySelector(".fav-aggs-row")) setupDragScroll(document.body, ".fav-aggs-row");
-for (const all of document.querySelectorAll<HTMLButtonElement>(".fav-aggs-all")) {
-    const row = document.getElementById(all.getAttribute("aria-controls") ?? "");
-    if (!row) continue;
-    // Only offered while the row doesn't show every card already.
-    const fits = (): void => {
-        all.hidden = !row.classList.contains("fav-aggs-wrap") && row.scrollWidth <= row.clientWidth;
-    };
-    all.addEventListener("click", () => {
-        const open = row.classList.toggle("fav-aggs-wrap");
-        all.setAttribute("aria-expanded", String(open));
-        all.textContent = open ? "Show fewer" : "Show all";
-        fits();
-    });
-    new ResizeObserver(fits).observe(row);
-}
+setupFavRows(document.body);

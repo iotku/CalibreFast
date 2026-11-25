@@ -16,11 +16,13 @@
  * - Hovering an entry (or focusing it from the keyboard) previews a few of
  *   its books' covers.
  * - "Your favorites" (signed in) lists the user's favorites of this kind,
- *   from the list favorites.ts keeps, so the page stays the same for all.
+ *   from the list favorites.ts keeps, so the page stays the same for all:
+ *   authors as a carousel, as on /me/favorites, other kinds as chips.
  */
 
 import { startBookSync } from "./book-sync.js";
 import { byId, el, random } from "./dom.js";
+import { booksLabel, favCard, setupFavRows } from "./fav-carousel.js";
 import { keptFavorites, loadFavorites } from "./favorites.js";
 import { bestScore, fold, type Hay, prepare, prepareQuery } from "./fuzzy.js";
 import type { AggFavorite, AggregateEntry, Book } from "./types.js";
@@ -542,33 +544,62 @@ document.addEventListener("keydown", (e) => {
 window.addEventListener("scroll", hidePreview, { passive: true });
 
 // A library page: books for offline reading that this device is missing (book-sync.ts).
-/** "Your favorites": the user's favorites of this page's kind, as chips. */
-function paintFavorites(list: AggFavorite[] | null): void {
-    const section = document.getElementById("agg-favorites");
-    const chips = section?.querySelector(".agg-chips");
-    if (!section || !chips) return;
-    const kind = page.dataset["kind"] ?? "";
-    const prefix = page.dataset["prefix"] ?? "";
-    const mine = (list ?? []).filter((f) => f.kind === kind);
-    chips.replaceChildren(
-        ...mine.map((f) =>
-            el(
-                "a",
-                { className: "agg-chip", href: prefix + encodeURIComponent(f.name) },
-                f.label || f.name,
-                el("span", { className: "agg-count" }, String(f.count)),
-            ),
-        ),
-    );
-    section.hidden = mine.length === 0;
+/*
+ * "Your favorites": the user's favorites of this page's kind. Authors are a
+ * carousel (.fav-aggs-row, fav-carousel.ts), which aggregate.html's inline
+ * script has already drawn from the kept list while the page parsed
+ * (data-kept on the section), or reserved with a throbber when there's no
+ * kept list yet; other kinds are chips. The list is then asked for again
+ * if the user's favorites, or the page's generation (counts, pictures),
+ * changed since it was kept, and drawn again only if it differs.
+ */
+const favSection = document.getElementById("agg-favorites");
+const favRow = favSection?.querySelector<HTMLElement>(".fav-aggs-row") ?? null;
+const favKind = page.dataset["kind"] ?? "";
+/** What the section shows (favKey), so an unchanged list isn't drawn again (its pictures would flicker); null: nothing yet. */
+let favShown: string | null = null;
+
+function favKey(mine: AggFavorite[]): string {
+    return JSON.stringify(mine.map((f) => [f.name, f.label ?? "", f.href, f.count, f.image_url ?? "", f.initial ?? ""]));
 }
 
-paintFavorites(keptFavorites());
-void loadFavorites()
-    .then(paintFavorites)
-    .catch(() => {
-        /* offline: the kept list stands */
-    });
-document.addEventListener("cf:favorites", () => paintFavorites(keptFavorites()));
+function paintFavorites(list: AggFavorite[] | null): void {
+    if (!favSection) return;
+    const mine = (list ?? []).filter((f) => f.kind === favKind);
+    const key = favKey(mine);
+    if (key === favShown) return;
+    favShown = key;
+    if (favRow) {
+        favRow.replaceChildren(...mine.map((f) => favCard(f, booksLabel(f.count))));
+    } else {
+        const prefix = page.dataset["prefix"] ?? "";
+        favSection.querySelector(".agg-chips")?.replaceChildren(
+            ...mine.map((f) =>
+                el(
+                    "a",
+                    { className: "agg-chip", href: prefix + encodeURIComponent(f.name) },
+                    f.label || f.name,
+                    el("span", { className: "agg-count" }, String(f.count)),
+                ),
+            ),
+        );
+    }
+    favSection.hidden = mine.length === 0;
+}
+
+if (favSection) {
+    setupFavRows(favSection);
+    const kept = keptFavorites();
+    if (favSection.dataset["kept"] !== undefined) favShown = favKey((kept ?? []).filter((f) => f.kind === favKind));
+    else if (kept) paintFavorites(kept);
+    const gen = Number(new URL(src, location.href).searchParams.get("v") ?? "");
+    void loadFavorites(src && Number.isFinite(gen) ? gen : undefined)
+        .then(paintFavorites)
+        .catch(() => {
+            // Offline: the kept list stands; a throbber waiting for none goes.
+            if (favShown === null) paintFavorites([]);
+        });
+    document.addEventListener("cf:favorites", () => paintFavorites(keptFavorites()));
+}
 
 startBookSync();

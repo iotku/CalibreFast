@@ -25,12 +25,30 @@
     <div id="agg-browse">
         {{/* The user's favorites of this kind, filled from their kept list
              (web/aggregate.ts, favorites.ts): the page is the same for everyone. */}}
-        {{ if not .CompleteOnly }}
+        {{ if not .CompleteOnly }}{{ if eq .Kind "author" }}
+        {{/* Authors: a carousel, as on /me/favorites (web/fav-carousel.ts). */}}
+        <section id="agg-favorites" class="agg-featured fav-aggs" aria-labelledby="agg-fav-h" hidden>
+            <div class="agg-section-head">
+                <h2 class="agg-heading" id="agg-fav-h">★ Your favorites</h2>
+                <button type="button" class="agg-pill fav-aggs-all" aria-expanded="false" aria-controls="agg-fav-list" hidden>Show all</button>
+            </div>
+            <div id="agg-fav-list" class="fav-aggs-row"></div>
+        </section>
+        {{/* Drawn at once from the user's kept favorites (web/favorites.ts:
+             cf-u/<user>/favorites, JSON, no markup), so the row doesn't pop
+             in: aggregate.js is a module and waits for the whole page. With
+             a user but nothing kept yet, a throbber holds the row. Built
+             with createElement from fixed tags, never parsed as HTML
+             (Trusted Types), with no on* attributes, and links and pictures
+             only to paths on this site. fav-carousel.ts builds the same
+             card; aggregate.ts then redraws it if the list changed. */}}
+        <script>try{(function(){var s=document.getElementById("agg-favorites"),r=document.getElementById("agg-fav-list"),m=JSON.parse(localStorage.getItem("cf-me")||"null"),u=m&&m.username;if(!s||!r||typeof u!="string"||!u)return;var k=JSON.parse(localStorage.getItem("cf-u/"+encodeURIComponent(u)+"/favorites")||"null"),P=/^\/(?![\/\\])/,e=function(t,c,x){var n=document.createElement(t);n.className=c;if(x!=null)n.textContent=String(x);return n};if(!k||!Array.isArray(k.list)){var w=e("div","fav-aggs-wait"),t=e("div","throbber");t.setAttribute("role","status");t.setAttribute("aria-label","Loading favorites");for(var i=0;i<3;i++)t.appendChild(e("span","throbber-dot"));w.appendChild(t);r.replaceChildren(w);s.hidden=false;return}var f=document.createDocumentFragment(),n=0;k.list.forEach(function(v){if(!v||v.kind!=="author")return;if(typeof v.href!="string"||!P.test(v.href))throw 0;var a=e("a","fav-agg"),c=Number(v.count)||0,p;a.setAttribute("href",v.href);if(v.image_url){if(typeof v.image_url!="string"||!P.test(v.image_url))throw 0;p=e("img","fav-agg-img");p.setAttribute("src",v.image_url);p.setAttribute("alt","");p.setAttribute("loading","lazy")}else{p=e("span","fav-agg-img fav-agg-initial",v.initial||"");p.setAttribute("aria-hidden","true")}a.appendChild(p);a.appendChild(e("span","fav-agg-name",v.label||v.name));a.appendChild(e("span","fav-agg-meta",c.toLocaleString("en-US")+(c===1?" book":" books")));f.appendChild(a);n++});r.replaceChildren(f);s.hidden=n===0;s.setAttribute("data-kept","")})()}catch(x){}</script>
+        {{ else }}
         <section id="agg-favorites" class="agg-featured" aria-labelledby="agg-fav-h" hidden>
             <h2 class="agg-heading" id="agg-fav-h">★ Your favorites</h2>
             <div class="agg-chips"></div>
         </section>
-        {{ end }}
+        {{ end }}{{ end }}
         {{ with .Featured }}
         <section class="agg-featured" aria-label="Featured">
             <h2 class="agg-heading">Featured</h2>
