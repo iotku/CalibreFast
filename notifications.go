@@ -382,6 +382,14 @@ func moveSavedPlaceholder(uid int64, p *placeholder, bookUUID string, event int6
 			return err
 		}
 	}
+	// Told already that the book is new by an author or in a series they
+	// starred (catalogFlush may get there first): this says it better.
+	// A notice about several books stays; it's about the others too.
+	if _, err := tx.Exec(`DELETE FROM user_notifications WHERE user_id = ? AND event_id IN (
+		SELECT id FROM notification_events WHERE book_uuid = ? AND kind IN (?, ?) AND count <= 1)`,
+		uid, bookUUID, notifyFavoriteAuthor, notifyFavoriteSeries); err != nil {
+		return err
+	}
 	if err := deliver(tx, uid, event, onDeck); err != nil {
 		return err
 	}

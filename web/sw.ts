@@ -34,7 +34,7 @@
  * opens the notification's page in the app.
  */
 
-import { noticeText, type Notice } from "./notice-text.js";
+import { noticeCover, noticeText, type Notice } from "./notice-text.js";
 
 // Minimal service worker types (the DOM library doesn't have them).
 interface ExtendableEvent extends Event {
@@ -366,8 +366,8 @@ async function showPushed(): Promise<void> {
             await sw.registration.showNotification(headline, {
                 body: note,
                 tag: `cf-n-${n.id}`,
-                // A saved book that arrived shows its cover (offline-books.ts coverKey; not imported, to keep this file small).
-                icon: n.kind === "placeholder_added" && n.book_uuid ? `/cover-thumb/${encodeURIComponent(n.book_uuid)}` : icon,
+                // A notice about one book shows its cover (offline-books.ts coverKey; not imported, to keep this file small).
+                icon: noticeCover(n) ? `/cover-thumb/${encodeURIComponent(noticeCover(n))}` : icon,
                 data: { href: localHref(n.href) },
             });
         }

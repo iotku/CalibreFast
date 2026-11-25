@@ -24,7 +24,7 @@ import { meRequest } from "./me.js";
 import type { HardcoverIndicator, HardcoverStatus } from "./types.js";
 import { clearable } from "./clearable.js";
 import { attachSearchSuggest } from "./search-suggest.js";
-import { noticeText, type Notice } from "./notice-text.js";
+import { noticeCover, noticeText, type Notice } from "./notice-text.js";
 import { declinePush, pushSupported, shouldOfferPush, turnOffPush, turnOnPush } from "./push.js";
 
 /** A book's cover thumbnail in the sync menu: the book downloading, or a saved book that arrived. Hidden if it won't load. */
@@ -474,8 +474,9 @@ function init(bar: HTMLElement): void {
                     const title = href ? el("a", { href, className: "tb-notice-title", textContent: headline }) : el("span", { className: "tb-notice-title", textContent: headline });
                     const dismiss = el("button", { type: "button", className: "tb-notice-dismiss", title: "Dismiss", ariaLabel: `Dismiss: ${headline}` });
                     dismiss.append(icon(CROSS));
-                    // A saved book that arrived shows its cover, as the book downloading does.
-                    const cover = n.kind === "placeholder_added" && n.book_uuid ? [syncCover(n.book_uuid)] : [];
+                    // A notice about one book shows its cover on the left, as the book downloading does.
+                    const coverOf = noticeCover(n);
+                    const cover = coverOf ? [syncCover(coverOf)] : [];
                     const item = el(
                         "li",
                         { className: n.seen ? "tb-notice" : "tb-notice is-new" },

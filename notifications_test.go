@@ -405,6 +405,54 @@ func TestSavedPlaceholderKeepsOwnStatus(t *testing.T) {
 	}
 }
 
+// A saved book by an author the saver starred: whichever notice comes
+// first, they're left with the saved-book one (not "New, by …" as well).
+func TestSavedPlaceholderOverFavoriteNotice(t *testing.T) {
+	db, _, _ := seriesFixture(t)
+	origData := dataDir
+	dataDir = t.TempDir()
+	placeholdersChanged()
+	t.Cleanup(func() { dataDir = origData; placeholdersChanged() })
+	u, _ := createUser("erin", "a long enough password", false)
+	if _, err := appDB.Exec(`INSERT INTO aggregate_favorites (user_id, kind, name, created_at) VALUES (?, 'author', 'Fresh Writer', 1)`, u.ID); err != nil {
+		t.Fatal(err)
+	}
+	p := &placeholder{Meta: OPFMetadata{Title: "Awaited", Creators: []string{"Fresh Writer"}}}
+	if err := savePlaceholder(p, nil); err != nil {
+		t.Fatal(err)
+	}
+	if err := setStatus(u.ID, p.UUID, "wanted", "manual"); err != nil {
+		t.Fatal(err)
+	}
+	book := addTestBook(t, db, "Awaited", []string{"Fresh Writer"}, nil, "", "epub")
+	// The upload's flush tells fans in the background, while the same flush
+	// matches the placeholder: here the fans' notice gets in first.
+	if err := notifyFavoriteGains([]favGain{{uuid: book, title: "Awaited", authors: []string{"Fresh Writer"}}}); err != nil {
+		t.Fatal(err)
+	}
+	kinds := func() []string {
+		t.Helper()
+		ns, err := userNotifications(u.ID)
+		if err != nil {
+			t.Fatal(err)
+		}
+		var ks []string
+		for _, n := range ns {
+			ks = append(ks, n.Kind)
+		}
+		return ks
+	}
+	if ks := kinds(); len(ks) != 1 || ks[0] != notifyFavoriteAuthor {
+		t.Fatalf("before the placeholder is replaced: %v, want the favorite notice", ks)
+	}
+	if err := replacePlaceholder(p.UUID, book); err != nil {
+		t.Fatal(err)
+	}
+	if ks := kinds(); len(ks) != 1 || ks[0] != notifyPlaceholderAdded {
+		t.Errorf("after: %v, want only %s", ks, notifyPlaceholderAdded)
+	}
+}
+
 // Finding a placeholder's savers uses the index on reading_status's
 // book_uuid (migration 40), not a scan of everyone's statuses.
 func TestPlaceholderSaversIndexed(t *testing.T) {
