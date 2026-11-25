@@ -2,7 +2,8 @@
  * The user's favorite authors, series, tags, publishers and languages
  * (aggregate_favorites.go), kept in localStorage under the user's prefix so
  * pages (which are the same for everyone) can show them at once. The list
- * is asked for again only when /api/me's `favs` differs from the one kept.
+ * is asked for again only when /api/me's `favs` differs from the one kept
+ * (or, on an aggregate page, the page's generation does: counts, pictures).
  * Changes are told to the page as `cf:favorites`.
  */
 import { api } from "./dom.js";
@@ -10,8 +11,16 @@ import { lastKnownUser, localKey } from "./local-keys.js";
 import { meRequest } from "./me.js";
 import type { AggFavorite } from "./types.js";
 
+/*
+ * The kept JSON is also read by templates/aggregate.html's inline script,
+ * which draws /authors' carousel from it while the page parses: keep the
+ * key and the list's shape (kind, name, label, href, count, image_url,
+ * initial) in step with it.
+ */
 interface Kept {
     favs: number;
+    /** The aggregate pages' generation when the list was got (counts and pictures as then). */
+    gen?: number;
     list: AggFavorite[];
     /** The user's Hardcover link can unfollow, and the unstar dialog's box starts ticked. */
     hcUnfollow?: boolean;
@@ -63,24 +72,34 @@ export function keptFavorites(): AggFavorite[] | null {
 
 let owner: string | null = null;
 
-/** The signed-in user's favorites, from the kept list when it's current; null: signed out. */
-export async function loadFavorites(): Promise<AggFavorite[] | null> {
+/**
+ * The signed-in user's favorites, from the kept list when it's current; null:
+ * signed out. gen (an aggregate page's, from its data-src): the kept list
+ * is current only if got at that generation too, so its counts and
+ * pictures are.
+ */
+export async function loadFavorites(gen?: number): Promise<AggFavorite[] | null> {
     const me = await meRequest();
     const user = me.ok ? me.body.user : null;
     if (!user) return null;
     owner = user.username;
     const kept = read(owner);
-    if (kept && kept.favs === (me.body.favs ?? 0)) return kept.list;
+    if (kept && kept.favs === (me.body.favs ?? 0) && (gen === undefined || kept.gen === gen)) return kept.list;
     return refresh(owner);
 }
 
 async function refresh(who: string): Promise<AggFavorite[]> {
-    const got = await api<{ favs: number; favorites: AggFavorite[]; hc_unfollow?: boolean; hc_unfollow_default?: boolean; hc_follow_stars?: boolean }>(
-        "GET",
-        "/api/me/favorites",
-    );
+    const got = await api<{
+        favs: number;
+        gen?: number;
+        favorites: AggFavorite[];
+        hc_unfollow?: boolean;
+        hc_unfollow_default?: boolean;
+        hc_follow_stars?: boolean;
+    }>("GET", "/api/me/favorites");
     write(who, {
         favs: got.favs,
+        gen: got.gen ?? 0,
         list: got.favorites,
         hcUnfollow: !!got.hc_unfollow,
         hcUnfollowDefault: got.hc_unfollow_default ?? true,

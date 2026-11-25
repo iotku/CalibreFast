@@ -117,6 +117,10 @@ export interface AggFavorite {
     count: number;
     /** An author the user follows on Hardcover, as far as the server knows. */
     hc_followed?: boolean;
+    /** Its picture, a path on this site (none: show initial). */
+    image_url?: string;
+    /** The letter shown in place of a picture. */
+    initial?: string;
 }
 
 /** A library value suggestion (Go: groupValuesHandler). */
