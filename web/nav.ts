@@ -9,7 +9,7 @@
 import { keepOnlyUser, registerWorker } from "./book-cache.js";
 import { settleAccountPrefs } from "./account-prefs.js";
 import { startSendingPending } from "./send-pending.js";
-import { onSyncChange, readSync, STALE_MS, unsentBooks, writeSync } from "./sync-state.js";
+import { onSyncChange, readSync, STALE_MS, SYNC_NOW_EVENT, unsentBooks, writeSync, type SyncNowDetail } from "./sync-state.js";
 import { coverKey, forgetOfflineReading, refreshOfflineReading } from "./offline-books.js";
 import { api, el, withPageScheme } from "./dom.js";
 import { forgetSynced } from "./local-keys.js";
@@ -497,6 +497,19 @@ function init(bar: HTMLElement): void {
         const bookDetail = el("span", { className: "tb-sync-detail" });
         const card = el("div", { className: "tb-sync-book", hidden: true }, cover, el("span", { className: "tb-sync-book-text" }, bookTitle, bookAuthors, bar, bookDetail));
         const nextLine = el("p", { className: "tb-sync-line tb-sync-next", hidden: true });
+        // Sync now: a run at once, on any page (syncNow), with the Saved list
+        // and statuses fetched fresh. Not while one downloads or they're paused.
+        const syncNowBtn = el("button", { type: "button", textContent: "Sync now" });
+        syncNowBtn.addEventListener("click", (e) => {
+            e.stopPropagation();
+            syncNowBtn.disabled = true;
+            syncNowBtn.textContent = "Syncing…";
+            void syncNow(true).finally(() => {
+                syncNowBtn.disabled = false;
+                syncNowBtn.textContent = "Sync now";
+                paint();
+            });
+        });
         const pause = el("button", { type: "button" });
         pause.addEventListener("click", (e) => {
             e.stopPropagation();
@@ -628,6 +641,7 @@ function init(bar: HTMLElement): void {
             allNotices,
             pushOffer,
             el("hr"),
+            syncNowBtn,
             pause,
             mark(el("a", { href: "/me/sync", textContent: "Device and Hardcover sync" }), "sync"),
             mark(el("a", { href: "/preferences", textContent: "Storage and preferences" }), "preferences"),
@@ -702,7 +716,7 @@ function init(bar: HTMLElement): void {
                   : s.held && waiting
                     ? `${plural(waiting, "book")} to download once the page has finished loading.`
                   : waiting
-                    ? `${plural(waiting, "book")} waiting to download. Downloads go on while a library page is open.`
+                    ? `${plural(waiting, "book")} waiting to download. Downloads go on while a page with books is open, or now with Sync now.`
                     : "All up to date.");
             readingLine.set(readingDone, readingShort, reading);
             booksLine.set(booksDone, booksShort, books);
@@ -751,6 +765,7 @@ function init(bar: HTMLElement): void {
             nextLine.hidden = !next.length;
             nextLine.textContent = next.length ? `Then: ${next.join(", ")}${more > 0 ? `, and ${plural(more, "more book")}` : ""}.` : "";
             pause.textContent = s.paused ? "Resume book downloads" : "Pause book downloads";
+            syncNowBtn.hidden = !!a || !!s.paused || !navigator.onLine;
         };
         if (syncToggle) toggles = toggles.filter((t) => t !== syncToggle);
         syncToggle = register(btn, (open) => {
@@ -992,14 +1007,16 @@ function init(bar: HTMLElement): void {
             // (only on a real answer: an error isn't a sign-out).
             if (ok) void keepOnlyUser(st.username).catch(() => {});
             // The Reading list and covers for the offline page (offline-books.ts):
-            // on the Reading page every time, elsewhere now and then.
+            // on the Reading page every time; elsewhere the pages with books
+            // refresh it now and then (book-sync.ts runSync), not every page.
             if (ok && st.username) {
                 const onReading = location.pathname === "/me/reading";
                 // The account's preferences (prefs.ts), or the guest's for an account just made here.
                 void settleAccountPrefs(st.username, body.prefs);
                 // Reading changes made where the server couldn't be reached: sent now, not when the book is next opened.
                 startSendingPending(st.username);
-                whenIdle(() => void refreshOfflineReading(onReading).catch(() => {}));
+                listenForSync(st.username);
+                if (onReading) whenIdle(() => void refreshOfflineReading(true).catch(() => {}));
             } else if (ok) void forgetOfflineReading();
             if (json !== shown) render(st);
         })
@@ -1009,6 +1026,37 @@ function init(bar: HTMLElement): void {
 }
 
 /** Run fn once the page has settled (it fetches, and shouldn't compete with the page's own requests). */
+/**
+ * Run the book downloads now: by the page's own book-sync.ts if it has one
+ * (startBookSync answers SYNC_NOW_EVENT), else by sync-run.ts, loaded for
+ * it (#user-nav's data-sync-src, an asset URL the server wrote). Resolves
+ * when the run ends.
+ */
+function syncNow(force = false): Promise<void> {
+    let run: Promise<void> | null = null;
+    const detail: SyncNowDetail = { force, done: (r) => (run = r) };
+    if (!document.dispatchEvent(new CustomEvent(SYNC_NOW_EVENT, { cancelable: true, detail }))) return run ?? Promise.resolve();
+    const src = document.getElementById("user-nav")?.dataset["syncSrc"] ?? "";
+    if (!/^\/(?![\/\\])[^?#]*\.js$/.test(src)) return Promise.resolve();
+    return (import(src) as Promise<{ syncBooks(o: { force: boolean }): Promise<void> }>)
+        .then((m) => m.syncBooks({ force }))
+        .catch((err: unknown) => console.warn("sync: couldn't load the book downloads for this page; they run on the next page with books:", err));
+}
+
+/** Once a page: a run when downloads are resumed (here or in another tab) or the connection comes back. */
+let syncListening = false;
+function listenForSync(name: string): void {
+    if (syncListening) return;
+    syncListening = true;
+    let wasPaused = !!readSync(name).paused;
+    onSyncChange(name, () => {
+        const now = !!readSync(name).paused;
+        if (wasPaused && !now) void syncNow();
+        wasPaused = now;
+    });
+    window.addEventListener("online", () => void syncNow());
+}
+
 function whenIdle(fn: () => void): void {
     if ("requestIdleCallback" in window) requestIdleCallback(fn, { timeout: 5000 });
     else setTimeout(fn, 2000);

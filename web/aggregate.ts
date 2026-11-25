@@ -20,7 +20,6 @@
  *   authors as a carousel, as on /me/favorites, other kinds as chips.
  */
 
-import { startBookSync } from "./book-sync.js";
 import { clearable } from "./clearable.js";
 import { byId, el, random } from "./dom.js";
 import { booksLabel, favCard, setupFavRows } from "./fav-carousel.js";
@@ -604,4 +603,6 @@ if (favSection) {
     document.addEventListener("cf:favorites", () => paintFavorites(keptFavorites()));
 }
 
-startBookSync();
+// No startBookSync() here: the category lists show no books, so the
+// download sync and the offline page's lists (/api/me/saved-books,
+// /me/reading) wait for a page that does.

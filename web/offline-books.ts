@@ -1,18 +1,17 @@
 /**
  * What the offline Reading page (offline.ts) needs, saved while online:
  *
- *   - the user's Reading list (titles and authors from /me/reading) and
- *     the start of On deck / Saved for later (/api/me/saved-books: what
- *     Discover's row shows, or as many as are downloaded ahead of time, if
- *     more), in localStorage, so
- *     books not kept on this device can still be shown (as placeholders)
- *     with no server;
+ *   - the user's Reading list (titles and authors from /me/reading), in
+ *     localStorage, so books not kept on this device can still be shown
+ *     (as placeholders) with no server. On deck / Saved for later is the
+ *     list book-sync.ts fetches (retention.ts savedList), at least as long
+ *     as Discover's row (DECK_ROW_MAX): one request serves both;
  *   - the cover thumbnails of those books and of the books kept here
  *     (book-cache.ts), in the Cache Storage cache "cf-covers", which pages
  *     read directly (the service worker passes covers by, sw.ts).
  *
- * nav.ts refreshes them now and then on signed-in pages, the Reading page
- * every time, and the reader adds a book's cover when it keeps the book.
+ * The pages with books refresh them now and then (book-sync.ts), the
+ * Reading page every time (nav.ts), and the reader adds a book's cover when it keeps the book.
  * The readers also move a book to the top of the saved list as they save a
  * position (noteReadingHere), or take it off once it's finished: the server
  * does the same to its list, and the next page offline mustn't wait for a
@@ -38,27 +37,34 @@ export interface ReadingSnapshot {
     books: ListedBook[];
     /** The answer's tag (listtag.go): sent back, an unchanged list is answered 304. */
     tag?: string;
-    /** On deck, then Saved, as Discover's row has them (none: not fetched yet), and that answer's tag. */
-    saved?: ListedBook[];
-    savedTag?: string;
 }
 
 const KEY = "cf-offline-reading";
 const COVERS = "cf-covers";
-/** How often (at most) other pages refresh it; the Reading page always does. */
+/** How often (at most) the pages with books refresh it (book-sync.ts); the Reading page always does. */
 const REFRESH_MS = 10 * 60_000;
 /** Covers kept, at most: the Reading list's first ones, then On deck / Saved, then kept books'. */
 const MAX_COVERS = 80;
-/** On deck / Saved books listed: as many as Discover's row shows (Go: homeRowMax), or as are downloaded ahead of time. */
-const DECK_ROW_MAX = 20;
+/** On deck / Saved books the offline page lists, at least: as many as Discover's row shows (Go: homeRowMax). */
+export const DECK_ROW_MAX = 20;
 
-/** How many On deck / Saved books this device downloads ahead of time (book-sync.ts, retention.ts savedList). */
-function downloadedAhead(user: string): number {
+/**
+ * On deck / Saved as book-sync.ts last fetched it (retention.ts savedList,
+ * read here directly: retention.ts imports this module).
+ */
+function savedBooks(user: string): ListedBook[] {
     try {
-        return (JSON.parse(localStorage.getItem(localKey(user, "saved-books")) ?? "null") as { limit?: number } | null)?.limit ?? 0;
+        const list = JSON.parse(localStorage.getItem(localKey(user, "saved-books")) ?? "null") as { books?: { uuid: string; title: string; authors: string }[] } | null;
+        return (list?.books ?? []).map((b) => ({ uuid: b.uuid, title: b.title, authors: b.authors, stamp: "" }));
     } catch {
-        return 0;
+        return [];
     }
+}
+
+/** book-sync.ts fetched a changed On deck / Saved list: keep its covers for the offline page. */
+export async function savedListChanged(user: string): Promise<void> {
+    if (savedFor() !== user) return; // the Reading list is saved first (refreshOfflineReading)
+    await saveCovers([...(readingSnapshot()?.books ?? []), ...savedBooks(user)]);
 }
 
 /** The Reading list last saved for whoever is signed in here (null if none, or someone else's). */
@@ -126,26 +132,14 @@ export function refreshOfflineReading(force = false): Promise<void> {
 async function save(user: string): Promise<void> {
     if (savedFor() !== user) await forgetOfflineReading(); // another user's covers aren't this one's
     const last = readingSnapshot();
-    const [books, saved] = await Promise.all([
-        fetchList("/me/reading?api=1&all=1", last?.tag, last?.books, (raw) =>
-            (raw as { uuid: string; title: string; authors: string; last_modified: string; placeholder?: unknown }[])
-                .filter((b) => !b.placeholder)
-                .map((b) => ({ uuid: b.uuid, title: b.title, authors: b.authors, stamp: b.last_modified })),
-        ),
-        fetchList(`/api/me/saved-books?limit=${Math.max(DECK_ROW_MAX, downloadedAhead(user))}`, last?.savedTag, last?.saved, (raw) =>
-            (raw as { uuid: string; title: string; authors: string }[]).map((b) => ({ uuid: b.uuid, title: b.title, authors: b.authors, stamp: "" })),
-        ),
-    ]);
+    const books = await fetchList("/me/reading?api=1&all=1", last?.tag, last?.books, (raw) =>
+        (raw as { uuid: string; title: string; authors: string; last_modified: string; placeholder?: unknown }[])
+            .filter((b) => !b.placeholder)
+            .map((b) => ({ uuid: b.uuid, title: b.title, authors: b.authors, stamp: b.last_modified })),
+    );
     if (!books) return; // signed out, or not answering
-    const changed = books.changed || !!saved?.changed;
-    writeSnapshot({
-        user,
-        at: Date.now(),
-        books: books.list,
-        tag: books.tag,
-        ...(saved ? { saved: saved.list, savedTag: saved.tag } : last?.saved ? { saved: last.saved, savedTag: last.savedTag } : {}),
-    });
-    if (changed) await saveCovers([...books.list, ...(saved?.list ?? last?.saved ?? [])]);
+    writeSnapshot({ user, at: Date.now(), books: books.list, tag: books.tag });
+    if (books.changed) await saveCovers([...books.list, ...savedBooks(user)]);
 }
 
 /** A list, fetched again unless unchanged (304: the copy had). Null when it can't be had. */
