@@ -33,8 +33,9 @@ func libraryRating(uuid string) int {
 		return 0
 	}
 	var r sql.NullInt64
+	where, args := bookWhere(uuid) // by id: no scan of books (catalog.go)
 	_ = calibreDB.QueryRow(`SELECT (SELECT r.rating FROM books_ratings_link l JOIN ratings r ON r.id = l.rating WHERE l.book = b.id)
-		FROM books b WHERE b.uuid = ?`, uuid).Scan(&r)
+		FROM books b WHERE `+where, args...).Scan(&r)
 	return min(max(int(r.Int64), 0), 10)
 }
 

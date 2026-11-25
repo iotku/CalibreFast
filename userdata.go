@@ -13,6 +13,7 @@ import (
 	"net/url"
 	"strconv"
 	"strings"
+	"sync"
 	"time"
 )
 
@@ -31,8 +32,11 @@ func bookExists(uuid string) bool {
 
 // booksByUUIDs returns grid entries for uuids, in the same order. Books no
 // longer in the library are skipped. From the catalog; only books it doesn't
-// have yet (added a moment ago) are read from metadata.db. A shelf's series
-// keys are series cards (shelf_series.go).
+// have yet (added a moment ago) are read from metadata.db, and that read is
+// a scan of the whole books table (no index on uuid), so a uuid it didn't
+// have either isn't asked about again for a while (notInLibrary): a list
+// holding a book long gone would otherwise pay for one on every request. A
+// shelf's series keys are series cards (shelf_series.go).
 func booksByUUIDs(uuids []string) ([]Book, error) {
 	out := make([]Book, 0, len(uuids))
 	if len(uuids) == 0 {
@@ -51,7 +55,8 @@ func booksByUUIDs(uuids []string) ([]Book, error) {
 					phs[p.UUID] = p
 				}
 			}
-			if phs[u] == nil {
+			// Not a removed book (its row is gone), nor one just asked about.
+			if phs[u] == nil && !cat.known(u) && !notInLibrary.has(u) {
 				missing = append(missing, u)
 			}
 		}
@@ -62,6 +67,11 @@ func booksByUUIDs(uuids []string) ([]Book, error) {
 		var err error
 		if byUUID, err = booksByUUIDsFromDB(missing); err != nil {
 			return nil, err
+		}
+		for _, u := range missing {
+			if _, ok := byUUID[u]; !ok {
+				notInLibrary.add(u)
+			}
 		}
 	}
 	for _, u := range uuids {
@@ -76,6 +86,41 @@ func booksByUUIDs(uuids []string) ([]Book, error) {
 		}
 	}
 	return out, nil
+}
+
+// notInLibrary: uuids metadata.db was just asked about and didn't have, so
+// booksByUUIDs skips them for notInLibraryFor. Forgotten sooner when the
+// catalog changes (a book added here is in the new one).
+var notInLibrary = &missingUUIDs{}
+
+const notInLibraryFor = time.Minute
+
+type missingUUIDs struct {
+	mu   sync.Mutex
+	cat  *catalog
+	seen map[string]time.Time
+}
+
+func (m *missingUUIDs) has(uuid string) bool {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	if m.cat != currentCatalog() {
+		return false
+	}
+	at, ok := m.seen[uuid]
+	return ok && time.Since(at) < notInLibraryFor
+}
+
+func (m *missingUUIDs) add(uuid string) {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	if c := currentCatalog(); m.cat != c || m.seen == nil {
+		m.cat, m.seen = c, map[string]time.Time{}
+	}
+	if len(m.seen) >= 10000 { // made-up ids: don't grow without end
+		clear(m.seen)
+	}
+	m.seen[uuid] = time.Now()
 }
 
 func booksByUUIDsFromDB(uuids []string) (map[string]Book, error) {
