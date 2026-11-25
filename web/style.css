@@ -3135,12 +3135,16 @@ body.book-standalone {
     display: none;
 }
 
+/* min-height: a pill's (.agg-pill), so a row whose button shows only once
+   the page's script has measured (the favorites' "Show all", fav-carousel.ts)
+   is as tall before it does: the content below doesn't move down. */
 .agg-section-head {
     display: flex;
     flex-wrap: wrap;
     align-items: center;
     justify-content: space-between;
     gap: 8px 12px;
+    min-height: 32px;
     margin: 0 0 0.6rem;
 }
 
