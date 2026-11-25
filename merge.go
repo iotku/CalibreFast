@@ -162,6 +162,9 @@ type mergePageData struct {
 	// added to this one instead (a possible duplicate): back to the queue
 	// once added or discarded.
 	FromQueue bool
+	// Placeholder: a book not in the library yet that the kept book
+	// replaces (merge_placeholder.go); nil for none.
+	Placeholder *mergePlaceholderView
 }
 
 func (d *mergePageData) KeepBook() *mergeBook {
@@ -181,9 +184,16 @@ func letterOf(i int) string {
 }
 
 // loadMergeBooks reads the books, in the order given.
-func loadMergeBooks(uuids []string) ([]*mergeBook, error) {
+func loadMergeBooks(uuids []string) ([]*mergeBook, error) { return loadMergeBooksMin(uuids, 2) }
+
+// loadMergeBooksMin: loadMergeBooks with at least min books (1 when a
+// placeholder is merged too: merge_placeholder.go).
+func loadMergeBooksMin(uuids []string, min int) ([]*mergeBook, error) {
 	uuids = uniqueStrings(uuids)
-	if len(uuids) < 2 {
+	if len(uuids) < min {
+		if min == 1 {
+			return nil, errors.New("name a library book to merge the placeholder with")
+		}
 		return nil, errors.New("name at least two books to merge")
 	}
 	if len(uuids) > mergeMaxBooks {
@@ -374,18 +384,35 @@ func mergeIDs(r *http.Request) (ids []string, keep string) {
 	return ids, keep
 }
 
+// mergeRequestBooks reads the books and placeholder a merge page or its
+// metadata names (?ids=, ?placeholder=).
+func mergeRequestBooks(r *http.Request) (books []*mergeBook, ids []string, keep string, p *placeholder, err error) {
+	ids, keep = mergeIDs(r)
+	if p, err = mergePlaceholder(r.URL.Query().Get("placeholder")); err != nil {
+		return nil, nil, "", nil, err
+	}
+	min := 2
+	if p != nil {
+		min = 1
+	}
+	books, err = loadMergeBooksMin(ids, min)
+	return books, ids, keep, p, err
+}
+
 func mergePage(w http.ResponseWriter, r *http.Request) {
-	ids, keep := mergeIDs(r)
-	books, err := loadMergeBooks(ids)
+	books, ids, keep, p, err := mergeRequestBooks(r)
 	if err != nil {
 		status := http.StatusBadRequest
-		if errors.Is(err, errNoSuchBook) {
+		if errors.Is(err, errNoSuchBook) || errors.Is(err, errNoSuchPlaceholder) {
 			status = http.StatusNotFound
 		}
 		http.Error(w, err.Error(), status)
 		return
 	}
 	d := newMergePageData(books, keep, strings.Join(ids, ","), nil)
+	if p != nil {
+		d.Placeholder = newMergePlaceholderView(p)
+	}
 	kb := d.KeepBook()
 	data := EditBookPageData{
 		UUID:         keep,
@@ -406,6 +433,13 @@ func mergePage(w http.ResponseWriter, r *http.Request) {
 // book's metadata as "current", each other book's as its letter ("B"), then
 // what each book's files say ("A epub", "B pdf").
 func mergeSources(books []*mergeBook, keep string) []UploadedBookMeta {
+	return mergeSourcesWith(books, keep, nil)
+}
+
+// mergeSourcesWith: mergeSources for a merge with placeholder p too (nil:
+// none). "current" then starts with what p carries (mergedPlaceholderMeta),
+// and p's own metadata follows it as "Placeholder".
+func mergeSourcesWith(books []*mergeBook, keep string, p *placeholder) []UploadedBookMeta {
 	var out []UploadedBookMeta
 	add := func(m UploadedBookMeta) {
 		m.Date = normalizeDateOnly(m.Date)
@@ -437,7 +471,13 @@ func mergeSources(books []*mergeBook, keep string) []UploadedBookMeta {
 		}
 		// The series as metadata.db has it.
 		opf.Metadata.Series, opf.Metadata.SeriesIndex = librarySeriesFields(b.UUID)
+		if p != nil && b.UUID == keep {
+			opf.Metadata = mergedPlaceholderMeta(opf.Metadata, p)
+		}
 		add(UploadedBookMeta{OPFMetadata: opf.Metadata, Format: label})
+		if p != nil && b.UUID == keep {
+			add(*placeholderSource(p))
+		}
 	}
 	for _, b := range books {
 		for _, f := range b.FormatList() {
@@ -454,15 +494,14 @@ func mergeSources(books []*mergeBook, keep string) []UploadedBookMeta {
 }
 
 func mergeMetadataHandler(w http.ResponseWriter, r *http.Request) {
-	ids, keep := mergeIDs(r)
-	books, err := loadMergeBooks(ids)
+	books, _, keep, p, err := mergeRequestBooks(r)
 	if err != nil {
 		http.Error(w, err.Error(), http.StatusBadRequest)
 		return
 	}
 	w.Header().Set("Content-Type", "application/json")
 	w.Header().Set("Cache-Control", "no-store")
-	logErr(json.NewEncoder(w).Encode(mergeSources(books, keep)), "encode merge sources")
+	logErr(json.NewEncoder(w).Encode(mergeSourcesWith(books, keep, p)), "encode merge sources")
 }
 
 // mergeRequest is POST /merge/apply: the editor's values, and the merge.
@@ -472,6 +511,9 @@ type mergeRequest struct {
 	UUIDs   []string          `json:"uuids"`   // every book, the kept one too
 	Formats map[string]string `json:"formats"` // format -> uuid of the book whose file to keep
 	Cover   string            `json:"cover"`   // uuid of the book whose cover to keep ("": the kept book's)
+	// Placeholder: a book not in the library yet that the kept book
+	// replaces (merge_placeholder.go); then UUIDs may be the kept book alone.
+	Placeholder string `json:"placeholder,omitempty"`
 }
 
 type mergeResult struct {
@@ -492,14 +534,43 @@ func mergeTempName(ext string) string {
 
 // mergeBooks merges the books into req.Keep (see the top of this file).
 func mergeBooks(req *mergeRequest, by string) (*mergeResult, error) {
+	return mergeBooksAs(req, &User{Username: by})
+}
+
+// mergeBooksAs: mergeBooks by user u, who is named in the edit log when a
+// placeholder is merged too (req.Placeholder).
+func mergeBooksAs(req *mergeRequest, u *User) (*mergeResult, error) {
 	bulkMu.Lock()
 	defer bulkMu.Unlock()
 
-	books, err := loadMergeBooks(req.UUIDs)
+	p, err := mergePlaceholder(req.Placeholder)
 	if err != nil {
 		return nil, err
 	}
-	return mergeInto(books, req, by)
+	min := 2
+	if p != nil {
+		min = 1
+	}
+	books, err := loadMergeBooksMin(req.UUIDs, min)
+	if err != nil {
+		return nil, err
+	}
+	if p == nil {
+		return mergeInto(books, req, u.Username)
+	}
+	// The book is about to be edited into what the placeholder is: that
+	// edit isn't matched against placeholders (placeholder_resolve.go), as
+	// this merge says which one it replaces.
+	placeholdersSettled.Store(req.Keep, struct{}{})
+	res, err := mergeInto(books, req, u.Username)
+	if res == nil {
+		placeholdersSettled.Delete(req.Keep)
+		return nil, err
+	}
+	if perr := resolveMergedPlaceholder(p, res.UUID, u); perr != nil {
+		err = errors.Join(err, fmt.Errorf("the placeholder: %w", perr))
+	}
+	return res, err
 }
 
 // mergeInto merges books into req.Keep, one of them; the caller holds
@@ -758,7 +829,7 @@ func mergeInto(books []*mergeBook, req *mergeRequest, by string) (*mergeResult, 
 	refreshAllCaches()
 	if len(recycled) > 0 {
 		log.Printf("merge: %s merged %d book(s) into %q (%s), batch %s; %d bookmark(s)/highlight(s) not carried over", by, len(recycled), meta.Title, keep.UUID, res.Batch, dropped)
-	} else {
+	} else if len(note.AddedFiles) > 0 {
 		log.Printf("merge: %s added %s to %q (%s); replaced files in batch %q", by, strings.Join(note.AddedFiles, ", "), meta.Title, keep.UUID, res.Batch)
 	}
 
@@ -884,13 +955,13 @@ func mergeApplyHandler(w http.ResponseWriter, r *http.Request) {
 	u := currentUser(r)
 	before := snapBook(req.Keep)
 	coverDone := coverSnapper(u, "merge", req.Keep, bookTitle(req.Keep))
-	res, err := mergeBooks(&req, u.Username)
+	res, err := mergeBooksAs(&req, u)
 	if res != nil {
 		logMerge(u, "merge", res, before, coverDone)
 	}
 	if res == nil {
 		status := http.StatusInternalServerError
-		if errors.Is(err, errNoSuchBook) {
+		if errors.Is(err, errNoSuchBook) || errors.Is(err, errNoSuchPlaceholder) {
 			status = http.StatusNotFound
 		}
 		http.Error(w, err.Error(), status)

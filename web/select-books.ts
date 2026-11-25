@@ -4,7 +4,9 @@
 // turns taps on cards into ticks; a bar at the bottom counts
 // them and offers Merge (the metadata editor's merge mode, Go: merge.go),
 // Edit in table (the bulk editor, library-edit.ts) and Remove (the
-// confirmation, delete-books.ts). The
+// confirmation, delete-books.ts). A placeholder (a book not in the library
+// yet, data-placeholder) can be picked too, to merge with the library books
+// that are it (Go: merge_placeholder.go); Edit and Remove leave it out. The
 // choice survives scrolling: cards are marked again as they're re-rendered
 // (markSelected, from app-htmx.ts).
 
@@ -15,6 +17,7 @@ const LONG_PRESS_MS = 450; // before Android opens its link menu (~500 ms)
 const LONG_PRESS_SLOP_PX = 10; // a finger moving further is scrolling
 
 const chosen = new Map<string, BookToDelete>(); // uuid -> book, in the order picked
+const chosenPlaceholders = new Set<string>(); // the chosen that are placeholders
 let selecting = false;
 let bar: HTMLElement | null = null;
 let countEl: HTMLElement | null = null;
@@ -28,9 +31,14 @@ const MERGE_MAX = 20;
 export const BULK_SELECTION_KEY = "cf-bulk-selection";
 let toggleBtn: HTMLButtonElement | null = null;
 
+/** A card's id: a library book's uuid, or a placeholder's. */
+function cardId(card: HTMLElement): string | undefined {
+    return card.dataset["uuid"] ?? card.dataset["placeholder"];
+}
+
 /** Mark a freshly rendered card if it's chosen. */
 export function markSelected(card: HTMLElement): void {
-    const uuid = card.dataset["uuid"];
+    const uuid = cardId(card);
     if (uuid) paint(card, chosen.has(uuid));
 }
 
@@ -41,29 +49,57 @@ function paint(card: HTMLElement, on: boolean): void {
 }
 
 function cardsOf(grid: HTMLElement): NodeListOf<HTMLElement> {
-    return grid.querySelectorAll<HTMLElement>(".book[data-uuid]");
+    return grid.querySelectorAll<HTMLElement>(CARD);
+}
+
+const CARD = ".book[data-uuid], .book[data-placeholder]";
+
+/** The chosen library books, without placeholders. */
+function chosenBooks(): BookToDelete[] {
+    return [...chosen.values()].filter((b) => !chosenPlaceholders.has(b.uuid));
+}
+
+function clearChosen(): void {
+    chosen.clear();
+    chosenPlaceholders.clear();
 }
 
 function update(): void {
     const n = chosen.size;
-    if (countEl) countEl.textContent = n ? `${n} selected` : "Tap books to select them";
+    const books = chosenBooks().map((b) => b.uuid);
+    const nb = books.length;
+    const np = chosenPlaceholders.size;
+    if (countEl) countEl.textContent = n ? (np ? `${n} selected (${np} not in library)` : `${n} selected`) : "Tap books to select them";
     if (removeBtn) {
-        removeBtn.disabled = n === 0;
-        removeBtn.textContent = n ? `Remove ${n} from library…` : "Remove from library…";
+        removeBtn.disabled = nb === 0;
+        removeBtn.textContent = nb ? `Remove ${nb} from library…` : "Remove from library…";
     }
     if (mergeBtn) {
-        // A link, so a middle click opens the merge in a new tab.
-        if (n < 2 || n > MERGE_MAX) {
+        // A link, so a middle click opens the merge in a new tab. With a
+        // placeholder: it and at least one library book, which replaces it.
+        let title = "Make the selected books one book, with every format: pick its metadata, cover and files";
+        let href = "";
+        if (np > 1) title = "Merge one placeholder at a time";
+        else if (nb > MERGE_MAX) title = `At most ${MERGE_MAX} books at a time`;
+        else if (np === 1) {
+            if (nb === 0) title = "Select the library book (or books) that is this placeholder";
+            else {
+                title = "The selected library books replace the placeholder: pick the metadata, cover and files";
+                const q = new URLSearchParams({ ids: books.join(","), placeholder: [...chosenPlaceholders][0]! });
+                href = `/book/merge?${q}`;
+            }
+        } else if (nb >= 2) href = `/book/merge?${new URLSearchParams({ ids: books.join(",") })}`;
+        if (href) {
+            mergeBtn.href = href;
+            mergeBtn.removeAttribute("aria-disabled");
+        } else {
             mergeBtn.removeAttribute("href");
             mergeBtn.setAttribute("aria-disabled", "true");
-        } else {
-            mergeBtn.href = `/book/merge?${new URLSearchParams({ ids: [...chosen.keys()].join(",") })}`;
-            mergeBtn.removeAttribute("aria-disabled");
         }
-        mergeBtn.title = n > MERGE_MAX ? `At most ${MERGE_MAX} books at a time` : "Make the selected books one book, with every format: pick its metadata, cover and files";
+        mergeBtn.title = title;
         mergeBtn.textContent = n >= 2 ? `Merge ${n}…` : "Merge…";
     }
-    if (tableBtn) tableBtn.disabled = n === 0;
+    if (tableBtn) tableBtn.disabled = nb === 0;
 }
 
 function setSelecting(grid: HTMLElement, on: boolean): void {
@@ -72,7 +108,7 @@ function setSelecting(grid: HTMLElement, on: boolean): void {
     toggleBtn?.setAttribute("aria-pressed", String(on));
     if (toggleBtn) toggleBtn.textContent = on ? "Stop selecting" : "Select books";
     if (bar) bar.hidden = !on;
-    if (!on) chosen.clear();
+    if (!on) clearChosen();
     for (const card of cardsOf(grid)) markSelected(card);
     update();
 }
@@ -107,34 +143,38 @@ export function setupSelection(grid: HTMLElement): void {
         document.body.append(bar);
 
         clear.addEventListener("click", () => {
-            chosen.clear();
+            clearChosen();
             for (const card of cardsOf(grid)) markSelected(card);
             update();
         });
         done.addEventListener("click", () => setSelecting(grid, false));
         tableBtn.addEventListener("click", () => {
             try {
-                sessionStorage.setItem(BULK_SELECTION_KEY, JSON.stringify([...chosen.keys()]));
+                sessionStorage.setItem(BULK_SELECTION_KEY, JSON.stringify(chosenBooks().map((b) => b.uuid)));
             } catch {
                 /* no storage: the table opens with every book */
             }
             location.assign("/library/edit?selected=1");
         });
         removeBtn.addEventListener("click", async () => {
-            if (await deleteBooks([...chosen.values()])) location.reload();
+            if (await deleteBooks(chosenBooks())) location.reload();
         });
 
         const cardAt = (target: EventTarget | null): HTMLElement | null =>
-            target instanceof Element ? target.closest<HTMLElement>(".book[data-uuid]") : null;
+            target instanceof Element ? target.closest<HTMLElement>(CARD) : null;
         const toggle = (card: HTMLElement): void => {
-            const uuid = card.dataset["uuid"]!;
-            if (chosen.has(uuid)) chosen.delete(uuid);
-            else
+            const uuid = cardId(card)!;
+            if (chosen.has(uuid)) {
+                chosen.delete(uuid);
+                chosenPlaceholders.delete(uuid);
+            } else {
+                if (card.dataset["placeholder"] === uuid) chosenPlaceholders.add(uuid);
                 chosen.set(uuid, {
                     uuid,
                     title: card.querySelector(".book-info h2")?.textContent ?? "",
                     authors: card.querySelector(".book-author")?.textContent ?? "",
                 });
+            }
             paint(card, chosen.has(uuid));
             update();
         };
