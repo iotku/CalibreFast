@@ -231,8 +231,11 @@ func TestSearchHandlers(t *testing.T) {
 	if err := json.Unmarshal(rec.Body.Bytes(), &books); err != nil {
 		t.Fatal(err)
 	}
-	if len(books) != 2 || books[0].UUID != ids["colour"] || books[0].Authors != "Terry Pratchett" || books[0].Path == "" {
+	if len(books) != 2 || books[0].UUID != ids["colour"] || books[0].Authors != "Terry Pratchett" {
 		t.Errorf("got %+v", books)
+	}
+	if strings.Contains(rec.Body.String(), `"path"`) { // the book's folder stays on the server
+		t.Errorf("search JSON names the book's folder: %s", rec.Body)
 	}
 	rec = httptest.NewRecorder()
 	searchHandler(rec, httptest.NewRequest("GET", "/api/search?q=pratchett&page=2", nil))

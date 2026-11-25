@@ -162,13 +162,15 @@ func initCalibreDB() {
 }
 
 type Book struct {
-	Title        string  `json:"title"`
-	Authors      string  `json:"authors"` // names, "A & B" (bookAuthorsSQL)
-	SeriesIndex  float64 `json:"series_index"`
-	PubDate      string  `json:"pubdate"`
-	Path         string  `json:"path"` // e.g "Author Name/Book Title" not direct link to specific file format
-	UUID         string  `json:"uuid"`
-	LastModified string  `json:"last_modified"`
+	Title       string  `json:"title"`
+	Authors     string  `json:"authors"` // names, "A & B" (bookAuthorsSQL)
+	SeriesIndex float64 `json:"series_index"`
+	PubDate     string  `json:"pubdate"`
+	// Path: the book's folder in the library, e.g. "Author Name/Book Title".
+	// Server-side only: never sent to browsers (the grid JSON, pages/*.json).
+	Path         string `json:"-"`
+	UUID         string `json:"uuid"`
+	LastModified string `json:"last_modified"`
 	// SeriesCard: set on a shelf's whole-series entry (shelf_series.go),
 	// whose UUID is its "series:<name>" key rather than a book's.
 	SeriesCard *seriesCard `json:"series_card,omitempty"`

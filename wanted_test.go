@@ -3,6 +3,7 @@ package main
 import (
 	"encoding/json"
 	"net/http"
+	"strings"
 	"testing"
 )
 
@@ -34,6 +35,10 @@ func TestWantedStatus(t *testing.T) {
 	rec := call(t, mux, u, "GET", "/me/saved?api=1&page=1", "")
 	if rec.Code != 200 || json.Unmarshal(rec.Body.Bytes(), &got) != nil || len(got) != 1 || got[0].UUID != b {
 		t.Fatalf("/me/saved: %d %s", rec.Code, rec.Body)
+	}
+	// The book's folder in the library stays on the server.
+	if strings.Contains(rec.Body.String(), `"path"`) {
+		t.Errorf("list JSON names the book's folder: %s", rec.Body)
 	}
 	// Its old address redirects, keeping the query.
 	rec = call(t, mux, u, "GET", "/me/wanted?api=1&page=1", "")

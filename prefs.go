@@ -127,7 +127,8 @@ func savedBooksHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	u := currentUser(r)
-	marks, active, err := userReading(u)
+	// Statuses only: nothing here needs reading positions (userStatuses).
+	marks, active, err := userStatuses(u)
 	if err != nil {
 		http.Error(w, "query failed", http.StatusInternalServerError)
 		return

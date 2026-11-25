@@ -110,9 +110,13 @@ type readingMarks struct {
 	Favorites []string            `json:"favorites"`
 }
 
-// userReading reads a user's marks, and when each book's status last
-// changed or it was last read (ms): the newer of the two.
-func userReading(u *User) (readingMarks, map[string]int64, error) {
+// userStatuses reads a user's reading statuses only: the marks' lists, the
+// books being read (with no position), and when each book's status last
+// changed (ms). No favorites, positions or resume links: those read every
+// device's progress (latestProgress), which can mean rebuilding the
+// library's file-name index. Enough for On Deck, whose order only uses
+// finished books' times.
+func userStatuses(u *User) (readingMarks, map[string]int64, error) {
 	m := readingMarks{
 		User: u.Username, Reading: map[string]*float64{}, Resume: map[string]string{},
 		Wanted: []string{}, Paused: []string{}, Finished: []string{}, Dropped: []string{}, Favorites: []string{},
@@ -122,7 +126,7 @@ func userReading(u *User) (readingMarks, map[string]int64, error) {
 	if err != nil {
 		return m, nil, err
 	}
-	var readingUUIDs []string
+	defer rows.Close()
 	for rows.Next() {
 		var uuid, status string
 		var at int64
@@ -132,7 +136,7 @@ func userReading(u *User) (readingMarks, map[string]int64, error) {
 		active[uuid] = at * 1000 // seconds (nowUnix)
 		switch status {
 		case "reading":
-			readingUUIDs = append(readingUUIDs, uuid)
+			m.Reading[uuid] = nil
 		case "wanted":
 			m.Wanted = append(m.Wanted, uuid)
 		case "paused":
@@ -143,7 +147,16 @@ func userReading(u *User) (readingMarks, map[string]int64, error) {
 			m.Dropped = append(m.Dropped, uuid)
 		}
 	}
-	rows.Close()
+	return m, active, rows.Err()
+}
+
+// userReading reads a user's marks, and when each book's status last
+// changed or it was last read (ms): the newer of the two.
+func userReading(u *User) (readingMarks, map[string]int64, error) {
+	m, active, err := userStatuses(u)
+	if err != nil {
+		return m, nil, err
+	}
 	favorites, err := scanStrings(appDB.Query(`SELECT book_uuid FROM favorites WHERE user_id = ?`, u.ID))
 	if err != nil {
 		return m, nil, err
@@ -153,14 +166,12 @@ func userReading(u *User) (readingMarks, map[string]int64, error) {
 	}
 
 	progress := latestProgress(u.ID, "")
-	for _, uuid := range readingUUIDs {
+	for uuid := range m.Reading {
 		p, ok := progress[uuid]
 		if ok {
 			pct := math.Round(p.Percent*1000) / 1000
 			m.Reading[uuid] = &pct
 			active[uuid] = max(active[uuid], p.UpdatedAt)
-		} else {
-			m.Reading[uuid] = nil
 		}
 		if url := resumeURL(uuid, p.Format); url != "" {
 			m.Resume[uuid] = url
