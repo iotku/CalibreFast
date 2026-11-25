@@ -30,7 +30,7 @@ import type { Book } from "./types.js";
 import { bookCard, coverUrl, setupCoverStates } from "./utils.js";
 import { maxCovers } from "./cover-limits.js";
 import { setupBookClickHandlers, loadBook, HASH_PREFIX } from "./modal.js";
-import { agrees, applyChange, cachedMarks, coverAction, fetchMarks, markCard, saveMarks, type BookChange, type BookState, type Marks } from "./reading.js";
+import { agrees, applyChange, cachedMarks, cardBook, coverAction, fetchMarks, markCard, saveMarks, type BookChange, type BookState, type Marks } from "./reading.js";
 import { startBookSync, syncBooks } from "./book-sync.js";
 import { markSelected, setupSelection } from "./select-books.js";
 import { setupPageDragScroll } from "./drag-scroll.js";
@@ -226,7 +226,7 @@ function sweepKept(force = false): void {
 }
 
 function repaintBook(uuid: string): void {
-    for (const el of cards.values()) if (el.dataset["uuid"] === uuid) markReading(el);
+    for (const el of cards.values()) if (cardBook(el) === uuid) markReading(el);
 }
 
 /**
