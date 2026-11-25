@@ -364,10 +364,17 @@ func hardcoverBookMatchHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	// Hardcover says what the book is (its edition, pages and title):
-	// nothing of it is taken from the request but the id.
+	// nothing of it is taken from the request but the id. The edition is
+	// the one with the library book's ISBN, when that's of this book.
+	isbns, _, _, err := hcBookKeys(uuid)
+	if err != nil {
+		log.Println("hardcover match:", err)
+		http.Error(w, "could not read the book", http.StatusInternalServerError)
+		return
+	}
 	ctx, cancel := context.WithTimeout(r.Context(), 20*time.Second)
 	defer cancel()
-	ed, found, err := hcSync.CatalogClient(hcSync.UserClient(u.ID)).FindEdition(ctx, nil, req.BookID, "")
+	ed, found, err := hcSync.CatalogClient(hcSync.UserClient(u.ID)).BookEdition(ctx, req.BookID, isbns)
 	if err != nil {
 		hcSearchFailed(w, err)
 		return

@@ -127,6 +127,29 @@ type Edition struct {
 // with its most read edition that has a page count. ok is false when
 // Hardcover has none of them. Two requests at most.
 func (c *Client) FindEdition(ctx context.Context, isbns []string, bookID int64, slug string) (Edition, bool, error) {
+	if e, ok, err := c.editionByISBN(ctx, isbns, bookID, false); err != nil || ok {
+		return e, ok, err
+	}
+	return c.bookEdition(ctx, bookID, slug)
+}
+
+// BookEdition is bookID, a book chosen by hand, in the edition with one of
+// isbns (the library book's) when that edition is of this book; else its
+// most read edition with a page count, as FindEdition. An ISBN of another
+// book never changes the book. Two requests at most.
+func (c *Client) BookEdition(ctx context.Context, bookID int64, isbns []string) (Edition, bool, error) {
+	if bookID <= 0 {
+		return Edition{}, false, nil
+	}
+	if e, ok, err := c.editionByISBN(ctx, isbns, bookID, true); err != nil || ok {
+		return e, ok, err
+	}
+	return c.bookEdition(ctx, bookID, "")
+}
+
+// editionByISBN: the best edition with one of isbns; with onlyBook, only
+// an edition of bookID.
+func (c *Client) editionByISBN(ctx context.Context, isbns []string, bookID int64, onlyBook bool) (Edition, bool, error) {
 	isbns = cleanISBNs(isbns)
 	if len(isbns) > 0 {
 		var data struct {
@@ -150,7 +173,7 @@ func (c *Client) FindEdition(ctx context.Context, isbns []string, bookID int64, 
 		var best *Edition
 		bestScore := -1
 		for _, e := range data.Editions {
-			if e.ID <= 0 || e.BookID <= 0 {
+			if e.ID <= 0 || e.BookID <= 0 || (onlyBook && int64(e.BookID) != bookID) {
 				continue
 			}
 			cand := Edition{BookID: int64(e.BookID), EditionID: int64(e.ID), Pages: max(e.Pages, 0),
@@ -171,6 +194,12 @@ func (c *Client) FindEdition(ctx context.Context, isbns []string, bookID int64, 
 			return *best, true, nil
 		}
 	}
+	return Edition{}, false, nil
+}
+
+// bookEdition: the book by id or slug, in its most read edition with a
+// page count.
+func (c *Client) bookEdition(ctx context.Context, bookID int64, slug string) (Edition, bool, error) {
 	if !ValidSlug(slug) {
 		slug = ""
 	}

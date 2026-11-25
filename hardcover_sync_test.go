@@ -197,6 +197,11 @@ func (f *fakeHardcoverAccount) serve(w http.ResponseWriter, r *http.Request) {
 		}
 		io.WriteString(w, `{"data":{"authors":[`+strings.Join(out, ",")+`]}}`)
 	case "SyncEditions":
+		// 9780262046305 is an edition of book 60, and of another book.
+		if isbns, _ := req.Variables["isbns"].([]any); slices.Contains(isbns, any("9780262046305")) {
+			io.WriteString(w, `{"data":{"editions":[{"id":701,"book_id":70,"pages":900},{"id":602,"book_id":60,"pages":1312,"book":{"slug":"the-right-book","title":"The Right Book"}}]}}`)
+			return
+		}
 		io.WriteString(w, `{"data":{"editions":[{"id":501,"book_id":50,"isbn_13":"9780316129084","pages":300}]}}`)
 	case "SyncBooks":
 		// Book 60 is on Hardcover, by its id or slug.
@@ -890,7 +895,11 @@ func TestHardcoverBookMatch(t *testing.T) {
 	}
 
 	// Choosing it: only the id is taken from the request; Hardcover says
-	// the rest. It's sent at once, as that book.
+	// the rest. It's sent at once, as that book, in the edition with the
+	// library book's ISBN (not another book's edition with that ISBN).
+	if _, err := calibreDB.Exec(`INSERT INTO identifiers (book, type, val) SELECT id, 'isbn', '978-0-262-04630-5' FROM books WHERE uuid = ?`, books[1]); err != nil {
+		t.Fatal(err)
+	}
 	if rec := call("PUT", base+"/match", `{"book_id":61,"title":"<b>x</b>"}`); rec.Code != http.StatusNotFound {
 		t.Errorf("a book Hardcover doesn't have: %d %s", rec.Code, rec.Body)
 	}
@@ -902,15 +911,16 @@ func TestHardcoverBookMatch(t *testing.T) {
 	if st.State != "sent" || st.Match == nil || !st.Match.Chosen || st.Match.Title != "The Right Book" || st.Match.Slug != "the-right-book" {
 		t.Fatalf("after choosing: %+v %+v", st, st.Match)
 	}
-	if b := f.books[60]; b == nil || b.status != hardcover.StatusReading || b.edition != 601 {
+	if b := f.books[60]; b == nil || b.status != hardcover.StatusReading || b.edition != 602 {
 		t.Fatalf("not sent as the chosen book: %+v", f.books[60])
 	}
 	if p := hcSync.ProblemBooks(u.ID); len(p) != 0 {
 		t.Errorf("still a problem: %+v", p)
 	}
-	// The library is left alone, and other users aren't affected.
+	// The library is left alone (but for the ISBN set above), and other
+	// users aren't affected.
 	var ids int
-	_ = calibreDB.QueryRow(`SELECT COUNT(*) FROM identifiers i JOIN books b ON b.id = i.book WHERE b.uuid = ?`, books[1]).Scan(&ids)
+	_ = calibreDB.QueryRow(`SELECT COUNT(*) FROM identifiers i JOIN books b ON b.id = i.book WHERE b.uuid = ? AND i.type != 'isbn'`, books[1]).Scan(&ids)
 	if ids != 0 {
 		t.Errorf("the library's identifiers changed: %d", ids)
 	}
