@@ -76,7 +76,7 @@ func pinnedShelves(u *User, limit int) ([]homeShelf, error) {
 	}
 	var all []placed
 	rows, err := appDB.Query(`SELECT s.id, s.name, s.owner_id IS NULL, s.featured_pos IS NOT NULL,
-			(SELECT COUNT(*) FROM shelf_books b WHERE b.shelf_id = s.id), p.position, s.featured_pos
+			p.position, s.featured_pos
 		FROM shelves s LEFT JOIN shelf_pins p ON p.shelf_id = s.id AND p.user_id = ?1
 		WHERE (s.owner_id IS NULL OR s.owner_id = ?1)
 		  AND (p.pinned = 1 OR (p.shelf_id IS NULL AND s.featured_pos IS NOT NULL))`, u.ID)
@@ -86,7 +86,7 @@ func pinnedShelves(u *User, limit int) ([]homeShelf, error) {
 	for rows.Next() {
 		var p placed
 		p.row.Kind = "shelf"
-		if err := rows.Scan(&p.row.ID, &p.row.Name, &p.row.Global, &p.row.Featured, &p.row.Count, &p.pos, &p.fea); err != nil {
+		if err := rows.Scan(&p.row.ID, &p.row.Name, &p.row.Global, &p.row.Featured, &p.pos, &p.fea); err != nil {
 			rows.Close()
 			return nil, err
 		}
@@ -212,8 +212,7 @@ func pinnedShelves(u *User, limit int) ([]homeShelf, error) {
 
 // featuredShelves: every featured shelf, in the featured order.
 func featuredShelves() ([]homeShelf, error) {
-	rows, err := appDB.Query(`SELECT s.id, s.name, 1, 1,
-			(SELECT COUNT(*) FROM shelf_books b WHERE b.shelf_id = s.id)
+	rows, err := appDB.Query(`SELECT s.id, s.name, 1, 1
 		FROM shelves s WHERE s.owner_id IS NULL AND s.featured_pos IS NOT NULL
 		ORDER BY s.featured_pos, s.id`)
 	if err != nil {
@@ -227,7 +226,7 @@ func scanHomeShelves(rows *sql.Rows) ([]homeShelf, error) {
 	out := []homeShelf{}
 	for rows.Next() {
 		s := homeShelf{Kind: "shelf"}
-		if err := rows.Scan(&s.ID, &s.Name, &s.Global, &s.Featured, &s.Count); err != nil {
+		if err := rows.Scan(&s.ID, &s.Name, &s.Global, &s.Featured); err != nil {
 			return nil, err
 		}
 		s.Href = "/shelf/" + itoa(s.ID)
@@ -239,47 +238,25 @@ func scanHomeShelves(rows *sql.Rows) ([]homeShelf, error) {
 	return out, fillShelfBooks(out)
 }
 
-// fillShelfBooks adds the first shelfRowBooks books of each shelf, in the
-// shelf page's order, in one query. Books the catalog doesn't have (removed
-// since) are left out rather than looked up in the library.
+// fillShelfBooks adds the first shelfRowBooks entries of each shelf, in the
+// shelf page's order, and counts them. Like the shelf page, it leaves out
+// books no longer in the library (liveShelfEntries).
 func fillShelfBooks(shelves []homeShelf) error {
 	if len(shelves) == 0 {
 		return nil
 	}
-	ids := make([]any, len(shelves))
-	at := map[int64]int{}
+	ids := make([]int64, len(shelves))
 	for i, s := range shelves {
 		ids[i] = s.ID
-		at[s.ID] = i
-		shelves[i].Books = []Book{}
 	}
-	rows, err := appDB.Query(`SELECT shelf_id, book_uuid FROM (
-			SELECT shelf_id, book_uuid,
-				ROW_NUMBER() OVER (PARTITION BY shelf_id `+shelfOrder+`) AS n
-			FROM shelf_books WHERE shelf_id IN (`+placeholders(len(ids))+`))
-		WHERE n <= ? ORDER BY shelf_id, n`, append(ids, shelfRowBooks)...)
+	entries, err := liveShelfEntries(ids)
 	if err != nil {
 		return err
 	}
-	defer rows.Close()
-	var shelfOf []int64
-	var keys []string
-	for rows.Next() {
-		var id int64
-		var uuid string
-		if err := rows.Scan(&id, &uuid); err != nil {
-			return err
-		}
-		shelfOf, keys = append(shelfOf, id), append(keys, uuid)
-	}
-	if err := rows.Err(); err != nil {
-		return err
-	}
-	find := shelfEntryLookup(currentCatalog(), keys) // books and whole series (shelf_series.go)
-	for i, k := range keys {
-		if b, ok := find(k); ok {
-			shelves[at[shelfOf[i]]].Books = append(shelves[at[shelfOf[i]]].Books, b)
-		}
+	for i := range shelves {
+		es := entries[shelves[i].ID]
+		shelves[i].Count = len(es)
+		shelves[i].Books = append([]Book{}, es[:min(len(es), shelfRowBooks)]...)
 	}
 	return nil
 }
