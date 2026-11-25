@@ -818,6 +818,42 @@ var migrations = []string{
 	`
 	ALTER TABLE hardcover_links ADD COLUMN relink_notified TEXT NOT NULL DEFAULT '';
 	`,
+	// 49: notifications split in two (notifications.go). An event (a saved
+	// book arrived, new books by an author) is stored once, however many
+	// users it reaches: notification_events, with the placeholder's
+	// authors for "Saved book added to library: … by …". Each user's copy
+	// is a user_notifications row: on_deck is theirs, seen_at as before,
+	// dismissed_at keeps a dismissed one as history ("Earlier") until it's
+	// pruned. The old rows keep their ids as event ids, so links to them
+	// still work.
+	`
+	CREATE TABLE notification_events (
+		id         INTEGER PRIMARY KEY,
+		kind       TEXT    NOT NULL,
+		book_uuid  TEXT    NOT NULL DEFAULT '',
+		title      TEXT    NOT NULL DEFAULT '',
+		authors    TEXT    NOT NULL DEFAULT '',
+		subject    TEXT    NOT NULL DEFAULT '',
+		count      INTEGER NOT NULL DEFAULT 1,
+		created_at INTEGER NOT NULL
+	);
+	CREATE TABLE user_notifications (
+		user_id      INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+		event_id     INTEGER NOT NULL REFERENCES notification_events(id) ON DELETE CASCADE,
+		on_deck      INTEGER NOT NULL DEFAULT 0,
+		created_at   INTEGER NOT NULL,
+		seen_at      INTEGER,
+		dismissed_at INTEGER,
+		PRIMARY KEY (user_id, event_id)
+	);
+	CREATE INDEX user_notifications_user ON user_notifications (user_id, dismissed_at, created_at);
+	CREATE INDEX user_notifications_event ON user_notifications (event_id);
+	INSERT INTO notification_events (id, kind, book_uuid, title, subject, count, created_at)
+		SELECT id, kind, book_uuid, title, subject, count, created_at FROM notifications;
+	INSERT INTO user_notifications (user_id, event_id, on_deck, created_at, seen_at)
+		SELECT user_id, id, on_deck, created_at, seen_at FROM notifications;
+	DROP TABLE notifications;
+	`,
 }
 
 // openAppDB opens (creating if needed) and migrates the app database.

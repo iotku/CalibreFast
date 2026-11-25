@@ -339,8 +339,10 @@ function init(bar: HTMLElement): void {
         /** favorite_*: the author or series, and how many of its books are new. */
         subject?: string;
         count: number;
+        /** placeholder_added: the saved book's authors ("A & B"), if known. */
+        authors?: string;
     }
-    /** A notice's headline and the line under it. */
+    /** A notice's headline and the line under it (may be empty). */
     function noticeText(n: Notice): [headline: string, note: string] {
         const many = n.count > 1;
         const subject = n.subject ?? "";
@@ -352,7 +354,8 @@ function init(bar: HTMLElement): void {
             case "favorite_series":
                 return many ? [`${n.count} new books in ${subject}`, "A series you follow"] : [n.title, `New in ${subject}`];
             default:
-                return [n.title, n.on_deck ? "In the library, and On deck" : "In the library, in Saved"];
+                // As notifications.html words it.
+                return [`Saved book added to library: ${n.title}${n.authors ? ` by ${n.authors}` : ""}${n.on_deck ? " · On deck" : ""}`, ""];
         }
     }
     function makeSyncButton(name: string): SyncButton {

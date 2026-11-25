@@ -21,10 +21,33 @@
         </div>
         <p class="auth-muted notifications-empty"{{ if .Notifications }} hidden{{ end }}>Nothing new. Star an author or series (the ★ by its name on its page) to be told here when it gets a new book, or save a book that isn't in the library yet to be told when it arrives.</p>
         {{ if .Notifications }}
-        <ul class="notification-list">
+        <ul class="notification-list" id="notifications-active">
             {{ range .Notifications }}
-            <li class="notification{{ if not .Seen }} is-new{{ end }}" data-id="{{ .ID }}">
-                <div class="notification-text">
+            <li class="notification{{ if not .Seen }} is-new{{ end }}" data-id="{{ .ID }}"{{ if .Account }} data-account="1"{{ end }}>
+                {{ template "notification-text" . }}
+                <button type="button" class="tb-icon notification-dismiss" aria-label="Dismiss" title="Dismiss">
+                    <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M6 6l12 12M18 6L6 18"/></svg>
+                </button>
+            </li>
+            {{ end }}
+        </ul>
+        {{ end }}
+        <p id="notifications-status" class="auth-notice" role="status" hidden></p>
+        <!-- Dismissed ones, kept a while as history (notifications.go): read only, their links still work. -->
+        <div id="notifications-earlier"{{ if not .Earlier }} hidden{{ end }}>
+            <h2>Earlier (dismissed)</h2>
+            <ul class="notification-list">
+                {{ range .Earlier }}
+                <li class="notification" data-id="{{ .ID }}">{{ template "notification-text" . }}</li>
+                {{ end }}
+            </ul>
+        </div>
+    </section>
+</main>
+<script type="module" src="{{ asset "notifications.js" }}"></script>
+</body>
+</html>
+{{ define "notification-text" }}<div class="notification-text">
                     {{ if eq .Kind "favorite_author" }}
                     {{ if gt .Count 1 }}<a href="{{ .Href }}" class="meta-link">{{ .Count }} new books by {{ .Subject }}</a>, an author you follow.
                     {{ else }}<a href="{{ .Href }}" class="meta-link">{{ .Title }}</a>, by {{ .Subject }}, an author you follow, is new in the library.{{ end }}
@@ -34,21 +57,7 @@
                     {{ if gt .Count 1 }}<a href="{{ .Href }}" class="meta-link">{{ .Count }} new books in {{ .Subject }}</a>, a series you follow.
                     {{ else }}<a href="{{ .Href }}" class="meta-link">{{ .Title }}</a> is new in {{ .Subject }}, a series you follow.{{ end }}
                     {{ else }}
-                    {{ if .Href }}<a href="{{ .Href }}" class="meta-link">{{ .Title }}</a>{{ else }}{{ .Title }}{{ end }}, which you saved, is in the library now.
-                    {{ if .OnDeck }}You finished the book before it, so it's On deck.{{ else }}It's in your Saved books.{{ end }}
+                    Saved book added to library: {{ if .Href }}<a href="{{ .Href }}" class="meta-link">{{ .Title }}</a>{{ else }}{{ .Title }}{{ end }}{{ if .Authors }} by {{ .Authors }}{{ end }}{{ if .OnDeck }} · On deck{{ end }}
                     {{ end }}
                     <span class="notification-when">{{ .When }}</span>
-                </div>
-                <button type="button" class="tb-icon notification-dismiss" aria-label="Dismiss" title="Dismiss">
-                    <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M6 6l12 12M18 6L6 18"/></svg>
-                </button>
-            </li>
-            {{ end }}
-        </ul>
-        {{ end }}
-        <p id="notifications-status" class="auth-notice" role="status" hidden></p>
-    </section>
-</main>
-<script type="module" src="{{ asset "notifications.js" }}"></script>
-</body>
-</html>
+                </div>{{ end }}

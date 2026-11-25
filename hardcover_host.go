@@ -126,16 +126,22 @@ func (hcHost) Progress(userID int64, uuid string) (float64, time.Time, bool) {
 func (hcHost) Seal(context, plain string) (string, error)  { return sealSecret(context, plain) }
 func (hcHost) Open(context, sealed string) (string, error) { return openSecret(context, sealed) }
 
+// ReplaceRelinkNotice: an account kind (notifications.go accountKinds), so
+// the event is the user's own and the old one is deleted, not kept as history.
 func (hcHost) ReplaceRelinkNotice(tx *sql.Tx, userID int64, features string) error {
-	if _, err := tx.Exec(`DELETE FROM notifications WHERE user_id = ? AND kind = ?`, userID, notifyHardcoverRelink); err != nil {
+	if err := deleteUserNotificationsOfKind(tx, userID, notifyHardcoverRelink); err != nil {
 		return err
 	}
-	return addNotification(tx, userID, notifyHardcoverRelink, "", features, false, "", 1)
+	event, err := addEvent(tx, notificationEvent{Kind: notifyHardcoverRelink, Title: features})
+	if err != nil {
+		return err
+	}
+	return deliver(tx, userID, event, false)
 }
 
+// ClearRelinkNotice: linked again, so the notice is deleted outright.
 func (hcHost) ClearRelinkNotice(userID int64) error {
-	_, err := appDB.Exec(`DELETE FROM notifications WHERE user_id = ? AND kind = ?`, userID, notifyHardcoverRelink)
-	return err
+	return deleteUserNotificationsOfKind(appDB, userID, notifyHardcoverRelink)
 }
 
 func (hcHost) ResolveAuthor(name string) (string, []string) {

@@ -1,10 +1,13 @@
 // The notifications page (templates/notifications.html, notifications.go):
 // once shown they're seen, so the bar's bell (the sync button) goes; each can be dismissed.
+// A dismissed one moves to "Earlier", read only (an account one, such as
+// "Link Hardcover again", is deleted instead).
 
 import { api, errorMessage, maybeId, statusLine } from "./dom.js";
 
 const say = statusLine("notifications-status");
-const list = document.querySelector<HTMLElement>(".notification-list");
+const list = maybeId("notifications-active");
+const earlier = maybeId("notifications-earlier");
 
 function emptied(): void {
     if (list?.querySelector(".notification")) return;
@@ -12,6 +15,19 @@ function emptied(): void {
     maybeId("notifications-clear")?.remove();
     const empty = document.querySelector<HTMLElement>(".notifications-empty");
     if (empty) empty.hidden = false;
+}
+
+/** item, dismissed: to the top of Earlier, without its Dismiss button; an account one goes. */
+function toEarlier(item: HTMLElement): void {
+    const into = earlier?.querySelector("ul");
+    if (item.dataset["account"] || !earlier || !into) {
+        item.remove();
+        return;
+    }
+    item.querySelector(".notification-dismiss")?.remove();
+    item.classList.remove("is-new");
+    into.prepend(item);
+    earlier.hidden = false;
 }
 
 /** The bar's bell and count (nav.ts) go once they're seen. */
@@ -42,7 +58,7 @@ list?.addEventListener("click", (e) => {
     btn.disabled = true;
     api("DELETE", `/api/me/notifications/${encodeURIComponent(id)}`)
         .then(() => {
-            item.remove();
+            toEarlier(item);
             emptied();
         })
         .catch((err: unknown) => {
@@ -54,7 +70,9 @@ list?.addEventListener("click", (e) => {
 maybeId("notifications-clear")?.addEventListener("click", () => {
     api("DELETE", "/api/me/notifications")
         .then(() => {
-            list?.querySelectorAll(".notification").forEach((n) => n.remove());
+            // Oldest first, so the newest ends up on top of Earlier.
+            const items = [...(list?.querySelectorAll<HTMLElement>(".notification") ?? [])].reverse();
+            for (const item of items) toEarlier(item);
             emptied();
         })
         .catch((err: unknown) => say(errorMessage(err), true));
