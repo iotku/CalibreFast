@@ -1,10 +1,11 @@
 package main
 
-// Server-Timing: how long the server took for each response, shown next to
-// the network's time in the browser's developer tools (the request's
-// Timing tab). Through a tunnel or a slow link, it tells the server's own
-// time from the trip there and back. Requests slower than slowRequest are
-// also logged.
+// Server-Timing (with -server-timing): how long the server took for each
+// response, shown next to the network's time in the browser's developer
+// tools (the request's Timing tab). Through a tunnel or a slow link, it
+// tells the server's own time from the trip there and back. Off by default:
+// a header on every response, only of use while looking into speed.
+// Requests slower than slowRequest are logged either way.
 //
 //	Server-Timing: auth;dur=0.41, app;dur=12.30
 //
@@ -20,6 +21,9 @@ import (
 	"net/http"
 	"time"
 )
+
+// serverTimingHeader: -server-timing.
+var serverTimingHeader bool
 
 // slowRequest: requests that take longer to answer are logged.
 const slowRequest = 500 * time.Millisecond
@@ -39,7 +43,8 @@ func noteAuthTime(r *http.Request, d time.Duration) {
 	}
 }
 
-// serverTiming adds the Server-Timing header to every response.
+// serverTiming times every request: logged when slow, and with
+// -server-timing, sent as the Server-Timing header.
 func serverTiming(h http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		t := &requestTiming{start: time.Now()}
@@ -67,7 +72,9 @@ func (w *timingWriter) WriteHeader(status int) {
 	if !w.wrote {
 		w.wrote, w.status = true, status
 		w.took = time.Since(w.t.start)
-		w.Header().Add("Server-Timing", fmt.Sprintf("auth;dur=%.2f, app;dur=%.2f", durMS(w.t.auth), durMS(w.took)))
+		if serverTimingHeader {
+			w.Header().Add("Server-Timing", fmt.Sprintf("auth;dur=%.2f, app;dur=%.2f", durMS(w.t.auth), durMS(w.took)))
+		}
 	}
 	w.ResponseWriter.WriteHeader(status)
 }

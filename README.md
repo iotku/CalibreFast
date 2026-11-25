@@ -94,6 +94,7 @@ Then open [http://localhost:8080](http://localhost:8080) and sign in. Add more u
 | `-allow-registrations` | Let anyone create an account from the sign-in page. **Bots will try to sign up:** only use on a trusted network, such as a Tailscale network shared with people you trust. |
 | `-public-url` | Your external URL, e.g. `https://books.example.com` (needed for GitHub/Google sign-in) |
 | `-trusted-types-report-only` | Report Trusted Types violations instead of refusing them (docs/SECURITY.md). Only as a stopgap if something in the browser breaks. |
+| `-server-timing` | Send a `Server-Timing` header with every response: the server's own time (and the session lookup's), shown in the browser's developer tools next to the network's. Off by default; for looking into speed, e.g. through a tunnel. Requests over 500 ms are logged either way. |
 | `-no-lookups` | Never look books up online: hides the metadata editor's ISBN lookup. Lookups are on by default but only happen when an admin clicks **Look up**. |
 | `-no-google-books` | Never offer Google Books in the metadata editor, even with `CF_GOOGLE_BOOKS_KEY`. Open Library still works. |
 | `-no-hardcover` | Never ask Hardcover (series on Missing books, and **Try Hardcover** in the metadata editor), even with `CF_HARDCOVER_TOKEN`. |
