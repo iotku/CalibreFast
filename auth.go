@@ -626,7 +626,6 @@ func logoutHandler(w http.ResponseWriter, r *http.Request) {
 func accountHandler(w http.ResponseWriter, r *http.Request) {
 	u := currentUser(r)
 	data := AuthPageData{User: u, Identities: identitiesFor(u.ID), Notice: r.URL.Query().Get("notice"), Error: r.URL.Query().Get("error")}
-	fillSyncKeyData(&data, r)
 	if r.Method == http.MethodPost {
 		if passwordsDisabled {
 			data.Error = errPasswordsOff.Error()

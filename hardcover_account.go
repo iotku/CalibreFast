@@ -74,7 +74,7 @@ func hardcoverAccountHandler(w http.ResponseWriter, r *http.Request) {
 		if notice != "" {
 			q = "?hardcover=" + url.QueryEscape(notice)
 		}
-		http.Redirect(w, r, "/account"+q+"#hardcover", http.StatusSeeOther)
+		http.Redirect(w, r, "/me/sync"+q+"#hardcover", http.StatusSeeOther)
 	}
 	switch action {
 	case "link":

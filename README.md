@@ -1,6 +1,6 @@
 # CalibreFast
 
-A fast, minimal web frontend for your [Calibre](https://calibre-ebook.com/) library.
+A fast web frontend for your [Calibre](https://calibre-ebook.com/) library.
 
 > ⚠️ **Experimental.** CalibreFast is not feature complete and comes with no security guarantees. **Do not expose it to the public internet**. It is intended for personal use on a trusted local network (e.g. private wireguard/tailscale network).
 >
@@ -109,7 +109,7 @@ To run it as a service that updates itself (systemd: pull, rebuild, restart), wi
 
 GitHub and Google sign-in are optional: see [OAUTH.md](docs/OAUTH.md) for step-by-step setup.
 
-Users can link their own Hardcover accounts (**Account → Hardcover**) and choose books to track there (**Sync to Hardcover** on a book); nothing is shared until they do, and progress and dates only if they choose. It needs an OAuth app on Hardcover, of type **Mobile, desktop, or CLI** with **Device Authorization Grant** on, no redirect URIs, and the scopes `read:me read:library write:library read:catalog read:social write:social`; set its client ID in `CF_HARDCOVER_CLIENT_ID`. (An app set up before the authors users follow could be brought in needs `read:social write:social` added; users linked before are told to link again.) Each server registers its own app; none ships with CalibreFast. Admins see these steps on their account page until it's set. Each user signs in on Hardcover with a code; CalibreFast never sees their password.
+Users can link their own Hardcover accounts (**Device and Hardcover sync**, `/me/sync`) and choose books to track there (**Sync to Hardcover** on a book); nothing is shared until they do, and progress and dates only if they choose. It needs an OAuth app on Hardcover, of type **Mobile, desktop, or CLI** with **Device Authorization Grant** on, no redirect URIs, and the scopes `read:me read:library write:library read:catalog read:social write:social`; set its client ID in `CF_HARDCOVER_CLIENT_ID`. (An app set up before the authors users follow could be brought in needs `read:social write:social` added; users linked before are told to link again.) Each server registers its own app; none ships with CalibreFast. Admins see these steps on the sync page until it's set. Each user signs in on Hardcover with a code; CalibreFast never sees their password.
 
 Google Books is offered only when `CF_GOOGLE_BOOKS_KEY` is set (an API key with the Books API enabled, as an environment variable), and only asked when an admin clicks **Try Google Books**. Without a key it isn't offered: Google's shared quota is usually used up, and Open Library is the main source. Hardcover is offered the same way (**Try Hardcover**) when `CF_HARDCOVER_TOKEN` is set, the token that also identifies series on Hardcover.
 

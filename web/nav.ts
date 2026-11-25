@@ -446,7 +446,7 @@ function init(bar: HTMLElement): void {
         // being sent, /api/me/hardcover is asked again every HC_POLL_MS.
         const hcLine = stateLine("Hardcover Sync");
         hcLine.line.hidden = true;
-        const hcRelink = el("a", { href: "/account#hardcover", className: "tb-sync-line", textContent: "Link Hardcover again", hidden: true });
+        const hcRelink = el("a", { href: "/me/sync#hardcover", className: "tb-sync-line", textContent: "Link Hardcover again", hidden: true });
         hcLine.line.append(hcRelink);
         let hc: HardcoverIndicator | null = null;
         let hcError = ""; // the latest failure's message, from /api/me/hardcover
@@ -629,6 +629,7 @@ function init(bar: HTMLElement): void {
             pushOffer,
             el("hr"),
             pause,
+            mark(el("a", { href: "/me/sync", textContent: "Device and Hardcover sync" }), "sync"),
             mark(el("a", { href: "/preferences", textContent: "Storage and preferences" }), "preferences"),
         );
 
@@ -900,6 +901,7 @@ function init(bar: HTMLElement): void {
             [
                 ...(guestBooks ? [el("a", { href: "/account/import", textContent: "Reading on this device" })] : []),
                 el("a", { href: "/account", textContent: "Account" }),
+                mark(el("a", { href: "/me/sync", textContent: "Device and Hardcover sync" }), "sync"),
                 mark(el("a", { href: "/preferences", textContent: "Preferences" }), "preferences"),
                 logout,
             ],

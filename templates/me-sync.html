@@ -1,0 +1,307 @@
+<!doctype html>
+<html lang="en">
+<head>
+    <meta charset="utf-8">
+    {{ robotsMeta }}
+    {{ appHead }}
+    <title>Sync — {{ .Title }}</title>
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <link rel="stylesheet" href="{{ asset "style.css" }}">
+</head>
+<body class="auth-body">
+{{ $tb := topbar "Active" "sync" "Title" "Sync" }}
+{{ template "topbar-start" $tb }}
+{{ template "topbar-end" $tb }}
+{{/* Device sync (KOReader's progress sync, kosync_server.go) and Hardcover
+     (hardcover_account.go), moved here from /account. Their forms still
+     post to /account/sync-key and /account/hardcover, which answer with
+     this page. Two columns on a wide screen (.auth-columns); without
+     Hardcover, device sync takes the width. */}}
+<main class="auth-main auth-columns">
+    {{ if .Hardcover }}<div class="auth-col">{{ end }}
+    <section class="auth-card" id="device-sync">
+        <h2>Device sync</h2>
+        {{ if .SyncNotice }}<p class="auth-notice" role="status">{{ .SyncNotice }}</p>{{ end }}
+        <p class="sync-intro">Syncs reading positions between these readers and KOReader (Kobo, Kindle, PocketBook, Android, Linux, macOS). Other apps with KOReader progress sync, such as Readest, should work too.</p>
+        <ol class="sync-steps">
+            <li>{{ if .SyncKey }}Use your sync key, or replace it below if you lost it.{{ else }}Create a sync key below.{{ end }}</li>
+            <li>In KOReader, open a book, then <b>Tools → Progress sync → Custom sync server</b>, and enter the server address.</li>
+            <li><b>Login</b> with your username, and the sync key as the password.</li>
+            <li>For books sent by Calibre rather than downloaded from here, set <b>Document matching method</b> to <b>Filename</b>.</li>
+        </ol>
+        {{ if .NewSyncKey }}
+        <div class="sync-new-key" role="status">
+            <p>Your sync key. Enter it as the password in KOReader:</p>
+            <code class="sync-key">{{ .NewSyncKey }}</code>
+            <p class="auth-muted">It is shown only now. If you lose it, create a new one.</p>
+        </div>
+        {{ end }}
+        <dl class="sync-facts">
+            <dt>Server</dt><dd><code class="same-origin-url">{{ .SyncURL }}</code></dd>
+            <dt>Username</dt><dd><code>{{ .User.Username }}</code></dd>
+            <dt>Sync key</dt>
+            <dd>{{ if .SyncKey }}Created {{ .SyncKey.Created }}{{ if .SyncKey.LastUsed }}, last used {{ .SyncKey.LastUsed }}{{ end }}{{ if .SyncKey.LastDevice }} (latest position from {{ .SyncKey.LastDevice }}){{ end }}{{ else }}None{{ end }}</dd>
+        </dl>
+        <div class="sync-actions">
+            <form method="post" action="/account/sync-key#device-sync">
+                <input type="hidden" name="action" value="generate">
+                <button type="submit" class="btn-standard">{{ if .SyncKey }}Replace sync key{{ else }}Create sync key{{ end }}</button>
+            </form>
+            {{ if .SyncKey }}
+            <form method="post" action="/account/sync-key#device-sync">
+                <input type="hidden" name="action" value="revoke">
+                <button type="submit" class="btn-standard">Revoke</button>
+            </form>
+            {{ end }}
+        </div>
+        {{ if .SyncKey }}<p class="auth-muted">Replacing or revoking the key signs out devices using it; synced positions are kept.</p>{{ end }}
+    </section>
+    {{ with .Hardcover }}
+    </div>
+
+    <div class="auth-col">
+    <section class="auth-card" id="hardcover" data-state="{{ .State }}">
+        <h2>Hardcover</h2>
+        {{ if .Notice }}<p class="auth-notice" role="status">{{ .Notice }}</p>{{ end }}
+        {{ if .Error }}<p class="auth-error" role="alert">{{ .Error }}</p>{{ end }}
+
+        {{ if eq .State "gone" }}
+        {{/* just unlinked, with sync off on this server: only the notice */}}
+
+        {{ else if eq .State "disabled" }}
+        <p class="sync-intro">Your Hardcover account <b>{{ .Username }}</b> is still linked (since {{ .LinkedAt }}), but Hardcover sync is turned off on this server, so nothing is being sent.</p>
+        <p class="sync-intro">CalibreFast still holds its sign-in to your Hardcover account. Unlink to end that sign-in on Hardcover and delete it here.</p>
+        <form method="post" action="/account/hardcover#hardcover">
+            <input type="hidden" name="action" value="unlink">
+            <button type="submit" class="btn-standard">Unlink</button>
+        </form>
+
+        {{ else if eq .State "off" }}
+        <p class="sync-intro">Users can link their own <a href="https://hardcover.app" target="_blank" rel="noopener noreferrer">Hardcover</a> accounts here, so what they read is tracked there too. It isn't set up on this server.</p>
+        <ol class="sync-steps">
+            <li>On Hardcover, open <b>Settings → Hardcover API → Developer Apps</b> and create an app of type <b>Mobile, desktop, or CLI</b>. Name it after this server: users see that name when they approve it.</li>
+            <li>Turn on <b>Device Authorization Grant</b>, leave <b>Redirect URIs</b> empty, and allow the scopes <code>{{ .Scopes }}</code>.</li>
+            <li>Start CalibreFast with the app's client ID in <code>CF_HARDCOVER_CLIENT_ID</code>.</li>
+        </ol>
+        <p class="auth-muted">Only admins see this. Each server needs its own app; don't reuse another server's client ID. No token or secret is needed. <code>-no-hardcover-sync</code> hides it.</p>
+
+        {{ else if eq .State "pending" }}
+        <p class="sync-intro"><b>Almost done.</b> Approve CalibreFast on Hardcover:</p>
+        <ol class="sync-steps">
+            <li>Open <a href="{{ .OpenURL }}" target="_blank" rel="noopener noreferrer">{{ .VerifyURL }}</a>, and sign in to Hardcover if it asks.</li>
+            <li>Enter this code, unless it's filled in already:
+                <code class="sync-key" id="hardcover-code">{{ .UserCode }}</code>
+                <button type="button" class="btn-standard" data-copy="hardcover-code" hidden>Copy code</button>
+            </li>
+            <li>Check that it names CalibreFast, then approve it.</li>
+        </ol>
+        <div class="sync-actions">
+            <a class="btn-standard" href="{{ .OpenURL }}" target="_blank" rel="noopener noreferrer">Open Hardcover</a>
+            <form method="post" action="/account/hardcover#hardcover">
+                <input type="hidden" name="action" value="cancel">
+                <button type="submit" class="btn-standard">Cancel</button>
+            </form>
+        </div>
+        <p class="auth-muted" role="status">Waiting for your approval. This page updates by itself once you've approved. The code works until {{ .Expires }}; if it runs out, start again.</p>
+
+        {{ else if eq .State "linked" }}
+        <p class="sync-intro">Linked to your Hardcover account <b>{{ .Username }}</b>. {{ if .Share.All }}Every book you read here is sent there, except those you leave out: turn off <b>Sync to Hardcover</b> on a book's page.{{ else }}Only the books you choose are sent there: turn on <b>Sync to Hardcover</b> on a book's page.{{ end }}</p>
+
+        <form method="post" action="/account/hardcover#hardcover" class="sync-share">
+            <input type="hidden" name="action" value="settings">
+            <fieldset>
+                <legend>Which books</legend>
+                <label><input type="radio" name="books" value="chosen" {{ if not .Share.All }}checked{{ end }}> Only books I choose <span class="auth-muted">(recommended)</span></label>
+                <label><input type="radio" name="books" value="all" {{ if .Share.All }}checked{{ end }}> Every book I mark or read here, from now on</label>
+            </fieldset>
+            <fieldset>
+                <legend>Also send, for those books</legend>
+                <label><input type="checkbox" name="progress" value="on" {{ if .Share.Progress }}checked{{ end }}> How far along I am (as pages)</label>
+                <label><input type="checkbox" name="dates" value="on" {{ if .Share.Dates }}checked{{ end }}> The dates I started and finished</label>
+            </fieldset>
+            <p class="auth-muted">Their status (want to read, reading, finished) is always sent for a shared book: it's what puts the book on your Hardcover shelves. Without dates, Hardcover dates a read the day it's sent.</p>
+            <button type="submit" class="btn-standard">Save</button>
+        </form>
+
+        <dl class="sync-facts">
+            <dt>Linked</dt><dd>{{ .LinkedAt }}</dd>
+            <dt>Last sent</dt><dd>{{ if .Summary.LastSent }}{{ .Summary.LastSent }}{{ else }}Nothing yet{{ end }}</dd>
+            {{ if .Summary.Waiting }}<dt>Waiting</dt><dd>{{ .Summary.Waiting }} book(s){{ if .Summary.Failing }}, {{ .Summary.Failing }} being retried{{ if .Summary.LastErr }} ({{ .Summary.LastErr }}){{ end }}{{ end }}</dd>{{ end }}
+            {{ if .Summary.Skipped }}<dt>Not sent</dt><dd>{{ .Summary.Skipped }} book(s) Hardcover couldn't find.</dd>{{ end }}
+        </dl>
+        {{ if .Problems }}
+        <div class="sync-problems">
+            <p><b>Needs your attention:</b> open each book and choose <b>Find it on Hardcover</b> to pick the right book, or see why it couldn't be sent.</p>
+            <ul class="sync-shared">
+                {{ range .Problems }}<li><a href="/book/get/{{ .UUID }}" class="meta-link">{{ .Title }}</a>{{ if .Authors }} <span class="auth-muted">{{ .Authors }}</span>{{ end }}</li>{{ end }}
+            </ul>
+        </div>
+        {{ end }}
+
+        {{ if .Share.All }}
+        <details class="sync-details">
+            <summary>Books you left out ({{ len .Unshared }})</summary>
+            {{ if .Unshared }}
+            <ul class="sync-shared">
+                {{ range .Unshared }}<li><a href="/book/get/{{ .UUID }}" class="meta-link">{{ .Title }}</a>{{ if .Authors }} <span class="auth-muted">{{ .Authors }}</span>{{ end }}</li>{{ end }}
+            </ul>
+            <p class="auth-muted">Nothing about these is sent. To send one again, turn on <b>Sync to Hardcover</b> on its page.</p>
+            {{ else }}
+            <p class="auth-muted">None. To keep a book off Hardcover, turn off <b>Sync to Hardcover</b> on its page.</p>
+            {{ end }}
+        </details>
+        {{ else }}
+        <details class="sync-details"{{ if not .Shared }} open{{ end }}>
+            <summary>Books you share ({{ len .Shared }})</summary>
+            {{ if .Shared }}
+            <ul class="sync-shared">
+                {{ range .Shared }}<li><a href="/book/get/{{ .UUID }}" class="meta-link">{{ .Title }}</a>{{ if .Authors }} <span class="auth-muted">{{ .Authors }}</span>{{ end }}</li>{{ end }}
+            </ul>
+            <p class="auth-muted">To stop sharing one, turn off <b>Sync to Hardcover</b> on its page.</p>
+            {{ else }}
+            <p class="auth-muted">None yet. Open a book and choose <b>Sync to Hardcover</b> under its Read and Download buttons; its status is sent straight away.</p>
+            {{ end }}
+        </details>
+        {{ end }}
+
+        <details class="sync-details">
+            <summary>What's sent, and what isn't</summary>
+            <ul class="sync-steps">
+                <li>Nothing about a book is sent until you share it{{ if .Share.All }} (you share every book){{ end }}: not its status, and not even its ISBN to find it on Hardcover.</li>
+                <li>For a shared book: <b>Want to read</b>, <b>Reading</b> and <b>Finished</b> become the same statuses on Hardcover, as soon as you set them here or start or finish it in a reader.</li>
+                <li>Only if you chose them above: how far along you are (as pages, a few minutes after you stop turning them, one page short of the end), and the dates you started and finished.</li>
+                <li>Never sent: your other favorites, shelves, highlights, notes, bookmarks, other books, or anything about other people here.</li>
+                <li>Nothing is ever deleted on Hardcover. Clearing a status, or no longer sharing a book, leaves what was sent there; change it on Hardcover if you want it gone.</li>
+                <li>Nothing on Hardcover is copied here, except the authors you follow, when you ask for them below.</li>
+                <li>Authors you star here are followed on Hardcover, if you turn that on below. Taking a star off unfollows the author there only if you leave <b>Also unfollow on Hardcover</b> ticked when asked.</li>
+                <li>It appears on Hardcover as if you'd done it there, so your Hardcover privacy settings decide who sees it.</li>
+            </ul>
+        </details>
+        {{/* Authors followed on Hardcover, starred here (internal/hardcoversync/follows.go). */}}
+        {{ with .Follows }}
+        <h3 id="hardcover-follows">Authors you follow</h3>
+        {{ if .CanRead }}
+        <p class="sync-intro">Star the authors you follow on Hardcover here, so you see them in your favorites and hear when their books arrive. Authors this library doesn't have yet are starred too, and show up once a book by them does. Taking a star off here keeps it off; nothing changes on Hardcover.</p>
+        {{ if .Total }}
+        <p class="auth-muted">Last brought in {{ .LastSeen }}: {{ .Total }} followed, {{ len .Starred }} starred{{ with .Waiting }}, {{ len . }} waiting for their books{{ end }}{{ with .Confirm }}, {{ len . }} to confirm{{ end }}{{ with .Skipped }}, {{ . }} you took off here{{ end }}.</p>
+        {{ end }}
+        <form method="post" action="/account/hardcover#hardcover-follows">
+            <input type="hidden" name="action" value="follows">
+            <button type="submit" class="btn-standard">{{ if .Total }}Bring them in again{{ else }}Bring in the authors I follow{{ end }}</button>
+        </form>
+        {{ with .Confirm }}
+        <p class="sync-intro">Which author here is it? These names are close, but not the same:</p>
+        <ul class="follow-confirm">
+            {{ range . }}
+            <li>
+                <span><b>{{ .Name }}</b> on Hardcover is</span>
+                {{ $id := .HCID }}
+                {{ range .Candidates }}
+                <form method="post" action="/account/hardcover#hardcover-follows">
+                    <input type="hidden" name="action" value="follow-choose">
+                    <input type="hidden" name="hc_id" value="{{ $id }}">
+                    <input type="hidden" name="name" value="{{ . }}">
+                    <button type="submit" class="btn-standard">{{ . }}</button>
+                </form>
+                {{ end }}
+                <form method="post" action="/account/hardcover#hardcover-follows">
+                    <input type="hidden" name="action" value="follow-none">
+                    <input type="hidden" name="hc_id" value="{{ $id }}">
+                    <button type="submit" class="btn-standard">None of these</button>
+                </form>
+            </li>
+            {{ end }}
+        </ul>
+        {{ end }}
+        {{ if or .Starred .Waiting }}
+        <details class="sync-details">
+            <summary>The authors brought in</summary>
+            <ul class="follow-list">
+                {{ range .Starred }}
+                <li>{{ .Name }}{{ if ne .Name .Local }} → {{ .Local }}{{ end }}{{ if .Decided }} <span class="auth-muted">(your choice)</span>
+                    <form method="post" action="/account/hardcover#hardcover-follows"><input type="hidden" name="action" value="follow-undo"><input type="hidden" name="hc_id" value="{{ .HCID }}"><button type="submit" class="link-button">Undo</button></form>{{ end }}</li>
+                {{ end }}
+                {{ range .Waiting }}
+                <li>{{ .Name }} <span class="auth-muted">(no books here yet{{ if .Decided }}; you said it's none of those offered{{ end }})</span>
+                    {{ if .Decided }}<form method="post" action="/account/hardcover#hardcover-follows"><input type="hidden" name="action" value="follow-undo"><input type="hidden" name="hc_id" value="{{ .HCID }}"><button type="submit" class="link-button">Undo</button></form>{{ end }}</li>
+                {{ end }}
+            </ul>
+        </details>
+        {{ end }}
+        {{ end }}
+        {{/* Sending stars to Hardcover as follows (internal/hardcoversync/follow_push.go). */}}
+        {{ if .Push.CanWrite }}
+        <form method="post" action="/account/hardcover#hardcover-follows" class="follow-settings">
+            <input type="hidden" name="action" value="follows-settings">
+            <label><input type="checkbox" name="share_follows"{{ if .Push.Share }} checked{{ end }}> Follow on Hardcover the authors I star here</label>
+            <label><input type="checkbox" name="unfollow_default"{{ if .Push.UnfollowDefault }} checked{{ end }}> When I take a star off, tick <b>Also unfollow on Hardcover</b> to begin with</label>
+            <button type="submit" class="btn-standard">Save</button>
+        </form>
+        {{ if or .FollowedHere .ToSend }}<p class="auth-muted">{{ .FollowedHere }} followed on Hardcover from here{{ with .ToSend }}; {{ . }} waiting to be sent{{ end }}.</p>{{ end }}
+        {{ with .Problems }}
+        <p class="sync-intro">Couldn't {{ if eq (index . 0).Op "unfollow" }}unfollow{{ else }}follow{{ end }} on Hardcover:</p>
+        <ul class="follow-list">
+            {{ range . }}
+            <li>{{ .Name }} <span class="auth-muted">({{ .Error }})</span>
+                <form method="post" action="/account/hardcover#hardcover-follows"><input type="hidden" name="action" value="follow-retry"><input type="hidden" name="name" value="{{ .Name }}"><button type="submit" class="link-button">Try again</button></form></li>
+            {{ end }}
+        </ul>
+        {{ end }}
+        {{ end }}
+        {{ if not .CanRead }}
+        <p class="sync-intro">You can star the authors you follow on Hardcover here, to see them in your favorites and hear when their books arrive. Your link was made before CalibreFast could ask for that: link again, and Hardcover will ask you to let CalibreFast see who you follow.</p>
+        <form method="post" action="/account/hardcover#hardcover">
+            <input type="hidden" name="action" value="link">
+            <button type="submit" class="btn-standard">Link again</button>
+        </form>
+        {{ end }}
+        {{ end }}
+
+        <div class="sync-actions">
+            {{ if .Share.All }}
+            <form method="post" action="/account/hardcover#hardcover">
+                <input type="hidden" name="action" value="backfill">
+                <button type="submit" class="btn-standard">Also send books I was reading or finished before</button>
+            </form>
+            {{ end }}
+            <form method="post" action="/account/hardcover#hardcover">
+                <input type="hidden" name="action" value="unlink">
+                <button type="submit" class="btn-standard">Unlink</button>
+            </form>
+        </div>
+        <p class="auth-muted">Unlinking stops all sending, signs CalibreFast out of Hardcover, and deletes its sign-in and your choices here; what was sent stays on Hardcover. You can also remove CalibreFast under <b>Authorized Apps</b> in Hardcover's settings. The sign-in kept here is encrypted, but whoever runs this server could use it.</p>
+
+        {{ else }}
+        {{ if eq .State "broken" }}
+        <p class="auth-error" role="alert">Nothing is being sent to {{ .Username }} on Hardcover: {{ .Broken }}</p>
+        <p class="sync-intro">Link again to carry on. Changes made meanwhile are sent once you have. The old sign-in has been deleted here.</p>
+        {{ else }}
+        <p class="sync-intro">Track books you read here on your <a href="https://hardcover.app" target="_blank" rel="noopener noreferrer">Hardcover</a> account: whether you want to read, are reading or have finished them, and, if you choose, how far along you are and when you started and finished.</p>
+        <ol class="sync-steps">
+            <li>Choose <b>Link Hardcover</b>. A short code appears here.</li>
+            <li>Open <b>hardcover.app/link</b>, sign in to Hardcover, enter the code and approve CalibreFast.</li>
+            <li>Choose which books to share: turn on <b>Sync to Hardcover</b> on a book's page. Or, here, choose to share every book.</li>
+        </ol>
+        <p class="auth-muted">Linking shares nothing by itself: no book is sent until you choose it. You need a Hardcover account (it's free). You never give CalibreFast your Hardcover password, and you can unlink at any time.</p>
+        <p class="auth-muted">What you allow: CalibreFast may see who you are on Hardcover, read and change your Hardcover library, and see and change who you follow (only when you ask: to bring in the authors you follow, to follow those you star here if you turn that on, and to unfollow one when you take its star off and say so). It keeps that sign-in encrypted on this server, but whoever runs this server could use it, so link only if you trust them. Unlinking ends it.</p>
+        {{ end }}
+        <div class="sync-actions">
+            <form method="post" action="/account/hardcover#hardcover">
+                <input type="hidden" name="action" value="link">
+                <button type="submit" class="btn-standard">{{ if eq .State "broken" }}Link again{{ else }}Link Hardcover{{ end }}</button>
+            </form>
+            {{ if eq .State "broken" }}
+            <form method="post" action="/account/hardcover#hardcover">
+                <input type="hidden" name="action" value="unlink">
+                <button type="submit" class="btn-standard">Unlink</button>
+            </form>
+            {{ end }}
+        </div>
+        {{ end }}
+    </section>
+    </div>
+    {{ end }}
+</main>
+{{ if .Hardcover }}<script type="module" src="{{ asset "hardcover-link.js" }}"></script>{{ end }}
+</body>
+</html>

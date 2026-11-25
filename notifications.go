@@ -251,7 +251,7 @@ func queryNotifications(tail string, userID int64) ([]notification, error) {
 		}
 		switch {
 		case n.Kind == notifyHardcoverRelink:
-			n.Href = "/account#hardcover"
+			n.Href = "/me/sync#hardcover"
 		case n.Count > 1 && n.Kind == notifyFavoriteAuthor:
 			n.Href = categoryByKey("author").href(n.Subject) // several: the author's page
 		case n.Count > 1 && n.Kind == notifyFavoriteSeries:

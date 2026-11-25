@@ -364,7 +364,15 @@ func kosyncServerURL(r *http.Request) string {
 
 func formatDay(unix int64) string { return time.Unix(unix, 0).Format("2 Jan 2006 15:04") }
 
-// fillSyncKeyData adds the device sync section's data to the account page.
+// meSyncPage: GET /me/sync, device sync (KOReader) and Hardcover, on a
+// page of their own (templates/me-sync.html).
+func meSyncPage(w http.ResponseWriter, r *http.Request) {
+	data := AuthPageData{User: currentUser(r)}
+	fillSyncKeyData(&data, r)
+	renderAuthPage(w, "me-sync.html", data, http.StatusOK)
+}
+
+// fillSyncKeyData adds the device sync and Hardcover sections' data to /me/sync.
 func fillSyncKeyData(data *AuthPageData, r *http.Request) {
 	data.SyncURL = kosyncServerURL(r)
 	data.Hardcover = hcView(data.User, r.URL.Query().Get("hardcover"))
@@ -396,16 +404,16 @@ func syncKeyHandler(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 		log.Printf("user %s created a device sync key", u.Username)
-		data := AuthPageData{User: u, Identities: identitiesFor(u.ID), NewSyncKey: key}
+		data := AuthPageData{User: u, NewSyncKey: key}
 		fillSyncKeyData(&data, r)
-		renderAuthPage(w, "account.html", data, http.StatusOK)
+		renderAuthPage(w, "me-sync.html", data, http.StatusOK)
 	case "revoke":
 		if err := revokeSyncKey(u.ID); err != nil {
 			http.Error(w, "could not revoke the sync key", http.StatusInternalServerError)
 			return
 		}
 		log.Printf("user %s revoked their device sync key", u.Username)
-		http.Redirect(w, r, "/account?sync=revoked#device-sync", http.StatusSeeOther)
+		http.Redirect(w, r, "/me/sync?sync=revoked#device-sync", http.StatusSeeOther)
 	default:
 		http.Error(w, "unknown action", http.StatusBadRequest)
 	}

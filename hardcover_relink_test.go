@@ -38,7 +38,7 @@ func TestHardcoverRelinkNotification(t *testing.T) {
 	set(`UPDATE hardcover_links SET relink_notified = '' WHERE user_id = ?`, u.ID)
 	hcSync.NotifyRelink()
 	n := relinks()
-	if len(n) != 1 || n[0].Title != "bring in the authors you follow there and follow the authors you star here" || n[0].Href != "/account#hardcover" {
+	if len(n) != 1 || n[0].Title != "bring in the authors you follow there and follow the authors you star here" || n[0].Href != "/me/sync#hardcover" {
 		t.Fatalf("old link: %+v", n)
 	}
 	// Once: not again at the next start, nor once dismissed.
@@ -110,7 +110,7 @@ func TestHardcoverSetupScopes(t *testing.T) {
 		t.Fatalf("view: %+v", v)
 	}
 	var b strings.Builder
-	if err := templates.ExecuteTemplate(&b, "account.html", AuthPageData{Title: "t", User: admin, Hardcover: v}); err != nil {
+	if err := templates.ExecuteTemplate(&b, "me-sync.html", AuthPageData{Title: "t", User: admin, Hardcover: v}); err != nil {
 		t.Fatal(err)
 	}
 	if !strings.Contains(b.String(), "<code>"+hardcover.SyncScopes+"</code>") {

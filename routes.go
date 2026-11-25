@@ -457,6 +457,7 @@ func registerPrefsRoutes() {
 
 func registerStatsRoutes() {
 	http.HandleFunc("GET /me/stats", requireUser(statsPage))
+	http.HandleFunc("GET /me/sync", requireUser(meSyncPage)) // device sync and Hardcover (kosync_server.go)
 	http.HandleFunc("GET /api/me/stats", requireUser(statsHandler))
 	http.HandleFunc("PUT /api/me/activity", requireUser(activityPutHandler))
 	http.HandleFunc("DELETE /api/me/activity", requireUser(activityDeleteHandler))

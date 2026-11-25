@@ -146,3 +146,34 @@ func TestLinkedEmailIsCutShort(t *testing.T) {
 		t.Errorf("Display with login: %q", got)
 	}
 }
+
+// With passwords off, the account page has no password card at all: no
+// form to set or change one, nor a note about it. With them on, it has
+// the form.
+func TestAccountPageHidesPasswordWhenOff(t *testing.T) {
+	setupTestAppDB(t)
+	u, err := createUser("gail", "longenough-pw", false)
+	if err != nil {
+		t.Fatal(err)
+	}
+	page := func() string {
+		t.Helper()
+		rec := httptest.NewRecorder()
+		req := httptest.NewRequest("GET", "/account", nil)
+		accountHandler(rec, req.WithContext(withUserCtx(req, u)))
+		return rec.Body.String()
+	}
+	if p := page(); !strings.Contains(p, "Change password") || !strings.Contains(p, `name="password2"`) {
+		t.Fatal("passwords on: the account page lacks the password form")
+	}
+	withPasswordsOff(t)
+	p := page()
+	for _, gone := range []string{"Change password", "Set a password", `name="password2"`, "<h2>Password</h2>"} {
+		if strings.Contains(p, gone) {
+			t.Errorf("passwords off: the account page still has %q", gone)
+		}
+	}
+	if !strings.Contains(p, `id="linked-sign-ins"`) {
+		t.Error("passwords off: the account page lacks Linked sign-ins")
+	}
+}
