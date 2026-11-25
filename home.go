@@ -50,7 +50,9 @@ type homeAnswer struct {
 }
 
 func homeHandler(w http.ResponseWriter, r *http.Request) {
+	done := timeStage(r, "marks")
 	marks, active, err := userReading(currentUser(r))
+	done()
 	if err != nil {
 		http.Error(w, "query failed", http.StatusInternalServerError)
 		return
@@ -73,13 +75,16 @@ func homeHandler(w http.ResponseWriter, r *http.Request) {
 		reading = append(reading, uuid)
 	}
 	reading = newestFirst(reading)
+	done = timeStage(r, "saved")
 	wanted, err := wantedInOrder(currentUser(r)) // as arranged on its page (list_order.go)
+	done()
 	if err != nil {
 		http.Error(w, "query failed", http.StatusInternalServerError)
 		return
 	}
 
 	ans := homeAnswer{Marks: marks, ReadingCount: len(reading), WantedCount: len(wanted)}
+	done = timeStage(r, "rows")
 	if ans.Reading, err = booksByUUIDs(reading[:min(len(reading), homeRowMax)]); err != nil {
 		http.Error(w, "query failed", http.StatusInternalServerError)
 		return
@@ -88,27 +93,44 @@ func homeHandler(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "query failed", http.StatusInternalServerError)
 		return
 	}
-	if ans.OnDeck, err = onDeck(currentUser(r), marks, active); err != nil {
+	done()
+	done = timeStage(r, "ondeck")
+	ans.OnDeck, err = onDeck(currentUser(r), marks, active)
+	done()
+	if err != nil {
 		http.Error(w, "query failed", http.StatusInternalServerError)
 		return
 	}
-	if ans.Recommended, ans.Tags, err = userRecommend(currentUser(r), marks); err != nil {
+	done = timeStage(r, "recommend")
+	ans.Recommended, ans.Tags, err = userRecommend(currentUser(r), marks)
+	done()
+	if err != nil {
 		http.Error(w, "query failed", http.StatusInternalServerError)
 		return
 	}
-	if ans.Followed, ans.Following, err = followedBooks(currentUser(r), marks, homeRowMax); err != nil {
+	done = timeStage(r, "followed")
+	ans.Followed, ans.Following, err = followedBooks(currentUser(r), marks, homeRowMax)
+	done()
+	if err != nil {
 		http.Error(w, "query failed", http.StatusInternalServerError)
 		return
 	}
-	if ans.Shelves, err = pinnedShelves(currentUser(r), shelfRowsMax); err != nil {
+	done = timeStage(r, "shelves")
+	ans.Shelves, err = pinnedShelves(currentUser(r), shelfRowsMax)
+	done()
+	if err != nil {
 		http.Error(w, "query failed", http.StatusInternalServerError)
 		return
 	}
-	if ans.Layout, err = userHomeLayout(currentUser(r)); err != nil {
+	done = timeStage(r, "layout")
+	ans.Layout, err = userHomeLayout(currentUser(r))
+	if err != nil {
 		http.Error(w, "query failed", http.StatusInternalServerError)
 		return
 	}
-	if ans.HiddenTags, err = userHiddenTags(currentUser(r)); err != nil {
+	ans.HiddenTags, err = userHiddenTags(currentUser(r))
+	done()
+	if err != nil {
 		http.Error(w, "query failed", http.StatusInternalServerError)
 		return
 	}
