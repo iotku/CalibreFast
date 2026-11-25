@@ -8,8 +8,9 @@ package main
 //
 // They show, marked "Not in library", on the pages of their series, author
 // and publisher (filteredBooksHandler), and in On Deck when the next book of
-// a series is one (nextInSeries). They aren't in Latest, search, the
-// aggregate counts or anything else built from the library.
+// a series is one (nextInSeries), and in search, after the library's books
+// (search_placeholders.go). They aren't in Latest, the aggregate counts or
+// anything else built from the library.
 //
 // Admins (those who can edit the library) list them, and the gaps in the
 // library's series, at /missing; make them at /missing/new; and edit them on
