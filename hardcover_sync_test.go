@@ -246,6 +246,9 @@ func (f *fakeHardcoverAccount) serve(w http.ResponseWriter, r *http.Request) {
 				}
 			}
 		}
+		if e, ok := obj["edition_id"]; ok {
+			b.edition = num(e)
+		}
 		st := num(obj["status_id"])
 		// As Hardcover does: reading starts a read, read finishes it.
 		switch {
@@ -903,6 +906,10 @@ func TestHardcoverBookMatch(t *testing.T) {
 	if rec := call("PUT", base+"/match", `{"book_id":61,"title":"<b>x</b>"}`); rec.Code != http.StatusNotFound {
 		t.Errorf("a book Hardcover doesn't have: %d %s", rec.Code, rec.Body)
 	}
+	// They already have it on Hardcover, in another edition: the chosen
+	// one replaces it.
+	f.books[60] = &fakeUserBook{id: 960, status: hardcover.StatusReading, edition: 601,
+		reads: []fakeRead{{id: 1, started: "2026-11-01"}}}
 	if rec := call("PUT", base+"/match", `{"book_id":60}`); rec.Code != 200 {
 		t.Fatalf("match: %d %s", rec.Code, rec.Body)
 	}
@@ -914,6 +921,14 @@ func TestHardcoverBookMatch(t *testing.T) {
 	if b := f.books[60]; b == nil || b.status != hardcover.StatusReading || b.edition != 602 {
 		t.Fatalf("not sent as the chosen book: %+v", f.books[60])
 	}
+	// Only once: an edition they pick on Hardcover afterwards is theirs.
+	f.books[60].edition = 601
+	hcSync.Resend(u.ID, books[1])
+	step(t)
+	if b := f.books[60]; b.edition != 601 {
+		t.Errorf("the edition picked on Hardcover was replaced again: %+v", b)
+	}
+	f.books[60].edition = 602
 	if p := hcSync.ProblemBooks(u.ID); len(p) != 0 {
 		t.Errorf("still a problem: %+v", p)
 	}

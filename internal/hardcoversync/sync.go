@@ -624,24 +624,33 @@ func (s *Service) pushBook(ctx context.Context, userID int64, uuid string) error
 	if err != nil {
 		return err
 	}
-	changed := false
+	// An edition chosen by hand is set on the entry once, even over the
+	// one it has; otherwise an entry's edition is only filled in.
+	chosenEdition := s.editionToSet(userID, uuid)
+	setEdition := ub != nil && chosenEdition > 0 && chosenEdition == ed.EditionID && ub.EditionID != chosenEdition
+	changed, refetch := false, false
 	switch {
 	case ub == nil:
 		if _, err := c.AddUserBook(ctx, ed.BookID, want, ed.EditionID); err != nil {
 			return err
 		}
 		changed = true
-	case ub.StatusID != want:
+	case ub.StatusID != want || setEdition:
 		edition := int64(0)
-		if ub.EditionID == 0 {
+		if ub.EditionID == 0 || setEdition {
 			edition = ed.EditionID
 		}
 		if err := c.SetUserBook(ctx, ub.ID, want, edition); err != nil {
 			return err
 		}
-		changed = true
+		changed = ub.StatusID != want
+		refetch = setEdition // its pages are the new edition's
 	}
-	if changed && want != hardcover.StatusWantToRead {
+	if chosenEdition > 0 {
+		_, _ = s.db.Exec(`UPDATE hardcover_user_books SET set_edition = 0 WHERE user_id = ? AND book_uuid = ? AND hc_edition_id = ?`,
+			userID, uuid, chosenEdition)
+	}
+	if (changed && want != hardcover.StatusWantToRead) || refetch {
 		// Hardcover started or finished a read: see it.
 		if ub, err = c.UserBook(ctx, link.HCUserID, ed.BookID); err != nil {
 			return err
@@ -815,8 +824,8 @@ func (s *Service) Merged(keep string, others []string) {
 		_, _ = s.db.Exec(`INSERT OR IGNORE INTO hardcover_unshared (user_id, book_uuid, unshared_at)
 			SELECT x.user_id, ?1, x.unshared_at FROM hardcover_unshared x WHERE x.book_uuid = ?2
 				AND NOT EXISTS (SELECT 1 FROM hardcover_shared s WHERE s.user_id = x.user_id AND s.book_uuid = ?1)`, keep, o)
-		_, _ = s.db.Exec(`INSERT OR IGNORE INTO hardcover_user_books (user_id, book_uuid, hc_book_id, hc_edition_id, pages, slug, title, chosen_at)
-			SELECT user_id, ?, hc_book_id, hc_edition_id, pages, slug, title, chosen_at FROM hardcover_user_books WHERE book_uuid = ?`, keep, o)
+		_, _ = s.db.Exec(`INSERT OR IGNORE INTO hardcover_user_books (user_id, book_uuid, hc_book_id, hc_edition_id, pages, slug, title, chosen_at, set_edition)
+			SELECT user_id, ?, hc_book_id, hc_edition_id, pages, slug, title, chosen_at, set_edition FROM hardcover_user_books WHERE book_uuid = ?`, keep, o)
 		_, _ = s.db.Exec(`DELETE FROM hardcover_user_books WHERE book_uuid = ?`, o)
 	}
 	rows, err := s.db.Query(`SELECT user_id FROM reading_status WHERE book_uuid = ?`, keep)
