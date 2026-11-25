@@ -233,7 +233,6 @@ function sample<T>(all: T[], n: number, skip: (t: T) => boolean): T[] {
 }
 
 if (reshuffle && discoverList) {
-    reshuffle.hidden = false;
     reshuffle.addEventListener("click", () => {
         void load().then((all) => {
             if (!all.length) return;
@@ -428,9 +427,9 @@ letters.addEventListener("pointermove", (e) => {
 letters.addEventListener("pointerup", (e) => endScrub(e, true));
 letters.addEventListener("pointercancel", (e) => endScrub(e, false));
 
-// A dozen or more: fewer read at a glance in any order.
-if (items.length >= 12) {
-    orderBar.hidden = false;
+// The server draws the bar shown with a dozen or more (templates/aggregate.html),
+// so it's there on first paint; fewer read at a glance in any order.
+if (!orderBar.hidden) {
     orderBar.addEventListener("click", (e) => {
         const b = (e.target as Element).closest<HTMLButtonElement>("button[data-order]");
         if (b) setOrder(b.dataset["order"] as Order);
