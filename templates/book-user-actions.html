@@ -93,7 +93,7 @@
         </div>
         {{/* filled in by hardcover-book.ts: how the sync stands, and choosing the book */}}
         <div class="book-hardcover-status sync-note" data-hardcover-status>
-            <span class="book-hardcover-note">{{ if and .All (not .Shared) }}Left out: you share every book but this one{{ else if .All }}You share every book: <a href="/account#hardcover" class="meta-link">change</a>{{ else if .Shared }}Sent to your Hardcover account as it changes{{ else }}Nothing about this book is sent to Hardcover{{ end }}</span>
+            <span class="book-hardcover-note">{{ if and .All (not .Shared) }}Left out: you share every book but this one{{ else if .All }}You share every book: <a href="/me/sync#hardcover" class="meta-link">change</a>{{ else if .Shared }}Sent to your Hardcover account as it changes{{ else }}Nothing about this book is sent to Hardcover{{ end }}</span>
         </div>
     </div>
 {{ end }}

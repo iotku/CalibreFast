@@ -411,11 +411,14 @@ func TestKosyncJoinsWebReaderPDF(t *testing.T) {
 	}
 }
 
+// Device sync is on /me/sync, not the account page; its form still posts to
+// /account/sync-key, which answers with /me/sync.
 func TestSyncKeyAccountPage(t *testing.T) {
 	u, _ := setupLibraryAndUser(t, 0)
 	freshGuessLimiter(t)
 	mux := kosyncTestMux()
 	mux.HandleFunc("/account", requireUser(accountHandler))
+	mux.HandleFunc("GET /me/sync", requireUser(meSyncPage))
 	post := func(action string) *httptest.ResponseRecorder {
 		req := httptest.NewRequest("POST", "/account/sync-key", strings.NewReader(url.Values{"action": {action}}.Encode()))
 		req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
@@ -424,9 +427,13 @@ func TestSyncKeyAccountPage(t *testing.T) {
 		return rec
 	}
 
-	page := call(t, mux, u, "GET", "/account", "").Body.String()
+	page := call(t, mux, u, "GET", "/me/sync", "").Body.String()
 	if !strings.Contains(page, "Create sync key") || !strings.Contains(page, "/kosync") {
-		t.Fatal("account page lacks the device sync section")
+		t.Fatal("/me/sync lacks the device sync section")
+	}
+	account := call(t, mux, u, "GET", "/account", "").Body.String()
+	if strings.Contains(account, "Create sync key") || !strings.Contains(account, `href="/me/sync"`) {
+		t.Fatal("the account page should link to /me/sync instead of holding device sync")
 	}
 	rec := post("generate")
 	m := regexp.MustCompile(`<code class="sync-key">([a-z]{16})</code>`).FindStringSubmatch(rec.Body.String())
@@ -436,12 +443,12 @@ func TestSyncKeyAccountPage(t *testing.T) {
 	if r, _ := device(t, mux, "GET", "/kosync/users/auth", "reader", m[1], ""); r.Code != 200 {
 		t.Fatalf("shown key doesn't work: %d", r.Code)
 	}
-	page = call(t, mux, u, "GET", "/account", "").Body.String()
+	page = call(t, mux, u, "GET", "/me/sync", "").Body.String()
 	if strings.Contains(page, m[1]) || !strings.Contains(page, "Replace sync key") {
 		t.Fatal("the key must be shown only once")
 	}
-	if rec := post("revoke"); rec.Code != http.StatusSeeOther {
-		t.Fatalf("revoke: %d", rec.Code)
+	if rec := post("revoke"); rec.Code != http.StatusSeeOther || rec.Header().Get("Location") != "/me/sync?sync=revoked#device-sync" {
+		t.Fatalf("revoke: %d to %q", rec.Code, rec.Header().Get("Location"))
 	}
 	if r, _ := device(t, mux, "GET", "/kosync/users/auth", "reader", m[1], ""); r.Code != 401 {
 		t.Fatalf("revoked key works: %d", r.Code)

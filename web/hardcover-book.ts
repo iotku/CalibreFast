@@ -173,7 +173,7 @@ export function wireHardcoverBook(controls: HTMLElement, uuid: string): (() => v
                 if (st.placeholder && !st.can_choose) parts.push(" An editor can set its Hardcover book.");
                 break;
         }
-        if (st.all && st.state !== "off") parts.push(" (you share every book: ", el("a", { href: "/account#hardcover", className: "meta-link", textContent: "change" }), ")");
+        if (st.all && st.state !== "off") parts.push(" (you share every book: ", el("a", { href: "/me/sync#hardcover", className: "meta-link", textContent: "change" }), ")");
         if (st.shared && st.match?.chosen) parts.push(". You chose this match");
         line.append(...parts);
         const kids: Node[] = [line];
@@ -228,7 +228,7 @@ export function wireHardcoverBook(controls: HTMLElement, uuid: string): (() => v
                 void change(() => api<Status>("DELETE", `${base}/match`));
                 break;
             case "account":
-                location.assign("/account#hardcover");
+                location.assign("/me/sync#hardcover");
                 break;
         }
     });
