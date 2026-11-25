@@ -168,11 +168,14 @@ func purgeDeletedAccounts(now time.Time) {
 }
 
 // startAccountPurge purges due accounts now and then every accountPurgeEvery.
+// The same ticker prunes notifications daily (notifications.go).
 func startAccountPurge() {
 	purgeDeletedAccounts(time.Now())
+	maybeSweepNotifications(time.Now())
 	go func() {
 		for range time.Tick(accountPurgeEvery) {
 			purgeDeletedAccounts(time.Now())
+			maybeSweepNotifications(time.Now())
 		}
 	}()
 }

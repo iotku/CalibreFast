@@ -21,6 +21,9 @@ for (const code of document.querySelectorAll<HTMLElement>(".same-origin-url")) {
     code.textContent = withPageScheme(code.textContent ?? "");
 }
 import { meRequest } from "./me.js";
+import type { HardcoverIndicator, HardcoverStatus } from "./types.js";
+import { clearable } from "./clearable.js";
+import { attachSearchSuggest } from "./search-suggest.js";
 
 
 function icon(path: string): SVGSVGElement {
@@ -157,6 +160,24 @@ function init(bar: HTMLElement): void {
         if (open) searchInput?.focus();
     });
     bar.querySelector(".tb-search-close")?.addEventListener("click", () => closeAll());
+    // In the box: a ✕ that empties it (not .tb-search-close, which closes
+    // the box on a phone), and suggestions while typing. The suggestions
+    // count as one of the bar's menus, so an outside click or Escape closes
+    // them (the box, a combobox, says aria-expanded); opening them closes
+    // the other menus, but not the box they hang from.
+    const searchForm = bar.querySelector<HTMLFormElement>("form.tb-search");
+    if (searchForm && searchInput) {
+        clearable(searchInput, "Clear the search");
+        const suggest = attachSearchSuggest(searchForm, searchInput, () => {
+            for (const t of toggles) if (t.btn !== searchBtn && t.btn !== searchInput && t.btn.getAttribute("aria-expanded") === "true") t.set(false);
+        });
+        toggles.push({
+            btn: searchInput,
+            set(open) {
+                if (!open) suggest.close();
+            },
+        });
+    }
 
     // A page's actions: the Manage menu, and when folded your own actions
     // with it (filtered.html); picking one closes it, as any click does.
@@ -235,6 +256,8 @@ function init(bar: HTMLElement): void {
         imports?: number | null;
         /** Unseen notifications (notifications.go). */
         notifications?: number;
+        /** Hardcover sync; absent for users who never linked. */
+        hardcover?: HardcoverIndicator | null;
     }
     const cache = {
         get(): string | null {
@@ -279,16 +302,20 @@ function init(bar: HTMLElement): void {
     const plural = (n: number, one: string): string => `${n} ${one}${n === 1 ? "" : "s"}`;
     const NOTICES_SHOWN = 5;
     const SYNC_LINGER_MS = 3000;
+    const HC_POLL_MS = 4000;
     interface SyncButton {
         node: HTMLElement;
         /** How many notifications are unseen. */
         setUnseen(n: number): void;
+        /** The user's Hardcover sync, as /api/me has it (null: never linked). */
+        setHardcover(hc: HardcoverIndicator | null): void;
     }
     let syncFor: (SyncButton & { name: string }) | null = null;
     /** The sync button, made once per user (render runs again when the server's answer differs). */
-    function syncButton(name: string, unseen: number): HTMLElement {
+    function syncButton(name: string, unseen: number, hc: HardcoverIndicator | null): HTMLElement {
         if (syncFor?.name !== name) syncFor = { name, ...makeSyncButton(name) };
         syncFor.setUnseen(unseen);
+        syncFor.setHardcover(hc);
         return syncFor.node;
     }
     /**
@@ -296,7 +323,7 @@ function init(bar: HTMLElement): void {
      * word or two while waiting, and an (i) that shows what it covers and
      * where it stands in full.
      */
-    function stateLine(label: string): { line: HTMLElement; set(done: boolean, short: string, detail: string): void } {
+    function stateLine(label: string): { line: HTMLElement; set(done: boolean, short: string, detail: string, alert?: boolean): void } {
         const status = el("span", { className: "tb-sync-status" });
         status.setAttribute("role", "status");
         const info = el("button", { type: "button", className: "tb-sync-info-btn", title: `About ${label}`, ariaLabel: `About ${label}` });
@@ -310,13 +337,14 @@ function init(bar: HTMLElement): void {
         });
         const head = el("p", { className: "tb-sync-line tb-sync-state" }, el("span", { className: "tb-sync-label", textContent: label }), status, info);
         const line = el("div", {}, head, detail);
-        let was: boolean | null = null;
+        let was: string | null = null;
         return {
             line,
-            set(done, short, d) {
-                if (was !== done) {
-                    was = done;
-                    const glyph = icon(done ? CHECK : CLOCK);
+            set(done, short, d, alert = false) {
+                const mark = alert ? "alert" : done ? "done" : "wait";
+                if (was !== mark) {
+                    was = mark;
+                    const glyph = icon(alert ? ALERT : done ? CHECK : CLOCK);
                     glyph.classList.add("tb-sync-mark");
                     head.classList.toggle("is-done", done);
                     const old = head.querySelector(".tb-sync-mark");
@@ -339,8 +367,10 @@ function init(bar: HTMLElement): void {
         /** favorite_*: the author or series, and how many of its books are new. */
         subject?: string;
         count: number;
+        /** placeholder_added: the saved book's authors ("A & B"), if known. */
+        authors?: string;
     }
-    /** A notice's headline and the line under it. */
+    /** A notice's headline and the line under it (may be empty). */
     function noticeText(n: Notice): [headline: string, note: string] {
         const many = n.count > 1;
         const subject = n.subject ?? "";
@@ -352,7 +382,8 @@ function init(bar: HTMLElement): void {
             case "favorite_series":
                 return many ? [`${n.count} new books in ${subject}`, "A series you follow"] : [n.title, `New in ${subject}`];
             default:
-                return [n.title, n.on_deck ? "In the library, and On deck" : "In the library, in Saved"];
+                // As notifications.html words it.
+                return [`Saved book added to library: ${n.title}${n.authors ? ` by ${n.authors}` : ""}${n.on_deck ? " · On deck" : ""}`, ""];
         }
     }
     function makeSyncButton(name: string): SyncButton {
@@ -380,6 +411,50 @@ function init(bar: HTMLElement): void {
         // (or the keyboard focus) would lose a click.
         const readingLine = stateLine("Reading Sync");
         const booksLine = stateLine("Book Sync");
+        // Hardcover sync (internal/hardcoversync), for users with a link:
+        // passive, never a pop-up. While the menu is open and something is
+        // being sent, /api/me/hardcover is asked again every HC_POLL_MS.
+        const hcLine = stateLine("Hardcover Sync");
+        hcLine.line.hidden = true;
+        const hcRelink = el("a", { href: "/account#hardcover", className: "tb-sync-line", textContent: "Link Hardcover again", hidden: true });
+        hcLine.line.append(hcRelink);
+        let hc: HardcoverIndicator | null = null;
+        let hcError = ""; // the latest failure's message, from /api/me/hardcover
+        let hcTimer = 0;
+        let hcAsk = 0;
+        // Something to send now (not only failures waiting out their back-off).
+        const hcActive = (h: HardcoverIndicator | null): boolean => !!h && h.state === "linked" && (h.busy || h.waiting > h.failing);
+        const stopHcPoll = (): void => {
+            window.clearTimeout(hcTimer);
+            hcTimer = 0;
+            hcAsk++; // an answer still on its way is dropped
+        };
+        const askHardcover = (): void => {
+            const ask = ++hcAsk;
+            api<HardcoverStatus>("GET", "/api/me/hardcover")
+                .then((st) => {
+                    if (ask !== hcAsk || panel.hidden) return;
+                    if (st.state === "linked" && st.summary) {
+                        hc = { state: "linked", busy: !!st.busy, waiting: st.summary.waiting, failing: st.summary.failing, ...(st.summary.last_sent ? { last_sent: st.summary.last_sent } : {}) };
+                        hcError = st.summary.last_error ?? "";
+                    } else hc = st.state === "broken" ? { state: "broken", busy: false, waiting: 0, failing: 0 } : null;
+                    paint();
+                    pollHardcover();
+                })
+                .catch(() => {
+                    if (ask === hcAsk && !panel.hidden) pollHardcover(); // offline for a moment: keep asking while it's open
+                });
+        };
+        /** Ask again in HC_POLL_MS while the menu is open and something's being sent; else stop. */
+        const pollHardcover = (): void => {
+            window.clearTimeout(hcTimer);
+            hcTimer = 0;
+            if (panel.hidden || !hcActive(hc)) return;
+            hcTimer = window.setTimeout(() => {
+                hcTimer = 0;
+                askHardcover();
+            }, HC_POLL_MS);
+        };
         // The book downloading: cover, title, authors, a progress bar, sizes.
         const cover = el("img", { className: "tb-sync-cover", alt: "", width: 40, height: 56, loading: "lazy" });
         const bookTitle = el("span", { className: "tb-sync-title" });
@@ -447,6 +522,7 @@ function init(bar: HTMLElement): void {
             { className: "tb-menu-list tb-sync-panel", hidden: true },
             readingLine.line,
             booksLine.line,
+            hcLine.line,
             card,
             nextLine,
             el("hr"),
@@ -530,6 +606,25 @@ function init(bar: HTMLElement): void {
                     : "All up to date.");
             readingLine.set(readingDone, readingShort, reading);
             booksLine.set(booksDone, booksShort, books);
+            hcLine.line.hidden = !hc;
+            hcRelink.hidden = hc?.state !== "broken";
+            if (hc) {
+                const about = "Your reading, sent to your Hardcover account for the books you share with it. ";
+                if (hc.state === "broken") {
+                    hcLine.set(false, "Link broken", about + "Hardcover no longer accepts this server's sign-in: link your account again to go on sending.", true);
+                } else if (hc.failing > 0) {
+                    hcLine.set(
+                        false,
+                        `${hc.failing} failing`,
+                        about + `${plural(hc.failing, "book")} couldn't be sent; trying again later.` + (hcError ? ` Last error: ${hcError}` : ""),
+                        true,
+                    );
+                } else if (hc.busy || hc.waiting > 0) {
+                    hcLine.set(false, "Syncing…", about + (hc.waiting ? `${plural(hc.waiting, "book")} waiting to be sent.` : "Sending now."));
+                } else {
+                    hcLine.set(true, "", about + "All sent." + (hc.last_sent ? ` Last sent ${hc.last_sent}.` : ""));
+                }
+            }
             card.hidden = !a;
             if (a) {
                 // A path we build, not a URL from data.
@@ -561,7 +656,11 @@ function init(bar: HTMLElement): void {
         syncToggle = register(btn, (open) => {
             panel.hidden = !open;
             paint();
-            if (!open) return;
+            if (!open) {
+                stopHcPoll();
+                return;
+            }
+            if (hc && navigator.onLine) askHardcover(); // where it stands now, and the last error
             loadNotices();
             // Shown, so seen: the bell goes.
             if (unseen) {
@@ -584,6 +683,12 @@ function init(bar: HTMLElement): void {
                 if (n === unseen) return;
                 unseen = n;
                 paint();
+            },
+            setHardcover(h) {
+                if (JSON.stringify(h) === JSON.stringify(hc)) return;
+                hc = h;
+                paint();
+                pollHardcover();
             },
         };
     }
@@ -704,7 +809,7 @@ function init(bar: HTMLElement): void {
             shortcut("/me/saved", "Saved", BOOKMARK, "saved"),
             shortcut("/me/favorites", "Favorites", STAR, "favorites"),
             shortcut("/me/reading", "Reading", BOOK, "reading"),
-            syncButton(name, st.notifications ?? 0),
+            syncButton(name, st.notifications ?? 0, st.hardcover ?? null),
             el("div", { className: "tb-menu" }, btn, list),
         );
         snapshot();
@@ -765,6 +870,7 @@ function init(bar: HTMLElement): void {
                 canAdmin: !!body.can_admin_library,
                 imports: body.pending_imports ?? null,
                 notifications: body.notifications ?? 0,
+                hardcover: body.hardcover ?? null,
             };
             const json = JSON.stringify(st);
             cache.set(json);

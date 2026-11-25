@@ -80,6 +80,31 @@ export interface MeResponse {
     prefs?: { format: "last" | "epub" | "pdf"; track_reading?: boolean; daily_pages?: number; yearly_books?: number; goal_notice?: boolean };
     /** When the user's favorite authors etc. last changed (unix ms; favorites.ts). */
     favs?: number;
+    /** Hardcover sync, for the sync menu; only for users with a link, working or broken (Go: hardcoversync.Indicator). */
+    hardcover?: HardcoverIndicator;
+}
+
+/** A user's Hardcover sync at a glance (Go: hardcoversync.Indicator). */
+export interface HardcoverIndicator {
+    state: "linked" | "broken";
+    /** The server is sending something of theirs now. */
+    busy: boolean;
+    waiting: number;
+    failing: number;
+    last_sent?: string;
+}
+
+/** GET /api/me/hardcover (Go: hcStatus in hardcover_account.go). */
+export interface HardcoverStatus {
+    /** "off", "unlinked", "pending", "linked", "broken" or "disabled". */
+    state: string;
+    username?: string;
+    user_code?: string;
+    /** Linked only. */
+    summary?: { waiting: number; failing: number; skipped: number; last_sent?: string; last_error?: string };
+    busy: boolean;
+    /** When the server last finished sending something of theirs (RFC 3339; since it started). */
+    last_run?: string;
 }
 
 /** A favorite author, series, tag, publisher or language (Go: aggFavorite). */
@@ -92,6 +117,10 @@ export interface AggFavorite {
     count: number;
     /** An author the user follows on Hardcover, as far as the server knows. */
     hc_followed?: boolean;
+    /** Its picture, a path on this site (none: show initial). */
+    image_url?: string;
+    /** The letter shown in place of a picture. */
+    initial?: string;
 }
 
 /** A library value suggestion (Go: groupValuesHandler). */

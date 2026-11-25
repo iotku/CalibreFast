@@ -198,6 +198,50 @@ input[type="number"],
     width: 300px;
 }
 
+/* A box with a ✕ that empties it (clearable.ts), shown only while there's
+   something to clear; the browser's own search ✕ is hidden. */
+.clearable {
+    position: relative;
+    display: flex;
+    align-items: center;
+    min-width: 0;
+}
+
+.clearable input {
+    padding-right: 30px;
+}
+
+.clearable input::-webkit-search-cancel-button {
+    -webkit-appearance: none;
+    appearance: none;
+}
+
+.clear-x {
+    position: absolute;
+    right: 5px;
+    width: 26px;
+    height: 26px;
+    padding: 0;
+    border: 0;
+    border-radius: 50%;
+    background: transparent;
+    color: var(--text-muted);
+    font-size: 0.75rem;
+    line-height: 1;
+    cursor: pointer;
+}
+
+.clear-x:hover,
+.clear-x:focus-visible {
+    color: var(--text-primary);
+    background: rgba(255, 255, 255, 0.08);
+}
+
+/* Nothing to clear: no ✕ (clearable.ts gives every box a placeholder) */
+.clearable input:placeholder-shown + .clear-x {
+    display: none;
+}
+
 .input-page {
     width: 56px;
     text-align: center;
@@ -1511,6 +1555,81 @@ body:not(.home-editing) .greeting-off:not(:has(.greeting-stats-slot:not([hidden]
     height: 36px;
 }
 
+.tb-search {
+    position: relative; /* for its suggestions (.tb-suggest) */
+}
+
+.tb-search .clearable {
+    flex: 1;
+}
+
+/* Suggestions while typing (search-suggest.ts): a .tb-menu-list hung under
+   the box, wider than it, from its right edge. */
+.tb-menu-list.tb-suggest {
+    left: auto;
+    right: 0;
+    width: max(100%, 380px);
+    max-width: calc(100vw - 16px);
+    box-sizing: border-box;
+    z-index: 3;
+}
+
+.tb-suggest-group {
+    display: flex;
+    flex-direction: column;
+}
+
+.tb-suggest-group + .tb-suggest-group {
+    margin-top: 4px;
+    padding-top: 4px;
+    border-top: 1px solid var(--border-medium);
+}
+
+.tb-suggest-head {
+    padding: 4px 10px 2px;
+    color: var(--text-muted);
+    font-size: 0.75rem;
+    text-transform: uppercase;
+    letter-spacing: 0.04em;
+}
+
+.tb-menu-list.tb-suggest a {
+    display: flex;
+    align-items: baseline;
+    gap: 8px;
+    white-space: normal;
+}
+
+.tb-suggest-main {
+    flex: 1;
+    min-width: 0;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+    color: var(--text-primary);
+}
+
+.tb-suggest-sub {
+    flex: 0 1 auto;
+    min-width: 0;
+    max-width: 45%;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+    color: var(--text-muted);
+    font-size: 0.82rem;
+}
+
+.tb-menu-list.tb-suggest a[aria-selected="true"] {
+    color: var(--text-primary);
+    background: rgba(255, 255, 255, 0.08);
+    outline: 1px solid var(--border-medium);
+}
+
+.tb-menu-list.tb-suggest .tb-suggest-all {
+    color: var(--text-secondary);
+}
+
 .tb-tools,
 .tb-user {
     display: flex;
@@ -1865,6 +1984,21 @@ body:not(.home-editing) .greeting-off:not(:has(.greeting-stats-slot:not([hidden]
         display: inline-flex !important;
     }
 
+    /* Its suggestions: the whole screen under the bar (as with tb-tightest, below) */
+    .site-bar.search-open .tb-menu-list.tb-suggest {
+        top: 100%;
+        left: 0;
+        right: 0;
+        width: auto;
+        max-width: none;
+        height: calc(100dvh - var(--topbar-total));
+        max-height: none;
+        border-radius: 0;
+        border-width: 1px 0 0;
+        box-shadow: none;
+        padding: 6px max(6px, env(safe-area-inset-right, 0px)) max(6px, env(safe-area-inset-bottom, 0px)) max(6px, env(safe-area-inset-left, 0px));
+    }
+
     .tb-shortcut,
     .tb-user-name {
         display: none !important;
@@ -1914,6 +2048,25 @@ body:not(.home-editing) .greeting-off:not(:has(.greeting-stats-slot:not([hidden]
 
 .site-bar.tb-tightest.search-open .tb-search-close {
     display: inline-flex !important;
+}
+
+/* The search box over the bar (a phone, or tb-tightest): its suggestions
+   take the whole screen under the bar. Absolute from the box, which then
+   covers the bar exactly, rather than fixed: the bar's backdrop-filter
+   makes it the containing block of anything fixed inside it. (Phones: in
+   the ≤ 640px block below.) */
+.site-bar.tb-tightest.search-open .tb-menu-list.tb-suggest {
+    top: 100%;
+    left: 0;
+    right: 0;
+    width: auto;
+    max-width: none;
+    height: calc(100dvh - var(--topbar-total));
+    max-height: none;
+    border-radius: 0;
+    border-width: 1px 0 0;
+    box-shadow: none;
+    padding: 6px max(6px, env(safe-area-inset-right, 0px)) max(6px, env(safe-area-inset-bottom, 0px)) max(6px, env(safe-area-inset-left, 0px));
 }
 
 /* ============================================
@@ -2980,7 +3133,7 @@ body.book-standalone {
     margin: 0 0 1.75rem;
 }
 
-/* Small rounded buttons: the cloud's order and Discover's "Show others" */
+/* Small rounded buttons: the cloud's order and Discover's "Show more" */
 .agg-order {
     display: inline-flex;
     padding: 2px;
@@ -3240,8 +3393,12 @@ body.book-standalone {
     margin: 0 0 1rem;
 }
 
-.agg-search .input-search {
+.agg-search .clearable {
     width: min(420px, 100%);
+}
+
+.agg-search .input-search {
+    width: 100%;
     box-sizing: border-box;
 }
 
@@ -7748,6 +7905,31 @@ body:has(.manage-panel:not([hidden])) .select-bar {
     }
     .fav-agg-initial {
         font-size: 2rem;
+    }
+}
+
+/* /authors: the same carousel at the top (aggregate.html), its "Show all"
+   a pill like Discover's. Before the user's kept favorites exist, a
+   throbber holds a card's height. */
+#agg-favorites .fav-aggs-all {
+    border-color: var(--border-medium);
+}
+
+.fav-aggs-row:has(> .fav-aggs-wait) {
+    display: block;
+}
+
+.fav-aggs-wait {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    width: 100%;
+    min-height: 178px;
+}
+
+@media (max-width: 640px) {
+    .fav-aggs-wait {
+        min-height: 150px;
     }
 }
 

@@ -6,8 +6,8 @@ package main
 //   - PUT / DELETE /api/me/favorites/{kind}/{name}: favorite or not. Only
 //     values in the library can be favorited. A row whose value later
 //     leaves the library (or is grouped away) is kept but not listed.
-//   - GET /api/me/favorites: the user's favorites with their links and
-//     counts. Pages stay the same for everyone: the browser keeps this
+//   - GET /api/me/favorites: the user's favorites with their links,
+//     counts and pictures (image_url, initial), and aggregateGen as gen. Pages stay the same for everyone: the browser keeps this
 //     list (web/favorites.ts) and asks again only when /api/me's `favs`
 //     (users.favs_changed) differs from the one it kept.
 //   - Favorites weigh in Recommended for you (recommend.go) and are shown
@@ -44,6 +44,10 @@ type aggFavorite struct {
 	// HCFollowed: an author the user follows on Hardcover, as far as is
 	// known here (hcFollowedHere).
 	HCFollowed bool `json:"hc_followed,omitempty"`
+	// The carousels' picture (favImageURL; "" for none) and the letter
+	// shown in its place (favInitial). Filled by withFavPictures only.
+	ImageURL string `json:"image_url,omitempty"`
+	Initial  string `json:"initial,omitempty"`
 }
 
 // aggValue: the library's value of category c browsed as raw (after
@@ -111,12 +115,41 @@ func userAggFavorites(u *User) ([]aggFavorite, error) {
 	return out, rows.Err()
 }
 
+// favImageURL: a favorite's picture, a path on this site (aggregate_meta,
+// else an author's from Hardcover); "" for none.
+func favImageURL(kind, name string) string {
+	if m, ok := aggregateMetaFor(kind, name); ok {
+		if u := m.imageURL(); u != "" {
+			return u
+		}
+	}
+	if kind == "author" {
+		return hcAuthorImageURL(hcAuthors.For(name))
+	}
+	return ""
+}
+
+// favInitial: the letter shown in place of label's picture.
+func favInitial(label string) string {
+	if r, _ := utf8.DecodeRuneInString(label); r != utf8.RuneError {
+		return strings.ToUpper(string(r))
+	}
+	return ""
+}
+
+// withFavPictures fills favs' ImageURL and Initial.
+func withFavPictures(favs []aggFavorite) {
+	for i := range favs {
+		f := &favs[i]
+		f.ImageURL = favImageURL(f.Kind, f.Name)
+		f.Initial = favInitial(cmp.Or(f.Label, f.Name))
+	}
+}
+
 // favCard is a favorite in the carousel on /me/favorites (filtered.html).
 type favCard struct {
 	aggFavorite
 	KindLabel string // "Author"
-	ImageURL  string // the entry's picture (aggregate_meta, else an author's from Hardcover), "" for none
-	Initial   string // shown in place of a picture
 }
 
 // userFavCards: u's favorites as cards, by kind (authors first), newest first.
@@ -125,21 +158,11 @@ func userFavCards(u *User) ([]favCard, error) {
 	if err != nil {
 		return nil, err
 	}
+	withFavPictures(favs)
 	out := make([]favCard, 0, len(favs))
 	for _, f := range favs {
 		c := categoryByKey(f.Kind)
-		label := cmp.Or(f.Label, f.Name)
-		card := favCard{aggFavorite: f, KindLabel: strings.ToUpper(c.Label[:1]) + c.Label[1:]}
-		if r, _ := utf8.DecodeRuneInString(label); r != utf8.RuneError {
-			card.Initial = strings.ToUpper(string(r))
-		}
-		if m, ok := aggregateMetaFor(f.Kind, f.Name); ok {
-			card.ImageURL = m.imageURL()
-		}
-		if card.ImageURL == "" && f.Kind == "author" {
-			card.ImageURL = hcAuthorImageURL(hcAuthors.For(f.Name))
-		}
-		out = append(out, card)
+		out = append(out, favCard{aggFavorite: f, KindLabel: strings.ToUpper(c.Label[:1]) + c.Label[1:]})
 	}
 	// Authors first, then by the categories' order; newest first in each.
 	kindAt := func(k string) int { return slices.IndexFunc(categories, func(c *category) bool { return c.Key == k }) }
@@ -409,7 +432,11 @@ func aggFavoritesHandler(w http.ResponseWriter, r *http.Request) {
 			favs[i].HCFollowed = favs[i].Kind == "author" && followed[strings.ToLower(favs[i].Name)]
 		}
 	}
-	writeJSON(w, http.StatusOK, map[string]any{"favs": favsChanged(u), "favorites": favs,
+	withFavPictures(favs)
+	// gen: the aggregate pages' generation (aggregateGen, in their data-src),
+	// for /authors' carousel (web/aggregate.ts) to tell when the counts or
+	// pictures it kept may be out of date.
+	writeJSON(w, http.StatusOK, map[string]any{"favs": favsChanged(u), "gen": aggregateGen.Load(), "favorites": favs,
 		"hc_unfollow": p.CanWrite, "hc_unfollow_default": p.UnfollowDefault,
 		// Authors starred here are followed there, if not yet (it's sent in
 		// the background): the dialog asks for them too.

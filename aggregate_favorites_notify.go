@@ -17,7 +17,8 @@ package main
 //     author it gained. A batch makes one notification per author or
 //     series, with how many books ("3 new books by …").
 //   - A book the user already has a notification about (say, the saved
-//     placeholder it replaced) isn't announced again.
+//     placeholder it replaced), even a dismissed one, isn't announced again.
+//   - Users told the same books share one event (notifications.go).
 //   - The person who made the change is told too, if they starred it: the
 //     batch doesn't know who that was.
 
@@ -153,12 +154,7 @@ func notifyFavoriteGains(gains []favGain) error {
 		}
 	}
 
-	for uid, ns := range byUser {
-		if err := notifyUserFavorites(uid, ns); err != nil {
-			log.Printf("favorites: notify user %d: %v", uid, err)
-		}
-	}
-	return nil
+	return notifyUserFavorites(byUser)
 }
 
 // favNews: the books of one author or series a user hears about.
@@ -167,30 +163,52 @@ type favNews struct {
 	books         []favGain
 }
 
-// notifyUserFavorites stores one user's notifications, leaving out books
-// they've already been told about.
-func notifyUserFavorites(uid int64, ns []*favNews) error {
+// notifyUserFavorites stores the batch's notifications, leaving out for
+// each user the books they've already been told about (dismissed ones
+// too: a book is announced once). Users told the same books of the same
+// author or series share one event (notifications.go).
+func notifyUserFavorites(byUser map[int64][]*favNews) error {
 	tx, err := appDB.Begin()
 	if err != nil {
 		return err
 	}
 	defer tx.Rollback()
-	for _, n := range ns {
-		var fresh []favGain
-		for _, b := range n.books {
-			var seen int
-			if err := tx.QueryRow(`SELECT COUNT(*) FROM notifications WHERE user_id = ? AND book_uuid = ?`, uid, b.uuid).Scan(&seen); err != nil {
+	uids := make([]int64, 0, len(byUser))
+	for uid := range byUser {
+		uids = append(uids, uid)
+	}
+	slices.Sort(uids)
+	events := map[string]int64{} // kind, subject and the books' uuids: its event
+	for _, uid := range uids {
+		for _, n := range byUser[uid] {
+			var fresh []favGain
+			for _, b := range n.books {
+				var seen int
+				if err := tx.QueryRow(`SELECT COUNT(*) FROM user_notifications un JOIN notification_events e ON e.id = un.event_id
+					WHERE un.user_id = ? AND e.book_uuid = ?`, uid, b.uuid).Scan(&seen); err != nil {
+					return err
+				}
+				if seen == 0 {
+					fresh = append(fresh, b)
+				}
+			}
+			if len(fresh) == 0 {
+				continue
+			}
+			key := n.kind + "\x00" + strings.ToLower(n.subject)
+			for _, b := range fresh {
+				key += "\x00" + b.uuid
+			}
+			event, ok := events[key]
+			if !ok {
+				if event, err = addEvent(tx, notificationEvent{Kind: n.kind, BookUUID: fresh[0].uuid, Title: fresh[0].title, Subject: n.subject, Count: len(fresh)}); err != nil {
+					return err
+				}
+				events[key] = event
+			}
+			if err := deliver(tx, uid, event, false); err != nil {
 				return err
 			}
-			if seen == 0 {
-				fresh = append(fresh, b)
-			}
-		}
-		if len(fresh) == 0 {
-			continue
-		}
-		if err := addNotification(tx, uid, n.kind, fresh[0].uuid, fresh[0].title, false, n.subject, len(fresh)); err != nil {
-			return err
 		}
 	}
 	return tx.Commit()

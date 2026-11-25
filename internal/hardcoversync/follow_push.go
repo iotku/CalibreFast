@@ -256,6 +256,8 @@ func (s *Service) FollowStep(ctx context.Context) (ran bool, next time.Time) {
 		log.Println("hardcover follows:", err)
 		return false, now.Add(time.Minute)
 	}
+	done := s.working(userID)
+	defer done()
 	pctx, cancel := context.WithTimeout(ctx, time.Minute)
 	err = s.pushFollow(pctx, userID, name, op, hcID)
 	cancel()

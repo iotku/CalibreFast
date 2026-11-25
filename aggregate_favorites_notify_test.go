@@ -91,14 +91,43 @@ func TestFavoriteNotifications(t *testing.T) {
 		t.Fatalf("restored: %+v", n)
 	}
 
-	// A book the user was already told about (a saved placeholder it replaced): not again.
+	// A book the user was already told about (a saved placeholder it
+	// replaced), even if they dismissed that: not again.
 	placed := addTestBook(t, db, "Was Saved", []string{"Liked"}, nil, "", "epub")
-	if err := addNotification(appDB, alice.ID, notifyPlaceholderAdded, placed, "Was Saved", false, "", 1); err != nil {
+	ev, err := addEvent(appDB, notificationEvent{Kind: notifyPlaceholderAdded, BookUUID: placed, Title: "Was Saved"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := deliver(appDB, alice.ID, ev, false); err != nil {
+		t.Fatal(err)
+	}
+	if err := dismissNotifications(alice.ID, ev); err != nil {
 		t.Fatal(err)
 	}
 	flush(placed)
-	if n := news(alice); len(n) != 1 || n[0].Kind != notifyPlaceholderAdded {
+	if n := news(alice); len(n) != 0 {
 		t.Fatalf("already told: %+v", n)
+	}
+
+	// Two fans of the author told of the same book share one event.
+	if _, err := appDB.Exec(`INSERT INTO aggregate_favorites (user_id, kind, name, created_at) VALUES (?, 'author', 'Liked', 1)`, bob.ID); err != nil {
+		t.Fatal(err)
+	}
+	both := addTestBook(t, db, "For Both", []string{"Liked"}, nil, "", "epub")
+	flush(both)
+	an, bn := news(alice), news(bob)
+	if len(an) != 1 || len(bn) != 1 || an[0].ID != bn[0].ID {
+		t.Fatalf("shared: alice %+v, bob %+v", an, bn)
+	}
+	var events int
+	if err := appDB.QueryRow(`SELECT COUNT(*) FROM notification_events WHERE book_uuid = ?`, both).Scan(&events); err != nil || events != 1 {
+		t.Fatalf("events for one book: %d (%v)", events, err)
+	}
+	if _, err := appDB.Exec(`DELETE FROM aggregate_favorites WHERE user_id = ?`, bob.ID); err != nil {
+		t.Fatal(err)
+	}
+	if err := dismissNotifications(bob.ID, 0); err != nil {
+		t.Fatal(err)
 	}
 
 	if n := news(bob); len(n) != 0 {

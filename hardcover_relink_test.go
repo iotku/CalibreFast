@@ -43,7 +43,10 @@ func TestHardcoverRelinkNotification(t *testing.T) {
 	}
 	// Once: not again at the next start, nor once dismissed.
 	hcSync.NotifyRelink()
-	set(`DELETE FROM notifications WHERE user_id = ?`, u.ID)
+	if err := dismissNotifications(u.ID, n[0].ID); err != nil {
+		t.Fatal(err)
+	}
+	relinkGone(t, u.ID) // an account kind: deleted, not kept as history
 	hcSync.NotifyRelink()
 	if n := relinks(); len(n) != 0 {
 		t.Fatalf("told twice: %+v", n)
@@ -62,11 +65,32 @@ func TestHardcoverRelinkNotification(t *testing.T) {
 	if n := relinks(); len(n) != 0 {
 		t.Fatalf("relinked: %+v", n)
 	}
+	relinkGone(t, u.ID) // cleared: deleted outright
+
 	// A link with everything already: nothing to tell.
 	set(`UPDATE hardcover_links SET relink_notified = '', scope = scope || ' read:social write:social' WHERE user_id = ?`, u.ID)
 	hcSync.NotifyRelink()
 	if n := relinks(); len(n) != 0 {
 		t.Fatalf("all scopes: %+v", n)
+	}
+}
+
+// relinkGone: userID has no relink notice, active or dismissed, and no event of
+// that kind is left.
+func relinkGone(t *testing.T, userID int64) {
+	t.Helper()
+	earlier, err := dismissedNotifications(userID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, n := range earlier {
+		if n.Kind == notifyHardcoverRelink {
+			t.Fatalf("relink kept as history: %+v", n)
+		}
+	}
+	var events int
+	if err := appDB.QueryRow(`SELECT COUNT(*) FROM notification_events WHERE kind = ?`, notifyHardcoverRelink).Scan(&events); err != nil || events != 0 {
+		t.Fatalf("relink events left: %d (%v)", events, err)
 	}
 }
 
