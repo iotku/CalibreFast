@@ -276,6 +276,28 @@ func TestSavedBooksOnDeck(t *testing.T) {
 	if got := list(1); len(got) != 1 || got[0].UUID != other[1] {
 		t.Errorf("limit 1: %+v", got)
 	}
+
+	// Saved books reads statuses only (no reading positions), and its On
+	// Deck is still the home page's, in the same order.
+	full, fullActive, err := userReading(alice)
+	if err != nil {
+		t.Fatal(err)
+	}
+	lean, leanActive, err := userStatuses(alice)
+	if err != nil {
+		t.Fatal(err)
+	}
+	home, _ := onDeck(alice, full, fullActive)
+	saved, _ := onDeck(alice, lean, leanActive)
+	uuids := func(bs []Book) (out []string) {
+		for _, b := range bs {
+			out = append(out, b.UUID)
+		}
+		return out
+	}
+	if !slices.Equal(uuids(home), uuids(saved)) {
+		t.Errorf("On Deck from statuses %q, from the full marks %q", uuids(saved), uuids(home))
+	}
 }
 
 func TestAuthorSeries(t *testing.T) {

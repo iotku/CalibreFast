@@ -23,6 +23,7 @@ import (
 	"path/filepath"
 	"strings"
 	"sync"
+	"sync/atomic"
 	"time"
 
 	"github.com/iotku/CalibreFast/pkg/kosync"
@@ -110,27 +111,48 @@ type nameIndex struct {
 	mu    sync.Mutex
 	built time.Time
 	ids   map[string]bookFile // md5(file name) → book; {} when ambiguous
+	// rebuilding: a background rebuild is under way (lookup starts one).
+	rebuilding atomic.Bool
 }
 
 var libraryNames = &nameIndex{}
 
 const nameIndexMaxAge = time.Minute
 
-// lookup finds the book whose file name hashes to id. The index is rebuilt
-// when it is older than a minute, so new books are found.
+// lookup finds the book whose file name hashes to id. Building the index
+// reads every format row in metadata.db (tens of ms in a big library), so
+// only the first lookup waits for it. After that an index over a minute old
+// still answers, and is rebuilt in the background so new books are found.
 func (n *nameIndex) lookup(id string) (bookFile, bool) {
 	n.mu.Lock()
-	defer n.mu.Unlock()
-	if n.ids == nil || time.Since(n.built) > nameIndexMaxAge {
-		ids, err := buildNameIndex()
-		if err != nil {
-			log.Println("kosync: file name index:", err)
-		} else {
+	if n.ids == nil {
+		n.rebuild()
+	} else if time.Since(n.built) > nameIndexMaxAge && n.rebuilding.CompareAndSwap(false, true) {
+		go func() {
+			defer n.rebuilding.Store(false)
+			ids, err := buildNameIndex()
+			if err != nil {
+				log.Println("kosync: file name index:", err)
+				return
+			}
+			n.mu.Lock()
 			n.ids, n.built = ids, time.Now()
-		}
+			n.mu.Unlock()
+		}()
 	}
 	b, ok := n.ids[id]
+	n.mu.Unlock()
 	return b, ok && b.UUID != ""
+}
+
+// rebuild builds the index now; n.mu is held.
+func (n *nameIndex) rebuild() {
+	ids, err := buildNameIndex()
+	if err != nil {
+		log.Println("kosync: file name index:", err)
+		return
+	}
+	n.ids, n.built = ids, time.Now()
 }
 
 func buildNameIndex() (map[string]bookFile, error) {

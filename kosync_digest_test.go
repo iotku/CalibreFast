@@ -114,3 +114,43 @@ func TestHashWebReadBooks(t *testing.T) {
 		t.Fatal("web-read book not hashed")
 	}
 }
+
+// A stale file-name index still answers at once, and is rebuilt in the
+// background so a book added since is found soon after.
+func TestNameIndexRebuildsInBackground(t *testing.T) {
+	_, books := setupLibraryAndUser(t, 2)
+	addBookFile(t, books[0], "First", "epub", []byte("a"))
+	if _, ok := libraryNames.lookup(kosync.FileNameDigest("First.epub")); !ok {
+		t.Fatal("first lookup builds the index")
+	}
+	var id int64
+	if err := calibreDB.QueryRow(`SELECT id FROM books WHERE uuid = ?`, books[1]).Scan(&id); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := calibreDB.Exec(`INSERT INTO data (book, format, uncompressed_size, name) VALUES (?, 'EPUB', 1, 'Second')`, id); err != nil {
+		t.Fatal(err)
+	}
+	second := kosync.FileNameDigest("Second.epub")
+	if _, ok := libraryNames.lookup(second); ok {
+		t.Fatal("a fresh index isn't rebuilt")
+	}
+	libraryNames.mu.Lock()
+	libraryNames.built = time.Now().Add(-2 * nameIndexMaxAge)
+	libraryNames.mu.Unlock()
+	if _, ok := libraryNames.lookup(second); ok {
+		t.Fatal("a stale index answers from what it has, without waiting for the rebuild")
+	}
+	deadline := time.Now().Add(5 * time.Second)
+	for {
+		if b, ok := libraryNames.lookup(second); ok {
+			if b.UUID != books[1] {
+				t.Fatalf("found %+v", b)
+			}
+			break
+		}
+		if time.Now().After(deadline) {
+			t.Fatal("the background rebuild never found the new file")
+		}
+		time.Sleep(10 * time.Millisecond)
+	}
+}
