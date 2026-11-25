@@ -26,6 +26,7 @@ import { clearable } from "./clearable.js";
 import { attachSearchSuggest } from "./search-suggest.js";
 import { noticeCover, noticeText, type Notice } from "./notice-text.js";
 import { declinePush, pushSupported, shouldOfferPush, turnOffPush, turnOnPush } from "./push.js";
+import { activeSystemAlerts, hideSystemAlert, showSystemAlert, SYSTEM_ALERTS_EVENT, systemAlertParts } from "./system-alerts.js";
 
 /** A book's cover thumbnail in the sync menu: the book downloading, or a saved book that arrived. Hidden if it won't load. */
 function syncCover(uuid?: string): HTMLImageElement {
@@ -97,25 +98,22 @@ function showGuestOffer(user: string, books: number): void {
 }
 
 /**
- * The alert under the top bar for someone who can't sign in again: no
+ * The critical system alert for someone who can't sign in again: no
  * password that works here and no linked GitHub/Google, so only the admin's
  * one-time link got them in. It can't be dismissed and is on every page with
- * the bar (not the readers) until they link one. Its own class, not
- * .guest-offer: showGuestOffer clears that one.
+ * the bar (not the readers) until they link one (system-alerts.ts).
  */
 function showSignInWarning(atRisk: boolean): void {
-    document.querySelector(".signin-alert")?.remove();
-    if (!atRisk) return;
-    document.querySelector(".site-bar")?.after(
-        el(
-            "div",
-            { className: "signin-alert", role: "alert" },
-            el("span", {
-                textContent: "You can't sign in with a password. Link GitHub or Google to your account, or once this session ends you'll be locked out and need a new sign-in link from an admin.",
-            }),
-            el("a", { className: "btn-standard btn-primary", href: "/account#linked-sign-ins", textContent: "Link a sign-in" }),
-        ),
-    );
+    if (!atRisk) {
+        hideSystemAlert("signin-risk");
+        return;
+    }
+    showSystemAlert({
+        id: "signin-risk",
+        critical: true,
+        text: "You can't sign in with a password. Link GitHub or Google to your account, or once this session ends you'll be locked out and need a new sign-in link from an admin.",
+        action: { href: "/account#linked-sign-ins", label: "Link a sign-in" },
+    });
 }
 
 function init(bar: HTMLElement): void {
@@ -477,6 +475,25 @@ function init(bar: HTMLElement): void {
             e.stopPropagation();
             writeSync(name, { paused: !readSync(name).paused });
         });
+        // The system alerts in force, dismissed or not, pinned above them (system-alerts.ts).
+        const pinned = el("ul", { className: "tb-notices tb-notices-pinned", hidden: true });
+        const showPinned = (): void => {
+            pinned.replaceChildren(
+                ...activeSystemAlerts().map((a) =>
+                    el("li", { className: a.critical ? "tb-notice is-pinned is-critical" : "tb-notice is-pinned" }, ...systemAlertParts(a, "")),
+                ),
+            );
+            pinned.hidden = !pinned.childElementCount;
+        };
+        showPinned();
+        // Kept current while this menu is the page's (render draws a new one).
+        let pinnedShown = false;
+        const onAlerts = (): void => {
+            if (pinned.isConnected) pinnedShown = true;
+            else if (pinnedShown) return document.removeEventListener(SYSTEM_ALERTS_EVENT, onAlerts);
+            showPinned();
+        };
+        document.addEventListener(SYSTEM_ALERTS_EVENT, onAlerts);
         // The notifications not dismissed yet, newest first, fetched when the menu opens.
         const notices = el("ul", { className: "tb-notices", hidden: true });
         const allNotices = mark(el("a", { href: "/me/notifications", className: "tb-notices-all", textContent: "All notifications" }), "notifications");
@@ -579,6 +596,7 @@ function init(bar: HTMLElement): void {
             card,
             nextLine,
             el("hr"),
+            pinned,
             notices,
             allNotices,
             pushOffer,

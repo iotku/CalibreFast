@@ -561,7 +561,7 @@ function step(dir: 1 | -1): void {
 function revealCard(card: HTMLElement): void {
     card.scrollIntoView({ block: "nearest", inline: "nearest", behavior: "instant" });
     const top = card.getBoundingClientRect().top;
-    const bar = document.querySelector<HTMLElement>(".top-bar")?.offsetHeight ?? 0;
+    const bar = document.querySelector<HTMLElement>(".top-bar")?.getBoundingClientRect().bottom ?? 0; // under any system alerts
     if (top < bar) window.scrollBy({ top: top - bar - 8, behavior: "instant" });
 }
 

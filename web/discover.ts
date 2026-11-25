@@ -394,7 +394,7 @@ function pumpCovers(): void {
     if (moves(layoutWatch.takeRecords())) coverQueue = null;
     if (!coverQueue) {
         const view: CoverView = {
-            header: document.querySelector<HTMLElement>(".top-bar")?.offsetHeight ?? 0,
+            header: document.querySelector<HTMLElement>(".top-bar")?.getBoundingClientRect().bottom ?? 0, // under any system alerts
             width: window.innerWidth,
             height: window.innerHeight,
             rows: new Map(),
