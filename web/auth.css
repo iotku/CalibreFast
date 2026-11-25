@@ -194,3 +194,27 @@ input[type="password"] {
     color: var(--text-muted);
     font-size: 0.85rem;
 }
+
+/* Privacy notice and terms (templates/about.html) */
+.auth-main:has(.auth-prose) {
+    width: min(680px, calc(100vw - 32px));
+}
+.auth-prose h2 {
+    margin: 1.5rem 0 0.4rem;
+    font-size: 1.05rem;
+}
+.auth-prose ul {
+    margin: 0.4rem 0;
+    padding-left: 1.25rem;
+}
+.auth-prose li,
+.auth-prose p {
+    line-height: 1.55;
+}
+.auth-prose li + li {
+    margin-top: 0.4rem;
+}
+.auth-legal {
+    text-align: center;
+    font-size: 0.85rem;
+}

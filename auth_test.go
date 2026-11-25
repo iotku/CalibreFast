@@ -143,7 +143,7 @@ func TestLibraryPrivateByDefault(t *testing.T) {
 		"/latest": http.StatusUnauthorized, "/?page=2": http.StatusUnauthorized,
 		"/api/books?uuids=x": http.StatusUnauthorized, "/pages/discover/featured.json": http.StatusUnauthorized,
 		"/api/me/pins": http.StatusUnauthorized, "/api/tag-strip?tag=x": http.StatusUnauthorized,
-		"/login": 200, "/register": 200, "/auth/github/start": 200, "/api/me": 200, "/l/some-token": 200,
+		"/login": 200, "/about/privacy": 200, "/about/terms": 200, "/register": 200, "/auth/github/start": 200, "/api/me": 200, "/l/some-token": 200,
 		authCSS: 200, styleCSS: http.StatusUnauthorized, authCSS + ".map": http.StatusUnauthorized,
 		"/static/vendor/epubjs@0.3.93/dist/epub.min.js": http.StatusUnauthorized,
 		"/sw.js": http.StatusUnauthorized, "/offline": http.StatusUnauthorized,
@@ -271,7 +271,7 @@ func TestLoginPageRevealsNothing(t *testing.T) {
 }
 
 // auth.css styles the signed-out pages and nothing else: every class it
-// names is one login.html or link.html uses, so it can't grow a
+// names is one login.html, link.html or about.html uses, so it can't grow a
 // description of the rest of the app.
 func TestAuthCSSOnlyNamesAuthPageClasses(t *testing.T) {
 	css, err := os.ReadFile("web/auth.css")
@@ -279,7 +279,7 @@ func TestAuthCSSOnlyNamesAuthPageClasses(t *testing.T) {
 		t.Fatal(err)
 	}
 	var pages []byte
-	for _, name := range []string{"login.html", "link.html"} {
+	for _, name := range []string{"login.html", "link.html", "about.html"} {
 		b, err := os.ReadFile("templates/" + name)
 		if err != nil {
 			t.Fatal(err)
@@ -289,7 +289,7 @@ func TestAuthCSSOnlyNamesAuthPageClasses(t *testing.T) {
 	css = regexp.MustCompile(`(?s)/\*.*?\*/`).ReplaceAll(css, nil)
 	for _, m := range regexp.MustCompile(`\.([a-zA-Z][\w-]*)`).FindAllSubmatch(css, -1) {
 		if c := string(m[1]); !regexp.MustCompile(`class="[^"]*\b` + regexp.QuoteMeta(c) + `\b`).Match(pages) {
-			t.Errorf("auth.css names .%s, which neither login.html nor link.html uses", c)
+			t.Errorf("auth.css names .%s, which none of the signed-out pages use", c)
 		}
 	}
 }
@@ -421,6 +421,31 @@ func TestMeSaysGuestReading(t *testing.T) {
 		}
 		if rec.Code != http.StatusUnauthorized || body["guest_reading"] != open {
 			t.Fatalf("public-read %v: %d %v", open, rec.Code, body)
+		}
+	}
+}
+
+// The privacy notice and terms are public (GitHub and Google review them),
+// and like the sign-in page say nothing of the library.
+func TestAboutPagesPublicAndGeneric(t *testing.T) {
+	setupTestAppDB(t)
+	origTitle := SiteTitle
+	SiteTitle = "Secret Stacks"
+	defer func() { SiteTitle = origTitle }()
+	for path, h := range map[string]http.HandlerFunc{
+		"/about/privacy": aboutHandler("privacy", "Privacy notice"),
+		"/about/terms":   aboutHandler("terms", "Terms of use"),
+	} {
+		rec := httptest.NewRecorder()
+		h(rec, httptest.NewRequest("GET", path, nil))
+		body := rec.Body.String()
+		if rec.Code != http.StatusOK || !isPublicPath(path) {
+			t.Fatalf("%s: %d, public %v", path, rec.Code, isPublicPath(path))
+		}
+		for _, leak := range []string{"Secret Stacks", "CalibreFast", `href="/"`, "<script", "tb-nav"} {
+			if strings.Contains(body, leak) {
+				t.Errorf("%s contains %q", path, leak)
+			}
 		}
 	}
 }
