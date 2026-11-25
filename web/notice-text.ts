@@ -16,7 +16,7 @@ export interface Notice {
     count: number;
     /** placeholder_added: the saved book's authors ("A & B"), if known. */
     authors?: string;
-    /** placeholder_added: the book now in the library (its cover: /cover-thumb/{uuid}). */
+    /** The book it's about (one of them, if several): the saved book now in the library, or a new one. */
     book_uuid?: string;
 }
 /** A notice's headline and the line under it (may be empty). */
@@ -34,4 +34,9 @@ export function noticeText(n: Notice): [headline: string, note: string] {
             // As notifications.html words it: the book, smaller, under the headline.
             return ["Saved book added:", `${n.title}${n.authors ? ` by ${n.authors}` : ""}${n.on_deck ? " · On deck" : ""}`];
     }
+}
+
+/** The book whose cover a notice shows: one book's (a saved book that arrived, one new book); "" for none. */
+export function noticeCover(n: Notice): string {
+    return n.book_uuid && n.count <= 1 ? n.book_uuid : "";
 }
