@@ -46,6 +46,32 @@ type Identity struct {
 	Login    string
 }
 
+// Display is what the account page shows for a linked sign-in: the login
+// name, or the email address when there is none. An email is cut short
+// (maskEmail): Cloudflare's email obfuscation rewrites whole addresses in
+// a page, even a private one, and the start is enough to tell which
+// account is linked.
+func (i Identity) Display() string {
+	if i.Login != "" {
+		return maskEmail(i.Login)
+	}
+	return maskEmail(i.Email)
+}
+
+// maskEmail cuts the end off an email address ("name@gmail.com" becomes
+// "name@gma…"), so it no longer looks like one to anything scanning the
+// page. Text without an "@" is returned as it is.
+func maskEmail(s string) string {
+	local, domain, ok := strings.Cut(s, "@")
+	if !ok {
+		return s
+	}
+	if r := []rune(domain); len(r) > 3 {
+		domain = string(r[:3])
+	}
+	return local + "@" + domain + "…"
+}
+
 // oauthUser is what a provider tells us about the person signing in.
 type oauthUser struct {
 	Subject string // stable provider id

@@ -127,3 +127,22 @@ func TestLinkedAccountsCappedPerProvider(t *testing.T) {
 		t.Fatalf("google at the github cap: %v", err)
 	}
 }
+
+func TestLinkedEmailIsCutShort(t *testing.T) {
+	for in, want := range map[string]string{
+		"name@gmail.com": "name@gma…",
+		"a@b.io":         "a@b.i…",
+		"octocat":        "octocat",
+		"":               "",
+	} {
+		if got := maskEmail(in); got != want {
+			t.Errorf("maskEmail(%q) = %q, want %q", in, got, want)
+		}
+	}
+	if got := (Identity{Email: "jo@example.org"}).Display(); got != "jo@exa…" {
+		t.Errorf("Display: %q", got)
+	}
+	if got := (Identity{Login: "octocat", Email: "o@example.org"}).Display(); got != "octocat" {
+		t.Errorf("Display with login: %q", got)
+	}
+}
