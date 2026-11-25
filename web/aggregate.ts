@@ -4,10 +4,10 @@
  * - The search box finds every entry, single-book ones too, from
  *   /api/<plural>. Matching is fuzzy (see fuzzy.ts): names that start with
  *   the query come first, then those containing it, then typo and initials
- *   matches; ties go to the entry with more books. An empty box shows the
- *   page as it was.
+ *   matches; ties go to the entry with more books. An empty box (Escape,
+ *   or its ✕: clearable.ts) shows the page as it was.
  * - Discover shows a random few (the server picks the first ones); "Show
- *   others" draws another few from the same list the search box uses.
+ *   more" draws another few from the same list the search box uses.
  * - The cloud can be ordered as served (by book count; series complete
  *   ones first), A–Z (with a letter bar to jump by), or shuffled. The
  *   choice is remembered. The letter bar marks the section in view; on a
@@ -21,6 +21,7 @@
  */
 
 import { startBookSync } from "./book-sync.js";
+import { clearable } from "./clearable.js";
 import { byId, el, random } from "./dom.js";
 import { booksLabel, favCard, setupFavRows } from "./fav-carousel.js";
 import { keptFavorites, loadFavorites } from "./favorites.js";
@@ -196,6 +197,8 @@ function runUpdate(): void {
     });
 }
 
+// Its ✕ empties it with an "input" event: the page comes back at once.
+clearable(input, "Clear the search");
 input.addEventListener("input", queueUpdate);
 input.addEventListener("focus", () => void load(), { once: true });
 input.addEventListener("keydown", (e) => {

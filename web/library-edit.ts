@@ -17,6 +17,7 @@
 
 import { api, byId, closeOnBackdropClick, el, errorMessage, icon, lineIcon, modalOpen } from "./dom.js";
 import { attachSuggest } from "./suggest.js";
+import { clearable } from "./clearable.js";
 import { joinAuthors, splitAuthors, tidyAuthors } from "./authors.js";
 import { ratingLabel } from "./rating.js";
 import { deleteBooks } from "./delete-books.js";
@@ -308,21 +309,6 @@ const allBox = el("input", { type: "checkbox", title: "Select every book shown",
 const sortButtons = new Map<ColKey, HTMLButtonElement>();
 const filterInputs = new Map<ColKey, HTMLInputElement>();
 const datalists = new Map<ColKey, HTMLDataListElement>();
-
-/**
- * The box with a ✕ after it that empties it (as typing would: an "input"
- * event), shown while there's something to clear. Browsers' own search-box
- * ✕ is hidden (library-edit.css): Firefox has none, and it's tiny.
- */
-function clearable(input: HTMLInputElement, label: string): HTMLElement {
-    const x = el("button", { type: "button", className: "lt-x", title: label, ariaLabel: label }, "✕");
-    x.addEventListener("click", () => {
-        input.value = "";
-        input.dispatchEvent(new Event("input", { bubbles: true }));
-        input.focus();
-    });
-    return el("span", { className: "lt-clearable" }, input, x);
-}
 
 // ---------------------------------------------------------------------------
 // Column widths: drag the edge of a column's name (or use ←/→ on it)
@@ -2161,13 +2147,7 @@ form.addEventListener("submit", async (e) => {
 // Toolbar, the URL, keys
 // ---------------------------------------------------------------------------
 
-{
-    const spot = el("span");
-    searchInput.replaceWith(spot);
-    const wrap = clearable(searchInput, "Clear the search");
-    wrap.classList.add("lt-search-wrap");
-    spot.replaceWith(wrap);
-}
+clearable(searchInput, "Clear the search").classList.add("lt-search-wrap");
 searchInput.addEventListener("input", () => {
     search = searchInput.value;
     scheduleRefresh();

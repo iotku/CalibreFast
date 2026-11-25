@@ -692,16 +692,16 @@
     color: var(--text-secondary);
 }
 
-/* A box with its ✕ (clearable() in library-edit.ts) */
-.lt-clearable {
-    position: relative;
-    display: flex;
-    align-items: center;
-    min-width: 0;
+/* Boxes with their ✕ (clearable.ts, style.css .clearable): the column
+   filters are small, so is their ✕ */
+.lt-table .clearable .lt-filter {
+    padding-right: 22px;
 }
 
-.lt-table .lt-clearable .lt-filter {
-    padding-right: 22px;
+.lt-table .clear-x {
+    right: 2px;
+    width: 22px;
+    height: 22px;
 }
 
 .lt-toolbar .lt-search-wrap {
@@ -713,43 +713,6 @@
     flex: 1;
     max-width: none;
     padding-right: 30px;
-}
-
-.lt-x {
-    position: absolute;
-    right: 2px;
-    width: 22px;
-    height: 22px;
-    padding: 0;
-    border: 0;
-    border-radius: 50%;
-    background: transparent;
-    color: var(--text-muted);
-    font-size: 0.75rem;
-    line-height: 1;
-    cursor: pointer;
-}
-
-.lt-search-wrap .lt-x {
-    right: 5px;
-    width: 26px;
-    height: 26px;
-}
-
-.lt-x:hover,
-.lt-x:focus-visible {
-    color: var(--text-primary);
-    background: rgba(255, 255, 255, 0.08);
-}
-
-/* Nothing to clear: no ✕ (both boxes have placeholders) */
-.lt-clearable input:placeholder-shown + .lt-x {
-    display: none;
-}
-
-.lt-clearable input::-webkit-search-cancel-button {
-    -webkit-appearance: none;
-    appearance: none;
 }
 
 /* Before a tags or languages cell's chips: edits the cell */

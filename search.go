@@ -466,11 +466,13 @@ books:
 // ---------------------------------------------------------------------------
 
 type searchLink struct {
-	Name string
-	Href string
+	Name  string
+	Href  string
+	Count int // books found that have it
 }
 
 type searchLinkGroup struct {
+	Kind  string // "author", "series" or "tag"
 	Label string
 	Links []searchLink
 	More  int // matches past searchLinksMax, not listed
@@ -559,13 +561,13 @@ func (r *searchResult) links() []searchLinkGroup {
 			continue
 		}
 		c := categoryByKey(k.key)
-		g := searchLinkGroup{Label: c.Title}
+		g := searchLinkGroup{Kind: k.key, Label: c.Title}
 		if len(ids) > searchLinksMax {
 			g.More = len(ids) - searchLinksMax
 			ids = ids[:searchLinksMax]
 		}
 		for _, id := range ids {
-			g.Links = append(g.Links, searchLink{Name: names[k.key][id], Href: c.href(names[k.key][id])})
+			g.Links = append(g.Links, searchLink{Name: names[k.key][id], Href: c.href(names[k.key][id]), Count: count[id]})
 		}
 		groups = append(groups, g)
 	}
@@ -728,4 +730,83 @@ func searchHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	writeJSON(w, http.StatusOK, pageOfSlots(res.ix.cat, res.inOrder(pickSort(r, searchSorts)), page))
+}
+
+// The top bar's suggestions while typing (web/search-suggest.ts): the best
+// few books, and the authors, series and tags that match.
+const (
+	suggestBooks = 8
+	suggestLinks = 6
+)
+
+type suggestBook struct {
+	UUID        string  `json:"uuid"`
+	Title       string  `json:"title"`
+	Authors     string  `json:"authors"` // "A & B", names in comma form (bookAuthorsSQL)
+	Series      string  `json:"series"`
+	SeriesIndex float64 `json:"series_index"`
+}
+
+type suggestLink struct {
+	Kind  string `json:"kind"` // author, series or tag
+	Name  string `json:"name"`
+	Href  string `json:"href"`
+	Count int    `json:"count"` // books found that have it
+}
+
+type suggestResponse struct {
+	Books []suggestBook `json:"books"`
+	Links []suggestLink `json:"links"`
+}
+
+// suggestLinksOf picks up to limit links, each kind's best in turn so that
+// one kind (a common tag) doesn't push out the others; kinds keep their order.
+func suggestLinksOf(groups []searchLinkGroup, limit int) []suggestLink {
+	take := make([]int, len(groups))
+	for n, more := 0, true; n < limit && more; {
+		more = false
+		for i, g := range groups {
+			if take[i] < len(g.Links) && n < limit {
+				take[i]++
+				n++
+				more = true
+			}
+		}
+	}
+	out := []suggestLink{}
+	for i, g := range groups {
+		for _, l := range g.Links[:take[i]] {
+			out = append(out, suggestLink{Kind: g.Kind, Name: l.Name, Href: l.Href, Count: l.Count})
+		}
+	}
+	return out
+}
+
+// searchSuggestHandler: GET /api/search/suggest?q=…, what the top bar's
+// search box offers while typing: the search /search runs, cut short.
+func searchSuggestHandler(w http.ResponseWriter, r *http.Request) {
+	out := suggestResponse{Books: []suggestBook{}, Links: []suggestLink{}}
+	q := strings.TrimSpace(r.URL.Query().Get("q"))
+	if q == "" {
+		writeJSON(w, http.StatusOK, out)
+		return
+	}
+	res, err := runSearch(r.Context(), q)
+	if err != nil {
+		http.Error(w, "search cancelled", http.StatusServiceUnavailable)
+		return
+	}
+	cat := res.ix.cat
+	for _, s := range res.slots[:min(len(res.slots), suggestBooks)] {
+		b := &cat.books[s]
+		out.Books = append(out.Books, suggestBook{
+			UUID:        b.UUID,
+			Title:       b.Title,
+			Authors:     b.Authors,
+			Series:      cat.seriesNames[b.Series],
+			SeriesIndex: b.SeriesIndex,
+		})
+	}
+	out.Links = suggestLinksOf(res.links(), suggestLinks)
+	writeJSON(w, http.StatusOK, out)
 }

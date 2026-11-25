@@ -102,6 +102,19 @@ export function escapeHtml(str: string): string {
     return str.replace(/[&<>"']/g, (c) => HTML_ESCAPES[c]!);
 }
 
+/**
+ * fn, run only once calls have paused for ms (trailing edge), with the last
+ * call's arguments. cancel() drops a run still waiting.
+ */
+export function debounce<A extends unknown[]>(fn: (...args: A) => void, ms: number): ((...args: A) => void) & { cancel(): void } {
+    let timer: ReturnType<typeof setTimeout> | undefined;
+    const run = (...args: A): void => {
+        clearTimeout(timer);
+        timer = setTimeout(() => fn(...args), ms);
+    };
+    return Object.assign(run, { cancel: () => clearTimeout(timer) });
+}
+
 /** URL of a book's grid thumbnail. */
 export function coverUrl(book: Pick<Book, "uuid" | "last_modified" | "series_card">): string {
     const coverOf = book.series_card?.cover ?? book.uuid; // a series: its first book's

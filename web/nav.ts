@@ -22,6 +22,8 @@ for (const code of document.querySelectorAll<HTMLElement>(".same-origin-url")) {
 }
 import { meRequest } from "./me.js";
 import type { HardcoverIndicator, HardcoverStatus } from "./types.js";
+import { clearable } from "./clearable.js";
+import { attachSearchSuggest } from "./search-suggest.js";
 
 
 function icon(path: string): SVGSVGElement {
@@ -158,6 +160,24 @@ function init(bar: HTMLElement): void {
         if (open) searchInput?.focus();
     });
     bar.querySelector(".tb-search-close")?.addEventListener("click", () => closeAll());
+    // In the box: a ✕ that empties it (not .tb-search-close, which closes
+    // the box on a phone), and suggestions while typing. The suggestions
+    // count as one of the bar's menus, so an outside click or Escape closes
+    // them (the box, a combobox, says aria-expanded); opening them closes
+    // the other menus, but not the box they hang from.
+    const searchForm = bar.querySelector<HTMLFormElement>("form.tb-search");
+    if (searchForm && searchInput) {
+        clearable(searchInput, "Clear the search");
+        const suggest = attachSearchSuggest(searchForm, searchInput, () => {
+            for (const t of toggles) if (t.btn !== searchBtn && t.btn !== searchInput && t.btn.getAttribute("aria-expanded") === "true") t.set(false);
+        });
+        toggles.push({
+            btn: searchInput,
+            set(open) {
+                if (!open) suggest.close();
+            },
+        });
+    }
 
     // A page's actions: the Manage menu, and when folded your own actions
     // with it (filtered.html); picking one closes it, as any click does.
