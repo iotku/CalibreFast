@@ -366,7 +366,8 @@ async function showPushed(): Promise<void> {
             await sw.registration.showNotification(headline, {
                 body: note,
                 tag: `cf-n-${n.id}`,
-                icon,
+                // A saved book that arrived shows its cover (offline-books.ts coverKey; not imported, to keep this file small).
+                icon: n.kind === "placeholder_added" && n.book_uuid ? `/cover-thumb/${encodeURIComponent(n.book_uuid)}` : icon,
                 data: { href: localHref(n.href) },
             });
         }

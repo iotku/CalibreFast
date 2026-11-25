@@ -7677,6 +7677,25 @@ body:has(.manage-panel:not([hidden])) .select-bar {
     min-width: 0;
     overflow-wrap: anywhere;
 }
+/* A saved book that arrived: its cover, then "Saved book added:" over the book. */
+.notification-cover {
+    flex: none;
+    width: 48px;
+    height: 68px;
+    object-fit: cover;
+    border-radius: var(--radius-small);
+    background: var(--bg-surface);
+}
+.notification-head {
+    display: block;
+    font-weight: 600;
+}
+.notification-sub {
+    display: block;
+    margin-top: 0.15em;
+    font-size: 0.9em;
+    color: var(--text-secondary);
+}
 .notification-when {
     display: block;
     margin-top: 0.25em;

@@ -153,10 +153,16 @@ func TestSavedPlaceholderArrives(t *testing.T) {
 		t.Error("carol was told about a book she didn't save")
 	}
 	page := string(do(alice, "GET", "/me/notifications", "", http.StatusOK))
-	if !strings.Contains(page, `Saved book added to library: <a href="/book/get/`+book+`" class="meta-link">Other Three</a> by Writer · On deck`) {
-		t.Errorf("the notifications page doesn't say it:\n%s", page)
+	for _, want := range []string{
+		`<img class="notification-cover" src="/cover-thumb/` + book + `"`,
+		`<span class="notification-head">Saved book added:</span>`,
+		`<span class="notification-sub"><a href="/book/get/` + book + `" class="meta-link">Other Three</a> by Writer · On deck</span>`,
+	} {
+		if !strings.Contains(page, want) {
+			t.Errorf("the notifications page doesn't have %s:\n%s", want, page)
+		}
 	}
-	if page := string(do(bob, "GET", "/me/notifications", "", http.StatusOK)); !strings.Contains(page, "Other Three</a> by Writer\n") {
+	if page := string(do(bob, "GET", "/me/notifications", "", http.StatusOK)); !strings.Contains(page, "Other Three</a> by Writer</span>") {
 		t.Error("bob's page: not On deck, or worded otherwise")
 	}
 

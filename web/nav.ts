@@ -10,7 +10,7 @@ import { keepOnlyUser, registerWorker } from "./book-cache.js";
 import { settleAccountPrefs } from "./account-prefs.js";
 import { startSendingPending } from "./send-pending.js";
 import { onSyncChange, readSync, STALE_MS, unsentBooks, writeSync } from "./sync-state.js";
-import { forgetOfflineReading, refreshOfflineReading } from "./offline-books.js";
+import { coverKey, forgetOfflineReading, refreshOfflineReading } from "./offline-books.js";
 import { api, el, withPageScheme } from "./dom.js";
 import { forgetSynced } from "./local-keys.js";
 import { declineOffer, guestBookCount, offerDeclined, offerDeclinedForGood } from "./guest-data.js";
@@ -26,6 +26,15 @@ import { clearable } from "./clearable.js";
 import { attachSearchSuggest } from "./search-suggest.js";
 import { noticeText, type Notice } from "./notice-text.js";
 import { declinePush, pushSupported, shouldOfferPush, turnOffPush, turnOnPush } from "./push.js";
+
+/** A book's cover thumbnail in the sync menu: the book downloading, or a saved book that arrived. Hidden if it won't load. */
+function syncCover(uuid?: string): HTMLImageElement {
+    const img = el("img", { className: "tb-sync-cover", alt: "", width: 40, height: 56, loading: "lazy" });
+    img.addEventListener("error", () => (img.style.visibility = "hidden"));
+    img.addEventListener("load", () => (img.style.visibility = ""));
+    if (uuid) img.src = coverKey(uuid);
+    return img;
+}
 
 
 function icon(path: string): SVGSVGElement {
@@ -428,7 +437,7 @@ function init(bar: HTMLElement): void {
             }, HC_POLL_MS);
         };
         // The book downloading: cover, title, authors, a progress bar, sizes.
-        const cover = el("img", { className: "tb-sync-cover", alt: "", width: 40, height: 56, loading: "lazy" });
+        const cover = syncCover();
         const bookTitle = el("span", { className: "tb-sync-title" });
         const bookAuthors = el("span", { className: "tb-sync-authors" });
         const fill = el("span", { className: "tb-sync-fill" });
@@ -465,9 +474,12 @@ function init(bar: HTMLElement): void {
                     const title = href ? el("a", { href, className: "tb-notice-title", textContent: headline }) : el("span", { className: "tb-notice-title", textContent: headline });
                     const dismiss = el("button", { type: "button", className: "tb-notice-dismiss", title: "Dismiss", ariaLabel: `Dismiss: ${headline}` });
                     dismiss.append(icon(CROSS));
+                    // A saved book that arrived shows its cover, as the book downloading does.
+                    const cover = n.kind === "placeholder_added" && n.book_uuid ? [syncCover(n.book_uuid)] : [];
                     const item = el(
                         "li",
                         { className: n.seen ? "tb-notice" : "tb-notice is-new" },
+                        ...cover,
                         el("span", { className: "tb-notice-text" }, title, el("span", { className: "tb-notice-note", textContent: note })),
                         dismiss,
                     );
@@ -647,7 +659,7 @@ function init(bar: HTMLElement): void {
                 // A path we build, not a URL from data.
                 if (cover.dataset["uuid"] !== a.uuid) {
                     cover.dataset["uuid"] = a.uuid;
-                    cover.src = `/cover-thumb/${encodeURIComponent(a.uuid)}`;
+                    cover.src = coverKey(a.uuid);
                 }
                 bookTitle.textContent = a.title;
                 bookAuthors.textContent = a.authors;
