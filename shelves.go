@@ -13,6 +13,7 @@ import (
 	"errors"
 	"net/http"
 	"strings"
+	"sync"
 	"unicode/utf8"
 )
 
@@ -51,17 +52,13 @@ type shelfMark struct {
 
 var errShelfNotFound = errors.New("no such shelf")
 
-// shelfSeriesCount: SQL for a shelf's (s) whole-series entries.
-const shelfSeriesCount = `(SELECT COUNT(*) FROM shelf_books b WHERE b.shelf_id = s.id AND b.book_uuid LIKE '` + seriesKeyPrefix + `%')`
-
 // BookCount: the entries that are single books (for "N books · M series").
 func (s Shelf) BookCount() int { return s.Count - s.Series }
 
 func getShelf(id int64) (*Shelf, error) {
 	var s Shelf
-	err := appDB.QueryRow(`SELECT s.id, s.name, s.description, s.owner_id, s.featured_pos IS NOT NULL,
-			(SELECT COUNT(*) FROM shelf_books b WHERE b.shelf_id = s.id), `+shelfSeriesCount+`
-		FROM shelves s WHERE s.id = ?`, id).Scan(&s.ID, &s.Name, &s.Description, &s.ownerID, &s.Featured, &s.Count, &s.Series)
+	err := appDB.QueryRow(`SELECT s.id, s.name, s.description, s.owner_id, s.featured_pos IS NOT NULL
+		FROM shelves s WHERE s.id = ?`, id).Scan(&s.ID, &s.Name, &s.Description, &s.ownerID, &s.Featured)
 	if errors.Is(err, sql.ErrNoRows) {
 		return nil, errShelfNotFound
 	}
@@ -69,7 +66,87 @@ func getShelf(id int64) (*Shelf, error) {
 		return nil, err
 	}
 	s.Global = !s.ownerID.Valid
-	return &s, nil
+	one := []Shelf{s}
+	if err := countShelves(one); err != nil {
+		return nil, err
+	}
+	return &one[0], nil
+}
+
+// liveShelfEntries returns each shelf's entries as its page shows them, in
+// its order: books in the library (or saved placeholders) and whole series
+// that have books. A shelf keeps its rows for books that left the library
+// (recycled, merged into another, deleted in Calibre), so they're back if
+// the book is (recycle_userdata.go), but they aren't shown or counted.
+func liveShelfEntries(ids []int64) (map[int64][]Book, error) {
+	out := make(map[int64][]Book, len(ids))
+	if len(ids) == 0 {
+		return out, nil
+	}
+	args := make([]any, len(ids))
+	for i, id := range ids {
+		args[i] = id
+	}
+	rows, err := appDB.Query(`SELECT shelf_id, book_uuid FROM shelf_books
+		WHERE shelf_id IN (`+placeholders(len(ids))+`) ORDER BY shelf_id, `+strings.TrimPrefix(shelfOrder, "ORDER BY "), args...)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var shelfOf []int64
+	var keys, unique []string
+	seen := map[string]bool{}
+	for rows.Next() {
+		var id int64
+		var uuid string
+		if err := rows.Scan(&id, &uuid); err != nil {
+			return nil, err
+		}
+		shelfOf, keys = append(shelfOf, id), append(keys, uuid)
+		if !seen[uuid] {
+			seen[uuid] = true
+			unique = append(unique, uuid)
+		}
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	books, err := booksByUUIDs(unique)
+	if err != nil {
+		return nil, err
+	}
+	live := make(map[string]Book, len(books))
+	for _, b := range books {
+		live[b.UUID] = b
+	}
+	for i, k := range keys {
+		if b, ok := live[k]; ok {
+			out[shelfOf[i]] = append(out[shelfOf[i]], b)
+		}
+	}
+	return out, nil
+}
+
+// countShelves sets Count and Series on each shelf from its live entries.
+func countShelves(shelves []Shelf) error {
+	ids := make([]int64, len(shelves))
+	for i, s := range shelves {
+		ids[i] = s.ID
+	}
+	entries, err := liveShelfEntries(ids)
+	if err != nil {
+		return err
+	}
+	for i := range shelves {
+		es := entries[shelves[i].ID]
+		shelves[i].Count, shelves[i].Series = len(es), 0
+		for _, b := range es {
+			if b.SeriesCard != nil {
+				shelves[i].Series++
+			}
+		}
+	}
+	return nil
 }
 
 // canView: global shelves are public (to whoever can browse); personal ones
@@ -98,8 +175,7 @@ func listShelves(u *User) (mine, global []Shelf, err error) {
 		uid = u.ID
 	}
 	rows, err := appDB.Query(`SELECT s.id, s.name, s.description, s.owner_id, s.featured_pos IS NOT NULL,
-			COALESCE(p.pinned, s.featured_pos IS NOT NULL),
-			(SELECT COUNT(*) FROM shelf_books b WHERE b.shelf_id = s.id), `+shelfSeriesCount+`
+			COALESCE(p.pinned, s.featured_pos IS NOT NULL)
 		FROM shelves s LEFT JOIN shelf_pins p ON p.shelf_id = s.id AND p.user_id = ?1
 		WHERE s.owner_id IS NULL OR s.owner_id = ?1
 		ORDER BY s.position IS NULL, s.position, s.featured_pos IS NULL, s.featured_pos, s.name COLLATE NOCASE`, uid)
@@ -110,7 +186,7 @@ func listShelves(u *User) (mine, global []Shelf, err error) {
 	mine, global = []Shelf{}, []Shelf{}
 	for rows.Next() {
 		var s Shelf
-		if err := rows.Scan(&s.ID, &s.Name, &s.Description, &s.ownerID, &s.Featured, &s.Pinned, &s.Count, &s.Series); err != nil {
+		if err := rows.Scan(&s.ID, &s.Name, &s.Description, &s.ownerID, &s.Featured, &s.Pinned); err != nil {
 			return nil, nil, err
 		}
 		s.Pinned = s.Pinned && u != nil
@@ -122,7 +198,13 @@ func listShelves(u *User) (mine, global []Shelf, err error) {
 			mine = append(mine, s)
 		}
 	}
-	return mine, global, rows.Err()
+	if err := rows.Err(); err != nil {
+		return nil, nil, err
+	}
+	if err := countShelves(mine); err != nil {
+		return nil, nil, err
+	}
+	return mine, global, countShelves(global)
 }
 
 // shelfMarks lists the shelves a user can add this book to, and whether it's
@@ -385,13 +467,30 @@ func shelfPageHandler(w http.ResponseWriter, r *http.Request) {
 			extra["Arrange"] = "/api/shelves/" + itoa(s.ID) + "/order"
 		}
 	}
+	entries := sync.OnceValues(func() ([]Book, error) {
+		m, err := liveShelfEntries([]int64{s.ID})
+		return m[s.ID], err
+	})
 	serveUUIDList(w, r, uuidList{
 		Title: s.Name, Sub: sub, BaseURL: "/shelf/" + itoa(s.ID),
 		EmptyText: "This shelf is empty. Add books from a book's Shelves menu, or a whole series from its page.",
 		Extra:     extra,
-		Count:     countQuery(`SELECT COUNT(*) FROM shelf_books WHERE shelf_id = ?`, s.ID),
+		// Counted and paged over the entries shown, so a book that left
+		// the library neither counts nor leaves a page short.
+		Count: func() (int, error) {
+			es, err := entries()
+			return len(es), err
+		},
 		Page: func(limit, offset int) ([]string, error) {
-			return scanStrings(appDB.Query(`SELECT book_uuid FROM shelf_books WHERE shelf_id = ? `+shelfOrder+` LIMIT ? OFFSET ?`, s.ID, limit, offset))
+			es, err := entries()
+			if err != nil {
+				return nil, err
+			}
+			out := []string{}
+			for _, b := range es[min(offset, len(es)):min(offset+limit, len(es))] {
+				out = append(out, b.UUID)
+			}
+			return out, nil
 		},
 	})
 }
