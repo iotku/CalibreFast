@@ -4792,12 +4792,32 @@ label.group-row span {
 .guest-offer > span {
     flex: 1 1 260px;
 }
-/* Stays until they link a sign-in (web/nav.ts); stands out from the offer. */
-.signin-warning {
-    border-color: #e88;
+/* The alert for someone with no lasting way to sign in (web/nav.ts): on
+   every page with the bar until they link one. */
+.signin-alert {
+    position: fixed;
+    top: var(--topbar-total);
+    left: 50%;
+    transform: translateX(-50%);
+    z-index: 60;
+    width: min(760px, calc(100% - 2 * var(--page-padding)));
+    margin-top: var(--gap-medium);
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: var(--gap-medium);
+    padding: var(--gap-medium) var(--gap-large);
+    background: var(--bg-elevated);
+    border: 1px solid #e88;
+    border-radius: var(--radius-large);
+    box-shadow: var(--shadow-medium);
 }
-.guest-offer + .signin-warning {
-    margin-top: 5.5rem;
+.signin-alert > span {
+    flex: 1 1 260px;
+}
+/* The offer to add this device's reading waits below it. */
+body:has(.signin-alert) .guest-offer {
+    top: calc(var(--topbar-total) + 6rem);
 }
 
 /* Reading on this device (templates/account-import.html) */

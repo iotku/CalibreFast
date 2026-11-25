@@ -40,7 +40,7 @@
         <ul class="auth-identities">
             {{ range .Identities }}
             <li>
-                <span>{{ .Provider }} — {{ if .Login }}{{ .Login }}{{ else }}{{ .Email }}{{ end }}</span>
+                <span>{{ .Provider }} — {{ .Display }}</span>
                 {{ if or $.User.PasswordSignIn (gt (len $.Identities) 1) }}
                 <form method="post" action="/auth/{{ .Provider }}/unlink"><button class="btn-standard" type="submit">Unlink</button></form>
                 {{ end }}
