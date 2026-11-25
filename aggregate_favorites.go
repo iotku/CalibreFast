@@ -254,7 +254,7 @@ func followedBooks(u *User, m readingMarks, n int) (books []Book, following bool
 	}
 	ix := currentRecIndex() // their books, indexed (recommend.go)
 	c := ix.cat
-	authors := favs.ids("author", c.authorNames)
+	authors := ix.favIDs(favs, "author")
 	books = []Book{}
 	if len(authors) == 0 {
 		return books, false, nil

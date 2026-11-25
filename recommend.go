@@ -64,16 +64,46 @@ func (f recFavs) has(kind, name string) bool {
 	return f[kind][strings.ToLower(g)]
 }
 
-// ids: which of names (catalog ids to raw names) are favorites of kind.
-func (f recFavs) ids(kind string, names map[int32]string) map[int32]bool {
+// favIDs: which catalog ids of kind ("author", "publisher", "series") are
+// favorites. Worked out from the favorites, which are few: each one's name
+// and, for a group, its members' names, looked up by name (byLower); each
+// id found still passes has. Not by asking has of every name in the
+// library: each ask goes through every group (groups.resolve), and a big
+// library has tens of thousands of authors.
+func (ix *recIndex) favIDs(f recFavs, kind string) map[int32]bool {
 	out := map[int32]bool{}
-	if len(f[kind]) == 0 {
-		return out
-	}
-	for id, n := range names {
-		if f.has(kind, n) {
-			out[id] = true
+	names := map[string]map[int32]string{"author": ix.cat.authorNames, "publisher": ix.cat.publisherNames, "series": ix.cat.seriesNames}[kind]
+	for fav := range f[kind] {
+		for _, n := range favNames(kind, fav) {
+			for _, id := range ix.byLower[kind][strings.ToLower(n)] {
+				if f.has(kind, names[id]) {
+					out[id] = true
+				}
+			}
 		}
+	}
+	return out
+}
+
+// favTags: which tag entities are favorites (as favIDs).
+func (ix *recIndex) favTags(f recFavs) map[int32]bool {
+	out := map[int32]bool{}
+	for fav := range f["tag"] {
+		for _, n := range favNames("tag", fav) {
+			if e, ok := ix.entityByLower[strings.ToLower(n)]; ok && f.has("tag", ix.names[e]) {
+				out[e] = true
+			}
+		}
+	}
+	return out
+}
+
+// favNames: the names a favorite (as browsed) stands for: itself, and a
+// group's members.
+func favNames(kind, fav string) []string {
+	out := []string{fav}
+	if g, members, grouped := groups.resolve(kind, fav); grouped && strings.EqualFold(g, fav) {
+		out = append(out, members...)
 	}
 	return out
 }
@@ -131,6 +161,11 @@ type recIndex struct {
 	postings [][]int32       // entity -> book slots, shuffle order
 	series   map[int32][]int32
 
+	// Names to look favorites up by (favIDs, favTags): kind -> lower-cased
+	// name -> catalog ids, and lower-cased tag entity -> entity.
+	byLower       map[string]map[string][]int32
+	entityByLower map[string]int32
+
 	// For favorites (rankRecs, followedBooks): each author's and publisher's
 	// books, the books not removed, and each book's place in the shuffle and
 	// in Latest (newest added first; -1: removed). Going through a few
@@ -182,6 +217,16 @@ func currentRecIndex() *recIndex {
 		ix.entity[id] = n
 	}
 	ix.postings = make([][]int32, len(ix.names))
+	ix.entityByLower = byName
+	ix.byLower = map[string]map[string][]int32{}
+	for kind, names := range map[string]map[int32]string{"author": c.authorNames, "publisher": c.publisherNames, "series": c.seriesNames} {
+		m := make(map[string][]int32, len(names))
+		for id, n := range names {
+			k := strings.ToLower(n)
+			m[k] = append(m[k], id)
+		}
+		ix.byLower[kind] = m
+	}
 	ix.byAuthor, ix.byPublisher = map[int32][]int32{}, map[int32][]int32{}
 	ix.shufflePos, ix.latestPos = make([]int32, len(c.books)), make([]int32, len(c.books))
 	for i := range ix.latestPos {
@@ -344,15 +389,10 @@ func rankRecs(m readingMarks, favs recFavs, hide map[string]bool, rng *rand.Rand
 	for _, u := range m.Dropped {
 		marked[u] = true
 	}
-	favAuthors := favs.ids("author", c.authorNames)
-	favPublishers := favs.ids("publisher", c.publisherNames)
-	favSeries := favs.ids("series", c.seriesNames)
-	favTags := map[int32]bool{}
-	for e, n := range ix.names {
-		if favs.has("tag", n) {
-			favTags[int32(e)] = true
-		}
-	}
+	favAuthors := ix.favIDs(favs, "author")
+	favPublishers := ix.favIDs(favs, "publisher")
+	favSeries := ix.favIDs(favs, "series")
+	favTags := ix.favTags(favs)
 	if len(weight) == 0 && len(favAuthors)+len(favPublishers)+len(favSeries)+len(favTags) == 0 {
 		return l, tags
 	}
