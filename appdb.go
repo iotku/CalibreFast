@@ -868,6 +868,21 @@ var migrations = []string{
 	);
 	CREATE INDEX push_subscriptions_user ON push_subscriptions (user_id);
 	`,
+	// 51: system notices (system_notices.go): an admin's announcements to
+	// everyone (expected downtime, a new address), banners until they
+	// expire. Times are unix ms; created_by is the admin's username then.
+	`
+	CREATE TABLE system_notices (
+		id         INTEGER PRIMARY KEY,
+		text       TEXT    NOT NULL,
+		link_href  TEXT    NOT NULL DEFAULT '',
+		link_label TEXT    NOT NULL DEFAULT '',
+		created_at INTEGER NOT NULL,
+		expires_at INTEGER NOT NULL,
+		created_by TEXT    NOT NULL DEFAULT ''
+	);
+	CREATE INDEX system_notices_expires ON system_notices (expires_at);
+	`,
 }
 
 // openAppDB opens (creating if needed) and migrates the app database.

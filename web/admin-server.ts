@@ -5,8 +5,9 @@
 // manager restarts it. Update (POST/GET /api/admin/server/update, Go:
 // server_update.go) builds the latest version while the server runs, shows
 // the build's output, and reloads once the new build answers.
-import { api, byId, errorMessage, maybeId, statusLine } from "./dom.js";
+import { api, byId, el, errorMessage, maybeId, safeUrl, statusLine } from "./dom.js";
 import { parseServerHtml } from "./trusted.js";
+import type { SystemNotice } from "./types.js";
 
 const say = statusLine("server-status");
 const button = byId("server-stop", HTMLButtonElement);
@@ -226,4 +227,86 @@ for (const btn of document.querySelectorAll<HTMLButtonElement>("button[data-back
             btn.disabled = false;
         }
     });
+}
+
+// Notices to everyone (system_notices.go): the ones in force, each with End
+// now, and a form to post one. Times are the admin's own (datetime-local),
+// sent as unix ms. Everything is shown with textContent: a notice's text is
+// only an admin's, but it goes to every page.
+const noticeList = maybeId("notice-list");
+const noticeForm = maybeId("notice-form", HTMLFormElement);
+if (noticeList && noticeForm) {
+    const none = byId("notice-none");
+    const sayNotice = statusLine("notice-status");
+    const when = (ms: number): string => new Date(ms).toLocaleString(undefined, { dateStyle: "medium", timeStyle: "short" });
+
+    const loadNotices = async (): Promise<void> => {
+        const { notices } = await api<{ notices: SystemNotice[] }>("GET", "/api/admin/system-notices");
+        noticeList.replaceChildren(
+            ...notices.map((n) => {
+                const end = el("button", { type: "button", className: "btn-standard", textContent: "End now" });
+                end.addEventListener("click", async () => {
+                    end.disabled = true;
+                    try {
+                        await api("DELETE", `/api/admin/system-notices/${encodeURIComponent(String(n.id))}`);
+                        sayNotice("Ended. It goes from everyone's next page.");
+                        await loadNotices();
+                    } catch (err) {
+                        end.disabled = false;
+                        sayNotice(errorMessage(err), true);
+                    }
+                });
+                const body = el("div", { className: "server-notice-body" }, el("span", { textContent: n.text }));
+                if (n.link_href) body.append(el("a", { href: safeUrl(n.link_href), textContent: n.link_label || "More", target: "_blank", rel: "noopener noreferrer" }));
+                body.append(el("span", { className: "server-notice-meta", textContent: `Ends ${when(n.expires_at)}${n.created_by ? ` · posted by ${n.created_by}` : ""}` }));
+                return el("li", { className: "server-notice" }, body, end);
+            }),
+        );
+        noticeList.hidden = !notices.length;
+        none.hidden = notices.length > 0;
+    };
+
+    /** A datetime-local value for ms (the admin's own time zone). */
+    const localInput = (ms: number): string => {
+        const d = new Date(ms - new Date(ms).getTimezoneOffset() * 60_000);
+        return d.toISOString().slice(0, 16);
+    };
+    const expires = noticeForm.elements.namedItem("expires");
+    const resetEnd = (): void => {
+        if (!(expires instanceof HTMLInputElement)) return;
+        expires.min = localInput(Date.now());
+        expires.value = localInput(Date.now() + 24 * 3600_000); // a day, to start with
+    };
+    resetEnd();
+
+    noticeForm.addEventListener("submit", async (e) => {
+        e.preventDefault();
+        const data = new FormData(noticeForm);
+        const field = (name: string): string => String(data.get(name) ?? "");
+        const end = new Date(field("expires")).getTime();
+        if (!Number.isFinite(end)) {
+            sayNotice("Choose when it ends.", true);
+            return;
+        }
+        const submit = noticeForm.querySelector<HTMLButtonElement>("button[type=submit]");
+        if (submit) submit.disabled = true;
+        try {
+            await api("POST", "/api/admin/system-notices", {
+                text: field("text"),
+                link_href: field("link_href"),
+                link_label: field("link_label"),
+                expires_at: end,
+            });
+            noticeForm.reset();
+            resetEnd();
+            sayNotice("Posted. Everyone sees it from their next page.");
+            await loadNotices();
+        } catch (err) {
+            sayNotice(errorMessage(err), true);
+        } finally {
+            if (submit) submit.disabled = false;
+        }
+    });
+
+    loadNotices().catch((err: unknown) => sayNotice(errorMessage(err), true));
 }

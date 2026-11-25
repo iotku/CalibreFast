@@ -6625,7 +6625,9 @@ body:has(.manage-panel:not([hidden])) .select-bar {
     overflow-wrap: anywhere;
 }
 
-.placeholder-page .auth-form textarea {
+.placeholder-page .auth-form textarea,
+.server-notice-form textarea,
+.server-notice-form input[type="datetime-local"] {
     width: 100%;
     box-sizing: border-box;
     resize: vertical;
@@ -7835,6 +7837,53 @@ body:has(.manage-panel:not([hidden])) .select-bar {
     line-height: 1.4;
     white-space: pre-wrap;
     overflow-wrap: anywhere;
+}
+
+/* The admins' notices in force (admin-server.ts), above the form to post one. */
+.server-notices {
+    list-style: none;
+    margin: 0 0 1rem;
+    padding: 0;
+    display: flex;
+    flex-direction: column;
+    gap: 0.5rem;
+}
+
+.server-notices[hidden] {
+    display: none;
+}
+
+.server-notice {
+    display: flex;
+    gap: 0.75rem;
+    align-items: flex-start;
+    padding: 0.6rem 0.75rem;
+    background: var(--bg-elevated);
+    border: 1px solid var(--border-medium);
+    border-radius: var(--radius-small);
+    font-size: 0.9rem;
+}
+
+.server-notice-body {
+    flex: 1;
+    min-width: 0;
+    display: flex;
+    flex-direction: column;
+    gap: 0.25rem;
+    overflow-wrap: anywhere;
+}
+
+.server-notice-body a {
+    color: var(--accent, #c8a96e);
+}
+
+.server-notice-meta {
+    font-size: 0.8rem;
+    color: var(--text-muted);
+}
+
+.server-notice .btn-standard {
+    flex: none;
 }
 
 .server-backup-actions {

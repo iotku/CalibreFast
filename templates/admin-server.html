@@ -32,6 +32,21 @@
     </div>
 
     <div class="auth-col">
+    {{/* The admins' announcements (system_notices.go, admin-server.ts). */}}
+    <section class="auth-card" id="system-notices">
+        <h2>Notices to everyone</h2>
+        <p class="auth-muted">A banner at the top of every page for everyone using the server, such as expected downtime or a new address. Each person can dismiss it on their device; it's pinned in their notifications menu until it ends, and goes for everyone when it ends.</p>
+        <ul class="server-notices" id="notice-list" hidden></ul>
+        <p class="auth-muted" id="notice-none">None in force.</p>
+        <form id="notice-form" class="auth-form server-notice-form">
+            <label>Text <textarea name="text" rows="3" maxlength="500" required></textarea></label>
+            <label>Link, if any <input name="link_href" type="text" inputmode="url" autocomplete="off" spellcheck="false" placeholder="/about or https://…"></label>
+            <label>The link's label <input name="link_label" type="text" maxlength="60" autocomplete="off" placeholder="More"></label>
+            <label>Ends <input name="expires" type="datetime-local" required></label>
+            <button type="submit" class="btn-standard btn-primary">Post notice</button>
+        </form>
+        <p id="notice-status" class="auth-notice" role="status" hidden></p>
+    </section>
     <section class="auth-card">
         <h2>Backups</h2>
         {{ if .Backups.On }}

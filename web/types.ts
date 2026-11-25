@@ -63,6 +63,8 @@ export interface MeResponse {
     registration?: boolean;
     /** No lasting way to sign in (no working password, nothing linked): the bar asks them to link GitHub/Google. */
     sign_in_at_risk?: boolean;
+    /** The admins' announcements in force (system_notices.go). */
+    system_notices?: SystemNotice[];
     /** Signed out only: whether visitors who aren't signed in may read here (-public-read). */
     guest_reading?: boolean;
     /**
@@ -535,4 +537,18 @@ export interface HardcoverJobAnswer {
     job: HardcoverJob;
     until?: string;
     usage: HardcoverUsage;
+}
+
+/** An admin's announcement to everyone (system_notices.go): a dismissable banner until it expires. */
+export interface SystemNotice {
+    id: number;
+    text: string;
+    link_href?: string;
+    link_label?: string;
+    /** unix ms */
+    created_at: number;
+    /** unix ms */
+    expires_at: number;
+    /** Who posted it: in the admins' list only. */
+    created_by?: string;
 }
