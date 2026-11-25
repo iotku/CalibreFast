@@ -660,6 +660,11 @@ func meHandler(w http.ResponseWriter, r *http.Request) {
 	if n := unseenNotifications(u.ID); n > 0 {
 		me["notifications"] = n
 	}
+	// Hardcover sync, for the sync menu's line: only for users with a link
+	// (working or broken), never a token.
+	if hc := hcSync.Indicator(u.ID); hc != nil {
+		me["hardcover"] = hc
+	}
 	if r.URL.Query().Get("reading") != "" {
 		m, _, err := userReading(u)
 		if err != nil {

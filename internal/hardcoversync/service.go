@@ -111,6 +111,8 @@ type Service struct {
 	clients map[int64]*hardcover.Client
 	tokens  map[int64]*sync.Mutex // one refresh at a time per user
 	pending map[int64]*PendingLink
+	busy    map[int64]bool      // users the worker is sending for now
+	lastRun map[int64]time.Time // when the worker last finished a step for a user
 	wake    chan struct{}
 	cancel  context.CancelFunc
 	done    chan struct{}
@@ -134,6 +136,8 @@ func New(cfg Config) *Service {
 		clients:      map[int64]*hardcover.Client{},
 		tokens:       map[int64]*sync.Mutex{},
 		pending:      map[int64]*PendingLink{},
+		busy:         map[int64]bool{},
+		lastRun:      map[int64]time.Time{},
 		wake:         make(chan struct{}, 1),
 	}
 	if s.catalog == nil {
@@ -153,6 +157,32 @@ func New(cfg Config) *Service {
 }
 
 func (s *Service) now() time.Time { return s.clock() }
+
+// working marks userID busy while the worker sends something of theirs;
+// the func it returns marks them done and records when.
+func (s *Service) working(userID int64) func() {
+	s.mu.Lock()
+	s.busy[userID] = true
+	s.mu.Unlock()
+	return func() {
+		s.mu.Lock()
+		delete(s.busy, userID)
+		s.lastRun[userID] = s.now()
+		s.mu.Unlock()
+	}
+}
+
+// Activity: whether the worker is sending something of userID's now, and
+// when it last finished one (zero: not since the server started). Kept in
+// memory only.
+func (s *Service) Activity(userID int64) (busy bool, lastRun time.Time) {
+	if s == nil {
+		return false, time.Time{}
+	}
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	return s.busy[userID], s.lastRun[userID]
+}
 
 // formatDay is how dates are shown on the account page.
 func formatDay(unix int64) string { return time.Unix(unix, 0).Format("2 Jan 2006 15:04") }
