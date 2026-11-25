@@ -94,7 +94,7 @@
                      only once the whole page is in), so the heading row doesn't
                      jump. Only with a dozen or more: fewer read at a glance in
                      any order. aggregate.ts wires it up when it's shown. */}}
-                {{ if ge (len .Items) 12 }}
+                {{ if ge .Total 12 }}
                 <div id="agg-order" class="agg-order" role="group" aria-label="Order">
                     <button type="button" class="agg-pill" data-order="count" aria-pressed="true"{{ if .CoverageOrder }} title="Complete series first, then partly collected ones, then the rest; most books first within each"{{ end }}>{{ if .CoverageOrder }}Most complete{{ else }}Most books{{ end }}</button>
                     <button type="button" class="agg-pill" data-order="az" aria-pressed="false">A–Z</button>
@@ -107,13 +107,18 @@
                 {{ end }}
             </div>
             <nav id="agg-letters" class="agg-letters" aria-label="Jump to letter" hidden></nav>
-            <div id="aggregate-grid" class="agg-cloud">
+            {{/* The first entries; with More, aggregate.ts adds the rest (?part=rest) after the first paint. */}}
+            <div id="aggregate-grid" class="agg-cloud"{{ if .More }} data-rest=""{{ end }}>
                 {{- range .Items }}
                 {{ template "agg-entry" (dict "E" . "Class" (printf "agg-item agg-t%d" .Tier)) }}
                 {{- else }}
                 <p class="status-message">{{ if .CompleteOnly }}No complete series.{{ else }}Nothing with more than one book. Search to find the rest.{{ end }}</p>
                 {{- end }}
             </div>
+            {{ if .More }}
+            {{/* A remembered A–Z or Shuffle is drawn once every entry is in: hidden until then, not shown in the wrong order first (web/aggregate.ts). */}}
+            <script>try{(function(){var o=localStorage.getItem("agg-order");if(o==="az"||o==="shuffle")document.getElementById("aggregate-grid").classList.add("agg-pending")})()}catch(x){}</script>
+            {{ end }}
         </section>
     </div>
     <div id="agg-preview" class="agg-preview" hidden></div>
@@ -121,6 +126,9 @@
 <script type="module" src="{{ asset "aggregate.js" }}"></script>
 </body>
 </html>
+{{/* The cloud's entries after the first ones (aggregatePageHandler, ?part=rest): a []AggregateDisplayItem. */}}
+{{ define "agg-rest" }}{{ range . }}
+{{ template "agg-entry" (dict "E" . "Class" (printf "agg-item agg-t%d" .Tier)) }}{{ end }}{{ end }}
 {{/* One entry of the cloud or Discover (AggregateDisplayItem as .E); web/aggregate.ts builds the same. */}}
 {{ define "agg-entry" }}{{ with .E -}}
 <a class="{{ $.Class }}{{ if .Grouped }} agg-group{{ end }}" href="{{ .Href }}" data-count="{{ .Count }}"{{ if .Sort }} data-sort="{{ .Sort }}"{{ end }}{{ with .Status }} data-coverage{{ if .Complete }} data-complete{{ end }}{{ end }}>{{ .Name }}{{ if .Sub }} <span class="agg-sub">{{ .Sub }}</span>{{ end }}{{ with .Status }}{{ template "agg-coverage" . }}{{ end }}<span class="agg-count">{{ .Count }}</span></a>

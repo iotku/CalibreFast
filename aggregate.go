@@ -1,6 +1,7 @@
 package main
 
 import (
+	"bytes"
 	"database/sql"
 	"encoding/json"
 	"errors"
@@ -151,13 +152,17 @@ func sortByCoverage(items []AggregateDisplayItem) {
 
 // AggregatePageData is passed to aggregate.html for server-side rendering.
 type AggregatePageData struct {
-	Title    string
-	Kind     string // the category's key, "author": favorites (web/aggregate.ts)
-	Active   string // top-bar nav item: the category's plural, e.g. "authors"
-	Label    string // "author", for the search box
-	Prefix   string // filtered page path prefix: "/author/"
-	DataURL  string // every entry as JSON (/api/<plural>), for the search box
-	Items    []AggregateDisplayItem
+	Title   string
+	Kind    string                 // the category's key, "author": favorites (web/aggregate.ts)
+	Active  string                 // top-bar nav item: the category's plural, e.g. "authors"
+	Label   string                 // "author", for the search box
+	Prefix  string                 // filtered page path prefix: "/author/"
+	DataURL string                 // every entry as JSON (/api/<plural>), for the search box
+	Items   []AggregateDisplayItem // the cloud's first aggPageFirst entries
+	// Total: entries in the whole cloud; More: whether there are more than
+	// Items, which aggregate.ts fetches (?part=rest) after the first paint.
+	Total    int
+	More     bool
 	Featured []FeaturedCard
 	Discover []AggregateDisplayItem // a random few, single-book ones too
 	Tiers    string                 // tier thresholds, "3,5,9,20", for the search box's results
@@ -736,9 +741,18 @@ func filteredPageHandler(c *category) http.HandlerFunc {
 	}
 }
 
-// aggregatePageHandler serves the server-rendered tag cloud.
+// aggPageFirst: the cloud entries drawn with the page. A big library has
+// thousands (every author with two or more books): drawn all at once they
+// make a page of a megabyte or more to send, parse and lay out before
+// anything shows. The rest come as a fragment of the same entries
+// (?part=rest), which aggregate.ts adds once the page is up.
+const aggPageFirst = 300
+
+// aggregatePageHandler serves the server-rendered tag cloud: the page with
+// its first aggPageFirst entries, or (?part=rest) the entries after those.
 func aggregatePageHandler(c *category) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
+		done := timeStage(r, "data")
 		d := getAggregateData(c)
 		tiers := make([]string, len(d.Tiers))
 		for i, t := range d.Tiers {
@@ -769,6 +783,21 @@ func aggregatePageHandler(c *category) http.HandlerFunc {
 			}
 			completeCount = len(all)
 		}
+		first := items[:min(len(items), aggPageFirst)]
+		if r.URL.Query().Get("part") == "rest" {
+			done()
+			w.Header().Set("Cache-Control", "no-cache")
+			done = timeStage(r, "render")
+			var buf bytes.Buffer
+			if err := templates.ExecuteTemplate(&buf, "agg-rest", items[len(first):]); err != nil {
+				http.Error(w, err.Error(), http.StatusInternalServerError)
+				return
+			}
+			done()
+			w.Header().Set("Content-Type", "text/html; charset=utf-8")
+			_, _ = buf.WriteTo(w)
+			return
+		}
 		data := AggregatePageData{
 			Title:    c.Title,
 			Kind:     c.Key,
@@ -776,7 +805,9 @@ func aggregatePageHandler(c *category) http.HandlerFunc {
 			Label:    c.Label,
 			Prefix:   "/" + c.URLPrefix + "/",
 			DataURL:  fmt.Sprintf("/api/%s?v=%d", c.Plural, aggregateGen.Load()),
-			Items:    items,
+			Items:    first,
+			Total:    len(items),
+			More:     len(items) > len(first),
 			Featured: featured,
 			Discover: discover,
 			Tiers:    strings.Join(tiers, ","),
@@ -785,10 +816,18 @@ func aggregatePageHandler(c *category) http.HandlerFunc {
 			CompleteOnly:  completeOnly,
 			CoverageOrder: coverageOrder,
 		}
+		done()
 		w.Header().Set("Cache-Control", "no-cache")
-		if err := templates.ExecuteTemplate(w, "aggregate.html", data); err != nil {
+		// The page is written in pieces: the header (with the timings) goes
+		// out with the first, so render is timed from the stages before it.
+		done = timeStage(r, "render")
+		var buf bytes.Buffer
+		if err := templates.ExecuteTemplate(&buf, "aggregate.html", data); err != nil {
 			http.Error(w, err.Error(), http.StatusInternalServerError)
+			return
 		}
+		done()
+		_, _ = buf.WriteTo(w)
 	}
 }
 

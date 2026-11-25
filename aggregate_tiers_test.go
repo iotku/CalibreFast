@@ -3,6 +3,9 @@ package main
 import (
 	"bytes"
 	"fmt"
+	"net/http"
+	"net/http/httptest"
+	"regexp"
 	"slices"
 	"strings"
 	"testing"
@@ -72,6 +75,7 @@ func TestAggregateControlsOnFirstPaint(t *testing.T) {
 		for i := range n {
 			data.Items = append(data.Items, AggregateDisplayItem{Name: fmt.Sprint("t", i), Href: fmt.Sprint("/tag/t", i), Count: 2, Tier: 1})
 		}
+		data.Total = n
 		var buf bytes.Buffer
 		if err := templates.ExecuteTemplate(&buf, "aggregate.html", data); err != nil {
 			t.Fatal(err)
@@ -87,5 +91,51 @@ func TestAggregateControlsOnFirstPaint(t *testing.T) {
 	}
 	if page := render(11); !strings.Contains(page, `aria-label="Order" hidden>`) || strings.Contains(page, `data-order="az"`) {
 		t.Error("11 entries: order bar shown")
+	}
+}
+
+// A big cloud comes in two parts: the page draws the first aggPageFirst
+// entries and marks that there are more; ?part=rest draws the others, in
+// the same order, each once.
+func TestAggregateCloudInTwoParts(t *testing.T) {
+	db := catalogFixture(t)
+	a := addTestBook(t, db, "One", []string{"Ann"}, nil, "")
+	b := addTestBook(t, db, "Two", []string{"Ann"}, nil, "")
+	n := aggPageFirst + 25
+	for i := range n {
+		name := fmt.Sprintf("Tag %04d", i)
+		mustExec(t, db, `INSERT INTO tags (name) VALUES (?)`, name)
+		for _, u := range []string{a, b} {
+			mustExec(t, db, `INSERT INTO books_tags_link (book, tag) SELECT b.id, t.id FROM books b, tags t WHERE b.uuid = ? AND t.name = ?`, u, name)
+		}
+	}
+	c := categoryByKey("tag")
+	refreshAggregateCache(c)
+	get := func(path string) string {
+		t.Helper()
+		rec := httptest.NewRecorder()
+		aggregatePageHandler(c)(rec, httptest.NewRequest("GET", path, nil))
+		if rec.Code != http.StatusOK {
+			t.Fatalf("%s: %d %s", path, rec.Code, rec.Body)
+		}
+		return rec.Body.String()
+	}
+	hrefs := func(html string) []string {
+		return regexp.MustCompile(`class="agg-item[^"]*" href="(/tag/[^"]+)"`).FindAllString(html, -1)
+	}
+	page, rest := get("/tags"), get("/tags?part=rest")
+	first, more := hrefs(page), hrefs(rest)
+	if len(first) != aggPageFirst || !strings.Contains(page, `data-rest=""`) {
+		t.Fatalf("page: %d entries, data-rest %v", len(first), strings.Contains(page, `data-rest=""`))
+	}
+	if len(more) != n-aggPageFirst || strings.Contains(rest, "<html") {
+		t.Fatalf("rest: %d entries (want %d), a whole page: %v", len(more), n-aggPageFirst, strings.Contains(rest, "<html"))
+	}
+	seen := map[string]bool{}
+	for _, h := range append(first, more...) {
+		if seen[h] {
+			t.Errorf("listed twice: %s", h)
+		}
+		seen[h] = true
 	}
 }
