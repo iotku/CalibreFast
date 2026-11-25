@@ -7105,6 +7105,43 @@ body:has(.manage-panel:not([hidden])) .select-bar {
     font-size: 0.78rem;
     color: var(--text-secondary);
 }
+/* The installed app's one-time offer of system notifications (nav.ts, push.ts). */
+.tb-push-offer {
+    padding: 8px 12px;
+    white-space: normal;
+}
+.tb-push-ask {
+    margin: 0 0 4px;
+    font-size: 0.9rem;
+    font-weight: 600;
+    color: var(--text-primary);
+}
+.tb-push-note {
+    margin: 0 0 8px;
+    font-size: 0.78rem;
+    color: var(--text-secondary);
+}
+.tb-push-note:empty {
+    display: none;
+}
+.tb-push-actions {
+    display: flex;
+    gap: 8px;
+    margin-bottom: 4px;
+}
+.tb-menu-list .tb-push-actions button {
+    width: auto;
+    height: auto;
+    justify-content: center;
+    padding: 6px 12px;
+    border: 1px solid var(--border-color);
+}
+.tb-menu-list .tb-push-actions .btn-primary,
+.tb-menu-list .tb-push-actions .btn-primary:hover {
+    background: #c8a96e;
+    color: #121212;
+    border-color: #c8a96e;
+}
 .tb-menu-list button.tb-notice-dismiss {
     flex: none;
     display: inline-flex;

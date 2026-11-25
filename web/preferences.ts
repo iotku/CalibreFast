@@ -31,6 +31,7 @@ import { cachedMarks, fetchMarks, statusOf, type Marks } from "./reading.js";
 import { syncBooks } from "./book-sync.js";
 import { makeRoom, requestPersist, savedList, storageLimit } from "./retention.js";
 import { onSyncChange, readSync } from "./sync-state.js";
+import { installedApp, pushState, turnOffPush, turnOnPush, type PushState } from "./push.js";
 
 const MB = 1 << 20;
 
@@ -362,6 +363,47 @@ function showDownloads(): void {
     } else if (s.paused && s.waiting) deviceStatus.textContent = `Downloads paused: ${s.waiting} book${s.waiting === 1 ? "" : "s"} waiting.`;
 }
 onSyncChange(user, showDownloads);
+
+/* ------------------------------------------------------------------ */
+/* System notifications on this device (push.ts, webpush.go)          */
+/* ------------------------------------------------------------------ */
+
+const pushBox = byId<HTMLInputElement>("prefs-push-on");
+const pushStatus = byId("prefs-push-status");
+const PUSH_SAYS: Record<PushState, string> = {
+    unsupported: installedApp()
+        ? "This browser can't show system notifications."
+        : "This browser can't show system notifications here. On iPhone and iPad, add the library to your Home Screen and open it from there.",
+    "server-off": "System notifications are turned off on this server.",
+    blocked: "Notifications are blocked for this site in your browser or system settings. Allow them there first, if you want them.",
+    on: "",
+    off: "",
+};
+
+function showPush(st: PushState): void {
+    pushBox.checked = st === "on";
+    pushBox.disabled = st === "unsupported" || st === "server-off" || st === "blocked";
+    pushStatus.textContent = PUSH_SAYS[st];
+}
+
+void pushState()
+    .then(showPush)
+    .catch(() => showPush("off"));
+pushBox.addEventListener("change", () => {
+    const want = pushBox.checked;
+    pushBox.disabled = true;
+    pushStatus.textContent = "Saving…";
+    const done = want ? turnOnPush() : turnOffPush().then((): PushState => "off");
+    done.then((st) => {
+        showPush(st);
+        if (st === "on") pushStatus.textContent = "This device will show your notifications.";
+        else if (st === "off") pushStatus.textContent = want ? "Not turned on." : "This device won't show system notifications. They're still in the app.";
+    }).catch((err: unknown) => {
+        pushStatus.textContent = `Couldn't change it: ${errorMessage(err)}`;
+        void pushState().then((st) => (pushBox.checked = st === "on"), () => undefined);
+        pushBox.disabled = false;
+    });
+});
 
 /* ------------------------------------------------------------------ */
 /* Reading stats (the account's; stats.go)                            */

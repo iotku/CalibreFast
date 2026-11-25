@@ -118,6 +118,7 @@ func deliver(ex execer, userID, eventID int64, onDeck bool) error {
 		userID, eventID, onDeck, nowUnix()); err != nil {
 		return err
 	}
+	pushNotify(ex, userID) // sent after pushDelay, once this transaction is done
 	now := time.Now()
 	pruned, err := pruneUserNotifications(ex, userID, now)
 	if err != nil || pruned == 0 {

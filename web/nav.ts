@@ -24,6 +24,8 @@ import { meRequest } from "./me.js";
 import type { HardcoverIndicator, HardcoverStatus } from "./types.js";
 import { clearable } from "./clearable.js";
 import { attachSearchSuggest } from "./search-suggest.js";
+import { noticeText, type Notice } from "./notice-text.js";
+import { declinePush, pushSupported, shouldOfferPush, turnOffPush, turnOnPush } from "./push.js";
 
 
 function icon(path: string): SVGSVGElement {
@@ -356,36 +358,6 @@ function init(bar: HTMLElement): void {
             },
         };
     }
-    interface Notice {
-        id: number;
-        /** placeholder_added, favorite_author, favorite_series or hardcover_relink (notifications.go). */
-        kind: string;
-        title: string;
-        on_deck: boolean;
-        seen: boolean;
-        href: string;
-        /** favorite_*: the author or series, and how many of its books are new. */
-        subject?: string;
-        count: number;
-        /** placeholder_added: the saved book's authors ("A & B"), if known. */
-        authors?: string;
-    }
-    /** A notice's headline and the line under it (may be empty). */
-    function noticeText(n: Notice): [headline: string, note: string] {
-        const many = n.count > 1;
-        const subject = n.subject ?? "";
-        switch (n.kind) {
-            case "favorite_author":
-                return many ? [`${n.count} new books by ${subject}`, "An author you follow"] : [n.title, `New, by ${subject}`];
-            case "hardcover_relink":
-                return ["Link Hardcover again", `To ${n.title}`];
-            case "favorite_series":
-                return many ? [`${n.count} new books in ${subject}`, "A series you follow"] : [n.title, `New in ${subject}`];
-            default:
-                // As notifications.html words it.
-                return [`Saved book added to library: ${n.title}${n.authors ? ` by ${n.authors}` : ""}${n.on_deck ? " · On deck" : ""}`, ""];
-        }
-    }
     function makeSyncButton(name: string): SyncButton {
         const ns = "http://www.w3.org/2000/svg";
         const ring = document.createElementNS(ns, "svg");
@@ -517,6 +489,50 @@ function init(bar: HTMLElement): void {
             notices.hidden = !notices.childElementCount;
             allNotices.textContent = ns.length > NOTICES_SHOWN ? `All notifications (${ns.length})` : "All notifications";
         };
+        // The installed app offers system notifications here, once: never
+        // shown again after "No thanks" or a "no" from the browser (push.ts).
+        const pushOffer = el("div", { className: "tb-push-offer", hidden: true });
+        const offerPush = (): void => {
+            void shouldOfferPush()
+                .then((offer) => {
+                    if (!offer) {
+                        pushOffer.hidden = true;
+                        return;
+                    }
+                    const status = el("p", { className: "tb-push-note", role: "status" });
+                    const yes = el("button", { type: "button", className: "btn-standard btn-primary", textContent: "Turn on" });
+                    const no = el("button", { type: "button", className: "btn-standard", textContent: "No thanks" });
+                    yes.addEventListener("click", (e) => {
+                        e.stopPropagation();
+                        yes.disabled = no.disabled = true;
+                        turnOnPush()
+                            .then((st) => {
+                                if (st === "on" || st === "blocked") pushOffer.hidden = true;
+                                else yes.disabled = no.disabled = false;
+                            })
+                            .catch((err: unknown) => {
+                                status.textContent = err instanceof Error ? err.message : String(err);
+                                yes.disabled = no.disabled = false;
+                            });
+                    });
+                    no.addEventListener("click", (e) => {
+                        e.stopPropagation();
+                        pushOffer.hidden = true;
+                        void declinePush().catch(() => {});
+                    });
+                    pushOffer.replaceChildren(
+                        el("p", { className: "tb-push-ask", textContent: "Get these as system notifications on this device?" }),
+                        el("p", {
+                            className: "tb-push-note",
+                            textContent: "Your device's push service is only told that something's new, never what. You can change this in preferences.",
+                        }),
+                        el("div", { className: "tb-push-actions" }, yes, no),
+                        status,
+                    );
+                    pushOffer.hidden = false;
+                })
+                .catch(() => {});
+        };
         const panel = el(
             "div",
             { className: "tb-menu-list tb-sync-panel", hidden: true },
@@ -528,6 +544,7 @@ function init(bar: HTMLElement): void {
             el("hr"),
             notices,
             allNotices,
+            pushOffer,
             el("hr"),
             pause,
             mark(el("a", { href: "/preferences", textContent: "Storage and preferences" }), "preferences"),
@@ -662,6 +679,7 @@ function init(bar: HTMLElement): void {
             }
             if (hc && navigator.onLine) askHardcover(); // where it stands now, and the last error
             loadNotices();
+            offerPush();
             // Shown, so seen: the bell goes.
             if (unseen) {
                 api("POST", "/api/me/notifications/seen")
@@ -755,11 +773,18 @@ function init(bar: HTMLElement): void {
         );
 
         const logout = el("form", { method: "post", action: "/logout" }, el("button", { type: "submit", textContent: "Sign out" }));
-        logout.addEventListener("submit", () => {
+        let signingOut = false;
+        logout.addEventListener("submit", (e) => {
             cache.set(null);
             forgetSynced(name);
             void keepOnlyUser(null).catch(() => {});
             void forgetOfflineReading();
+            // This device stops getting the account's system notifications
+            // (briefly waited for; signing out goes ahead regardless).
+            if (signingOut || !pushSupported()) return;
+            e.preventDefault();
+            signingOut = true;
+            void Promise.race([turnOffPush(), new Promise((r) => setTimeout(r, 1500))]).finally(() => logout.submit());
         });
         // Sections, with a rule between those that have anything in them:
         // reading, library tools, admin, then the account itself.

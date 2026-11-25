@@ -97,6 +97,7 @@ Then open [http://localhost:8080](http://localhost:8080) and sign in. Add more u
 | `-no-google-books` | Never offer Google Books in the metadata editor, even with `CF_GOOGLE_BOOKS_KEY`. Open Library still works. |
 | `-no-hardcover` | Never ask Hardcover (series on Missing books, and **Try Hardcover** in the metadata editor), even with `CF_HARDCOVER_TOKEN`. |
 | `-no-hardcover-sync` | Don't let users link their Hardcover accounts on **Account → Hardcover** (on whenever a Hardcover OAuth client is set up; see below). |
+| `-no-web-push` | Never send system notifications (Web Push) to users' devices. Users turn them on per device, off by default; notifications are always in the app ([SECURITY.md](docs/SECURITY.md#system-notifications-web-push)). |
 | `-recycle-bin DIR` | Where books removed from the library are kept until you empty it (default `<datadir>/recycle-bin`). On the library's filesystem, removing and restoring are instant; elsewhere the files are copied. |
 | `-empty-recycle-bin AGE` | Permanently delete what was removed from the library more than `AGE` ago (`30d`, `12h`; `0` for everything) and exit. The only way to empty the Recycling Bin: it can't be done from the web. |
 | `-create-user NAME` | Create a user (or reset their password) and exit; add `-admin` to make them an admin |

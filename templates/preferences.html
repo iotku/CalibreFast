@@ -43,6 +43,16 @@
         <p class="prefs-status" id="prefs-stats-status" role="status"></p>
     </section>
 
+    <section class="auth-card prefs-signed-in" aria-labelledby="prefs-push-title" id="prefs-push" hidden>
+        <h2 id="prefs-push-title">System notifications</h2>
+        <p class="auth-muted">Let this device show your notifications (a saved book arriving, new books by authors you follow) even while the app is closed. They're always in the app either way.</p>
+        <p class="auth-muted">They go through your browser maker's push service (Apple, Google, Mozilla or Microsoft), which is told only that something's new, never what: the text comes from this server.</p>
+        <div class="prefs-radios">
+            <label><input type="checkbox" id="prefs-push-on"> Show system notifications on this device</label>
+        </div>
+        <p class="prefs-status" id="prefs-push-status" role="status"></p>
+    </section>
+
     <section class="auth-card" aria-labelledby="prefs-device-title" id="prefs-device">
         <h2 id="prefs-device-title">Books on this device</h2>
         <p class="auth-muted">Books you read are kept in this browser, so they open at once and can be read with no connection. These settings are for this device only.</p>

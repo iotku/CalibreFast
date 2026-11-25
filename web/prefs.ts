@@ -115,9 +115,11 @@ export interface AccountPrefs {
     yearly_books: number;
     /** A notice in the reader when the daily goal is reached; off unless asked for. */
     goal_notice: boolean;
+    /** "No thanks" to system notifications: not offered again (push.ts). */
+    push_declined: boolean;
 }
 
-const ACCOUNT_DEFAULTS: AccountPrefs = { format: "last", track_reading: true, daily_pages: 0, yearly_books: 0, goal_notice: false };
+const ACCOUNT_DEFAULTS: AccountPrefs = { format: "last", track_reading: true, daily_pages: 0, yearly_books: 0, goal_notice: false, push_declined: false };
 
 const goal = (n: unknown): number => (typeof n === "number" && Number.isInteger(n) && n >= 0 && n <= 1000 ? n : 0);
 
@@ -128,6 +130,7 @@ function validAccount(v: Partial<AccountPrefs> | null): AccountPrefs {
         daily_pages: goal(v?.daily_pages),
         yearly_books: goal(v?.yearly_books),
         goal_notice: v?.goal_notice === true,
+        push_declined: v?.push_declined === true,
     };
 }
 
