@@ -3120,6 +3120,11 @@ body.book-standalone {
     line-height: 1.25;
 }
 
+/* A remembered A–Z or Shuffle waits for every entry (web/aggregate.ts). */
+.agg-cloud.agg-pending {
+    visibility: hidden;
+}
+
 .agg-cloud[hidden],
 #agg-browse[hidden],
 .agg-letters[hidden],

@@ -26,6 +26,7 @@ import { booksLabel, favCard, setupFavRows } from "./fav-carousel.js";
 import { keptFavorites, loadFavorites } from "./favorites.js";
 import { bestScore, fold, type Hay, prepare, prepareQuery } from "./fuzzy.js";
 import type { AggFavorite, AggregateEntry, Book } from "./types.js";
+import { serverHtml } from "./trusted.js";
 import { colorFromBook, coverUrl } from "./utils.js";
 
 const MAX_RESULTS = 300;
@@ -81,15 +82,18 @@ function plural(n: number): string {
 
 /** Series the server drew coverage for (✓ or a ring): their badge, by name. */
 const coverageBadges = new Map<string, { badge: Element; complete: boolean }>();
-for (const a of document.querySelectorAll<HTMLAnchorElement>("a[data-coverage]")) {
-    const badge = a.querySelector(".agg-coverage");
-    if (!badge || !a.pathname.startsWith(prefix)) continue;
-    try {
-        coverageBadges.set(decodeURIComponent(a.pathname.slice(prefix.length)), { badge, complete: "complete" in a.dataset });
-    } catch {
-        // a malformed path: no badge in search results
+function noteBadges(root: ParentNode): void {
+    for (const a of root.querySelectorAll<HTMLAnchorElement>("a[data-coverage]")) {
+        const badge = a.querySelector(".agg-coverage");
+        if (!badge || !a.pathname.startsWith(prefix)) continue;
+        try {
+            coverageBadges.set(decodeURIComponent(a.pathname.slice(prefix.length)), { badge, complete: "complete" in a.dataset });
+        } catch {
+            // a malformed path: no badge in search results
+        }
     }
 }
+noteBadges(document);
 
 /** One entry, as the "agg-entry" template draws it. */
 function link(item: AggregateEntry, className: string): HTMLAnchorElement {
@@ -250,7 +254,7 @@ type Order = "count" | "az" | "shuffle";
 
 const orderBar = byId("agg-order");
 const letters = byId("agg-letters");
-const items = [...grid.querySelectorAll<HTMLAnchorElement>("a.agg-item")];
+let items = [...grid.querySelectorAll<HTMLAnchorElement>("a.agg-item")];
 
 /** The A–Z key: an author's "Surname, First" when the server sent one, else the name shown. */
 function sortKey(a: HTMLAnchorElement): string {
@@ -439,7 +443,50 @@ if (!orderBar.hidden) {
     } catch {
         // as above
     }
-    if (saved === "az" || saved === "shuffle") setOrder(saved);
+    // With the rest of the cloud still to come, that waits for it (below).
+    if ((saved === "az" || saved === "shuffle") && !("rest" in grid.dataset)) setOrder(saved);
+}
+
+// ---------------------------------------------------------------------------
+// The rest of the cloud
+// ---------------------------------------------------------------------------
+
+/**
+ * A big cloud comes with only its first entries (Go: aggPageFirst); the
+ * rest, the same entries drawn by the same template, are fetched at once
+ * and added after the first paint, so a library's thousands of authors
+ * don't hold the page up. Then a remembered A–Z or Shuffle is applied (the
+ * cloud was hidden until then: templates/aggregate.html, agg-pending).
+ */
+if ("rest" in grid.dataset) {
+    const url = new URL(location.href);
+    url.searchParams.set("part", "rest");
+    url.hash = "";
+    const rest = fetch(url, { credentials: "same-origin", headers: { accept: "text/html" } })
+        .then((res) => (res.ok && (res.headers.get("content-type") ?? "").startsWith("text/html") ? res.text() : ""))
+        .catch(() => "");
+    requestAnimationFrame(() =>
+        setTimeout(() => {
+            void rest.then((html) => {
+                if (html) {
+                    const box = document.createElement("div");
+                    serverHtml(box, html); // html/template output from our server (agg-rest)
+                    noteBadges(box);
+                    grid.append(...box.childNodes);
+                    items = [...grid.querySelectorAll<HTMLAnchorElement>("a.agg-item")];
+                    keys = null; // A–Z keys again, for the whole cloud
+                }
+                let saved: string | null = null;
+                try {
+                    saved = localStorage.getItem(ORDER_KEY);
+                } catch {
+                    // as above
+                }
+                if (!orderBar.hidden && (saved === "az" || saved === "shuffle")) setOrder(saved);
+                grid.classList.remove("agg-pending");
+            });
+        }, 0),
+    );
 }
 
 // ---------------------------------------------------------------------------
