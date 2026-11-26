@@ -160,6 +160,17 @@ func registerBookEditRoutes() {
 	// (lookup.go)
 	http.HandleFunc("GET /metadata/lookup", requireEditor(requireLookups(lookupHandler)))
 	http.HandleFunc("GET /metadata/lookup/cover", requireEditor(requireLookups(lookupCoverHandler)))
+
+	// The cover updater: new covers for books picked in the grid, each
+	// undone on its own (cover_refresh.go). Undoing needs no lookups.
+	lookups := func(h http.HandlerFunc) http.HandlerFunc { return requireEditor(requireLookups(h)) }
+	http.HandleFunc("GET /library/covers", lookups(coverRefreshPage))
+	http.HandleFunc("POST /api/covers/books", lookups(coverRefreshBooksHandler))
+	http.HandleFunc("GET /api/covers/budget", lookups(coverBudgetHandler))
+	http.HandleFunc("POST /api/covers/{uuid}/apply", lookups(afterBookEdits(coverApplyHandler)))
+	http.HandleFunc("GET /api/covers/history", requireEditor(coverHistoryHandler))
+	http.HandleFunc("GET /api/covers/history/{id}/{side}", requireEditor(coverHistoryImageHandler))
+	http.HandleFunc("POST /api/covers/history/{id}/revert", requireEditor(coverRevertHandler))
 }
 
 func registerImportRoutes() {

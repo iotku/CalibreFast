@@ -85,6 +85,26 @@ func (b *Budget) Reserve(now time.Time, n int) time.Time {
 	return time.Time{}
 }
 
+// ReadyIn says how long until n requests can be reserved (0: now),
+// without reserving them. ok is false when they'd go over today's
+// requests: only after the reset then.
+func (b *Budget) ReadyIn(now time.Time, n int) (wait time.Duration, ok bool) {
+	b.mu.Lock()
+	defer b.mu.Unlock()
+	b.rollLocked(now)
+	if b.used+n > b.daily || (b.remote >= 0 && b.remote < n) {
+		return 0, false
+	}
+	need := min(float64(n), b.burst)
+	if b.tokens < need {
+		wait = time.Duration((need - b.tokens) / b.perMinute * float64(time.Minute))
+	}
+	if now.Before(b.pausedTil) {
+		wait = max(wait, b.pausedTil.Sub(now))
+	}
+	return wait, true
+}
+
 // Pause holds every request until until (after a 429).
 func (b *Budget) Pause(until time.Time) {
 	b.mu.Lock()

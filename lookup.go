@@ -41,7 +41,9 @@ import (
 	"net/http"
 	"os"
 	"runtime/debug"
+	"slices"
 	"strings"
+	"sync"
 	"time"
 
 	"github.com/iotku/CalibreFast/pkg/hardcover"
@@ -199,10 +201,16 @@ func lookupHandler(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "need an ISBN or a title", http.StatusBadRequest)
 		return
 	}
-	ctx, cancel := context.WithTimeout(r.Context(), 20*time.Second)
+	wait := lookupWait(r)
+	ctx, cancel := context.WithTimeout(r.Context(), 20*time.Second+wait)
 	defer cancel()
 	w.Header().Set("Content-Type", "application/json")
-	res := bookLookups.Lookup(ctx, name, q)
+	var res metalookup.Result
+	if wait > 0 {
+		res = bookLookups.LookupWaiting(ctx, name, q, wait)
+	} else {
+		res = bookLookups.Lookup(ctx, name, q)
+	}
 	if want := isbn.Normalize(r.URL.Query().Get("match_isbn")); want != "" && q.ISBN == "" {
 		res = res.MarkISBN(want)
 	}
@@ -251,25 +259,132 @@ func lookupCoverHandler(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "unknown cover", http.StatusBadRequest)
 		return
 	}
-	ctx, cancel := context.WithTimeout(r.Context(), 20*time.Second)
+	wait := lookupWait(r)
+	ctx, cancel := context.WithTimeout(r.Context(), 20*time.Second+wait)
 	defer cancel()
-	img, ctype, err := bookLookups.FetchCover(ctx, source, q.Get("id"))
-	switch {
-	case errors.Is(err, metalookup.ErrBadCoverID):
-		http.Error(w, "unknown cover", http.StatusBadRequest)
-		return
-	case errors.Is(err, metalookup.ErrNoCover):
-		http.Error(w, "no cover", http.StatusNotFound)
-		return
-	case errors.Is(err, metalookup.ErrCoverUnreadable):
-		http.Error(w, "cover unavailable", http.StatusBadGateway)
-		return
-	case err != nil:
-		http.Error(w, "cover unavailable: "+err.Error(), http.StatusBadGateway)
+	img, ctype, err := fetchLookupCover(ctx, source, q.Get("id"), wait)
+	if code, msg := lookupCoverError(err); code != 0 {
+		http.Error(w, msg, code)
 		return
 	}
 	w.Header().Set("Content-Type", ctype)
 	w.Header().Set("Cache-Control", "private, max-age=86400")
 	w.Header().Set("X-Content-Type-Options", "nosniff")
 	_, _ = w.Write(img)
+}
+
+// lookupPatience is how long a lookup asked to wait (?wait=1, the cover
+// updater's runs) waits for room under a source's limits before answering
+// "try again in …": short enough that no proxy times the request out; the
+// page waits out anything longer and asks again.
+const lookupPatience = 30 * time.Second
+
+// lookupWait is how long this request may wait for room: lookupPatience
+// with ?wait=1, else none (the editor's single lookups answer at once).
+func lookupWait(r *http.Request) time.Duration {
+	if r.URL.Query().Get("wait") == "1" {
+		return lookupPatience
+	}
+	return 0
+}
+
+// lookupCoverError is the HTTP status and message for a failed cover fetch
+// (0 for none).
+func lookupCoverError(err error) (int, string) {
+	switch {
+	case err == nil:
+		return 0, ""
+	case errors.Is(err, metalookup.ErrBadCoverID):
+		return http.StatusBadRequest, "unknown cover"
+	case errors.Is(err, metalookup.ErrNoCover):
+		return http.StatusNotFound, "no cover"
+	case errors.Is(err, metalookup.ErrCoverUnreadable):
+		return http.StatusBadGateway, "cover unavailable"
+	case errors.As(err, new(metalookup.ErrDailyLimit)):
+		return http.StatusTooManyRequests, err.Error()
+	}
+	return http.StatusBadGateway, "cover unavailable: " + err.Error()
+}
+
+// lookupCovers keeps the covers fetched lately, so the cover updater
+// (cover_refresh.go) saves the image its preview showed without asking the
+// source again: an Open Library cover counts against the day's requests.
+var lookupCovers = newCoverCache(32<<20, 30*time.Minute)
+
+// fetchLookupCover is bookLookups.FetchCover through lookupCovers. With a
+// wait, it first waits that long at most for room for the request (Open
+// Library's covers count against its limit; Hardcover's images don't).
+func fetchLookupCover(ctx context.Context, source, id string, wait time.Duration) ([]byte, string, error) {
+	key := source + "\x00" + id
+	if img, ctype, ok := lookupCovers.get(key); ok {
+		return img, ctype, nil
+	}
+	if wait > 0 && source == openLibraryName {
+		if err := bookLookups.WaitForRoom(ctx, source, 1, wait); err != nil {
+			return nil, "", err
+		}
+	}
+	img, ctype, err := bookLookups.FetchCover(ctx, source, id)
+	if err == nil {
+		lookupCovers.put(key, img, ctype)
+	}
+	return img, ctype, err
+}
+
+// coverCache holds images by key, at most max bytes in all, each for ttl;
+// the oldest go first.
+type coverCache struct {
+	mu    sync.Mutex
+	max   int
+	ttl   time.Duration
+	size  int
+	order []string
+	items map[string]coverCacheItem
+}
+
+type coverCacheItem struct {
+	img   []byte
+	ctype string
+	at    time.Time
+}
+
+func newCoverCache(max int, ttl time.Duration) *coverCache {
+	return &coverCache{max: max, ttl: ttl, items: map[string]coverCacheItem{}}
+}
+
+func (c *coverCache) get(key string) ([]byte, string, bool) {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	it, ok := c.items[key]
+	if !ok || time.Since(it.at) > c.ttl {
+		return nil, "", false
+	}
+	return it.img, it.ctype, true
+}
+
+func (c *coverCache) put(key string, img []byte, ctype string) {
+	if len(img) > c.max {
+		return
+	}
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	c.drop(key)
+	for c.size+len(img) > c.max && len(c.order) > 0 {
+		c.drop(c.order[0])
+	}
+	c.items[key] = coverCacheItem{img: img, ctype: ctype, at: time.Now()}
+	c.order = append(c.order, key)
+	c.size += len(img)
+}
+
+func (c *coverCache) drop(key string) {
+	it, ok := c.items[key]
+	if !ok {
+		return
+	}
+	delete(c.items, key)
+	c.size -= len(it.img)
+	if i := slices.Index(c.order, key); i >= 0 {
+		c.order = slices.Delete(c.order, i, i+1)
+	}
 }

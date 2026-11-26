@@ -114,6 +114,12 @@ func TestAuthorNamesWithCommas(t *testing.T) {
 	} else if rows, _ := catalogTableBooks(c); !slices.ContainsFunc(rows, func(b tableBook) bool { return b.UUID == uuid && b.Authors == want }) {
 		t.Errorf("bulk editor catalog rows: %+v, want %q", rows, want)
 	}
+	pickRec := httptest.NewRecorder()
+	coverRefreshBooksHandler(pickRec, httptest.NewRequest("POST", "/api/covers/books", strings.NewReader(`{"uuids":["`+uuid+`"]}`)))
+	var picked struct{ Books []coverRefreshBook }
+	if err := json.Unmarshal(pickRec.Body.Bytes(), &picked); err != nil || len(picked.Books) != 1 || picked.Books[0].Authors != want {
+		t.Errorf("cover updater authors: %s, want %q", pickRec.Body, want)
+	}
 
 	// The Authors page lists "Battey, Nick", and its link (/author/Battey,
 	// Nick, as the book popup links it too) finds the book.

@@ -413,3 +413,27 @@ func TestSeriesBooksParts(t *testing.T) {
 		t.Errorf("merged position 2 slugs %v", slugs)
 	}
 }
+
+func TestBudgetReadyIn(t *testing.T) {
+	now := time.Date(2026, 11, 26, 12, 0, 0, 0, time.UTC)
+	b := NewBudget(60, 10, 20)
+	if w, ok := b.ReadyIn(now, 2); w != 0 || !ok {
+		t.Errorf("full: %v %v", w, ok)
+	}
+	if w := b.Reserve(now, 10); !w.IsZero() {
+		t.Fatal(w)
+	}
+	if w, ok := b.ReadyIn(now, 2); w != 2*time.Second || !ok {
+		t.Errorf("empty, 2 wanted: %v %v", w, ok)
+	}
+	if _, ok := b.ReadyIn(now, 11); ok {
+		t.Error("over the day's requests should be not today")
+	}
+	b.Pause(now.Add(time.Minute))
+	if w, _ := b.ReadyIn(now, 1); w != time.Minute {
+		t.Errorf("paused: %v", w)
+	}
+	if u := b.Usage(now); u.Used != 10 {
+		t.Errorf("ReadyIn reserved: used %d", u.Used)
+	}
+}

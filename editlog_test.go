@@ -79,6 +79,13 @@ var (
 		{"POST", "/api/library/bulk"},
 		{"POST", "/api/library/not-duplicates"},
 		{"DELETE", "/api/library/not-duplicates/1"},
+		{"GET", "/library/covers"},
+		{"POST", "/api/covers/books"},
+		{"GET", "/api/covers/budget"},
+		{"POST", "/api/covers/a/apply"},
+		{"GET", "/api/covers/history"},
+		{"GET", "/api/covers/history/1/before"},
+		{"POST", "/api/covers/history/1/revert"},
 	}
 	// Admin routes behind requireWrites: admins pass, with -allow-writes.
 	adminWriteRoutes = []struct{ method, path string }{

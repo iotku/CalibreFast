@@ -321,22 +321,23 @@ func snapCover(uuid string) (string, error) {
 }
 
 // coverSnapper keeps the book's cover before a change; done logs the change
-// if the cover changed.
-func coverSnapper(u *User, action, uuid, title string) (done func()) {
+// if the cover changed, and returns the log entry's id (0: nothing logged).
+func coverSnapper(u *User, action, uuid, title string) (done func() int64) {
 	before, err := snapCover(uuid)
 	if err != nil {
 		log.Printf("edit log: %s's cover: %v", uuid, err)
-		return func() {}
+		return func() int64 { return 0 }
 	}
-	return func() {
+	return func() int64 {
 		after, err := snapCover(uuid)
 		if err != nil {
 			log.Printf("edit log: %s's cover: %v", uuid, err)
-			return
+			return 0
 		}
 		if after != before {
-			logEdit(u, action, logKindCover, uuid, title, before, after)
+			return logEdit(u, action, logKindCover, uuid, title, before, after)
 		}
+		return 0
 	}
 }
 
@@ -859,7 +860,7 @@ func logRestore(u *User, action, batch string, results []restoreResult) {
 // logMerge records a merge (or a new file added to a book): the kept
 // book's metadata and cover, and the batch holding the books and files it
 // replaced.
-func logMerge(u *User, action string, res *mergeResult, before *bookSnap, coverDone func()) {
+func logMerge(u *User, action string, res *mergeResult, before *bookSnap, coverDone func() int64) {
 	if before != nil {
 		logBookEdit(u, action, res.UUID, before)
 	}

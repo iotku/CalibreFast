@@ -195,6 +195,91 @@ func (c *Client) Lookup(ctx context.Context, source string, q Query) Result {
 	return res
 }
 
+// lookupCost is the most requests one lookup takes from a source: Open
+// Library's edition, work and authors (or a search and its works),
+// Hardcover's two queries.
+var lookupCost = map[string]int{OpenLibrary: 7, GoogleBooks: 1, Hardcover: 2}
+
+// LookupCost is the most requests one lookup of source takes.
+func LookupCost(source string) int { return lookupCost[source] }
+
+// ErrDailyLimit: a source's requests for today are used up.
+type ErrDailyLimit struct{ Source string }
+
+func (e ErrDailyLimit) Error() string {
+	return e.Source + "'s requests for today are used up; try again tomorrow"
+}
+
+// waitTooLong: the source would have room only after more than the caller
+// was willing to wait.
+type waitTooLong struct{ wait time.Duration }
+
+func (e waitTooLong) Error() string {
+	return fmt.Sprintf("too many requests just now; try again in %s", max(e.wait, time.Second).Round(time.Second))
+}
+
+// readyIn is how long until source has room for n requests; ok false: not
+// today.
+func (c *Client) readyIn(source string, n int, now time.Time) (time.Duration, bool) {
+	if source == Hardcover {
+		if c.hardcover == nil || c.hardcover.Budget == nil {
+			return 0, true
+		}
+		return c.hardcover.Budget.ReadyIn(now, n)
+	}
+	if l := c.limits[source]; l != nil {
+		return l.ReadyIn(now, n)
+	}
+	return 0, true
+}
+
+// WaitForRoom waits, at most maxWait, until source can take n requests at
+// once: for work that would rather go slowly than fail halfway through a
+// lookup, as a run of lookups does once the burst is spent. It says so
+// (ErrDailyLimit) when today's requests won't stretch to n, and returns
+// an error naming the wait when it's longer than maxWait. Other callers
+// may take the room meanwhile, so it checks again after each wait.
+func (c *Client) WaitForRoom(ctx context.Context, source string, n int, maxWait time.Duration) error {
+	if n <= 0 {
+		return nil
+	}
+	deadline := time.Now().Add(maxWait)
+	for {
+		now := time.Now()
+		wait, ok := c.readyIn(source, n, now)
+		switch {
+		case !ok:
+			return ErrDailyLimit{source}
+		case wait <= 0:
+			return nil
+		case now.Add(wait).After(deadline):
+			return waitTooLong{wait}
+		}
+		t := time.NewTimer(wait)
+		select {
+		case <-ctx.Done():
+			t.Stop()
+			return ctx.Err()
+		case <-t.C:
+		}
+	}
+}
+
+// LookupWaiting is Lookup, waiting first (at most maxWait) until the
+// source has room for a whole lookup, so the lookup isn't refused
+// halfway. An answer already cached is given at once.
+func (c *Client) LookupWaiting(ctx context.Context, source string, q Query, maxWait time.Duration) Result {
+	if source != Hardcover {
+		if res, ok := c.cache.get(source + "\x00" + q.key()); ok {
+			return res
+		}
+	}
+	if err := c.WaitForRoom(ctx, source, lookupCost[source], maxWait); err != nil {
+		return Result{Source: source, Error: err.Error()}
+	}
+	return c.Lookup(ctx, source, q)
+}
+
 // statusError is a non-200, non-404 answer.
 type statusError int
 

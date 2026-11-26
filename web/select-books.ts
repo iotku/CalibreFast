@@ -1,11 +1,10 @@
 // Choosing books in a grid: to put them on a shelf (anyone signed in), or
 // to merge, edit or remove them (editors, with -allow-writes). A Ctrl+click
-// on a card, a long press on one on a touch screen, "Select" above the
-// grid, or "Select books" in the Manage sidebar (templates/filtered.html)
-// turns taps on cards into ticks; a bar at the bottom counts them and
+// on a card, a long press on one on a touch screen or "Select books"
+// above the grid turns taps on cards into ticks; a bar at the bottom counts them and
 // offers Add to shelf (shelf-picker.ts) and, for editors, Merge (the
 // metadata editor's merge mode, Go: merge.go), Edit in table (the bulk
-// editor, library-edit.ts) and Remove (the confirmation, delete-books.ts). A placeholder (a book not in the library
+// editor, library-edit.ts), Update covers (library-covers.ts) and Remove (the confirmation, delete-books.ts). A placeholder (a book not in the library
 // yet, data-placeholder) can be picked too, to merge with the library books
 // that are it (Go: merge_placeholder.go); Edit and Remove leave it out. The
 // choice survives scrolling: cards are marked again as they're re-rendered
@@ -26,12 +25,17 @@ let countEl: HTMLElement | null = null;
 let removeBtn: HTMLButtonElement | null = null;
 let mergeBtn: HTMLAnchorElement | null = null;
 let tableBtn: HTMLButtonElement | null = null;
+let coversBtn: HTMLButtonElement | null = null;
 let shelfBtn: HTMLButtonElement | null = null;
 
 /** At most this many books are merged at once (Go: mergeMaxBooks). */
 const MERGE_MAX = 20;
 /** sessionStorage: the books to show in the bulk editor (library-edit.ts). */
 export const BULK_SELECTION_KEY = "cf-bulk-selection";
+/** sessionStorage: the books for the cover updater (library-covers.ts). */
+const COVER_SELECTION_KEY = "cf-cover-selection";
+/** At most this many books get new covers at once (Go: coverRefreshMax). */
+const COVERS_MAX = 200;
 /** The buttons that start and stop selecting: the sidebar's and the grid's. */
 const toggleBtns: HTMLButtonElement[] = [];
 
@@ -104,6 +108,11 @@ function update(): void {
         mergeBtn.textContent = n >= 2 ? `Merge ${n}…` : "Merge…";
     }
     if (tableBtn) tableBtn.disabled = nb === 0;
+    if (coversBtn) {
+        coversBtn.disabled = nb === 0 || nb > COVERS_MAX;
+        coversBtn.title = nb > COVERS_MAX ? `At most ${COVERS_MAX} books at a time` : "Look the selected books up on Hardcover and Open Library for better covers";
+        coversBtn.textContent = nb ? `Update ${nb} ${nb === 1 ? "cover" : "covers"}…` : "Update covers…";
+    }
     if (shelfBtn) {
         shelfBtn.disabled = nb === 0;
         shelfBtn.textContent = nb ? `Add ${nb} to shelf…` : "Add to shelf…";
@@ -134,25 +143,20 @@ export function setupSelection(grid: HTMLElement): void {
         if (editorReady || root["canEdit"] !== "1") return;
         editorReady = true;
 
-        // The Manage sidebar's button, where the page has one. Where the
-        // sidebar covers the page (a phone), starting closes it.
-        const sideBtn = document.querySelector<HTMLButtonElement>("#select-books-btn");
-        const section = document.getElementById("select-section");
-        if (section) section.hidden = false;
-        if (sideBtn) {
-            toggleBtns.push(sideBtn);
-            sideBtn.addEventListener("click", () => {
-                setSelecting(grid, !selecting);
-                const sidebar = document.getElementById("manage-panel");
-                if (selecting && sidebar && matchMedia("(max-width: 600px)").matches) sidebar.dispatchEvent(new CustomEvent("cf:manage-close"));
-            });
-        }
-
         removeBtn = el("button", { type: "button", className: "btn-action btn-danger", disabled: true });
         mergeBtn = el("a", { className: "btn-action" }, "Merge…");
         mergeBtn.setAttribute("aria-disabled", "true");
         tableBtn = el("button", { type: "button", className: "btn-action", disabled: true, title: "Open the selected books in the bulk editor's table" }, "Edit in table");
-        actions.append(tableBtn, mergeBtn, removeBtn);
+        coversBtn = el("button", { type: "button", className: "btn-action", disabled: true }, "Update covers…");
+        actions.append(tableBtn, coversBtn, mergeBtn, removeBtn);
+        coversBtn.addEventListener("click", () => {
+            try {
+                sessionStorage.setItem(COVER_SELECTION_KEY, JSON.stringify(chosenBooks().map((b) => b.uuid)));
+            } catch {
+                return; // no storage: nothing to hand over
+            }
+            location.assign("/library/covers");
+        });
         tableBtn.addEventListener("click", () => {
             try {
                 sessionStorage.setItem(BULK_SELECTION_KEY, JSON.stringify(chosenBooks().map((b) => b.uuid)));
@@ -176,7 +180,7 @@ export function setupSelection(grid: HTMLElement): void {
         if (root["signedIn"] !== "1" && root["canEdit"] !== "1") return;
         ready = true;
 
-        // "Select" above the grid, for everyone signed in: by the sort
+        // "Select books" above the grid, for everyone signed in: by the sort
         // select where there is one.
         const gridBtn = el("button", { type: "button", className: "btn-standard grid-select-btn", title: "Choose books to add to a shelf (or Ctrl+click / long-press a book)" }, "Select books");
         gridBtn.setAttribute("aria-pressed", "false");
