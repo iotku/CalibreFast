@@ -49,6 +49,10 @@ type BookPageData struct {
 
 	Writable bool // server started with -allow-writes (shows the Edit button)
 
+	// The book in a reader's preview mode (nothing saved; web/reader-preview.ts),
+	// beside the title: "" without a format a reader opens.
+	PreviewLink string
+
 	Formats    []string
 	ModTime    string // cache-buster for cover-thumb (matches the library grid's)
 	CoverStamp string // cache-buster for the full cover: cover.jpg's modification time
@@ -192,9 +196,10 @@ func bookHandler(w http.ResponseWriter, r *http.Request) {
 			),
 		),
 
-		Formats:    formats,
-		ModTime:    modTime.(string),
-		CoverStamp: strconv.FormatInt(coverTime, 36),
+		Formats:     formats,
+		PreviewLink: previewReadLink("uuid", uuid, formats),
+		ModTime:     modTime.(string),
+		CoverStamp:  strconv.FormatInt(coverTime, 36),
 
 		HasCover: hasCover,
 		CoverHue: coverHue(uuid),

@@ -58,3 +58,33 @@ func TestBookPageLimitsTagsAndAuthors(t *testing.T) {
 		t.Error("10 tags, 5 authors: nothing should be hidden")
 	}
 }
+
+// A book a reader opens gets a Preview button beside its title, opening the
+// reader in preview mode; one with no such format gets none.
+func TestBookPagePreviewButton(t *testing.T) {
+	render := func(formats ...string) string {
+		t.Helper()
+		data := BookPageData{UUID: "u-1", Title: "T", Formats: formats, PreviewLink: previewReadLink("uuid", "u-1", formats)}
+		var buf bytes.Buffer
+		if err := templates.ExecuteTemplate(&buf, "book.html", data); err != nil {
+			t.Fatal(err)
+		}
+		return buf.String()
+	}
+	for _, c := range []struct {
+		formats []string
+		want    string
+	}{
+		{[]string{"pdf", "epub"}, `href="/read?uuid=u-1&amp;preview=1"`},
+		{[]string{"pdf"}, `href="/read-pdf?uuid=u-1&amp;preview=1"`},
+		{[]string{"mobi"}, `href="/read?uuid=u-1&amp;format=mobi&amp;preview=1"`},
+	} {
+		html := render(c.formats...)
+		if !strings.Contains(html, `aria-label="Preview book"`) || !strings.Contains(html, c.want) {
+			t.Errorf("%v: no preview link %s", c.formats, c.want)
+		}
+	}
+	if html := render("txt"); strings.Contains(html, `aria-label="Preview book"`) {
+		t.Error("txt only: should have no preview button")
+	}
+}
