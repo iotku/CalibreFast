@@ -1,0 +1,11 @@
+{
+  "version": "0.0.1",
+  "configurations": [
+    {
+      "name": "calibrefast-testdata",
+      "runtimeExecutable": "./TestData/dev/calibrefast",
+      "runtimeArgs": ["-basedir", "TestData/Library", "-datadir", "TestData/dev/data", "-cachedir", "TestData/dev/cache", "-port", "8086", "-allow-writes", "-no-hardcover-sync=false"],
+      "port": 8086
+    }
+  ]
+}
