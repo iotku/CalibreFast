@@ -941,6 +941,12 @@ var migrations = []string{
 	CREATE INDEX shelf_invite_log_from ON shelf_invite_log (from_id, at);
 	CREATE INDEX shelf_invite_log_to ON shelf_invite_log (to_id, at);
 	`,
+	// 55: placeholders.cover_fetched: its cover was fetched from Hardcover
+	// (hardcover_placeholder_cover.go), not chosen by an editor; it goes
+	// when the placeholder is removed.
+	`
+	ALTER TABLE placeholders ADD COLUMN cover_fetched INTEGER NOT NULL DEFAULT 0;
+	`,
 }
 
 // openAppDB opens (creating if needed) and migrates the app database.

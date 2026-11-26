@@ -269,7 +269,7 @@
             <div id="edit-status" class="edit-status"></div>
 
             <!-- Metadata Edit Form -->
-            <form id="metadata-form" data-uuid="{{.UUID}}"{{ if .Import }} data-import="{{ .Import.ID }}"{{ end }}{{ if .Merge }}{{ if .Merge.Incoming }} data-incoming="{{ .Merge.Incoming }}"{{ if .Merge.FromQueue }} data-from-queue{{ end }}{{ else }} data-merge="{{ .Merge.IDs }}"{{ with .Merge.Placeholder }} data-placeholder="{{ .UUID }}"{{ end }}{{ end }}{{ end }}>
+            <form id="metadata-form" data-uuid="{{.UUID}}"{{ if .Import }} data-import="{{ .Import.ID }}"{{ end }}{{ with .PlaceholderCover }} data-placeholder-cover="{{ . }}"{{ end }}{{ if .Merge }}{{ if .Merge.Incoming }} data-incoming="{{ .Merge.Incoming }}"{{ if .Merge.FromQueue }} data-from-queue{{ end }}{{ else }} data-merge="{{ .Merge.IDs }}"{{ with .Merge.Placeholder }} data-placeholder="{{ .UUID }}"{{ end }}{{ end }}{{ end }}>
                 <div class="form-grid">
                     <!-- Title, swap button, Author(s): one grid cell so the spacing
                          around the swap button can be set exactly. -->
@@ -616,6 +616,7 @@ import { mountMetadataEditor } from {{ asset "metadata.js" }};
                 mountCoverDialog({
                     book,
                     autoDefault: book.pending,
+                    placeholderCover: form.dataset.placeholderCover,
                     opener: coverBtn,
                     isbnInput: {{ if .Lookups }}form.querySelector('[name="identifier_isbn"]'){{ else }}null{{ end }},
                     onChanged(message) {

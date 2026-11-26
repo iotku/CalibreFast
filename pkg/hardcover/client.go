@@ -185,7 +185,7 @@ var (
     ) {
       position
       details
-      book { id slug title subtitle release_date users_count }
+      book { id slug title subtitle release_date users_count cached_image }
     }
   }
 }`, 1}
@@ -597,7 +597,9 @@ type Entry struct {
 	AltIDs []int64 `json:"altIds,omitempty"`
 	// AltSlugs: those books' slugs, for matching a library book that
 	// names one of them.
-	AltSlugs   []string `json:"altSlugs,omitempty"`
+	AltSlugs []string `json:"altSlugs,omitempty"`
+	// Image: its cover, an https URL on hardcover.app (FetchImage), or "".
+	Image      string `json:"image,omitempty"`
 	users      int
 	altAuthors []string
 }
@@ -655,12 +657,13 @@ type seriesBooksRow struct {
 		Position *float64 `json:"position"`
 		Details  *string  `json:"details"`
 		Book     *struct {
-			ID          flexInt `json:"id"`
-			Slug        string  `json:"slug"`
-			Title       string  `json:"title"`
-			Subtitle    *string `json:"subtitle"`
-			ReleaseDate *string `json:"release_date"`
-			UsersCount  int     `json:"users_count"`
+			ID          flexInt         `json:"id"`
+			Slug        string          `json:"slug"`
+			Title       string          `json:"title"`
+			Subtitle    *string         `json:"subtitle"`
+			ReleaseDate *string         `json:"release_date"`
+			UsersCount  int             `json:"users_count"`
+			CachedImage json.RawMessage `json:"cached_image"`
 		} `json:"book"`
 	} `json:"book_series"`
 }
@@ -709,7 +712,7 @@ func (c *Client) SeriesBooks(ctx context.Context, ids ...int64) (*SeriesDetail, 
 			if _, seen := owner[int64(b.ID)]; seen {
 				continue
 			}
-			e := Entry{BookID: int64(b.ID), SeriesID: part.ID, Slug: cleanSlug(b.Slug), Title: b.Title, Position: bs.Position, users: b.UsersCount}
+			e := Entry{BookID: int64(b.ID), SeriesID: part.ID, Slug: cleanSlug(b.Slug), Title: b.Title, Position: bs.Position, Image: imageURL(b.CachedImage), users: b.UsersCount}
 			if bs.Details != nil {
 				e.Details = *bs.Details
 			}

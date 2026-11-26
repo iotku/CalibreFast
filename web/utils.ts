@@ -188,10 +188,12 @@ function seriesCard(book: Book, s: NonNullable<Book["series_card"]>, coverReady:
  */
 function placeholderCard(book: Book, p: NonNullable<Book["placeholder"]>): HTMLElement {
     const title = book.title || "Untitled";
-    const index = book.series_index && book.series_index !== 1 ? ` #${book.series_index}` : "";
+    const index = p.number ? ` #${p.number}` : "";
     const link = el("a", { href: safeUrl(p.href), className: "book-link placeholder-link" });
     link.setAttribute("aria-label", `${title}${index}, not in the library`);
     const banner = el("span", { className: "placeholder-banner" }, "Not in library");
+    // Its number in its series, under the banner's text.
+    if (p.number) banner.append(el("span", { className: "placeholder-banner-number" }, `#${p.number}`));
     banner.setAttribute("aria-hidden", "true");
     const wrapper = p.cover
         ? coverWrapper(book, el("img", { className: "book-cover loaded", src: safeUrl(p.cover), alt: "" }), banner)

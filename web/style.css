@@ -6709,6 +6709,15 @@ body:has(.manage-panel:not([hidden])) .select-bar {
     height: 1.15em;
 }
 
+/* Its number in its series, on a line of its own under "Not in library". */
+.placeholder-banner-number {
+    display: block;
+    margin-top: 0.1em;
+    font-size: 1.15em;
+    letter-spacing: 0.02em;
+    color: var(--accent, #c8a96e);
+}
+
 .placeholder-card .cover-wrapper {
     background: hsl(var(--cover-hue) 15% 22%);
 }

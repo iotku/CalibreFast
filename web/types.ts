@@ -32,6 +32,8 @@ export interface PlaceholderCard {
     href: string;
     /** Its picture; absent for none. */
     cover?: string;
+    /** Its number in its series ("3", "2.5"); absent when not in one or not numbered. */
+    number?: string;
 }
 
 /** A series on a shelf, shown as one card (Go: seriesCard). */

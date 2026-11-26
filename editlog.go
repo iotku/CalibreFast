@@ -403,9 +403,17 @@ func putPlaceholder(id string, s *placeholderSnap) error {
 	if old != nil {
 		defer gapsPlaceholderChanged(old.Meta.Series)
 	}
+	if s != nil {
+		// After placeholdersChanged (deferred calls run last first): a
+		// cover fetched from Hardcover, dropped with it, comes back.
+		defer hcFillPlaceholderCoversSoon()
+	}
 	defer placeholdersChanged()
 	if s == nil {
 		_, err := appDB.Exec(`UPDATE placeholders SET deleted_at = ? WHERE uuid = ?`, nowUnix(), id)
+		if err == nil {
+			dropFetchedPlaceholderCover(id)
+		}
 		return err
 	}
 	defer gapsPlaceholderChanged(s.Meta.Series)
@@ -413,8 +421,8 @@ func putPlaceholder(id string, s *placeholderSnap) error {
 	if err != nil {
 		return err
 	}
-	res, err := appDB.Exec(`UPDATE placeholders SET meta = ?, cover = ?, deleted_at = NULL, replaced_by = '', replaced_why = '', replaced_user = '', updated_at = ? WHERE uuid = ?`,
-		string(meta), s.Cover, nowUnix(), id)
+	res, err := appDB.Exec(`UPDATE placeholders SET meta = ?, cover = ?, cover_fetched = (cover_fetched AND cover = ?), deleted_at = NULL, replaced_by = '', replaced_why = '', replaced_user = '', updated_at = ? WHERE uuid = ?`,
+		string(meta), s.Cover, s.Cover, nowUnix(), id)
 	if err != nil {
 		return err
 	}

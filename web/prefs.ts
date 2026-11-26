@@ -117,9 +117,13 @@ export interface AccountPrefs {
     goal_notice: boolean;
     /** "No thanks" to system notifications: not offered again (push.ts). */
     push_declined: boolean;
+    /** Don't show books not in the library yet on series, author and publisher pages, in search or On Deck (Go: hidesPlaceholders). */
+    hide_placeholders: boolean;
 }
 
-const ACCOUNT_DEFAULTS: AccountPrefs = { format: "last", track_reading: true, daily_pages: 0, yearly_books: 0, goal_notice: false, push_declined: false };
+const ACCOUNT_DEFAULTS: AccountPrefs = {
+    format: "last", track_reading: true, daily_pages: 0, yearly_books: 0, goal_notice: false, push_declined: false, hide_placeholders: false,
+};
 
 const goal = (n: unknown): number => (typeof n === "number" && Number.isInteger(n) && n >= 0 && n <= 1000 ? n : 0);
 
@@ -131,6 +135,7 @@ function validAccount(v: Partial<AccountPrefs> | null): AccountPrefs {
         yearly_books: goal(v?.yearly_books),
         goal_notice: v?.goal_notice === true,
         push_declined: v?.push_declined === true,
+        hide_placeholders: v?.hide_placeholders === true,
     };
 }
 

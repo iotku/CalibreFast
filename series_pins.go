@@ -179,11 +179,13 @@ func onDeck(u *User, m readingMarks, active map[string]int64) ([]Book, error) {
 	for _, id := range uuids {
 		dismissed[id] = true
 	}
-	return nextInSeries(currentRecIndex(), m, dismissed, active), nil
+	return nextInSeries(currentRecIndex(), m, dismissed, active, hidesPlaceholders(u)), nil
 }
 
 // nextInSeries works out On Deck from the user's marks.
-func nextInSeries(ix *recIndex, m readingMarks, dismissed map[string]bool, active map[string]int64) []Book {
+// noPlaceholders: the user would rather not see books not in the library
+// yet (prefs.go): the library's next book is shown instead.
+func nextInSeries(ix *recIndex, m readingMarks, dismissed map[string]bool, active map[string]int64, noPlaceholders bool) []Book {
 	c := ix.cat
 	finished := make(map[string]bool, len(m.Finished)+len(m.Dropped))
 	for _, id := range m.Dropped { // never the next one: it was given up on
@@ -225,7 +227,7 @@ func nextInSeries(ix *recIndex, m readingMarks, dismissed map[string]bool, activ
 		if next >= 0 {
 			before = c.books[next].SeriesIndex
 		}
-		if p := nextPlaceholder(c.seriesNames[s], c.books[f].SeriesIndex, before, held); p != nil {
+		if p := nextPlaceholder(c.seriesNames[s], c.books[f].SeriesIndex, before, held); p != nil && !noPlaceholders {
 			if !dismissed[p.UUID] {
 				cards = append(cards, card{p.book(), titleSort(p.Meta.Title), last[s]})
 			}

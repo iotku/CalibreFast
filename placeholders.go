@@ -73,6 +73,9 @@ type placeholder struct {
 type placeholderCard struct {
 	Href  string `json:"href"`            // its page
 	Cover string `json:"cover,omitempty"` // its picture, "" for none
+	// Number: its number in its series ("3", "2.5"), shown on its cover
+	// under "Not in library"; "" when not in a series or not numbered.
+	Number string `json:"number,omitempty"`
 }
 
 func (p *placeholder) href() string { return "/missing/" + url.PathEscape(p.UUID) }
@@ -93,6 +96,19 @@ func (p *placeholder) index() float64 {
 	return f
 }
 
+// number is its number in its series as shown ("3", "2.5"), or "" when it
+// isn't in one or has no number.
+func (p *placeholder) number() string {
+	if strings.TrimSpace(p.Meta.Series) == "" || strings.TrimSpace(p.Meta.SeriesIndex) == "" {
+		return ""
+	}
+	_, f, err := opf.CleanSeries(p.Meta.Series, p.Meta.SeriesIndex)
+	if err != nil {
+		return ""
+	}
+	return strconv.FormatFloat(f, 'f', -1, 64)
+}
+
 func (p *placeholder) authors() string { return strings.Join(p.Meta.Creators, " & ") }
 
 // book is its grid entry.
@@ -104,7 +120,7 @@ func (p *placeholder) book() Book {
 		SeriesIndex:  p.index(),
 		PubDate:      p.Meta.Date,
 		LastModified: strconv.FormatInt(p.UpdatedAt, 10),
-		Placeholder:  &placeholderCard{Href: p.href(), Cover: p.coverURL()},
+		Placeholder:  &placeholderCard{Href: p.href(), Cover: p.coverURL(), Number: p.number()},
 	}
 }
 
@@ -215,7 +231,9 @@ func savePlaceholder(p *placeholder, by *User) error {
 		_, err = appDB.Exec(`INSERT INTO placeholders (uuid, meta, cover, source, created_by, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?)`,
 			p.UUID, string(meta), p.Cover, p.Source, uid, now, now)
 	} else {
-		_, err = appDB.Exec(`UPDATE placeholders SET meta = ?, cover = ?, updated_at = ? WHERE uuid = ?`, string(meta), p.Cover, now, p.UUID)
+		// A cover fetched from Hardcover stays marked so only while it's kept.
+		_, err = appDB.Exec(`UPDATE placeholders SET meta = ?, cover = ?, cover_fetched = (cover_fetched AND cover = ?), updated_at = ? WHERE uuid = ?`,
+			string(meta), p.Cover, p.Cover, now, p.UUID)
 	}
 	placeholdersChanged()
 	return err
@@ -255,6 +273,7 @@ func removePlaceholder(id, bookUUID, why string, by *User) error {
 		nowUnix(), bookUUID, why, user, id); err != nil {
 		return err
 	}
+	dropFetchedPlaceholderCover(id) // hardcover_placeholder_cover.go
 	placeholdersChanged()
 	gapsPlaceholderChanged(p.Meta.Series)
 	placeholderReplacedForSavers(p, bookUUID) // notifications.go
@@ -683,6 +702,7 @@ type PlaceholderPageData struct {
 	UUID    string
 	Meta    OPFMetadata
 	Index   string // its number, as typed
+	Number  string // its number as shown on its cover (placeholder.number), or ""
 	Authors string // "A & B"
 	Tags    string // "a, b"
 	ISBN    string
@@ -831,6 +851,7 @@ func placeholderPageData(p *placeholder, r *http.Request) PlaceholderPageData {
 		UUID:           p.UUID,
 		Meta:           p.Meta,
 		Index:          p.Meta.SeriesIndex,
+		Number:         p.number(),
 		Authors:        p.authors(),
 		Tags:           strings.Join(p.Meta.Subjects, ", "),
 		ISBN:           placeholderISBN(p.Meta),
