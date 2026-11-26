@@ -3,6 +3,7 @@ import { attachSuggest } from "./suggest.js";
 import { languageChipLabel, languageKey, languageName, loadLanguageCodes, preferredLanguageCode } from "./languages.js";
 import { importEditsKey, type BookTarget } from "./book-target.js";
 import { createDescriptionEditor } from "./description.js";
+import { mountTagCleanup } from "./tag-cleanup.js";
 import { closeOnBackdropClick, el as tag, errorMessage, maybeId } from "./dom.js";
 import { isbnDigits, mountIsbnTools } from "./isbn-tools.js";
 import { parseInert } from "./trusted.js";
@@ -1171,6 +1172,8 @@ export async function mountMetadataEditor(book: BookTarget, form: HTMLFormElemen
     // Description: formatted preview + raw HTML tabs over the textarea.
     const descriptionInput = form.querySelector<HTMLTextAreaElement>('[name="description"]');
     if (descriptionInput) createDescriptionEditor(descriptionInput);
+    const subjectsInput = form.querySelector<HTMLInputElement>('[name="subjects"]');
+    if (subjectsInput) mountTagCleanup(form, subjectsInput, descriptionInput);
 
     // Library-backed suggestions for the plain list/single-value fields.
     const creatorsInput = form.querySelector<HTMLInputElement>('[name="creators"]');
