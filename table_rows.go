@@ -20,7 +20,6 @@ import (
 	"encoding/hex"
 	"encoding/json"
 	"fmt"
-	"math"
 	"net/http"
 	"slices"
 	"strconv"
@@ -254,16 +253,22 @@ func wholeTable(w http.ResponseWriter, r *http.Request) bool {
 			http.Error(w, "bad limit", http.StatusBadRequest)
 			return true
 		}
-		limit = min(limit, n, tablePageMax)
+		if n > tablePageMax {
+			n = tablePageMax
+		}
+		if n < limit {
+			limit = n
+		}
 	}
 	var books []tableBook
 	if s := q.Get("from"); s != "" {
-		from, err := strconv.Atoi(s)
+		// Slots are int32 (catalog.go): a bigger one is no slot.
+		from, err := strconv.ParseInt(s, 10, 32)
 		if err != nil || from < 0 {
 			http.Error(w, "bad from", http.StatusBadRequest)
 			return true
 		}
-		at, _ := slices.BinarySearch(v.slots, int32(min(from, math.MaxInt32)))
+		at, _ := slices.BinarySearch(v.slots, int32(from))
 		end := min(at+limit, len(v.rows))
 		books = slices.Clone(v.rows[at:end])
 		if end < len(v.rows) {

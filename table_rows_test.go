@@ -154,10 +154,15 @@ func TestTablePages(t *testing.T) {
 		t.Errorf("pages: %v, want each of %v once", seen, all)
 	}
 
-	rec := httptest.NewRecorder()
-	libraryTableHandler(rec, httptest.NewRequest("GET", "/api/library/table?limit=0", nil))
-	if rec.Code != 400 {
-		t.Errorf("limit=0: %d", rec.Code)
+	for _, q := range []string{"?limit=0", "?from=-1&limit=2", "?from=99999999999&limit=2"} {
+		rec := httptest.NewRecorder()
+		libraryTableHandler(rec, httptest.NewRequest("GET", "/api/library/table"+q, nil))
+		if rec.Code != 400 {
+			t.Errorf("%s: %d", q, rec.Code)
+		}
+	}
+	if p, _ := getTable(t, "?from=0&limit=99999999999", false); len(p.Books) != 5 || p.Next != 0 {
+		t.Errorf("huge limit: %d books, next %d", len(p.Books), p.Next)
 	}
 }
 
