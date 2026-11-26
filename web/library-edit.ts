@@ -497,17 +497,79 @@ function fillDatalists(): void {
 // Filtering, sorting, drawing
 // ---------------------------------------------------------------------------
 
-function compare(a: Row, b: Row): number {
-    if (sortKey === "series") {
-        const s = a.hay.series.localeCompare(b.hay.series) || a.b.series_index - b.b.series_index;
-        if (s) return s;
+/**
+ * One collator for every comparison: localeCompare with options sets one
+ * up each call, which made sorting 70,000 rows take seconds.
+ */
+const collator = new Intl.Collator(undefined, { numeric: true });
+
+/**
+ * Each column's values ranked in the collator's order, so sorting compares
+ * numbers: the collator then runs over a column's distinct values, not over
+ * every pair of rows a sort looks at. Values the collator finds equal get
+ * one rank.
+ */
+function rankValues(key: ColKey): Map<string, number> {
+    const values = [...new Set(rows.map((r) => r.hay[key]))].sort(collator.compare);
+    const ranks = new Map<string, number>();
+    let rank = 0;
+    values.forEach((v, i) => {
+        if (i > 0 && collator.compare(values[i - 1]!, v) !== 0) rank++;
+        ranks.set(v, rank);
+    });
+    return ranks;
+}
+
+/**
+ * The rows in each sort asked for, and each column's ranks, kept until the
+ * rows change (a new rows array, or more rows loaded): filtering keeps this
+ * order rather than sorting what it shows, and sorting by a column again
+ * costs nothing.
+ */
+let sortCache: { rows: Row[]; length: number; ranks: Map<ColKey, Map<string, number>>; orders: Map<string, Row[]> } | null = null;
+
+function sortedRows(): Row[] {
+    if (!sortCache || sortCache.rows !== rows || sortCache.length !== rows.length) {
+        sortCache = { rows, length: rows.length, ranks: new Map(), orders: new Map() };
     }
-    const x = a.hay[sortKey];
-    const y = b.hay[sortKey];
-    // Empty values last, whichever way.
-    if (!x !== !y) return !x ? 1 : -1;
-    const c = x.localeCompare(y, undefined, { numeric: true });
-    return (sortDesc ? -c : c) || a.hay.title.localeCompare(b.hay.title) || a.b.id - b.b.id;
+    const cache = sortCache;
+    const orderKey = `${sortDesc ? "-" : ""}${sortKey}`;
+    const kept = cache.orders.get(orderKey);
+    if (kept) return kept;
+    const ranksOf = (key: ColKey): Map<string, number> => {
+        let m = cache.ranks.get(key);
+        if (!m) cache.ranks.set(key, (m = rankValues(key)));
+        return m;
+    };
+    const keyRanks = ranksOf(sortKey);
+    const titleRanks = ranksOf("title");
+    const n = rows.length;
+    const key = new Float64Array(n);
+    const title = new Float64Array(n);
+    const empty = new Uint8Array(n);
+    rows.forEach((r, i) => {
+        key[i] = keyRanks.get(r.hay[sortKey])!;
+        title[i] = titleRanks.get(r.hay.title)!;
+        empty[i] = r.hay[sortKey] ? 0 : 1;
+    });
+    const series = sortKey === "series";
+    const desc = sortDesc ? -1 : 1;
+    const order = Array.from({ length: n }, (_, i) => i);
+    order.sort((i, j) => {
+        const a = rows[i]!;
+        const b = rows[j]!;
+        // By series: its name (with the number), then the number, whichever way.
+        if (series) {
+            const s = key[i]! - key[j]! || a.b.series_index - b.b.series_index;
+            if (s) return s;
+        }
+        // Empty values last, whichever way.
+        if (empty[i] !== empty[j]) return empty[i]! - empty[j]!;
+        return desc * (key[i]! - key[j]!) || title[i]! - title[j]! || a.b.id - b.b.id;
+    });
+    const sorted = order.map((i) => rows[i]!);
+    cache.orders.set(orderKey, sorted);
+    return sorted;
 }
 
 function applyFilters(): void {
@@ -548,7 +610,7 @@ function applyFilters(): void {
     }
 
     const tagTest = tagCheckTest();
-    shown = rows.filter((r) => {
+    shown = sortedRows().filter((r) => {
         if (onlySelected && !selected.has(r.b.uuid)) return false;
         if (groups && !groups.has(r.dupKey)) return false;
         if (tagTest && !r.b.tags.some(tagTest)) return false;
@@ -557,14 +619,14 @@ function applyFilters(): void {
         for (const c of blankCols) if (!c.blank(r.b)) return false;
         return true;
     });
-    shown.sort(compare);
     if (groups) {
         // Each group together, in the order its first book sorts.
         const first = new Map<string, number>();
         shown.forEach((r, i) => {
             if (!first.has(r.dupKey)) first.set(r.dupKey, i);
         });
-        shown.sort((a, b) => first.get(a.dupKey)! - first.get(b.dupKey)! || compare(a, b));
+        // Stable: within a group, the books stay in the sort.
+        shown.sort((a, b) => first.get(a.dupKey)! - first.get(b.dupKey)!);
         let g = 0;
         shown.forEach((r, i) => {
             if (i > 0 && r.dupKey !== shown[i - 1]!.dupKey) g++;
@@ -586,7 +648,7 @@ const pinOffset = (): number => (pinned.length ? pinned.length + 1 : 0);
 
 /** Work out the pinned rows again; true if they changed. */
 function updatePinned(): boolean {
-    const next = selected.size ? rows.filter((r) => selected.has(r.b.uuid) && !shownSet.has(r.b.uuid)).sort(compare) : [];
+    const next = selected.size ? sortedRows().filter((r) => selected.has(r.b.uuid) && !shownSet.has(r.b.uuid)) : [];
     const same = next.length === pinned.length && next.every((r, i) => r === pinned[i]);
     pinned = next;
     return !same;
