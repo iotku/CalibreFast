@@ -23,6 +23,10 @@ import (
 	"slices"
 )
 
+// recPickSlack: books looked at past those a row needs, for ones that
+// keep it within the author cap.
+const recPickSlack = 4 * recRowMax
+
 // recShown: a book of the row as last shown, and why it was there.
 type recShown struct {
 	UUID    string `json:"u"`
@@ -109,13 +113,26 @@ func settleRow(c *catalog, shown []recShown, l recList, page int, m readingMarks
 	need := gaps + max(0, recRowMax-len(shown))
 	var fill []recBook
 	if n := l.len(); n > 0 && need > 0 {
+		// The kept books' authors count toward the row's author cap.
+		counts := rowAuthors{}
+		for i := range row {
+			if row[i].Book.UUID != "" && l.ix != nil {
+				if at, ok := c.byUUID[row[i].Book.UUID]; ok {
+					counts.add(l.ix.authorKeys(&c.books[at]))
+				}
+			}
+		}
 		from := (max(0, page) * recRowMax) % n
-		for k := 0; k < n && len(fill) < need; k++ {
+		var order []int
+		for k := 0; k < n && len(order) < need+recPickSlack; k++ {
 			i := (from + k) % n
 			if u := l.uuid(i); !in[u] {
 				in[u] = true
-				fill = append(fill, l.at(i))
+				order = append(order, i)
 			}
+		}
+		for _, i := range l.pick(order, need, counts) {
+			fill = append(fill, l.at(i))
 		}
 	}
 	out := []recBook{}
@@ -200,20 +217,22 @@ func recNextHandler(w http.ResponseWriter, r *http.Request) {
 	for _, s := range shown {
 		onScreen[s.UUID] = true
 	}
-	recs := []recBook{}
-	var later []int
-	for k := 0; k < l.len() && len(recs) < recRowMax; k++ {
+	// Those not on screen first, then those that are; no author over the
+	// row's cap where the list allows (pick).
+	var order, later []int
+	for k := 0; k < l.len() && len(order) < recRowMax+recPickSlack; k++ {
 		i := (page*recRowMax + k) % l.len()
 		if onScreen[l.uuid(i)] {
 			later = append(later, i)
 			continue
 		}
-		recs = append(recs, l.at(i))
+		order = append(order, i)
 	}
-	for _, i := range later {
-		if len(recs) >= recRowMax {
-			break
-		}
+	counts := rowAuthors{}
+	picked := l.pick(order, recRowMax, counts)
+	picked = append(picked, l.pick(later, recRowMax-len(picked), counts)...)
+	recs := []recBook{}
+	for _, i := range picked {
 		recs = append(recs, l.at(i))
 	}
 	if err := saveRecState(u, seed, page, recs); err != nil {

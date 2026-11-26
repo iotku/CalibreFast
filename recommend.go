@@ -4,27 +4,37 @@ package main
 // section 5), worked out in memory from the catalog and the user's marks;
 // nothing is read from the library.
 //
-//   - Seeds: the books the user is reading (weight 2), finished (2),
-//     starred (3) and wants to read (1).
+//   - Seeds: the books the user is reading (weight 3), paused (2),
+//     finished (1.5), starred (3) and wants to read (1): what they're
+//     reading now counts most.
 //   - Tag affinity: each tag on the seeds scores the seeds' weights times
 //     its idf (ln(N / books with the tag)), so a rare tag they share beats
 //     "Fiction". Tags an admin excluded from the home page don't count
 //     (tag_rows.go). The top few are also the user's own tag rows.
-//   - Candidates: the books of the top tags (a bounded number, in the
-//     shuffle order), scored by their tags' scores, plus a bonus for a
-//     seed's author, with a little randomness so the row changes between
-//     seed; the seed is the user's own, so the row stays the same until
-//     they ask for more (recommendations_state.go). Books the user has
-//     marked in any way, or said they're not interested in, are left out.
+//   - Candidates: the books of the top tags and of every favorite tag (a
+//     bounded number, in the shuffle order), scored by their tags' scores,
+//     plus a small bonus for a seed's author. Books the user has marked in
+//     any way, or said they're not interested in, are left out.
+//   - Order: a weighted shuffle (Efraimidis–Spirakis, weight score^3), so
+//     the best matches are mostly first but weaker ones come up now and
+//     then. Its randomness comes from a seed that's the user's own, so the
+//     row stays the same until they ask for more
+//     (recommendations_state.go).
+//   - Wildcards: a couple of books a row from outside the candidates,
+//     picked from the shuffle, likelier the more of the user's tags they
+//     have ("discover").
 //   - Next in series first: for a series the user is reading or finished
 //     a book of, the next book after the furthest one they're on.
 //   - Favorites (aggregate_favorites.go): a favorite tag scores as if a
-//     starred book had it; a favorite author's or publisher's books are
-//     candidates too, with a bonus (an author's beats a seed author's); a
-//     favorite series the user hasn't started offers its first book with
-//     the next-in-series ones. Favorites alone are enough for a list.
-//   - Pages: the whole ranked list, a row at a time. Refresh steps to the
-//     next page, and after the last back to the first with a new seed.
+//     much-loved book had it, and its books are always candidates; a
+//     favorite author's or publisher's books are a few candidates more,
+//     with a small bonus (they have their own row, Followed); a favorite
+//     series the user hasn't started offers its first book with the
+//     next-in-series ones. Favorites alone are enough for a list.
+//   - Pages: the whole list, a row at a time, laid out so no author (after
+//     author groups) has more than two books in a row unless there's
+//     nothing else left. Refresh steps to the next page, and after the last
+//     back to the first with a new seed.
 //
 // Tags count after tag groups, as everywhere else.
 
@@ -43,14 +53,26 @@ const (
 	recTopTags      = 8    // tags whose books are candidates
 	recPerTag       = 1000 // candidates from each
 	recAffinityTags = 3    // the user's own tag rows
-	recAuthorBonus  = 0.5  // of the best tag's score
-	recJitter       = 0.15 // up to this share of a score, at random (the seed's)
+	recAuthorBonus  = 0.2  // of the best tag's score
+	recSharpness    = 3    // the weighted shuffle's weight: score^this
 	recSeriesMax    = 6
+	recAuthorPerRow = 2 // books by one author in a row, at most
 
-	recFavTagWeight      = 3   // a favorite tag: as a starred seed with it
-	recFavAuthorBonus    = 1.0 // of the best tag's score
-	recFavPublisherBonus = 0.25
-	recPerFav            = 1000 // candidates from favorite authors and publishers, in all
+	recWReading  = 3
+	recWPaused   = 2
+	recWFinished = 1.5
+	recWStarred  = 3
+	recWWanted   = 1
+
+	recFavTagWeight      = 4   // a favorite tag: as a seed of this weight with it
+	recFavAuthorBonus    = 0.3 // of the best tag's score
+	recFavPublisherBonus = 0.1
+	recPerFav            = 48 // candidates from favorite authors and publishers, in all
+
+	recWildcards  = 2    // per row
+	recWildWalk   = 2000 // books of the shuffle looked at for them
+	recWildFloor  = 0.05 // the chance of a book with none of the user's tags
+	recWildAffine = 0.5  // the chance more for one as good as the best match
 )
 
 // recFavs: a user's favorites, by kind, as browsed (lower case).
@@ -175,6 +197,44 @@ type recIndex struct {
 	total       int
 	shufflePos  []int32
 	latestPos   []int32
+
+	// authorKey: a grouped author's id -> its group (negative), so a
+	// group's members count as one author in a row (authorKeys).
+	authorKey map[int32]int32
+}
+
+// authorKeys: who a book counts as in a row's author cap: its authors,
+// a grouped one as its group, each once.
+func (ix *recIndex) authorKeys(b *catalogBook) []int32 {
+	out := make([]int32, 0, len(b.AuthorIDs))
+	for _, a := range b.AuthorIDs {
+		k := a
+		if g, ok := ix.authorKey[a]; ok {
+			k = g
+		}
+		if !slices.Contains(out, k) {
+			out = append(out, k)
+		}
+	}
+	return out
+}
+
+// rowAuthors counts a row's books by author (authorKeys).
+type rowAuthors map[int32]int
+
+func (r rowAuthors) fits(keys []int32) bool {
+	for _, k := range keys {
+		if r[k] >= recAuthorPerRow {
+			return false
+		}
+	}
+	return true
+}
+
+func (r rowAuthors) add(keys []int32) {
+	for _, k := range keys {
+		r[k]++
+	}
 }
 
 var (
@@ -258,6 +318,23 @@ func currentRecIndex() *recIndex {
 	for _, slots := range ix.series {
 		sortSeries(c, slots) // series.go
 	}
+	// Author groups: members first, then names, as groups.resolve prefers a
+	// group's name to another's member.
+	ix.authorKey = map[int32]int32{}
+	gs := groups.all("author")
+	for pass := range 2 {
+		for gi, g := range gs {
+			names := g.Members
+			if pass == 1 {
+				names = []string{g.Name}
+			}
+			for _, n := range names {
+				for _, id := range ix.byLower["author"][strings.ToLower(n)] {
+					ix.authorKey[id] = int32(-gi - 1)
+				}
+			}
+		}
+	}
 	recIndexNow.Store(ix)
 	return ix
 }
@@ -296,31 +373,120 @@ func (ix *recIndex) bookTags(b *catalogBook) []int32 {
 	return out
 }
 
-// recList: the user's whole ranked list, next in series first; a tag
-// candidate's recBook is made only when asked for (its "because" costs).
+// recItem: a book of the list, and why it's there.
+type recItem struct {
+	slot    int32
+	kind    string  // "series", "tags" or "discover"
+	after   string  // a series item: the book it follows
+	authors []int32 // who it counts as in a row (authorKeys)
+}
+
+// recList: the user's whole list, laid out in rows (layoutRows); a tag
+// candidate's "because" is worked out only when asked for (it costs).
 type recList struct {
-	series []recBook
-	n      int // tag candidates
-	cand   func(i int) recBook
-	slot   func(i int) int32 // a tag candidate's book, cheaply
-	cat    *catalog
+	items []recItem
+	cat   *catalog
+	seeds []recSeed
+	ix    *recIndex
 }
 
 // uuid: the book at i, without making its recBook.
-func (l recList) uuid(i int) string {
-	if i < len(l.series) {
-		return l.series[i].Book.UUID
-	}
-	return l.cat.books[l.slot(i-len(l.series))].UUID
-}
+func (l recList) uuid(i int) string { return l.cat.books[l.items[i].slot].UUID }
 
-func (l recList) len() int { return len(l.series) + l.n }
+func (l recList) len() int { return len(l.items) }
 
 func (l recList) at(i int) recBook {
-	if i < len(l.series) {
-		return l.series[i]
+	it := l.items[i]
+	b := &l.cat.books[it.slot]
+	r := recBook{Book: b.Book, Kind: it.kind, Because: it.after}
+	if it.kind == "tags" {
+		r.Because = because(l.ix, b, l.seeds)
 	}
-	return l.cand(i - len(l.series))
+	return r
+}
+
+// pick: up to n of the list's books, in order's order, with no author
+// over recAuthorPerRow in the row (counts: the books already in it, and
+// what's picked is added); if too few fit, the rest of order fills it.
+func (l recList) pick(order []int, n int, counts rowAuthors) []int {
+	var out, over []int
+	for _, i := range order {
+		if len(out) >= n {
+			break
+		}
+		if a := l.items[i].authors; counts.fits(a) {
+			counts.add(a)
+			out = append(out, i)
+		} else {
+			over = append(over, i)
+		}
+	}
+	for _, i := range over {
+		if len(out) >= n {
+			break
+		}
+		counts.add(l.items[i].authors)
+		out = append(out, i)
+	}
+	return out
+}
+
+// layoutRows: the list in rows of recRowMax. main (next in series, then
+// the candidates in order) fills each row in turn, but a book that would
+// put one of its authors over recAuthorPerRow in the row waits for a
+// later one, ahead of the books after it; recWildcards wildcards go in at
+// random places in each row's back half. Only when nothing else is left
+// do the waiting books go in regardless.
+func layoutRows(main, wild []recItem, rng *rand.Rand) []recItem {
+	out := make([]recItem, 0, len(main)+len(wild))
+	var wait []recItem
+	next := 0
+	for next < len(main) || len(wait) > 0 {
+		counts := rowAuthors{}
+		fits := func(it recItem) bool { return counts.fits(it.authors) }
+		take := func() (recItem, bool) {
+			if j := slices.IndexFunc(wait, fits); j >= 0 {
+				it := wait[j]
+				wait = slices.Delete(wait, j, j+1)
+				return it, true
+			}
+			for next < len(main) {
+				it := main[next]
+				next++
+				if fits(it) {
+					return it, true
+				}
+				wait = append(wait, it)
+			}
+			if len(wait) > 0 { // nothing else left
+				it := wait[0]
+				wait = wait[1:]
+				return it, true
+			}
+			return recItem{}, false
+		}
+		wildAt := map[int]bool{}
+		for len(wildAt) < min(recWildcards, len(wild)) {
+			wildAt[recRowMax/2+rng.IntN(recRowMax-recRowMax/2)] = true
+		}
+		for pos := 0; pos < recRowMax; pos++ {
+			if wildAt[pos] {
+				if j := slices.IndexFunc(wild, fits); j >= 0 {
+					counts.add(wild[j].authors)
+					out = append(out, wild[j])
+					wild = slices.Delete(wild, j, j+1)
+					continue
+				}
+			}
+			it, ok := take()
+			if !ok {
+				break
+			}
+			counts.add(it.authors)
+			out = append(out, it)
+		}
+	}
+	return out
 }
 
 // pages: how many rows of recRowMax the list makes.
@@ -365,7 +531,7 @@ func rankRecs(m readingMarks, favs recFavs, hide map[string]bool, rng *rand.Rand
 	ix := currentRecIndex()
 	c := ix.cat
 	tags = []string{}
-	l.cat = c
+	l.cat, l.ix = c, ix
 
 	marked := map[string]bool{}
 	weight := map[string]float64{}
@@ -380,11 +546,11 @@ func rankRecs(m readingMarks, favs recFavs, hide map[string]bool, rng *rand.Rand
 		reading = append(reading, u)
 	}
 	slices.Sort(reading)
-	add(reading, 2)
-	add(m.Paused, 2)
-	add(m.Finished, 2)
-	add(m.Favorites, 3)
-	add(m.Wanted, 1)
+	add(reading, recWReading)
+	add(m.Paused, recWPaused)
+	add(m.Finished, recWFinished)
+	add(m.Favorites, recWStarred)
+	add(m.Wanted, recWWanted)
 	// Dropped: never suggested, but nothing to suggest more like.
 	for _, u := range m.Dropped {
 		marked[u] = true
@@ -464,16 +630,16 @@ func rankRecs(m readingMarks, favs recFavs, hide map[string]bool, rng *rand.Rand
 	}
 	slices.SortFunc(nexts, func(a, b seriesNext) int { return cmp.Compare(c.books[a.slot].Title, c.books[b.slot].Title) })
 	shown := map[int32]bool{}
-	var series []recBook
+	var series []recItem
 	for _, n := range nexts {
 		b := &c.books[n.slot]
 		if len(series) >= recSeriesMax || hide[b.UUID] || (marked[b.UUID] && !slices.Contains(m.Wanted, b.UUID)) {
 			continue
 		}
 		shown[n.slot] = true
-		series = append(series, recBook{Book: b.Book, Kind: "series", Because: n.after})
+		series = append(series, recItem{n.slot, "series", n.after, ix.authorKeys(b)})
 	}
-	l.series = series
+	l.seeds = seeds
 
 	// Tag affinity.
 	total := ix.total
@@ -508,6 +674,7 @@ func rankRecs(m readingMarks, favs recFavs, hide map[string]bool, rng *rand.Rand
 		tags = append(tags, ix.names[e])
 	}
 	if len(top) == 0 && len(favAuthors)+len(favPublishers) == 0 {
+		l.items = layoutRows(series, nil, rng)
 		return l, tags
 	}
 	best := 1.0 // with only favorite authors or publishers, their bonus alone
@@ -531,31 +698,41 @@ func rankRecs(m readingMarks, favs recFavs, hide map[string]bool, rng *rand.Rand
 		}
 		return bn * best
 	}
+	tagScore := func(b *catalogBook) float64 {
+		sc := 0.0
+		for _, t := range ix.bookTags(b) {
+			sc += score[t]
+		}
+		return sc
+	}
 
-	// Candidates: the top tags' books.
+	// Candidates, each with its key in the weighted shuffle
+	// (Efraimidis–Spirakis: u^(1/w), as its log; w relative to the best tag).
 	type cand struct {
-		slot  int32
-		score float64
+		slot int32
+		key  float64
 	}
 	var cands []cand
 	seen := map[int32]bool{}
-	for _, e := range top[:min(len(top), recTopTags)] {
+	addCand := func(slot int32, sc float64) {
+		seen[slot] = true
+		w := math.Pow(max(sc/best, 1e-9), recSharpness)
+		cands = append(cands, cand{slot, math.Log(rng.Float64()) / w})
+	}
+	// The top tags' books, and every favorite tag's.
+	for i, e := range top {
+		if i >= recTopTags && !favTags[e] {
+			continue
+		}
 		for _, slot := range ix.postings[e][:min(len(ix.postings[e]), recPerTag)] {
 			b := &c.books[slot]
 			if seen[slot] || shown[slot] || marked[b.UUID] || hide[b.UUID] {
 				continue
 			}
-			seen[slot] = true
-			sc := 0.0
-			for _, t := range ix.bookTags(b) {
-				sc += score[t]
-			}
-			sc += bonus(b)
-			sc *= 1 + recJitter*rng.Float64()
-			cands = append(cands, cand{slot, sc})
+			addCand(slot, tagScore(b)+bonus(b))
 		}
 	}
-	// Candidates: favorite authors' and publishers' books.
+	// A few of favorite authors' and publishers' books.
 	if len(favAuthors)+len(favPublishers) > 0 {
 		n := 0
 		for _, slot := range ix.favBooks(favAuthors, favPublishers, ix.shufflePos) { // in shuffle order
@@ -573,28 +750,40 @@ func rankRecs(m readingMarks, favs recFavs, hide map[string]bool, rng *rand.Rand
 			if !fav {
 				continue
 			}
-			seen[slot] = true
 			n++
-			sc := bonus(b)
-			for _, t := range ix.bookTags(b) {
-				sc += score[t]
-			}
-			sc *= 1 + recJitter*rng.Float64()
-			cands = append(cands, cand{slot, sc})
+			addCand(slot, tagScore(b)+bonus(b))
 		}
 	}
 	slices.SortFunc(cands, func(a, b cand) int {
-		if a.score != b.score {
-			return cmp.Compare(b.score, a.score)
+		if a.key != b.key {
+			return cmp.Compare(b.key, a.key)
 		}
 		return cmp.Compare(a.slot, b.slot)
 	})
-	l.n = len(cands)
-	l.slot = func(i int) int32 { return cands[i].slot }
-	l.cand = func(i int) recBook {
-		b := &c.books[cands[i].slot]
-		return recBook{Book: b.Book, Kind: "tags", Because: because(ix, b, seeds)}
+	main := slices.Clip(series)
+	for _, cd := range cands {
+		main = append(main, recItem{cd.slot, "tags", "", ix.authorKeys(&c.books[cd.slot])})
 	}
+
+	// Wildcards: books of the shuffle from a random place, not candidates,
+	// each taken with a chance that grows with its share of the user's tags.
+	var wild []recItem
+	want := (len(main)/(recRowMax-recWildcards) + 1) * recWildcards
+	if n := len(c.shuffle); n > 0 && len(main) > 0 {
+		start := rng.IntN(n)
+		for k := 0; k < min(n, recWildWalk) && len(wild) < want; k++ {
+			slot := c.shuffle[(start+k)%n]
+			b := &c.books[slot]
+			if b.Removed || seen[slot] || shown[slot] || marked[b.UUID] || hide[b.UUID] {
+				continue
+			}
+			if rng.Float64() < recWildFloor+recWildAffine*min(1, tagScore(b)/best) {
+				seen[slot] = true
+				wild = append(wild, recItem{slot, "discover", "", ix.authorKeys(b)})
+			}
+		}
+	}
+	l.items = layoutRows(main, wild, rng)
 	return l, tags
 }
 

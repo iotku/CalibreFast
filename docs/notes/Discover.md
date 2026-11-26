@@ -285,7 +285,7 @@ CREATE TABLE shelf_pins (
 
 ### 5. Recommendations (in memory)
 
-Seed set S = reading (w=2) ∪ finished (w=2) ∪ favorites (w=3) ∪ wanted (w=1).
+Seed set S = reading (w=3) ∪ paused (w=2) ∪ finished (w=1.5) ∪ starred (w=3) ∪ wanted (w=1): what the user is reading now counts most.
 
 1. **Tag affinity**: for each tag t on seed books, `score(t) = Σ w(book) × idf(t)`, `idf = ln(N / |tagBooks[t]|)`. Rare-but-shared tags beat "Fiction". Top 3 → `tags` in the answer (rows 4).
 2. **Candidates**: union of posting lists of the top ~8 tags, capped (e.g. first 2,000 by shuffle rank). Score each by `Σ score(t)` over its tags, + bonus for a seed author. Exclude anything with a status or favorite. Top 24 → `recommended`; `because` = the seed book sharing the most tags.
@@ -294,7 +294,12 @@ Seed set S = reading (w=2) ∪ finished (w=2) ∪ favorites (w=3) ∪ wanted (w=
 
 Cost is bounded by the candidate cap: a few thousand integer lookups. Cache per user for 60 s keyed by a per-user "marks version" (bumped in `setStatus`/`setFavoriteHandler`) plus the catalog pointer, so repeat loads are free.
 
-Diversity: a small random jitter on scores from the user's seed, so the row stays put between visits and changes when they press Refresh, while the top matches stay near the front.
+Diversity (after favorite authors crowded the row out; they have their own Followed row):
+
+- **Favorites**: a favorite tag scores as a seed of weight 4 with it, and its books are always candidates (not only when it's among the top ~8 tags). A favorite author's or publisher's books get a small bonus (0.3 / 0.1 of the best tag's score; a seed's author 0.2) and only 48 of them join the candidates beyond what the tags bring in.
+- **Weighted shuffle**: candidates are ordered by Efraimidis–Spirakis keys, `u^(1/w)` with `w = (score / best)^3`, drawn from the user's seed: the best matches are mostly first, weaker ones come up now and then. The row stays put between visits and changes when they press Refresh.
+- **Wildcards** (`kind: "discover"`, shown as *Something different*): two a row, at random places in its back half, from books that aren't candidates, walking the shuffle from a random place and taking each with a chance of 5% plus up to 50% more for its share of the user's tag scores.
+- **Author cap**: the list is laid out a row at a time so no author (author groups count as one) has more than two books in a row; a book that would go over waits for the next row, ahead of the rest. Only when nothing else is left do waiting books fill a row regardless. Filling a gap in the row as shown, and Refresh, keep to the same cap.
 
 Denied tags (section 3) are dropped from every book's tag list before scoring.
 

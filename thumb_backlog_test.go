@@ -198,11 +198,9 @@ func TestRecListPageUUIDs(t *testing.T) {
 	for i := range 40 {
 		c.books = append(c.books, catalogBook{Book: Book{UUID: "b" + strconv.Itoa(i)}})
 	}
-	l := recList{
-		series: []recBook{{Book: Book{UUID: "s0"}}},
-		n:      30,
-		slot:   func(i int) int32 { return int32(i) },
-		cat:    c,
+	l := recList{items: []recItem{{slot: 39, kind: "series"}}, cat: c}
+	for i := range 30 {
+		l.items = append(l.items, recItem{slot: int32(i), kind: "tags"})
 	}
 	p1 := l.pageUUIDs(1)
 	if len(p1) != min(recRowMax, l.len()-recRowMax) || p1[0] != "b"+strconv.Itoa(recRowMax-1) {
