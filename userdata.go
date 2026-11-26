@@ -228,6 +228,10 @@ func scanStrings(rows *sql.Rows, err error) ([]string, error) {
 	return out, rows.Err()
 }
 
+// notPlaceholderSQL: the row's book_uuid isn't a placeholder's (a book not
+// in the library yet).
+const notPlaceholderSQL = `book_uuid NOT IN (SELECT uuid FROM placeholders WHERE deleted_at IS NULL)`
+
 func countQuery(q string, args ...any) func() (int, error) {
 	return func() (int, error) {
 		var n int
@@ -259,11 +263,16 @@ func statusList(u *User, status, page, title, empty string) uuidList {
 	if arrangeable[status] {
 		extra = map[string]any{"Arrange": "/api/me/lists/" + status + "/order"}
 	}
+	// Saved books not in the library yet, unless u would rather not see them (prefs.go).
+	where := ""
+	if status == "wanted" && hidesPlaceholders(u) {
+		where = ` AND ` + notPlaceholderSQL
+	}
 	return uuidList{
 		Title: title, EmptyText: empty, BaseURL: "/me/" + page, Extra: extra,
-		Count: countQuery(`SELECT COUNT(*) FROM reading_status WHERE user_id = ? AND status = ?`, u.ID, status),
+		Count: countQuery(`SELECT COUNT(*) FROM reading_status WHERE user_id = ? AND status = ?`+where, u.ID, status),
 		Page: func(limit, offset int) ([]string, error) {
-			return scanStrings(appDB.Query(`SELECT book_uuid FROM reading_status WHERE user_id = ? AND status = ? `+order+` LIMIT ? OFFSET ?`, u.ID, status, limit, offset))
+			return scanStrings(appDB.Query(`SELECT book_uuid FROM reading_status WHERE user_id = ? AND status = ?`+where+` `+order+` LIMIT ? OFFSET ?`, u.ID, status, limit, offset))
 		},
 	}
 }

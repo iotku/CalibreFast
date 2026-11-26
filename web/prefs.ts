@@ -117,7 +117,7 @@ export interface AccountPrefs {
     goal_notice: boolean;
     /** "No thanks" to system notifications: not offered again (push.ts). */
     push_declined: boolean;
-    /** Don't show books not in the library yet on series, author and publisher pages, in search or On Deck (Go: hidesPlaceholders). */
+    /** Don't show books not in the library yet anywhere: series, author and publisher pages, search, On Deck, shelves, Saved (Go: hidesPlaceholders). */
     hide_placeholders: boolean;
 }
 

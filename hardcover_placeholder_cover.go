@@ -16,9 +16,12 @@ import (
 	"context"
 	"errors"
 	"log"
+	"maps"
 	"os"
 	"path/filepath"
+	"slices"
 	"sync"
+	"testing"
 	"time"
 
 	"github.com/iotku/CalibreFast/pkg/hardcover"
@@ -27,13 +30,17 @@ import (
 var (
 	hcCoverKick = make(chan struct{}, 1)
 	hcCoverOnce sync.Once
+	// hcCoverAuto: fetch in the background when placeholders change. Off in
+	// tests, whose fake Hardcover counts every request (they call
+	// hcFillPlaceholderCovers themselves).
+	hcCoverAuto = !testing.Testing()
 )
 
 // hcFillPlaceholderCoversSoon fetches, in the background, the covers of
 // Hardcover's placeholders that have none (or whose file is gone). Calls
 // while one runs make one more run, not one each.
 func hcFillPlaceholderCoversSoon() {
-	if hcEnabledClient() == nil || hcLinks == nil || appDB == nil {
+	if !hcCoverAuto || hcEnabledClient() == nil || appDB == nil {
 		return
 	}
 	hcCoverOnce.Do(func() {
@@ -86,27 +93,45 @@ func placeholderCoverExists(name string) bool {
 	return err == nil
 }
 
-// hcFillPlaceholderCovers fetches the missing covers now.
+// hcFillPlaceholderCovers fetches the missing covers now. The image
+// URLs come from the linked series' snapshots; a book they don't name an
+// image for (a snapshot saved before they were kept) is asked about by id.
 func hcFillPlaceholderCovers(ctx context.Context) {
 	c := hcEnabledClient()
-	if c == nil || hcLinks == nil {
+	if c == nil {
 		return
 	}
-	var images map[int64]string
+	var want []*placeholder
 	for _, p := range allPlaceholders() {
-		if p.Source != "hardcover" || placeholderCoverExists(p.Cover) {
-			continue
+		if p.Source == "hardcover" && !placeholderCoverExists(p.Cover) && hcPlaceholderBookID(p) != 0 {
+			want = append(want, p)
 		}
-		id := hcPlaceholderBookID(p)
-		if id == 0 {
-			continue
+	}
+	if len(want) == 0 {
+		return
+	}
+	images := hcPlaceholderImages()
+	if images == nil {
+		images = map[int64]string{}
+	}
+	var ask []int64
+	for _, p := range want {
+		if id := hcPlaceholderBookID(p); images[id] == "" {
+			ask = append(ask, id)
 		}
-		if images == nil {
-			if images = hcPlaceholderImages(); images == nil {
-				return
-			}
+	}
+	for chunk := range slices.Chunk(ask, 300) {
+		qctx, cancel := context.WithTimeout(ctx, 30*time.Second)
+		got, err := c.BookImages(qctx, chunk)
+		cancel()
+		if err != nil {
+			log.Println("hardcover placeholder covers:", err)
+			break
 		}
-		u := images[id]
+		maps.Copy(images, got)
+	}
+	for _, p := range want {
+		u := images[hcPlaceholderBookID(p)]
 		if u == "" {
 			continue
 		}

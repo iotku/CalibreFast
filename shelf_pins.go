@@ -189,7 +189,7 @@ func pinnedShelves(u *User, limit int) ([]homeShelf, error) {
 	for i, at := range shelves {
 		sub[i] = out[at]
 	}
-	if err := fillShelfBooks(sub); err != nil {
+	if err := fillShelfBooksFor(sub, hidesPlaceholders(u)); err != nil {
 		return nil, err
 	}
 	for i, at := range shelves {
@@ -243,7 +243,7 @@ func moreShelves(u *User, limit int) ([]homeShelf, error) {
 	if err := rows.Err(); err != nil {
 		return nil, err
 	}
-	if err := fillShelfBooks(all); err != nil {
+	if err := fillShelfBooksFor(all, hidesPlaceholders(u)); err != nil {
 		return nil, err
 	}
 	out := []homeShelf{}
@@ -288,7 +288,11 @@ func scanHomeShelves(rows *sql.Rows) ([]homeShelf, error) {
 // fillShelfBooks adds the first shelfRowBooks entries of each shelf, in the
 // shelf page's order, and counts them. Like the shelf page, it leaves out
 // books no longer in the library (liveShelfEntries).
-func fillShelfBooks(shelves []homeShelf) error {
+func fillShelfBooks(shelves []homeShelf) error { return fillShelfBooksFor(shelves, false) }
+
+// fillShelfBooksFor is fillShelfBooks; noPlaceholders: for a viewer who'd
+// rather not see books not in the library yet (prefs.go).
+func fillShelfBooksFor(shelves []homeShelf, noPlaceholders bool) error {
 	if len(shelves) == 0 {
 		return nil
 	}
@@ -296,7 +300,7 @@ func fillShelfBooks(shelves []homeShelf) error {
 	for i, s := range shelves {
 		ids[i] = s.ID
 	}
-	entries, err := liveShelfEntries(ids)
+	entries, err := liveShelfEntriesFor(ids, noPlaceholders)
 	if err != nil {
 		return err
 	}
