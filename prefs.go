@@ -33,12 +33,25 @@ type userPrefs struct {
 	// app doesn't offer them again, on any device; they can still be turned
 	// on in preferences.
 	PushDeclined bool `json:"push_declined"`
+	// HidePlaceholders: don't show books that aren't in the library yet
+	// (placeholders.go) on series, author and publisher pages, in search
+	// or in On Deck. Ones the user saved stay on their own lists.
+	HidePlaceholders bool `json:"hide_placeholders"`
 }
 
 var prefFormats = []string{"last", "epub", "pdf"}
 
 // maxGoal: the highest daily pages or yearly books goal.
 const maxGoal = 1000
+
+// hidesPlaceholders: u (nil: a guest) asked not to be shown placeholders.
+func hidesPlaceholders(u *User) bool {
+	if u == nil {
+		return false
+	}
+	p, err := userPrefsFor(u)
+	return err == nil && p.HidePlaceholders
+}
 
 func defaultPrefs() userPrefs { return userPrefs{Format: "last", TrackReading: true} }
 

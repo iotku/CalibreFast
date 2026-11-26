@@ -694,6 +694,7 @@ func hcMakePlaceholder(e *hardcover.Entry, s hardcoverseries.SeriesInfo, u *User
 		return nil, fmt.Errorf("%q: couldn't save", e.Title)
 	}
 	logEdit(u, "add placeholder", logKindPlaceholder, p.UUID, p.Meta.Title, nil, snapPlaceholder(p))
+	hcFillPlaceholderCoversSoon() // its cover on Hardcover (hardcover_placeholder_cover.go)
 	return p, nil
 }
 

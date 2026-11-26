@@ -1079,13 +1079,18 @@ func importReviewPage(w http.ResponseWriter, r *http.Request) {
 	for i, f := range it.Files {
 		formats[i] = f.Format
 	}
+	var phCover string
+	if p := importPlaceholder(it); p != nil {
+		phCover = p.coverURL()
+	}
 	logErr(templates.ExecuteTemplate(w, "book-edit.html", EditBookPageData{
-		Import:      page,
-		Duplicates:  imports.recheckDuplicates(it), // afresh: the library may have changed since the list
-		ReadLink:    previewReadLink("import", it.ID, formats),
-		Lookups:     !noLookups,
-		GoogleBooks: googleBooksEnabled(),
-		Hardcover:   hardcoverEnabled(),
+		PlaceholderCover: phCover,
+		Import:           page,
+		Duplicates:       imports.recheckDuplicates(it), // afresh: the library may have changed since the list
+		ReadLink:         previewReadLink("import", it.ID, formats),
+		Lookups:          !noLookups,
+		GoogleBooks:      googleBooksEnabled(),
+		Hardcover:        hardcoverEnabled(),
 	}), "render import review")
 }
 

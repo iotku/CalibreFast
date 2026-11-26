@@ -719,7 +719,10 @@ func searchPageHandler(w http.ResponseWriter, r *http.Request) {
 		if err != nil {
 			return // the visitor left
 		}
-		data.TotalBooks = len(res.slots) + len(res.placeholders())
+		data.TotalBooks = len(res.slots)
+		if !hidesPlaceholders(currentUser(r)) {
+			data.TotalBooks += len(res.placeholders())
+		}
 		data.Links = res.links()
 	}
 	if err := templates.ExecuteTemplate(w, "search.html", data); err != nil {
@@ -742,7 +745,7 @@ func searchHandler(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "search cancelled", http.StatusServiceUnavailable)
 		return
 	}
-	writeJSON(w, http.StatusOK, res.page(pickSort(r, searchSorts), page))
+	writeJSON(w, http.StatusOK, res.pageOf(pickSort(r, searchSorts), page, !hidesPlaceholders(currentUser(r))))
 }
 
 // The top bar's suggestions while typing (web/search-suggest.ts): the best

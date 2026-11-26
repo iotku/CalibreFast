@@ -572,8 +572,9 @@ func filteredBooksHandler(w http.ResponseWriter, r *http.Request, c *category) {
 	offset := (page - 1) * booksPerPage
 	key := pickSort(r, c.sorts())
 
-	// Books not in the library yet go among the rest (placeholders.go).
-	if phs := placeholdersFor(c, members); len(phs) > 0 {
+	// Books not in the library yet go among the rest (placeholders.go),
+	// unless the user would rather not see them.
+	if phs := placeholdersFor(c, members); len(phs) > 0 && !hidesPlaceholders(currentUser(r)) {
 		books, err := filteredPageWithPlaceholders(c, members, phs, page, key)
 		if err != nil {
 			log.Println("filtered books error:", err)
@@ -653,7 +654,9 @@ func filteredPageHandler(c *category) http.HandlerFunc {
 			Writable:    canAdminLibrary(r), // groups and featured entries: admins
 		}
 		inLibrary := data.TotalBooks
-		data.Missing = len(placeholdersFor(c, members))
+		if !hidesPlaceholders(currentUser(r)) {
+			data.Missing = len(placeholdersFor(c, members))
+		}
 		data.TotalBooks += data.Missing
 		if data.Missing > 0 {
 			w.Header().Set("Cache-Control", "no-cache")

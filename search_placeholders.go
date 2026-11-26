@@ -152,9 +152,16 @@ func (r *searchResult) placeholders() []*placeholder {
 
 // page is page `page` of the results in order key: the library's books,
 // then the placeholders.
-func (r *searchResult) page(key string, page int) []Book {
+func (r *searchResult) page(key string, page int) []Book { return r.pageOf(key, page, true) }
+
+// pageOf is page; withPlaceholders false leaves them out (the user's
+// preference, prefs.go).
+func (r *searchResult) pageOf(key string, page int, withPlaceholders bool) []Book {
 	slots := r.inOrder(key)
 	books := pageOfSlots(r.ix.cat, slots, page)
+	if !withPlaceholders {
+		return books
+	}
 	phs := r.placeholders()
 	from, to := (page-1)*booksPerPage, page*booksPerPage
 	for i := max(from, len(slots)); i < min(to, len(slots)+len(phs)); i++ {

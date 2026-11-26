@@ -25,6 +25,11 @@ export interface CoverDialogOptions {
      * PDF's first page, as on upload. For books waiting in the import queue.
      */
     autoDefault?: boolean;
+    /**
+     * The picture of the placeholder a waiting book stands for (a same-origin
+     * /placeholder-covers/ path from the server), offered as a choice.
+     */
+    placeholderCover?: string | undefined;
     /** The banner's cover button: it opens the dialog. */
     opener: HTMLElement;
     /** The form's ISBN field; null with -no-lookups (no online covers). */
@@ -36,7 +41,7 @@ export interface CoverDialogOptions {
 /** At most this many choices are shown large at once (side by side). */
 const COMPARE = 2;
 
-export function mountCoverDialog({ book, autoDefault = false, opener, isbnInput, onChanged }: CoverDialogOptions): void {
+export function mountCoverDialog({ book, autoDefault = false, placeholderCover, opener, isbnInput, onChanged }: CoverDialogOptions): void {
     const dialogEl = maybeId("cover-dialog", HTMLDialogElement);
     const listEl = maybeId("cover-choices");
     const viewEl = maybeId("cover-view");
@@ -192,6 +197,10 @@ export function mountCoverDialog({ book, autoDefault = false, opener, isbnInput,
             /* the current cover and an upload still work */
         }
         const notes: string[] = [];
+        // The placeholder's picture (one fetched from Hardcover, say).
+        if (placeholderCover?.startsWith("/placeholder-covers/")) {
+            add(await imageChoice(book, placeholderCover, "Placeholder's cover"));
+        }
         const sources: [string, () => AsyncGenerator<CoverChoice>][] = [];
         if (formats.includes("pdf")) sources.push(["PDF", () => pdfPages(book)]);
         if (formats.includes("epub")) sources.push(["EPUB", () => epubPages(book)]);

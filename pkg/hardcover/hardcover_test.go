@@ -221,8 +221,8 @@ func newFakeHardcover(t *testing.T) *fakeHardcover {
 				{"book_id":2,"position":1,"series":{"id":99,"name":"Other","slug":"other","books_count":3}}]}}`)
 		case "SeriesBooks":
 			io.WriteString(w, `{"data":{"series":[{"id":42,"name":"The Expanse","slug":"the-expanse","books_count":12,"description":"A <b>space</b> opera.<br>Nine books.","book_series":[
-				{"position":1,"details":"1","book":{"id":1,"slug":"leviathan-wakes","title":"Leviathan Wakes","subtitle":null,"release_date":"2011-06-02"}},
-				{"position":1.5,"details":"1.5","book":{"id":3,"slug":"the-butcher","title":"The Butcher of Anderson Station","release_date":"2011-10-01"}},
+				{"position":1,"details":"1","book":{"id":1,"slug":"leviathan-wakes","title":"Leviathan Wakes","subtitle":null,"release_date":"2011-06-02","cached_image":{"url":"https://assets.hardcover.app/books/1/cover.jpg"}}},
+				{"position":1.5,"details":"1.5","book":{"id":3,"slug":"the-butcher","title":"The Butcher of Anderson Station","release_date":"2011-10-01","cached_image":{"url":"javascript:alert(1)"}}},
 				{"position":2,"details":"2","book":{"id":2,"slug":"calibans-war","title":"Caliban's War","release_date":null}}]}]}}`)
 		case "BookDetails":
 			io.WriteString(w, `{"data":{"books":[
@@ -271,6 +271,9 @@ func TestClientQueries(t *testing.T) {
 	if len(d.Entries) != 3 || d.Entries[0].Authors[0] != "James S. A. Corey" || d.Entries[0].ISBNs[0] != "9780316129084" ||
 		*d.Entries[1].Position != 1.5 || len(d.Entries[2].Authors) != 1 || d.Entries[2].Released != "" {
 		t.Fatalf("SeriesBooks = %+v", d.Entries)
+	}
+	if d.Entries[0].Image != "https://assets.hardcover.app/books/1/cover.jpg" || d.Entries[1].Image != "" || d.Entries[2].Image != "" {
+		t.Errorf("cover images: %q %q %q", d.Entries[0].Image, d.Entries[1].Image, d.Entries[2].Image)
 	}
 	if d.Description != "A space opera.\nNine books." {
 		t.Errorf("Description = %q", d.Description)

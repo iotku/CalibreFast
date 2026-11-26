@@ -43,6 +43,15 @@
         <p class="prefs-status" id="prefs-stats-status" role="status"></p>
     </section>
 
+    <section class="auth-card prefs-signed-in" aria-labelledby="prefs-placeholders-title" hidden>
+        <h2 id="prefs-placeholders-title">Books not in the library</h2>
+        <p class="auth-muted">Books an editor knows of but the library doesn't have yet (the next of a series, say) are shown marked “Not in library” on series, author and publisher pages, in search and in On deck. Ones you saved stay on your own lists either way.</p>
+        <div class="prefs-radios">
+            <label><input type="checkbox" id="prefs-placeholders"> Show books not in the library</label>
+        </div>
+        <p class="prefs-status" id="prefs-placeholders-status" role="status"></p>
+    </section>
+
     <section class="auth-card prefs-signed-in" aria-labelledby="prefs-push-title" id="prefs-push" hidden>
         <h2 id="prefs-push-title">System notifications</h2>
         <p class="auth-muted">Let this device show your notifications (a saved book arriving, new books by authors you follow) even while the app is closed. They're always in the app either way.</p>

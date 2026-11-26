@@ -46,6 +46,7 @@ interface AccountFields {
     yearly_books?: number;
     goal_notice?: boolean;
     push_declined?: boolean;
+    hide_placeholders?: boolean;
 }
 
 const goal = (n: unknown): number => (typeof n === "number" && Number.isInteger(n) && n >= 0 && n <= 1000 ? n : 0);
@@ -62,6 +63,7 @@ function account(given: object | null | undefined): AccountFields {
         yearly_books: goal(v?.["yearly_books"]),
         goal_notice: v?.["goal_notice"] === true,
         push_declined: v?.["push_declined"] === true,
+        hide_placeholders: v?.["hide_placeholders"] === true,
     };
 }
 

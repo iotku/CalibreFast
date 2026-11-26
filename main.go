@@ -266,6 +266,9 @@ type EditBookPageData struct { // TODO I Hate this, these page structs are all o
 	Duplicates *duplicateCheck
 	// Merge: merging books into one (merge.go); UUID is the one kept.
 	Merge *mergePageData
+	// PlaceholderCover: the picture of the placeholder a waiting book
+	// stands for (importPlaceholder), offered in the cover dialog; "" for none.
+	PlaceholderCover string
 }
 
 func writePage(page int, books []Book) error {
@@ -660,8 +663,9 @@ func libraryInfoHandler(w http.ResponseWriter, r *http.Request) {
 }
 
 func serveLibraryHTTP() {
-	go runThumbBacklog() // thumbnails of cancelled requests, made when idle
-	registerRoutes()     // routes.go
+	go runThumbBacklog()          // thumbnails of cancelled requests, made when idle
+	hcFillPlaceholderCoversSoon() // Hardcover covers placeholders don't have yet
+	registerRoutes()              // routes.go
 	serve(":"+hostPort, serverTiming(securityHeaders(robotsHeader(csrfProtect(withAuth(http.DefaultServeMux))))))
 }
 

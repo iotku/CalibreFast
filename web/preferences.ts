@@ -440,6 +440,27 @@ byId("prefs-stats-delete").addEventListener("click", () => {
 });
 
 /* ------------------------------------------------------------------ */
+/* Books not in the library (placeholders; the account's)             */
+/* ------------------------------------------------------------------ */
+
+const showPh = byId<HTMLInputElement>("prefs-placeholders");
+const phStatus = byId("prefs-placeholders-status");
+
+function showPlaceholders(): void {
+    showPh.checked = !accountPrefs(user).hide_placeholders;
+}
+
+showPh.addEventListener("change", () => {
+    phStatus.textContent = "Saving…";
+    setAccountPrefs({ hide_placeholders: !showPh.checked }, user)
+        .then(() => (phStatus.textContent = showPh.checked ? "Books not in the library are shown." : "Books not in the library are hidden."))
+        .catch((err: unknown) => {
+            phStatus.textContent = `Couldn't save: ${errorMessage(err)}`;
+            showPlaceholders();
+        });
+});
+
+/* ------------------------------------------------------------------ */
 /* Start                                                              */
 /* ------------------------------------------------------------------ */
 
@@ -453,6 +474,7 @@ function showSignedIn(): void {
 showSignedIn();
 showFormat();
 showTracking();
+showPlaceholders();
 showDevice();
 void render();
 void meRequest()
@@ -463,6 +485,7 @@ void meRequest()
         showSignedIn();
         showFormat();
         showTracking();
+        showPlaceholders();
         showDevice();
         if (user) {
             const fresh = await fetchMarks();
