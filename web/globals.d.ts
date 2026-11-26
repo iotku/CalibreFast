@@ -88,8 +88,8 @@ declare namespace EpubJS {
         /** "paginated" or "scrolled-doc". */
         flow(flow: string): void;
         getContents(): Contents[];
-        /** epub.js internal: divisor is columns per screen (2 in a spread); displayed pages count columns. */
-        _layout?: { divisor?: number };
+        /** epub.js internal: divisor is columns per screen (2 in a spread); displayed pages count columns. delta: px from one screen to the next. */
+        _layout?: { divisor?: number; delta?: number };
         /** epub.js internal: the queue next()/prev() run on. A task runs whole within one frame. */
         q: { enqueue<T>(task: () => T): Promise<Awaited<T>> };
         /** epub.js internal: the view manager behind next()/prev() (unqueued, no "relocated"). */

@@ -585,6 +585,36 @@ document.querySelector(".btn-back")?.addEventListener("click", () => leaveReader
 
 // ---- turning pages ----------------------------------------------------------
 
+/**
+ * Screens are a whole number of px apart, but where devicePixelRatio isn't a
+ * whole number (2.25 on a Pixel 8 Pro) the browser keeps scroll offsets on
+ * the device-pixel grid: the second screen is at 394.67 rather than 394, the
+ * first at 0.44. epub.js compares the offset exactly (offset + width + delta
+ * <= scrollWidth: is there another screen; offset > 0: is there one before),
+ * so it skipped a chapter's last screen. Setting the offset doesn't help (the
+ * browser moves it off again), so reads of the page container's scrollLeft
+ * give the screen edge instead when they're within a pixel of one.
+ */
+function snapScrollLeft(sc: HTMLElement): void {
+    const native = Object.getOwnPropertyDescriptor(Element.prototype, "scrollLeft");
+    const get = native?.get;
+    const set = native?.set;
+    if (!get || !set || Object.hasOwn(sc, "scrollLeft")) return;
+    Object.defineProperty(sc, "scrollLeft", {
+        configurable: true,
+        get(this: HTMLElement): number {
+            const v = get.call(this) as number;
+            const d = rendition._layout?.delta;
+            if (!d || settings().flow === "scrolled") return v;
+            const edge = Math.round(v / d) * d;
+            return Math.abs(v - edge) < 1 ? edge : v;
+        },
+        set(this: HTMLElement, v: number) {
+            set.call(this, v);
+        },
+    });
+}
+
 const reducedMotion = matchMedia("(prefers-reduced-motion: reduce)");
 
 /**
@@ -702,6 +732,8 @@ container.addEventListener("wheel", onWheel, { passive: false });
  * page; in the middle it shows or hides the bars.
  */
 rendition.on("rendered", (section, view) => {
+    const sc = container.querySelector<HTMLElement>(".epub-container");
+    if (sc) snapScrollLeft(sc);
     const doc = view.document;
     const input = chapterInput(view);
     const on = input.target;
