@@ -384,11 +384,21 @@ func TestLookupRoomHandler(t *testing.T) {
 	if u := limiter.Usage(time.Now()); u.Used != 6 {
 		t.Errorf("asking took requests: used %d", u.Used)
 	}
-	for i := range 8 { // later, refilled: 14 of the day's 20 taken, no room for 7 more
-		if err := limiter.Take(time.Now().Add(time.Hour + time.Duration(i)*10*time.Second)); err != nil {
+
+	// Later the same day, refilled at 1 a second: 14 of the day's 20 taken,
+	// no room for 7 more. (An hour ahead crossed midnight on runs after 23:00,
+	// so those takes counted toward tomorrow.)
+	start := time.Now()
+	if start.Add(15*time.Second).Format(time.DateOnly) != start.Format(time.DateOnly) {
+		t.Skip("too close to midnight: the takes would count toward tomorrow") // TODO: Is there a better way to handle this that does not rely on system time?
+	}
+	for i := range 8 {
+		if err := limiter.Take(start.Add(time.Duration(i+1) * time.Second)); err != nil {
+
 			t.Fatal(err)
 		}
 	}
+
 	if _, room := get("source=openlibrary"); !room.DayUsedUp || !strings.Contains(room.Message, "try again tomorrow") {
 		t.Errorf("day used up: %+v", room)
 	}
