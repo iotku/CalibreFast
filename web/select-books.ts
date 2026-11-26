@@ -4,7 +4,7 @@
 // above the grid turns taps on cards into ticks; a bar at the bottom counts them and
 // offers Add to shelf (shelf-picker.ts) and, for editors, Merge (the
 // metadata editor's merge mode, Go: merge.go), Edit in table (the bulk
-// editor, library-edit.ts) and Remove (the confirmation, delete-books.ts). A placeholder (a book not in the library
+// editor, library-edit.ts), Update covers (library-covers.ts) and Remove (the confirmation, delete-books.ts). A placeholder (a book not in the library
 // yet, data-placeholder) can be picked too, to merge with the library books
 // that are it (Go: merge_placeholder.go); Edit and Remove leave it out. The
 // choice survives scrolling: cards are marked again as they're re-rendered
@@ -25,12 +25,17 @@ let countEl: HTMLElement | null = null;
 let removeBtn: HTMLButtonElement | null = null;
 let mergeBtn: HTMLAnchorElement | null = null;
 let tableBtn: HTMLButtonElement | null = null;
+let coversBtn: HTMLButtonElement | null = null;
 let shelfBtn: HTMLButtonElement | null = null;
 
 /** At most this many books are merged at once (Go: mergeMaxBooks). */
 const MERGE_MAX = 20;
 /** sessionStorage: the books to show in the bulk editor (library-edit.ts). */
 export const BULK_SELECTION_KEY = "cf-bulk-selection";
+/** sessionStorage: the books for the cover updater (library-covers.ts). */
+const COVER_SELECTION_KEY = "cf-cover-selection";
+/** At most this many books get new covers at once (Go: coverRefreshMax). */
+const COVERS_MAX = 200;
 /** The buttons that start and stop selecting: the sidebar's and the grid's. */
 const toggleBtns: HTMLButtonElement[] = [];
 
@@ -103,6 +108,11 @@ function update(): void {
         mergeBtn.textContent = n >= 2 ? `Merge ${n}…` : "Merge…";
     }
     if (tableBtn) tableBtn.disabled = nb === 0;
+    if (coversBtn) {
+        coversBtn.disabled = nb === 0 || nb > COVERS_MAX;
+        coversBtn.title = nb > COVERS_MAX ? `At most ${COVERS_MAX} books at a time` : "Look the selected books up on Hardcover and Open Library for better covers";
+        coversBtn.textContent = nb ? `Update ${nb} ${nb === 1 ? "cover" : "covers"}…` : "Update covers…";
+    }
     if (shelfBtn) {
         shelfBtn.disabled = nb === 0;
         shelfBtn.textContent = nb ? `Add ${nb} to shelf…` : "Add to shelf…";
@@ -137,7 +147,16 @@ export function setupSelection(grid: HTMLElement): void {
         mergeBtn = el("a", { className: "btn-action" }, "Merge…");
         mergeBtn.setAttribute("aria-disabled", "true");
         tableBtn = el("button", { type: "button", className: "btn-action", disabled: true, title: "Open the selected books in the bulk editor's table" }, "Edit in table");
-        actions.append(tableBtn, mergeBtn, removeBtn);
+        coversBtn = el("button", { type: "button", className: "btn-action", disabled: true }, "Update covers…");
+        actions.append(tableBtn, coversBtn, mergeBtn, removeBtn);
+        coversBtn.addEventListener("click", () => {
+            try {
+                sessionStorage.setItem(COVER_SELECTION_KEY, JSON.stringify(chosenBooks().map((b) => b.uuid)));
+            } catch {
+                return; // no storage: nothing to hand over
+            }
+            location.assign("/library/covers");
+        });
         tableBtn.addEventListener("click", () => {
             try {
                 sessionStorage.setItem(BULK_SELECTION_KEY, JSON.stringify(chosenBooks().map((b) => b.uuid)));

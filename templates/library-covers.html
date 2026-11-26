@@ -1,0 +1,51 @@
+<!doctype html>
+<html lang="en">
+<head>
+    <meta charset="utf-8">
+    {{ robotsMeta }}
+    {{ appHead }}
+    <title>Update covers — {{ .Title }}</title>
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <link rel="stylesheet" href="{{ asset "style.css" }}">
+    <link rel="stylesheet" href="{{ asset "library-covers.css" }}">
+</head>
+<body class="auth-body">
+{{ $tb := topbar "Active" "library-covers" "Title" "Update covers" }}
+{{ template "topbar-start" $tb }}
+{{ template "topbar-end" $tb }}
+<!-- New covers from Hardcover and Open Library for the books picked in the
+     grid, each saved one can be undone (web/library-covers.ts, cover_refresh.go) -->
+<main class="auth-main auth-wide" data-max="{{ .Max }}">
+    <section class="auth-card">
+        <h1>Update covers</h1>
+        <p class="auth-muted">
+            Each selected book is looked up by its ISBN, or by its title and author when it has none, on Hardcover and then Open Library.
+            Tick the covers you want and save them. Every saved cover can be undone on its own, here or later under Recent cover updates.
+        </p>
+        <div id="cu-budget" class="cu-budget" aria-label="Lookups left today"></div>
+        <p id="cu-status" class="auth-notice" role="status" hidden></p>
+        <div id="cu-warning" class="cu-warning" role="alert" hidden></div>
+        <div id="cu-progress" class="cu-progress" hidden>
+            <progress id="cu-progress-bar" max="1" value="0"></progress>
+            <span id="cu-progress-text" aria-live="polite"></span>
+            <button type="button" id="cu-stop" class="btn-standard">Stop</button>
+        </div>
+        <div id="cu-toolbar" class="cu-toolbar" hidden>
+            <label><input type="checkbox" id="cu-all"> All found</label>
+            <button type="button" id="cu-scan" class="btn-standard" title="Look up the books with no cover found yet">Look up the rest</button>
+            <button type="button" id="cu-apply" class="btn-standard btn-primary" disabled>Save covers</button>
+        </div>
+        <ul id="cu-books" class="cu-books"></ul>
+        <p id="cu-empty" class="auth-muted" hidden>No books selected. In the library, choose <b>Select books</b>, tick the books, then <b>Update covers…</b>.</p>
+    </section>
+    <section class="auth-card">
+        <h2>Recent cover updates</h2>
+        <p class="auth-muted">Undo puts back the cover a book had before. It's refused if the cover has been changed again since.</p>
+        <p id="cu-history-status" class="auth-notice" role="status" hidden></p>
+        <ul id="cu-history" class="cu-history"></ul>
+        <p id="cu-history-empty" class="auth-muted" hidden>No covers updated yet.</p>
+    </section>
+</main>
+<script type="module" src="{{ asset "library-covers.js" }}"></script>
+</body>
+</html>
