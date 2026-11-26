@@ -160,6 +160,7 @@ func registerBookEditRoutes() {
 	// (lookup.go)
 	http.HandleFunc("GET /metadata/lookup", requireEditor(requireLookups(lookupHandler)))
 	http.HandleFunc("GET /metadata/lookup/cover", requireEditor(requireLookups(lookupCoverHandler)))
+	http.HandleFunc("GET /metadata/lookup/room", requireEditor(requireLookups(lookupRoomHandler))) // waits before a lookup
 
 	// The cover updater: new covers for books picked in the grid, each
 	// undone on its own (cover_refresh.go). Undoing needs no lookups.

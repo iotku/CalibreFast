@@ -13,6 +13,7 @@
 import type { BookTarget } from "./book-target.js";
 import { api, closeOnBackdropClick, el, errorMessage, icon, lineIcon, maybeId } from "./dom.js";
 import type { CoverCandidate, IsbnCandidate, IsbnResponse, LookupResult, MetaSource } from "./types.js";
+import { pacedLookup, waitNotice } from "./lookup-pace.js";
 import { openPdf } from "./vendor.js";
 
 /** What the tools need from the editor. */
@@ -481,7 +482,8 @@ function mountLookup(host: IsbnToolsHost): { lookUpIsbn(isbn: string): void; sug
     /** extra: more parameters, compared on the server (match_isbn), not sent on. */
     async function ask(source: Source, q: Query, extra: Record<string, string> = {}): Promise<LookupResult> {
         asked.add(source);
-        return api<LookupResult>("GET", `/metadata/lookup?${new URLSearchParams({ source, ...q, ...extra })}`);
+        // Paced: past a source's burst it waits (and says so) rather than come back cut short.
+        return pacedLookup(source, { ...q, ...extra }, waitNotice(say, status, SOURCE_NAMES[source]));
     }
 
     /**

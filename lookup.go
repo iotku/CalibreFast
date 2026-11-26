@@ -273,6 +273,49 @@ func lookupCoverHandler(w http.ResponseWriter, r *http.Request) {
 	_, _ = w.Write(img)
 }
 
+// lookupRoom is when a source can take a lookup (TS: LookupRoom in
+// web/lookup-pace.ts).
+type lookupRoom struct {
+	WaitMS    int64  `json:"wait_ms"`               // 0: now
+	DayUsedUp bool   `json:"day_used_up,omitempty"` // only tomorrow
+	Message   string `json:"message,omitempty"`     // with DayUsedUp
+}
+
+// lookupRoomHandler: GET /metadata/lookup/room?source=…&what=lookup|cover:
+// how long until the source has room for a whole lookup (or a cover),
+// under its rate limits, without taking anything. The editor and the cover
+// updater ask first, so they can say they're waiting rather than look
+// stuck while the server holds the lookup (?wait=1).
+func lookupRoomHandler(w http.ResponseWriter, r *http.Request) {
+	source := r.URL.Query().Get("source")
+	name, ok := lookupSources[source]
+	if !ok {
+		http.Error(w, "unknown source", http.StatusBadRequest)
+		return
+	}
+	n := metalookup.LookupCost(name)
+	switch r.URL.Query().Get("what") {
+	case "", "lookup":
+	case "cover":
+		n = 0 // Hardcover's images aren't counted
+		if name == openLibraryName {
+			n = 1
+		}
+	default:
+		http.Error(w, "what: lookup or cover", http.StatusBadRequest)
+		return
+	}
+	var room lookupRoom
+	if n > 0 {
+		wait, ok := bookLookups.RoomIn(name, n, time.Now())
+		room.WaitMS = wait.Milliseconds()
+		if !ok {
+			room = lookupRoom{DayUsedUp: true, Message: metalookup.ErrDailyLimit{Source: name}.Error()}
+		}
+	}
+	writeJSON(w, http.StatusOK, room)
+}
+
 // lookupPatience is how long a lookup asked to wait (?wait=1, the cover
 // updater's runs) waits for room under a source's limits before answering
 // "try again in …": short enough that no proxy times the request out; the

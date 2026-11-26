@@ -233,6 +233,13 @@ func (c *Client) readyIn(source string, n int, now time.Time) (time.Duration, bo
 	return 0, true
 }
 
+// RoomIn says how long until source has room for n requests at once (0:
+// now), taking nothing; ok is false when today's requests won't stretch to
+// them. For a page to say it's waiting before it asks.
+func (c *Client) RoomIn(source string, n int, now time.Time) (wait time.Duration, ok bool) {
+	return c.readyIn(source, n, now)
+}
+
 // WaitForRoom waits, at most maxWait, until source can take n requests at
 // once: for work that would rather go slowly than fail halfway through a
 // lookup, as a run of lookups does once the burst is spent. It says so
