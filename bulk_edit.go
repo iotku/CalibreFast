@@ -5,8 +5,9 @@ package main
 // and faulty tags or languages can be found, then edited a book or a
 // selection at a time.
 //
-// GET /api/library/table answers the rows, from metadata.db (?ids=a,b:
-// only those books, as the grid's "Edit in table" asks). POST
+// GET /api/library/table answers the rows: the whole library from the
+// in-memory catalog, in pages (table_rows.go), or from metadata.db only
+// the books ?ids=a,b names (as the grid's "Edit in table" asks). POST
 // /api/library/bulk changes some fields of a set of books: the change is
 // queued (bulk_queue.go) and later each book's metadata.opf is read (as the
 // metadata editor does), the changes are made to it, and it's saved with
@@ -73,6 +74,8 @@ func repairFormatsHandler(w http.ResponseWriter, r *http.Request) {
 	if res.Formats > 0 {
 		log.Printf("repair formats: %s added %d format row(s) to %d book(s)", currentUser(r).Username, res.Formats, res.Books)
 		catalogChanged(res.UUIDs...)
+		// Now, not in a moment: the bulk editor reads its rows from the catalog next.
+		logErr(catalogFlush(), "repair formats: catalog")
 		refreshAllCaches()
 	}
 	w.Header().Set("Content-Type", "application/json")
@@ -210,6 +213,8 @@ func libraryTableHandler(w http.ResponseWriter, r *http.Request) {
 			http.Error(w, fmt.Sprintf("at most %d books", tableIDsMax), http.StatusBadRequest)
 			return
 		}
+	} else if wholeTable(w, r) {
+		return // from the catalog (table_rows.go)
 	}
 	books, err := tableBooks(calibreDB, uuids)
 	if err != nil {

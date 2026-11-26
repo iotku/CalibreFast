@@ -110,9 +110,10 @@ var bulkQueue = struct {
 	jobs     map[int64]*bulkJob
 	finished []int64 // oldest first, to forget
 	rows     map[string]*pendingRow
-	lastID   int64 // ids when there's no app database (tests)
-	worker   bool  // the worker goroutine is running
-	stopping bool  // the server is stopping: start no more books
+	rowsRev  uint64 // bumped when rows change (tableVersion, table_rows.go)
+	lastID   int64  // ids when there's no app database (tests)
+	worker   bool   // the worker goroutine is running
+	stopping bool   // the server is stopping: start no more books
 }{jobs: map[int64]*bulkJob{}, rows: map[string]*pendingRow{}}
 
 func init() { bulkQueue.changed = sync.NewCond(&bulkQueue.mu) }
@@ -221,6 +222,7 @@ func queueBulkEdit(uuids []string, edit *bulkEdit, by *User) (bulkResult, error)
 		return res, err
 	}
 	job.id, res.Job = id, id
+	q.rowsRev++
 	for _, u := range job.uuids {
 		p := q.rows[u]
 		if p == nil {
@@ -500,6 +502,7 @@ func finishQueuedEdit(job *queuedEdit, res bulkResult) {
 	q := &bulkQueue
 	q.mu.Lock()
 	defer q.mu.Unlock()
+	q.rowsRev++
 	for _, u := range job.uuids {
 		if p := q.rows[u]; p != nil {
 			if p.jobs--; p.jobs <= 0 {
@@ -539,6 +542,7 @@ func loadBulkQueue() {
 	q := &bulkQueue
 	q.mu.Lock()
 	defer q.mu.Unlock()
+	q.rowsRev++
 	for _, job := range jobs {
 		var left []string
 		for i, u := range job.uuids {

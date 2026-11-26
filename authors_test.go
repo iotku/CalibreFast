@@ -6,6 +6,7 @@ import (
 	"net/url"
 	"os"
 	"reflect"
+	"slices"
 	"strings"
 	"testing"
 
@@ -106,6 +107,12 @@ func TestAuthorNamesWithCommas(t *testing.T) {
 	table, err := tableBooks(db, []string{uuid})
 	if err != nil || len(table) != 1 || table[0].Authors != want {
 		t.Errorf("bulk editor authors: %v %v, want %q", table, err, want)
+	}
+	// The bulk editor's whole-library rows come from the catalog (table_rows.go).
+	if c, err := buildCatalog(db); err != nil {
+		t.Fatal(err)
+	} else if rows, _ := catalogTableBooks(c); !slices.ContainsFunc(rows, func(b tableBook) bool { return b.UUID == uuid && b.Authors == want }) {
+		t.Errorf("bulk editor catalog rows: %+v, want %q", rows, want)
 	}
 
 	// The Authors page lists "Battey, Nick", and its link (/author/Battey,
