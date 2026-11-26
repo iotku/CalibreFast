@@ -233,11 +233,25 @@ let dupMode = ""; // "", a dupKeyOf mode, or MARKED
 const MARKED = "marked";
 let notDupSets: NotDuplicateSet[] = [];
 
-/** The table's answer: the rows, and the sets marked as not duplicates. */
+/** The table's answer: the rows, and the sets marked as not duplicates (Go: tableResponse in table_rows.go). */
 interface TableData {
     books: TableBook[];
-    not_duplicates: NotDuplicateSet[];
+    not_duplicates?: NotDuplicateSet[];
+    /** Books in the library; the rows may be only some of them. */
+    total?: number;
+    /** What the rows are of: sent back as ?have= on a reload. */
+    version?: string;
+    /** The ?from= of the rows after these; absent after the last. */
+    next?: number;
+    /** ?have= named the current version: no rows sent. */
+    unchanged?: boolean;
 }
+/** Whether rows holds every book; false while the rest are still coming (loadTable). */
+let complete = true;
+/** Books in the library (rows.length once complete). */
+let total = 0;
+/** The version of the rows (Go: tableVersion); "" for the queue, which has none. */
+let version = "";
 let onlySelected = false;
 /** Tag checks: "", "unique" (a tag no other book has), "semicolon" (a tag with ;) or "long". */
 type TagCheck = "" | "unique" | "semicolon" | "long";
@@ -483,17 +497,76 @@ function fillDatalists(): void {
 // Filtering, sorting, drawing
 // ---------------------------------------------------------------------------
 
-function compare(a: Row, b: Row): number {
-    if (sortKey === "series") {
-        const s = a.hay.series.localeCompare(b.hay.series) || a.b.series_index - b.b.series_index;
-        if (s) return s;
+/**
+ * One collator for every comparison: localeCompare with options sets one
+ * up each call, which made sorting 70,000 rows take seconds.
+ */
+const collator = new Intl.Collator(undefined, { numeric: true });
+
+/**
+ * Each column's values ranked in the collator's order, so sorting compares
+ * numbers: the collator then runs over a column's distinct values, not over
+ * every pair of rows a sort looks at. Values the collator finds equal get
+ * one rank.
+ */
+function rankValues(key: ColKey): Map<string, number> {
+    const values = [...new Set(rows.map((r) => r.hay[key]))].sort(collator.compare);
+    const ranks = new Map<string, number>();
+    let rank = 0;
+    values.forEach((v, i) => {
+        if (i > 0 && collator.compare(values[i - 1]!, v) !== 0) rank++;
+        ranks.set(v, rank);
+    });
+    return ranks;
+}
+
+/**
+ * The rows in each sort asked for, and each column's ranks, kept until the
+ * rows change (a new rows array, or more rows loaded): filtering keeps this
+ * order rather than sorting what it shows, and sorting by a column again
+ * costs nothing.
+ */
+let sortCache: { rows: Row[]; length: number; ranks: Map<ColKey, Map<string, number>>; orders: Map<string, Row[]> } | null = null;
+
+function sortedRows(): Row[] {
+    if (!sortCache || sortCache.rows !== rows || sortCache.length !== rows.length) {
+        sortCache = { rows, length: rows.length, ranks: new Map(), orders: new Map() };
     }
-    const x = a.hay[sortKey];
-    const y = b.hay[sortKey];
-    // Empty values last, whichever way.
-    if (!x !== !y) return !x ? 1 : -1;
-    const c = x.localeCompare(y, undefined, { numeric: true });
-    return (sortDesc ? -c : c) || a.hay.title.localeCompare(b.hay.title) || a.b.id - b.b.id;
+    const cache = sortCache;
+    const orderKey = `${sortDesc ? "-" : ""}${sortKey}`;
+    const kept = cache.orders.get(orderKey);
+    if (kept) return kept;
+    const ranksOf = (key: ColKey): Map<string, number> => {
+        let m = cache.ranks.get(key);
+        if (!m) cache.ranks.set(key, (m = rankValues(key)));
+        return m;
+    };
+    const keyRanks = ranksOf(sortKey);
+    const titleRanks = ranksOf("title");
+    const n = rows.length;
+    const key = new Float64Array(n);
+    const title = new Float64Array(n);
+    const empty = new Uint8Array(n);
+    rows.forEach((r, i) => {
+        key[i] = keyRanks.get(r.hay[sortKey])!;
+        title[i] = titleRanks.get(r.hay.title)!;
+        empty[i] = r.hay[sortKey] ? 0 : 1;
+    });
+    const series = sortKey === "series";
+    const desc = sortDesc ? -1 : 1;
+    const order = Array.from({ length: n }, (_, i) => i);
+    order.sort((i, j) => {
+        const a = rows[i]!;
+        const b = rows[j]!;
+        // Empty values last, whichever way.
+        if (empty[i] !== empty[j]) return empty[i]! - empty[j]!;
+        // A series: its name (with the number), then the number, both turned round for descending.
+        const c = key[i]! - key[j]! || (series ? a.b.series_index - b.b.series_index : 0);
+        return desc * c || title[i]! - title[j]! || a.b.id - b.b.id;
+    });
+    const sorted = order.map((i) => rows[i]!);
+    cache.orders.set(orderKey, sorted);
+    return sorted;
 }
 
 function applyFilters(): void {
@@ -501,6 +574,13 @@ function applyFilters(): void {
     const words = fold(search).split(/\s+/).filter(Boolean);
     const blankCols = COLUMNS.filter((c) => blankOnly.has(c.key));
 
+    if (waitingForAll()) {
+        // Look-alikes and tags no other book has are among every book.
+        shown = [];
+        shownSet = new Set();
+        updatePinned();
+        return;
+    }
     let groups: Set<string> | null = null;
     if (dupMode === MARKED) {
         // Each marked set with at least two books still in the library.
@@ -527,7 +607,7 @@ function applyFilters(): void {
     }
 
     const tagTest = tagCheckTest();
-    shown = rows.filter((r) => {
+    shown = sortedRows().filter((r) => {
         if (onlySelected && !selected.has(r.b.uuid)) return false;
         if (groups && !groups.has(r.dupKey)) return false;
         if (tagTest && !r.b.tags.some(tagTest)) return false;
@@ -536,14 +616,14 @@ function applyFilters(): void {
         for (const c of blankCols) if (!c.blank(r.b)) return false;
         return true;
     });
-    shown.sort(compare);
     if (groups) {
         // Each group together, in the order its first book sorts.
         const first = new Map<string, number>();
         shown.forEach((r, i) => {
             if (!first.has(r.dupKey)) first.set(r.dupKey, i);
         });
-        shown.sort((a, b) => first.get(a.dupKey)! - first.get(b.dupKey)! || compare(a, b));
+        // Stable: within a group, the books stay in the sort.
+        shown.sort((a, b) => first.get(a.dupKey)! - first.get(b.dupKey)!);
         let g = 0;
         shown.forEach((r, i) => {
             if (i > 0 && r.dupKey !== shown[i - 1]!.dupKey) g++;
@@ -565,7 +645,7 @@ const pinOffset = (): number => (pinned.length ? pinned.length + 1 : 0);
 
 /** Work out the pinned rows again; true if they changed. */
 function updatePinned(): boolean {
-    const next = selected.size ? rows.filter((r) => selected.has(r.b.uuid) && !shownSet.has(r.b.uuid)).sort(compare) : [];
+    const next = selected.size ? sortedRows().filter((r) => selected.has(r.b.uuid) && !shownSet.has(r.b.uuid)) : [];
     const same = next.length === pinned.length && next.every((r, i) => r === pinned[i]);
     pinned = next;
     return !same;
@@ -573,9 +653,24 @@ function updatePinned(): boolean {
 
 /** The body's height and row count, for the pinned rows and the shown ones. */
 function sizeBody(): void {
-    const total = pinOffset() + shown.length;
-    table.setAttribute("aria-rowcount", String(total));
-    body.style.height = `${total * ROW_H}px`;
+    const k = pinOffset() + shown.length + (moreRow() ? 1 : 0);
+    table.setAttribute("aria-rowcount", String(k));
+    body.style.height = `${k * ROW_H}px`;
+}
+
+/** Whether a "Loading more" row ends the list: rows are still coming and some are shown. */
+const moreRow = (): boolean => !complete && shown.length > 0;
+
+/** The row under the shown ones while the rest of the library loads. */
+function loadingRow(at: number): HTMLElement {
+    const row = el(
+        "div",
+        { className: "lt-row lt-pin-head lt-loading-row", role: "row" },
+        el("span", { className: "lt-pin-label", role: "gridcell" }, `Loading more books… ${n(rows.length)} of ${n(total)}`),
+    );
+    row.style.top = `${at * ROW_H}px`;
+    row.setAttribute("aria-rowindex", String(at + 1));
+    return row;
 }
 
 /** The heading over the pinned rows, with a button to untick them. */
@@ -620,6 +715,9 @@ function tagCheckTest(): ((tag: string) => boolean) | null {
     return null;
 }
 
+/** Whether the view needs every book (look-alikes, tags no other book has) and they aren't all here yet. */
+const waitingForAll = (): boolean => !complete && (dupMode !== "" || tagCheck === "unique");
+
 let refreshTimer = 0;
 function scheduleRefresh(): void {
     clearTimeout(refreshTimer);
@@ -634,12 +732,19 @@ function refresh(): void {
         btn.closest(".lt-cell")?.setAttribute("aria-sort", key === sortKey ? (sortDesc ? "descending" : "ascending") : "none");
     }
     const groupsShown = dupMode && shown.length ? shown[shown.length - 1]!.group + 1 : 0;
-    countEl.textContent =
-        `${n(shown.length)} of ${plural(rows.length, subset ? "picked book" : "book")}` +
-        (subset ? " · Clear filters loads the whole library" : "") +
-        (dupMode === MARKED ? ` · ${plural(groupsShown, "group")} marked not duplicates` : dupMode ? ` · ${plural(groupsShown, "group")} of look-alikes` : "");
+    const waiting = waitingForAll();
+    countEl.textContent = waiting
+        ? `Loading ${n(rows.length)} of ${plural(total, "book")}… ${dupMode ? "Look-alikes" : "Tags no other book has"} show once every book is here`
+        : `${n(shown.length)} of ${plural(complete ? rows.length : total, subset ? "picked book" : "book")}` +
+          (complete ? "" : ` · loading, ${n(rows.length)} so far`) +
+          (subset ? " · Clear filters loads the whole library" : "") +
+          (dupMode === MARKED ? ` · ${plural(groupsShown, "group")} marked not duplicates` : dupMode ? ` · ${plural(groupsShown, "group")} of look-alikes` : "");
+    // Every book shown can't be ticked until they're all here: an edit to them would miss the rest.
+    allBox.disabled = !complete;
+    allBox.title = complete ? "Select every book shown" : "Select every book shown (once every book is loaded)";
     sizeBody();
-    emptyEl.hidden = shown.length > 0 || rows.length === 0;
+    emptyEl.hidden = shown.length > 0 || rows.length === 0 || waiting;
+    emptyEl.textContent = complete ? "No books match." : "No books match so far…";
     saveView();
     draw(true);
     selectionChanged();
@@ -650,12 +755,14 @@ function draw(force = false): void {
     const top = Math.max(0, scroller.scrollTop - body.offsetTop);
     const from = Math.max(0, Math.floor(top / ROW_H) - OVERSCAN);
     const pins = pinOffset();
-    const to = Math.min(pins + shown.length, Math.ceil((top + scroller.clientHeight) / ROW_H) + OVERSCAN);
+    const last = pins + shown.length;
+    const to = Math.min(last + (moreRow() ? 1 : 0), Math.ceil((top + scroller.clientHeight) / ROW_H) + OVERSCAN);
     if (!force && from === drawn.from && to === drawn.to) return;
     drawn = { from, to };
     const out: HTMLElement[] = [];
     for (let j = from; j < to; j++) {
-        if (j >= pins) out.push(rowElement(shown[j - pins]!, j - pins));
+        if (j === last) out.push(loadingRow(j));
+        else if (j >= pins) out.push(rowElement(shown[j - pins]!, j - pins));
         else if (j === 0) out.push(pinHeading());
         else out.push(rowElement(pinned[j - 1]!, j - 1, true));
     }
@@ -2334,14 +2441,108 @@ async function start(): Promise<void> {
     loadView();
     buildHead();
     try {
-        const [data] = await Promise.all([api<TableData>("GET", tableUrl()), loadLanguageCodes()]);
-        rows = data.books.map(makeRow);
-        notDupSets = data.not_duplicates;
+        await loadTable(loadLanguageCodes());
     } catch (err) {
         countEl.textContent = "";
         say(`Couldn't load ${SOURCE.name}: ${errorMessage(err)}`, "error");
+    }
+}
+
+/** The rows shown first: those at the top in the table's sort. */
+const FIRST_ROWS = 300;
+/** Rows per request after those. */
+const PAGE_ROWS = 10000;
+/** Whether the source answers in pages (the queue answers every row at once). */
+const PAGED = !QUEUE;
+/** Bumped by each loadTable: an older one still running stops. */
+let loadToken = 0;
+
+const pageUrl = (params: Record<string, string>): string => `${SOURCE.table}?${new URLSearchParams(params)}`;
+
+/**
+ * Loads the rows: the first FIRST_ROWS in the table's sort, drawn at once,
+ * then the rest a page at a time, added as they come (Go: wholeTable).
+ * Throws if the first rows can't be had; a page after that failing leaves
+ * what came and says so. ready: waited for before the first rows are drawn.
+ */
+async function loadTable(ready: Promise<unknown> = Promise.resolve()): Promise<void> {
+    const token = ++loadToken;
+    if (!PAGED || subset) {
+        const [data] = await Promise.all([api<TableData>("GET", tableUrl()), ready]);
+        if (token === loadToken) setRows(data.books.map(makeRow), data, true);
         return;
     }
+    const [first] = await Promise.all([api<TableData>("GET", pageUrl({ sort: `${sortDesc ? "-" : ""}${sortKey}`, limit: String(FIRST_ROWS) })), ready]);
+    if (token !== loadToken) return;
+    setRows(first.books.map(makeRow), first, first.books.length >= (first.total ?? 0));
+    if (complete) return;
+    // Every book comes again in these pages: those already here stay as they are.
+    const have = new Set(rows.map((r) => r.b.uuid));
+    let from = 0;
+    let stale = false;
+    try {
+        for (;;) {
+            const page = await api<TableData>("GET", pageUrl({ from: String(from), limit: String(PAGE_ROWS) }));
+            if (token !== loadToken) return;
+            // The library changed while loading: the first rows may be out of date, so look again after.
+            if (page.version !== version) stale = true;
+            for (const b of page.books) {
+                if (have.has(b.uuid)) continue;
+                have.add(b.uuid);
+                rows.push(makeRow(b));
+            }
+            total = page.total ?? total;
+            if (!page.next) break;
+            from = page.next;
+            scheduleRefresh();
+        }
+    } catch (err) {
+        say(`Couldn't load all of ${SOURCE.name} (${n(rows.length)} of ${n(total)} books): ${errorMessage(err)}`, "error");
+        refresh();
+        return;
+    }
+    complete = true;
+    allLoaded();
+    if (stale) {
+        reloadedAt = 0;
+        void reloadRows();
+    }
+}
+
+/**
+ * Every row again in one go, shown only when it's all here (a reload, or
+ * after a change made here). null: nothing changed since the rows' version
+ * (unless fresh, which asks for them regardless).
+ */
+async function fetchAll(fresh = false): Promise<{ rows: Row[]; data: TableData } | null> {
+    if (!PAGED || subset) {
+        const data = await api<TableData>("GET", tableUrl());
+        return { rows: data.books.map(makeRow), data };
+    }
+    const books = new Map<string, TableBook>();
+    let firstPage: TableData | null = null;
+    let from = 0;
+    for (;;) {
+        const params: Record<string, string> = { from: String(from), limit: String(PAGE_ROWS) };
+        if (!firstPage && version && !fresh) params["have"] = version;
+        const page = await api<TableData>("GET", pageUrl(params));
+        if (page.unchanged) return null;
+        firstPage ??= page;
+        for (const b of page.books) books.set(b.uuid, b);
+        if (!page.next) break;
+        from = page.next;
+    }
+    // The first page's version: if the library changed meanwhile, the next reload looks again.
+    return { rows: [...books.values()].map(makeRow), data: { ...firstPage!, books: [] } };
+}
+
+/** The rows, from an answer: whole says whether they're every book. */
+function setRows(next: Row[], data: TableData, whole: boolean): void {
+    rows = next;
+    notDupSets = data.not_duplicates ?? [];
+    version = data.version ?? "";
+    total = data.total ?? next.length;
+    complete = whole;
     loaded();
 }
 
@@ -2352,9 +2553,7 @@ async function loadWhole(): Promise<void> {
     subset = null;
     countEl.textContent = `Loading ${SOURCE.name}…`;
     try {
-        const data = await api<TableData>("GET", SOURCE.table);
-        rows = data.books.map(makeRow);
-        notDupSets = data.not_duplicates;
+        await loadTable();
     } catch (err) {
         subset = picked;
         refresh();
@@ -2362,13 +2561,18 @@ async function loadWhole(): Promise<void> {
         return;
     }
     reloadedAt = Date.now();
-    loaded();
 }
 
-/** After the rows (re)load: selected books no longer in the library don't count. */
+/** After the rows (re)load, or the first of them. */
 function loaded(): void {
-    showUnlisted();
     void loadFailures();
+    if (complete) allLoaded();
+    else refresh();
+}
+
+/** Once every row is here: what's worked out over them all. Selected books no longer in the library don't count. */
+function allLoaded(): void {
+    showUnlisted();
     const known = new Set(rows.map((r) => r.b.uuid));
     for (const u of selected) if (!known.has(u)) selected.delete(u);
     fillDatalists();
@@ -2407,14 +2611,15 @@ let reloadedAt = 0;
 let changedHere = 0;
 async function reloadRows(): Promise<void> {
     // Switching tabs fires both events: one fetch.
-    if (document.visibilityState !== "visible" || reloading || editing || modalOpen() || rows.length === 0) return;
+    if (document.visibilityState !== "visible" || reloading || editing || modalOpen() || rows.length === 0 || !complete) return;
     if (Date.now() - reloadedAt < 2000) return;
     reloading = true;
     reloadedAt = Date.now();
     const gen = changedHere;
     let stale = false;
     try {
-        const data = await api<TableData>("GET", tableUrl());
+        const got = await fetchAll();
+        if (!got) return; // nothing changed
         if (editing || modalOpen() || cellMenu || expanded) {
             // Redrawing would close what's open: next time.
             reloadedAt = 0;
@@ -2425,9 +2630,7 @@ async function reloadRows(): Promise<void> {
             return;
         }
         const before = rows.length;
-        rows = data.books.map(makeRow);
-        notDupSets = data.not_duplicates;
-        loaded();
+        setRows(got.rows, got.data, true);
         if (rows.length < before) say(`${plural(before - rows.length, "book")} fewer since this page loaded (${QUEUE ? "added or discarded" : "merged or removed"} elsewhere).`, "ok");
     } catch {
         /* keep what's shown */
@@ -2447,7 +2650,7 @@ const unlistedNote = byId("lt-unlisted");
 const unlistedText = byId("lt-unlisted-text");
 function showUnlisted(): void {
     const k = rows.reduce((t, r) => t + (r.b.formats_from_folder ? 1 : 0), 0);
-    unlistedNote.hidden = k === 0;
+    unlistedNote.hidden = k === 0 || !complete;
     unlistedText.textContent = `${plural(k, "book")} with files metadata.db doesn't list`;
 }
 byId("lt-unlisted-show").addEventListener("click", () => {
@@ -2463,11 +2666,9 @@ byId("lt-unlisted-fix").addEventListener("click", async (e) => {
     btn.disabled = true;
     try {
         const res = await api<FormatRepair>("POST", "/api/library/repair-formats", { uuids });
-        const data = await api<TableData>("GET", SOURCE.table);
-        rows = data.books.map(makeRow);
-        notDupSets = data.not_duplicates;
+        const got = await fetchAll(true);
         changedHere++;
-        loaded();
+        if (got) setRows(got.rows, got.data, true);
         const skipped = res.skipped.length ? ` ${plural(res.skipped.length, "format")} left alone: ${res.skipped.slice(0, 2).map((s) => s.error).join("; ")}` : "";
         say(`Added ${plural(res.formats, "format")} to metadata.db for ${plural(res.books, "book")}.${skipped}`, res.skipped.length ? "error" : "ok");
     } catch (err) {
