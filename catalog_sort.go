@@ -8,8 +8,9 @@ package main
 //
 // Latest and search sort the in-memory catalog (no metadata.db reads); the
 // filtered pages, which read metadata.db anyway, map the key to a fixed SQL
-// ORDER BY (aggregate.go). Shelves and the /me lists keep the order their
-// owner arranged.
+// ORDER BY (aggregate.go). A shelf starts in the order its owner arranged
+// and sorts its entries with the catalog's keys (shelves.go); the /me
+// lists keep the order their owner arranged.
 
 import (
 	"cmp"
@@ -31,6 +32,7 @@ const (
 	sortBySeries    = "series"    // by series, in reading order; books in none after
 	sortByPublished = "published" // newest published first; unknown dates last
 	sortByRating    = "rating"    // highest rated first; unrated last (rating.go)
+	sortByArranged  = "arranged"  // a shelf: the order its owner arranged
 )
 
 var sortLabels = map[string]string{
@@ -41,6 +43,7 @@ var sortLabels = map[string]string{
 	sortBySeries:    "Series",
 	sortByPublished: "Published",
 	sortByRating:    "Rating",
+	sortByArranged:  "Shelf order",
 }
 
 // The sorts each kind of page offers, its default first.
@@ -52,7 +55,10 @@ var (
 	latestAPISorts = []string{sortByAdded, sortByTitle, sortByAuthor, sortBySeries, sortByPublished, sortByRating}
 	filteredSorts  = []string{sortByTitle, sortByAuthor, sortBySeries, sortByAdded, sortByPublished, sortByRating}
 	seriesSorts    = []string{sortBySeries, sortByTitle, sortByAdded, sortByPublished, sortByRating}
-	searchSorts    = []string{sortByBest, sortByTitle, sortByAuthor, sortBySeries, sortByAdded, sortByPublished, sortByRating}
+	// A shelf: as arranged, or added to the shelf (newest first), or by
+	// the books' own details (shelves.go: sortShelfEntries).
+	shelfSorts  = []string{sortByArranged, sortByAdded, sortByTitle, sortByAuthor, sortBySeries, sortByPublished, sortByRating}
+	searchSorts = []string{sortByBest, sortByTitle, sortByAuthor, sortBySeries, sortByAdded, sortByPublished, sortByRating}
 )
 
 // pickSort is the requested sort if it's one of allowed, else the default

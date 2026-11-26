@@ -1,7 +1,9 @@
-// A shelf's own page (/shelf/N, templates/filtered.html): Pin to home, and
-// for admins on a global shelf, Feature; a tag's page (/tag/X) and a
-// series' (/series/X): Pin to home (shelf_pins.go, series_pins.go).
+// A shelf's own page (/shelf/N, templates/filtered.html): Pin to home, Edit
+// shelf (its owner, or admins on a global shelf: shelf-edit.ts), and for
+// admins on a global shelf, Feature; a tag's page (/tag/X) and a series'
+// (/series/X): Pin to home (shelf_pins.go, series_pins.go).
 import { api, errorMessage } from "./dom.js";
+import { editShelf } from "./shelf-edit.js";
 
 const LABELS: Record<string, [string, string]> = {
     pin: ["Pin to home", "On home"],
@@ -14,6 +16,18 @@ for (const btn of document.querySelectorAll<HTMLButtonElement>(".shelf-page-btn"
     btn.addEventListener("click", async () => {
         const action = btn.dataset["shelfAction"] ?? "";
         const id = btn.dataset["id"] ?? "";
+        if (action === "edit") {
+            const res = await editShelf({
+                id,
+                name: btn.dataset["name"] ?? "",
+                description: btn.dataset["description"] ?? "",
+                global: btn.dataset["global"] === "true",
+                shared: btn.dataset["shared"] === "true",
+            });
+            if (res?.deleted) location.assign("/shelves");
+            else if (res) location.reload();
+            return;
+        }
         const on = btn.getAttribute("aria-pressed") !== "true";
         btn.disabled = true;
         try {

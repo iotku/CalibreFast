@@ -4,7 +4,9 @@
  * into place or move with the buttons (reorder.ts), as on the home page.
  * Each move is saved (list_order.go); Done shows the grid in the new order.
  *
- * Configured on #list-edit: data-arrange, where the order is PUT.
+ * Configured on #list-edit: data-arrange, where the order is PUT; on a
+ * shelf, data-remove, the shelf's API path: each book (or whole series)
+ * then has Remove, which takes it off the shelf (shelves.go, shelf_series.go).
  */
 import { api, byId, el, errorMessage } from "./dom.js";
 import type { Book } from "./types.js";
@@ -16,6 +18,8 @@ const SAVE_DELAY_MS = 400; // moves in a row are one save
 const btn = byId("list-edit", HTMLButtonElement);
 const books = byId("books");
 const url = btn.dataset["arrange"] ?? "";
+const removeBase = btn.dataset["remove"] ?? "";
+const SERIES_KEY = "series:"; // a whole series' entry (Go: seriesKeyPrefix)
 // The grid's own JSON, the whole list at once.
 const allUrl = (books.dataset["pageUrl"] ?? "").replace(/&page=\{n\}$/, "") + "&all=1";
 
@@ -63,7 +67,33 @@ function row(b: Book): HTMLLIElement {
     );
     li.dataset["id"] = b.uuid;
     li.dataset["name"] = title;
+    if (removeBase) {
+        const rm = el("button", { type: "button", className: "arrange-remove", title: `Remove “${title}” from this shelf` }, "Remove");
+        rm.setAttribute("aria-label", `Remove ${title} from this shelf`);
+        rm.addEventListener("click", () => void remove(li, b.uuid, title, rm));
+        li.append(rm);
+    }
     return li;
+}
+
+/** Takes an entry off the shelf, and out of the list. */
+async function remove(li: HTMLElement, id: string, title: string, rm: HTMLButtonElement): Promise<void> {
+    rm.disabled = true;
+    const path = id.startsWith(SERIES_KEY)
+        ? `${removeBase}/series/${encodeURIComponent(id.slice(SERIES_KEY.length))}`
+        : `${removeBase}/books/${encodeURIComponent(id)}`;
+    try {
+        await flush(); // an order on its way names this entry: let it land first
+        await api("DELETE", path);
+        const next = li.nextElementSibling ?? li.previousElementSibling;
+        li.remove();
+        changed = true;
+        say(`Removed “${title}”.`);
+        next?.querySelector<HTMLButtonElement>(".arrange-remove")?.focus();
+    } catch (err) {
+        rm.disabled = false;
+        say(`Not removed: ${errorMessage(err)}`, true);
+    }
 }
 
 function setPressed(on: boolean): void {
@@ -84,7 +114,13 @@ async function start(): Promise<void> {
         const statusEl = el("p", { className: "arrange-status" });
         statusEl.setAttribute("role", "status");
         panel.append(
-            el("p", { className: "arrange-hint" }, "Drag the books into place, or move them with the arrows. Changes are saved as you go."),
+            el(
+                "p",
+                { className: "arrange-hint" },
+                removeBase
+                    ? "Drag the books into place, move them with the arrows, or remove them from the shelf. Changes are saved as you go."
+                    : "Drag the books into place, or move them with the arrows. Changes are saved as you go.",
+            ),
             statusEl,
             el("ol", { className: "arrange-list" }, ...list.map(row)),
         );

@@ -377,13 +377,28 @@ func registerShelfRoutes() {
 	http.HandleFunc("POST /api/shelves", requireUser(shelfCreateHandler))
 	http.HandleFunc("PATCH /api/shelves/{id}", requireUser(shelfUpdateHandler))
 	http.HandleFunc("DELETE /api/shelves/{id}", requireUser(shelfDeleteHandler))
+	http.HandleFunc("POST /api/shelves/{id}/books", requireUser(shelfAddBooksHandler))
 	http.HandleFunc("PUT /api/shelves/{id}/books/{uuid}", requireUser(shelfAddBookHandler))
 	http.HandleFunc("DELETE /api/shelves/{id}/books/{uuid}", requireUser(shelfRemoveBookHandler))
 	registerShelfSeriesRoutes()
 	registerShelfPinRoutes()
+	registerShelfMemberRoutes()
 	registerSeriesPinRoutes()
 	registerAggregateFavoriteRoutes()
 	registerListOrderRoutes()
+}
+
+// registerShelfMemberRoutes: collaborators on shared shelves (shelf_members.go).
+func registerShelfMemberRoutes() {
+	http.HandleFunc("GET /api/shelves/{id}/members", requireUser(shelfMembersHandler))
+	http.HandleFunc("POST /api/shelves/{id}/invites", requireUser(shelfInviteHandler))
+	http.HandleFunc("DELETE /api/shelves/{id}/invites/{invite}", requireUser(shelfRevokeInviteHandler))
+	http.HandleFunc("DELETE /api/shelves/{id}/members/{user}", requireUser(shelfRemoveMemberHandler))
+	http.HandleFunc("GET /api/me/shelf-invites", requireUser(myShelfInvitesHandler))
+	http.HandleFunc("POST /api/me/shelf-invites/{invite}/accept", requireUser(acceptShelfInviteHandler))
+	http.HandleFunc("POST /api/me/shelf-invites/{invite}/decline", requireUser(declineShelfInviteHandler))
+	http.HandleFunc("DELETE /api/me/shelf-blocks/{user}", requireUser(unblockInviterHandler))
+	http.HandleFunc("GET /admin/shelf-invites", requireAdminUser(shelfInvitesAdminPage))
 }
 
 func registerShelfSeriesRoutes() {

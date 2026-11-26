@@ -32,7 +32,7 @@
             {{ range .Shelves }}
             <label class="book-shelf">
                 <input type="checkbox" data-shelf="{{ .ID }}" {{ if .Has }}checked{{ end }} {{ if not .CanEdit }}disabled{{ end }}>
-                {{ .Name }}{{ if .Global }}<span class="book-shelf-global">global</span>{{ end }}
+                {{ .Name }}{{ if .Global }}<span class="book-shelf-global">global</span>{{ end }}{{ with .Owner }}<span class="book-shelf-global">{{ . }}'s</span>{{ end }}
             </label>
             {{ end }}
             <div class="book-shelf-create">
@@ -60,7 +60,7 @@
     {{ range . }}
     <label class="book-shelf">
         <input type="checkbox" data-series-shelf="{{ .ID }}" {{ if .Has }}checked{{ end }}>
-        {{ .Name }}{{ if .Global }}<span class="book-shelf-global">global</span>{{ end }}
+        {{ .Name }}{{ if .Global }}<span class="book-shelf-global">global</span>{{ end }}{{ with .Owner }}<span class="book-shelf-global">{{ . }}'s</span>{{ end }}
     </label>
     {{ end }}
     <div class="book-shelf-create">

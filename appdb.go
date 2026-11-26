@@ -889,6 +889,58 @@ var migrations = []string{
 	`
 	ALTER TABLE hardcover_user_books ADD COLUMN set_edition INTEGER NOT NULL DEFAULT 0;
 	`,
+	// 53: shelves.shared: a personal shelf its owner shared with everyone
+	// who can browse (shelves.go); read-only for them.
+	`
+	ALTER TABLE shelves ADD COLUMN shared INTEGER NOT NULL DEFAULT 0;
+	`,
+	// 54: shelf collaborators (shelf_members.go). The owner of a shared
+	// shelf invites other users by name; one who accepts is a member, who
+	// can add, remove and arrange its books. shelf_invite_blocks: users who
+	// will take no more invites from someone. shelf_invite_log: every
+	// invite and what came of it, for admins (spam): no foreign keys, and
+	// names as they were, so it outlives the accounts and shelves in it.
+	`
+	CREATE TABLE shelf_members (
+		shelf_id   INTEGER NOT NULL REFERENCES shelves(id) ON DELETE CASCADE,
+		user_id    INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+		created_at INTEGER NOT NULL,
+		PRIMARY KEY (shelf_id, user_id)
+	);
+	CREATE INDEX shelf_members_user ON shelf_members (user_id);
+	CREATE TABLE shelf_invites (
+		id         INTEGER PRIMARY KEY,
+		shelf_id   INTEGER NOT NULL REFERENCES shelves(id) ON DELETE CASCADE,
+		from_id    INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+		to_id      INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+		event_id   INTEGER NOT NULL DEFAULT 0,
+		created_at INTEGER NOT NULL,
+		UNIQUE (shelf_id, to_id)
+	);
+	CREATE INDEX shelf_invites_to ON shelf_invites (to_id);
+	CREATE INDEX shelf_invites_from ON shelf_invites (from_id);
+	CREATE TABLE shelf_invite_blocks (
+		user_id    INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+		blocked_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+		created_at INTEGER NOT NULL,
+		PRIMARY KEY (user_id, blocked_id)
+	);
+	CREATE TABLE shelf_invite_log (
+		id         INTEGER PRIMARY KEY,
+		at         INTEGER NOT NULL,
+		action     TEXT    NOT NULL,
+		from_id    INTEGER NOT NULL,
+		from_name  TEXT    NOT NULL,
+		to_id      INTEGER NOT NULL,
+		to_name    TEXT    NOT NULL,
+		shelf_id   INTEGER NOT NULL,
+		shelf_name TEXT    NOT NULL,
+		detail     TEXT    NOT NULL DEFAULT ''
+	);
+	CREATE INDEX shelf_invite_log_at ON shelf_invite_log (at);
+	CREATE INDEX shelf_invite_log_from ON shelf_invite_log (from_id, at);
+	CREATE INDEX shelf_invite_log_to ON shelf_invite_log (to_id, at);
+	`,
 }
 
 // openAppDB opens (creating if needed) and migrates the app database.

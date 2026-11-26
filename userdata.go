@@ -160,6 +160,7 @@ type uuidList struct {
 	Count     func() (int, error)
 	Page      func(limit, offset int) ([]string, error)
 	Extra     map[string]any // template extras (e.g. shelf controls)
+	Sort      gridSort       // the sort select; none when empty (most lists keep their order)
 }
 
 // serveUUIDList renders the grid page, or a JSON page of books with ?api=1.
@@ -206,6 +207,7 @@ func serveUUIDList(w http.ResponseWriter, r *http.Request, l uuidList) {
 		TotalBooks: n,
 		EmptyText:  l.EmptyText,
 		Extra:      l.Extra,
+		Sort:       l.Sort,
 	}
 	logErr(templates.ExecuteTemplate(w, "filtered.html", data), "render list page")
 }

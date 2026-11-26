@@ -829,6 +829,8 @@ function init(bar: HTMLElement): void {
         // Other scripts on the page (the grid's Select) follow this.
         if (st.canEdit) document.documentElement.dataset["canEdit"] = "1";
         else delete document.documentElement.dataset["canEdit"];
+        if (st.username) document.documentElement.dataset["signedIn"] = "1";
+        else delete document.documentElement.dataset["signedIn"];
         document.dispatchEvent(new CustomEvent("cf:me"));
         showSystemNotices(st.notices ?? []);
         if (userToggle) toggles = toggles.filter((t) => t !== userToggle);
@@ -910,6 +912,7 @@ function init(bar: HTMLElement): void {
                 ...(st.canAdmin ? [mark(el("a", { href: "/admin/repairs", textContent: "Library repairs" }), "library-repairs")] : []),
                 ...(st.isAdmin ? [el("a", { href: "/admin/users", textContent: "Manage users" })] : []),
                 ...(st.isAdmin ? [el("a", { href: "/admin/activity", textContent: "Activity" })] : []),
+                ...(st.isAdmin ? [el("a", { href: "/admin/shelf-invites", textContent: "Shelf invites" })] : []),
                 ...(st.isAdmin ? [mark(el("a", { href: "/admin/discover", textContent: "Home page tags" }), "admin-discover")] : []),
                 ...(st.isAdmin ? [mark(el("a", { href: "/admin/server", textContent: "Server" }), "admin-server")] : []),
             ],

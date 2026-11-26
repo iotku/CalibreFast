@@ -113,7 +113,7 @@ func listOrderHandler(w http.ResponseWriter, r *http.Request) {
 }
 
 func shelfBookOrderHandler(w http.ResponseWriter, r *http.Request) {
-	s, ok := shelfForEdit(w, r)
+	s, ok := shelfForBooks(w, r)
 	if !ok {
 		return
 	}

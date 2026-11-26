@@ -5,7 +5,7 @@
 
 export interface Notice {
     id: number;
-    /** placeholder_added, favorite_author, favorite_series or hardcover_relink (notifications.go). */
+    /** placeholder_added, favorite_author, favorite_series, hardcover_relink or shelf_invite (notifications.go). */
     kind: string;
     title: string;
     on_deck: boolean;
@@ -26,6 +26,8 @@ export function noticeText(n: Notice): [headline: string, note: string] {
     switch (n.kind) {
         case "favorite_author":
             return many ? [`${n.count} new books by ${subject}`, "An author you follow"] : [n.title, `New, by ${subject}`];
+        case "shelf_invite": // title: who invites; subject: the shelf
+            return [`${n.title} invites you to help with a shelf`, subject];
         case "hardcover_relink":
             return ["Link Hardcover again", `To ${n.title}`];
         case "favorite_series":

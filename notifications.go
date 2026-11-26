@@ -9,6 +9,8 @@ package main
 //     (favorite_author / favorite_series, aggregate_favorites_notify.go).
 //   - Their Hardcover link was made before linking asked for something new:
 //     link again to use it (hardcover_relink, internal/hardcoversync/relink.go).
+//   - Someone invites them to help with a shelf (shelf_invite,
+//     shelf_members.go); it goes once the invite is answered or withdrawn.
 //
 // Saving books that aren't in the library yet, and being told when they are.
 //
@@ -53,6 +55,9 @@ const (
 	notifyFavoriteAuthor   = "favorite_author"
 	notifyFavoriteSeries   = "favorite_series"
 	notifyHardcoverRelink  = "hardcover_relink"
+	// notifyShelfInvite: someone invites the user to help with a shelf
+	// (shelf_members.go): Title the inviter's name, Subject the shelf's.
+	notifyShelfInvite = "shelf_invite"
 	// notificationsMax: the most kept per user, active and dismissed
 	// together; the oldest dismissed go first.
 	notificationsMax = 200
@@ -66,7 +71,7 @@ const (
 // accountKinds: notifications about the user's account, asking them to do
 // something (link Hardcover again). They aren't news to look back on:
 // dismissing one deletes it, and so does the thing being done.
-var accountKinds = map[string]bool{notifyHardcoverRelink: true}
+var accountKinds = map[string]bool{notifyHardcoverRelink: true, notifyShelfInvite: true}
 
 // Storage (appdb.go migration 49): an event is stored once in
 // notification_events, however many users it reaches; each user's copy is
@@ -252,6 +257,8 @@ func queryNotifications(tail string, userID int64) ([]notification, error) {
 		switch {
 		case n.Kind == notifyHardcoverRelink:
 			n.Href = "/me/sync#hardcover"
+		case n.Kind == notifyShelfInvite:
+			n.Href = "/shelves#invites"
 		case n.Count > 1 && n.Kind == notifyFavoriteAuthor:
 			n.Href = categoryByKey("author").href(n.Subject) // several: the author's page
 		case n.Count > 1 && n.Kind == notifyFavoriteSeries:
