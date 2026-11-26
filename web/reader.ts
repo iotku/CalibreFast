@@ -366,8 +366,24 @@ const relayout = (): void => {
     placeMarks();
 };
 rendition.on("relocated", placeMarks);
+
+/**
+ * Sizes each chapter's view to its text again. epub.js measures a chapter
+ * when it loads (and once at fonts.ready), but it doesn't see text that
+ * reflows into another column later: the page's own box doesn't change size.
+ * The view is then a page short, and from what is now the second-to-last
+ * page epub.js decides the chapter is over and skips its last page.
+ */
+const remeasure = (): void => {
+    for (const c of rendition.getContents()) c.resizeCheck();
+};
 // A font that arrives after the text was laid out moves it again.
-rendition.hooks.content.register((contents) => contents.document.fonts.addEventListener("loadingdone", placeMarks));
+rendition.hooks.content.register((contents) =>
+    contents.document.fonts.addEventListener("loadingdone", () => {
+        contents.resizeCheck();
+        placeMarks();
+    }),
+);
 onSettingsChange((s, changed) => {
     if (changed.includes("margin")) document.body.dataset.margin = s.margin;
     if (changed.includes("flow")) {
@@ -589,6 +605,7 @@ function turn(dir: 1 | -1, fromPage = true): void {
             }
         }
     }
+    remeasure();
     (dir > 0 ? rendition.next() : rendition.prev()).catch((e: unknown) => {
         // The first and last pages have nowhere to go.
         if (!errorMessage(e).includes("No Section Found")) console.error(e);
@@ -801,6 +818,7 @@ function swipeToTurn(on: EventTarget, doc: Document, view: HTMLElement): void {
         rendition.q
             .enqueue(() => {
                 shift(0);
+                remeasure();
                 const before = sc?.scrollLeft;
                 const m = rendition.manager;
                 const done = m && (dir > 0 ? m.next() : m.prev());
