@@ -1126,7 +1126,8 @@ func writeLibraryPages() error {
 		return err
 	}
 	libraryCatalog.Store(cat)
-	gapsReset() // worked out again at the next /missing view (series_gaps.go)
+	tableChanged(nil) // every bulk-editor row (table_journal.go)
+	gapsReset()       // worked out again at the next /missing view (series_gaps.go)
 	if _, err := writePagesFromCatalog(cat); err != nil {
 		return err
 	}

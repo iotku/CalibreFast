@@ -3,9 +3,11 @@ package main
 import (
 	"compress/gzip"
 	"encoding/json"
+	"fmt"
 	"io"
 	"net/http/httptest"
 	"slices"
+	"strings"
 	"testing"
 )
 
@@ -17,6 +19,7 @@ func useCatalog(t *testing.T) {
 		t.Fatal(err)
 	}
 	libraryCatalog.Store(c)
+	tableChanged(nil) // as writeLibraryPages does
 }
 
 func getTable(t *testing.T, query string, gz bool) (tableResponse, *httptest.ResponseRecorder) {
@@ -166,50 +169,123 @@ func TestTablePages(t *testing.T) {
 	}
 }
 
-// ?have= answers "unchanged" until the rows would differ.
-func TestTableVersion(t *testing.T) {
+// ?since= answers what changed: the rows of the books edited (queued or
+// made), added or removed, "unchanged" when nothing did, and "reset" when
+// it can't tell.
+func TestTableSince(t *testing.T) {
 	db := setupRecycleLibrary(t)
 	a := addOPFTestBook(t, db, "Alpha", []string{"Ann"}, nil, nil)
 	b := addOPFTestBook(t, db, "Beta", []string{"Bo"}, nil, nil)
 	useCatalog(t)
 
-	v := func() string { t.Helper(); r, _ := getTable(t, "?limit=1", false); return r.Version }
-	unchanged := func(version string) bool {
+	first, _ := getTable(t, "?limit=1", false)
+	since := func(version string) tableResponse {
 		t.Helper()
-		r, _ := getTable(t, "?limit=1&have="+version, false)
-		if r.Unchanged && len(r.Books) != 0 {
-			t.Errorf("unchanged, with %d rows", len(r.Books))
-		}
-		return r.Unchanged
+		r, _ := getTable(t, "?since="+version, false)
+		return r
 	}
-	v0 := v()
-	if !unchanged(v0) {
-		t.Fatal("same version: not unchanged")
+	titles := func(r tableResponse) map[string]string {
+		out := map[string]string{}
+		for _, b := range r.Books {
+			out[b.UUID] = b.Title
+		}
+		return out
+	}
+	flush := func() {
+		t.Helper()
+		if err := catalogFlush(); err != nil {
+			t.Fatal(err)
+		}
 	}
 
-	// A queued edit (its row shows at once), then the catalog after it's made.
+	r := since(first.Version)
+	if !r.Unchanged || r.Reset || len(r.Books) != 0 {
+		t.Fatalf("nothing changed: %+v", r)
+	}
+
+	// A queued edit: the row as it will be, at once; then as made.
 	title := "Alpha 2"
 	if _, err := queueBulkEdit([]string{a.uuid}, &bulkEdit{Title: &title}, &User{Username: "admin", IsAdmin: true}); err != nil {
 		t.Fatal(err)
 	}
-	if unchanged(v0) {
-		t.Error("after a queued edit: unchanged")
+	r = since(first.Version)
+	if r.Unchanged || r.Reset || titles(r)[a.uuid] != "Alpha 2" || len(r.Books) != 1 {
+		t.Errorf("queued edit: %+v", r)
 	}
 	waitBulkEdits()
-	if err := catalogFlush(); err != nil {
-		t.Fatal(err)
+	flush()
+	r = since(r.Version)
+	if titles(r)[a.uuid] != "Alpha 2" || r.Reset {
+		t.Errorf("edit made: %+v", r)
 	}
-	v1 := v()
-	if v1 == v0 || !unchanged(v1) {
-		t.Errorf("after the edit was made: %q (was %q)", v1, v0)
+	if again := since(r.Version); !again.Unchanged {
+		t.Errorf("nothing more changed: %+v", again)
 	}
+	v := r.Version
 
-	// Books marked not duplicates.
+	// Marked not duplicates: no rows, the sets.
 	if _, err := markNotDuplicates([]string{a.uuid, b.uuid}, "admin"); err != nil {
 		t.Fatal(err)
 	}
-	if unchanged(v1) {
-		t.Error("after marking not duplicates: unchanged")
+	r = since(v)
+	if r.Unchanged || r.Reset || len(r.Books) != 0 || len(r.NotDuplicates) != 1 {
+		t.Errorf("not duplicates: %+v", r)
+	}
+	v = r.Version
+
+	// A book added, one removed.
+	c := addOPFTestBook(t, db, "Gamma", []string{"Cy"}, nil, nil)
+	catalogChanged(c.uuid)
+	catalogRemoved(b.uuid)
+	flush()
+	r = since(v)
+	if titles(r)[c.uuid] != "Gamma" || len(r.Books) != 1 || !slices.Equal(r.Removed, []string{b.uuid}) || r.Total != 2 {
+		t.Errorf("added and removed: %+v", r)
+	}
+	v = r.Version
+
+	// What it can't answer: another run's version, nonsense, a number from
+	// the future, or anything before a full rebuild.
+	for _, bad := range []string{"nonsense", "1.1.abc", strings.Replace(v, ".", ".ff", 1)} {
+		if r := since(bad); !r.Reset {
+			t.Errorf("since=%s: not reset: %+v", bad, r)
+		}
+	}
+	useCatalog(t)
+	if r := since(v); !r.Reset {
+		t.Errorf("after a full rebuild: not reset: %+v", r)
+	}
+}
+
+// The journal keeps the latest tableJournalMax books; before that it can't tell.
+func TestTableJournal(t *testing.T) {
+	tableChanged(nil)
+	start := tableSeq()
+	tableChanged([]string{"a", "b"})
+	tableChanged([]string{"b", "c"})
+	tableChanged([]string{}) // nothing: no new number
+	if got, ok := tableChangedSince(start); !ok || !slices.Equal(got, []string{"a", "b", "c"}) {
+		t.Errorf("since start: %v %v", got, ok)
+	}
+	if got, ok := tableChangedSince(start + 1); !ok || !slices.Equal(got, []string{"b", "c"}) {
+		t.Errorf("since the first: %v %v", got, ok)
+	}
+	if got, ok := tableChangedSince(tableSeq()); !ok || len(got) != 0 {
+		t.Errorf("since now: %v %v", got, ok)
+	}
+	if _, ok := tableChangedSince(tableSeq() + 1); ok {
+		t.Error("a number from the future was answered")
+	}
+	many := make([]string, tableJournalMax)
+	for i := range many {
+		many[i] = fmt.Sprint("u", i)
+	}
+	tableChanged(many)
+	if _, ok := tableChangedSince(start); ok {
+		t.Error("answered for changes the journal no longer keeps")
+	}
+	if got, ok := tableChangedSince(tableSeq() - 1); !ok || len(got) != tableJournalMax {
+		t.Errorf("the last change: %d %v", len(got), ok)
 	}
 }
 

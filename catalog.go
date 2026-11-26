@@ -441,6 +441,7 @@ func catalogFlush() error {
 		return err
 	}
 	libraryCatalog.Store(next)
+	tableChanged(slices.Concat(reread, removed))              // the bulk editor's rows (table_journal.go)
 	gapsCatalogChanged(old, next, append(reread, removed...)) // only their series (series_gaps.go)
 	placeholdersCatalogChanged(next, reread)                  // a book edited to be a placeholder's (placeholder_resolve.go)
 	favoritesCatalogChanged(old, next, reread)                // news for those who starred its authors or series (aggregate_favorites_notify.go)
