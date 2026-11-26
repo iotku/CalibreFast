@@ -110,10 +110,9 @@ var bulkQueue = struct {
 	jobs     map[int64]*bulkJob
 	finished []int64 // oldest first, to forget
 	rows     map[string]*pendingRow
-	rowsRev  uint64 // bumped when rows change (tableVersion, table_rows.go)
-	lastID   int64  // ids when there's no app database (tests)
-	worker   bool   // the worker goroutine is running
-	stopping bool   // the server is stopping: start no more books
+	lastID   int64 // ids when there's no app database (tests)
+	worker   bool  // the worker goroutine is running
+	stopping bool  // the server is stopping: start no more books
 }{jobs: map[int64]*bulkJob{}, rows: map[string]*pendingRow{}}
 
 func init() { bulkQueue.changed = sync.NewCond(&bulkQueue.mu) }
@@ -222,7 +221,6 @@ func queueBulkEdit(uuids []string, edit *bulkEdit, by *User) (bulkResult, error)
 		return res, err
 	}
 	job.id, res.Job = id, id
-	q.rowsRev++
 	for _, u := range job.uuids {
 		p := q.rows[u]
 		if p == nil {
@@ -235,6 +233,7 @@ func queueBulkEdit(uuids []string, edit *bulkEdit, by *User) (bulkResult, error)
 		p.jobs++
 		p.next = "" // this change is the last to it now
 	}
+	tableChanged(job.uuids) // their rows show the change now (table_journal.go)
 	trackBulkJob(id, &bulkJob{State: "queued", Total: len(job.uuids)})
 	q.waiting = append(q.waiting, job)
 	startBulkWorker()
@@ -502,7 +501,6 @@ func finishQueuedEdit(job *queuedEdit, res bulkResult) {
 	q := &bulkQueue
 	q.mu.Lock()
 	defer q.mu.Unlock()
-	q.rowsRev++
 	for _, u := range job.uuids {
 		if p := q.rows[u]; p != nil {
 			if p.jobs--; p.jobs <= 0 {
@@ -510,6 +508,7 @@ func finishQueuedEdit(job *queuedEdit, res bulkResult) {
 			}
 		}
 	}
+	tableChanged(job.uuids)
 	// A book with more changes queued is shown as they'll leave it.
 	for i, b := range res.Books {
 		if p := q.rows[b.UUID]; p != nil {
@@ -542,7 +541,7 @@ func loadBulkQueue() {
 	q := &bulkQueue
 	q.mu.Lock()
 	defer q.mu.Unlock()
-	q.rowsRev++
+	defer tableChanged(nil) // the rows left from the last run (before any browser has asked)
 	for _, job := range jobs {
 		var left []string
 		for i, u := range job.uuids {

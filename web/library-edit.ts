@@ -239,12 +239,16 @@ interface TableData {
     not_duplicates?: NotDuplicateSet[];
     /** Books in the library; the rows may be only some of them. */
     total?: number;
-    /** What the rows are of: sent back as ?have= on a reload. */
+    /** What the rows are as of: sent back as ?since= on a reload. */
     version?: string;
     /** The ?from= of the rows after these; absent after the last. */
     next?: number;
-    /** ?have= named the current version: no rows sent. */
+    /** ?since=: nothing changed since that version (no rows sent). */
     unchanged?: boolean;
+    /** ?since=: the changes can't be told; load every row again. */
+    reset?: boolean;
+    /** ?since=: the books gone since (books: those changed or added). */
+    removed?: string[];
 }
 /** Whether rows holds every book; false while the rest are still coming (loadTable). */
 let complete = true;
@@ -2509,12 +2513,8 @@ async function loadTable(ready: Promise<unknown> = Promise.resolve()): Promise<v
     }
 }
 
-/**
- * Every row again in one go, shown only when it's all here (a reload, or
- * after a change made here). null: nothing changed since the rows' version
- * (unless fresh, which asks for them regardless).
- */
-async function fetchAll(fresh = false): Promise<{ rows: Row[]; data: TableData } | null> {
+/** Every row again in one go, shown only when it's all here (a reload, or after a change made here). */
+async function fetchAll(): Promise<{ rows: Row[]; data: TableData }> {
     if (!PAGED || subset) {
         const data = await api<TableData>("GET", tableUrl());
         return { rows: data.books.map(makeRow), data };
@@ -2523,10 +2523,7 @@ async function fetchAll(fresh = false): Promise<{ rows: Row[]; data: TableData }
     let firstPage: TableData | null = null;
     let from = 0;
     for (;;) {
-        const params: Record<string, string> = { from: String(from), limit: String(PAGE_ROWS) };
-        if (!firstPage && version && !fresh) params["have"] = version;
-        const page = await api<TableData>("GET", pageUrl(params));
-        if (page.unchanged) return null;
+        const page = await api<TableData>("GET", pageUrl({ from: String(from), limit: String(PAGE_ROWS) }));
         firstPage ??= page;
         for (const b of page.books) books.set(b.uuid, b);
         if (!page.next) break;
@@ -2534,6 +2531,37 @@ async function fetchAll(fresh = false): Promise<{ rows: Row[]; data: TableData }
     }
     // The first page's version: if the library changed meanwhile, the next reload looks again.
     return { rows: [...books.values()].map(makeRow), data: { ...firstPage!, books: [] } };
+}
+
+/**
+ * What changed since the rows' version (Go: tableSince): "unchanged", the
+ * changes, or null when every row has to be loaded again (the queue, which
+ * has no versions, always).
+ */
+async function fetchChanges(): Promise<TableData | "unchanged" | null> {
+    if (!PAGED || subset || !version) return null;
+    const data = await api<TableData>("GET", pageUrl({ since: version }));
+    if (data.unchanged) return "unchanged";
+    return data.reset ? null : data;
+}
+
+/** A ?since= answer applied: the changed books' rows replaced, new ones added, removed ones gone. */
+function applyChanges(data: TableData): void {
+    const fresh = new Map(data.books.map((b) => [b.uuid, b]));
+    const gone = new Set(data.removed ?? []);
+    const next: Row[] = [];
+    for (const r of rows) {
+        if (gone.has(r.b.uuid)) continue;
+        const b = fresh.get(r.b.uuid);
+        if (!b) {
+            next.push(r);
+            continue;
+        }
+        fresh.delete(b.uuid);
+        next.push(makeRow(b));
+    }
+    for (const b of fresh.values()) next.push(makeRow(b));
+    setRows(next, data, true);
 }
 
 /** The rows, from an answer: whole says whether they're every book. */
@@ -2618,8 +2646,10 @@ async function reloadRows(): Promise<void> {
     const gen = changedHere;
     let stale = false;
     try {
-        const got = await fetchAll();
-        if (!got) return; // nothing changed
+        // Only what changed, when the server can tell; every row otherwise.
+        const changes = await fetchChanges();
+        if (changes === "unchanged") return;
+        const got = changes ? null : await fetchAll();
         if (editing || modalOpen() || cellMenu || expanded) {
             // Redrawing would close what's open: next time.
             reloadedAt = 0;
@@ -2630,7 +2660,8 @@ async function reloadRows(): Promise<void> {
             return;
         }
         const before = rows.length;
-        setRows(got.rows, got.data, true);
+        if (changes) applyChanges(changes);
+        else setRows(got!.rows, got!.data, true);
         if (rows.length < before) say(`${plural(before - rows.length, "book")} fewer since this page loaded (${QUEUE ? "added or discarded" : "merged or removed"} elsewhere).`, "ok");
     } catch {
         /* keep what's shown */
@@ -2666,9 +2697,13 @@ byId("lt-unlisted-fix").addEventListener("click", async (e) => {
     btn.disabled = true;
     try {
         const res = await api<FormatRepair>("POST", "/api/library/repair-formats", { uuids });
-        const got = await fetchAll(true);
+        const changes = await fetchChanges();
         changedHere++;
-        if (got) setRows(got.rows, got.data, true);
+        if (changes && changes !== "unchanged") applyChanges(changes);
+        else if (!changes) {
+            const got = await fetchAll();
+            setRows(got.rows, got.data, true);
+        }
         const skipped = res.skipped.length ? ` ${plural(res.skipped.length, "format")} left alone: ${res.skipped.slice(0, 2).map((s) => s.error).join("; ")}` : "";
         say(`Added ${plural(res.formats, "format")} to metadata.db for ${plural(res.books, "book")}.${skipped}`, res.skipped.length ? "error" : "ok");
     } catch (err) {

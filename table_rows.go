@@ -5,9 +5,9 @@ package main
 // milliseconds, with no reads of the library's storage. The browser asks
 // for them in pages, the first few hundred in its sort order and then the
 // rest (web/library-edit.ts, loadTable), so the table shows at once and
-// fills in (wholeTable). Each answer carries a version: a reload that sends it back
-// (?have=) gets {"unchanged": true} instead of every row again when
-// nothing changed.
+// fills in (wholeTable). Each answer carries a version: a reload sends it
+// back (?since=) and gets only the rows of the books changed since
+// (table_journal.go), or {"unchanged": true}.
 //
 // Rows of a few books (?ids=) and the rows the bulk queue starts from are
 // still read from metadata.db (tableBooks): the queue needs last_modified
@@ -195,17 +195,29 @@ func (v *tableView) order(spec string) []int32 {
 	return o
 }
 
-// tableVersion: what the whole-library answer depends on. A restart, a
-// catalog change, a change to the bulk queue's rows or to the books marked
-// not duplicates gives a new one.
-func tableVersion(v *tableView, notDups []notDuplicateSet) string {
-	bulkQueue.mu.Lock()
-	rev := bulkQueue.rowsRev
-	bulkQueue.mu.Unlock()
+// tableVersion: what the rows are as of: this run, the journal's number
+// (table_journal.go) read before the rows were, and the books marked not
+// duplicates.
+func tableVersion(seq uint64, notDups []notDuplicateSet) string {
 	body, _ := json.Marshal(notDups)
 	sum := sha256.Sum256(body)
-	return fmt.Sprintf("%x.%x.%x.%s", serverStarted, v.gen, rev, hex.EncodeToString(sum[:6]))
+	return fmt.Sprintf("%x.%x.%s", serverStarted, seq, hex.EncodeToString(sum[:6]))
 }
+
+// parseTableVersion: tableVersion's run and journal number; false for a
+// version from another run, or not one at all.
+func parseTableVersion(v string) (seq uint64, notDups string, ok bool) {
+	parts := strings.Split(v, ".")
+	if len(parts) != 3 || parts[0] != fmt.Sprintf("%x", serverStarted) {
+		return 0, "", false
+	}
+	seq, err := strconv.ParseUint(parts[1], 16, 64)
+	return seq, parts[2], err == nil
+}
+
+// tableSinceMax: more changed books than this and the browser is better off
+// loading every row.
+const tableSinceMax = 5000
 
 // tableResponse is GET /api/library/table's answer (TS: TableData).
 type tableResponse struct {
@@ -214,8 +226,12 @@ type tableResponse struct {
 	Version       string            `json:"version,omitempty"`
 	NotDuplicates []notDuplicateSet `json:"not_duplicates"`
 	// Next: the ?from= that answers the rows after these; 0 when there are none.
-	Next      int  `json:"next,omitempty"`
-	Unchanged bool `json:"unchanged,omitempty"`
+	Next int `json:"next,omitempty"`
+	// ?since= answers: Removed, the books gone since; Unchanged, nothing
+	// changed; Reset, the changes can't be told (load every row again).
+	Removed   []string `json:"removed,omitempty"`
+	Unchanged bool     `json:"unchanged,omitempty"`
+	Reset     bool     `json:"reset,omitempty"`
 }
 
 // wholeTable answers the library's rows from the catalog, false before
@@ -229,8 +245,10 @@ type tableResponse struct {
 //     (catalog.go), so the pages cover every book once however the library
 //     changes in between; the browser keeps one row per uuid, the last it
 //     was sent.
-//   - ?have=<version>: just {"unchanged": true} if that's still the version.
+//   - ?since=<version>: the rows of the books changed since that version,
+//     and the books removed (tableSince).
 func wholeTable(w http.ResponseWriter, r *http.Request) bool {
+	seq := tableSeq() // first: rows read after it are at least this new
 	v := currentTableView()
 	if v == nil {
 		return false
@@ -241,9 +259,10 @@ func wholeTable(w http.ResponseWriter, r *http.Request) bool {
 		http.Error(w, err.Error(), http.StatusInternalServerError)
 		return true
 	}
-	res := tableResponse{Total: len(v.rows), Version: tableVersion(v, notDups), NotDuplicates: notDups}
-	if have := q.Get("have"); have != "" && have == res.Version {
-		writeTableJSON(w, r, tableResponse{Books: []tableBook{}, Total: res.Total, Version: res.Version, Unchanged: true})
+	res := tableResponse{Books: []tableBook{}, Total: len(v.rows), Version: tableVersion(seq, notDups), NotDuplicates: notDups}
+	if since := q.Get("since"); since != "" {
+		tableSince(v, since, &res)
+		writeTableJSON(w, r, res)
 		return true
 	}
 	limit := len(v.rows)
@@ -285,6 +304,41 @@ func wholeTable(w http.ResponseWriter, r *http.Request) bool {
 	res.Books = books
 	writeTableJSON(w, r, res)
 	return true
+}
+
+// tableSince fills res with what changed since the version since: the rows
+// of the books changed (as they are now), and those removed.
+func tableSince(v *tableView, since string, res *tableResponse) {
+	seq, dupsWere, ok := parseTableVersion(since)
+	var changed []string
+	if ok {
+		changed, ok = tableChangedSince(seq)
+	}
+	if !ok || len(changed) > tableSinceMax {
+		res.Reset = true
+		return
+	}
+	if len(changed) == 0 && strings.HasSuffix(res.Version, "."+dupsWere) {
+		res.Unchanged = true
+		return
+	}
+	for _, u := range changed {
+		if i, ok := v.row(u); ok {
+			res.Books = append(res.Books, v.rows[i])
+		} else {
+			res.Removed = append(res.Removed, u)
+		}
+	}
+	pendingBulkRows(res.Books)
+}
+
+// row: the index in v.rows of the book with this uuid, if it's in the library.
+func (v *tableView) row(uuid string) (int, bool) {
+	slot, ok := v.cat.byUUID[uuid]
+	if !ok || v.cat.books[slot].Removed {
+		return 0, false
+	}
+	return slices.BinarySearch(v.slots, slot)
 }
 
 // writeTableJSON sends v, gzipped when the browser takes it: the rows are
