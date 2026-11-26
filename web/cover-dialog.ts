@@ -16,7 +16,8 @@ import {
 import type { BookTarget } from "./book-target.js";
 import { CONVERTED_FORMATS } from "./formats.js";
 import { api, closeOnBackdropClick, el, errorMessage, maybeId } from "./dom.js";
-import type { CoverCandidate, LookupResult } from "./types.js";
+import { pacedLookup, waitForRoom, waitNotice } from "./lookup-pace.js";
+import type { CoverCandidate } from "./types.js";
 
 export interface CoverDialogOptions {
     book: BookTarget;
@@ -262,7 +263,7 @@ export function mountCoverDialog({ book, autoDefault = false, placeholderCover, 
         try {
             if (n) {
                 say(`Looking up ISBN ${n} on Open Library…`);
-                const r = await api<LookupResult>("GET", `/metadata/lookup?${new URLSearchParams({ source: "openlibrary", isbn: n })}`);
+                const r = await pacedLookup("openlibrary", { isbn: n }, waitNotice(say, status, "Open Library"));
                 const match = r.matches?.[0];
                 if (match?.cover) urls.unshift(match.cover);
                 else note = match ? `Open Library has no cover for ISBN ${n}.` : `Open Library: ${r.error || "no match"}.`;
@@ -271,7 +272,18 @@ export function mountCoverDialog({ book, autoDefault = false, placeholderCover, 
             for (const url of urls) {
                 if (online.has(url)) continue;
                 online.add(url);
-                const choice = await imageChoice(book, url, "Open Library");
+                let src = url;
+                if (url.startsWith("/metadata/lookup/cover?")) {
+                    // Open Library's covers count against its limit too: wait for room, and say so.
+                    const from = new URLSearchParams(url.slice(url.indexOf("?") + 1)).get("src") ?? "";
+                    const why = await waitForRoom(from, "cover", waitNotice(say, status, from === "hardcover" ? "Hardcover" : "Open Library"));
+                    if (why) {
+                        note = `Couldn't fetch the cover: ${why}.`;
+                        continue;
+                    }
+                    src = `${url}&wait=1`;
+                }
+                const choice = await imageChoice(book, src, "Open Library");
                 if (choice) {
                     add(choice, { first: true });
                     added.push(choice);

@@ -348,3 +348,53 @@ func TestLookupHandlerWaits(t *testing.T) {
 		lookupCovers = newCoverCache(1<<20, time.Hour) // as for another book's cover
 	}
 }
+
+// /metadata/lookup/room says how long until a whole lookup (or a cover)
+// fits under the source's limits, without taking anything, and when today's
+// requests are used up.
+func TestLookupRoomHandler(t *testing.T) {
+	orig := bookLookups
+	t.Cleanup(func() { bookLookups = orig })
+	limiter := metalookup.NewLimiter(1, 7, 20)
+	bookLookups = metalookup.New(metalookup.Config{Limits: map[string]*metalookup.Limiter{openLibraryName: limiter}})
+	get := func(query string) (int, lookupRoom) {
+		rec := httptest.NewRecorder()
+		lookupRoomHandler(rec, httptest.NewRequest("GET", "/metadata/lookup/room?"+query, nil))
+		var room lookupRoom
+		_ = json.Unmarshal(rec.Body.Bytes(), &room)
+		return rec.Code, room
+	}
+	if code, room := get("source=openlibrary"); code != 200 || room.WaitMS != 0 || room.DayUsedUp {
+		t.Fatalf("full bucket: %d %+v", code, room)
+	}
+	for range 6 {
+		if err := limiter.Take(time.Now()); err != nil {
+			t.Fatal(err)
+		}
+	}
+	if _, room := get("source=openlibrary&what=lookup"); room.WaitMS < 5000 || room.WaitMS > 6000 {
+		t.Errorf("a lookup after 6 of 7 taken: wait %d ms, want about 6 s", room.WaitMS)
+	}
+	if _, room := get("source=openlibrary&what=cover"); room.WaitMS != 0 {
+		t.Errorf("a cover with one left: wait %d ms", room.WaitMS)
+	}
+	if _, room := get("source=hardcover&what=cover"); room.WaitMS != 0 || room.DayUsedUp {
+		t.Errorf("Hardcover's images aren't counted: %+v", room)
+	}
+	if u := limiter.Usage(time.Now()); u.Used != 6 {
+		t.Errorf("asking took requests: used %d", u.Used)
+	}
+	for i := range 8 { // later, refilled: 14 of the day's 20 taken, no room for 7 more
+		if err := limiter.Take(time.Now().Add(time.Hour + time.Duration(i)*10*time.Second)); err != nil {
+			t.Fatal(err)
+		}
+	}
+	if _, room := get("source=openlibrary"); !room.DayUsedUp || !strings.Contains(room.Message, "try again tomorrow") {
+		t.Errorf("day used up: %+v", room)
+	}
+	for _, q := range []string{"source=elsewhere", "source=openlibrary&what=everything"} {
+		if code, _ := get(q); code != http.StatusBadRequest {
+			t.Errorf("%s: %d", q, code)
+		}
+	}
+}

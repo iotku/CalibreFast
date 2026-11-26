@@ -15,6 +15,7 @@
 // source whose day is used up is skipped.
 
 import { api, byId, el, errorMessage, statusLine } from "./dom.js";
+import { pacedLookup, retryAfter } from "./lookup-pace.js";
 import type { CoverBudget, CoverBudgets, CoverRefreshBook, CoverUpdate, LookupResult } from "./types.js";
 
 /** sessionStorage: the books picked in the grid (select-books.ts). */
@@ -205,17 +206,6 @@ function confirmRun(books: CoverRefreshBook[], use: Record<Provider, boolean>): 
 
 // ---- Looking up ------------------------------------------------------------------
 
-/** The wait a source's "try again in 1m5s" asks for, in ms; null if it isn't one. */
-function retryAfter(message: string): number | null {
-    const m = /try again in ((?:\d+h)?(?:\d+m)?(?:\d+(?:\.\d+)?s)?)/.exec(message);
-    if (!m?.[1]) return null;
-    let ms = 0;
-    for (const [, n, unit] of m[1].matchAll(/(\d+(?:\.\d+)?)([hms])/g)) {
-        ms += Number(n) * (unit === "h" ? 3_600_000 : unit === "m" ? 60_000 : 1000);
-    }
-    return ms || null;
-}
-
 /** The source's requests for today are used up (Go: metalookup.ErrDailyLimit, the limiter's daily cap). */
 function dayUsedUp(message: string): boolean {
     return /requests for today are used up|requests a day is used up|try again tomorrow/i.test(message);
@@ -268,8 +258,15 @@ async function lookup(p: Provider, params: Record<string, string>, row: Row): Pr
         if (stopping || disabled.has(p)) return null;
         let res: LookupResult;
         try {
-            // wait=1: the server waits for room for the whole lookup rather than failing partway.
-            res = await api<LookupResult>("GET", `/metadata/lookup?${new URLSearchParams({ source: p, ...params, wait: "1" })}`);
+            // Paced: waits (counted down on the row) for room for the whole lookup rather than failing partway.
+            const asking = row.status.textContent ?? "";
+            res = await pacedLookup(
+                p,
+                params,
+                (s) => (row.status.textContent = s ? `Waiting for ${PROVIDER_NAMES[p]}'s rate limit (${s} s)…` : asking),
+                () => stopping,
+            );
+            if (res.error === "stopped") return null;
         } catch (err) {
             const status = (err as { status?: number }).status;
             if (status === 401 || status === 404) throw new SessionLost(errorMessage(err));
@@ -334,8 +331,7 @@ async function findCover(row: Row): Promise<Candidate | null> {
     for (const [p, params, byTitle] of steps) {
         if (stopping) return null;
         if (disabled.has(p)) continue;
-        // The server may hold the request until the source has room (?wait=1).
-        row.status.textContent = `Looking on ${PROVIDER_NAMES[p]} by ${byTitle ? "title" : "ISBN"} (paced to its rate limit)…`;
+        row.status.textContent = `Looking on ${PROVIDER_NAMES[p]} by ${byTitle ? "title" : "ISBN"}…`;
         const res = await lookup(p, params, row);
         const match = res?.matches?.find((m) => m.cover);
         if (!match?.cover) continue;

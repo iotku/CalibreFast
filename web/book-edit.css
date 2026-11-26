@@ -347,6 +347,13 @@ body {
     color: #e59999;
 }
 
+/* The seconds left while a lookup waits for a source's rate limit
+   (web/lookup-pace.ts): steady digits, so the line doesn't jiggle. */
+.lookup-wait-count {
+    font-variant-numeric: tabular-nums;
+    opacity: 0.8;
+}
+
 .lookup-actions {
     display: flex;
     flex-wrap: wrap;

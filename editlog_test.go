@@ -52,6 +52,7 @@ var (
 		{"POST", "/metadata/a/apply"},
 		{"GET", "/metadata/a/isbns"},
 		{"GET", "/metadata/lookup?isbn=1"},
+		{"GET", "/metadata/lookup/room?source=openlibrary"},
 		{"GET", "/import"},
 		{"GET", "/api/imports"},
 		{"GET", "/import/a"},
