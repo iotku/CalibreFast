@@ -102,14 +102,20 @@ func TestRecommendedState(t *testing.T) {
 	}
 	after = marked
 
-	// 27 books left (30, less two wanted and the hidden one): Refresh shows
-	// the 3 not on screen first, then (a short list) those that were.
+	// 27 Space books left (30, less two wanted and the hidden one), and a
+	// few wildcards: Refresh shows those not on screen first, then (a short
+	// list) those that were.
 	second := next()
 	if len(second) != recRowMax {
 		t.Fatalf("second page: %d books", len(second))
 	}
+	fresh := 0
 	for i, r := range second {
-		if (i < 27-recRowMax) == strings.Contains(ids(after), r.Book.UUID) || r.Book.UUID == gone || r.Book.UUID == wanted {
+		was := strings.Contains(ids(after), r.Book.UUID)
+		if !was {
+			fresh++
+		}
+		if (was && fresh < 27-recRowMax) || (!was && fresh != i+1) || r.Book.UUID == gone || r.Book.UUID == wanted {
 			t.Fatalf("second page, %d: %s", i, r.Book.UUID)
 		}
 	}

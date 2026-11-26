@@ -46,28 +46,39 @@ func TestRecommend(t *testing.T) {
 		Finished: []string{dune1},
 	}
 	recs, _, tags := recommend(m, nil, rng, 0)
-	if len(recs) != 14 { // everything not marked, apart from the Owned book (no shared tag)
+	// Everything not marked, apart from the Owned book (no shared tag),
+	// which can only come up as a wildcard.
+	var ranked []recBook
+	for _, r := range recs {
+		if r.Kind == "discover" {
+			if r.Book.UUID != junk || r.Because != "" {
+				t.Fatalf("wildcard: %+v", r)
+			}
+			continue
+		}
+		ranked = append(ranked, r)
+	}
+	if len(ranked) != 14 {
 		t.Fatalf("recs: %+v", recs)
 	}
 	// Next in series first, after the furthest one read.
 	if recs[0].Book.UUID != dune3 || recs[0].Kind != "series" || recs[0].Because != "Dune Messiah" {
 		t.Fatalf("first: %+v", recs[0])
 	}
-	// Then the rare shared tag; then the same author (the bonus); then the
-	// books sharing only the common tag.
+	// Then the rare shared tag.
 	if recs[1].Book.UUID != arrakis || recs[1].Kind != "tags" || recs[1].Because == "" {
 		t.Fatalf("second: %+v", recs[1])
 	}
-	if a, b := recs[2].Book.Authors, recs[3].Book.Authors; a != "Herbert" || b != "Herbert" {
-		t.Fatalf("same author next: %+v %+v", recs[2], recs[3])
-	}
-	for _, r := range recs[4:] {
-		if !slices.Contains(plain, r.Book.UUID) {
-			t.Fatalf("after the author's books: %+v", r)
+	// No author more than twice until there's nothing else left: Herbert's
+	// third book and Nobody's third wait for the end of the list.
+	count := map[string]int{}
+	for _, r := range recs[:5] {
+		if count[r.Book.Authors]++; count[r.Book.Authors] > recAuthorPerRow {
+			t.Fatalf("author over the cap: %+v", recs[:5])
 		}
 	}
 	for _, r := range recs {
-		if r.Book.UUID == dune1 || r.Book.UUID == dune2 || r.Book.UUID == junk {
+		if r.Book.UUID == dune1 || r.Book.UUID == dune2 || (r.Book.UUID == junk && r.Kind != "discover") {
 			t.Fatalf("recommended a marked or unrelated book: %+v", r)
 		}
 	}

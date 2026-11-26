@@ -517,7 +517,7 @@ interface HomeAnswer {
 /** A recommendation (Go: recBook). */
 interface RecBook {
     book: Book;
-    kind: "series" | "tags";
+    kind: "series" | "tags" | "discover"; // "discover": a wildcard, for something different
     because?: string;
 }
 
@@ -1177,10 +1177,11 @@ function showRecommended(recs: RecBook[]): void {
         hide.append(HIDE_ICON());
         card.append(hide);
         const info = card.querySelector(".book-info");
-        if (!info || !r.because) return;
+        if (!info || (!r.because && r.kind !== "discover")) return;
         const why = document.createElement("div");
         why.className = "book-because";
-        why.textContent = r.kind === "series" ? `Next after ${r.because}` : `Like ${r.because}`;
+        why.textContent =
+            r.kind === "discover" ? "Something different" : r.kind === "series" ? `Next after ${r.because}` : `Like ${r.because}`;
         info.append(why);
     });
 }

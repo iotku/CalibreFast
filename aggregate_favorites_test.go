@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"math/rand/v2"
 	"net/http"
+	"slices"
 	"strings"
 	"testing"
 )
@@ -172,13 +173,14 @@ func TestRecommendFavorites(t *testing.T) {
 	if l.len() == 0 || l.uuid(0) != saga || l.at(0).Kind != "series" {
 		t.Fatalf("first: %+v", l.page(0))
 	}
-	if l.uuid(1) != liked {
-		t.Fatalf("favorite author's book not next: %+v", l.page(0))
+	if !slices.Contains(l.pageUUIDs(0), liked) {
+		t.Fatalf("favorite author's book not in the row: %+v", l.page(0))
 	}
-	// With a seed of the plain author, the favorite author still wins.
+	// With a seed of the plain author, the favorite author's book is among
+	// the first three: the plain author has two books there at most.
 	m := readingMarks{Reading: map[string]*float64{}, Finished: []string{plain[0]}}
 	l, _ = rankRecs(m, recFavs{"author": {"liked": true}}, nil, rng())
-	if l.uuid(0) != liked {
+	if l.len() < 3 || !slices.Contains([]string{l.uuid(0), l.uuid(1), l.uuid(2)}, liked) {
 		t.Fatalf("favorite author vs seed author: %+v", l.page(0))
 	}
 }
