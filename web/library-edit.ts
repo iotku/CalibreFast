@@ -558,14 +558,11 @@ function sortedRows(): Row[] {
     order.sort((i, j) => {
         const a = rows[i]!;
         const b = rows[j]!;
-        // By series: its name (with the number), then the number, whichever way.
-        if (series) {
-            const s = key[i]! - key[j]! || a.b.series_index - b.b.series_index;
-            if (s) return s;
-        }
         // Empty values last, whichever way.
         if (empty[i] !== empty[j]) return empty[i]! - empty[j]!;
-        return desc * (key[i]! - key[j]!) || title[i]! - title[j]! || a.b.id - b.b.id;
+        // A series: its name (with the number), then the number, both turned round for descending.
+        const c = key[i]! - key[j]! || (series ? a.b.series_index - b.b.series_index : 0);
+        return desc * c || title[i]! - title[j]! || a.b.id - b.b.id;
     });
     const sorted = order.map((i) => rows[i]!);
     cache.orders.set(orderKey, sorted);
