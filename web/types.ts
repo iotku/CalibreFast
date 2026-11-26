@@ -554,3 +554,45 @@ export interface SystemNotice {
     /** Who posted it: in the admins' list only. */
     created_by?: string;
 }
+
+/** A book picked for the cover updater (Go: coverRefreshBook in cover_refresh.go). */
+export interface CoverRefreshBook {
+    uuid: string;
+    title: string;
+    /** "A & B" */
+    authors: string;
+    isbn: string;
+    has_cover: boolean;
+    /** Its cover now, with its stamp; absent with none. */
+    cover?: string;
+}
+
+/** A source's requests today (Go: coverBudget in cover_refresh.go). */
+export interface CoverBudget {
+    enabled: boolean;
+    used: number;
+    limit: number;
+    resets_in?: string;
+    paused?: string;
+}
+
+/** GET /api/covers/budget */
+export interface CoverBudgets {
+    openlibrary: CoverBudget;
+    hardcover: CoverBudget;
+    cost: { openlibrary_lookup: number; openlibrary_cover: number; hardcover_lookup: number };
+}
+
+/** One of the cover updater's saved covers (Go: coverUpdate in cover_refresh.go). */
+export interface CoverUpdate {
+    id: number;
+    uuid: string;
+    title: string;
+    username: string;
+    /** Unix seconds */
+    at: number;
+    had_cover: boolean;
+    reverted_at?: number;
+    reverted_by?: string;
+    in_library: boolean;
+}

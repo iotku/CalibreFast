@@ -19,6 +19,7 @@ import (
 // set, is what the edition request answers instead (with Retry-After: 30).
 type fakeLookupServers struct {
 	lookup      *metalookup.Client
+	olURL       string // Open Library and its covers
 	hits        map[string]*atomic.Int32
 	status      atomic.Int32
 	badRequests atomic.Int32 // requests without the generic User-Agent, or with cookies
@@ -103,6 +104,7 @@ func newFakeLookupServers(t *testing.T) *fakeLookupServers {
 	})
 	olServer := httptest.NewServer(ol)
 	t.Cleanup(olServer.Close)
+	f.olURL = olServer.URL
 
 	gb := http.NewServeMux()
 	gb.HandleFunc("/volumes", func(w http.ResponseWriter, r *http.Request) {
@@ -310,5 +312,39 @@ func TestHardcoverLookupHandler(t *testing.T) {
 		if rec.Code != http.StatusBadRequest {
 			t.Errorf("%s: %d", q, rec.Code)
 		}
+	}
+}
+
+// ?wait=1 (the cover updater) paces lookups to Open Library's limit: past
+// the burst each lookup still comes back whole, and so does its cover.
+// Without it, the editor's lookups answer at once.
+func TestLookupHandlerWaits(t *testing.T) {
+	f := newFakeLookupServers(t)
+	orig, origCovers := bookLookups, lookupCovers
+	t.Cleanup(func() { bookLookups, lookupCovers = orig, origCovers })
+	f.lookup = metalookup.New(metalookup.Config{
+		HTTPClient: &http.Client{Timeout: 5 * time.Second},
+		UserAgent:  lookupUserAgent, OpenLibraryURL: f.olURL, CoversURL: f.olURL,
+		Cache:  metalookup.NewCache(0, 100), // every lookup asks again
+		Limits: map[string]*metalookup.Limiter{openLibraryName: metalookup.NewLimiter(50, 5, 1000)},
+	})
+	bookLookups = f.lookup
+	lookupCovers = newCoverCache(1<<20, time.Hour)
+
+	get := func(h http.HandlerFunc, url string) *httptest.ResponseRecorder {
+		rec := httptest.NewRecorder()
+		h(rec, httptest.NewRequest("GET", url, nil))
+		return rec
+	}
+	for i := range 3 {
+		rec := get(lookupHandler, "/metadata/lookup?source=openlibrary&isbn=9780134190440&wait=1")
+		var res lookupResult
+		if err := json.Unmarshal(rec.Body.Bytes(), &res); err != nil || res.Error != "" || len(res.Matches) != 1 || len(res.Matches[0].Option.Creators) != 2 {
+			t.Fatalf("paced lookup %d: %d %s", i, rec.Code, rec.Body)
+		}
+		if rec := get(lookupCoverHandler, "/metadata/lookup/cover?src=openlibrary&id=7427319&wait=1"); rec.Code != http.StatusOK {
+			t.Fatalf("paced cover %d: %d %s", i, rec.Code, rec.Body)
+		}
+		lookupCovers = newCoverCache(1<<20, time.Hour) // as for another book's cover
 	}
 }

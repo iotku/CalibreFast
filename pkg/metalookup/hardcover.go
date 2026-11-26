@@ -10,6 +10,7 @@ import (
 	"errors"
 	"fmt"
 	"strconv"
+	"time"
 
 	"github.com/iotku/CalibreFast/pkg/hardcover"
 	"github.com/iotku/CalibreFast/pkg/langcodes"
@@ -29,7 +30,10 @@ func (c *Client) hardcoverLookup(ctx context.Context, q Query) ([]Match, error) 
 	var wait *hardcover.WaitError
 	switch {
 	case errors.As(err, &wait):
-		return nil, fmt.Errorf("Hardcover's request limit is used up for now; try again after %s", wait.Until.UTC().Format("15:04 UTC"))
+		// "try again in": a caller pacing itself waits that long (a short
+		// wait is the burst refilling; a long one, the day's reset).
+		return nil, fmt.Errorf("Hardcover's request limit is used up for now; try again in %s (%s)",
+			max(time.Until(wait.Until), time.Second).Round(time.Second), wait.Until.UTC().Format("15:04 UTC"))
 	case err != nil:
 		return nil, err
 	}

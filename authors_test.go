@@ -107,6 +107,12 @@ func TestAuthorNamesWithCommas(t *testing.T) {
 	if err != nil || len(table) != 1 || table[0].Authors != want {
 		t.Errorf("bulk editor authors: %v %v, want %q", table, err, want)
 	}
+	pickRec := httptest.NewRecorder()
+	coverRefreshBooksHandler(pickRec, httptest.NewRequest("POST", "/api/covers/books", strings.NewReader(`{"uuids":["`+uuid+`"]}`)))
+	var picked struct{ Books []coverRefreshBook }
+	if err := json.Unmarshal(pickRec.Body.Bytes(), &picked); err != nil || len(picked.Books) != 1 || picked.Books[0].Authors != want {
+		t.Errorf("cover updater authors: %s, want %q", pickRec.Body, want)
+	}
 
 	// The Authors page lists "Battey, Nick", and its link (/author/Battey,
 	// Nick, as the book popup links it too) finds the book.

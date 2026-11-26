@@ -53,6 +53,33 @@ func (s *Limiter) Take(now time.Time) error {
 	return nil
 }
 
+// ReadyIn says how long until n requests can be taken (0: now), without
+// taking anything: the end of a 429's pause, or the bucket refilling. ok is
+// false when they'd go over today's cap: only tomorrow then.
+func (s *Limiter) ReadyIn(now time.Time, n int) (wait time.Duration, ok bool) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	today := s.today
+	if s.day != now.Format(time.DateOnly) {
+		today = 0
+	}
+	if today+n > s.daily {
+		return 0, false
+	}
+	tokens := s.tokens
+	if !s.last.IsZero() && now.After(s.last) {
+		tokens = min(s.burst, tokens+now.Sub(s.last).Seconds()*s.perSecond)
+	}
+	need := min(float64(n), s.burst) // never more than the bucket holds
+	if tokens < need {
+		wait = time.Duration((need - tokens) / s.perSecond * float64(time.Second))
+	}
+	if now.Before(s.pausedTil) {
+		wait = max(wait, s.pausedTil.Sub(now))
+	}
+	return wait, true
+}
+
 // Pause refuses every request until until, as after an HTTP 429.
 func (s *Limiter) Pause(until time.Time) {
 	s.mu.Lock()
