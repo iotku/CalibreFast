@@ -64,6 +64,13 @@ pages stay the same for everyone and cacheable.
          on* attributes and links only to paths on this site. */}}
     <script>try{var u=document.getElementById("user-nav"),h=JSON.parse(localStorage.getItem("cf-nav-tree")||"null"),T=/^(a|button|div|span|form|hr|svg|path)$/,b=function(n){if(typeof n=="string")return document.createTextNode(n);if(!T.test(n.t))throw 0;var e=n.s?document.createElementNS("http://www.w3.org/2000/svg",n.t):document.createElement(n.t);n.a.forEach(function(a){if(/^on/i.test(a[0])||/^(href|action)$/.test(a[0])&&!/^\/(?![\/\\])/.test(a[1]))throw 0;e.setAttribute(a[0],a[1])});n.c.forEach(function(c){e.appendChild(b(c))});return e};if(h){var f=document.createDocumentFragment();h.forEach(function(n){f.appendChild(b(n))});u.replaceChildren(f);if(u.dataset.active)u.querySelectorAll('[data-nav="'+u.dataset.active+'"]').forEach(function(a){a.setAttribute("aria-current","page")});var s=u.querySelector("a[data-next]");if(s)s.href="/login?next="+encodeURIComponent(location.pathname+location.search)}}catch(e){}</script>
 </header>
+{{/* Prefetch a top-bar page when the pointer rests on its link (or on
+     touchstart), so the click finds it ready. These are full page loads, not
+     htmx requests, so htmx's hx-preload wouldn't apply; Speculation Rules do
+     it natively (Chromium, Safari; others ignore it). Prefetch only, never
+     prerender: no page script runs before the click. Plain GET pages; the
+     current page and anything off the bar are left out. */}}
+<script type="speculationrules">{"prefetch":[{"where":{"and":[{"selector_matches":".site-bar .tb-nav a, .site-bar .tb-brand, .site-bar a.tb-shortcut"},{"not":{"selector_matches":"[aria-current]"}}]},"eagerness":"moderate"}]}</script>
 <script type="module" src="{{ asset "nav.js" }}"></script>
 {{ end }}
 
