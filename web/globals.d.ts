@@ -72,6 +72,8 @@ declare namespace EpubJS {
         window: Window;
         /** The CFI of a range in this chapter. */
         cfiFromRange(range: Range): string;
+        /** epub.js internal: measures the text again and, if it changed, resizes the view to fit. */
+        resizeCheck(): void;
     }
     interface Rendition {
         display(target?: string): Promise<void>;
