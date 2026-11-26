@@ -190,6 +190,10 @@ var (
   }
 }`, 1}
 
+	qBookImages = query{`query BookImages($ids: [Int!]!) {
+  books(where: {id: {_in: $ids}}, limit: 300) { id cached_image }
+}`, 1}
+
 	qBookDetails = query{`query BookDetails($ids: [Int!]!) {
   books(where: {id: {_in: $ids}}, limit: 300) {
     id
@@ -202,7 +206,7 @@ var (
 // allQueries lists every query (tests check their depth and cost).
 var allQueries = map[string]query{
 	"SearchSeries": qSearchSeries, "EditionsByISBN": qEditionsByISBN, "SeriesOfBooks": qSeriesOfBooks, "SeriesByName": qSeriesByName,
-	"SeriesBooks": qSeriesBooks, "BookDetails": qBookDetails,
+	"SeriesBooks": qSeriesBooks, "BookDetails": qBookDetails, "BookImages": qBookImages,
 }
 
 type gqlError struct {
@@ -777,6 +781,34 @@ func (c *Client) SeriesBooks(ctx context.Context, ids ...int64) (*SeriesDetail, 
 		return 0
 	})
 	return d, nil
+}
+
+// BookImages: the covers of these books (at most 300), by id: https URLs
+// on hardcover.app (FetchImage), only for books that have one. One request.
+func (c *Client) BookImages(ctx context.Context, ids []int64) (map[int64]string, error) {
+	ids = slices.Compact(slices.Sorted(slices.Values(ids)))
+	if len(ids) > 300 {
+		ids = ids[:300]
+	}
+	out := map[int64]string{}
+	if len(ids) == 0 {
+		return out, nil
+	}
+	var data struct {
+		Books []struct {
+			ID          flexInt         `json:"id"`
+			CachedImage json.RawMessage `json:"cached_image"`
+		} `json:"books"`
+	}
+	if err := c.post(ctx, qBookImages, map[string]any{"ids": ids}, &data); err != nil {
+		return nil, err
+	}
+	for _, b := range data.Books {
+		if u := imageURL(b.CachedImage); u != "" && slices.Contains(ids, int64(b.ID)) {
+			out[int64(b.ID)] = u
+		}
+	}
+	return out, nil
 }
 
 // fillBookDetails adds the authors and ISBNs of every book (merged ones

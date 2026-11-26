@@ -34,8 +34,9 @@ type userPrefs struct {
 	// on in preferences.
 	PushDeclined bool `json:"push_declined"`
 	// HidePlaceholders: don't show books that aren't in the library yet
-	// (placeholders.go) on series, author and publisher pages, in search
-	// or in On Deck. Ones the user saved stay on their own lists.
+	// (placeholders.go) on series, author and publisher pages, in search,
+	// in On Deck, on shelves (their pages, counts and rows) or on the
+	// Saved list, even ones the user saved.
 	HidePlaceholders bool `json:"hide_placeholders"`
 }
 

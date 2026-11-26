@@ -87,6 +87,9 @@ func homeHandler(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "query failed", http.StatusInternalServerError)
 		return
 	}
+	if hidesPlaceholders(currentUser(r)) { // books not in the library yet (prefs.go)
+		wanted = slices.DeleteFunc(wanted, func(id string) bool { return placeholderByUUID(id) != nil })
+	}
 
 	ans := homeAnswer{Marks: marks, ReadingCount: len(reading), WantedCount: len(wanted)}
 	done = timeStage(r, "rows")

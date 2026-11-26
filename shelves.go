@@ -128,7 +128,11 @@ func getShelf(id int64) (*Shelf, error) {
 // that have books. A shelf keeps its rows for books that left the library
 // (recycled, merged into another, deleted in Calibre), so they're back if
 // the book is (recycle_userdata.go), but they aren't shown or counted.
-func liveShelfEntries(ids []int64) (map[int64][]Book, error) {
+func liveShelfEntries(ids []int64) (map[int64][]Book, error) { return liveShelfEntriesFor(ids, false) }
+
+// liveShelfEntriesFor is liveShelfEntries; noPlaceholders leaves out books
+// not in the library yet, for a viewer who'd rather not see them (prefs.go).
+func liveShelfEntriesFor(ids []int64, noPlaceholders bool) (map[int64][]Book, error) {
 	out := make(map[int64][]Book, len(ids))
 	if len(ids) == 0 {
 		return out, nil
@@ -170,7 +174,7 @@ func liveShelfEntries(ids []int64) (map[int64][]Book, error) {
 		live[b.UUID] = b
 	}
 	for i, k := range keys {
-		if b, ok := live[k]; ok {
+		if b, ok := live[k]; ok && !(noPlaceholders && b.Placeholder != nil) {
 			out[shelfOf[i]] = append(out[shelfOf[i]], b)
 		}
 	}
@@ -178,12 +182,16 @@ func liveShelfEntries(ids []int64) (map[int64][]Book, error) {
 }
 
 // countShelves sets Count and Series on each shelf from its live entries.
-func countShelves(shelves []Shelf) error {
+func countShelves(shelves []Shelf) error { return countShelvesFor(shelves, false) }
+
+// countShelvesFor is countShelves; noPlaceholders: for a viewer who'd
+// rather not see books not in the library yet (prefs.go).
+func countShelvesFor(shelves []Shelf, noPlaceholders bool) error {
 	ids := make([]int64, len(shelves))
 	for i, s := range shelves {
 		ids[i] = s.ID
 	}
-	entries, err := liveShelfEntries(ids)
+	entries, err := liveShelfEntriesFor(ids, noPlaceholders)
 	if err != nil {
 		return err
 	}
@@ -274,10 +282,11 @@ func listShelves(u *User) (mine, global []Shelf, err error) {
 	if err := rows.Err(); err != nil {
 		return nil, nil, err
 	}
-	if err := countShelves(mine); err != nil {
+	hide := hidesPlaceholders(u)
+	if err := countShelvesFor(mine, hide); err != nil {
 		return nil, nil, err
 	}
-	return mine, global, countShelves(global)
+	return mine, global, countShelvesFor(global, hide)
 }
 
 // listMemberShelves: the shelves u helps with (shelf_members.go), by name,
@@ -307,7 +316,7 @@ func listMemberShelves(u *User) ([]Shelf, error) {
 	if err := rows.Err(); err != nil {
 		return nil, err
 	}
-	return out, countShelves(out)
+	return out, countShelvesFor(out, hidesPlaceholders(u))
 }
 
 // listSharedShelves: the shelves other users shared (whose accounts are in
@@ -339,7 +348,7 @@ func listSharedShelves(u *User) ([]Shelf, error) {
 	if err := rows.Err(); err != nil {
 		return nil, err
 	}
-	return out, countShelves(out)
+	return out, countShelvesFor(out, hidesPlaceholders(u))
 }
 
 // shelfMarks lists the shelves a user can add this book to (their own, the
@@ -770,8 +779,9 @@ func shelfPageHandler(w http.ResponseWriter, r *http.Request) {
 			}
 		}
 	}
+	hide := hidesPlaceholders(u)
 	entries := sync.OnceValues(func() ([]Book, error) {
-		m, err := liveShelfEntries([]int64{s.ID})
+		m, err := liveShelfEntriesFor([]int64{s.ID}, hide)
 		if err != nil {
 			return nil, err
 		}
