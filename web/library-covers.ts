@@ -8,7 +8,11 @@
 //
 // Before looking anything up, the page compares what the run could cost
 // with what's left of each source's requests today (/api/covers/budget),
-// and asks first when the run would use most of it.
+// and asks first when the run would use most of it. During a run, lookups
+// are paced to each source's rate limit: the server holds a request until
+// there's room for the whole lookup (?wait=1), and the page waits out
+// anything longer, so a long run goes slowly rather than failing. Only a
+// source whose day is used up is skipped.
 
 import { api, byId, el, errorMessage, statusLine } from "./dom.js";
 import type { CoverBudget, CoverBudgets, CoverRefreshBook, CoverUpdate, LookupResult } from "./types.js";
@@ -17,8 +21,16 @@ import type { CoverBudget, CoverBudgets, CoverRefreshBook, CoverUpdate, LookupRe
 const COVER_SELECTION_KEY = "cf-cover-selection";
 /** Warn when a run could use more than this share of what's left. */
 const WARN_SHARE = 0.8;
-/** Wait at most this long for a source's short-term limit, then move on. */
-const MAX_WAIT_MS = 60_000;
+/**
+ * Wait at most this long for room under a source's rate limit (its burst
+ * refilling, or a pause after an HTTP 429) before skipping it for the run.
+ * The server waits up to 30 s itself (?wait=1); longer waits come back as
+ * "try again in …" and are waited out here. Only a used-up day, or a wait
+ * longer than this, skips the source.
+ */
+const MAX_WAIT_MS = 10 * 60_000;
+/** Ask again at most this many times for one request (others share the limits). */
+const MAX_TRIES = 12;
 
 type Provider = "hardcover" | "openlibrary";
 const PROVIDER_NAMES: Record<Provider, string> = { hardcover: "Hardcover", openlibrary: "Open Library" };
@@ -87,9 +99,9 @@ function left(b: CoverBudget): number {
     return Math.max(0, b.limit - b.used);
 }
 
-/** A source we can ask: on, not paused, with requests left today. */
+/** A source we can ask: on, with requests left today (a pause is waited out). */
 function usable(b: CoverBudget): boolean {
-    return b.enabled && !b.paused && left(b) > 0;
+    return b.enabled && left(b) > 0;
 }
 
 function budgetLine(name: string, b: CoverBudget): HTMLElement {
@@ -204,9 +216,28 @@ function retryAfter(message: string): number | null {
     return ms || null;
 }
 
-/** Daily limit used up, or told to slow down for a long while: don't ask this source again this run. */
-function outOfBudget(message: string): boolean {
-    return /used up|asked to slow down/i.test(message);
+/** The source's requests for today are used up (Go: metalookup.ErrDailyLimit, the limiter's daily cap). */
+function dayUsedUp(message: string): boolean {
+    return /requests for today are used up|requests a day is used up|try again tomorrow/i.test(message);
+}
+
+/**
+ * What to do about a source's refusal: wait it out and ask again ("retry"),
+ * skip the source for the run ("drop", already said), or give up on this
+ * book only ("fail"). Waiting happens here.
+ */
+async function onRefusal(p: Provider, message: string, row: Row): Promise<"retry" | "drop" | "fail"> {
+    if (dayUsedUp(message)) {
+        dropProvider(p, message);
+        return "drop";
+    }
+    const wait = retryAfter(message);
+    if (wait === null) return "fail";
+    if (wait > MAX_WAIT_MS) {
+        dropProvider(p, message);
+        return "drop";
+    }
+    return (await waitFor(p, wait, row)) ? "retry" : "fail";
 }
 
 /** Sources not asked this run: off, out of requests, or dropped partway (in dropped too). */
@@ -226,18 +257,19 @@ async function waitFor(p: Provider, ms: number, row: Row): Promise<boolean> {
     const until = Date.now() + ms;
     while (Date.now() < until) {
         if (stopping) return false;
-        row.status.textContent = `Waiting for ${PROVIDER_NAMES[p]}'s limit (${Math.ceil((until - Date.now()) / 1000)} s)…`;
+        row.status.textContent = `Waiting for ${PROVIDER_NAMES[p]}'s rate limit (${Math.ceil((until - Date.now()) / 1000)} s)…`;
         await sleep(Math.min(1000, until - Date.now()));
     }
     return true;
 }
 
 async function lookup(p: Provider, params: Record<string, string>, row: Row): Promise<LookupResult | null> {
-    for (let attempt = 0; attempt < 4; attempt++) {
+    for (let attempt = 0; attempt < MAX_TRIES; attempt++) {
         if (stopping || disabled.has(p)) return null;
         let res: LookupResult;
         try {
-            res = await api<LookupResult>("GET", `/metadata/lookup?${new URLSearchParams({ source: p, ...params })}`);
+            // wait=1: the server waits for room for the whole lookup rather than failing partway.
+            res = await api<LookupResult>("GET", `/metadata/lookup?${new URLSearchParams({ source: p, ...params, wait: "1" })}`);
         } catch (err) {
             const status = (err as { status?: number }).status;
             if (status === 401 || status === 404) throw new SessionLost(errorMessage(err));
@@ -246,25 +278,20 @@ async function lookup(p: Provider, params: Record<string, string>, row: Row): Pr
             return null;
         }
         if (!res.error) return res;
-        const wait = retryAfter(res.error);
-        if (outOfBudget(res.error) || (wait !== null && wait > MAX_WAIT_MS)) {
-            dropProvider(p, res.error);
-            return null;
-        }
-        if (wait === null) {
-            row.lastError = `${PROVIDER_NAMES[p]}: ${res.error}`;
-            return null;
-        }
-        if (!(await waitFor(p, wait, row))) return null;
+        const next = await onRefusal(p, res.error, row);
+        if (next === "retry") continue;
+        if (next === "fail") row.lastError = `${PROVIDER_NAMES[p]}: ${res.error}`;
+        return null;
     }
+    row.lastError = `${PROVIDER_NAMES[p]}: still busy after ${MAX_TRIES} tries`;
     return null;
 }
 
 /** The candidate cover's image, fetched once (the server keeps a copy for saving it). */
 async function fetchImage(p: Provider, url: string, row: Row): Promise<{ blobUrl: string; width: number; height: number } | null> {
-    for (let attempt = 0; attempt < 4; attempt++) {
+    for (let attempt = 0; attempt < MAX_TRIES; attempt++) {
         if (stopping) return null;
-        const resp = await fetch(url, { credentials: "same-origin" });
+        const resp = await fetch(`${url}&wait=1`, { credentials: "same-origin" });
         if (resp.status === 401) throw new SessionLost(await resp.text());
         if (resp.ok) {
             const blobUrl = URL.createObjectURL(await resp.blob());
@@ -279,14 +306,12 @@ async function fetchImage(p: Provider, url: string, row: Row): Promise<{ blobUrl
             return { blobUrl, width: img.naturalWidth, height: img.naturalHeight };
         }
         const text = (await resp.text()).trim();
-        const wait = retryAfter(text);
-        if (wait === null || wait > MAX_WAIT_MS) {
-            if (outOfBudget(text)) dropProvider(p, text);
-            else row.lastError = `${PROVIDER_NAMES[p]}'s cover: ${text || resp.status}`;
-            return null;
-        }
-        if (!(await waitFor(p, wait, row))) return null;
+        const next = await onRefusal(p, text, row);
+        if (next === "retry") continue;
+        if (next === "fail") row.lastError = `${PROVIDER_NAMES[p]}'s cover: ${text || resp.status}`;
+        return null;
     }
+    row.lastError = `${PROVIDER_NAMES[p]}'s cover: still busy after ${MAX_TRIES} tries`;
     return null;
 }
 
@@ -309,7 +334,8 @@ async function findCover(row: Row): Promise<Candidate | null> {
     for (const [p, params, byTitle] of steps) {
         if (stopping) return null;
         if (disabled.has(p)) continue;
-        row.status.textContent = `Looking on ${PROVIDER_NAMES[p]} by ${byTitle ? "title" : "ISBN"}…`;
+        // The server may hold the request until the source has room (?wait=1).
+        row.status.textContent = `Looking on ${PROVIDER_NAMES[p]} by ${byTitle ? "title" : "ISBN"} (paced to its rate limit)…`;
         const res = await lookup(p, params, row);
         const match = res?.matches?.find((m) => m.cover);
         if (!match?.cover) continue;
@@ -479,7 +505,7 @@ async function scan(): Promise<void> {
         disabled.add(p);
         const b = budgets[p];
         if (b.enabled) dropped.add(p);
-        if (b.enabled) say(`${PROVIDER_NAMES[p]} is skipped: ${b.paused ? `paused until ${b.paused}` : "no requests left today"}.`, true);
+        if (b.enabled) say(`${PROVIDER_NAMES[p]} is skipped: no requests left today.`, true);
     }
     if (!use.hardcover && !use.openlibrary) {
         say("Neither Hardcover nor Open Library can be asked right now: see the limits above.", true);

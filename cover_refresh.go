@@ -24,6 +24,8 @@ import (
 	"strconv"
 	"strings"
 	"time"
+
+	"github.com/iotku/CalibreFast/pkg/metalookup"
 )
 
 const (
@@ -38,9 +40,12 @@ const (
 	// before it starts: an Open Library lookup is up to 7 requests
 	// (edition, work, authors; or a search and its works) and its cover one
 	// more; a Hardcover lookup is 2, and its covers aren't counted.
-	olLookupCost = 7
-	olCoverCost  = 1
-	hcLookupCost = 2
+	olCoverCost = 1
+)
+
+var (
+	olLookupCost = metalookup.LookupCost(openLibraryName)
+	hcLookupCost = metalookup.LookupCost(hardcoverName)
 )
 
 func coverRefreshPage(w http.ResponseWriter, r *http.Request) {
@@ -179,9 +184,9 @@ func coverApplyHandler(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "book not found", http.StatusNotFound)
 		return
 	}
-	ctx, cancel := context.WithTimeout(r.Context(), 20*time.Second)
+	ctx, cancel := context.WithTimeout(r.Context(), 20*time.Second+lookupPatience)
 	defer cancel()
-	img, _, err := fetchLookupCover(ctx, source, req.ID)
+	img, _, err := fetchLookupCover(ctx, source, req.ID, lookupPatience) // usually the preview's copy
 	if code, msg := lookupCoverError(err); code != 0 {
 		http.Error(w, msg, code)
 		return

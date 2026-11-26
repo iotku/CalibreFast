@@ -375,3 +375,72 @@ func TestLimiterUsage(t *testing.T) {
 		t.Errorf("next day: %+v", u)
 	}
 }
+
+// A run of lookups past the burst: LookupWaiting waits for room for each
+// whole lookup, so none is cut short halfway (Lookup's are: the work and
+// authors refused, the answer without them). A day's cap isn't waited for.
+func TestLookupWaiting(t *testing.T) {
+	f := newFakeLookupServers(t)
+	f.lookup.cache = NewCache(0, 100) // every lookup asks again
+	q := Query{ISBN: "9780134190440"} // 4 requests: edition, work, 2 authors
+	ctx := context.Background()
+
+	f.lookup.limits[OpenLibrary] = NewLimiter(50, 5, 1000)
+	f.lookup.Lookup(ctx, OpenLibrary, q)
+	res := f.lookup.Lookup(ctx, OpenLibrary, q)
+	if m := only(t, res); m == nil || len(m.Meta.Creators) != 0 {
+		t.Fatalf("second lookup at once should be cut short (no authors): %+v", res)
+	}
+
+	f.lookup.limits[OpenLibrary] = NewLimiter(50, 5, 1000)
+	for i := range 3 {
+		res := f.lookup.LookupWaiting(ctx, OpenLibrary, q, 5*time.Second)
+		if m := only(t, res); res.Error != "" || m == nil || len(m.Meta.Creators) != 2 {
+			t.Fatalf("waiting lookup %d isn't whole: %+v", i, res)
+		}
+	}
+
+	// Longer than the caller will wait: says how long.
+	f.lookup.limits[OpenLibrary] = NewLimiter(0.01, 5, 1000)
+	f.lookup.Lookup(ctx, OpenLibrary, q)
+	if err := f.lookup.WaitForRoom(ctx, OpenLibrary, 5, time.Millisecond); err == nil || !strings.Contains(err.Error(), "try again in") {
+		t.Errorf("long wait: %v", err)
+	}
+
+	// Today's cap: no waiting, and said plainly.
+	f.lookup.limits[OpenLibrary] = NewLimiter(50, 5, 6)
+	f.lookup.LookupWaiting(ctx, OpenLibrary, q, time.Second)
+	res = f.lookup.LookupWaiting(ctx, OpenLibrary, q, time.Second)
+	if !strings.Contains(res.Error, "used up; try again tomorrow") {
+		t.Errorf("over the day's cap: %+v", res)
+	}
+}
+
+func TestLimiterReadyIn(t *testing.T) {
+	now := time.Date(2026, 11, 26, 12, 0, 0, 0, time.Local)
+	l := NewLimiter(1, 4, 10)
+	if w, ok := l.ReadyIn(now, 4); w != 0 || !ok {
+		t.Errorf("full bucket: %v %v", w, ok)
+	}
+	for range 4 {
+		if err := l.Take(now); err != nil {
+			t.Fatal(err)
+		}
+	}
+	if w, ok := l.ReadyIn(now, 3); w != 3*time.Second || !ok {
+		t.Errorf("empty bucket, 3 wanted: %v %v", w, ok)
+	}
+	if w, _ := l.ReadyIn(now, 6); w != 4*time.Second {
+		t.Errorf("more than the burst waits for a full bucket: %v", w)
+	}
+	if _, ok := l.ReadyIn(now, 7); ok {
+		t.Error("over the day's cap should be not today")
+	}
+	l.Pause(now.Add(30 * time.Second))
+	if w, _ := l.ReadyIn(now, 1); w != 30*time.Second {
+		t.Errorf("paused: %v", w)
+	}
+	if u := l.Usage(now); u.Used != 4 {
+		t.Errorf("ReadyIn took requests: used %d", u.Used)
+	}
+}
