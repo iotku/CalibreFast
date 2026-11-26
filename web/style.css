@@ -4423,7 +4423,7 @@ body:has(.manage-panel:not([hidden])) {
     display: none;
 }
 
-/* A rule between visible sections (select-section starts hidden). */
+/* A rule between visible sections. */
 .manage-section:not([hidden]) ~ .manage-section {
     border-top: 1px solid var(--border-subtle, var(--border-medium));
 }
@@ -4435,22 +4435,6 @@ body:has(.manage-panel:not([hidden])) {
     letter-spacing: 0.04em;
     text-transform: uppercase;
     color: var(--text-secondary);
-}
-
-/* Select books, Feature: on/off buttons. */
-.manage-toggle-btn {
-    display: inline-flex;
-    align-items: center;
-    gap: 8px;
-}
-
-.manage-toggle-btn[aria-pressed="true"] {
-    color: var(--text-primary);
-    border-color: var(--accent, #c8a96e);
-}
-
-.manage-toggle-btn[aria-pressed="true"] svg {
-    color: var(--accent, #c8a96e);
 }
 
 .manage-hint {

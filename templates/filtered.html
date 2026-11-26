@@ -81,9 +81,9 @@
 {{ end }}
         </div>
         <div class="tb-manage-menu">
-{{ if or .Writable .CanVerify $feat }}
+{{ if or .Writable .CanVerify }}
         <button type="button" id="manage-toggle" class="btn-group-toggle" aria-expanded="false" aria-controls="manage-panel"
-                title="Manage this {{ $kind }}: select its books{{ if .CanVerify }}, how many books the series has{{ end }}{{ if .Writable }}, its name, picture and grouped values{{ end }}">
+                title="Manage this {{ $kind }}: {{ if .CanVerify }}how many books the series has{{ if .Writable }}, {{ end }}{{ end }}{{ if .Writable }}its name, picture and grouped values{{ end }}">
             <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="3" y="4" width="18" height="16" rx="2"/><path d="M15 4v16"/></svg>
             <span class="tb-label">Manage {{ capitalize $kind }}</span>
         </button>
@@ -129,7 +129,7 @@
     {{ template "series-shelf-list" $.Extra.SeriesShelves }}
 </section>
 {{ end }}{{ end }}
-{{ if or .Writable .CanVerify $feat }}
+{{ if or .Writable .CanVerify }}
 {{/* Manage this entry (web/manage-panel.ts): a sidebar on the right, under
      the Manage menu. Its parts save on their own: the series' book counts
      (editors; series_complete.go, web/series-verify.ts) and the group, with
@@ -142,11 +142,6 @@
         </button>
     </header>
     <div class="manage-panel-body">
-    {{/* Shown to editors by select-books.ts, which also starts selecting on a
-         Ctrl+click or a long press on a book. */}}
-    <section class="manage-section" id="select-section" aria-label="Select books" hidden>
-        <button type="button" id="select-books-btn" class="btn-standard manage-toggle-btn" aria-pressed="false">Select books</button>
-    </section>
 {{ if .CanVerify }}
     <section id="series-verify" class="manage-section series-verify" data-series="{{ .Name }}" aria-labelledby="series-verify-title">
         <div class="manage-section-head">
@@ -306,7 +301,7 @@
 <div id="scroll-badge"></div>
 <script type="module" src="{{ asset "app-htmx.js" }}"></script>
 {{ $feat := false }}{{ with .Extra }}{{ if and .Shelf .CanFeature }}{{ $feat = true }}{{ end }}{{ end }}
-{{ if or .Writable .CanVerify $feat }}<script type="module" src="{{ asset "manage-panel.js" }}"></script>{{ end }}
+{{ if or .Writable .CanVerify }}<script type="module" src="{{ asset "manage-panel.js" }}"></script>{{ end }}
 {{ with .Profile }}{{ if or .Lookup .Refresh }}<script type="module" src="{{ asset "author-profile.js" }}"></script>{{ end }}{{ end }}
 {{ with .Extra }}{{ if or .Shelf .TagPin .SeriesPin }}<script type="module" src="{{ asset "shelf-page.js" }}"></script>{{ end }}{{ end }}
 {{ if .FavKind }}<script type="module" src="{{ asset "aggregate-fav.js" }}"></script>{{ else }}{{ with .Extra }}{{ if .FavRows }}<script type="module" src="{{ asset "aggregate-fav.js" }}"></script>{{ end }}{{ end }}{{ end }}

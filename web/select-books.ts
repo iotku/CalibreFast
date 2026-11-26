@@ -1,8 +1,7 @@
 // Choosing books in a grid: to put them on a shelf (anyone signed in), or
 // to merge, edit or remove them (editors, with -allow-writes). A Ctrl+click
-// on a card, a long press on one on a touch screen, "Select" above the
-// grid, or "Select books" in the Manage sidebar (templates/filtered.html)
-// turns taps on cards into ticks; a bar at the bottom counts them and
+// on a card, a long press on one on a touch screen or "Select books"
+// above the grid turns taps on cards into ticks; a bar at the bottom counts them and
 // offers Add to shelf (shelf-picker.ts) and, for editors, Merge (the
 // metadata editor's merge mode, Go: merge.go), Edit in table (the bulk
 // editor, library-edit.ts) and Remove (the confirmation, delete-books.ts). A placeholder (a book not in the library
@@ -134,20 +133,6 @@ export function setupSelection(grid: HTMLElement): void {
         if (editorReady || root["canEdit"] !== "1") return;
         editorReady = true;
 
-        // The Manage sidebar's button, where the page has one. Where the
-        // sidebar covers the page (a phone), starting closes it.
-        const sideBtn = document.querySelector<HTMLButtonElement>("#select-books-btn");
-        const section = document.getElementById("select-section");
-        if (section) section.hidden = false;
-        if (sideBtn) {
-            toggleBtns.push(sideBtn);
-            sideBtn.addEventListener("click", () => {
-                setSelecting(grid, !selecting);
-                const sidebar = document.getElementById("manage-panel");
-                if (selecting && sidebar && matchMedia("(max-width: 600px)").matches) sidebar.dispatchEvent(new CustomEvent("cf:manage-close"));
-            });
-        }
-
         removeBtn = el("button", { type: "button", className: "btn-action btn-danger", disabled: true });
         mergeBtn = el("a", { className: "btn-action" }, "Merge…");
         mergeBtn.setAttribute("aria-disabled", "true");
@@ -176,7 +161,7 @@ export function setupSelection(grid: HTMLElement): void {
         if (root["signedIn"] !== "1" && root["canEdit"] !== "1") return;
         ready = true;
 
-        // "Select" above the grid, for everyone signed in: by the sort
+        // "Select books" above the grid, for everyone signed in: by the sort
         // select where there is one.
         const gridBtn = el("button", { type: "button", className: "btn-standard grid-select-btn", title: "Choose books to add to a shelf (or Ctrl+click / long-press a book)" }, "Select books");
         gridBtn.setAttribute("aria-pressed", "false");
