@@ -30,7 +30,8 @@ import (
 // own; a layout that hid it doesn't hide the combined one).
 // "stats" is the reading stats summary in the greeting (stats-data.ts).
 // "followed" is New from authors you follow (aggregate_favorites.go).
-var homeSections = []string{"greeting", "stats", "wanted", "recommended", "followed", "shuffle", "latest", "tags"}
+// "shelves" is More shelves, shelves to find (shelf_pins.go moreShelves).
+var homeSections = []string{"greeting", "stats", "wanted", "recommended", "followed", "shuffle", "latest", "tags", "shelves"}
 
 const maxLayoutID = 300 // bytes: "t:" and a tag name (or "r:" and a series')
 

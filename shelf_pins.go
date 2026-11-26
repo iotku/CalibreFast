@@ -53,8 +53,10 @@ type homeShelf struct {
 	Href     string `json:"href"`
 	Global   bool   `json:"global,omitempty"`
 	Featured bool   `json:"featured,omitempty"`
-	Count    int    `json:"count"`
-	Books    []Book `json:"books"`
+	// Owner: who shared it, on a shelf another user shared.
+	Owner string `json:"owner,omitempty"`
+	Count int    `json:"count"`
+	Books []Book `json:"books"`
 	// A tag's row: where its strip starts in the tag's books, and where
 	// the next one does (tag_strip.go), for its Shuffle and Previous.
 	Start int `json:"start,omitempty"`
@@ -78,7 +80,7 @@ func pinnedShelves(u *User, limit int) ([]homeShelf, error) {
 	rows, err := appDB.Query(`SELECT s.id, s.name, s.owner_id IS NULL, s.featured_pos IS NOT NULL,
 			p.position, s.featured_pos
 		FROM shelves s LEFT JOIN shelf_pins p ON p.shelf_id = s.id AND p.user_id = ?1
-		WHERE (s.owner_id IS NULL OR s.owner_id = ?1)
+		WHERE (s.owner_id IS NULL OR s.owner_id = ?1 OR `+sharedVisibleSQL+` OR `+memberOfSQL+`)
 		  AND (p.pinned = 1 OR (p.shelf_id IS NULL AND s.featured_pos IS NOT NULL))`, u.ID)
 	if err != nil {
 		return nil, err
@@ -206,6 +208,51 @@ func pinnedShelves(u *User, limit int) ([]homeShelf, error) {
 		if err := fillSeriesRows(u, out, seriesRows); err != nil {
 			return nil, err
 		}
+	}
+	return out, nil
+}
+
+// moreShelves: shelves u might like to find, for Discover's "More shelves"
+// row: global shelves and other users' shared ones that aren't on u's page
+// and that u didn't take off it, with books, most recently changed first.
+// At most limit, each with its first shelfCovers entries.
+func moreShelves(u *User, limit int) ([]homeShelf, error) {
+	rows, err := appDB.Query(`SELECT s.id, s.name, s.owner_id IS NULL, s.featured_pos IS NOT NULL,
+			CASE WHEN s.owner_id IS NULL THEN '' ELSE COALESCE((SELECT username FROM users WHERE id = s.owner_id), '') END
+		FROM shelves s LEFT JOIN shelf_pins p ON p.shelf_id = s.id AND p.user_id = ?1
+		WHERE (s.owner_id IS NULL OR (s.owner_id != ?1 AND `+sharedVisibleSQL+`))
+		  AND NOT `+memberOfSQL+`
+		  AND p.shelf_id IS NULL AND s.featured_pos IS NULL
+		  AND EXISTS (SELECT 1 FROM shelf_books b WHERE b.shelf_id = s.id)
+		ORDER BY s.updated_at DESC, s.id DESC
+		LIMIT ?2`, u.ID, limit*2) // some may have no books left in the library
+	if err != nil {
+		return nil, err
+	}
+	var all []homeShelf
+	for rows.Next() {
+		s := homeShelf{Kind: "shelf"}
+		if err := rows.Scan(&s.ID, &s.Name, &s.Global, &s.Featured, &s.Owner); err != nil {
+			rows.Close()
+			return nil, err
+		}
+		s.Href = "/shelf/" + itoa(s.ID)
+		all = append(all, s)
+	}
+	rows.Close()
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	if err := fillShelfBooks(all); err != nil {
+		return nil, err
+	}
+	out := []homeShelf{}
+	for _, s := range all {
+		if s.Count == 0 || len(out) == limit {
+			continue
+		}
+		s.Books = s.Books[:min(len(s.Books), shelfCovers)]
+		out = append(out, s)
 	}
 	return out, nil
 }
@@ -604,7 +651,7 @@ func savePinOrder(u *User, refs []pinRef) error {
 		// a shelf they unpinned (in another tab) stays unpinned.
 		_, err := tx.Exec(`INSERT INTO shelf_pins (user_id, shelf_id, pinned, position)
 			SELECT ?1, s.id, 1, ?3 FROM shelves s
-			WHERE s.id = ?2 AND (s.owner_id IS NULL OR s.owner_id = ?1)
+			WHERE s.id = ?2 AND (s.owner_id IS NULL OR s.owner_id = ?1 OR `+sharedVisibleSQL+` OR `+memberOfSQL+`)
 			  AND NOT EXISTS (SELECT 1 FROM shelf_pins p WHERE p.user_id = ?1 AND p.shelf_id = s.id AND p.pinned = 0)
 			  AND (s.featured_pos IS NOT NULL OR EXISTS (SELECT 1 FROM shelf_pins p WHERE p.user_id = ?1 AND p.shelf_id = s.id))
 			ON CONFLICT (user_id, shelf_id) DO UPDATE SET position = excluded.position`, u.ID, ref.Shelf, i)

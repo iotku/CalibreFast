@@ -1,0 +1,64 @@
+<!doctype html>
+<html lang="en">
+<head>
+    <meta charset="utf-8">
+    {{ robotsMeta }}
+    {{ appHead }}
+    <title>Shelf invites — {{ .Title }}</title>
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <link rel="stylesheet" href="{{ asset "style.css" }}">
+</head>
+<body class="auth-body">
+{{ $tb := topbar "Title" "Shelf invites" }}
+{{ template "topbar-start" $tb }}
+{{ template "topbar-end" $tb }}
+{{/* The shelf invite log (shelf_members.go): who invites whom to help
+     with a shelf, and what came of it, to spot accounts sending unwanted
+     invites. Read-only: an account that misbehaves is disabled on
+     Manage users. */}}
+<main class="auth-main auth-wide shelves-main invite-log">
+    <section class="auth-card">
+        <h1>Shelf invites</h1>
+        <p class="auth-muted">Owners of shared shelves invite other users to help with them. Each user can send {{ .PerDay }} invites a day and have {{ .Pending }} unanswered at once; a shelf can have {{ .PerShelf }} members and invites. Anyone invited can decline and block the sender. To stop an account, disable it on <a class="meta-link" href="/admin/users">Manage users</a>.</p>
+
+        <h2>Senders, last {{ .Days }} days</h2>
+        <div class="activity-scroll">
+        <table class="admin-users invite-senders">
+            <thead><tr><th>User</th><th>Sent</th><th>Accepted</th><th>Declined</th><th>Blocked</th><th>Refused</th><th>Unanswered now</th><th>Blocked by</th></tr></thead>
+            <tbody>
+            {{ range .Senders }}
+            <tr{{ if .Suspect }} class="invite-suspect"{{ end }}>
+                <td><a class="meta-link" href="/admin/shelf-invites?user={{ .ID }}">{{ .Name }}</a>{{ if .Suspect }} <span class="shelf-badge" title="Blocked by someone, refused often, or mostly turned down">check</span>{{ end }}</td>
+                <td>{{ .Sent }}</td><td>{{ .Accepted }}</td><td>{{ .Declined }}</td><td>{{ .Blocked }}</td><td>{{ .Refused }}</td><td>{{ .Pending }}</td><td>{{ .BlockedBy }}</td>
+            </tr>
+            {{ else }}
+            <tr><td colspan="8" class="auth-muted">No invites yet.</td></tr>
+            {{ end }}
+            </tbody>
+        </table>
+        </div>
+
+        <h2>{{ if .UserID }}Involving {{ or .Who "this user" }} <a class="meta-link" href="/admin/shelf-invites">(show everyone)</a>{{ else }}Log{{ end }}</h2>
+        <div class="activity-scroll">
+        <table class="admin-users">
+            <thead><tr><th>When</th><th>What</th><th>From</th><th>To</th><th>Shelf</th><th>Note</th></tr></thead>
+            <tbody>
+            {{ range .Entries }}
+            <tr>
+                <td>{{ .When }}</td>
+                <td>{{ .Action }}</td>
+                <td>{{ if .FromID }}<a class="meta-link" href="/admin/shelf-invites?user={{ .FromID }}">{{ .FromName }}</a>{{ else }}{{ .FromName }}{{ end }}</td>
+                <td>{{ if .ToID }}<a class="meta-link" href="/admin/shelf-invites?user={{ .ToID }}">{{ .ToName }}</a>{{ else }}{{ .ToName }}{{ end }}</td>
+                <td>{{ if .ShelfID }}{{ .ShelfName }} <span class="auth-muted">#{{ .ShelfID }}</span>{{ end }}</td>
+                <td>{{ .Detail }}</td>
+            </tr>
+            {{ else }}
+            <tr><td colspan="6" class="auth-muted">Nothing yet.</td></tr>
+            {{ end }}
+            </tbody>
+        </table>
+        </div>
+    </section>
+</main>
+</body>
+</html>

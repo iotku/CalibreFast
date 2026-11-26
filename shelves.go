@@ -5,13 +5,23 @@ package main
 //     owner only.
 //   - Global shelves (owner_id NULL): visible to everyone who can browse,
 //     created and edited by admins (e.g. to showcase a collection).
+//   - Shared shelves: a personal shelf its owner shared (shelves.shared).
+//     Visible, read-only, to everyone who can browse, as long as the
+//     owner's account is in use; still edited by its owner only.
+//   - Members (shelf_members.go): users the owner of a shared shelf invited,
+//     who accepted. They see the shelf (shared or not) and add, remove and
+//     arrange its books; its name, sharing, members and deletion stay the
+//     owner's.
 // Stored in the app database; the library itself is never modified.
 
 import (
+	"cmp"
 	"database/sql"
 	"encoding/json"
 	"errors"
 	"net/http"
+	"net/url"
+	"slices"
 	"strings"
 	"sync"
 	"unicode/utf8"
@@ -22,6 +32,7 @@ const (
 	maxShelfDesc      = 1000
 	maxShelvesPerUser = 200
 	maxBooksPerShelf  = 10000
+	maxBulkShelfAdd   = 500 // books per POST /api/shelves/{id}/books
 )
 
 type Shelf struct {
@@ -31,15 +42,40 @@ type Shelf struct {
 	Global      bool   `json:"global"`
 	Count       int    `json:"count"` // entries: books and whole series
 	// Series: how many of the entries are whole series (shelf_series.go).
-	Series  int  `json:"series"`
+	Series int `json:"series"`
+	// CanEdit: may change the shelf itself (name, sharing, delete): its
+	// owner, or admins for a global one. CanAdd: may change its books
+	// (CanEdit, or a member).
 	CanEdit bool `json:"can_edit"`
+	CanAdd  bool `json:"can_add"`
+	// Member: the current user helps with someone else's shelf.
+	Member bool `json:"member,omitempty"`
 	// Featured: a global shelf an admin put on everyone's Discover page.
 	Featured bool `json:"featured"`
 	// Pinned: on the current user's Discover page (featured ones are,
 	// until the user unpins them). shelf_pins.go.
-	Pinned  bool `json:"pinned"`
+	Pinned bool `json:"pinned"`
+	// Shared: a personal shelf its owner shared with everyone.
+	Shared bool `json:"shared"`
+	// Owner: the owner's username, on a shelf shared by someone else.
+	Owner string `json:"owner,omitempty"`
+	// Covers: the first few entries, for the shelf's card (/shelves).
+	Covers  []Book `json:"covers,omitempty"`
 	ownerID sql.NullInt64
+	// public: shared, by an account that's in use (sharedVisibleSQL).
+	public bool
 }
+
+// sharedVisibleSQL: shelf s (alias s) is shared, and its owner's account
+// is in use (not disabled or deleted), so others can see it.
+const sharedVisibleSQL = `(s.shared = 1 AND EXISTS (SELECT 1 FROM users o
+	WHERE o.id = s.owner_id AND o.disabled = 0 AND o.deleted_at IS NULL))`
+
+// memberOfSQL: user ?1 helps with shelf s (alias s; shelf_members.go).
+const memberOfSQL = `EXISTS (SELECT 1 FROM shelf_members m WHERE m.shelf_id = s.id AND m.user_id = ?1)`
+
+// shelfCovers: entries per shelf card on /shelves and Discover.
+const shelfCovers = 4
 
 // shelfMark: a shelf and whether a given book is on it (for the book popup).
 type shelfMark struct {
@@ -48,6 +84,8 @@ type shelfMark struct {
 	Global  bool   `json:"global"`
 	Has     bool   `json:"has"`
 	CanEdit bool   `json:"can_edit"`
+	// Owner: a shelf the user helps with, its owner's name.
+	Owner string `json:"owner,omitempty"`
 }
 
 var errShelfNotFound = errors.New("no such shelf")
@@ -55,10 +93,22 @@ var errShelfNotFound = errors.New("no such shelf")
 // BookCount: the entries that are single books (for "N books · M series").
 func (s Shelf) BookCount() int { return s.Count - s.Series }
 
+// ThumbURL: the entry's grid thumbnail (a series: its first book's), as
+// web/utils.ts coverUrl makes it. For the shelf cards on /shelves.
+func (b Book) ThumbURL() string {
+	cover := b.UUID
+	if b.SeriesCard != nil {
+		cover = b.SeriesCard.Cover
+	}
+	return "/cover-thumb/" + url.PathEscape(cover) + "?t=" + url.QueryEscape(b.LastModified)
+}
+
 func getShelf(id int64) (*Shelf, error) {
 	var s Shelf
-	err := appDB.QueryRow(`SELECT s.id, s.name, s.description, s.owner_id, s.featured_pos IS NOT NULL
-		FROM shelves s WHERE s.id = ?`, id).Scan(&s.ID, &s.Name, &s.Description, &s.ownerID, &s.Featured)
+	err := appDB.QueryRow(`SELECT s.id, s.name, s.description, s.owner_id, s.featured_pos IS NOT NULL,
+			s.shared, `+sharedVisibleSQL+`, COALESCE((SELECT username FROM users WHERE id = s.owner_id), '')
+		FROM shelves s WHERE s.id = ?`, id).Scan(&s.ID, &s.Name, &s.Description, &s.ownerID, &s.Featured,
+		&s.Shared, &s.public, &s.Owner)
 	if errors.Is(err, sql.ErrNoRows) {
 		return nil, errShelfNotFound
 	}
@@ -145,14 +195,36 @@ func countShelves(shelves []Shelf) error {
 				shelves[i].Series++
 			}
 		}
+		shelves[i].Covers = append([]Book{}, es[:min(len(es), shelfCovers)]...)
 	}
 	return nil
 }
 
-// canView: global shelves are public (to whoever can browse); personal ones
-// only to their owner.
+// canView: global shelves are public (to whoever can browse), and so are
+// shared ones whose owner's account is in use; personal ones only to their
+// owner.
 func (s *Shelf) canView(u *User) bool {
-	return s.Global || (u != nil && s.ownerID.Int64 == u.ID)
+	return s.Global || s.public || s.isOwner(u) || s.isMember(u)
+}
+
+// canAddBooks: may add, remove and arrange the shelf's books: whoever may
+// edit it, and its members.
+func (s *Shelf) canAddBooks(u *User) bool {
+	return s.canEdit(u) || s.isMember(u)
+}
+
+// isMember: u was invited to help with this shelf, and accepted.
+func (s *Shelf) isMember(u *User) bool {
+	if u == nil || s.Global {
+		return false
+	}
+	var one int
+	return appDB.QueryRow(`SELECT 1 FROM shelf_members WHERE shelf_id = ? AND user_id = ?`, s.ID, u.ID).Scan(&one) == nil
+}
+
+// isOwner: u owns this personal shelf.
+func (s *Shelf) isOwner(u *User) bool {
+	return u != nil && !s.Global && s.ownerID.Int64 == u.ID
 }
 
 // canEdit: owner for personal shelves, admins for global ones.
@@ -175,7 +247,7 @@ func listShelves(u *User) (mine, global []Shelf, err error) {
 		uid = u.ID
 	}
 	rows, err := appDB.Query(`SELECT s.id, s.name, s.description, s.owner_id, s.featured_pos IS NOT NULL,
-			COALESCE(p.pinned, s.featured_pos IS NOT NULL)
+			COALESCE(p.pinned, s.featured_pos IS NOT NULL), s.shared
 		FROM shelves s LEFT JOIN shelf_pins p ON p.shelf_id = s.id AND p.user_id = ?1
 		WHERE s.owner_id IS NULL OR s.owner_id = ?1
 		ORDER BY s.position IS NULL, s.position, s.featured_pos IS NULL, s.featured_pos, s.name COLLATE NOCASE`, uid)
@@ -186,12 +258,13 @@ func listShelves(u *User) (mine, global []Shelf, err error) {
 	mine, global = []Shelf{}, []Shelf{}
 	for rows.Next() {
 		var s Shelf
-		if err := rows.Scan(&s.ID, &s.Name, &s.Description, &s.ownerID, &s.Featured, &s.Pinned); err != nil {
+		if err := rows.Scan(&s.ID, &s.Name, &s.Description, &s.ownerID, &s.Featured, &s.Pinned, &s.Shared); err != nil {
 			return nil, nil, err
 		}
 		s.Pinned = s.Pinned && u != nil
 		s.Global = !s.ownerID.Valid
 		s.CanEdit = s.canEdit(u)
+		s.CanAdd = s.CanEdit
 		if s.Global {
 			global = append(global, s)
 		} else {
@@ -207,14 +280,78 @@ func listShelves(u *User) (mine, global []Shelf, err error) {
 	return mine, global, countShelves(global)
 }
 
-// shelfMarks lists the shelves a user can add this book to, and whether it's
-// on each.
+// listMemberShelves: the shelves u helps with (shelf_members.go), by name,
+// with their owners' names.
+func listMemberShelves(u *User) ([]Shelf, error) {
+	out := []Shelf{}
+	if u == nil {
+		return out, nil
+	}
+	rows, err := appDB.Query(`SELECT s.id, s.name, s.description, s.owner_id, s.shared, COALESCE(p.pinned, 0),
+			COALESCE((SELECT username FROM users WHERE id = s.owner_id), '')
+		FROM shelves s JOIN shelf_members m ON m.shelf_id = s.id AND m.user_id = ?1
+		LEFT JOIN shelf_pins p ON p.shelf_id = s.id AND p.user_id = ?1
+		WHERE s.owner_id IS NOT NULL AND s.owner_id != ?1
+		ORDER BY s.name COLLATE NOCASE, s.id`, u.ID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	for rows.Next() {
+		s := Shelf{Member: true, CanAdd: true}
+		if err := rows.Scan(&s.ID, &s.Name, &s.Description, &s.ownerID, &s.Shared, &s.Pinned, &s.Owner); err != nil {
+			return nil, err
+		}
+		out = append(out, s)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return out, countShelves(out)
+}
+
+// listSharedShelves: the shelves other users shared (whose accounts are in
+// use), by name, with their owners' names. Signed out: all of them.
+func listSharedShelves(u *User) ([]Shelf, error) {
+	var uid int64
+	if u != nil {
+		uid = u.ID
+	}
+	rows, err := appDB.Query(`SELECT s.id, s.name, s.description, s.owner_id, COALESCE(p.pinned, 0),
+			(SELECT username FROM users WHERE id = s.owner_id)
+		FROM shelves s LEFT JOIN shelf_pins p ON p.shelf_id = s.id AND p.user_id = ?1
+		WHERE s.owner_id IS NOT NULL AND s.owner_id != ?1 AND `+sharedVisibleSQL+`
+		  AND NOT EXISTS (SELECT 1 FROM shelf_members m WHERE m.shelf_id = s.id AND m.user_id = ?1)
+		ORDER BY s.name COLLATE NOCASE, s.id`, uid)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	out := []Shelf{}
+	for rows.Next() {
+		s := Shelf{Shared: true, public: true}
+		if err := rows.Scan(&s.ID, &s.Name, &s.Description, &s.ownerID, &s.Pinned, &s.Owner); err != nil {
+			return nil, err
+		}
+		s.Pinned = s.Pinned && u != nil
+		out = append(out, s)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return out, countShelves(out)
+}
+
+// shelfMarks lists the shelves a user can add this book to (their own, the
+// ones they help with, global ones for admins), and whether it's on each.
 func shelfMarks(u *User, uuid string) []shelfMark {
 	out := []shelfMark{}
 	rows, err := appDB.Query(`SELECT s.id, s.name, s.owner_id,
-			EXISTS(SELECT 1 FROM shelf_books b WHERE b.shelf_id = s.id AND b.book_uuid = ?)
-		FROM shelves s WHERE s.owner_id = ? OR s.owner_id IS NULL
-		ORDER BY s.owner_id IS NULL, s.name COLLATE NOCASE`, uuid, u.ID)
+			EXISTS(SELECT 1 FROM shelf_books b WHERE b.shelf_id = s.id AND b.book_uuid = ?1),
+			m.user_id IS NOT NULL, COALESCE((SELECT username FROM users WHERE id = s.owner_id), '')
+		FROM shelves s LEFT JOIN shelf_members m ON m.shelf_id = s.id AND m.user_id = ?2
+		WHERE s.owner_id = ?2 OR s.owner_id IS NULL OR m.user_id IS NOT NULL
+		ORDER BY s.owner_id IS NULL, m.user_id IS NOT NULL, s.name COLLATE NOCASE`, uuid, u.ID)
 	if err != nil {
 		return out
 	}
@@ -222,11 +359,16 @@ func shelfMarks(u *User, uuid string) []shelfMark {
 	for rows.Next() {
 		var m shelfMark
 		var owner sql.NullInt64
-		if rows.Scan(&m.ID, &m.Name, &owner, &m.Has) != nil {
+		var member bool
+		var ownerName string
+		if rows.Scan(&m.ID, &m.Name, &owner, &m.Has, &member, &ownerName) != nil {
 			continue
 		}
 		m.Global = !owner.Valid
 		m.CanEdit = !m.Global || u.IsAdmin
+		if member && owner.Int64 != u.ID {
+			m.Owner = ownerName
+		}
 		// Regular users only see global shelves this book is on (read-only).
 		if m.Global && !m.CanEdit && !m.Has {
 			continue
@@ -252,12 +394,23 @@ func cleanShelfFields(name, desc string) (string, string, error) {
 // ---------------------------------------------------------------------------
 
 func shelvesListHandler(w http.ResponseWriter, r *http.Request) {
-	mine, global, err := listShelves(currentUser(r))
+	u := currentUser(r)
+	mine, global, err := listShelves(u)
 	if err != nil {
 		http.Error(w, "query failed", http.StatusInternalServerError)
 		return
 	}
-	writeJSON(w, http.StatusOK, map[string]any{"mine": mine, "global": global})
+	shared, err := listSharedShelves(u)
+	if err != nil {
+		http.Error(w, "query failed", http.StatusInternalServerError)
+		return
+	}
+	member, err := listMemberShelves(u)
+	if err != nil {
+		http.Error(w, "query failed", http.StatusInternalServerError)
+		return
+	}
+	writeJSON(w, http.StatusOK, map[string]any{"mine": mine, "global": global, "shared": shared, "member": member})
 }
 
 func shelfCreateHandler(w http.ResponseWriter, r *http.Request) {
@@ -324,6 +477,27 @@ func shelfForEdit(w http.ResponseWriter, r *http.Request) (*Shelf, bool) {
 	return s, true
 }
 
+// shelfForBooks loads a shelf whose books the current user may change: its
+// editors and its members (404 if they can't see it, 403 if they can only
+// look).
+func shelfForBooks(w http.ResponseWriter, r *http.Request) (*Shelf, bool) {
+	id, ok := pathID(w, r, "id")
+	if !ok {
+		return nil, false
+	}
+	u := currentUser(r)
+	s, err := getShelf(id)
+	if err != nil || !s.canView(u) {
+		http.Error(w, "no such shelf", http.StatusNotFound)
+		return nil, false
+	}
+	if !s.canAddBooks(u) {
+		http.Error(w, "you can't change this shelf", http.StatusForbidden)
+		return nil, false
+	}
+	return s, true
+}
+
 func shelfUpdateHandler(w http.ResponseWriter, r *http.Request) {
 	s, ok := shelfForEdit(w, r)
 	if !ok {
@@ -333,9 +507,15 @@ func shelfUpdateHandler(w http.ResponseWriter, r *http.Request) {
 		Name        *string `json:"name"`
 		Description *string `json:"description"`
 		Featured    *bool   `json:"featured"`
+		Shared      *bool   `json:"shared"`
 	}
 	if err := json.NewDecoder(http.MaxBytesReader(w, r.Body, 16<<10)).Decode(&req); err != nil {
 		http.Error(w, "invalid JSON", http.StatusBadRequest)
+		return
+	}
+	// Sharing is for personal shelves: a global one is everyone's already.
+	if req.Shared != nil && s.Global {
+		http.Error(w, "global shelves are already shared", http.StatusBadRequest)
 		return
 	}
 	// Featuring is for global shelves (whose editors are admins): a
@@ -356,7 +536,12 @@ func shelfUpdateHandler(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, err.Error(), http.StatusBadRequest)
 		return
 	}
-	if _, err := appDB.Exec(`UPDATE shelves SET name = ?, description = ?, updated_at = ? WHERE id = ?`, name, desc, nowUnix(), s.ID); err != nil {
+	shared := s.Shared
+	if req.Shared != nil {
+		shared = *req.Shared
+	}
+	if _, err := appDB.Exec(`UPDATE shelves SET name = ?, description = ?, shared = ?, updated_at = ? WHERE id = ?`,
+		name, desc, shared, nowUnix(), s.ID); err != nil {
 		http.Error(w, "could not save", http.StatusInternalServerError)
 		return
 	}
@@ -366,9 +551,13 @@ func shelfUpdateHandler(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 	}
+	if s.Shared && !shared {
+		// Invites are to a shared shelf: those not yet answered go (members stay).
+		revokeShelfInvites(s, currentUser(r), "shelf no longer shared")
+	}
 	shelfChanged(s)
 	s, _ = getShelf(s.ID)
-	s.CanEdit = true
+	s.CanEdit, s.CanAdd = true, true
 	writeJSON(w, http.StatusOK, s)
 }
 
@@ -377,6 +566,7 @@ func shelfDeleteHandler(w http.ResponseWriter, r *http.Request) {
 	if !ok {
 		return
 	}
+	revokeShelfInvites(s, currentUser(r), "shelf deleted")
 	if _, err := appDB.Exec(`DELETE FROM shelves WHERE id = ?`, s.ID); err != nil {
 		http.Error(w, "could not delete", http.StatusInternalServerError)
 		return
@@ -386,7 +576,7 @@ func shelfDeleteHandler(w http.ResponseWriter, r *http.Request) {
 }
 
 func shelfAddBookHandler(w http.ResponseWriter, r *http.Request) {
-	s, ok := shelfForEdit(w, r)
+	s, ok := shelfForBooks(w, r)
 	if !ok {
 		return
 	}
@@ -407,8 +597,76 @@ func shelfAddBookHandler(w http.ResponseWriter, r *http.Request) {
 	w.WriteHeader(http.StatusNoContent)
 }
 
+// shelfAddBooksHandler: POST /api/shelves/{id}/books {"uuids": [...]}, the
+// books chosen in a grid (web/select-books.ts). Books already on the shelf,
+// and uuids that aren't books in the library, are skipped. Answers
+// {"added": n}.
+func shelfAddBooksHandler(w http.ResponseWriter, r *http.Request) {
+	s, ok := shelfForBooks(w, r)
+	if !ok {
+		return
+	}
+	var req struct {
+		UUIDs []string `json:"uuids"`
+	}
+	if err := json.NewDecoder(http.MaxBytesReader(w, r.Body, 64<<10)).Decode(&req); err != nil {
+		http.Error(w, "invalid JSON", http.StatusBadRequest)
+		return
+	}
+	if len(req.UUIDs) == 0 || len(req.UUIDs) > maxBulkShelfAdd {
+		http.Error(w, "choose 1–500 books", http.StatusBadRequest)
+		return
+	}
+	seen := map[string]bool{}
+	var uuids []string
+	for _, u := range req.UUIDs {
+		if u == "" || seen[u] || !bookExists(u) {
+			continue
+		}
+		seen[u] = true
+		uuids = append(uuids, u)
+	}
+	tx, err := appDB.Begin()
+	if err != nil {
+		http.Error(w, "could not add", http.StatusInternalServerError)
+		return
+	}
+	defer tx.Rollback()
+	var have int
+	if err := tx.QueryRow(`SELECT COUNT(*) FROM shelf_books WHERE shelf_id = ?`, s.ID).Scan(&have); err != nil {
+		http.Error(w, "could not add", http.StatusInternalServerError)
+		return
+	}
+	now, added := nowUnix(), 0
+	for _, u := range uuids {
+		if have >= maxBooksPerShelf {
+			http.Error(w, "this shelf is full", http.StatusConflict)
+			return
+		}
+		res, err := tx.Exec(`INSERT OR IGNORE INTO shelf_books (shelf_id, book_uuid, added_at) VALUES (?, ?, ?)`, s.ID, u, now)
+		if err != nil {
+			http.Error(w, "could not add", http.StatusInternalServerError)
+			return
+		}
+		if n, _ := res.RowsAffected(); n > 0 {
+			added++
+			have++
+		}
+	}
+	if _, err := tx.Exec(`UPDATE shelves SET updated_at = ? WHERE id = ?`, now, s.ID); err != nil {
+		http.Error(w, "could not add", http.StatusInternalServerError)
+		return
+	}
+	if err := tx.Commit(); err != nil {
+		http.Error(w, "could not add", http.StatusInternalServerError)
+		return
+	}
+	shelfChanged(s)
+	writeJSON(w, http.StatusOK, map[string]int{"added": added})
+}
+
 func shelfRemoveBookHandler(w http.ResponseWriter, r *http.Request) {
-	s, ok := shelfForEdit(w, r)
+	s, ok := shelfForBooks(w, r)
 	if !ok {
 		return
 	}
@@ -431,6 +689,23 @@ func shelvesPageHandler(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "query failed", http.StatusInternalServerError)
 		return
 	}
+	shared, err := listSharedShelves(u)
+	if err != nil {
+		http.Error(w, "query failed", http.StatusInternalServerError)
+		return
+	}
+	member, err := listMemberShelves(u)
+	if err != nil {
+		http.Error(w, "query failed", http.StatusInternalServerError)
+		return
+	}
+	var invites []shelfInvite
+	if u != nil {
+		if invites, err = pendingInvites(u); err != nil {
+			http.Error(w, "query failed", http.StatusInternalServerError)
+			return
+		}
+	}
 	featured := []Shelf{}
 	for _, s := range global {
 		if s.Featured {
@@ -439,11 +714,14 @@ func shelvesPageHandler(w http.ResponseWriter, r *http.Request) {
 	}
 	w.Header().Set("Cache-Control", "private, no-store")
 	logErr(templates.ExecuteTemplate(w, "shelves.html", map[string]any{
-		"Title": SiteTitle, "User": u, "Mine": mine, "Global": global, "Featured": featured,
+		"Title": SiteTitle, "User": u, "Mine": mine, "Global": global, "Shared": shared, "Featured": featured,
+		"Member": member, "Invites": invites,
+		"Total": len(mine) + len(global) + len(shared) + len(member),
 	}), "render shelves")
 }
 
-// shelfPageHandler: GET /shelf/{id} — the shelf's books on the shared grid.
+// shelfPageHandler: GET /shelf/{id} — the shelf's books on the shared grid,
+// in the order arranged or sorted (?sort=, shelfSorts).
 func shelfPageHandler(w http.ResponseWriter, r *http.Request) {
 	id, ok := pathID(w, r, "id")
 	if !ok {
@@ -455,26 +733,55 @@ func shelfPageHandler(w http.ResponseWriter, r *http.Request) {
 		http.NotFound(w, r)
 		return
 	}
+	member := s.isMember(u)
 	sub := "your shelf"
-	if s.Global {
+	switch {
+	case s.Global:
 		sub = "global shelf"
+	case member:
+		sub = s.Owner + "'s shelf · you help with it"
+	case !s.isOwner(u):
+		sub = "shared by " + s.Owner
+	case s.Shared:
+		sub = "your shelf · shared"
 	}
-	var extra map[string]any
+	key := pickSort(r, shelfSorts)
+	sort := newGridSort("shelf-"+itoa(s.ID), key, shelfSorts)
+	for i, o := range sort.Options {
+		if o.Key == sortByAdded {
+			sort.Options[i].Label = "Recently added to shelf"
+		}
+	}
+	extra := map[string]any{"ShelfDesc": s.Description}
 	if u != nil {
 		s.Pinned = shelfPinnedFor(u, s)
-		extra = map[string]any{"Shelf": s, "CanFeature": s.Global && u.IsAdmin}
+		extra["Shelf"] = s
+		extra["CanFeature"] = s.Global && u.IsAdmin
 		if s.canEdit(u) {
-			extra["Arrange"] = "/api/shelves/" + itoa(s.ID) + "/order"
+			extra["CanEditShelf"] = true
+		}
+		if member {
+			extra["ShelfMember"] = true
+		}
+		if s.canEdit(u) || member {
+			if key == sortByArranged {
+				extra["Arrange"] = "/api/shelves/" + itoa(s.ID) + "/order"
+				extra["ShelfRemove"] = "/api/shelves/" + itoa(s.ID)
+			}
 		}
 	}
 	entries := sync.OnceValues(func() ([]Book, error) {
 		m, err := liveShelfEntries([]int64{s.ID})
-		return m[s.ID], err
+		if err != nil {
+			return nil, err
+		}
+		return sortShelfEntries(s.ID, m[s.ID], key)
 	})
 	serveUUIDList(w, r, uuidList{
 		Title: s.Name, Sub: sub, BaseURL: "/shelf/" + itoa(s.ID),
-		EmptyText: "This shelf is empty. Add books from a book's Shelves menu, or a whole series from its page.",
+		EmptyText: "This shelf is empty. Add books from a book's Shelves menu, select several in any grid, or add a whole series from its page.",
 		Extra:     extra,
+		Sort:      sort,
 		// Counted and paged over the entries shown, so a book that left
 		// the library neither counts nor leaves a page short.
 		Count: func() (int, error) {
@@ -493,4 +800,60 @@ func shelfPageHandler(w http.ResponseWriter, r *http.Request) {
 			return out, nil
 		},
 	})
+}
+
+// sortShelfEntries orders a shelf's entries (in arranged order) by key:
+// added to the shelf, newest first; or by the catalog's keys (title,
+// author, …), with entries the catalog doesn't have (a whole series) after
+// the books, as arranged. Stable: ties keep the arranged order.
+func sortShelfEntries(shelfID int64, es []Book, key string) ([]Book, error) {
+	if len(es) < 2 {
+		return es, nil
+	}
+	switch key {
+	case sortByArranged:
+		return es, nil
+	case sortByAdded:
+		added := map[string]int64{}
+		rows, err := appDB.Query(`SELECT book_uuid, added_at FROM shelf_books WHERE shelf_id = ?`, shelfID)
+		if err != nil {
+			return nil, err
+		}
+		defer rows.Close()
+		for rows.Next() {
+			var k string
+			var at int64
+			if err := rows.Scan(&k, &at); err != nil {
+				return nil, err
+			}
+			added[k] = at
+		}
+		if err := rows.Err(); err != nil {
+			return nil, err
+		}
+		out := slices.Clone(es)
+		slices.SortStableFunc(out, func(a, b Book) int { return cmp.Compare(added[b.UUID], added[a.UUID]) })
+		return out, nil
+	}
+	cat := currentCatalog()
+	if cat == nil {
+		return es, nil
+	}
+	byUUID := make(map[string]Book, len(es))
+	var slots []int32
+	var rest []Book
+	for _, b := range es {
+		if i, ok := cat.byUUID[b.UUID]; ok && b.SeriesCard == nil {
+			slots = append(slots, i)
+			byUUID[b.UUID] = b
+		} else {
+			rest = append(rest, b)
+		}
+	}
+	sortSlots(cat, slots, key)
+	out := make([]Book, 0, len(es))
+	for _, i := range slots {
+		out = append(out, byUUID[cat.books[i].UUID])
+	}
+	return append(out, rest...), nil
 }

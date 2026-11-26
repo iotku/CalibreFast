@@ -127,6 +127,16 @@
                 <div class="row-books"></div>
             </section>
 
+            {{/* Signed in only: global and shared shelves not on the page yet,
+                 as cards (shelf_pins.go moreShelves, discover.ts showMoreShelves). */}}
+            <section class="row home-row" id="row-more-shelves" data-id="k:shelves" data-key="shelves" data-name="More shelves" aria-labelledby="row-more-shelves-title" hidden>
+                <header class="row-head">
+                    <h2 id="row-more-shelves-title"><a class="row-icon" href="/shelves" title="Shelves" aria-label="All shelves"><svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M5 4v16M10 4v16M14.5 5l4 15M3 20h18"/></svg></a>More shelves</h2>
+                    <a href="/shelves" class="row-btn row-all"><span>All shelves</span><svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M9 6l6 6-6 6"/></svg></a>
+                </header>
+                <div class="row-shelves"></div>
+            </section>
+
             {{/* "More in <tag>": a few of these, picked by discover.ts, each
                  filled a strip at a time from /api/tag-strip as it nears the
                  screen. One item of the order, its header shown while editing. */}}

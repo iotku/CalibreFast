@@ -22,8 +22,10 @@ import (
 )
 
 const (
-	homeRowMax    = 20
-	maxBookLookup = 50
+	homeRowMax = 20
+	// moreShelvesMax: shelves in Discover's "More shelves" row.
+	moreShelvesMax = 12
+	maxBookLookup  = 50
 )
 
 type homeAnswer struct {
@@ -36,6 +38,9 @@ type homeAnswer struct {
 	// The shelf rows: pinned ones, and featured ones not unpinned
 	// (shelf_pins.go).
 	Shelves []homeShelf `json:"shelves"`
+	// More shelves: global and shared shelves not on the page, to find
+	// (shelf_pins.go moreShelves).
+	MoreShelves []homeShelf `json:"more_shelves"`
 	// Recommended for you, and the user's strongest tags (recommend.go).
 	Recommended []recBook `json:"recommended"`
 	Tags        []string  `json:"tags"`
@@ -117,6 +122,9 @@ func homeHandler(w http.ResponseWriter, r *http.Request) {
 	}
 	done = timeStage(r, "shelves")
 	ans.Shelves, err = pinnedShelves(currentUser(r), shelfRowsMax)
+	if err == nil {
+		ans.MoreShelves, err = moreShelves(currentUser(r), moreShelvesMax)
+	}
 	done()
 	if err != nil {
 		http.Error(w, "query failed", http.StatusInternalServerError)

@@ -12,18 +12,30 @@
 {{ $tb := topbar "Active" "shelves" "Title" "Bookshelves" "NavTitle" true }}
 {{ template "topbar-start" $tb }}
 {{ template "topbar-end" $tb }}
-<main class="auth-main auth-wide">
+<main class="auth-main shelves-main">
     <p id="shelf-status" class="auth-notice" role="status" hidden></p>
 
-    {{/* A shelf in a list. .S the shelf, .U the user (nil signed out). */}}
-    {{ define "shelf-row" }}
+    {{/* A shelf's card: its first covers, name, count and description, and
+         the user's controls (web/shelves.ts). .S the shelf, .U the user
+         (nil signed out). */}}
+    {{ define "shelf-card" }}
     {{ $s := .S }}
-    <li class="shelf-row" data-id="{{ $s.ID }}" data-name="{{ $s.Name }}" data-description="{{ $s.Description }}">
-        <a class="shelf-link" href="/shelf/{{ $s.ID }}">
-            <span class="shelf-name">{{ $s.Name }}</span>
-            <span class="shelf-count">{{ $n := $s.BookCount }}{{ if or $n (not $s.Series) }}{{ $n }} {{ if eq $n 1 }}book{{ else }}books{{ end }}{{ end }}{{ if and $n $s.Series }} · {{ end }}{{ with $s.Series }}{{ . }} series{{ end }}</span>
-            {{ if $s.Featured }}<span class="shelf-badge">Featured</span>{{ end }}
-            {{ if $s.Description }}<span class="shelf-desc">{{ $s.Description }}</span>{{ end }}
+    <li class="shelf-card" data-id="{{ $s.ID }}" data-name="{{ $s.Name }}" data-description="{{ $s.Description }}"
+        data-shared="{{ $s.Shared }}" data-global="{{ $s.Global }}">
+        <a class="shelf-card-link" href="/shelf/{{ $s.ID }}">
+            <span class="shelf-mosaic shelf-mosaic-{{ len $s.Covers }}" aria-hidden="true">
+                {{ range $s.Covers }}<img src="{{ .ThumbURL }}" alt="" loading="lazy" decoding="async">{{ end }}
+            </span>
+            <span class="shelf-card-body">
+                <span class="shelf-name">{{ $s.Name }}</span>
+                <span class="shelf-count">{{ $n := $s.BookCount }}{{ if or $n (not $s.Series) }}{{ $n }} {{ if eq $n 1 }}book{{ else }}books{{ end }}{{ end }}{{ if and $n $s.Series }} · {{ end }}{{ with $s.Series }}{{ . }} series{{ end }}</span>
+                <span class="shelf-badges">
+                    {{ if $s.Featured }}<span class="shelf-badge">Featured</span>{{ end }}
+                    {{ if and $s.Shared (not $s.Owner) }}<span class="shelf-badge">Shared</span>{{ end }}
+                    {{ with $s.Owner }}<span class="shelf-owner">by {{ . }}</span>{{ end }}
+                </span>
+                {{ if $s.Description }}<span class="shelf-desc">{{ $s.Description }}</span>{{ end }}
+            </span>
         </a>
         {{ if .U }}
         <span class="shelf-actions">
@@ -34,17 +46,45 @@
                     title="Show this shelf on everyone's home page">{{ if $s.Featured }}Featured{{ else }}Feature{{ end }}</button>
             {{ end }}
             {{ if $s.CanEdit }}
-            <button type="button" class="btn-standard" data-action="rename">Rename</button>
-            <button type="button" class="btn-standard" data-action="describe">Description</button>
-            <button type="button" class="btn-standard" data-action="delete">Delete</button>
+            <button type="button" class="btn-standard" data-action="edit">Edit…</button>
+            {{ end }}
+            {{ if $s.Member }}
+            <button type="button" class="btn-standard" data-action="leave" data-user="{{ .U.ID }}" title="Stop helping with this shelf">Leave</button>
             {{ end }}
         </span>
         {{ end }}
     </li>
     {{ end }}
 
+    {{ if gt .Total 8 }}
+    <div class="shelves-filter">
+        <input id="shelves-filter" type="search" class="input-search" placeholder="Find a shelf…" autocomplete="off" aria-label="Find a shelf">
+    </div>
+    <p id="shelves-none" class="auth-muted" hidden>No shelves match.</p>
+    {{ end }}
+
+    {{ if .Invites }}
+    {{/* Invites to help with someone's shelf (shelf_members.go, web/shelves.ts). */}}
+    <section class="auth-card shelves-invites" id="invites">
+        <h2>Invitations</h2>
+        <p class="auth-muted">Accept one to add, remove and arrange that shelf's books with its owner. Block someone to take no more invites from them.</p>
+        <ul class="shelf-invite-list">
+            {{ range .Invites }}
+            <li class="shelf-invite" data-invite="{{ .ID }}" data-from="{{ .From }}">
+                <span class="shelf-invite-text"><strong>{{ .From }}</strong> invites you to help with <a class="meta-link" href="/shelf/{{ .ShelfID }}">{{ .ShelfName }}</a></span>
+                <span class="shelf-actions">
+                    <button type="button" class="btn-standard" data-invite-action="accept">Accept</button>
+                    <button type="button" class="btn-standard" data-invite-action="decline">Decline</button>
+                    <button type="button" class="btn-standard" data-invite-action="block" title="Decline, and take no more invites from {{ .From }}">Decline and block</button>
+                </span>
+            </li>
+            {{ end }}
+        </ul>
+    </section>
+    {{ end }}
+
     {{ if and .User .User.IsAdmin .Featured }}
-    <section class="auth-card">
+    <section class="auth-card shelves-section shelves-featured-order">
         <h2>Featured</h2>
         <p class="auth-muted">On everyone's home page, in this order (signed-in users can remove them from theirs, or move them).</p>
         <ul class="shelf-list shelf-order" id="featured-list" data-order="/api/admin/featured-shelves">
@@ -54,34 +94,64 @@
     {{ end }}
 
     {{ if .User }}
-    <section class="auth-card">
-        <h2>Your shelves</h2>
-        <ul class="shelf-list shelf-order" id="mine-list" data-order="/api/me/shelves/order">
-            {{ range .Mine }}{{ template "shelf-row" (dict "S" . "U" $.User) }}{{ else }}<li class="auth-muted">No shelves yet. Create one below, or from a book's Shelves menu.</li>{{ end }}
+    <section class="auth-card shelves-section">
+        <div class="shelves-section-head">
+            <h2>Your shelves</h2>
+            {{ if gt (len .Mine) 1 }}<button type="button" class="btn-standard" id="arrange-mine" aria-pressed="false">Arrange</button>{{ end }}
+        </div>
+        <p class="auth-muted">Only you can see these, unless you share one. Add books from a book's Shelves menu, or select several in any grid.</p>
+        <ul class="shelf-grid shelf-order" id="mine-list" data-order="/api/me/shelves/order">
+            {{ range .Mine }}{{ template "shelf-card" (dict "S" . "U" $.User) }}{{ else }}<li class="auth-muted shelf-empty">No shelves yet. Create one below, or from a book's Shelves menu.</li>{{ end }}
         </ul>
         <form class="shelf-create" data-global="false">
-            <input name="name" type="text" maxlength="100" placeholder="New shelf name" required autocomplete="off">
+            <input name="name" type="text" maxlength="100" placeholder="New shelf name" required autocomplete="off" aria-label="New shelf name">
             <button type="submit" class="btn-standard">Create</button>
         </form>
     </section>
     {{ end }}
 
-    <section class="auth-card">
+    {{ if .Member }}
+    <section class="auth-card shelves-section">
+        <h2>Shelves you help with</h2>
+        <p class="auth-muted">Their owners invited you: you can add, remove and arrange their books.</p>
+        <ul class="shelf-grid">
+            {{ range .Member }}{{ template "shelf-card" (dict "S" . "U" $.User) }}{{ end }}
+        </ul>
+    </section>
+    {{ end }}
+
+    <section class="auth-card shelves-section">
         <h2>Global shelves</h2>
-        <p class="auth-muted">Shared with everyone{{ if and .User .User.IsAdmin }}; as an admin you can create and edit these{{ end }}.</p>
-        <ul class="shelf-list">
-            {{ range .Global }}{{ template "shelf-row" (dict "S" . "U" $.User) }}{{ else }}<li class="auth-muted">No global shelves yet.</li>{{ end }}
+        <p class="auth-muted">Picked for everyone{{ if and .User .User.IsAdmin }}; as an admin you can create and edit these{{ end }}.</p>
+        <ul class="shelf-grid">
+            {{ range .Global }}{{ template "shelf-card" (dict "S" . "U" $.User) }}{{ else }}<li class="auth-muted shelf-empty">No global shelves yet.</li>{{ end }}
         </ul>
         {{ if and .User .User.IsAdmin }}
         <form class="shelf-create" data-global="true">
-            <input name="name" type="text" maxlength="100" placeholder="New global shelf name" required autocomplete="off">
+            <input name="name" type="text" maxlength="100" placeholder="New global shelf name" required autocomplete="off" aria-label="New global shelf name">
             <button type="submit" class="btn-standard">Create global shelf</button>
         </form>
         {{ end }}
     </section>
 
+    {{ if .Shared }}
+    <section class="auth-card shelves-section">
+        <h2>Shared by readers</h2>
+        <p class="auth-muted">Other readers' shelves, shared with everyone.</p>
+        <ul class="shelf-grid">
+            {{ range .Shared }}{{ template "shelf-card" (dict "S" . "U" $.User) }}{{ end }}
+        </ul>
+    </section>
+    {{ end }}
+
     {{ if not .User }}
     <p class="auth-muted"><a class="meta-link" href="/login?next=/shelves">Sign in</a> to make your own shelves.</p>
+    {{ else }}
+    {{/* Whom the user takes no invites from: filled by web/shelves.ts when there's anyone. */}}
+    <section class="auth-card shelves-blocked" id="shelf-blocks" hidden>
+        <h2>Blocked from inviting you</h2>
+        <ul class="shelf-people"></ul>
+    </section>
     {{ end }}
 </main>
 <script type="module" src="{{ asset "shelves.js" }}"></script>

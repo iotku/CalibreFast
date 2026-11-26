@@ -505,6 +505,7 @@ interface HomeAnswer {
     wanted_count: number;
     on_deck?: Book[];
     shelves?: HomeShelf[];
+    more_shelves?: HomeShelf[];
     recommended?: RecBook[];
     tags?: string[];
     /** New from authors you follow, and whether the user has favorite authors. */
@@ -529,6 +530,7 @@ interface HomeShelf {
     href: string;
     global?: boolean;
     featured?: boolean;
+    owner?: string; // another user's shared shelf: who shared it
     count: number;
     books: Book[];
     start?: number; // a tag's: where its strip starts, and the next one
@@ -574,6 +576,7 @@ function showHome(h: HomeAnswer): void {
         hiddenTags = cleanTags(h.hidden_tags);
     }
     showShelves(h.shelves ?? [], true);
+    showMoreShelves(h.more_shelves ?? []);
     showRecommended(h.recommended ?? []);
     // With no favorite authors, the row says how to get some; with some
     // whose books are all read, it's hidden.
@@ -862,6 +865,35 @@ function showShelves(shelves: HomeShelf[], own: boolean): void {
     updateTagRows(own);
 }
 
+/**
+ * More shelves: global and shared shelves not on the page, as cards (a few
+ * covers, the name, the count, who shared it) to find them by. Built with
+ * the DOM: names are whatever a shelf's owner typed.
+ */
+function showMoreShelves(shelves: HomeShelf[]): void {
+    const section = byId("row-more-shelves");
+    const list = section.querySelector<HTMLElement>(".row-shelves");
+    if (!list) return;
+    list.replaceChildren(
+        ...shelves
+            .filter((s) => s.id !== undefined && s.books.length > 0)
+            .map((s) => {
+                const covers = s.books.slice(0, 4).map((b) => el("img", { src: coverUrl(b), alt: "", loading: "lazy", decoding: "async" }));
+                const mosaic = el("span", { className: `shelf-mosaic shelf-mosaic-${covers.length}` }, ...covers);
+                mosaic.setAttribute("aria-hidden", "true");
+                const meta = `${s.count} ${s.count === 1 ? "book" : "books"}${s.owner ? ` · by ${s.owner}` : s.global ? " · global" : ""}`;
+                return el(
+                    "a",
+                    { className: "home-shelf-card", href: `/shelf/${encodeURIComponent(String(s.id))}` },
+                    mosaic,
+                    el("span", { className: "shelf-name" }, s.name),
+                    el("span", { className: "shelf-count" }, meta),
+                );
+            }),
+    );
+    section.hidden = list.childElementCount === 0;
+}
+
 /* ------------------------------------------------------------------ */
 /* Layout: the rows' order, sections turned off, hidden tags           */
 /* ------------------------------------------------------------------ */
@@ -873,11 +905,11 @@ interface Layout {
 }
 
 /** The rows' order by default; "pins" stands for the pinned rows. */
-const DEFAULT_ORDER = ["k:reading", "k:wanted", "pins", "k:recommended", "k:followed", "k:shuffle", "k:latest", "k:tags"];
+const DEFAULT_ORDER = ["k:reading", "k:wanted", "pins", "k:recommended", "k:followed", "k:shuffle", "k:latest", "k:shelves", "k:tags"];
 /** Sections that can be turned off (Go: homeSections). */
-const TOGGLEABLE = ["greeting", "stats", "wanted", "recommended", "followed", "shuffle", "latest", "tags"];
+const TOGGLEABLE = ["greeting", "stats", "wanted", "recommended", "followed", "shuffle", "latest", "tags", "shelves"];
 /** Rows only a signed-in user has. */
-const ACCOUNT_ROWS = ["row-wanted", "row-recommended", "row-followed"];
+const ACCOUNT_ROWS = ["row-wanted", "row-recommended", "row-followed", "row-more-shelves"];
 
 let layout: Layout = { order: [], hidden: [] };
 /** Tags the user wants no "More in" rows for. */

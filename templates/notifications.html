@@ -51,6 +51,8 @@
                     {{ if eq .Kind "favorite_author" }}
                     {{ if gt .Count 1 }}<a href="{{ .Href }}" class="meta-link">{{ .Count }} new books by {{ .Subject }}</a>, an author you follow.
                     {{ else }}<a href="{{ .Href }}" class="meta-link">{{ .Title }}</a>, by {{ .Subject }}, an author you follow, is new in the library.{{ end }}
+                    {{ else if eq .Kind "shelf_invite" }}
+                    {{ .Title }} invites you to help with their shelf <a href="{{ .Href }}" class="meta-link">{{ .Subject }}</a>: accept or decline on Bookshelves.
                     {{ else if eq .Kind "hardcover_relink" }}
                     <a href="{{ .Href }}" class="meta-link">Link Hardcover again</a> to {{ .Title }}: your link was made before CalibreFast could ask for that.
                     {{ else if eq .Kind "favorite_series" }}

@@ -1,10 +1,11 @@
-// Choosing books in a grid to merge, edit or remove them (editors, with
-// -allow-writes). A Ctrl+click on a card, a long press on one on a touch
-// screen, or "Select books" in the Manage sidebar (templates/filtered.html)
-// turns taps on cards into ticks; a bar at the bottom counts
-// them and offers Merge (the metadata editor's merge mode, Go: merge.go),
-// Edit in table (the bulk editor, library-edit.ts) and Remove (the
-// confirmation, delete-books.ts). A placeholder (a book not in the library
+// Choosing books in a grid: to put them on a shelf (anyone signed in), or
+// to merge, edit or remove them (editors, with -allow-writes). A Ctrl+click
+// on a card, a long press on one on a touch screen, "Select" above the
+// grid, or "Select books" in the Manage sidebar (templates/filtered.html)
+// turns taps on cards into ticks; a bar at the bottom counts them and
+// offers Add to shelf (shelf-picker.ts) and, for editors, Merge (the
+// metadata editor's merge mode, Go: merge.go), Edit in table (the bulk
+// editor, library-edit.ts) and Remove (the confirmation, delete-books.ts). A placeholder (a book not in the library
 // yet, data-placeholder) can be picked too, to merge with the library books
 // that are it (Go: merge_placeholder.go); Edit and Remove leave it out. The
 // choice survives scrolling: cards are marked again as they're re-rendered
@@ -12,6 +13,7 @@
 
 import { el, modalOpen } from "./dom.js";
 import { deleteBooks, type BookToDelete } from "./delete-books.js";
+import { addToShelf } from "./shelf-picker.js";
 
 const LONG_PRESS_MS = 450; // before Android opens its link menu (~500 ms)
 const LONG_PRESS_SLOP_PX = 10; // a finger moving further is scrolling
@@ -24,12 +26,14 @@ let countEl: HTMLElement | null = null;
 let removeBtn: HTMLButtonElement | null = null;
 let mergeBtn: HTMLAnchorElement | null = null;
 let tableBtn: HTMLButtonElement | null = null;
+let shelfBtn: HTMLButtonElement | null = null;
 
 /** At most this many books are merged at once (Go: mergeMaxBooks). */
 const MERGE_MAX = 20;
 /** sessionStorage: the books to show in the bulk editor (library-edit.ts). */
 export const BULK_SELECTION_KEY = "cf-bulk-selection";
-let toggleBtn: HTMLButtonElement | null = null;
+/** The buttons that start and stop selecting: the sidebar's and the grid's. */
+const toggleBtns: HTMLButtonElement[] = [];
 
 /** A card's id: a library book's uuid, or a placeholder's. */
 function cardId(card: HTMLElement): string | undefined {
@@ -100,54 +104,55 @@ function update(): void {
         mergeBtn.textContent = n >= 2 ? `Merge ${n}…` : "Merge…";
     }
     if (tableBtn) tableBtn.disabled = nb === 0;
+    if (shelfBtn) {
+        shelfBtn.disabled = nb === 0;
+        shelfBtn.textContent = nb ? `Add ${nb} to shelf…` : "Add to shelf…";
+    }
 }
 
 function setSelecting(grid: HTMLElement, on: boolean): void {
     selecting = on;
     document.body.classList.toggle("selecting", on);
-    toggleBtn?.setAttribute("aria-pressed", String(on));
-    if (toggleBtn) toggleBtn.textContent = on ? "Stop selecting" : "Select books";
+    for (const b of toggleBtns) {
+        b.setAttribute("aria-pressed", String(on));
+        b.textContent = on ? "Stop selecting" : "Select books";
+    }
     if (bar) bar.hidden = !on;
     if (!on) clearChosen();
     for (const card of cardsOf(grid)) markSelected(card);
     update();
 }
 
-/** Offer selection on this grid once we know the viewer may change the library. */
+/** Offer selection on this grid once we know the viewer is signed in (and, for the library's actions, may change it). */
 export function setupSelection(grid: HTMLElement): void {
     let ready = false;
-    const start = (): void => {
-        if (ready || document.documentElement.dataset["canEdit"] !== "1") return;
-        ready = true;
+    let editorReady = false;
+    const root = document.documentElement.dataset;
+
+    // Merge, Edit in table and Remove: editors only, added once we know.
+    const addEditorActions = (actions: HTMLElement): void => {
+        if (editorReady || root["canEdit"] !== "1") return;
+        editorReady = true;
 
         // The Manage sidebar's button, where the page has one. Where the
         // sidebar covers the page (a phone), starting closes it.
-        toggleBtn = document.querySelector<HTMLButtonElement>("#select-books-btn");
+        const sideBtn = document.querySelector<HTMLButtonElement>("#select-books-btn");
         const section = document.getElementById("select-section");
         if (section) section.hidden = false;
-        toggleBtn?.addEventListener("click", () => {
-            setSelecting(grid, !selecting);
-            const sidebar = document.getElementById("manage-panel");
-            if (selecting && sidebar && matchMedia("(max-width: 600px)").matches) sidebar.dispatchEvent(new CustomEvent("cf:manage-close"));
-        });
+        if (sideBtn) {
+            toggleBtns.push(sideBtn);
+            sideBtn.addEventListener("click", () => {
+                setSelecting(grid, !selecting);
+                const sidebar = document.getElementById("manage-panel");
+                if (selecting && sidebar && matchMedia("(max-width: 600px)").matches) sidebar.dispatchEvent(new CustomEvent("cf:manage-close"));
+            });
+        }
 
-        countEl = el("span", { className: "select-count", role: "status" });
         removeBtn = el("button", { type: "button", className: "btn-action btn-danger", disabled: true });
-        const clear = el("button", { type: "button", className: "btn-action" }, "Clear");
-        const done = el("button", { type: "button", className: "btn-action" }, "Done");
         mergeBtn = el("a", { className: "btn-action" }, "Merge…");
         mergeBtn.setAttribute("aria-disabled", "true");
         tableBtn = el("button", { type: "button", className: "btn-action", disabled: true, title: "Open the selected books in the bulk editor's table" }, "Edit in table");
-        bar = el("div", { className: "select-bar", hidden: true }, countEl, el("span", { className: "select-bar-actions" }, clear, done, tableBtn, mergeBtn, removeBtn));
-        bar.setAttribute("aria-label", "Selected books");
-        document.body.append(bar);
-
-        clear.addEventListener("click", () => {
-            clearChosen();
-            for (const card of cardsOf(grid)) markSelected(card);
-            update();
-        });
-        done.addEventListener("click", () => setSelecting(grid, false));
+        actions.append(tableBtn, mergeBtn, removeBtn);
         tableBtn.addEventListener("click", () => {
             try {
                 sessionStorage.setItem(BULK_SELECTION_KEY, JSON.stringify(chosenBooks().map((b) => b.uuid)));
@@ -159,6 +164,54 @@ export function setupSelection(grid: HTMLElement): void {
         removeBtn.addEventListener("click", async () => {
             if (await deleteBooks(chosenBooks())) location.reload();
         });
+        update();
+    };
+
+    let actions: HTMLElement | null = null;
+    const start = (): void => {
+        if (ready) {
+            if (actions) addEditorActions(actions);
+            return;
+        }
+        if (root["signedIn"] !== "1" && root["canEdit"] !== "1") return;
+        ready = true;
+
+        // "Select" above the grid, for everyone signed in: by the sort
+        // select where there is one.
+        const gridBtn = el("button", { type: "button", className: "btn-standard grid-select-btn", title: "Choose books to add to a shelf (or Ctrl+click / long-press a book)" }, "Select books");
+        gridBtn.setAttribute("aria-pressed", "false");
+        gridBtn.addEventListener("click", () => setSelecting(grid, !selecting));
+        toggleBtns.push(gridBtn);
+        let tools = document.querySelector<HTMLElement>(".grid-sort");
+        if (!tools) {
+            tools = el("div", { className: "grid-sort grid-tools" });
+            grid.before(tools);
+        }
+        tools.prepend(gridBtn);
+
+        countEl = el("span", { className: "select-count", role: "status" });
+        const clear = el("button", { type: "button", className: "btn-action" }, "Clear");
+        const done = el("button", { type: "button", className: "btn-action" }, "Done");
+        shelfBtn = el("button", { type: "button", className: "btn-action btn-action-read", disabled: true, title: "Put the selected books on one of your shelves" }, "Add to shelf…");
+        actions = el("span", { className: "select-bar-actions" }, clear, done, shelfBtn);
+        bar = el("div", { className: "select-bar", hidden: true }, countEl, actions);
+        bar.setAttribute("aria-label", "Selected books");
+        document.body.append(bar);
+
+        clear.addEventListener("click", () => {
+            clearChosen();
+            for (const card of cardsOf(grid)) markSelected(card);
+            update();
+        });
+        done.addEventListener("click", () => setSelecting(grid, false));
+        shelfBtn.addEventListener("click", async () => {
+            const said = await addToShelf(chosenBooks().map((b) => b.uuid));
+            if (!said) return;
+            setSelecting(grid, false);
+            flash(said); // the bar's gone with the selection: say it where it was
+
+        });
+        addEditorActions(actions);
 
         const cardAt = (target: EventTarget | null): HTMLElement | null =>
             target instanceof Element ? target.closest<HTMLElement>(CARD) : null;
@@ -268,4 +321,11 @@ export function setupSelection(grid: HTMLElement): void {
     };
     start();
     document.addEventListener("cf:me", start); // nav.ts, once /api/me answers
+}
+
+/** A short-lived note at the bottom of the page. */
+function flash(text: string): void {
+    const note = el("div", { className: "select-flash", role: "status" }, text);
+    document.body.append(note);
+    setTimeout(() => note.remove(), 4000);
 }

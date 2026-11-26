@@ -167,7 +167,7 @@ func shelfSeriesKeyFor(w http.ResponseWriter, r *http.Request) (string, bool) {
 }
 
 func shelfAddSeriesHandler(w http.ResponseWriter, r *http.Request) {
-	s, ok := shelfForEdit(w, r)
+	s, ok := shelfForBooks(w, r)
 	if !ok {
 		return
 	}
@@ -191,7 +191,7 @@ func shelfAddSeriesHandler(w http.ResponseWriter, r *http.Request) {
 // shelfRemoveSeriesHandler takes the key as given too, so a series that's
 // gone from the library can still be taken off.
 func shelfRemoveSeriesHandler(w http.ResponseWriter, r *http.Request) {
-	s, ok := shelfForEdit(w, r)
+	s, ok := shelfForBooks(w, r)
 	if !ok {
 		return
 	}
