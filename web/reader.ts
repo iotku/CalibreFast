@@ -946,9 +946,11 @@ function followLink(href: string, section: EpubJS.Section): void {
     }
 }
 
-// Taps in the margins around the chapter count too.
-container.addEventListener("click", (e) => {
-    if (e.target !== container && !(e.target as Element).classList?.contains("epub-container")) return;
+// Taps in the margins around the chapter count too, out to the window's
+// edges (the container is inset from them; outside it is the bare body).
+document.addEventListener("click", (e) => {
+    const t = e.target;
+    if (t !== document.body && t !== document.documentElement && t !== container && !(t as Element).classList?.contains("epub-container")) return;
     if (e.clientX < window.innerWidth * 0.3) turnSide(-1);
     else if (e.clientX > window.innerWidth * 0.7) turnSide(1);
     else chrome.toggleBars();
