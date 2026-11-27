@@ -100,6 +100,21 @@
     box-shadow: var(--shadow-medium);
 }
 
+.lt-columns-body {
+    width: auto;
+    min-width: 180px;
+    display: grid;
+    gap: 4px;
+}
+
+.lt-columns-item {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    white-space: nowrap;
+    cursor: pointer;
+}
+
 .lt-help-body ul {
     padding-left: 1.1rem;
 }
@@ -137,6 +152,40 @@
 
 .lt-saving[hidden] {
     display: none;
+}
+
+/* ── The edit bar: the active cell, as a spreadsheet's formula bar ── */
+
+.lt-editbar {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    padding: 0 var(--page-padding);
+}
+
+.lt-editbar-label {
+    flex: 0 1 260px;
+    min-width: 0;
+    overflow: hidden;
+    white-space: nowrap;
+    text-overflow: ellipsis;
+    font-size: 0.85rem;
+    color: var(--text-secondary);
+}
+
+.lt-editbar-input {
+    flex: 1 1 auto;
+    min-width: 0;
+}
+
+.lt-editbar-input[readonly] {
+    color: var(--text-secondary);
+}
+
+@media (max-width: 640px) {
+    .lt-editbar-label {
+        flex-basis: 110px;
+    }
 }
 
 /* ── The table ── */
@@ -269,8 +318,28 @@
 }
 
 .lt-col-pubdate,
-.lt-col-added {
+.lt-col-added,
+.lt-col-modified,
+.lt-col-size,
+.lt-col-id {
     font-variant-numeric: tabular-nums;
+}
+
+.lt-col-modified,
+.lt-col-size,
+.lt-col-cover,
+.lt-col-id {
+    color: var(--text-secondary);
+}
+
+.lt-col-size,
+.lt-col-id {
+    text-align: right;
+}
+
+.lt-col-rating {
+    color: var(--accent, var(--text-secondary));
+    letter-spacing: 1px;
 }
 
 /* The import queue's Library column (imports_edit.go) */
@@ -992,6 +1061,21 @@ body:has(.lt-resizing) {
 .lt-rows .lt-cell.lt-cell-selected {
     box-shadow: inset 0 0 0 2px var(--status-reading);
     border-radius: 2px;
+}
+
+/* The active cell (arrow keys, the edit bar): bright while the table has the focus */
+.lt-scroll:focus {
+    outline: none;
+}
+
+.lt-rows .lt-cell.lt-cell-active {
+    box-shadow: inset 0 0 0 2px var(--border-medium);
+    border-radius: 2px;
+}
+
+.lt-scroll:focus .lt-rows .lt-cell.lt-cell-active,
+.lt-scroll:focus-within .lt-rows .lt-cell.lt-cell-active {
+    box-shadow: inset 0 0 0 2px var(--text-link);
 }
 
 .lt-cell-menu {

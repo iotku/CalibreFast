@@ -109,6 +109,11 @@ type tableBook struct {
 	FormatsFromFolder bool   `json:"formats_from_folder,omitempty"`
 	ISBN              string `json:"isbn"`
 	HasCover          bool   `json:"has_cover"`
+	Rating            int    `json:"rating"` // 0–10 half-stars, 0 for none (rating.go)
+	// Identifiers: "type:value", by type, without the library's own (calibre, uuid).
+	Identifiers  []string `json:"identifiers"`
+	LastModified string   `json:"modified"` // "YYYY-MM-DD HH:MM", UTC (tableModified)
+	Size         int64    `json:"size"`     // the files metadata.db lists, in bytes
 	// Library: only for a waiting book (imports_edit.go), the list's
 	// duplicate check: "checking", "same file", "in library" or "new".
 	Library  string `json:"library,omitempty"`
@@ -128,7 +133,10 @@ const tableBooksSQL = `SELECT b.id, b.uuid, b.title, ` + bookAuthorsSQL + `, b.s
 	COALESCE((SELECT group_concat(l.lang_code, char(31) ORDER BY x.item_order) FROM books_languages_link x JOIN languages l ON l.id = x.lang_code WHERE x.book = b.id), ''),
 	COALESCE((SELECT group_concat(lower(d.format), char(31) ORDER BY d.format) FROM data d WHERE d.book = b.id), ''),
 	COALESCE((SELECT i.val FROM identifiers i WHERE i.book = b.id AND lower(i.type) = 'isbn' LIMIT 1), ''),
-	b.has_cover, b.path, COALESCE(CAST(b.last_modified AS TEXT), '')
+	b.has_cover, b.path, COALESCE(CAST(b.last_modified AS TEXT), ''),
+	COALESCE((SELECT r.rating FROM books_ratings_link x JOIN ratings r ON r.id = x.rating WHERE x.book = b.id LIMIT 1), 0),
+	COALESCE((SELECT group_concat(i.type || ':' || i.val, char(31) ORDER BY i.type, i.id) FROM identifiers i WHERE i.book = b.id AND lower(i.type) NOT IN ('calibre', 'uuid')), ''),
+	COALESCE((SELECT SUM(d.uncompressed_size) FROM data d WHERE d.book = b.id), 0)
 	FROM books b`
 
 func splitConcat(s string) []string {
@@ -136,6 +144,15 @@ func splitConcat(s string) []string {
 		return []string{}
 	}
 	return strings.Split(s, tableSep)
+}
+
+// tableModified is a coverStamp ("20060102150405", UTC) as the table shows
+// it: "2006-01-02 15:04".
+func tableModified(stamp string) string {
+	if len(stamp) < 12 {
+		return ""
+	}
+	return stamp[0:4] + "-" + stamp[4:6] + "-" + stamp[6:8] + " " + stamp[8:10] + ":" + stamp[10:12]
 }
 
 // tableDate is a Calibre date's day, "" for Calibre's "no date" (year 101).
@@ -165,12 +182,16 @@ func tableBooks(db *sql.DB, uuids []string) ([]tableBook, error) {
 	out := []tableBook{}
 	for rows.Next() {
 		var b tableBook
-		var pub, added, tags, langs, formats string
+		var pub, added, tags, langs, formats, ids string
 		if err := rows.Scan(&b.ID, &b.UUID, &b.Title, &b.Authors, &b.SeriesIndex, &b.Series, &b.Publisher,
-			&pub, &added, &tags, &langs, &formats, &b.ISBN, &b.HasCover, &b.path, &b.modified); err != nil {
+			&pub, &added, &tags, &langs, &formats, &b.ISBN, &b.HasCover, &b.path, &b.modified,
+			&b.Rating, &ids, &b.Size); err != nil {
 			return nil, err
 		}
 		b.PubDate, b.Added = tableDate(pub), tableDate(added)
+		b.Rating = opf.CleanRating(b.Rating)
+		b.Identifiers = splitConcat(ids)
+		b.LastModified = tableModified(coverStamp(b.modified))
 		b.Tags, b.Languages, b.Formats = splitConcat(tags), splitConcat(langs), splitConcat(formats)
 		out = append(out, b)
 	}
@@ -260,13 +281,18 @@ type bulkEdit struct {
 	RemoveLanguages []string `json:"remove_languages,omitempty"` // "en" removes "eng" too
 
 	Rating *string `json:"rating,omitempty"` // 0–10 half-stars, "" or "0" for none (rating.go)
+
+	// Identifiers: "isbn:…, goodreads:…": the book's identifiers become
+	// these ("" none); the library's own (calibre, uuid) stay as they are.
+	Identifiers *string `json:"identifiers,omitempty"`
 }
 
 func (e *bulkEdit) empty() bool {
 	return e.Title == nil && e.Authors == nil && e.Publisher == nil && e.Date == nil &&
 		e.Series == nil && e.SeriesIndex == nil &&
 		e.Tags == nil && len(e.AddTags) == 0 && len(e.RemoveTags) == 0 && e.SplitTags == "" &&
-		e.Languages == nil && len(e.AddLanguages) == 0 && len(e.RemoveLanguages) == 0 && e.Rating == nil
+		e.Languages == nil && len(e.AddLanguages) == 0 && len(e.RemoveLanguages) == 0 && e.Rating == nil &&
+		e.Identifiers == nil
 }
 
 // apply makes the changes to m, and says whether anything changed.
@@ -317,6 +343,10 @@ func (e *bulkEdit) apply(m *OPFMetadata) bool {
 
 	if e.Rating != nil {
 		m.Rating, m.RatingSet = opf.ParseRating(*e.Rating), true
+	}
+	if e.Identifiers != nil {
+		library, _ := opf.SplitLibraryIdentifiers(m.Identifiers)
+		m.Identifiers = append(slices.Clone(library), parseIdentifiersString(*e.Identifiers)...)
 	}
 
 	if e.Tags != nil {
@@ -572,6 +602,11 @@ func (req *bulkEditRequest) validate() error {
 	if req.Edit.empty() {
 		return errors.New("nothing to change")
 	}
+	if e := req.Edit; e.Identifiers != nil {
+		if err := checkIdentifiers(*e.Identifiers); err != nil {
+			return err
+		}
+	}
 	if e := req.Edit; e.Series != nil || e.SeriesIndex != nil {
 		name, index := "x", ""
 		if e.Series != nil {
@@ -582,6 +617,24 @@ func (req *bulkEditRequest) validate() error {
 		}
 		if _, _, err := opf.CleanSeries(name, index); err != nil {
 			return err
+		}
+	}
+	return nil
+}
+
+// checkIdentifiers: each of "type:value, …" names a type and a value (or is
+// an ISBN on its own), and none is the library's own.
+func checkIdentifiers(s string) error {
+	for _, item := range strings.FieldsFunc(s, func(r rune) bool { return r == ',' || r == '\n' || r == ';' }) {
+		if item = strings.TrimSpace(item); item == "" {
+			continue
+		}
+		ids := parseIdentifiersString(item)
+		if len(ids) != 1 {
+			return fmt.Errorf("identifier %q: write it as type:value, like isbn:9780441172719", item)
+		}
+		if opf.IsLibraryIdentifier(ids[0]) {
+			return fmt.Errorf("identifier %q: the library's own identifiers can't be changed", item)
 		}
 	}
 	return nil

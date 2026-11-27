@@ -19,6 +19,8 @@ import (
 	"slices"
 	"strconv"
 	"strings"
+
+	"github.com/iotku/CalibreFast/pkg/opf"
 )
 
 func importEditPage(w http.ResponseWriter, r *http.Request) {
@@ -98,11 +100,22 @@ func importTableRow(it *pendingImport) tableBook {
 		row.Languages = []string{}
 	}
 	for _, f := range it.Files {
+		row.Size += f.Size
 		if f := strings.ToLower(f.Format); !slices.Contains(row.Formats, f) {
 			row.Formats = append(row.Formats, f)
 		}
 	}
 	slices.Sort(row.Formats)
+	m.FillRating()
+	row.Rating = m.Rating
+	row.Identifiers = []string{}
+	_, ids := opf.SplitLibraryIdentifiers(m.Identifiers)
+	for _, id := range ids {
+		if typ, val := parseIdentifier(id); typ != "" && val != "" {
+			row.Identifiers = append(row.Identifiers, typ+":"+val)
+		}
+	}
+	slices.Sort(row.Identifiers)
 	row.HasCover, _ = coverFilesIn(imports.itemDir(it.ID))
 	return row
 }

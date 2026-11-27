@@ -375,6 +375,14 @@ export interface TableBook {
     formats_from_folder?: boolean;
     isbn: string;
     has_cover: boolean;
+    /** 0–10 half-stars, 0 for none. */
+    rating: number;
+    /** "type:value", by type, without the library's own (calibre, uuid). */
+    identifiers: string[];
+    /** "YYYY-MM-DD HH:MM", UTC. */
+    modified: string;
+    /** The files metadata.db lists, in bytes. */
+    size: number;
     /** A waiting book only (Go: tableBook.Library): "checking", "same file", "in library" or "new". */
     library?: string;
 }
@@ -398,6 +406,8 @@ export interface BulkEdit {
     remove_languages?: string[];
     /** Calibre's rating, "0"–"10" half-stars; "" for none. */
     rating?: string;
+    /** "isbn:…, goodreads:…": the book's identifiers become these ("" none); the library's own stay. */
+    identifiers?: string;
 }
 
 /** POST /api/library/bulk (Go: bulkResult). */

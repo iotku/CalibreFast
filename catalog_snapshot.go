@@ -37,7 +37,7 @@ import (
 //
 // 3: author names with a comma, which metadata.db keeps as "|", are read
 // with the comma (authorNameSQL); a snapshot from before kept the "|".
-const catalogSnapshotVersion = 6 // 6: ratings (rating.go)
+const catalogSnapshotVersion = 7 // 6: ratings (rating.go); 7: identifiers, sizes (the bulk editor)
 
 type libraryKey struct {
 	Library     string // -basedir, absolute
