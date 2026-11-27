@@ -1,0 +1,15 @@
+/* Cards: a panel set off from the page. The metadata editor's banner,
+   lookup bar, field cards and merge panel (book-edit.css), the upload
+   page's files and results (upload.css). One surface; each sets its own
+   padding and layout. */
+.card,
+.book-banner,
+.lookup-bar,
+.meta-field,
+.merge-panel,
+.file-item,
+.result-item {
+    background: var(--bg-secondary);
+    border: 1px solid var(--border-light);
+    border-radius: var(--radius-medium);
+}

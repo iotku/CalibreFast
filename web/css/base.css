@@ -29,3 +29,18 @@ body.no-scroll {
 h1 {
     margin-bottom: var(--gap-xlarge);
 }
+
+/* A link in running text: underlined by a rule, not the font. */
+.meta-link {
+    color: var(--text-link);
+    text-decoration: none;
+    border-bottom: 1px solid var(--border-medium);
+    transition:
+        color var(--transition-fast),
+        border-color var(--transition-fast);
+}
+
+.meta-link:hover {
+    color: var(--text-strong);
+    border-bottom-color: color-mix(in srgb, var(--tint) 50%, transparent);
+}

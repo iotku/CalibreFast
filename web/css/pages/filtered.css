@@ -84,11 +84,6 @@
     flex-direction: column;
     gap: 2px;
     min-width: 210px;
-    padding: 6px;
-    background: var(--bg-elevated);
-    border: 1px solid var(--border-medium);
-    border-radius: var(--radius-medium);
-    box-shadow: var(--shadow-medium);
     max-height: calc(100dvh - var(--topbar-bottom) - 20px - env(safe-area-inset-bottom, 0px));
     overflow-y: auto;
     overscroll-behavior: contain;
@@ -169,11 +164,6 @@
     flex-direction: column;
     gap: 2px;
     min-width: 210px;
-    padding: 6px;
-    background: var(--bg-elevated);
-    border: 1px solid var(--border-medium);
-    border-radius: var(--radius-medium);
-    box-shadow: var(--shadow-medium);
     max-height: calc(100dvh - var(--topbar-bottom) - 20px - env(safe-area-inset-bottom, 0px));
     overflow-y: auto;
     overscroll-behavior: contain;
@@ -371,14 +361,6 @@ body:has(.manage-panel:not([hidden])) {
 
 .manage-info[hidden] {
     display: none;
-}
-
-.manage-info p {
-    margin: 0;
-}
-
-.manage-info p + p {
-    margin-top: 0.4rem;
 }
 
 /* Highest number and number of books, side by side. */
@@ -611,14 +593,9 @@ body:has(.manage-panel:not([hidden])) {
 }
 
 .group-chip {
-    display: inline-flex;
-    align-items: center;
     gap: 4px;
     padding: 3px 4px 3px 10px;
     font-size: 0.85rem;
-    background: var(--bg-surface);
-    border: 1px solid var(--border-medium);
-    border-radius: 999px;
 }
 
 .group-chip button {

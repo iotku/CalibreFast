@@ -353,11 +353,6 @@
     min-width: 190px;
     display: flex;
     flex-direction: column;
-    padding: 6px;
-    background: var(--bg-elevated);
-    border: 1px solid var(--border-medium);
-    border-radius: var(--radius-medium);
-    box-shadow: var(--shadow-medium);
 }
 
 .tb-menu-list[hidden] {
@@ -420,11 +415,6 @@
     flex-direction: column; /* as wide as its longest item */
     align-items: stretch;
     gap: 2px;
-    padding: 6px;
-    background: var(--bg-elevated);
-    border: 1px solid var(--border-medium);
-    border-radius: var(--radius-medium);
-    box-shadow: var(--shadow-medium);
 }
 
 .site-bar.tb-tighter.nav-open .tb-nav {

@@ -4,13 +4,6 @@
 
 @import "./css/components/chip-editor.css";
 
-/* No monospace here. */
-.suggest-sub,
-.chip-btn,
-.chip-add-btn,
-.chip-tool-btn {
-    font-family: inherit;
-}
 
 .placeholder-page .ph-field {
     display: flex;
@@ -60,19 +53,8 @@
     max-height: 260px;
     overflow-y: auto;
     margin: 0;
-    padding: 4px;
     box-sizing: border-box;
     list-style: none;
-    background: var(--bg-elevated);
-    border: 1px solid var(--border-medium);
-    border-radius: 6px;
-    box-shadow: var(--shadow-medium);
-    color: var(--text-primary);
-}
-
-.suggest-list li[aria-selected="true"],
-.suggest-list li:hover {
-    background: var(--accent-soft);
 }
 
 .suggest-sub {

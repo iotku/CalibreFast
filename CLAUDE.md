@@ -9,7 +9,8 @@ Go server (`*.go`, `html/template` in `templates/`) and TypeScript in `web/`, bu
 
 - `web/style.css` only `@import`s `web/css/` (tokens, base, components, layout, pages); add a rule to the file for its feature, or a new file in the right folder plus an `@import`.
 - Never write a color outside `web/css/tokens.css`: use a semantic token (`var(--text-muted)`, `var(--accent-soft)`, `var(--danger-text)`, …), or add one there. `TestNoRawColorsOutsideTokens` fails otherwise. This is what lets a light theme be one block of values.
-- Reuse what's there before adding a variant: `.dialog` (+ `.dialog--danger`, `.dialog-actions`) for any `<dialog>`, `.btn-primary` / `.btn-link` (components/button.css), the chip editor in `components/chip-editor.css`. No `<style>` blocks in templates.
+- Reuse what's there before adding a variant (`web/css/components/`): `.dialog` (+ `.dialog--danger`, `.dialog-actions`) for any `<dialog>`; `.btn-standard` + `.btn-primary` / `.btn-link` for buttons; `.popover` for anything floating (menus, suggestions, previews), `.card` for a panel on the page, `.pill` for a rounded chip, `.info-tip` for ⓘ help; the chip editor in `chip-editor.css`. A feature's own class can join a shared surface through the selector list at the top of that file instead of carrying a second class. No `<style>` blocks in templates.
+- Monospace (`--font-mono`) only for code-like text: identifiers, raw HTML, file names. No web fonts.
 - New breakpoints: 480, 640, 768 (the book popup goes full screen), 900 or 1200px; one `@media` block per query per file, at its end.
 
 ## Treat this data as hostile

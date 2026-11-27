@@ -6,6 +6,10 @@
 @import "./css/components/button.css";
 @import "./css/components/input.css";
 @import "./css/components/dialog.css";
+@import "./css/components/popover.css";
+@import "./css/components/help.css";
+@import "./css/components/pill.css";
+@import "./css/components/card.css";
 @import "./css/layout/grid.css";
 @import "./css/pages/home.css";
 @import "./css/components/book-card.css";
@@ -22,6 +26,7 @@
 @import "./css/pages/filtered.css";
 @import "./css/layout/alerts.css";
 @import "./css/pages/account-import.css";
+@import "./css/components/auth-card.css";
 @import "./css/pages/account.css";
 @import "./css/components/user-controls.css";
 @import "./css/pages/shelves.css";

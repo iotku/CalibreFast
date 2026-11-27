@@ -77,7 +77,6 @@
     height: 28px;
     padding: 0 6px;
     font-size: 0.72rem;
-    font-family: var(--font-mono);
     color: var(--text-muted);
     background: transparent;
     border: none;
@@ -128,7 +127,6 @@
     flex-shrink: 0;
     height: auto;
     padding: 0 14px;
-    font-family: var(--font-mono);
     font-size: 0.75rem;
     color: var(--accent);
     background: var(--accent-soft);
@@ -157,7 +155,6 @@
 .chip-tool-btn {
     margin-top: 6px;
     padding: 4px 10px;
-    font-family: var(--font-mono);
     font-size: 0.72rem;
     color: var(--accent);
     background: var(--accent-soft);
@@ -194,35 +191,16 @@
     max-height: 260px;
     overflow-y: auto;
     margin: 0;
-    padding: 4px;
     box-sizing: border-box;
     list-style: none;
-    background: var(--bg-surface);
-    border: 1px solid var(--border-light);
-    border-radius: 6px;
-    box-shadow: 0 10px 24px var(--scrim-45);
 }
 
 .suggest-list[hidden] {
     display: none;
 }
 
-.suggest-list li {
-    padding: 6px 10px;
-    font-size: 0.9rem;
-    border-radius: 4px;
-    cursor: pointer;
-    overflow-wrap: anywhere;
-}
-
-.suggest-list li[aria-selected="true"],
-.suggest-list li:hover {
-    background: var(--accent-soft);
-}
-
 .suggest-sub {
     margin-left: 6px;
-    font-family: var(--font-mono);
     font-size: 0.75rem;
     color: var(--text-muted);
 }

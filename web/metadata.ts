@@ -1536,7 +1536,7 @@ export async function mountMetadataEditor(book: BookTarget, form: HTMLFormElemen
       const targets = blocked || !importId ? [] : check.books;
       mergeInto?.replaceChildren(...targets.map((b) => {
         const link = tag("a", {
-          className: "btn-primary",
+          className: "btn-standard btn-primary",
           href: `/book/add-format/${encodeURIComponent(b.uuid)}/${encodeURIComponent(importId ?? "")}`,
           title: `Add this book's files to “${b.title}”: pick each field's value and which file to keep where both have one, then back to the import queue`,
         }, targets.length === 1 ? "Merge into it" : `Merge into “${b.title}”`);
@@ -1550,7 +1550,7 @@ export async function mountMetadataEditor(book: BookTarget, form: HTMLFormElemen
       const discard = maybeId("duplicate-discard");
       if (add) {
         add.hidden = blocked;
-        add.className = targets.length ? "btn-secondary" : "btn-primary";
+        add.className = targets.length ? "btn-standard btn-secondary" : "btn-standard btn-primary";
       }
       if (discard) {
         discard.hidden = !blocked || !maybeId("btn-discard");

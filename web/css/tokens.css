@@ -72,10 +72,8 @@
 
     /* ---- Typography ---- */
     --font-family: sans-serif;
-    /* The metadata editor's and upload page's type (book-edit.css, upload.css). */
-    --font-sans: "IBM Plex Sans", -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
-    --font-mono: "IBM Plex Mono", monospace;
-    --font-serif: "Playfair Display", Georgia, serif;
+    /* Code-like text: identifiers, raw HTML, file names. */
+    --font-mono: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
     --font-size-small: 0.8rem;
     --font-size-normal: 1rem;
     --font-size-large: 1.1rem;

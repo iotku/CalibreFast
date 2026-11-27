@@ -7,11 +7,6 @@
         <meta name="viewport" content="width=device-width, initial-scale=1.0" />
         <title>{{ if .Merge }}{{ if .Merge.Incoming }}Add files{{ else }}Merge books{{ end }}{{ else if .Import }}Review import{{ else }}Edit Metadata{{ end }} — CalibreFast</title>
         <link rel="stylesheet" href="{{ asset "style.css" }}" />
-        <link rel="preconnect" href="https://fonts.googleapis.com" />
-        <link
-            href="https://fonts.googleapis.com/css2?family=Playfair+Display:wght@400;700&family=IBM+Plex+Mono:wght@400;500&family=IBM+Plex+Sans:wght@300;400;500;600&display=swap"
-            rel="stylesheet"
-        />
         <link rel="stylesheet" href="{{ asset "book-edit.css" }}" />
     </head>
     <body>
@@ -64,7 +59,7 @@
                         {{ range .Merge.IncomingFiles }}<span class="uuid-badge">{{ . }}</span>{{ end }}
                     </div>
                     <div class="quick-accept">
-                        <button type="button" id="btn-quick-accept" class="btn-primary" title="Adds the new files with the metadata in the form (the book's own, unless you changed it)">Add files, keep metadata</button>
+                        <button type="button" id="btn-quick-accept" class="btn-standard btn-primary" title="Adds the new files with the metadata in the form (the book's own, unless you changed it)">Add files, keep metadata</button>
                         <span class="auth-muted">or review below</span>
                     </div>
                     {{ else if .Merge }}
@@ -408,22 +403,22 @@
 
                 <div class="edit-actions">
                     <div class="action-buttons">
-                        <button type="submit" id="btn-save" class="btn-primary{{ if and .Import .Duplicates.SameFile }} btn-blocked{{ end }}">{{ if and .Merge .Merge.Incoming }}Add files{{ else if .Merge }}{{ if .Merge.Placeholder }}Merge with placeholder{{ else }}Merge {{ len .Merge.Books }} books{{ end }}{{ else if .Import }}Add to library{{ else }}Apply Changes{{ end }}</button>
-                        <button type="button" id="btn-compare" class="btn-secondary">
+                        <button type="submit" id="btn-save" class="btn-standard btn-primary{{ if and .Import .Duplicates.SameFile }} btn-blocked{{ end }}">{{ if and .Merge .Merge.Incoming }}Add files{{ else if .Merge }}{{ if .Merge.Placeholder }}Merge with placeholder{{ else }}Merge {{ len .Merge.Books }} books{{ end }}{{ else if .Import }}Add to library{{ else }}Apply Changes{{ end }}</button>
+                        <button type="button" id="btn-compare" class="btn-standard btn-secondary">
                             Compare changes
                         </button>
                         {{ if .Import }}
-                        <a href="/import" class="btn-secondary">Back to the queue</a>
+                        <a href="/import" class="btn-standard btn-secondary">Back to the queue</a>
                         {{ else }}
-                        <button type="button" onclick="history.back()" class="btn-secondary">
+                        <button type="button" onclick="history.back()" class="btn-standard btn-secondary">
                             Cancel
                         </button>
                         {{ end }}
                     </div>
                     {{ if .Import }}
-                    <button type="button" id="btn-discard" class="btn-secondary btn-discard" title="Delete this book's files from the import queue">Discard</button>
+                    <button type="button" id="btn-discard" class="btn-standard btn-secondary btn-discard" title="Delete this book's files from the import queue">Discard</button>
                     {{ else if and .Merge .Merge.Incoming }}
-                    <button type="button" id="btn-discard" class="btn-secondary btn-discard" data-discard="/import/{{ .Merge.Incoming }}/discard" data-back="{{ if .Merge.FromQueue }}/import{{ else }}/book/get/{{ .UUID }}{{ end }}" title="Delete the new files instead of adding them">Discard new files</button>
+                    <button type="button" id="btn-discard" class="btn-standard btn-secondary btn-discard" data-discard="/import/{{ .Merge.Incoming }}/discard" data-back="{{ if .Merge.FromQueue }}/import{{ else }}/book/get/{{ .UUID }}{{ end }}" title="Delete the new files instead of adding them">Discard new files</button>
                     {{ end }}
                 </div>
             </form>
@@ -436,8 +431,8 @@
                 <div id="compare-body"></div>
                 <footer id="compare-leave-actions" class="compare-footer" hidden>
                     <span>{{ if and .Merge .Merge.Incoming }}Add the files before leaving?{{ else if .Merge }}Merge the books before leaving?{{ else if .Import }}Add the book with these changes before leaving?{{ else }}Apply these changes before leaving?{{ end }}</span>
-                    <form method="dialog"><button class="btn-secondary">Keep editing</button></form>
-                    <button type="button" id="compare-apply" class="btn-primary">{{ if and .Merge .Merge.Incoming }}Add files{{ else if .Merge }}Merge{{ else if .Import }}Add to library{{ else }}Apply changes{{ end }}</button>
+                    <form method="dialog"><button class="btn-standard btn-secondary">Keep editing</button></form>
+                    <button type="button" id="compare-apply" class="btn-standard btn-primary">{{ if and .Merge .Merge.Incoming }}Add files{{ else if .Merge }}Merge{{ else if .Import }}Add to library{{ else }}Apply changes{{ end }}</button>
                 </footer>
             </dialog>
 
@@ -452,12 +447,12 @@
                 <div id="duplicate-body"></div>
                 <ul id="duplicate-files" hidden>{{ range .Import.Files }}<li data-name="{{ .Name }}" data-format="{{ .Format }}"></li>{{ end }}</ul>
                 <footer class="compare-footer">
-                    <form method="dialog"><button class="btn-secondary">Cancel</button></form>
+                    <form method="dialog"><button class="btn-standard btn-secondary">Cancel</button></form>
                     <span id="duplicate-merge" class="duplicate-merge-links"></span>
-                    <button type="button" id="duplicate-add" class="btn-primary">Add anyway</button>
-                    <a id="duplicate-edit" class="btn-primary" target="_blank" hidden title="Open the library book's metadata editor, with this book's metadata offered as sources">Edit Metadata</a>
-                    <button type="button" id="duplicate-discard" class="btn-primary btn-blocked" hidden>Discard from queue</button>
-                    <button type="button" id="duplicate-split" class="btn-primary" hidden></button>
+                    <button type="button" id="duplicate-add" class="btn-standard btn-primary">Add anyway</button>
+                    <a id="duplicate-edit" class="btn-standard btn-primary" target="_blank" hidden title="Open the library book's metadata editor, with this book's metadata offered as sources">Edit Metadata</a>
+                    <button type="button" id="duplicate-discard" class="btn-standard btn-primary btn-blocked" hidden>Discard from queue</button>
+                    <button type="button" id="duplicate-split" class="btn-standard btn-primary" hidden></button>
                 </footer>
             </dialog>
             {{ end }}
@@ -471,8 +466,8 @@
                 <div id="lookup-body"></div>
                 <footer class="compare-footer">
                     <span>The cover isn't changed.</span>
-                    <button type="button" id="lookup-keep" class="btn-secondary" title="Tick it: its values become pills under each field">Pick fields in the form</button>
-                    <button type="button" id="lookup-accept" class="btn-primary">{{ if or .Import .Merge }}Accept all{{ else }}Accept all and apply{{ end }}</button>
+                    <button type="button" id="lookup-keep" class="btn-standard btn-secondary" title="Tick it: its values become pills under each field">Pick fields in the form</button>
+                    <button type="button" id="lookup-accept" class="btn-standard btn-primary">{{ if or .Import .Merge }}Accept all{{ else }}Accept all and apply{{ end }}</button>
                 </footer>
             </dialog>
 

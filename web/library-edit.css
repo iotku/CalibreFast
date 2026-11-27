@@ -94,10 +94,6 @@
     width: min(440px, calc(100vw - 32px));
     margin-top: 6px;
     padding: 10px 14px;
-    background: var(--bg-elevated);
-    border: 1px solid var(--border-medium);
-    border-radius: var(--radius-medium);
-    box-shadow: var(--shadow-medium);
 }
 
 .lt-columns-body {
@@ -459,9 +455,6 @@
     max-width: 100%;
     margin-right: 4px;
     padding: 1px 7px;
-    border: 1px solid var(--border-medium);
-    border-radius: var(--radius-round);
-    background: var(--tint-faint);
     color: var(--text-secondary);
     font: inherit;
     font-size: 0.75rem;
@@ -638,31 +631,13 @@
     max-height: 260px;
     overflow-y: auto;
     margin: 0;
-    padding: 4px;
     box-sizing: border-box;
     list-style: none;
-    background: var(--bg-elevated);
-    border: 1px solid var(--border-medium);
-    border-radius: 6px;
-    box-shadow: var(--shadow-medium);
     white-space: normal;
 }
 
 .suggest-list[hidden] {
     display: none;
-}
-
-.suggest-list li {
-    padding: 6px 10px;
-    font-size: 0.85rem;
-    border-radius: 4px;
-    cursor: pointer;
-    overflow-wrap: anywhere;
-}
-
-.suggest-list li[aria-selected="true"],
-.suggest-list li:hover {
-    background: var(--accent-soft);
 }
 
 .suggest-sub {
@@ -1071,11 +1046,6 @@ body:has(.lt-resizing) {
     max-width: 360px;
     display: flex;
     flex-direction: column;
-    padding: 4px;
-    background: var(--bg-elevated);
-    border: 1px solid var(--status-reading);
-    border-radius: var(--radius-medium);
-    box-shadow: var(--shadow-medium);
 }
 
 .lt-cell-menu.lt-menu-up {
