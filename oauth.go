@@ -36,6 +36,8 @@ import (
 	"strings"
 	"sync"
 	"time"
+
+	"github.com/iotku/CalibreFast/pkg/logsafe"
 )
 
 // Identity is an external sign-in (GitHub, Google) linked to a user.
@@ -303,7 +305,7 @@ func oauthCallback(w http.ResponseWriter, r *http.Request) {
 	defer cancel()
 	token, err := exchangeCode(ctx, p, code, pa.Verifier)
 	if err != nil {
-		log.Printf("oauth %s: token exchange: %v", p.Name, err)
+		log.Printf("oauth %s: token exchange: %v", logsafe.Text(p.Name), logsafe.Text(err))
 		fail("Sign-in failed. Please try again.")
 		return
 	}

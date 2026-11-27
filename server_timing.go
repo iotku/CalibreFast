@@ -22,6 +22,8 @@ import (
 	"net/http"
 	"strings"
 	"time"
+
+	"github.com/iotku/CalibreFast/pkg/logsafe"
 )
 
 // serverTimingHeader: -server-timing.
@@ -75,7 +77,7 @@ func serverTiming(h http.Handler) http.Handler {
 			tw.WriteHeader(http.StatusOK)
 		}
 		if tw.took >= slowRequest {
-			log.Printf("slow request: %s %s %d in %v (session %v)", r.Method, r.URL.Path, tw.status, tw.took.Round(time.Millisecond), t.auth.Round(time.Millisecond))
+			log.Printf("slow request: %s %s %d in %v (session %v)", logsafe.Text(r.Method), logsafe.Text(r.URL.Path), tw.status, tw.took.Round(time.Millisecond), t.auth.Round(time.Millisecond))
 		}
 	})
 }

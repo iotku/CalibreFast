@@ -17,6 +17,7 @@ import (
 
 	"github.com/iotku/CalibreFast/pkg/imageutil"
 	"github.com/iotku/CalibreFast/pkg/langcodes"
+	"github.com/iotku/CalibreFast/pkg/logsafe"
 )
 
 // What the aggregate pages keep beyond Calibre's values and the groups
@@ -76,7 +77,7 @@ func aggregateMetaFor(cat, name string) (AggregateMeta, bool) {
 		Scan(&m.Description, &m.Image, &m.YearsSet, &m.Born, &m.Died)
 	if err != nil {
 		if !errors.Is(err, sql.ErrNoRows) {
-			log.Printf("aggregate meta %s/%s: %v", cat, name, err)
+			log.Printf("aggregate meta %s/%s: %v", logsafe.Text(cat), logsafe.Text(name), logsafe.Text(err))
 		}
 		return m, false
 	}
@@ -257,7 +258,7 @@ func renameAggregate(cat, from, to string) {
 		`UPDATE OR IGNORE featured_aggregates SET name = ? WHERE category = ? AND name = ?`,
 	} {
 		if _, err := appDB.Exec(q, to, cat, from); err != nil {
-			log.Printf("rename aggregate %s/%s: %v", cat, from, err)
+			log.Printf("rename aggregate %s/%s: %v", logsafe.Text(cat), logsafe.Text(from), logsafe.Text(err))
 		}
 	}
 }

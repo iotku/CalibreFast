@@ -20,6 +20,7 @@ import (
 	"strconv"
 	"strings"
 
+	"github.com/iotku/CalibreFast/pkg/logsafe"
 	"github.com/iotku/CalibreFast/pkg/opf"
 )
 
@@ -182,7 +183,7 @@ func (b *importInbox) editOne(id string, edit *bulkEdit) (*pendingImport, bool, 
 		m.SyncRatingMeta() // and the rating, the same way
 	}
 	if err := b.saveEdit(next); err != nil {
-		log.Printf("imports: editing %s: %v", id, err)
+		log.Printf("imports: editing %s: %v", logsafe.Text(id), logsafe.Text(err))
 		return nil, false, err
 	}
 	b.items[id] = next

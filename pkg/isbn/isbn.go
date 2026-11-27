@@ -18,6 +18,7 @@ import (
 	"unicode/utf8"
 
 	"github.com/iotku/CalibreFast/pkg/epubzip"
+	"github.com/iotku/CalibreFast/pkg/logsafe"
 	"github.com/iotku/CalibreFast/pkg/xml11"
 )
 
@@ -68,7 +69,7 @@ func FindInBook(dir string, files []string, pdf *PDFSources) Response {
 			}
 		}
 		if err != nil {
-			log.Printf("isbns: %s: %v", p, err)
+			log.Printf("isbns: %s: %v", logsafe.Text(p), logsafe.Text(err))
 		}
 		all = append(all, found...)
 	}

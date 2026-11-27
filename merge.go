@@ -44,6 +44,7 @@ import (
 	"time"
 
 	"github.com/iotku/CalibreFast/pkg/filehash"
+	"github.com/iotku/CalibreFast/pkg/logsafe"
 	"github.com/iotku/CalibreFast/pkg/opf"
 )
 
@@ -260,7 +261,7 @@ func fileHash(p string) string {
 	}
 	h, err := filehash.SHA256(p, st)
 	if err != nil {
-		log.Printf("merge: hashing %s: %v", p, err)
+		log.Printf("merge: hashing %s: %v", logsafe.Text(p), logsafe.Text(err))
 		return ""
 	}
 	return h
@@ -834,7 +835,7 @@ func mergeInto(books []*mergeBook, req *mergeRequest, by string) (*mergeResult, 
 	}
 
 	if err := errors.Join(errs...); err != nil {
-		log.Printf("merge into %s: %v", keep.UUID, err)
+		log.Printf("merge into %s: %v", logsafe.Text(keep.UUID), logsafe.Text(err))
 		return res, fmt.Errorf("merged, but: %w", err)
 	}
 	return res, nil

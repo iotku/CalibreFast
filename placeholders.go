@@ -52,6 +52,7 @@ import (
 	"time"
 
 	"github.com/google/uuid"
+	"github.com/iotku/CalibreFast/pkg/logsafe"
 	"github.com/iotku/CalibreFast/pkg/opf"
 	"github.com/iotku/CalibreFast/pkg/textkey"
 )
@@ -1203,7 +1204,7 @@ func placeholderFilesHandler(w http.ResponseWriter, r *http.Request) {
 	}
 	it, err := imports.stageForPlaceholder(paths, p)
 	if err != nil {
-		log.Println("placeholder files:", err)
+		log.Println("placeholder files:", logsafe.Text(err))
 		http.Error(w, "couldn't queue the files: "+err.Error(), http.StatusInternalServerError)
 		return
 	}

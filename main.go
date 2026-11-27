@@ -33,6 +33,7 @@ import (
 	"unicode/utf8"
 
 	"github.com/google/uuid"
+	"github.com/iotku/CalibreFast/pkg/logsafe"
 	"github.com/iotku/CalibreFast/pkg/opf"
 	"github.com/mattn/go-sqlite3"
 	_ "github.com/mattn/go-sqlite3"
@@ -64,8 +65,8 @@ var (
 func csrfProtect(h http.Handler) http.Handler {
 	p := http.NewCrossOriginProtection()
 	p.SetDenyHandler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		log.Printf("blocked cross-origin %s %s (Origin %q, Sec-Fetch-Site %q)",
-			r.Method, r.URL.Path, r.Header.Get("Origin"), r.Header.Get("Sec-Fetch-Site"))
+		log.Printf("blocked cross-origin %s %s (Origin \"%s\", Sec-Fetch-Site \"%s\")",
+			logsafe.Text(r.Method), logsafe.Text(r.URL.Path), logsafe.Text(r.Header.Get("Origin")), logsafe.Text(r.Header.Get("Sec-Fetch-Site")))
 		http.Error(w, "cross-origin request refused", http.StatusForbidden)
 	}))
 	return p.Handler(h)
@@ -736,7 +737,7 @@ func bookEditPage(w http.ResponseWriter, r *http.Request) {
 
 func logErr(err error, why string) {
 	if err != nil {
-		log.Println(why + " :: " + err.Error())
+		log.Println(why + " :: " + logsafe.Text(err))
 	}
 }
 
@@ -1027,7 +1028,7 @@ func applyMetadataHandler(w http.ResponseWriter, r *http.Request) {
 	bookPath, err := updateBookInCalibreDB(calibreDB, baseDir, uuid, &meta)
 	bulkMu.Unlock()
 	if err != nil {
-		log.Println("apply metadata error:", err)
+		log.Println("apply metadata error:", logsafe.Text(err))
 		http.Error(w, "Failed to update metadata: "+err.Error(), http.StatusInternalServerError)
 		return
 	}

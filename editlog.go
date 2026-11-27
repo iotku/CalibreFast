@@ -49,6 +49,8 @@ import (
 	"strings"
 	"sync"
 	"time"
+
+	"github.com/iotku/CalibreFast/pkg/logsafe"
 )
 
 // editLogMu serializes undoing, so two admins can't undo the same entry
@@ -130,7 +132,7 @@ func logEdit(u *User, action, kind, target, title string, before, after any) int
 	res, err := appDB.Exec(`INSERT INTO edit_log (user_id, username, at, action, kind, target, title, before, after) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`,
 		uid, name, nowUnix(), action, kind, target, title, logJSON(before), logJSON(after))
 	if err != nil {
-		log.Printf("edit log: %s %s %s by %s: %v", action, kind, target, name, err)
+		log.Printf("edit log: %s %s %s by %s: %v", action, kind, logsafe.Text(target), logsafe.Text(name), logsafe.Text(err))
 		return 0
 	}
 	id, _ := res.LastInsertId()
@@ -325,13 +327,13 @@ func snapCover(uuid string) (string, error) {
 func coverSnapper(u *User, action, uuid, title string) (done func() int64) {
 	before, err := snapCover(uuid)
 	if err != nil {
-		log.Printf("edit log: %s's cover: %v", uuid, err)
+		log.Printf("edit log: %s's cover: %v", logsafe.Text(uuid), logsafe.Text(err))
 		return func() int64 { return 0 }
 	}
 	return func() int64 {
 		after, err := snapCover(uuid)
 		if err != nil {
-			log.Printf("edit log: %s's cover: %v", uuid, err)
+			log.Printf("edit log: %s's cover: %v", logsafe.Text(uuid), logsafe.Text(err))
 			return 0
 		}
 		if after != before {

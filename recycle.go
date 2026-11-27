@@ -38,6 +38,8 @@ import (
 	"strings"
 	"sync"
 	"time"
+
+	"github.com/iotku/CalibreFast/pkg/logsafe"
 )
 
 var (
@@ -1200,7 +1202,7 @@ func recycleDeleteHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	if err != nil {
-		log.Println("recycling bin:", err)
+		log.Println("recycling bin:", logsafe.Text(err))
 		http.Error(w, err.Error(), http.StatusInternalServerError)
 		return
 	}
