@@ -33,6 +33,39 @@ a.btn-standard {
     text-decoration: none;
 }
 
+/* The main action of a form or row: gold. Links too (a.btn-primary
+   outranks a.btn-standard's colours). */
+.btn-primary,
+a.btn-primary {
+    background: var(--accent);
+    color: var(--text-on-accent);
+    border-color: var(--accent);
+    font-weight: 600;
+}
+
+.btn-primary:hover:not(:disabled),
+a.btn-primary:hover {
+    background: var(--accent-hover);
+    border-color: var(--accent-hover);
+}
+
+.btn-primary:disabled {
+    opacity: 0.45;
+    cursor: default;
+}
+
+/* A button that reads as a link, inside a line of text. */
+.btn-link,
+.btn-link:hover {
+    padding: 0;
+    border: 0;
+    background: none;
+    color: inherit;
+    font: inherit;
+    text-decoration: underline;
+    cursor: pointer;
+}
+
 button:disabled,
 .btn:disabled,
 .btn-action[aria-disabled="true"] {
@@ -40,28 +73,8 @@ button:disabled,
     cursor: not-allowed;
 }
 
-.btn-icon {
-    min-width: var(--touch-target);
-    min-height: var(--touch-target);
-    width: var(--touch-target);
-    height: var(--touch-target);
-    padding: 0;
-    display: inline-flex;
-    align-items: center;
-    justify-content: center;
-}
-
-.btn-standard {
-    height: var(--touch-target);
-    padding: var(--input-padding);
-}
-
+.btn-standard,
 .btn-back {
     height: var(--touch-target);
     padding: var(--input-padding);
-}
-
-.btn-nav {
-    min-width: var(--touch-target);
-    min-height: var(--touch-target);
 }

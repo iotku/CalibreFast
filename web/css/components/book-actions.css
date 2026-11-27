@@ -101,7 +101,6 @@
     border-bottom-right-radius: 0;
 }
 
-
 /* Read's other half: dark, with a gold icon and outline, so it reads as
    its own action. */
 .book-actions .is-side {
@@ -159,7 +158,9 @@
     pointer-events: none;
 }
 
-.btn-action:hover {
+.btn-action:hover,
+.btn-action-download:hover,
+.btn-action-edit:hover {
     background: var(--bg-elevated);
     border-color: var(--border-strong);
     color: var(--text-strong);
@@ -196,13 +197,6 @@
     background: var(--bg-surface);
     color: var(--text-primary);
     border-color: var(--border-medium);
-}
-
-.btn-action-download:hover,
-.btn-action-edit:hover {
-    background: var(--bg-elevated);
-    border-color: var(--border-strong);
-    color: var(--text-strong);
 }
 
 .meta-row {

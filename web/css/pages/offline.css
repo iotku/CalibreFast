@@ -54,12 +54,6 @@
     gap: 10px;
 }
 
-@media (max-width: 600px) {
-    .offline-grid {
-        grid-template-columns: repeat(2, 1fr);
-    }
-}
-
 .offline-grid .book-link {
     display: block;
 }
@@ -236,7 +230,11 @@
     gap: 8px;
 }
 
-@media (max-width: 560px) {
+@media (max-width: 640px) {
+    .offline-grid {
+        grid-template-columns: repeat(2, 1fr);
+    }
+
     .import-row {
         flex-wrap: wrap;
     }

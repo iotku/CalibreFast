@@ -119,11 +119,6 @@
     margin-bottom: clamp(4px, 3cqi, 8px);
 }
 
-.book-date {
-    color: color-mix(in srgb, var(--tint) 60%, transparent);
-    font-size: var(--font-size-tiny);
-}
-
 /* Accessibility: keyboard and touch */
 
 .book:focus-within .book-info {
@@ -136,21 +131,6 @@
 .book:not(:has(.book-cover.loaded)) .book-info {
     opacity: 1;
     transform: none;
-}
-
-@media (hover: none) {
-    .book-info {
-        opacity: 1;
-        transform: none;
-    }
-}
-
-@media (prefers-reduced-motion: reduce) {
-    .book,
-    .book-cover,
-    .book-info {
-        transition: none;
-    }
 }
 
 /* Reading status (reading.ts): a ring in the status's color. Being read and
@@ -309,6 +289,11 @@
 /* Touch screens use the popup's controls, but still show a favorite's ★
    (as a mark only: a tap opens the popup as usual). */
 @media (hover: none) {
+    .book-info {
+        opacity: 1;
+        transform: none;
+    }
+
     .cover-action:not(.cover-fav.is-on) {
         display: none;
     }
@@ -319,6 +304,12 @@
 }
 
 @media (prefers-reduced-motion: reduce) {
+    .book,
+    .book-cover,
+    .book-info {
+        transition: none;
+    }
+
     .cover-action {
         transition: none;
     }

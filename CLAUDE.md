@@ -9,8 +9,8 @@ Go server (`*.go`, `html/template` in `templates/`) and TypeScript in `web/`, bu
 
 - `web/style.css` only `@import`s `web/css/` (tokens, base, components, layout, pages); add a rule to the file for its feature, or a new file in the right folder plus an `@import`.
 - Never write a color outside `web/css/tokens.css`: use a semantic token (`var(--text-muted)`, `var(--accent-soft)`, `var(--danger-text)`, …), or add one there. `TestNoRawColorsOutsideTokens` fails otherwise. This is what lets a light theme be one block of values.
-- Reuse what's there before adding a variant: `.dialog` (+ `.dialog--danger`, `.dialog-actions`) for any `<dialog>`, the chip editor in `components/chip-editor.css`. No `<style>` blocks in templates.
-- New breakpoints: 480, 640, 900 or 1200px (some older rules still use others).
+- Reuse what's there before adding a variant: `.dialog` (+ `.dialog--danger`, `.dialog-actions`) for any `<dialog>`, `.btn-primary` / `.btn-link` (components/button.css), the chip editor in `components/chip-editor.css`. No `<style>` blocks in templates.
+- New breakpoints: 480, 640, 768 (the book popup goes full screen), 900 or 1200px; one `@media` block per query per file, at its end.
 
 ## Treat this data as hostile
 

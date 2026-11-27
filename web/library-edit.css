@@ -182,12 +182,6 @@
     color: var(--text-secondary);
 }
 
-@media (max-width: 640px) {
-    .lt-editbar-label {
-        flex-basis: 110px;
-    }
-}
-
 /* ── The table ── */
 
 .lt-scroll {
@@ -619,6 +613,10 @@
 }
 
 @media (max-width: 640px) {
+    .lt-editbar-label {
+        flex-basis: 110px;
+    }
+
     .lt-field {
         grid-template-columns: 1fr;
     }

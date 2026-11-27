@@ -86,7 +86,7 @@ body:has(.manage-panel:not([hidden])) .select-bar {
     max-width: calc(100vw - var(--manage-panel-width) - 32px);
 }
 
-@media (max-width: 600px) {
+@media (max-width: 640px) {
     body:has(.manage-panel:not([hidden])) .select-bar {
         left: 50%;
         max-width: calc(100vw - 32px);

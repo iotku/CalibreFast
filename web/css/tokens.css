@@ -99,7 +99,8 @@
     /* Breakpoints (custom properties don't work in @media, so these are
        for reference): use only these widths.
        480px  phone, 640px  small tablet / large phone,
-       900px  tablet, 1200px  small desktop. */
+       768px  the book popup goes full screen, 900px  tablet,
+       1200px  small desktop. */
 }
 
 /* ---- Semantic tokens: the dark theme (the default) ---- */

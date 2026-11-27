@@ -19,15 +19,6 @@
     gap: 6px;
 }
 
-@media (max-width: 640px) {
-    .site-bar .btn-group-toggle {
-        width: 36px;
-        height: 36px;
-        padding: 0;
-        justify-content: center;
-    }
-}
-
 /* A page's actions (filtered.html). Your own (pin, add to shelf) are icons
    in the bar, named by their title and a label kept for screen readers;
    the library's tools are in the Manage menu, with their labels. The two
@@ -108,7 +99,8 @@
 }
 
 /* Items: menu rows, not the bar's dashed buttons. */
-.site-bar .tb-manage-menu .btn-group-toggle {
+.site-bar .tb-manage-menu .btn-group-toggle,
+.site-bar.tb-fold .tb-own-actions .btn-group-toggle {
     width: 100%;
     box-sizing: border-box; /* the padding inside the 100% */
     height: auto;
@@ -212,21 +204,6 @@
     border-radius: 0;
 }
 
-.site-bar.tb-fold .tb-own-actions .btn-group-toggle {
-    width: 100%;
-    box-sizing: border-box; /* the padding inside the 100% */
-    height: auto;
-    padding: 9px 10px;
-    justify-content: flex-start;
-    gap: 10px;
-    border: 0;
-    border-radius: var(--radius-small);
-    color: var(--text-secondary);
-    font-size: 0.92rem;
-    text-decoration: none;
-    text-align: left;
-}
-
 .site-bar.tb-fold .tb-own-actions .btn-group-toggle .tb-label {
     display: inline;
     position: static;
@@ -251,99 +228,6 @@
 
 .site-bar.tb-fold .tb-fold-icon {
     display: block;
-}
-
-@media (max-width: 640px) {
-    .site-bar .tb-actions {
-        position: static;
-    }
-
-    .site-bar .tb-actions-pop {
-        position: absolute;
-        top: calc(100% + 8px);
-        left: auto; /* against the screen (the bar is fixed), not the button */
-        right: 8px;
-        max-width: calc(100vw - 16px);
-        z-index: 1000;
-        display: flex;
-        flex-direction: column;
-        gap: 2px;
-        min-width: 210px;
-        padding: 6px;
-        background: var(--bg-elevated);
-        border: 1px solid var(--border-medium);
-        border-radius: var(--radius-medium);
-        box-shadow: var(--shadow-medium);
-        max-height: calc(100dvh - var(--topbar-bottom) - 20px - env(safe-area-inset-bottom, 0px));
-        overflow-y: auto;
-        overscroll-behavior: contain;
-    }
-
-    .site-bar .tb-actions:not(.open) .tb-actions-pop {
-        display: none;
-    }
-
-    .site-bar .tb-own-actions,
-    .site-bar .tb-manage-menu {
-        position: static;
-        display: flex;
-        flex-direction: column;
-        gap: 2px;
-        min-width: 0;
-        padding: 0;
-        border: 0;
-        box-shadow: none;
-        background: none;
-        order: 0;
-    }
-
-    .site-bar .tb-own-actions:has(*) + .tb-manage-menu:has(*) {
-        margin-top: 4px;
-        padding-top: 6px;
-        border-top: 1px solid var(--border-medium);
-        border-radius: 0;
-    }
-
-    .site-bar .tb-own-actions .btn-group-toggle {
-        width: 100%;
-        box-sizing: border-box; /* the padding inside the 100% */
-        height: auto;
-        padding: 9px 10px;
-        justify-content: flex-start;
-        gap: 10px;
-        border: 0;
-        border-radius: var(--radius-small);
-        color: var(--text-secondary);
-        font-size: 0.92rem;
-        text-decoration: none;
-        text-align: left;
-    }
-
-    .site-bar .tb-own-actions .btn-group-toggle .tb-label {
-        display: inline;
-        position: static;
-        width: auto;
-        height: auto;
-        clip-path: none;
-    }
-
-    .site-bar .tb-manage-btn,
-    .site-bar .tb-actions:not(:has(.tb-manage-menu > *)) .tb-manage-btn {
-        display: inline-flex;
-        width: 36px;
-        padding: 0;
-        justify-content: center;
-    }
-
-    .site-bar .tb-manage-icon,
-    .site-bar .tb-manage-btn .tb-label,
-    .site-bar .tb-manage-caret {
-        display: none;
-    }
-
-    .site-bar .tb-fold-icon {
-        display: block;
-    }
 }
 
 .btn-group-toggle:hover,
@@ -385,16 +269,6 @@
 
 body:has(.manage-panel:not([hidden])) {
     padding-right: calc(var(--page-padding) + var(--manage-panel-width));
-}
-
-@media (max-width: 600px) {
-    :root {
-        --manage-panel-width: 100vw;
-    }
-
-    body:has(.manage-panel:not([hidden])) {
-        padding-right: var(--page-padding);
-    }
 }
 
 .manage-panel-head {
@@ -591,14 +465,119 @@ body:has(.manage-panel:not([hidden])) {
 }
 
 /* Skinny: the full width (series-shelf.ts centres it on its button otherwise). */
-@media (max-width: 600px) {
+@media (max-width: 640px) {
+    .site-bar .btn-group-toggle {
+        width: 36px;
+        height: 36px;
+        padding: 0;
+        justify-content: center;
+    }
+
+    .site-bar .tb-actions {
+        position: static;
+    }
+
+    .site-bar .tb-actions-pop {
+        position: absolute;
+        top: calc(100% + 8px);
+        left: auto; /* against the screen (the bar is fixed), not the button */
+        right: 8px;
+        max-width: calc(100vw - 16px);
+        z-index: 1000;
+        display: flex;
+        flex-direction: column;
+        gap: 2px;
+        min-width: 210px;
+        padding: 6px;
+        background: var(--bg-elevated);
+        border: 1px solid var(--border-medium);
+        border-radius: var(--radius-medium);
+        box-shadow: var(--shadow-medium);
+        max-height: calc(100dvh - var(--topbar-bottom) - 20px - env(safe-area-inset-bottom, 0px));
+        overflow-y: auto;
+        overscroll-behavior: contain;
+    }
+
+    .site-bar .tb-actions:not(.open) .tb-actions-pop {
+        display: none;
+    }
+
+    .site-bar .tb-own-actions,
+    .site-bar .tb-manage-menu {
+        position: static;
+        display: flex;
+        flex-direction: column;
+        gap: 2px;
+        min-width: 0;
+        padding: 0;
+        border: 0;
+        box-shadow: none;
+        background: none;
+        order: 0;
+    }
+
+    .site-bar .tb-own-actions:has(*) + .tb-manage-menu:has(*) {
+        margin-top: 4px;
+        padding-top: 6px;
+        border-top: 1px solid var(--border-medium);
+        border-radius: 0;
+    }
+
+    .site-bar .tb-own-actions .btn-group-toggle {
+        width: 100%;
+        box-sizing: border-box; /* the padding inside the 100% */
+        height: auto;
+        padding: 9px 10px;
+        justify-content: flex-start;
+        gap: 10px;
+        border: 0;
+        border-radius: var(--radius-small);
+        color: var(--text-secondary);
+        font-size: 0.92rem;
+        text-decoration: none;
+        text-align: left;
+    }
+
+    .site-bar .tb-own-actions .btn-group-toggle .tb-label {
+        display: inline;
+        position: static;
+        width: auto;
+        height: auto;
+        clip-path: none;
+    }
+
+    .site-bar .tb-manage-btn,
+    .site-bar .tb-actions:not(:has(.tb-manage-menu > *)) .tb-manage-btn {
+        display: inline-flex;
+        width: 36px;
+        padding: 0;
+        justify-content: center;
+    }
+
+    .site-bar .tb-manage-icon,
+    .site-bar .tb-manage-btn .tb-label,
+    .site-bar .tb-manage-caret {
+        display: none;
+    }
+
+    .site-bar .tb-fold-icon {
+        display: block;
+    }
+
+    :root {
+        --manage-panel-width: 100vw;
+    }
+
+    body:has(.manage-panel:not([hidden])) {
+        padding-right: var(--page-padding);
+    }
+
     .series-shelf-panel {
         right: 8px;
         left: 8px;
         width: auto;
     }
 }
-
 
 .group-head {
     flex: none;
@@ -783,14 +762,3 @@ label.group-row span {
     margin: 0;
 }
 
-.btn-primary {
-    background: var(--accent);
-    color: var(--text-on-accent);
-    border-color: var(--accent);
-    font-weight: 600;
-}
-
-.btn-primary:disabled {
-    opacity: 0.45;
-    cursor: default;
-}

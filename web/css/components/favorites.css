@@ -99,15 +99,6 @@
     }
 }
 
-@media (max-width: 600px) {
-    .fav-aggs-row.fav-books-row {
-        --row-cols: 2.4;
-    }
-    .fav-books-row.fav-aggs-wrap {
-        grid-template-columns: repeat(2, 1fr);
-    }
-}
-
 .fav-books-head {
     margin: 0;
 }
@@ -194,15 +185,6 @@
     text-decoration: underline;
 }
 
-@media (max-width: 640px) {
-    .fav-aggs-row {
-        grid-auto-columns: 104px;
-    }
-    .fav-agg-initial {
-        font-size: 2rem;
-    }
-}
-
 /* /authors: the same carousel at the top (aggregate.html), its "Show all"
    a pill like Discover's. Before the user's kept favorites exist, a
    throbber holds a card's height. */
@@ -223,6 +205,20 @@
 }
 
 @media (max-width: 640px) {
+    .fav-aggs-row.fav-books-row {
+        --row-cols: 2.4;
+    }
+    .fav-books-row.fav-aggs-wrap {
+        grid-template-columns: repeat(2, 1fr);
+    }
+
+    .fav-aggs-row {
+        grid-auto-columns: 104px;
+    }
+    .fav-agg-initial {
+        font-size: 2rem;
+    }
+
     .fav-aggs-wait {
         min-height: 150px;
     }

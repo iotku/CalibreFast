@@ -219,11 +219,11 @@
             <ul class="follow-list">
                 {{ range .Starred }}
                 <li>{{ .Name }}{{ if ne .Name .Local }} → {{ .Local }}{{ end }}{{ if .Decided }} <span class="auth-muted">(your choice)</span>
-                    <form method="post" action="/account/hardcover#hardcover-follows"><input type="hidden" name="action" value="follow-undo"><input type="hidden" name="hc_id" value="{{ .HCID }}"><button type="submit" class="link-button">Undo</button></form>{{ end }}</li>
+                    <form method="post" action="/account/hardcover#hardcover-follows"><input type="hidden" name="action" value="follow-undo"><input type="hidden" name="hc_id" value="{{ .HCID }}"><button type="submit" class="btn-link">Undo</button></form>{{ end }}</li>
                 {{ end }}
                 {{ range .Waiting }}
                 <li>{{ .Name }} <span class="auth-muted">(no books here yet{{ if .Decided }}; you said it's none of those offered{{ end }})</span>
-                    {{ if .Decided }}<form method="post" action="/account/hardcover#hardcover-follows"><input type="hidden" name="action" value="follow-undo"><input type="hidden" name="hc_id" value="{{ .HCID }}"><button type="submit" class="link-button">Undo</button></form>{{ end }}</li>
+                    {{ if .Decided }}<form method="post" action="/account/hardcover#hardcover-follows"><input type="hidden" name="action" value="follow-undo"><input type="hidden" name="hc_id" value="{{ .HCID }}"><button type="submit" class="btn-link">Undo</button></form>{{ end }}</li>
                 {{ end }}
             </ul>
         </details>
@@ -243,7 +243,7 @@
         <ul class="follow-list">
             {{ range . }}
             <li>{{ .Name }} <span class="auth-muted">({{ .Error }})</span>
-                <form method="post" action="/account/hardcover#hardcover-follows"><input type="hidden" name="action" value="follow-retry"><input type="hidden" name="name" value="{{ .Name }}"><button type="submit" class="link-button">Try again</button></form></li>
+                <form method="post" action="/account/hardcover#hardcover-follows"><input type="hidden" name="action" value="follow-retry"><input type="hidden" name="name" value="{{ .Name }}"><button type="submit" class="btn-link">Try again</button></form></li>
             {{ end }}
         </ul>
         {{ end }}

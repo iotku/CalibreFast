@@ -33,12 +33,7 @@
     background: var(--bg-primary);
 }
 
-.home-shelf-card .shelf-name {
-    overflow: hidden;
-    text-overflow: ellipsis;
-    white-space: nowrap;
-}
-
+.home-shelf-card .shelf-name,
 .home-shelf-card .shelf-count {
     overflow: hidden;
     text-overflow: ellipsis;

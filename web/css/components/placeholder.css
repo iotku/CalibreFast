@@ -53,7 +53,8 @@
     filter: grayscale(0.6) brightness(0.75);
 }
 
-.placeholder-card .cover-wrapper::after {
+.placeholder-card .cover-wrapper::after,
+.placeholder-stack::after {
     content: "";
     position: absolute;
     inset: 0;
@@ -65,7 +66,8 @@
 
 /* A placeholder in the book popup (placeholder.html "placeholder-popup"):
    the banner and dashed edge over its cover, as on its card. */
-.placeholder-stack {
+.placeholder-stack,
+.series-stack {
     position: relative;
     width: 100%;
     max-width: 280px; /* the cover placeholder's */
@@ -78,26 +80,8 @@
     filter: grayscale(0.6) brightness(0.75);
 }
 
-.placeholder-stack::after {
-    content: "";
-    position: absolute;
-    inset: 0;
-    z-index: 2;
-    pointer-events: none;
-    border: 2px dashed var(--border-strong);
-    border-radius: inherit;
-}
-
 /* A shelf's whole series in the book popup (series-popup.html): its first
    book's cover, framed, under the "Series · N books" banner, as on its card. */
-.series-stack {
-    position: relative;
-    width: 100%;
-    max-width: 280px; /* the cover placeholder's */
-    overflow: hidden;
-    border-radius: var(--radius-large);
-    container-type: inline-size;
-}
 
 .series-stack::after {
     content: "";
