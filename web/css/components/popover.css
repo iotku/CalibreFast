@@ -1,0 +1,40 @@
+/* Floating panels: the top bar's menus and search suggestions, the
+   bulk editor's cell menu and help, the library suggestions under a field,
+   the cloud's hover preview. One surface; each panel's own rule says only
+   where it goes and how big it is. The ☰ links and the page's own actions
+   float only at some of the bar's levels (nav.ts), hence their selectors. */
+.popover,
+.tb-menu-list,
+.site-bar.tb-tighter .tb-nav,
+.tb-manage-menu,
+.site-bar.tb-fold .tb-actions-pop,
+.suggest-list,
+.group-suggest,
+.agg-preview,
+.lt-cell-menu,
+.lt-help-body,
+.info-tip-body {
+    padding: 6px;
+    background: var(--bg-elevated);
+    color: var(--text-primary);
+    border: 1px solid var(--border-medium);
+    border-radius: var(--radius-medium);
+    box-shadow: var(--shadow-medium);
+}
+
+/* A choice in a suggestion list (web/suggest.ts, account-import.ts). */
+.suggest-list li,
+.group-suggest li {
+    padding: 6px 10px;
+    font-size: 0.9rem;
+    border-radius: var(--radius-small);
+    cursor: pointer;
+    overflow-wrap: anywhere;
+}
+
+.suggest-list li[aria-selected="true"],
+.suggest-list li:hover,
+.group-suggest li[aria-selected="true"],
+.group-suggest li:hover {
+    background: var(--accent-soft);
+}

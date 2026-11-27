@@ -261,9 +261,17 @@ function init(bar: HTMLElement): void {
         const edge = bar.getBoundingClientRect().right - parseFloat(getComputedStyle(bar).paddingRight);
         return last.getBoundingClientRect().right > edge + 1;
     };
+    // The levels the window's width calls for whatever the bar holds (the
+    // same as topbar.html's inline script, which sets them before the first
+    // paint): a phone has them all, a tablet's browse links are in ☰.
+    const tbFloor = (): string[] =>
+        matchMedia("(max-width: 640px)").matches ? levels : matchMedia("(max-width: 1000px)").matches ? ["tb-tighter"] : [];
     const fit = (): void => {
+        const floor = tbFloor();
         bar.classList.remove(...levels);
+        bar.classList.add(...floor);
         for (const level of levels) {
+            if (floor.includes(level)) continue;
             if (!overflows()) return;
             bar.classList.add(level);
         }

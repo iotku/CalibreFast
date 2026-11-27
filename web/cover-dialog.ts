@@ -117,7 +117,7 @@ export function mountCoverDialog({ book, autoDefault = false, placeholderCover, 
             // Pixel for pixel: one image pixel per screen pixel.
             if (actual) img.style.width = `${c.width / window.devicePixelRatio}px`;
             const pick = c.save
-                ? el("button", { type: "button", className: "btn-primary" }, "Use this cover")
+                ? el("button", { type: "button", className: "btn-standard btn-primary" }, "Use this cover")
                 : el("span", { className: "cover-view-note" }, book.pending ? "The cover chosen so far" : "The book's cover now");
             if (pick instanceof HTMLButtonElement) pick.addEventListener("click", () => void use(c));
             return el(

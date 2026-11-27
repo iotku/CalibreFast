@@ -9,10 +9,6 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <title>{{.Title}}</title>
     <link rel="stylesheet" href="{{ asset "style.css" }}" />
-    <link rel="preconnect" href="https://fonts.googleapis.com" />
-    <link
-        href="https://fonts.googleapis.com/css2?family=Playfair+Display:wght@400;700&family=IBM+Plex+Mono:wght@400;500&family=IBM+Plex+Sans:wght@300;400;500&display=swap"
-        rel="stylesheet" />
     <link rel="stylesheet" href="{{ asset "upload.css" }}" />
 </head>
 
@@ -54,7 +50,7 @@
             </div>
             <ul id="file-list"></ul>
             <div class="upload-actions">
-                <button id="btn-upload" disabled>Upload to library</button>
+                <button id="btn-upload" class="btn-standard btn-primary" disabled>Upload to library</button>
                 <span id="upload-status"></span>
             </div>
             <div id="progress-wrap">

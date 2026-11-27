@@ -141,15 +141,11 @@
 }
 
 .agg-chip {
-    display: inline-flex;
     align-items: baseline;
     gap: 6px;
     padding: 6px 12px;
     color: var(--text-primary);
     text-decoration: none;
-    background: var(--bg-surface);
-    border: 1px solid var(--border-medium);
-    border-radius: 999px;
     transition: border-color 0.15s;
 }
 
@@ -237,14 +233,10 @@
 
 /* Hover preview: a few of the entry's covers */
 .agg-preview {
+    padding: 10px 12px;
     position: fixed;
     z-index: 50;
     max-width: min(360px, calc(100vw - 16px));
-    padding: 10px 12px;
-    background: var(--bg-surface);
-    border: 1px solid var(--border-medium);
-    border-radius: var(--radius-medium);
-    box-shadow: 0 8px 24px var(--scrim-45);
     pointer-events: none;
 }
 
@@ -624,20 +616,6 @@
 
 .agg-chip .agg-count {
     margin-left: 0;
-}
-
-.meta-link {
-    color: var(--text-link);
-    text-decoration: none;
-    border-bottom: 1px solid var(--border-medium);
-    transition:
-        color var(--transition-fast),
-        border-color var(--transition-fast);
-}
-
-.meta-link:hover {
-    color: var(--text-strong);
-    border-bottom-color: color-mix(in srgb, var(--tint) 50%, transparent);
 }
 
 .title-row {

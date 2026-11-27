@@ -1,0 +1,14 @@
+/* Pills: the cloud's chips (aggregate.css), the bulk editor's value
+   chips (library-edit.css), a group's members (filtered.css) and the
+   editor's changed tags (book-edit.css). One shape; each sets its size. */
+.pill,
+.agg-chip,
+.lt-chip,
+.group-chip,
+.compare-chip {
+    display: inline-flex;
+    align-items: center;
+    background: var(--bg-surface);
+    border: 1px solid var(--border-medium);
+    border-radius: var(--radius-round);
+}

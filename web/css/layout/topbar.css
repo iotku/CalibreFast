@@ -353,11 +353,6 @@
     min-width: 190px;
     display: flex;
     flex-direction: column;
-    padding: 6px;
-    background: var(--bg-elevated);
-    border: 1px solid var(--border-medium);
-    border-radius: var(--radius-medium);
-    box-shadow: var(--shadow-medium);
 }
 
 .tb-menu-list[hidden] {
@@ -402,63 +397,12 @@
     border-top: 1px solid var(--border-medium);
 }
 
-/* ≤ 1000px: browse links move into the ☰ menu */
-@media (max-width: 1000px) {
-    .tb-menu-btn {
-        display: inline-flex !important;
-    }
-
-    .tb-nav {
-        display: none;
-        position: absolute;
-        top: calc(100% + 4px);
-        left: var(--page-padding);
-        flex-direction: column; /* as wide as its longest item */
-        align-items: stretch;
-        gap: 2px;
-        padding: 6px;
-        background: var(--bg-elevated);
-        border: 1px solid var(--border-medium);
-        border-radius: var(--radius-medium);
-        box-shadow: var(--shadow-medium);
-    }
-
-    .site-bar.nav-open .tb-nav {
-        display: flex;
-    }
-
-    /* Menu items: 44px touch targets; the active one underlines its word
-       (straight, inside the item, clear of the next entry). */
-    .tb-nav a {
-        padding: 14px;
-        line-height: 16px;
-    }
-
-    .tb-nav a[aria-current="page"]::after {
-        display: none;
-    }
-
-    .tb-nav a:hover,
-    .tb-nav a[aria-current="page"] {
-        background: var(--tint-soft);
-    }
-
-    .tb-nav a[aria-current="page"] {
-        text-decoration: underline;
-        text-decoration-thickness: 2px;
-        text-underline-offset: 6px;
-    }
-
-    .tb-nav .tb-home {
-        display: block;
-    }
-
-    .tb-title-nav {
-        display: block;
-    }
-}
-
-/* The same, when a crowded bar needs it (nav.ts: tb-tighter). */
+/* The bar's levels (nav.ts; on a tablet or phone topbar.html's inline
+   script sets them before the first paint, so there's one set of rules):
+   tb-tight: as on a phone, the shortcuts (all in the user menu too) and
+   the user name go; tb-tighter (≤ 1000px, or a crowded bar): the browse
+   links go into the ☰ menu; tb-tightest: the search box becomes its icon;
+   tb-fold (filtered.css): the page's own actions go into its ⋯ menu. */
 .site-bar.tb-tighter .tb-menu-btn {
     display: inline-flex !important;
 }
@@ -471,11 +415,6 @@
     flex-direction: column; /* as wide as its longest item */
     align-items: stretch;
     gap: 2px;
-    padding: 6px;
-    background: var(--bg-elevated);
-    border: 1px solid var(--border-medium);
-    border-radius: var(--radius-medium);
-    box-shadow: var(--shadow-medium);
 }
 
 .site-bar.tb-tighter.nav-open .tb-nav {
@@ -510,7 +449,8 @@
     display: block;
 }
 
-/* ≤ 640px: search becomes an icon; saved/favorites/reading live in the user menu */
+/* ≤ 640px, besides the levels (all four, from topbar.html's script):
+   a tighter bar, and the title takes the brand's place. */
 @media (max-width: 640px) {
     .site-bar {
         gap: 6px;
@@ -525,52 +465,6 @@
         flex: 1 1 auto;
     }
 
-    .tb-search {
-        display: none;
-    }
-
-    .tb-search-btn {
-        display: inline-flex !important;
-        margin-left: auto;
-    }
-
-    .site-bar.search-open .tb-search {
-        display: flex;
-        position: absolute;
-        inset: 0;
-        max-width: none;
-        z-index: 2;
-        gap: 6px;
-        padding: 0 8px;
-        margin: 0;
-        background: var(--bg-secondary);
-    }
-
-    .site-bar.search-open .tb-search-close {
-        display: inline-flex !important;
-    }
-
-    /* Its suggestions: the whole screen under the bar (as with tb-tightest, below) */
-    .site-bar.search-open .tb-menu-list.tb-suggest {
-        top: 100%;
-        left: 0;
-        right: 0;
-        width: auto;
-        max-width: none;
-        height: calc(100dvh - var(--topbar-bottom));
-        max-height: none;
-        border-radius: 0;
-        border-width: 1px 0 0;
-        box-shadow: none;
-        padding: 6px max(6px, env(safe-area-inset-right, 0px)) max(6px, env(safe-area-inset-bottom, 0px)) max(6px, env(safe-area-inset-left, 0px));
-    }
-
-    .tb-shortcut,
-    .tb-user-name {
-        display: none !important;
-    }
-
-
     .page-pager .input-page {
         width: 44px;
     }
@@ -580,12 +474,6 @@
     }
 }
 
-
-/* A bar with more in it than fits (nav.ts adds these, a step at a time, to
-   keep the user menu on screen). tb-tight: as on a phone, the shortcuts
-   (all in the user menu too) and the user name go;
-   tb-tighter: the browse links go into the ☰ menu (above); tb-tightest:
-   the search box becomes its icon. */
 .site-bar.tb-tight .tb-shortcut,
 .site-bar.tb-tight .tb-user-name {
     display: none !important;
@@ -619,8 +507,7 @@
 /* The search box over the bar (a phone, or tb-tightest): its suggestions
    take the whole screen under the bar. Absolute from the box, which then
    covers the bar exactly, rather than fixed: the bar's backdrop-filter
-   makes it the containing block of anything fixed inside it. (Phones: in
-   the ≤ 640px block below.) */
+   makes it the containing block of anything fixed inside it. */
 .site-bar.tb-tightest.search-open .tb-menu-list.tb-suggest {
     top: 100%;
     left: 0;

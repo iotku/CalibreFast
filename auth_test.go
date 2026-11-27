@@ -274,7 +274,14 @@ func TestLoginPageRevealsNothing(t *testing.T) {
 // auth.css styles the signed-out pages and nothing else: every class it
 // names, or a file it imports names, is one login.html, link.html or
 // about.html uses, so it can't grow a description of the rest of the app.
+// The exceptions are the generic classes of the shared base, button and
+// input files it imports (web/css/), which say nothing about the app.
 func TestAuthCSSOnlyNamesAuthPageClasses(t *testing.T) {
+	generic := map[string]bool{
+		"btn": true, "btn-back": true, "btn-standard": true, "btn-primary": true, "btn-link": true, "btn-action": true,
+		"clearable": true, "clear-x": true, "input-search": true, "input-page": true,
+		"keep-gutter": true, "no-scroll": true, "meta-link": true,
+	}
 	importRe := regexp.MustCompile(`@import\s+"([^"]+)"\s*;`)
 	var read func(path string) []byte
 	read = func(path string) []byte {
@@ -299,7 +306,7 @@ func TestAuthCSSOnlyNamesAuthPageClasses(t *testing.T) {
 	}
 	css = regexp.MustCompile(`(?s)/\*.*?\*/`).ReplaceAll(css, nil)
 	for _, m := range regexp.MustCompile(`\.([a-zA-Z][\w-]*)`).FindAllSubmatch(css, -1) {
-		if c := string(m[1]); !regexp.MustCompile(`class="[^"]*\b` + regexp.QuoteMeta(c) + `\b`).Match(pages) {
+		if c := string(m[1]); !generic[c] && !regexp.MustCompile(`class="[^"]*\b` + regexp.QuoteMeta(c) + `\b`).Match(pages) {
 			t.Errorf("auth.css names .%s, which none of the signed-out pages use", c)
 		}
 	}
