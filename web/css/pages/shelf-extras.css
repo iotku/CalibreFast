@@ -28,8 +28,8 @@
 }
 
 .arrange-remove:hover:not(:disabled) {
-    color: #e66;
-    border-color: #c44;
+    color: var(--danger-text);
+    border-color: var(--danger);
 }
 
 @media (pointer: coarse) {

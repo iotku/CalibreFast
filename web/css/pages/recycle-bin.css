@@ -28,6 +28,6 @@
 }
 
 .auth-error-text {
-    color: #e57373;
+    color: var(--danger-text);
     font-size: 0.85rem;
 }

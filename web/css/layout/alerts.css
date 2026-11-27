@@ -48,8 +48,8 @@
     border-bottom: 1px solid var(--border-medium);
 }
 .system-alert.is-critical {
-    background: #3a1a1a;
-    border-bottom-color: #e88;
+    background: color-mix(in srgb, var(--danger) 20%, var(--bg-primary));
+    border-bottom-color: var(--danger-text);
 }
 .system-alert-text {
     flex: 1 1 260px;

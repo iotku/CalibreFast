@@ -428,7 +428,7 @@
                 </div>
             </form>
 
-            <dialog id="compare-dialog" class="compare-dialog" aria-labelledby="compare-title">
+            <dialog id="compare-dialog" class="dialog compare-dialog" aria-labelledby="compare-title">
                 <header class="compare-header">
                     <h2 id="compare-title">Changes vs current metadata</h2>
                     <form method="dialog"><button class="compare-close" aria-label="Close">✕</button></form>
@@ -443,7 +443,7 @@
 
             {{ if .Import }}
             <!-- Adding a book that may already be in the library: it beside the library's (web/metadata.ts) -->
-            <dialog id="duplicate-dialog" class="compare-dialog duplicate-dialog" aria-labelledby="duplicate-title" data-formats="{{ range $i, $f := .Import.Files }}{{ if $i }},{{ end }}{{ $f.Format }}{{ end }}">
+            <dialog id="duplicate-dialog" class="dialog compare-dialog duplicate-dialog" aria-labelledby="duplicate-title" data-formats="{{ range $i, $f := .Import.Files }}{{ if $i }},{{ end }}{{ $f.Format }}{{ end }}">
                 <header class="compare-header">
                     <h2 id="duplicate-title">Possibly already in the library</h2>
                     <form method="dialog"><button class="compare-close" aria-label="Close">✕</button></form>
@@ -463,7 +463,7 @@
             {{ end }}
 
             <!-- One lookup match vs the current metadata (web/isbn-tools.ts) -->
-            <dialog id="lookup-dialog" class="compare-dialog" aria-labelledby="lookup-title">
+            <dialog id="lookup-dialog" class="dialog compare-dialog" aria-labelledby="lookup-title">
                 <header class="compare-header">
                     <h2 id="lookup-title">Found online</h2>
                     <form method="dialog"><button class="compare-close" aria-label="Close">✕</button></form>
@@ -477,7 +477,7 @@
             </dialog>
 
             <!-- Every cover the book could have, to compare and pick (web/cover-dialog.ts) -->
-            <dialog id="cover-dialog" class="compare-dialog cover-dialog" aria-labelledby="cover-title">
+            <dialog id="cover-dialog" class="dialog compare-dialog cover-dialog" aria-labelledby="cover-title">
                 <header class="compare-header">
                     <h2 id="cover-title">Choose a cover</h2>
                     <form method="dialog"><button class="compare-close" aria-label="Close">✕</button></form>

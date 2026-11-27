@@ -81,7 +81,7 @@
     font-size: 0.65em;
     font-weight: 400;
     color: var(--text-muted);
-    font-family: var(--mono, ui-monospace, monospace);
+    font-family: var(--font-mono);
 }
 
 .page-head ~ .agg-header-wrap > .agg-header {

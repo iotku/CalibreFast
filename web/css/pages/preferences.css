@@ -146,10 +146,10 @@
 .seg-reading, .seg-database { background: var(--status-reading); }
 .seg-wanted { background: var(--status-wanted); }
 .seg-finished { background: var(--status-finished); }
-.seg-other, .seg-disk-other { background: #a58bd6; }
+.seg-other, .seg-disk-other { background: var(--chart-other); }
 .seg-books { background: var(--status-reading); }
-.seg-covers { background: #a58bd6; }
-.seg-other-data { background: #777; }
+.seg-covers { background: var(--chart-other); }
+.seg-other-data { background: var(--chart-muted); }
 .seg-partial { background: repeating-linear-gradient(135deg, var(--status-wanted) 0 4px, transparent 4px 8px); }
 .seg-free { background: transparent; }
 .prefs-swatch.seg-free { border: 1px solid var(--border-medium); box-sizing: border-box; }

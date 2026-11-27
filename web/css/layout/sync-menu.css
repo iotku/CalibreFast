@@ -35,13 +35,13 @@
     display: grid;
     place-items: center;
     border-radius: 50%;
-    color: #fff;
+    color: var(--text-on-color);
     background: var(--status-finished);
-    box-shadow: 0 0 0 2px var(--bg-primary, #111);
+    box-shadow: 0 0 0 2px var(--bg-primary);
     pointer-events: none;
 }
 .tb-sync-result[data-outcome="failed"] {
-    background: #e57373;
+    background: var(--danger-text);
 }
 .tb-sync-result svg {
     width: 10px;
@@ -148,7 +148,7 @@
     white-space: normal;
 }
 .tb-notice.is-pinned.is-critical {
-    box-shadow: inset 3px 0 0 #e88;
+    box-shadow: inset 3px 0 0 var(--danger-text);
 }
 .tb-notice.is-pinned .system-alert-text {
     flex: 1 1 100%;
@@ -211,13 +211,13 @@
     height: auto;
     justify-content: center;
     padding: 6px 12px;
-    border: 1px solid var(--border-color);
+    border: 1px solid var(--border-medium);
 }
 .tb-menu-list .tb-push-actions .btn-primary,
 .tb-menu-list .tb-push-actions .btn-primary:hover {
-    background: #c8a96e;
-    color: #121212;
-    border-color: #c8a96e;
+    background: var(--accent);
+    color: var(--text-on-accent);
+    border-color: var(--accent);
 }
 .tb-menu-list button.tb-notice-dismiss {
     flex: none;

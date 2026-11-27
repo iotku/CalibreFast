@@ -248,27 +248,7 @@
     flex: 1;
 }
 
-/* A shelf's Edit dialog (web/shelf-edit.ts). */
-.shelf-edit-dialog {
-    width: min(520px, calc(100vw - 32px));
-    max-height: calc(100vh - 32px);
-    padding: 1.25rem 1.5rem;
-    background: var(--bg-surface);
-    color: var(--text-primary);
-    border: 1px solid var(--border-medium);
-    border-radius: var(--radius-medium);
-    box-shadow: var(--shadow-medium);
-}
-
-.shelf-edit-dialog::backdrop {
-    background: var(--bg-modal-overlay);
-}
-
-.shelf-edit-dialog h2 {
-    margin: 0 0 0.75rem;
-    font-size: 1.15rem;
-}
-
+/* A shelf's Edit dialog (web/shelf-edit.ts; .dialog, dialog.css). */
 .shelf-edit-field {
     display: flex;
     flex-direction: column;
@@ -350,7 +330,7 @@
     flex: 1;
     min-width: 0;
     width: auto;
-    font-family: var(--mono, ui-monospace, monospace);
+    font-family: var(--font-mono);
     font-size: 0.8rem;
 }
 

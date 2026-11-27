@@ -99,8 +99,8 @@
     z-index: 3;
     padding: 2px 8px;
     border-radius: 999px;
-    background: rgba(0, 0, 0, 0.75);
-    color: #fff;
+    background: var(--scrim-80);
+    color: var(--text-on-color);
     font-size: 11px;
 }
 
@@ -181,16 +181,16 @@
     margin-top: 6px;
     padding: 4px 8px;
     font-size: 0.85rem;
-    color: #e8cf9a;
-    background: rgba(200, 169, 110, 0.12);
-    border: 1px solid rgba(200, 169, 110, 0.4);
+    color: var(--accent-light);
+    background: var(--accent-soft);
+    border: 1px solid var(--accent-line);
     border-radius: var(--radius-small);
 }
 
 .import-duplicate.import-duplicate-same {
-    color: #f0b3b3;
-    background: rgba(186, 90, 90, 0.15);
-    border-color: rgba(186, 90, 90, 0.4);
+    color: var(--danger-light);
+    background: var(--danger-soft);
+    border-color: var(--danger-line);
 }
 
 .import-duplicate a,
@@ -205,7 +205,7 @@
 .import-progress progress {
     width: 100%;
     height: 10px;
-    accent-color: var(--accent, #c8a96e);
+    accent-color: var(--accent);
 }
 
 .import-progress-row {
@@ -227,7 +227,7 @@
 .import-info .duplicate-note {
     margin-top: 6px;
     font-size: 0.85rem;
-    color: #e8cf9a;
+    color: var(--accent-light);
 }
 
 .import-actions {
@@ -251,13 +251,13 @@
       Recycling Bin (templates/recycle-bin.html, web/recycle-bin.ts) ── */
 .btn-action.btn-danger,
 .btn-action-remove:hover {
-    background: #8f2a2a;
-    border-color: #c44;
-    color: #fff;
+    background: var(--danger-strong);
+    border-color: var(--danger);
+    color: var(--text-strong);
 }
 
 .btn-action.btn-danger:hover:not(:disabled) {
-    background: #a83232;
+    background: var(--danger-strong);
 }
 
 .btn-action:disabled {

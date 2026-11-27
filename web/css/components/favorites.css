@@ -21,7 +21,7 @@
 }
 
 .agg-fav[aria-pressed="true"] {
-    color: #e0a800;
+    color: var(--warning);
 }
 
 .agg-fav[aria-pressed="true"] svg {
@@ -64,11 +64,11 @@
 }
 
 .fav-aggs {
-    margin: 0 0 var(--gap-large, 16px);
+    margin: 0 0 var(--gap-large);
 }
 
 .fav-chips {
-    margin: 0 0 var(--gap-large, 16px);
+    margin: 0 0 var(--gap-large);
 }
 
 /* The series carousel: in the grid's column, so its cards are the grid's

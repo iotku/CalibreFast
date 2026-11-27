@@ -109,7 +109,7 @@
     font-size: 0.8rem;
     text-transform: uppercase;
     letter-spacing: 0.06em;
-    color: var(--text-secondary, #999);
+    color: var(--text-secondary);
 }
 
 .book-file-chip {
@@ -117,7 +117,7 @@
     align-items: center;
     gap: 4px;
     padding: 2px 4px 2px 10px;
-    border: 1px solid var(--border, #444);
+    border: 1px solid var(--border-light);
     border-radius: 999px;
     font-size: 0.82rem;
     text-transform: uppercase;
@@ -139,8 +139,8 @@
 
 .book-file-remove:hover,
 .book-file-remove:focus-visible {
-    background: #8f2a2a;
-    color: #fff;
+    background: var(--danger-strong);
+    color: var(--text-strong);
     opacity: 1;
 }
 

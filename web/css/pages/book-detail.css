@@ -81,14 +81,14 @@ body.book-standalone {
     overflow: hidden;
     border-radius: var(--radius-large);
     box-shadow: var(--shadow-medium);
-    color: white;
+    color: var(--text-on-color);
     overflow-wrap: anywhere;
     background:
         linear-gradient(
             to top,
-            rgba(0, 0, 0, 0.92) 0%,
-            rgba(0, 0, 0, 0.65) 35%,
-            rgba(0, 0, 0, 0.15) 65%,
+            color-mix(in srgb, var(--scrim) 92%, transparent) 0%,
+            var(--scrim-60) 35%,
+            var(--scrim-20) 65%,
             transparent 100%
         ),
         hsl(var(--cover-hue) 55% 35%);
@@ -115,7 +115,7 @@ body.book-standalone {
 }
 
 .cover-placeholder-author {
-    color: rgba(255, 255, 255, 0.8);
+    color: color-mix(in srgb, var(--tint) 80%, transparent);
     font-size: var(--font-size-small);
 }
 
@@ -148,7 +148,7 @@ body.book-standalone {
 
 .cover-link:hover {
     transform: translateY(-2px);
-    box-shadow: 0 8px 24px rgba(0, 0, 0, 0.5);
+    box-shadow: 0 8px 24px var(--scrim-45);
 }
 
 .cover-link img {
@@ -167,11 +167,11 @@ body.book-standalone {
     align-items: center;
     gap: 6px;
     padding: 6px 14px;
-    background: rgba(18, 18, 18, 0.88);
+    background: var(--bg-topbar);
     backdrop-filter: blur(8px);
     -webkit-backdrop-filter: blur(8px);
-    color: #c8a96e;
-    border: 1px solid rgba(200, 169, 110, 0.45);
+    color: var(--accent);
+    border: 1px solid var(--accent-line);
     border-radius: var(--radius-round);
     font-size: 0.75rem;
     font-weight: 600;

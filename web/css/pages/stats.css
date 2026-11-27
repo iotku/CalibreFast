@@ -60,7 +60,7 @@
     height: auto;
 }
 .stats-heat-cell {
-    stroke: rgba(255, 255, 255, 0.04);
+    stroke: var(--tint-faint);
     stroke-width: 1;
 }
 .stats-heat-cell:hover {

@@ -130,7 +130,7 @@
 
 .site-bar .tb-manage-menu .btn-group-toggle:hover,
 .site-bar.tb-fold .tb-own-actions .btn-group-toggle:hover {
-    background: rgba(255, 255, 255, 0.08);
+    background: var(--tint-soft);
 }
 
 .site-bar .tb-manage-menu .btn-group-toggle .tb-label {
@@ -143,7 +143,7 @@
 
 .site-bar .tb-manage-menu .btn-group-toggle[aria-pressed="true"] svg,
 .site-bar .tb-actions-pop .btn-group-toggle[aria-pressed="true"] svg {
-    color: var(--accent, currentColor);
+    color: var(--accent);
 }
 
 /* A crowded bar (nav.ts): Manage is its icon. */
@@ -370,7 +370,7 @@
     box-sizing: border-box;
     background: var(--bg-secondary);
     border-left: 1px solid var(--border-medium);
-    box-shadow: -12px 0 32px rgba(0, 0, 0, 0.45);
+    box-shadow: -12px 0 32px var(--scrim-45);
 }
 
 .manage-panel[hidden] {
@@ -403,7 +403,7 @@ body:has(.manage-panel:not([hidden])) {
     align-items: center;
     gap: 8px;
     padding: 10px 10px 10px 1.1rem;
-    border-bottom: 1px solid var(--border-subtle, var(--border-medium));
+    border-bottom: 1px solid var(--border-subtle);
 }
 
 .manage-panel-head h2 {
@@ -440,7 +440,7 @@ body:has(.manage-panel:not([hidden])) {
 
 /* A rule between visible sections. */
 .manage-section:not([hidden]) ~ .manage-section {
-    border-top: 1px solid var(--border-subtle, var(--border-medium));
+    border-top: 1px solid var(--border-subtle);
 }
 
 .manage-section h3 {
@@ -526,7 +526,7 @@ body:has(.manage-panel:not([hidden])) {
     margin: 0 -1.1rem;
     padding: 0.6rem 1.1rem calc(0.8rem + env(safe-area-inset-bottom, 0px));
     background: var(--bg-secondary);
-    border-top: 1px solid var(--border-subtle, var(--border-medium));
+    border-top: 1px solid var(--border-subtle);
 }
 
 .manage-sticky-foot .group-actions {
@@ -549,7 +549,7 @@ body:has(.manage-panel:not([hidden])) {
     -webkit-backdrop-filter: blur(14px);
     border: 1px solid var(--border-medium);
     border-radius: var(--radius-medium);
-    box-shadow: 0 12px 32px rgba(0, 0, 0, 0.5);
+    box-shadow: 0 12px 32px var(--scrim-45);
 }
 
 .series-shelf-panel[hidden] {
@@ -575,7 +575,7 @@ body:has(.manage-panel:not([hidden])) {
 .manage-panel-close:hover,
 .series-shelf-close:hover {
     color: var(--text-primary);
-    background: rgba(255, 255, 255, 0.08);
+    background: var(--tint-soft);
 }
 
 .series-shelf-close {
@@ -747,7 +747,7 @@ body:has(.manage-panel:not([hidden])) {
 
 .group-chip button:hover {
     color: var(--text-primary);
-    background: rgba(255, 255, 255, 0.08);
+    background: var(--tint-soft);
 }
 
 .group-chip.removed span {
@@ -756,7 +756,7 @@ body:has(.manage-panel:not([hidden])) {
 }
 
 .group-chip.added {
-    border-color: rgba(200, 169, 110, 0.6);
+    border-color: color-mix(in srgb, var(--accent) 60%, transparent);
 }
 
 .group-row {
@@ -784,9 +784,9 @@ label.group-row span {
 }
 
 .btn-primary {
-    background: #c8a96e;
-    color: #121212;
-    border-color: #c8a96e;
+    background: var(--accent);
+    color: var(--text-on-accent);
+    border-color: var(--accent);
     font-weight: 600;
 }
 

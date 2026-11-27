@@ -5,6 +5,13 @@ Go server (`*.go`, `html/template` in `templates/`) and TypeScript in `web/`, bu
 - Run `go generate ./...` after editing `web/`. `TestTypeScriptUpToDate` fails when `static/dist/` is stale. Never edit `static/dist/` by hand.
 - Tests: `go test -tags sqlite_fts5 ./...`.
 
+## CSS
+
+- `web/style.css` only `@import`s `web/css/` (tokens, base, components, layout, pages); add a rule to the file for its feature, or a new file in the right folder plus an `@import`.
+- Never write a color outside `web/css/tokens.css`: use a semantic token (`var(--text-muted)`, `var(--accent-soft)`, `var(--danger-text)`, …), or add one there. `TestNoRawColorsOutsideTokens` fails otherwise. This is what lets a light theme be one block of values.
+- Reuse what's there before adding a variant: `.dialog` (+ `.dialog--danger`, `.dialog-actions`) for any `<dialog>`, the chip editor in `components/chip-editor.css`. No `<style>` blocks in templates.
+- New breakpoints: 480, 640, 900 or 1200px (some older rules still use others).
+
 ## Treat this data as hostile
 
 Book files (EPUB/PDF contents and their OPF metadata), every metadata field (title, author, series, tag, publisher, description, identifiers), shelf names, usernames, annotations and anything from online lookups are all **attacker-controlled**. Anyone who can upload a book, or get one into the library, controls them. The rules below are about keeping that data out of places where the browser parses it as code.

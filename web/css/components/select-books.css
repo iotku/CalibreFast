@@ -31,10 +31,10 @@ body.selecting .book .cover-wrapper::after {
     left: 8px;
     width: 22px;
     height: 22px;
-    border: 2px solid #fff;
+    border: 2px solid var(--text-on-color);
     border-radius: 50%;
-    background: rgba(0, 0, 0, 0.45);
-    box-shadow: 0 1px 4px rgba(0, 0, 0, 0.6);
+    background: var(--scrim-45);
+    box-shadow: 0 1px 4px var(--scrim-60);
     z-index: 5; /* over the cover image (1) and the info overlay (2) */
 }
 
@@ -43,15 +43,15 @@ body.selecting .book.selected .cover-wrapper::after {
     display: flex;
     align-items: center;
     justify-content: center;
-    background: #c44;
-    border-color: #c44;
-    color: #fff;
+    background: var(--danger);
+    border-color: var(--danger);
+    color: var(--text-on-color);
     font-weight: 700;
     font-size: 14px;
 }
 
 body.selecting .book.selected .cover-wrapper {
-    outline: 3px solid #c44;
+    outline: 3px solid var(--danger);
     outline-offset: 2px;
 }
 
@@ -71,7 +71,7 @@ body.selecting .book.selected .cover-wrapper {
     padding: 10px 14px;
     background: var(--bg-elevated);
     border: 1px solid var(--border-medium);
-    border-radius: var(--radius-medium, 8px);
+    border-radius: var(--radius-medium);
     box-shadow: var(--shadow-medium);
 }
 

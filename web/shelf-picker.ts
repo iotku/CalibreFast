@@ -39,8 +39,8 @@ export function addToShelf(uuids: string[]): Promise<string | null> {
         const create = el("button", { type: "submit", className: "btn-action" }, "Create and add");
         const createForm = el("form", { className: "shelf-pick-create" }, name, create);
         const cancel = el("button", { type: "button", className: "btn-action" }, "Cancel");
-        const actions = el("div", { className: "delete-actions" }, cancel);
-        const dialog = el("dialog", { className: "shelf-edit-dialog shelf-pick-dialog" }, title, list, createForm, status, actions);
+        const actions = el("div", { className: "dialog-actions" }, cancel);
+        const dialog = el("dialog", { className: "dialog shelf-pick-dialog" }, title, list, createForm, status, actions);
         dialog.setAttribute("aria-labelledby", "shelf-pick-title");
         closeOnBackdropClick(dialog);
 

@@ -24,7 +24,7 @@ const CONFIRM_WORD = "delete";
 // shown as it was (with the removed book's popup).
 let removedHere = false;
 window.addEventListener("pagehide", () => {
-    for (const d of document.querySelectorAll("dialog.delete-dialog")) d.remove();
+    for (const d of document.querySelectorAll("dialog.dialog--danger")) d.remove();
 });
 window.addEventListener("pageshow", (e) => {
     if (!e.persisted || !removedHere) return;
@@ -71,9 +71,9 @@ export function deleteBooks(books: BookToDelete[], { note = "" }: { note?: strin
         const status = el("p", { className: "auth-error", role: "alert", hidden: true });
         const cancel = el("button", { type: "button", className: "btn-action" }, "Cancel");
         const go = el("button", { type: "submit", className: "btn-action btn-danger", disabled: true }, n === 1 ? "Remove book" : `Remove ${n} books`);
-        const actions = el("div", { className: "delete-actions" }, cancel, go);
+        const actions = el("div", { className: "dialog-actions" }, cancel, go);
         const form = el("form", { method: "dialog" }, title, list, warning, label, status, actions);
-        const dialog = el("dialog", { className: "delete-dialog" }, form);
+        const dialog = el("dialog", { className: "dialog dialog--danger" }, form);
         dialog.setAttribute("aria-labelledby", "delete-title");
 
         const fail = (err: unknown): void => {

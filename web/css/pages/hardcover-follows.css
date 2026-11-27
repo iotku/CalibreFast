@@ -42,7 +42,6 @@
 
 /* Taking the star off an author followed on Hardcover (aggregate-fav.ts) */
 .unstar-dialog h2 {
-    margin: 0 0 0.75rem;
     font-size: 1.1rem;
 }
 

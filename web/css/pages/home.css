@@ -77,12 +77,12 @@
 }
 /* a.btn-standard's colours outrank .btn-primary's. */
 .intro-account-actions a.btn-primary {
-    background: #c8a96e;
-    color: #121212;
-    border-color: #c8a96e;
+    background: var(--accent);
+    color: var(--text-on-accent);
+    border-color: var(--accent);
 }
 .intro-account-actions a.btn-primary:hover {
-    background: #d6ba84;
+    background: var(--accent-hover);
 }
 
 .row-head {
@@ -301,7 +301,7 @@ button.row-icon:hover {
     border-color: var(--border-light);
 }
 .row-icon[aria-pressed="true"] {
-    color: var(--accent, var(--text-primary)) !important;
+    color: var(--accent) !important;
 }
 .row-x {
     min-width: 32px;
@@ -526,7 +526,7 @@ body:not(.home-editing) .greeting-off:not(:has(.greeting-stats-slot:not([hidden]
     color: var(--text-muted);
 }
 .arrange-status.error {
-    color: #e08a8a;
+    color: var(--danger-text);
 }
 .arrange-list {
     display: flex;
@@ -591,10 +591,10 @@ body:not(.home-editing) .greeting-off:not(:has(.greeting-stats-slot:not([hidden]
     font-weight: 600;
     letter-spacing: 0.04em;
     text-transform: uppercase;
-    color: var(--accent, #c8a96e);
+    color: var(--accent);
 }
 .arrange-item.is-series .arrange-cover {
-    box-shadow: 3px -3px 0 -1px var(--bg-elevated), 3px -3px 0 0 var(--accent-dim, #7a6340);
+    box-shadow: 3px -3px 0 -1px var(--bg-elevated), 3px -3px 0 0 var(--accent-dim);
 }
 @media (max-width: 600px) {
     /* The buttons on a line of their own: the title needs the room. */

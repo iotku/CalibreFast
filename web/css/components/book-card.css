@@ -41,9 +41,9 @@
     white-space: nowrap;
     overflow: hidden;
     text-overflow: ellipsis;
-    color: #1a1408;
-    background: var(--accent, #c8a96e);
-    box-shadow: 0 2px 8px rgba(0, 0, 0, 0.45);
+    color: var(--text-on-accent);
+    background: var(--accent);
+    box-shadow: 0 2px 8px var(--scrim-45);
 }
 
 .series-card .cover-wrapper::after {
@@ -52,7 +52,7 @@
     inset: 0;
     z-index: 2;
     pointer-events: none;
-    box-shadow: inset 0 0 0 3px var(--accent, #c8a96e);
+    box-shadow: inset 0 0 0 3px var(--accent);
     border-radius: inherit;
 }
 
@@ -65,13 +65,13 @@
     flex-direction: column;
     justify-content: flex-end;
     padding: clamp(10px, 7cqi, 20px);
-    color: white;
+    color: var(--text-on-color);
 
     background: linear-gradient(
         to top,
-        rgba(0, 0, 0, 0.92) 0%,
-        rgba(0, 0, 0, 0.65) 35%,
-        rgba(0, 0, 0, 0.15) 65%,
+        color-mix(in srgb, var(--scrim) 92%, transparent) 0%,
+        var(--scrim-60) 35%,
+        var(--scrim-20) 65%,
         transparent 100%
     );
 
@@ -113,14 +113,14 @@
 }
 
 .book-author {
-    color: rgba(255, 255, 255, 0.8);
+    color: color-mix(in srgb, var(--tint) 80%, transparent);
     font-size: clamp(11.5px, 6cqi, 15px);
     line-height: 1.3;
     margin-bottom: clamp(4px, 3cqi, 8px);
 }
 
 .book-date {
-    color: rgba(255, 255, 255, 0.6);
+    color: color-mix(in srgb, var(--tint) 60%, transparent);
     font-size: var(--font-size-tiny);
 }
 
@@ -194,7 +194,7 @@
     inset: auto 0 0;
     z-index: 3; /* over the hover overlay */
     height: 5px;
-    background: rgba(0, 0, 0, 0.6);
+    background: var(--scrim-60);
     pointer-events: none;
 }
 
@@ -216,9 +216,9 @@
     width: 22px;
     height: 22px;
     border-radius: 50%;
-    background: rgba(0, 0, 0, 0.72) center / 14px no-repeat
+    background: color-mix(in srgb, var(--scrim) 72%, transparent) center / 14px no-repeat
         url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='%23c8a96e' stroke-width='2.6' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='M12 4v11m-5-5 5 5 5-5M5 20h14'/%3E%3C/svg%3E");
-    box-shadow: 0 0 0 1px rgba(200, 169, 110, 0.6);
+    box-shadow: 0 0 0 1px color-mix(in srgb, var(--accent) 60%, transparent);
     pointer-events: none;
 }
 
@@ -267,8 +267,8 @@
     padding: 0;
     border: 1px solid var(--border-medium);
     border-radius: var(--radius-medium);
-    background: rgba(0, 0, 0, 0.6);
-    color: #fff;
+    background: var(--scrim-60);
+    color: var(--text-on-color);
     font-size: 20px;
     line-height: 1;
     cursor: pointer;
@@ -277,8 +277,8 @@
 
 .cover-action:hover,
 .cover-action:focus-visible {
-    background: rgba(0, 0, 0, 0.85);
-    border-color: var(--accent, #c8a96e);
+    background: var(--scrim-80);
+    border-color: var(--accent);
 }
 
 .cover-action svg {
@@ -289,7 +289,7 @@
 .cover-action.is-on,
 .cover-read,
 .cover-done {
-    color: var(--accent, #c8a96e);
+    color: var(--accent);
 }
 
 .cover-paused {

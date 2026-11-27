@@ -88,7 +88,7 @@
 }
 
 .invite-suspect td {
-    background: rgba(204, 68, 68, 0.12);
+    background: color-mix(in srgb, var(--danger) 12%, transparent);
 }
 
 /* /admin/shelf-invites */

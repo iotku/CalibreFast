@@ -5,6 +5,7 @@
 @import "./css/base.css";
 @import "./css/components/button.css";
 @import "./css/components/input.css";
+@import "./css/components/dialog.css";
 @import "./css/layout/grid.css";
 @import "./css/pages/home.css";
 @import "./css/components/book-card.css";

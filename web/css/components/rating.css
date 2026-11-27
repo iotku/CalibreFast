@@ -6,7 +6,7 @@
 }
 
 .book-rating .star-full {
-    color: var(--accent, #c8a96e);
+    color: var(--accent);
 }
 
 .book-rating .star-empty {
@@ -15,7 +15,7 @@
 }
 
 .book-rating .star-half {
-    background: linear-gradient(90deg, var(--accent, #c8a96e) 50%, color-mix(in srgb, var(--text-muted) 50%, transparent) 50%);
+    background: linear-gradient(90deg, var(--accent) 50%, color-mix(in srgb, var(--text-muted) 50%, transparent) 50%);
     -webkit-background-clip: text;
     background-clip: text;
     color: transparent;

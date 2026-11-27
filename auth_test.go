@@ -7,6 +7,7 @@ import (
 	"net/http/httptest"
 	"net/url"
 	"os"
+	"path/filepath"
 	"regexp"
 	"strings"
 	"testing"
@@ -271,13 +272,23 @@ func TestLoginPageRevealsNothing(t *testing.T) {
 }
 
 // auth.css styles the signed-out pages and nothing else: every class it
-// names is one login.html, link.html or about.html uses, so it can't grow a
-// description of the rest of the app.
+// names, or a file it imports names, is one login.html, link.html or
+// about.html uses, so it can't grow a description of the rest of the app.
 func TestAuthCSSOnlyNamesAuthPageClasses(t *testing.T) {
-	css, err := os.ReadFile("web/auth.css")
-	if err != nil {
-		t.Fatal(err)
+	importRe := regexp.MustCompile(`@import\s+"([^"]+)"\s*;`)
+	var read func(path string) []byte
+	read = func(path string) []byte {
+		b, err := os.ReadFile(path)
+		if err != nil {
+			t.Fatal(err)
+		}
+		out := importRe.ReplaceAllFunc(b, func([]byte) []byte { return nil })
+		for _, m := range importRe.FindAllSubmatch(b, -1) {
+			out = append(out, read(filepath.Join(filepath.Dir(path), string(m[1])))...)
+		}
+		return out
 	}
+	css := read("web/auth.css")
 	var pages []byte
 	for _, name := range []string{"login.html", "link.html", "about.html"} {
 		b, err := os.ReadFile("templates/" + name)

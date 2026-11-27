@@ -49,7 +49,7 @@
 }
 
 .server-notice-body a {
-    color: var(--accent, #c8a96e);
+    color: var(--accent);
 }
 
 .server-notice-meta {
@@ -85,5 +85,5 @@
 }
 
 .server-backup-list a {
-    color: var(--accent, #c8a96e);
+    color: var(--accent);
 }

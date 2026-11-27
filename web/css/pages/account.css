@@ -132,15 +132,15 @@
 }
 
 .auth-error {
-    color: #f0b3b3;
-    background: rgba(186, 90, 90, 0.15);
-    border: 1px solid rgba(186, 90, 90, 0.4);
+    color: var(--danger-light);
+    background: var(--danger-soft);
+    border: 1px solid var(--danger-line);
 }
 
 .auth-notice {
-    color: #b9dcbb;
-    background: rgba(90, 138, 94, 0.15);
-    border: 1px solid rgba(90, 138, 94, 0.4);
+    color: var(--success-light);
+    background: var(--success-soft);
+    border: 1px solid var(--success-line);
 }
 
 .auth-badge {
@@ -195,14 +195,14 @@
 }
 
 .book-hardcover-problem {
-    color: var(--danger, #b3261e);
+    color: var(--danger-text);
 }
 
 .book-hardcover-status .link-button {
     padding: 0;
     border: 0;
     background: none;
-    color: var(--link, inherit);
+    color: inherit;
     font: inherit;
     font-size: 0.8rem;
     text-decoration: underline;

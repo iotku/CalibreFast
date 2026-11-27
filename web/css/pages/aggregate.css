@@ -85,7 +85,7 @@
 .agg-pill[aria-pressed="true"],
 .agg-pill[aria-current="page"] {
     color: var(--bg-primary);
-    background: #c8a96e;
+    background: var(--accent);
 }
 
 /* Series filter (All / Complete): links styled as the order's pills */
@@ -109,7 +109,7 @@
     margin-left: 0.3em;
     font-size: 0.8em;
     font-weight: 700;
-    color: #6fae6f;
+    color: var(--success-text);
 }
 
 .agg-ring {
@@ -126,7 +126,7 @@
 }
 
 .agg-ring-fill {
-    stroke: #6fae6f;
+    stroke: var(--success-text);
 }
 
 .agg-header-status {
@@ -156,7 +156,7 @@
 
 .agg-chip:hover,
 .agg-chip:focus-visible {
-    border-color: #c8a96e;
+    border-color: var(--accent);
 }
 
 /* A phone: eight, so the cloud starts within the first screen */
@@ -203,7 +203,7 @@
 }
 
 .agg-letters a[aria-current] {
-    color: #c8a96e;
+    color: var(--accent);
     font-weight: 600;
     background: var(--bg-elevated);
 }
@@ -234,7 +234,7 @@
     font-size: 0.8rem;
     font-weight: 600;
     letter-spacing: 0.06em;
-    color: #c8a96e;
+    color: var(--accent);
     border-bottom: 1px solid var(--border-subtle);
     scroll-margin-top: calc(var(--topbar-total) + 56px);
 }
@@ -252,7 +252,7 @@
     background: var(--bg-surface);
     border: 1px solid var(--border-medium);
     border-radius: var(--radius-medium);
-    box-shadow: 0 8px 24px rgba(0, 0, 0, 0.5);
+    box-shadow: 0 8px 24px var(--scrim-45);
     pointer-events: none;
 }
 
@@ -294,7 +294,7 @@
     font-size: 0.65rem;
     line-height: 1.2;
     text-align: center;
-    color: #fff;
+    color: var(--text-on-color);
     overflow: hidden;
     display: -webkit-box;
     -webkit-line-clamp: 5;
@@ -362,7 +362,7 @@
 }
 
 .agg-card:hover {
-    border-color: #c8a96e;
+    border-color: var(--accent);
 }
 
 .agg-card-img {
@@ -494,7 +494,7 @@
 
 .agg-header-more > summary {
     cursor: pointer;
-    color: var(--text-primary, #eee);
+    color: var(--text-primary);
     font-size: 0.9em;
     margin-top: 0.35rem;
     white-space: normal;
@@ -605,7 +605,7 @@
    stays readable, so the long tail isn't lost in faint 12px text. */
 .agg-item {
     padding: 3px 8px;
-    color: var(--text-primary, #eee);
+    color: var(--text-primary);
     text-decoration: none;
     border-radius: var(--radius-small);
     transition: background-color 0.15s, color 0.15s;
@@ -614,7 +614,7 @@
 .agg-item:hover,
 .agg-item:focus-visible {
     background: var(--bg-elevated);
-    color: #e3c88f;
+    color: var(--accent-hover);
 }
 
 .agg-t1 { font-size: 0.95rem; color: var(--text-secondary); }
@@ -645,8 +645,8 @@
 }
 
 .meta-link:hover {
-    color: #fff;
-    border-bottom-color: rgba(255, 255, 255, 0.5);
+    color: var(--text-strong);
+    border-bottom-color: color-mix(in srgb, var(--tint) 50%, transparent);
 }
 
 .title-row {

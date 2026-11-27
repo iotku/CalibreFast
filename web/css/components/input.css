@@ -57,7 +57,7 @@ input[type="number"],
 .clear-x:hover,
 .clear-x:focus-visible {
     color: var(--text-primary);
-    background: rgba(255, 255, 255, 0.08);
+    background: var(--tint-soft);
 }
 
 /* Nothing to clear: no ✕ (clearable.ts gives every box a placeholder) */

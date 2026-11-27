@@ -82,7 +82,7 @@
 }
 
 .ph-index {
-    color: var(--accent, #c8a96e);
+    color: var(--accent);
     font-variant-numeric: tabular-nums;
 }
 
@@ -113,8 +113,8 @@
 }
 
 .ph-gap-num:hover {
-    border-color: var(--accent, #c8a96e);
-    color: var(--accent, #c8a96e);
+    border-color: var(--accent);
+    color: var(--accent);
 }
 
 /* /missing: a recently removed placeholder, with Restore */
@@ -132,7 +132,7 @@
 }
 
 #ph-removed a {
-    color: var(--accent, #c8a96e);
+    color: var(--accent);
 }
 
 .ph-removed .ph-restore {
@@ -164,7 +164,7 @@
 
 .placeholder-details a,
 .ph-group a {
-    color: var(--accent, #c8a96e);
+    color: var(--accent);
     text-decoration: none;
 }
 

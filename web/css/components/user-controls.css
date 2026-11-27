@@ -31,8 +31,8 @@
 }
 
 .btn-favorite.is-favorite {
-    color: #f3c969;
-    border-color: rgba(243, 201, 105, 0.6);
+    color: var(--warning);
+    border-color: color-mix(in srgb, var(--warning) 60%, transparent);
 }
 
 /* Save (a toggle) with the full status menu as its caret. */
@@ -59,8 +59,8 @@
 }
 
 .btn-want.is-on {
-    color: var(--accent, #c8a96e);
-    border-color: var(--accent-dim, #7a6340);
+    color: var(--accent);
+    border-color: var(--accent-dim);
 }
 
 /* Only the caret shows; the menu lists every status (and the sync
@@ -81,12 +81,12 @@
     font-size: 0.88rem;
     appearance: none;
     cursor: pointer;
-    box-shadow: 0 2px 4px rgba(0, 0, 0, 0.2);
+    box-shadow: 0 2px 4px var(--scrim-20);
 }
 
 .book-status:hover,
 .sync-menu:hover {
-    background-color: var(--bg-elevated, #2c2c2c);
+    background-color: var(--bg-elevated);
 }
 
 .book-status option,

@@ -47,13 +47,13 @@
 }
 
 .btn-sync.is-on {
-    color: var(--accent, #c8a96e);
-    border-color: var(--accent-dim, #7a6340);
+    color: var(--accent);
+    border-color: var(--accent-dim);
 }
 
 .btn-sync.is-problem {
-    color: var(--danger, #e07a6f);
-    border-color: color-mix(in srgb, var(--danger, #e07a6f) 55%, transparent);
+    color: var(--danger-text);
+    border-color: color-mix(in srgb, var(--danger-text) 55%, transparent);
 }
 
 .btn-sync[aria-busy="true"] {
@@ -108,18 +108,18 @@
     grid-column: 2;
     justify-content: center;
     padding: 0;
-    background: var(--bg-surface, #222);
-    border-color: #c8a96e;
+    background: var(--bg-surface);
+    border-color: var(--accent);
     border-left-width: 0;
     border-top-left-radius: 0;
     border-bottom-left-radius: 0;
-    color: #c8a96e;
+    color: var(--accent);
 }
 
 .book-actions .is-side:hover {
-    background: var(--bg-elevated, #2c2c2c);
-    border-color: #d8be8a;
-    color: #d8be8a;
+    background: var(--bg-elevated);
+    border-color: var(--accent-hover);
+    color: var(--accent-hover);
 }
 
 .book-actions .is-side .action-icon {
@@ -132,13 +132,13 @@
     align-items: center;
     justify-content: center;
     gap: 0.5rem;
-    min-height: var(--touch-target, 44px);
+    min-height: var(--touch-target);
     height: 44px;
     padding: 0 1.15rem;
-    background: var(--bg-surface, #222);
-    color: var(--text-primary, #eee);
-    border: 1px solid var(--border-medium, rgba(255, 255, 255, 0.15));
-    border-radius: var(--radius-medium, 8px);
+    background: var(--bg-surface);
+    color: var(--text-primary);
+    border: 1px solid var(--border-medium);
+    border-radius: var(--radius-medium);
     font-size: 0.88rem;
     font-weight: 500;
     font-family: inherit;
@@ -146,7 +146,7 @@
     line-height: 1;
     cursor: pointer;
     box-sizing: border-box;
-    box-shadow: 0 2px 4px rgba(0, 0, 0, 0.2);
+    box-shadow: 0 2px 4px var(--scrim-20);
     transition:
         background var(--transition-fast),
         border-color var(--transition-fast),
@@ -160,9 +160,9 @@
 }
 
 .btn-action:hover {
-    background: var(--bg-elevated, #2c2c2c);
-    border-color: rgba(255, 255, 255, 0.35);
-    color: #fff;
+    background: var(--bg-elevated);
+    border-color: var(--border-strong);
+    color: var(--text-strong);
 }
 
 .btn-action:active {
@@ -178,31 +178,31 @@
 
 /* Primary Read Action */
 .btn-action-read {
-    background: #c8a96e;
-    color: #121212;
-    border-color: #c8a96e;
+    background: var(--accent);
+    color: var(--text-on-accent);
+    border-color: var(--accent);
     font-weight: 600;
 }
 
 .btn-action-read:hover {
-    background: #d8be8a;
-    border-color: #d8be8a;
-    color: #000;
+    background: var(--accent-hover);
+    border-color: var(--accent-hover);
+    color: var(--text-on-accent);
 }
 
 /* Download & Edit Buttons */
 .btn-action-download,
 .btn-action-edit {
-    background: var(--bg-surface, #222);
-    color: var(--text-primary, #eee);
-    border-color: var(--border-medium, rgba(255, 255, 255, 0.15));
+    background: var(--bg-surface);
+    color: var(--text-primary);
+    border-color: var(--border-medium);
 }
 
 .btn-action-download:hover,
 .btn-action-edit:hover {
-    background: var(--bg-elevated, #2c2c2c);
-    border-color: rgba(255, 255, 255, 0.35);
-    color: #fff;
+    background: var(--bg-elevated);
+    border-color: var(--border-strong);
+    color: var(--text-strong);
 }
 
 .meta-row {
@@ -242,6 +242,6 @@
 }
 
 .tag:hover {
-    background: #333;
-    color: #fff;
+    background: var(--bg-strong);
+    color: var(--text-strong);
 }

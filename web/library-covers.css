@@ -34,7 +34,7 @@
 .cu-warning {
     margin: 0 0 var(--gap-large);
     padding: var(--gap-large);
-    border: 1px solid #c8a96e;
+    border: 1px solid var(--accent);
     border-radius: var(--radius-medium);
 }
 
@@ -88,7 +88,7 @@
 }
 
 .cu-book.cu-weak .cu-row-status {
-    color: #e0b35a;
+    color: var(--warning);
 }
 
 .cu-book.cu-saved .cu-check,
@@ -126,7 +126,7 @@
     display: flex;
     align-items: center;
     justify-content: center;
-    color: var(--text-muted, #888);
+    color: var(--text-muted);
 }
 
 .cu-cover figcaption {

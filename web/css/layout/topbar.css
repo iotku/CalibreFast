@@ -103,7 +103,7 @@
     font-size: 0.8em;
     font-weight: 400;
     color: var(--text-muted);
-    font-family: var(--mono, ui-monospace, monospace);
+    font-family: var(--font-mono);
 }
 
 /* Starts at its minimum and only grows into leftover space, so the page
@@ -188,7 +188,7 @@
 
 .tb-menu-list.tb-suggest a[aria-selected="true"] {
     color: var(--text-primary);
-    background: rgba(255, 255, 255, 0.08);
+    background: var(--tint-soft);
     outline: 1px solid var(--border-medium);
 }
 
@@ -271,8 +271,8 @@
     font-weight: 600;
     line-height: 16px;
     text-align: center;
-    color: #111;
-    background: #c8a96e;
+    color: var(--text-on-accent);
+    background: var(--accent);
     border-radius: var(--radius-round);
 }
 
@@ -392,7 +392,7 @@
 .tb-menu-list a:hover,
 .tb-menu-list button:hover,
 .tb-menu-list a[aria-current="page"] {
-    background: rgba(255, 255, 255, 0.08);
+    background: var(--tint-soft);
 }
 
 .tb-menu-list hr {
@@ -440,7 +440,7 @@
 
     .tb-nav a:hover,
     .tb-nav a[aria-current="page"] {
-        background: rgba(255, 255, 255, 0.08);
+        background: var(--tint-soft);
     }
 
     .tb-nav a[aria-current="page"] {
@@ -493,7 +493,7 @@
 
 .site-bar.tb-tighter .tb-nav a:hover,
 .site-bar.tb-tighter .tb-nav a[aria-current="page"] {
-    background: rgba(255, 255, 255, 0.08);
+    background: var(--tint-soft);
 }
 
 .site-bar.tb-tighter .tb-nav a[aria-current="page"] {

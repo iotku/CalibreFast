@@ -38,9 +38,9 @@ function removeFormat(uuid: string, title: string, format: string, others: strin
         const status = el("p", { className: "auth-error", role: "alert", hidden: true });
         const cancel = el("button", { type: "button", className: "btn-action" }, "Cancel");
         const go = el("button", { type: "submit", className: "btn-action btn-danger" }, `Remove ${ext}`);
-        const actions = el("div", { className: "delete-actions" }, cancel, go);
+        const actions = el("div", { className: "dialog-actions" }, cancel, go);
         const form = el("form", { method: "dialog" }, heading, warning, status, actions);
-        const dialog = el("dialog", { className: "delete-dialog" }, form);
+        const dialog = el("dialog", { className: "dialog dialog--danger" }, form);
         dialog.setAttribute("aria-labelledby", "remove-format-title");
         const fail = (msg: string): void => {
             status.hidden = false;

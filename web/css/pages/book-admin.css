@@ -29,27 +29,6 @@
     margin: 0.25rem 0 0.75rem;
 }
 
-.delete-dialog {
-    width: min(520px, calc(100vw - 32px));
-    max-height: calc(100vh - 32px);
-    padding: 1.25rem 1.5rem;
-    background: var(--bg-surface);
-    color: var(--text-primary);
-    border: 1px solid #c44;
-    border-radius: var(--radius-medium, 8px);
-    box-shadow: var(--shadow-medium);
-}
-
-.delete-dialog::backdrop {
-    background: var(--bg-modal-overlay);
-}
-
-.delete-dialog h2 {
-    margin: 0 0 0.75rem;
-    font-size: 1.15rem;
-    overflow-wrap: anywhere;
-}
-
 .delete-list {
     max-height: 30vh;
     overflow: auto;
@@ -86,10 +65,3 @@
     flex: 1 1 100%;
 }
 
-.delete-actions {
-    display: flex;
-    flex-wrap: wrap;
-    justify-content: flex-end;
-    gap: 8px;
-    margin-top: 0.75rem;
-}

@@ -1,7 +1,7 @@
 /* Hardcover series (templates/hardcover-*.html, web/hardcover.ts) */
 .hc-page h1 a,
 .hc-page p a {
-    color: var(--accent, #c8a96e);
+    color: var(--accent);
     text-decoration: none;
 }
 
@@ -61,8 +61,8 @@
     vertical-align: middle;
     padding: 0.1rem 0.5rem;
     border-radius: 999px;
-    color: #fff;
-    background: #4f8a4f;
+    color: var(--text-on-color);
+    background: var(--success);
 }
 
 .hc-row .hc-row-btn {
