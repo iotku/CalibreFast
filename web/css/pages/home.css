@@ -76,14 +76,6 @@
     flex: 1 1 auto;
 }
 /* a.btn-standard's colours outrank .btn-primary's. */
-.intro-account-actions a.btn-primary {
-    background: var(--accent);
-    color: var(--text-on-accent);
-    border-color: var(--accent);
-}
-.intro-account-actions a.btn-primary:hover {
-    background: var(--accent-hover);
-}
 
 .row-head {
     display: flex;
@@ -151,22 +143,7 @@
     opacity: 0.4;
     cursor: default;
 }
-@media (max-width: 600px) {
-    /* Icons only: the row's title needs the room. */
-    .row-btn span {
-        position: absolute;
-        width: 1px;
-        height: 1px;
-        overflow: hidden;
-        clip-path: inset(50%);
-    }
-    .row-btn {
-        min-width: var(--touch-target);
-        min-height: var(--touch-target);
-        justify-content: center;
-        padding: 0;
-    }
-}
+
 .row-books {
     display: grid;
     grid-auto-flow: column;
@@ -406,15 +383,7 @@ button.row-icon:hover {
     margin: 0;
     cursor: pointer;
 }
-@media (max-width: 600px) {
-    /* The switch alone (it's labelled): the row's title needs the room. */
-    .row-toggle span {
-        display: none;
-    }
-    .hidden-tags .row-btn {
-        padding: 0 var(--gap-medium);
-    }
-}
+
 .greeting .row-toggle {
     align-self: flex-start;
 }
@@ -596,7 +565,37 @@ body:not(.home-editing) .greeting-off:not(:has(.greeting-stats-slot:not([hidden]
 .arrange-item.is-series .arrange-cover {
     box-shadow: 3px -3px 0 -1px var(--bg-elevated), 3px -3px 0 0 var(--accent-dim);
 }
-@media (max-width: 600px) {
+
+@media (max-width: 900px) {
+    .discover {
+        --row-cols: 4;
+        --row-gap: 6px;
+    }
+}
+@media (max-width: 640px) {
+    /* Icons only: the row's title needs the room. */
+    .row-btn span {
+        position: absolute;
+        width: 1px;
+        height: 1px;
+        overflow: hidden;
+        clip-path: inset(50%);
+    }
+    .row-btn {
+        min-width: var(--touch-target);
+        min-height: var(--touch-target);
+        justify-content: center;
+        padding: 0;
+    }
+
+    /* The switch alone (it's labelled): the row's title needs the room. */
+    .row-toggle span {
+        display: none;
+    }
+    .hidden-tags .row-btn {
+        padding: 0 var(--gap-medium);
+    }
+
     /* The buttons on a line of their own: the title needs the room. */
     .arrange-item {
         flex-wrap: wrap;
@@ -608,15 +607,7 @@ body:not(.home-editing) .greeting-off:not(:has(.greeting-stats-slot:not([hidden]
     .arrange-item .reorder-btn:first-of-type {
         margin-left: calc(28px + 36px + 2 * var(--gap-medium));
     }
-}
 
-@media (max-width: 900px) {
-    .discover {
-        --row-cols: 4;
-        --row-gap: 6px;
-    }
-}
-@media (max-width: 600px) {
     .discover {
         /* A little of the next card shows: there's more to the side. */
         --row-cols: 2.4;

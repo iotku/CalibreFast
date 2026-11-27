@@ -198,15 +198,8 @@
     color: var(--danger-text);
 }
 
-.book-hardcover-status .link-button {
-    padding: 0;
-    border: 0;
-    background: none;
-    color: inherit;
-    font: inherit;
+.book-hardcover-status .btn-link {
     font-size: 0.8rem;
-    text-decoration: underline;
-    cursor: pointer;
 }
 
 .book-hardcover-pick {

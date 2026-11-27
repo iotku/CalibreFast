@@ -24,22 +24,7 @@
     box-shadow: 0 4px 20px var(--scrim-20);
 }
 
-.top-bar-controls {
-    display: inline-flex;
-    align-items: center;
-    gap: var(--gap-medium);
-}
-
 /* Toolbar controls */
-
-.top-bar .btn-icon,
-.top-bar .btn-nav {
-    width: 38px;
-    height: 38px;
-    min-width: 38px;
-    min-height: 38px;
-    flex-shrink: 0;
-}
 
 .top-bar input[type="search"],
 .top-bar input[type="text"],
@@ -69,7 +54,7 @@
     }
 }
 
-@media (max-width: 600px) {
+@media (max-width: 640px) {
     :root {
         --topbar-height: 104px;
         --topbar-total: var(--topbar-height);

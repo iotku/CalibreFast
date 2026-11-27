@@ -53,7 +53,8 @@
 }
 
 /* Small rounded buttons: the cloud's order and Discover's "Show more" */
-.agg-order {
+.agg-order,
+.agg-filter {
     display: inline-flex;
     padding: 2px;
     gap: 2px;
@@ -89,14 +90,6 @@
 }
 
 /* Series filter (All / Complete): links styled as the order's pills */
-.agg-filter {
-    display: inline-flex;
-    padding: 2px;
-    gap: 2px;
-    background: var(--bg-surface);
-    border: 1px solid var(--border-medium);
-    border-radius: 999px;
-}
 
 .agg-filter .agg-pill {
     display: inline-flex;
@@ -141,6 +134,12 @@
     gap: 8px;
 }
 
+.agg-header-series {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 8px;
+}
+
 .agg-chip {
     display: inline-flex;
     align-items: baseline;
@@ -157,13 +156,6 @@
 .agg-chip:hover,
 .agg-chip:focus-visible {
     border-color: var(--accent);
-}
-
-/* A phone: eight, so the cloud starts within the first screen */
-@media (max-width: 640px) {
-    .agg-chips > :nth-child(n + 9) {
-        display: none;
-    }
 }
 
 /* A–Z: a letter before each run, and a bar to jump between them */
@@ -473,12 +465,6 @@
     min-width: 0;
 }
 
-.agg-header-series {
-    display: flex;
-    flex-wrap: wrap;
-    gap: 8px;
-}
-
 .agg-header-desc {
     margin: 0;
     line-height: 1.5;
@@ -548,6 +534,11 @@
    beside the text, the description shows four lines until "More" is opened,
    and the series chips scroll sideways instead of wrapping. */
 @media (max-width: 640px) {
+    /* A phone: eight, so the cloud starts within the first screen */
+    .agg-chips > :nth-child(n + 9) {
+        display: none;
+    }
+
     .agg-header,
     .agg-header-main {
         gap: 0.75rem;

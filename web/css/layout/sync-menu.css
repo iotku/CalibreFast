@@ -213,8 +213,7 @@
     padding: 6px 12px;
     border: 1px solid var(--border-medium);
 }
-.tb-menu-list .tb-push-actions .btn-primary,
-.tb-menu-list .tb-push-actions .btn-primary:hover {
+.tb-menu-list .tb-push-actions .btn-primary {
     background: var(--accent);
     color: var(--text-on-accent);
     border-color: var(--accent);

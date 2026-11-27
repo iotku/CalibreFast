@@ -37,8 +37,7 @@
 .discover-tags a {
     color: var(--text-link);
 }
-.tag-row.pinned-away,
-.tag-menu[hidden] {
+.tag-row.pinned-away {
     display: none;
 }
 /* Recommended for you: Not interested, under the cover's other buttons
