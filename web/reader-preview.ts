@@ -25,15 +25,25 @@ export interface ReaderBook {
     editor: string;
 }
 
+/**
+ * A book uuid or import id from the address, or null when it isn't one. The
+ * id goes into API paths unescaped (/api/me/progress/${uuid}, …), so only the
+ * characters the server accepts (isSafeUUIDComponent, covers.go) get through:
+ * nothing like "../" can point a request at another endpoint.
+ */
+function bookId(value: string | null): string | null {
+    return value && /^[a-fA-F0-9-]+$/.test(value) && !value.includes("..") ? value : null;
+}
+
 /** The book named by the page's address, or null when there is none. */
 export function readerBook(): ReaderBook | null {
     const params = new URLSearchParams(window.location.search);
-    const importId = params.get("import");
+    const importId = bookId(params.get("import"));
     if (importId) {
         const base = `/import/${encodeURIComponent(importId)}`;
         return { id: importId, preview: true, format: "epub", file: (format) => `${base}/file/${format}`, editor: base };
     }
-    const uuid = params.get("uuid");
+    const uuid = bookId(params.get("uuid"));
     if (!uuid) return null;
     const id = encodeURIComponent(uuid);
     const format = params.get("format");
