@@ -737,7 +737,7 @@ func bookEditPage(w http.ResponseWriter, r *http.Request) {
 
 func logErr(err error, why string) {
 	if err != nil {
-		log.Println(why + " :: " + logsafe.Text(err))
+		log.Println(logsafe.Text(why) + " :: " + logsafe.Text(err))
 	}
 }
 
