@@ -42,6 +42,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/iotku/CalibreFast/pkg/logsafe"
 	"github.com/iotku/CalibreFast/pkg/opf"
 )
 
@@ -354,7 +355,7 @@ func finishAdd(j *addJournal) {
 	// The same write the editor's Apply does: the description, every
 	// author's sort name and the identifiers reach metadata.db too.
 	if _, err := updateBookInCalibreDB(calibreDB, baseDir, j.UUID, &meta); err != nil {
-		log.Printf("imports: %s: added, but its metadata is incomplete: %v", j.UUID, err)
+		log.Printf("imports: %s: added, but its metadata is incomplete: %v", logsafe.Text(j.UUID), logsafe.Text(err))
 	}
 	if im.Dir == "" {
 		return

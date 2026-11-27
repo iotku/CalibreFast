@@ -32,6 +32,8 @@ import (
 	"sync"
 	"syscall"
 	"time"
+
+	"github.com/iotku/CalibreFast/pkg/logsafe"
 )
 
 // shutdownTimeout is how long requests in progress (a download, an
@@ -163,7 +165,7 @@ func serve(addr string, h http.Handler) {
 	// Cut-off connections' handlers may still be saving something.
 	if left := waitForHandlers(time.Now().Add(handlerGrace)); len(left) > 0 {
 		log.Printf("still running after %s, closing the databases under them (their next query fails): %s",
-			handlerGrace, strings.Join(left, ", "))
+			handlerGrace, logsafe.Text(strings.Join(left, ", ")))
 	}
 	stopBulkEdits(time.Now().Add(shutdownTimeout))          // bulk_queue.go
 	stopHardcover(time.Now().Add(5 * time.Second))          // hardcover.go

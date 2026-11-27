@@ -35,6 +35,7 @@ import (
 	"github.com/fsnotify/fsnotify"
 	"github.com/google/uuid"
 	"github.com/iotku/CalibreFast/pkg/isbn"
+	"github.com/iotku/CalibreFast/pkg/logsafe"
 	"github.com/iotku/CalibreFast/pkg/opf"
 )
 
@@ -270,7 +271,7 @@ func (b *importInbox) stageFiles(paths []string, from, into string, coverNow boo
 		clean := true
 		for _, m := range moved {
 			if bErr := moveFile(m.to, m.from); bErr != nil {
-				log.Printf("imports: couldn't move %s back to %s: %v", m.to, m.from, bErr)
+				log.Printf("imports: couldn't move %s back to %s: %v", logsafe.Text(m.to), logsafe.Text(m.from), logsafe.Text(bErr))
 				clean = false
 			}
 		}

@@ -56,6 +56,7 @@ import (
 	"sync"
 	"time"
 
+	"github.com/iotku/CalibreFast/pkg/logsafe"
 	"github.com/iotku/CalibreFast/pkg/opf"
 )
 
@@ -427,7 +428,7 @@ func runQueuedEdit(job *queuedEdit) (bulkResult, bool) {
 			// this one only couldn't be written.
 			next = base
 			res.Failed = append(res.Failed, bulkFailure{u, err.Error()})
-			log.Printf("bulk edit %s: not made: %v", u, err)
+			log.Printf("bulk edit %s: not made: %v", logsafe.Text(u), logsafe.Text(err))
 		}
 		recordOutcome(job, i, outcome, next, err)
 	}

@@ -18,6 +18,7 @@ import (
 
 	"github.com/iotku/CalibreFast/pkg/epubzip"
 	"github.com/iotku/CalibreFast/pkg/imageutil"
+	"github.com/iotku/CalibreFast/pkg/logsafe"
 )
 
 const (
@@ -51,14 +52,14 @@ func extractImportCover(dir string, files []importFile) bool {
 				data, err = coverJPEG(data)
 			}
 			if err != nil {
-				log.Printf("imports: no cover from %s: %v", f.Name, err)
+				log.Printf("imports: no cover from %s: %v", logsafe.Text(f.Name), logsafe.Text(err))
 				continue
 			}
 			if err := writeNewCover(dir, data); err != nil {
 				if errors.Is(err, os.ErrExist) {
 					return true // chosen meanwhile, on the review page
 				}
-				log.Printf("imports: couldn't save the cover from %s: %v", f.Name, err)
+				log.Printf("imports: couldn't save the cover from %s: %v", logsafe.Text(f.Name), logsafe.Text(err))
 				continue
 			}
 			return true

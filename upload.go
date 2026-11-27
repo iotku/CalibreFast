@@ -19,6 +19,7 @@ import (
 	"time"
 
 	"github.com/iotku/CalibreFast/pkg/epubzip"
+	"github.com/iotku/CalibreFast/pkg/logsafe"
 	"github.com/iotku/CalibreFast/pkg/opf"
 	"github.com/iotku/CalibreFast/pkg/xml11"
 	pdfapi "github.com/pdfcpu/pdfcpu/pkg/api"
@@ -71,7 +72,7 @@ func extractPDFMeta(r io.ReadSeeker, filename string) *OPF {
 
 	info, err := pdfapi.PDFInfo(context.Background(), r, filename, nil, false, nil)
 	if err != nil {
-		log.Printf("upload: pdfcpu PDFInfo failed for %s: %v", filename, err)
+		log.Printf("upload: pdfcpu PDFInfo failed for %s: %v", logsafe.Text(filename), logsafe.Text(err))
 	} else {
 		meta.Title = strings.TrimSpace(info.Title)
 		if info.Author != "" {
@@ -405,14 +406,14 @@ func readBookMeta(p, name string) *UploadedBookMeta {
 	ext := strings.ToLower(strings.TrimPrefix(filepath.Ext(name), "."))
 	meta := &UploadedBookMeta{Format: ext, FileName: name}
 	if f, err := os.Open(p); err != nil {
-		log.Printf("book metadata: %s: %v", name, err)
+		log.Printf("book metadata: %s: %v", logsafe.Text(name), logsafe.Text(err))
 	} else {
 		switch ext {
 		case "epub":
 			if st, err := f.Stat(); err != nil {
-				log.Printf("book metadata: %s: %v", name, err)
+				log.Printf("book metadata: %s: %v", logsafe.Text(name), logsafe.Text(err))
 			} else if m, err := extractEPUBMeta(f, st.Size(), name); err != nil {
-				log.Printf("book metadata: epub meta extraction failed for %s: %v", name, err)
+				log.Printf("book metadata: epub meta extraction failed for %s: %v", logsafe.Text(name), logsafe.Text(err))
 			} else {
 				meta = m
 			}
@@ -438,7 +439,7 @@ func processUploadGroup(files []*multipart.FileHeader, override bool, phChoice s
 		ext := strings.ToLower(strings.TrimPrefix(filepath.Ext(fh.Filename), "."))
 		tmpPath, size, err := saveUploadTemp(fh, ext)
 		if err != nil {
-			log.Println("upload:", fh.Filename, err)
+			log.Println("upload:", logsafe.Text(fh.Filename), logsafe.Text(err))
 			continue
 		}
 		metas = append(metas, readBookMeta(tmpPath, fh.Filename))

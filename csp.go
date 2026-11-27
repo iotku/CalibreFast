@@ -8,6 +8,8 @@ import (
 	"strconv"
 	"strings"
 	"sync"
+
+	"github.com/iotku/CalibreFast/pkg/logsafe"
 )
 
 // Trusted Types.
@@ -129,8 +131,8 @@ func cspReportHandler(w http.ResponseWriter, r *http.Request) {
 		if v.Disposition == "report" {
 			what = "report-only"
 		}
-		log.Printf("csp %s: %s %q at %s:%d:%d on %s",
-			what, directive, truncate(v.Sample, 120), v.SourceFile, v.Line, v.Column, pathOnly(v.DocumentURI))
+		log.Printf("csp %s: %s \"%s\" at %s:%s:%s on %s",
+			what, logsafe.Text(directive), logsafe.Text(truncate(v.Sample, 120)), logsafe.Text(v.SourceFile), logsafe.Text(v.Line), logsafe.Text(v.Column), logsafe.Text(pathOnly(v.DocumentURI)))
 		if cspSeen.full {
 			log.Printf("csp: %d distinct reports logged; not logging more until restart", cspReportMaxSeen)
 		}

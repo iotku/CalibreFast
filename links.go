@@ -27,6 +27,8 @@ import (
 	"net/url"
 	"strings"
 	"time"
+
+	"github.com/iotku/CalibreFast/pkg/logsafe"
 )
 
 var linkLifetimes = map[string]time.Duration{"1h": time.Hour, "1d": 24 * time.Hour, "7d": 7 * 24 * time.Hour}
@@ -177,9 +179,9 @@ func adminCreateLink(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	if target != nil {
-		log.Printf("admin %s created a sign-in link for %s (expires in %s)", admin.Username, target.Username, life)
+		log.Printf("admin %s created a sign-in link for %s (expires in %s)", logsafe.Text(admin.Username), logsafe.Text(target.Username), logsafe.Text(life))
 	} else {
-		log.Printf("admin %s created an invite link (admin=%v, expires in %s)", admin.Username, req.Admin, life)
+		log.Printf("admin %s created an invite link (admin=%v, expires in %s)", logsafe.Text(admin.Username), req.Admin, logsafe.Text(life))
 	}
 	writeJSON(w, http.StatusCreated, map[string]any{
 		"url":        baseURL(r) + "/l/" + token,

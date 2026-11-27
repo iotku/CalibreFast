@@ -27,6 +27,7 @@ import (
 	"time"
 
 	"github.com/iotku/CalibreFast/pkg/kosync"
+	"github.com/iotku/CalibreFast/pkg/logsafe"
 )
 
 // bookFile is one format of a book in the library.
@@ -99,7 +100,7 @@ func noteDownload(uuid, format string) {
 		return
 	}
 	if _, err := bookDigest(uuid, strings.ToLower(format)); err != nil && !errors.Is(err, os.ErrNotExist) {
-		log.Printf("kosync: hash %s/%s: %v", uuid, format, err)
+		log.Printf("kosync: hash %s/%s: %v", logsafe.Text(uuid), logsafe.Text(format), logsafe.Text(err))
 	}
 }
 

@@ -29,6 +29,7 @@ import (
 	"sync"
 
 	"github.com/iotku/CalibreFast/pkg/langcodes"
+	"github.com/iotku/CalibreFast/pkg/logsafe"
 	"github.com/iotku/CalibreFast/pkg/opf"
 )
 
@@ -544,7 +545,7 @@ func bulkEditBook(u string, edit *bulkEdit, by *User, expect string) (changed bo
 		return false, expect, nil
 	}
 	if _, modified, err = updateBookIfUnchanged(calibreDB, baseDir, u, m, expect); err != nil {
-		log.Printf("bulk edit %s: %v", u, err)
+		log.Printf("bulk edit %s: %v", logsafe.Text(u), logsafe.Text(err))
 		return false, "", err
 	}
 	bookMetadataCache.Delete(u)

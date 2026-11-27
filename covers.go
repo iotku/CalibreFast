@@ -16,6 +16,7 @@ import (
 	"time"
 
 	"github.com/iotku/CalibreFast/pkg/imageutil"
+	"github.com/iotku/CalibreFast/pkg/logsafe"
 )
 
 var uuidPathIndex sync.Map // map[string]string uuid -> relative path to book dir
@@ -222,7 +223,7 @@ func loadThumb(uuid string, abort func() error) (data []byte, cacheHit bool, err
 	// The thumbnail takes the cover's modification time: it's stale once the
 	// cover is newer.
 	if err := writeThumbFile(thumbPath, data, origStat.ModTime()); err != nil {
-		log.Printf("cover-thumb: failed to write thumbnail %s: %v", thumbPath, err)
+		log.Printf("cover-thumb: failed to write thumbnail %s: %v", logsafe.Text(thumbPath), logsafe.Text(err))
 	}
 	return data, false, nil
 }
