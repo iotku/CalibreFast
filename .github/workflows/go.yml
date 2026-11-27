@@ -17,10 +17,12 @@ jobs:
   build:
     runs-on: ubuntu-latest
     steps:
-    - uses: actions/checkout@v4
+    - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      with:
+        persist-credentials: false
 
     - name: Set up Go
-      uses: actions/setup-go@v4
+      uses: actions/setup-go@d8cbb8045d7f43706b9177cceb36c1f91a6644d5 # v7.1.0
       with:
         # tools/go.mod (tsgo, jsbuild for go generate) needs the newest Go of
         # the two modules.
@@ -46,3 +48,24 @@ jobs:
 
     - name: Test without FTS5 (the build refuses removals clearly)
       run: go test -run 'Recycle' ./...
+
+  govulncheck:
+    # Reports known vulnerabilities in Go dependencies (and the standard
+    # library) only where our code reaches the vulnerable function.
+    runs-on: ubuntu-latest
+    steps:
+    - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      with:
+        persist-credentials: false
+
+    - name: Set up Go
+      uses: actions/setup-go@d8cbb8045d7f43706b9177cceb36c1f91a6644d5 # v7.1.0
+      with:
+        # The newest Go patch release, so findings are about our modules (and
+        # standard library bugs not fixed yet), not an old toolchain on the
+        # runner. Release builds should use the newest patch release too.
+        go-version: stable
+        check-latest: true
+
+    - name: govulncheck
+      run: go run golang.org/x/vuln/cmd/govulncheck@latest -tags sqlite_fts5 ./...

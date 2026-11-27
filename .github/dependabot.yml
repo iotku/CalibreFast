@@ -1,11 +1,37 @@
-# To get started with Dependabot version updates, you'll need to specify which
-# package ecosystems to update and where the package manifests are located.
-# Please see the documentation for all configuration options:
 # https://docs.github.com/code-security/dependabot/dependabot-version-updates/configuration-options-for-the-dependabot.yml-file
 
 version: 2
+
+# cooldown: wait a week after a release before proposing it, so a
+# compromised or broken release is likely caught and pulled first.
+# Security updates aren't delayed.
 updates:
-  - package-ecosystem: "gomod" # See documentation for possible values
-    directory: "/" # Location of package manifests
+  # The server's modules.
+  - package-ecosystem: "gomod"
+    directory: "/"
     schedule:
       interval: "weekly"
+    cooldown:
+      default-days: 7
+
+  # Build tools (tsgo, esbuild) used by go generate. After merging an update,
+  # run go generate and commit static/dist if the output changed
+  # (TestTypeScriptUpToDate fails otherwise).
+  - package-ecosystem: "gomod"
+    directory: "/tools"
+    schedule:
+      interval: "weekly"
+    cooldown:
+      default-days: 7
+
+  # Actions used by the workflows, pinned by commit SHA; Dependabot updates
+  # the SHA and the version comment together.
+  - package-ecosystem: "github-actions"
+    directory: "/"
+    schedule:
+      interval: "weekly"
+    cooldown:
+      default-days: 7
+    groups:
+      actions:
+        patterns: ["*"]
