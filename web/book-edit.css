@@ -1329,6 +1329,8 @@ input[type="date"].meta-input::-webkit-calendar-picker-indicator:hover {
 }
 
 /* ── Status Banner ── */
+/* #edit-status is the footer's first row (above the buttons); a long one
+   (the placeholder choice) scrolls rather than covering the form. */
 .edit-status {
     font-size: 0.78rem;
     display: none;
@@ -1338,6 +1340,11 @@ input[type="date"].meta-input::-webkit-calendar-picker-indicator:hover {
     border-radius: var(--radius-medium);
     width: 100%;
     box-sizing: border-box;
+}
+
+.edit-actions .edit-status {
+    max-height: 40vh;
+    overflow-y: auto;
 }
 
 /* A waiting book that matches several placeholders (metadata.ts: showPlaceholders) */

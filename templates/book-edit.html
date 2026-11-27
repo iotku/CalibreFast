@@ -261,7 +261,6 @@
             <!-- Working through the import queue: the book added just before this one -->
             <div class="edit-status success added-note">✓ Added “{{ .Import.AddedTitle }}” to the library. This is the next book to review. <a class="status-link" href="/book/get/{{ .Import.AddedUUID }}">View the added book</a></div>
             {{ end }}
-            <div id="edit-status" class="edit-status"></div>
 
             <!-- Metadata Edit Form -->
             <form id="metadata-form" data-uuid="{{.UUID}}"{{ if .Import }} data-import="{{ .Import.ID }}"{{ end }}{{ with .PlaceholderCover }} data-placeholder-cover="{{ . }}"{{ end }}{{ if .Merge }}{{ if .Merge.Incoming }} data-incoming="{{ .Merge.Incoming }}"{{ if .Merge.FromQueue }} data-from-queue{{ end }}{{ else }} data-merge="{{ .Merge.IDs }}"{{ with .Merge.Placeholder }} data-placeholder="{{ .UUID }}"{{ end }}{{ end }}{{ end }}>
@@ -402,6 +401,9 @@
                 </div>
 
                 <div class="edit-actions">
+                    <!-- What Apply (or Discard) did: in the sticky footer, beside the
+                         button, so it's seen however far down the form is scrolled. -->
+                    <div id="edit-status" class="edit-status" role="status"></div>
                     <div class="action-buttons">
                         <button type="submit" id="btn-save" class="btn-standard btn-primary{{ if and .Import .Duplicates.SameFile }} btn-blocked{{ end }}">{{ if and .Merge .Merge.Incoming }}Add files{{ else if .Merge }}{{ if .Merge.Placeholder }}Merge with placeholder{{ else }}Merge {{ len .Merge.Books }} books{{ end }}{{ else if .Import }}Add to library{{ else }}Apply Changes{{ end }}</button>
                         <button type="button" id="btn-compare" class="btn-standard btn-secondary">
