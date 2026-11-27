@@ -1,0 +1,72 @@
+/* A shelf's description, under its name (templates/filtered.html). */
+.shelf-page-desc {
+    max-width: var(--content-max);
+    margin: 0.75rem auto 0;
+    padding: 0;
+    color: var(--text-secondary);
+    white-space: pre-line;
+    overflow-wrap: anywhere;
+}
+
+.shelf-page-desc + .agg-header-wrap + .grid-sort {
+    margin-top: 0.5rem;
+}
+
+/* Remove, on a shelf's Arrange list (web/list-edit.ts). */
+.arrange-remove {
+    order: 2;
+    flex: none;
+    height: 32px;
+    padding: 0 0.6rem;
+    font: inherit;
+    font-size: 0.8rem;
+    color: var(--text-secondary);
+    background: none;
+    border: 1px solid var(--border-medium);
+    border-radius: var(--radius-small);
+    cursor: pointer;
+}
+
+.arrange-remove:hover:not(:disabled) {
+    color: #e66;
+    border-color: #c44;
+}
+
+@media (pointer: coarse) {
+    .arrange-remove {
+        height: var(--touch-target);
+    }
+}
+
+/* "Select books" above a grid (web/select-books.ts), left of the sort. */
+.grid-sort .grid-select-btn {
+    margin-right: auto;
+    height: 32px;
+    padding: 0 0.75rem;
+    font-size: 0.85rem;
+}
+
+.grid-sort .grid-select-btn[aria-pressed="true"] {
+    border-color: var(--text-link);
+    color: var(--text-primary);
+}
+
+.grid-sort:has(.grid-select-btn) {
+    align-items: center;
+    gap: 0.75rem;
+}
+
+.select-flash {
+    position: fixed;
+    left: 50%;
+    bottom: max(16px, env(safe-area-inset-bottom));
+    transform: translateX(-50%);
+    z-index: 1000;
+    max-width: calc(100vw - 32px);
+    padding: 10px 14px;
+    background: var(--bg-elevated);
+    border: 1px solid var(--border-medium);
+    border-radius: var(--radius-medium);
+    box-shadow: var(--shadow-medium);
+    overflow-wrap: anywhere;
+}

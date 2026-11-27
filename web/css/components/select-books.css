@@ -1,0 +1,109 @@
+/* Choosing books in the grid */
+/* A long press selects (select-books.ts): no link preview or text selection. */
+.can-select .book {
+    -webkit-touch-callout: none;
+    -webkit-user-select: none;
+    user-select: none;
+}
+
+.can-select .book a,
+.can-select .book img {
+    -webkit-user-drag: none; /* a drag would cancel the press */
+}
+
+body.selecting .book {
+    cursor: pointer;
+}
+
+/* The cover's own buttons (favorite, save) would sit on the tick. */
+body.selecting .book .cover-actions {
+    display: none;
+}
+
+body.selecting .book .cover-wrapper {
+    position: relative;
+}
+
+body.selecting .book .cover-wrapper::after {
+    content: "";
+    position: absolute;
+    top: 8px;
+    left: 8px;
+    width: 22px;
+    height: 22px;
+    border: 2px solid #fff;
+    border-radius: 50%;
+    background: rgba(0, 0, 0, 0.45);
+    box-shadow: 0 1px 4px rgba(0, 0, 0, 0.6);
+    z-index: 5; /* over the cover image (1) and the info overlay (2) */
+}
+
+body.selecting .book.selected .cover-wrapper::after {
+    content: "✓";
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    background: #c44;
+    border-color: #c44;
+    color: #fff;
+    font-weight: 700;
+    font-size: 14px;
+}
+
+body.selecting .book.selected .cover-wrapper {
+    outline: 3px solid #c44;
+    outline-offset: 2px;
+}
+
+.select-bar {
+    position: fixed;
+    left: 50%;
+    bottom: max(16px, env(safe-area-inset-bottom));
+    transform: translateX(-50%);
+    z-index: 900;
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    justify-content: center;
+    gap: 10px 16px;
+    width: max-content;
+    max-width: calc(100vw - 32px);
+    padding: 10px 14px;
+    background: var(--bg-elevated);
+    border: 1px solid var(--border-medium);
+    border-radius: var(--radius-medium, 8px);
+    box-shadow: var(--shadow-medium);
+}
+
+/* Over the Manage sidebar where it covers the page; beside it, centred
+   in what's left of the page, where it doesn't. */
+.select-bar {
+    z-index: 1000;
+}
+
+body:has(.manage-panel:not([hidden])) .select-bar {
+    left: calc((100vw - var(--manage-panel-width)) / 2);
+    max-width: calc(100vw - var(--manage-panel-width) - 32px);
+}
+
+@media (max-width: 600px) {
+    body:has(.manage-panel:not([hidden])) .select-bar {
+        left: 50%;
+        max-width: calc(100vw - 32px);
+    }
+}
+
+.select-bar[hidden] {
+    display: none;
+}
+
+.select-bar-actions {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 8px;
+}
+
+.select-count {
+    font-size: 0.9rem;
+    color: var(--text-secondary);
+}

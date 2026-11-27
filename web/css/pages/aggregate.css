@@ -1,0 +1,720 @@
+/* ============================================
+   Page-Specific - Aggregate
+   ============================================ */
+/* The body's padding at the sides, as the book grids have. */
+#aggregate-page {
+    padding: calc(var(--topbar-total) + 1rem) 0 2rem;
+    max-width: var(--content-max);
+    margin: 0 auto;
+}
+
+.agg-cloud {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: baseline;
+    gap: 2px 4px;
+    line-height: 1.25;
+}
+
+/* A remembered A–Z or Shuffle waits for every entry (web/aggregate.ts). */
+.agg-cloud.agg-pending {
+    visibility: hidden;
+}
+
+.agg-cloud[hidden],
+#agg-browse[hidden],
+.agg-letters[hidden],
+.agg-letter-bubble[hidden],
+.agg-order[hidden],
+.agg-preview[hidden],
+.agg-pill[hidden] {
+    display: none;
+}
+
+/* min-height: a pill's (.agg-pill), so a row whose button shows only once
+   the page's script has measured (the favorites' "Show all", fav-carousel.ts)
+   is as tall before it does: the content below doesn't move down. */
+.agg-section-head {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    justify-content: space-between;
+    gap: 8px 12px;
+    min-height: 32px;
+    margin: 0 0 0.6rem;
+}
+
+.agg-section-head .agg-heading {
+    margin: 0;
+}
+
+.agg-discover {
+    margin: 0 0 1.75rem;
+}
+
+/* Small rounded buttons: the cloud's order and Discover's "Show more" */
+.agg-order {
+    display: inline-flex;
+    padding: 2px;
+    gap: 2px;
+    background: var(--bg-surface);
+    border: 1px solid var(--border-medium);
+    border-radius: 999px;
+}
+
+.agg-pill {
+    min-height: 32px;
+    padding: 0 12px;
+    font: inherit;
+    font-size: 0.85rem;
+    color: var(--text-secondary);
+    background: transparent;
+    border: 1px solid transparent;
+    border-radius: 999px;
+    cursor: pointer;
+}
+
+.agg-discover .agg-pill {
+    border-color: var(--border-medium);
+}
+
+.agg-pill:hover {
+    color: var(--text-primary);
+}
+
+.agg-pill[aria-pressed="true"],
+.agg-pill[aria-current="page"] {
+    color: var(--bg-primary);
+    background: #c8a96e;
+}
+
+/* Series filter (All / Complete): links styled as the order's pills */
+.agg-filter {
+    display: inline-flex;
+    padding: 2px;
+    gap: 2px;
+    background: var(--bg-surface);
+    border: 1px solid var(--border-medium);
+    border-radius: 999px;
+}
+
+.agg-filter .agg-pill {
+    display: inline-flex;
+    align-items: center;
+    text-decoration: none;
+}
+
+/* How much of a series is here (seriesStatuses): ✓ when all of it, else a ring */
+.agg-complete {
+    margin-left: 0.3em;
+    font-size: 0.8em;
+    font-weight: 700;
+    color: #6fae6f;
+}
+
+.agg-ring {
+    width: 0.75em;
+    height: 0.75em;
+    margin-left: 0.35em;
+    vertical-align: -0.05em;
+    flex: none;
+}
+
+.agg-ring-track {
+    stroke: currentColor;
+    opacity: 0.3;
+}
+
+.agg-ring-fill {
+    stroke: #6fae6f;
+}
+
+.agg-header-status {
+    margin: 0 0 0.5rem;
+    color: var(--text-muted);
+}
+
+/* Discover: same-size chips, so a one-book entry reads as well as any */
+.agg-chips {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 8px;
+}
+
+.agg-chip {
+    display: inline-flex;
+    align-items: baseline;
+    gap: 6px;
+    padding: 6px 12px;
+    color: var(--text-primary);
+    text-decoration: none;
+    background: var(--bg-surface);
+    border: 1px solid var(--border-medium);
+    border-radius: 999px;
+    transition: border-color 0.15s;
+}
+
+.agg-chip:hover,
+.agg-chip:focus-visible {
+    border-color: #c8a96e;
+}
+
+/* A phone: eight, so the cloud starts within the first screen */
+@media (max-width: 640px) {
+    .agg-chips > :nth-child(n + 9) {
+        display: none;
+    }
+}
+
+/* A–Z: a letter before each run, and a bar to jump between them */
+.agg-letters {
+    position: sticky;
+    top: var(--topbar-total);
+    z-index: 2;
+    display: flex;
+    flex-wrap: wrap;
+    gap: 2px;
+    margin: 0 0 0.75rem;
+    padding: 6px 0;
+    background: var(--bg-primary);
+    touch-action: none; /* dragging scrubs letters (aggregate.ts), not the page */
+    -webkit-user-select: none;
+    user-select: none;
+}
+
+.agg-letters a {
+    min-width: 28px;
+    padding: 4px 6px;
+    text-align: center;
+    font-size: 0.85rem;
+    color: var(--text-secondary);
+    text-decoration: none;
+    border-radius: var(--radius-small);
+}
+
+.agg-letters a {
+    -webkit-touch-callout: none;
+}
+
+.agg-letters a:hover,
+.agg-letters a:focus-visible {
+    color: var(--text-primary);
+    background: var(--bg-elevated);
+}
+
+.agg-letters a[aria-current] {
+    color: #c8a96e;
+    font-weight: 600;
+    background: var(--bg-elevated);
+}
+
+/* The letter under the finger while scrubbing, held above it like a keyboard key's popup
+   (aggregate.ts places it). Over the top bar (1000): the bar's first row sits right under it. */
+.agg-letter-bubble {
+    position: fixed;
+    z-index: 1100;
+    display: grid;
+    place-items: center;
+    width: 56px;
+    height: 56px;
+    font-size: 1.75rem;
+    font-weight: 600;
+    color: var(--text-primary);
+    background: var(--bg-surface);
+    border: 1px solid var(--border-medium);
+    border-radius: var(--radius-medium);
+    box-shadow: var(--shadow-small);
+    pointer-events: none;
+}
+
+.agg-letter {
+    flex-basis: 100%;
+    margin: 0.9rem 0 0.2rem;
+    padding-bottom: 2px;
+    font-size: 0.8rem;
+    font-weight: 600;
+    letter-spacing: 0.06em;
+    color: #c8a96e;
+    border-bottom: 1px solid var(--border-subtle);
+    scroll-margin-top: calc(var(--topbar-total) + 56px);
+}
+
+.agg-letter:first-child {
+    margin-top: 0;
+}
+
+/* Hover preview: a few of the entry's covers */
+.agg-preview {
+    position: fixed;
+    z-index: 50;
+    max-width: min(360px, calc(100vw - 16px));
+    padding: 10px 12px;
+    background: var(--bg-surface);
+    border: 1px solid var(--border-medium);
+    border-radius: var(--radius-medium);
+    box-shadow: 0 8px 24px rgba(0, 0, 0, 0.5);
+    pointer-events: none;
+}
+
+.agg-preview-head {
+    margin-bottom: 8px;
+    font-size: 0.85rem;
+    color: var(--text-secondary);
+    overflow-wrap: anywhere;
+}
+
+.agg-preview-head strong {
+    color: var(--text-primary);
+}
+
+.agg-preview-covers {
+    display: flex;
+    gap: 6px;
+}
+
+.agg-preview-cover {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    width: 60px;
+    height: 90px;
+    flex: none;
+    overflow: hidden;
+    border-radius: 3px;
+}
+
+.agg-preview-cover img {
+    width: 100%;
+    height: 100%;
+    object-fit: cover;
+}
+
+.agg-preview-title {
+    padding: 4px;
+    font-size: 0.65rem;
+    line-height: 1.2;
+    text-align: center;
+    color: #fff;
+    overflow: hidden;
+    display: -webkit-box;
+    -webkit-line-clamp: 5;
+    line-clamp: 5;
+    -webkit-box-orient: vertical;
+}
+
+.agg-preview-more {
+    margin-top: 6px;
+    font-size: 0.8rem;
+    color: var(--text-muted);
+}
+
+.agg-search {
+    margin: 0 0 1rem;
+}
+
+.agg-search .clearable {
+    width: min(420px, 100%);
+}
+
+/* Capped on the box too, not only on the wrapper clearable.ts adds once
+   aggregate.js runs: the first paint has the final width, not the page's. */
+.agg-search .input-search {
+    width: 100%;
+    max-width: 420px;
+    box-sizing: border-box;
+}
+
+.agg-more {
+    color: var(--text-muted);
+    font-size: 0.85rem;
+}
+
+/* Featured entries (aggregate_meta.go): cards above the cloud */
+.agg-featured {
+    margin: 0 0 1.5rem;
+}
+
+.agg-heading {
+    margin: 0 0 0.6rem;
+    font-size: 0.8rem;
+    font-weight: 600;
+    letter-spacing: 0.06em;
+    text-transform: uppercase;
+    color: var(--text-muted);
+}
+
+.agg-cards {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(220px, 1fr));
+    gap: 12px;
+}
+
+.agg-card {
+    display: flex;
+    flex-direction: column;
+    overflow: hidden;
+    color: var(--text-primary);
+    text-decoration: none;
+    background: var(--bg-surface);
+    border: 1px solid var(--border-medium);
+    border-radius: var(--radius-medium);
+    transition: border-color 0.15s;
+}
+
+.agg-card:hover {
+    border-color: #c8a96e;
+}
+
+.agg-card-img {
+    width: 100%;
+    aspect-ratio: 16 / 9;
+    object-fit: cover;
+    background: var(--bg-elevated);
+}
+
+.agg-card-body {
+    display: flex;
+    flex-direction: column;
+    gap: 2px;
+    padding: 0.6rem 0.75rem 0.75rem;
+    min-width: 0;
+}
+
+.agg-card-name {
+    font-weight: 600;
+    overflow-wrap: anywhere;
+}
+
+.agg-card-count {
+    font-size: 0.8rem;
+    color: var(--text-muted);
+}
+
+.agg-card-desc {
+    margin-top: 4px;
+    font-size: 0.85rem;
+    line-height: 1.4;
+    color: var(--text-secondary);
+    display: -webkit-box;
+    -webkit-line-clamp: 3;
+    line-clamp: 3;
+    -webkit-box-orient: vertical;
+    overflow: hidden;
+    white-space: pre-line;
+}
+
+/* An entry's picture and description on its filtered page, from the
+   grid's left edge, under its name (.page-head). An author's series sit
+   to the right of the description where there's room for them, else
+   wrap below it. */
+.agg-header {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 1rem 2rem;
+    align-items: flex-start;
+    max-width: var(--content-max);
+    margin: calc(var(--topbar-total) + 1rem) auto 1rem;
+}
+
+.agg-header-main {
+    display: flex;
+    gap: 1rem;
+    align-items: flex-start;
+    flex: 0 1 auto;
+    min-width: 0;
+    max-width: 100%;
+}
+
+.agg-header > .agg-header-series {
+    flex: 1 1 320px;
+    min-width: 0;
+    align-content: flex-start;
+}
+
+.agg-header + #books,
+.agg-header-wrap:has(> .agg-header) + #books {
+    margin-top: 0;
+}
+
+.agg-header-figure {
+    margin: 0;
+    flex: none;
+    width: 160px;
+    display: flex;
+    flex-direction: column;
+    gap: 0.4rem;
+}
+
+.agg-header-img {
+    width: 160px;
+    max-height: 160px;
+    object-fit: cover;
+    border-radius: var(--radius-medium);
+    flex: none;
+}
+
+.agg-header-figure .agg-header-years {
+    display: flex;
+    flex-direction: column;
+    text-align: center;
+    font-size: 0.85em;
+    line-height: 1.35;
+}
+
+.agg-header-age {
+    color: var(--text-primary);
+    font-weight: 600;
+}
+
+.agg-header-body {
+    display: flex;
+    flex-direction: column;
+    gap: 0.75rem;
+    min-width: 0;
+}
+
+.agg-header-series {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 8px;
+}
+
+.agg-header-desc {
+    margin: 0;
+    line-height: 1.5;
+    color: var(--text-secondary);
+    overflow-wrap: anywhere;
+    max-width: 75ch;
+}
+
+.agg-header-desc p {
+    margin: 0;
+    white-space: pre-line;
+}
+
+.agg-header-more > summary {
+    cursor: pointer;
+    color: var(--text-primary, #eee);
+    font-size: 0.9em;
+    margin-top: 0.35rem;
+    white-space: normal;
+}
+
+.agg-header-more[open] > summary {
+    margin-bottom: 0.5rem;
+}
+
+/* An author's years and where their profile came from (author_profile.go) */
+.agg-header-years {
+    margin: 0;
+    color: var(--text-secondary);
+    font-variant-numeric: tabular-nums;
+}
+
+.agg-header-source {
+    margin: 0;
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 0.75rem;
+    font-size: 0.85em;
+    color: var(--text-secondary);
+}
+
+.agg-header-source a {
+    color: inherit;
+}
+
+.agg-header-source button {
+    background: none;
+    border: none;
+    padding: 0;
+    font: inherit;
+    color: inherit;
+    text-decoration: underline;
+    cursor: pointer;
+}
+
+.agg-header-source button:disabled {
+    cursor: progress;
+    opacity: 0.6;
+}
+
+.agg-header-more-narrow {
+    display: none;
+}
+
+/* A phone: keep the header shorter than a row of covers. The picture stays
+   beside the text, the description shows four lines until "More" is opened,
+   and the series chips scroll sideways instead of wrapping. */
+@media (max-width: 640px) {
+    .agg-header,
+    .agg-header-main {
+        gap: 0.75rem;
+    }
+
+    .agg-header > .agg-header-series {
+        flex-basis: 100%;
+    }
+
+    .agg-header-figure,
+    .agg-header-img {
+        width: 80px;
+        max-height: 80px;
+    }
+
+    .agg-header-figure {
+        max-height: none;
+    }
+
+    .agg-header-body {
+        gap: 0.5rem;
+    }
+
+    .agg-header-desc > p:first-child {
+        display: -webkit-box;
+        -webkit-line-clamp: 4;
+        line-clamp: 4;
+        -webkit-box-orient: vertical;
+        overflow: hidden;
+    }
+
+    .agg-header-desc:has(> .agg-header-more[open]) > p:first-child {
+        display: block;
+        -webkit-line-clamp: unset;
+        line-clamp: none;
+    }
+
+    .agg-header-more-narrow {
+        display: block;
+    }
+
+    .agg-header-series {
+        flex-wrap: nowrap;
+        overflow-x: auto;
+        scrollbar-width: thin;
+    }
+
+    .agg-header-series > .agg-chip {
+        flex: none;
+        white-space: nowrap;
+    }
+}
+
+/* A cloud entry. Five sizes by rank (Go: aggregateTiers); the smallest
+   stays readable, so the long tail isn't lost in faint 12px text. */
+.agg-item {
+    padding: 3px 8px;
+    color: var(--text-primary, #eee);
+    text-decoration: none;
+    border-radius: var(--radius-small);
+    transition: background-color 0.15s, color 0.15s;
+}
+
+.agg-item:hover,
+.agg-item:focus-visible {
+    background: var(--bg-elevated);
+    color: #e3c88f;
+}
+
+.agg-t1 { font-size: 0.95rem; color: var(--text-secondary); }
+.agg-t2 { font-size: 1.08rem; }
+.agg-t3 { font-size: 1.25rem; }
+.agg-t4 { font-size: 1.5rem; font-weight: 500; }
+.agg-t5 { font-size: 1.9rem; font-weight: 600; }
+
+.agg-count {
+    margin-left: 0.3em;
+    font-size: 0.7rem;
+    font-weight: 400;
+    color: var(--text-muted);
+    font-variant-numeric: tabular-nums;
+}
+
+.agg-chip .agg-count {
+    margin-left: 0;
+}
+
+.meta-link {
+    color: var(--text-link);
+    text-decoration: none;
+    border-bottom: 1px solid var(--border-medium);
+    transition:
+        color var(--transition-fast),
+        border-color var(--transition-fast);
+}
+
+.meta-link:hover {
+    color: #fff;
+    border-bottom-color: rgba(255, 255, 255, 0.5);
+}
+
+.title-row {
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+    flex-wrap: wrap;
+}
+
+.title-row h1 {
+    margin: 0;
+}
+
+/* The book's title (popup and page), wide as on phones. */
+@media (min-width: 769px) {
+    .title-row h1 {
+        font-size: 1.35rem;
+        line-height: 1.3;
+    }
+}
+
+.icon-link {
+    display: inline-flex;
+    vertical-align: middle;
+    color: inherit;
+    opacity: 0.55;
+}
+
+/* Tags past the 10th and authors past the 5th wait for "+N more" (user.ts). */
+.more-list:not(.show-all) .more-extra,
+.more-list.show-all .more-toggle {
+    display: none;
+}
+
+.more-toggle {
+    font: inherit;
+    cursor: pointer;
+}
+
+.more-toggle.tag {
+    font-size: var(--font-size-tiny);
+    border: 1px dashed var(--border-medium);
+    color: var(--text-muted);
+}
+
+.more-toggle-text {
+    padding: 0;
+    margin-left: 0.25rem;
+    background: none;
+    border: none;
+    color: var(--text-muted);
+    text-decoration: underline;
+    min-height: 0;
+    height: auto;
+}
+
+.more-toggle-text:hover {
+    color: var(--text-primary);
+}
+
+.book-authors {
+    margin-top: 0.35rem;
+}
+
+.icon-link:hover {
+    opacity: 1;
+}
+
+.identifiers-list {
+    margin-top: 0;
+}

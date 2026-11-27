@@ -1,0 +1,95 @@
+/* Admin controls (edit, remove, files): under the shelves on wide screens,
+   at the bottom on narrow ones; closed until opened. */
+.book-admin {
+    grid-area: admin;
+    width: 280px;
+    min-width: 0;
+    font-size: 0.9rem;
+}
+
+/* sit just under the shelves, not a whole grid gap below */
+.book-page > .book-admin {
+    margin-top: -0.75rem;
+}
+
+.book-admin .btn-action-add-file {
+    flex-basis: 100%;
+}
+
+.book-admin summary {
+    cursor: pointer;
+    color: var(--text-muted);
+    padding: 0.35rem 0;
+}
+
+.book-admin-actions {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr);
+    gap: 0.5rem;
+    margin: 0.25rem 0 0.75rem;
+}
+
+.delete-dialog {
+    width: min(520px, calc(100vw - 32px));
+    max-height: calc(100vh - 32px);
+    padding: 1.25rem 1.5rem;
+    background: var(--bg-surface);
+    color: var(--text-primary);
+    border: 1px solid #c44;
+    border-radius: var(--radius-medium, 8px);
+    box-shadow: var(--shadow-medium);
+}
+
+.delete-dialog::backdrop {
+    background: var(--bg-modal-overlay);
+}
+
+.delete-dialog h2 {
+    margin: 0 0 0.75rem;
+    font-size: 1.15rem;
+    overflow-wrap: anywhere;
+}
+
+.delete-list {
+    max-height: 30vh;
+    overflow: auto;
+    margin: 0 0 0.75rem;
+    padding: 0.5rem 0.75rem 0.5rem 1.75rem;
+    background: var(--bg-primary);
+    border: 1px solid var(--border-light);
+    border-radius: var(--radius-small);
+    font-size: 0.9rem;
+    overflow-wrap: anywhere;
+}
+
+.delete-warning a {
+    color: var(--text-primary);
+}
+
+.delete-warning p {
+    margin: 0 0 0.6rem;
+    font-size: 0.9rem;
+    line-height: 1.45;
+    color: var(--text-secondary);
+}
+
+.delete-confirm {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 0.4rem;
+    margin: 0.75rem 0;
+    font-size: 0.9rem;
+}
+
+.delete-confirm input {
+    flex: 1 1 100%;
+}
+
+.delete-actions {
+    display: flex;
+    flex-wrap: wrap;
+    justify-content: flex-end;
+    gap: 8px;
+    margin-top: 0.75rem;
+}

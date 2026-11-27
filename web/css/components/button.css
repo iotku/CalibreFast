@@ -1,0 +1,67 @@
+/* ============================================
+   Component Classes - Buttons
+   ============================================ */
+button,
+.btn,
+a.btn-back,
+a.btn-standard {
+    cursor: pointer;
+    border: 1px solid var(--border-medium);
+    background: var(--bg-surface);
+    color: var(--text-primary);
+    transition:
+        border-color var(--transition-fast),
+        background var(--transition-fast);
+    font-family: var(--font-family);
+}
+
+button:hover,
+.btn:hover,
+a.btn-back:hover,
+a.btn-standard:hover {
+    border-color: var(--border-medium);
+    background: var(--bg-elevated);
+}
+
+/* Links styled as buttons (back links, sign-in providers) */
+a.btn-back,
+a.btn-standard {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    box-sizing: border-box;
+    text-decoration: none;
+}
+
+button:disabled,
+.btn:disabled,
+.btn-action[aria-disabled="true"] {
+    opacity: 0.5;
+    cursor: not-allowed;
+}
+
+.btn-icon {
+    min-width: var(--touch-target);
+    min-height: var(--touch-target);
+    width: var(--touch-target);
+    height: var(--touch-target);
+    padding: 0;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+}
+
+.btn-standard {
+    height: var(--touch-target);
+    padding: var(--input-padding);
+}
+
+.btn-back {
+    height: var(--touch-target);
+    padding: var(--input-padding);
+}
+
+.btn-nav {
+    min-width: var(--touch-target);
+    min-height: var(--touch-target);
+}

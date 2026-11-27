@@ -1,0 +1,174 @@
+/* Sync to Hardcover on a placeholder's page (hardcover-book.ts) */
+.ph-hardcover {
+    max-width: 24rem;
+}
+
+.ph-hardcover .book-hardcover {
+    margin-top: 0;
+}
+
+.ph-actions .btn-danger {
+    margin-right: auto;
+}
+
+.ph-actions-start .btn-danger {
+    margin-right: 0;
+}
+
+.ph-head {
+    display: flex;
+    gap: 1rem;
+    align-items: baseline;
+    justify-content: space-between;
+    flex-wrap: wrap;
+}
+
+.ph-head .btn-primary {
+    text-decoration: none;
+}
+
+.ph-group {
+    margin: 1.25rem 0 0.5rem;
+}
+
+/* /missing: each series' placeholders, folded to its heading */
+.ph-series > summary {
+    cursor: pointer;
+    margin: 1.25rem 0 0.5rem;
+}
+
+.ph-series > summary > .ph-group {
+    display: inline;
+    margin: 0 0.4rem 0 0;
+}
+
+.ph-series[open] > summary {
+    margin-bottom: 0.5rem;
+}
+
+/* /missing: Hardcover series with every book, below the rest */
+.ph-complete {
+    margin-top: 1rem;
+}
+
+.ph-complete > summary {
+    cursor: pointer;
+    font-weight: 600;
+}
+
+.ph-list {
+    list-style: none;
+    margin: 0;
+    padding: 0;
+}
+
+.ph-list > li {
+    border-top: 1px solid var(--border-medium);
+}
+
+.ph-item,
+.ph-gap {
+    display: flex;
+    gap: 0.6rem;
+    align-items: baseline;
+    flex-wrap: wrap;
+    padding: 0.55rem 0;
+    color: inherit;
+    text-decoration: none;
+}
+
+.ph-item:hover .ph-title {
+    text-decoration: underline;
+}
+
+.ph-index {
+    color: var(--accent, #c8a96e);
+    font-variant-numeric: tabular-nums;
+}
+
+.ph-title {
+    font-weight: 600;
+    color: inherit;
+}
+
+.ph-sub {
+    color: var(--text-muted);
+    font-size: 0.85rem;
+}
+
+.ph-gap-nums {
+    display: flex;
+    gap: 0.35rem;
+    flex-wrap: wrap;
+    align-items: baseline;
+}
+
+.ph-gap-num {
+    padding: 0.1rem 0.45rem;
+    border: 1px dashed var(--border-medium);
+    border-radius: var(--radius-medium);
+    color: inherit;
+    text-decoration: none;
+    font-variant-numeric: tabular-nums;
+}
+
+.ph-gap-num:hover {
+    border-color: var(--accent, #c8a96e);
+    color: var(--accent, #c8a96e);
+}
+
+/* /missing: a recently removed placeholder, with Restore */
+.ph-removed {
+    display: flex;
+    gap: 0.25rem 0.6rem;
+    align-items: center;
+    flex-wrap: wrap;
+    padding-bottom: 0.4rem;
+}
+
+.ph-removed .ph-item {
+    padding-bottom: 0;
+    flex-basis: 100%;
+}
+
+#ph-removed a {
+    color: var(--accent, #c8a96e);
+}
+
+.ph-removed .ph-restore {
+    margin-left: auto;
+}
+
+.ph-removed .ph-item:hover .ph-title {
+    text-decoration: none;
+}
+
+@media (max-width: 600px) {
+    .placeholder-view {
+        flex-direction: column;
+        align-items: center;
+    }
+
+    .placeholder-details {
+        width: 100%;
+    }
+
+    .ph-row {
+        flex-direction: column;
+    }
+
+    .ph-row .ph-num {
+        flex-basis: auto;
+    }
+}
+
+.placeholder-details a,
+.ph-group a {
+    color: var(--accent, #c8a96e);
+    text-decoration: none;
+}
+
+.placeholder-details a:hover,
+.ph-group a:hover {
+    text-decoration: underline;
+}

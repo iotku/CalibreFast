@@ -1,0 +1,33 @@
+/* The Recycling Bin page */
+.bin-batch {
+    margin-top: 1.5rem;
+}
+
+.bin-merge-note a {
+    color: var(--text-primary);
+}
+
+.bin-batch-head {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: baseline;
+    gap: 6px 12px;
+}
+
+.bin-batch-head h2 {
+    margin: 0;
+    font-size: 1.05rem;
+}
+
+.bin-batch-head .btn-standard {
+    margin-left: auto;
+}
+
+.bin-row-gone .import-title {
+    color: var(--text-secondary);
+}
+
+.auth-error-text {
+    color: #e57373;
+    font-size: 0.85rem;
+}

@@ -1,0 +1,90 @@
+/* ============================================
+   CSS Custom Properties (Dark Theme)
+   ============================================ */
+:root {
+    /* Layout & Spacing */
+    --topbar-height: 42px;
+    --topbar-padding: 6px;
+    --topbar-total: calc(var(--topbar-height) + var(--topbar-padding) * 2);
+    /* The system alerts' strip at the top of the page (system-alerts.ts sets
+       these): its height, and how much of it is still on screen, which is 0
+       once it has scrolled away. Content starts under the whole strip (html's
+       padding); the fixed bar sits under what's left of it on screen. */
+    --system-alerts-height: 0px;
+    --system-alerts-shown: 0px;
+    /* Where the bar ends on screen: fixed things hanging under it use this. */
+    --topbar-bottom: calc(var(--topbar-total) + var(--system-alerts-shown));
+    --page-padding: clamp(12px, 1.5vw, 32px);
+    /* How wide a page's content gets on a wide screen: the book grids,
+       Discover and the aggregate pages share it, so they line up. */
+    --content-max: 1600px;
+    --gap-small: 4px;
+    --gap-medium: 8px;
+    --gap-large: 12px;
+    --gap-xlarge: 24px;
+
+    /* Colors - Background */
+    --bg-primary: #111;
+    --bg-secondary: #1b1b1b;
+    --bg-surface: #222;
+    --bg-elevated: #252525;
+    --bg-topbar: rgba(20, 20, 20, 0.85);
+    --bg-modal: rgba(11, 11, 11, 0.75);
+    --bg-modal-overlay: rgba(0, 0, 0, 0.6);
+
+    /* Colors - Text */
+    --text-primary: #eee;
+    --text-secondary: #bbb;
+    --text-muted: #888;
+    --text-link: #aaa;
+
+    /* Colors - Reading status on the cards (reading.ts). Hues far apart
+       (blue / gold / green), and each also differs in shape, so they don't
+       rely on color alone: saved is a dashed ring, reading a solid
+       ring with a partial bar, finished a solid ring with a full bar,
+       paused a double ring, dropped a dotted one; paused, finished and
+       dropped also get a badge on the cover. */
+    --status-wanted: #6aa7e8;
+    --status-reading: #c8a96e;
+    --status-finished: #5fbf7f;
+    --status-paused: #b08fd8;
+    --status-dropped: #9a9a9a;
+    /* Reading stats heatmap (stats.ts): none, then more and more pages read. */
+    --heat-0: #2c2c2c;
+    --heat-1: #1e4a2c;
+    --heat-2: #2a7240;
+    --heat-3: #3f9d5a;
+    --heat-4: #6fd08c;
+
+    /* Colors - Borders */
+    --border-subtle: rgba(255, 255, 255, 0.08);
+    --border-light: rgba(255, 255, 255, 0.1);
+    --border-medium: rgba(255, 255, 255, 0.15);
+
+    /* Shadows */
+    --shadow-small: 0 2px 8px rgba(0, 0, 0, 0.35);
+    --shadow-medium: 0 6px 18px rgba(0, 0, 0, 0.45);
+    --shadow-large: 0 2px 6px rgba(0, 0, 0, 0.35);
+
+    /* Typography */
+    --font-family: sans-serif;
+    --font-size-small: 0.8rem;
+    --font-size-normal: 1rem;
+    --font-size-large: 1.1rem;
+    --font-size-ui: 16px;
+    --font-size-tiny: 13px;
+
+    /* Transitions */
+    --transition-fast: 0.15s ease;
+    --transition-normal: 0.25s ease;
+
+    /* Border Radius */
+    --radius-small: 4px;
+    --radius-medium: 8px;
+    --radius-large: 12px;
+    --radius-round: 999px;
+
+    /* Interactive Elements */
+    --touch-target: 44px;
+    --input-padding: 0 12px;
+}

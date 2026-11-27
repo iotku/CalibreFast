@@ -1,0 +1,81 @@
+/* ============================================
+   Layout - Top Bar
+   ============================================ */
+
+.top-bar {
+    position: fixed;
+    inset: var(--system-alerts-shown) 0 auto; /* under what's on screen of the system alerts */
+    z-index: 1000;
+
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: var(--gap-large);
+
+    min-height: var(--topbar-height);
+    padding: 6px 20px;
+    box-sizing: border-box;
+
+    background: var(--bg-topbar);
+    backdrop-filter: blur(16px) saturate(140%);
+    -webkit-backdrop-filter: blur(16px) saturate(140%);
+
+    border-bottom: 1px solid var(--border-subtle);
+    box-shadow: 0 4px 20px rgba(0, 0, 0, 0.15);
+}
+
+.top-bar-controls {
+    display: inline-flex;
+    align-items: center;
+    gap: var(--gap-medium);
+}
+
+/* Toolbar controls */
+
+.top-bar .btn-icon,
+.top-bar .btn-nav {
+    width: 38px;
+    height: 38px;
+    min-width: 38px;
+    min-height: 38px;
+    flex-shrink: 0;
+}
+
+.top-bar input[type="search"],
+.top-bar input[type="text"],
+.top-bar .input-search {
+    width: 100%;
+    min-width: 0;
+    height: 38px;
+    box-sizing: border-box;
+    border-radius: var(--radius-medium);
+}
+
+
+/* ============================================
+   Tablet and Mobile
+   ============================================ */
+
+@media (max-width: 900px) {
+    :root {
+        --topbar-height: 94px;
+        --topbar-padding: 0px;
+        --topbar-total: var(--topbar-height);
+    }
+
+    #books {
+        grid-template-columns: repeat(4, 1fr);
+        gap: 6px;
+    }
+}
+
+@media (max-width: 600px) {
+    :root {
+        --topbar-height: 104px;
+        --topbar-total: var(--topbar-height);
+    }
+
+    #books {
+        grid-template-columns: repeat(2, 1fr);
+    }
+}

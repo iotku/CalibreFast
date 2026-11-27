@@ -1,0 +1,229 @@
+/* The ★ favorite toggle (templates/agg-fav.html, web/aggregate-fav.ts) */
+.agg-fav {
+    display: inline-flex;
+    vertical-align: -0.15em;
+    padding: 2px;
+    margin: 0 0.1em 0 -2px; /* before the name: the star's edge on the page's */
+    color: var(--text-muted);
+    background: none;
+    border: none;
+    border-radius: 4px;
+    cursor: pointer;
+}
+
+.agg-fav[hidden] {
+    display: none;
+}
+
+.agg-fav:hover,
+.agg-fav:focus-visible {
+    color: var(--text-primary);
+}
+
+.agg-fav[aria-pressed="true"] {
+    color: #e0a800;
+}
+
+.agg-fav[aria-pressed="true"] svg {
+    fill: currentColor;
+}
+
+.account-favs .agg-chips {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 6px;
+}
+
+.account-favs .agg-chip {
+    align-items: center;
+    padding-right: 6px;
+}
+
+.account-favs .agg-chip a {
+    color: inherit;
+    text-decoration: none;
+}
+
+.account-favs .agg-chip a:hover,
+.account-favs .agg-chip a:focus-visible {
+    text-decoration: underline;
+}
+
+.account-favs h3 {
+    margin: 0.8rem 0 0.4rem;
+    font-size: 0.85rem;
+}
+
+/* /me/favorites: favorite authors, series, … above the books, a row that
+   scrolls sideways, or all of them wrapped ("Show all"). */
+/* The favorites sections hold to the grid's column, as the page's title
+   and the grid do. */
+.fav-sections {
+    max-width: var(--content-max);
+    margin: 0.75rem auto 0;
+}
+
+.fav-aggs {
+    margin: 0 0 var(--gap-large, 16px);
+}
+
+.fav-chips {
+    margin: 0 0 var(--gap-large, 16px);
+}
+
+/* The series carousel: in the grid's column, so its cards are the grid's
+   width (#books: 6, 4 and 2 across; a little of the next card shows on
+   phones, as on Discover). */
+.fav-aggs-row.fav-books-row {
+    --row-gap: 10px;
+    --row-cols: 6;
+    /* .row-books' width, over .fav-aggs-row's fixed one */
+    grid-auto-columns: calc((100% - (var(--row-cols) - 1) * var(--row-gap)) / var(--row-cols));
+    gap: var(--row-gap);
+    padding-bottom: 14px;
+}
+
+/* Shown whole: the grid's columns (#books). */
+.fav-books-row.fav-aggs-wrap {
+    grid-auto-flow: row;
+    grid-template-columns: repeat(6, 1fr);
+}
+
+@media (max-width: 900px) {
+    .fav-aggs-row.fav-books-row {
+        --row-cols: 4;
+        --row-gap: 6px;
+    }
+    .fav-books-row.fav-aggs-wrap {
+        grid-template-columns: repeat(4, 1fr);
+    }
+}
+
+@media (max-width: 600px) {
+    .fav-aggs-row.fav-books-row {
+        --row-cols: 2.4;
+    }
+    .fav-books-row.fav-aggs-wrap {
+        grid-template-columns: repeat(2, 1fr);
+    }
+}
+
+.fav-books-head {
+    margin: 0;
+}
+
+.fav-chips .agg-chip {
+    padding: 4px 10px;
+    font-size: 0.85rem;
+}
+
+.fav-aggs .row-btn {
+    flex-shrink: 0;
+    white-space: nowrap;
+    padding: 0 var(--gap-large); /* text only: not the narrow screens' icon circle */
+}
+
+.fav-aggs-row {
+    display: grid;
+    grid-auto-flow: column;
+    grid-auto-columns: 132px;
+    gap: 12px;
+    overflow-x: auto;
+    overscroll-behavior-x: contain;
+    scrollbar-width: thin;
+    scrollbar-color: var(--border-medium) transparent;
+    padding-bottom: 8px;
+}
+
+.fav-aggs-row.fav-aggs-wrap {
+    grid-auto-flow: row;
+    grid-template-columns: repeat(auto-fill, minmax(104px, 1fr));
+    overflow-x: visible;
+}
+
+.fav-agg {
+    display: flex;
+    flex-direction: column;
+    gap: 2px;
+    min-width: 0;
+    color: var(--text-primary);
+    text-decoration: none;
+}
+
+.fav-agg-img {
+    width: 100%;
+    max-width: 132px;
+    margin-inline: auto;
+    aspect-ratio: 1;
+    margin-bottom: 4px;
+    object-fit: cover;
+    border-radius: 50%;
+    background: var(--bg-elevated);
+    border: 1px solid var(--border-light);
+}
+
+.fav-agg-initial {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 2.6rem;
+    font-weight: 600;
+    color: var(--text-muted);
+    user-select: none;
+}
+
+.fav-agg-name,
+.fav-agg-meta {
+    overflow: hidden;
+    text-align: center;
+    white-space: nowrap;
+    text-overflow: ellipsis;
+}
+
+.fav-agg-name {
+    font-weight: 600;
+}
+
+.fav-agg-meta {
+    font-size: 0.8rem;
+    color: var(--text-muted);
+}
+
+.fav-agg:hover .fav-agg-name,
+.fav-agg:focus-visible .fav-agg-name {
+    text-decoration: underline;
+}
+
+@media (max-width: 640px) {
+    .fav-aggs-row {
+        grid-auto-columns: 104px;
+    }
+    .fav-agg-initial {
+        font-size: 2rem;
+    }
+}
+
+/* /authors: the same carousel at the top (aggregate.html), its "Show all"
+   a pill like Discover's. Before the user's kept favorites exist, a
+   throbber holds a card's height. */
+#agg-favorites .fav-aggs-all {
+    border-color: var(--border-medium);
+}
+
+.fav-aggs-row:has(> .fav-aggs-wait) {
+    display: block;
+}
+
+.fav-aggs-wait {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    width: 100%;
+    min-height: 178px;
+}
+
+@media (max-width: 640px) {
+    .fav-aggs-wait {
+        min-height: 150px;
+    }
+}

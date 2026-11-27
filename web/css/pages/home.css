@@ -1,0 +1,624 @@
+/* ============================================
+   Discover page (templates/discover.html, web/discover.ts)
+   A greeting, then rows of books that scroll sideways. Cards are the
+   grid's, at the grid's widths, so the page reads as the same library.
+   ============================================ */
+.discover {
+    --row-gap: 10px;
+    --row-cols: 6;
+    max-width: var(--content-max);
+    margin: var(--topbar-total) auto 0;
+    display: flex;
+    flex-direction: column;
+    gap: var(--gap-xlarge);
+}
+
+/* The greeting: the user's name and the quote of the day. */
+.greeting {
+    display: flex;
+    flex-direction: column;
+    gap: var(--gap-medium);
+    padding: var(--gap-medium) 0 0;
+}
+.greeting-head {
+    margin: 0;
+}
+.greeting-hello {
+    margin: 0;
+    font-size: 1.6rem;
+    font-weight: 600;
+}
+.greeting-quote {
+    margin: 0;
+    color: var(--text-secondary);
+    max-width: 70ch;
+}
+.greeting-quote blockquote {
+    margin: 0;
+}
+.greeting-quote p {
+    margin: 0;
+    font-style: italic;
+    line-height: 1.5;
+}
+.greeting-quote figcaption {
+    margin-top: var(--gap-small);
+    color: var(--text-muted);
+    font-size: var(--font-size-small);
+}
+/* Signed out: what an account is for and the way to one, as a card where
+   the reading stats would be (beside the quote; under it on narrow screens). */
+.intro-account {
+    flex: 0 1 360px;
+    display: flex;
+    flex-direction: column;
+    gap: var(--gap-medium);
+    padding: var(--gap-medium) var(--gap-large);
+    color: var(--text-secondary);
+    font-size: var(--font-size-small);
+    line-height: 1.5;
+    background: var(--bg-surface);
+    border: 1px solid var(--border-light);
+    border-radius: var(--radius-medium);
+}
+.intro-account[hidden] {
+    display: none;
+}
+.intro-account p {
+    margin: 0;
+}
+.intro-account-actions {
+    display: flex;
+    flex-wrap: wrap;
+    gap: var(--gap-small);
+}
+.intro-account-actions .btn-standard {
+    flex: 1 1 auto;
+}
+/* a.btn-standard's colours outrank .btn-primary's. */
+.intro-account-actions a.btn-primary {
+    background: #c8a96e;
+    color: #121212;
+    border-color: #c8a96e;
+}
+.intro-account-actions a.btn-primary:hover {
+    background: #d6ba84;
+}
+
+.row-head {
+    display: flex;
+    align-items: baseline;
+    justify-content: space-between;
+    gap: var(--gap-large);
+    margin-bottom: var(--gap-medium);
+}
+.row-head h2 {
+    margin: 0;
+    font-size: var(--font-size-large);
+}
+.row-head a {
+    color: var(--text-link);
+    white-space: nowrap;
+}
+.row-sub {
+    font-weight: normal;
+    color: var(--text-muted);
+    font-size: var(--font-size-normal);
+}
+.row-hint {
+    margin: 0;
+    padding: var(--gap-large);
+    border: 1px dashed var(--border-light);
+    border-radius: var(--radius-large);
+    color: var(--text-muted);
+}
+.row-tools {
+    display: flex;
+    gap: var(--gap-medium);
+}
+.row-btn {
+    display: inline-flex;
+    align-items: center;
+    gap: var(--gap-small);
+    min-height: 32px;
+    padding: 0 var(--gap-large);
+    background: var(--bg-surface);
+    color: var(--text-primary);
+    border: 1px solid var(--border-light);
+    border-radius: var(--radius-round);
+    font: inherit;
+    font-size: var(--font-size-small);
+    cursor: pointer;
+}
+.row-btn[hidden] {
+    display: none;
+}
+/* "See all": a button like the rest, not a link in the text. */
+.row-head a.row-btn {
+    color: var(--text-primary);
+    text-decoration: none;
+}
+.row-btn:hover:not(:disabled) {
+    background: var(--bg-elevated);
+    border-color: var(--border-medium);
+}
+/* A pinned series' Show finished, when on. */
+.row-btn[aria-pressed="true"] {
+    border-color: var(--text-link);
+    color: var(--text-link);
+}
+.row-btn:disabled {
+    opacity: 0.4;
+    cursor: default;
+}
+@media (max-width: 600px) {
+    /* Icons only: the row's title needs the room. */
+    .row-btn span {
+        position: absolute;
+        width: 1px;
+        height: 1px;
+        overflow: hidden;
+        clip-path: inset(50%);
+    }
+    .row-btn {
+        min-width: var(--touch-target);
+        min-height: var(--touch-target);
+        justify-content: center;
+        padding: 0;
+    }
+}
+.row-books {
+    display: grid;
+    grid-auto-flow: column;
+    /* The grid's card width at this window size. */
+    grid-auto-columns: calc((100% - (var(--row-cols) - 1) * var(--row-gap)) / var(--row-cols));
+    gap: var(--row-gap);
+    overflow-x: auto;
+    overscroll-behavior-x: contain;
+    scrollbar-width: thin;
+    scrollbar-color: var(--border-medium) transparent;
+    /* Room under the cards for the scrollbar. Overlay scrollbars (Firefox
+       on KDE and GTK, macOS) are drawn inside this padding rather than
+       taking space of their own, and the cards (stacking contexts of their
+       own) can paint over them: the padding keeps the bar clear of the
+       covers, at its widest (hovered) size too. */
+    padding-bottom: 14px;
+}
+.row-books[hidden] {
+    display: none;
+}
+/* Dragged with the mouse (web/drag-scroll.ts): no smooth scrolling while
+   it follows the pointer, and no text selection. No snapping, here or
+   anywhere, and no glide after a drag: a row stays where it's left. */
+.row-books.drag-scrolling {
+    scroll-behavior: auto;
+    cursor: grabbing;
+    user-select: none;
+}
+.row-books.drag-scrolling .book {
+    cursor: grabbing;
+}
+/* Past an end, the books follow the pointer (--drag-over, drag-scroll.ts),
+   and recoil when let go: a row's cards sideways; a page that drags (the
+   library grid, the home page) down. A row doesn't take its page's offset:
+   its own (inline) replaces this. */
+.row-books {
+    --drag-over: initial;
+}
+.row-books > * {
+    translate: var(--drag-over, none);
+}
+.drag-page {
+    translate: var(--drag-over, none);
+}
+.row-books.drag-recoil > *,
+.drag-page.drag-recoil {
+    transition: translate 260ms cubic-bezier(0.2, 0.8, 0.2, 1);
+}
+.drag-page.drag-scrolling {
+    cursor: grabbing;
+    user-select: none;
+}
+.drag-page.drag-scrolling .book {
+    cursor: grabbing;
+}
+/* Dragging (and until the pointer next moves): no hover buttons or details
+   on the cards, whatever is under the pointer. */
+:is(.row-books, .drag-page).drag-scrolling .book .cover-action:not(.cover-fav.is-on),
+:is(.row-books, .drag-page).drag-settling .book:not(.drag-hover) .cover-action:not(.cover-fav.is-on) {
+    opacity: 0;
+}
+:is(.row-books, .drag-page).drag-scrolling .book .book-info,
+:is(.row-books, .drag-page).drag-settling .book:not(.drag-hover) .book-info {
+    opacity: 0;
+    transform: translateY(8px);
+}
+/* Just let go: the card under the pointer shows them, as hovered (the
+   browser catches up when the pointer next moves). */
+:is(.row-books, .drag-page).drag-settling .book.drag-hover .cover-action {
+    opacity: 1;
+}
+:is(.row-books, .drag-page).drag-settling .book.drag-hover .book-info {
+    opacity: 1;
+    transform: translateY(0);
+}
+@media (prefers-reduced-motion: reduce) {
+    .row-books.drag-recoil > *,
+    .drag-page.drag-recoil {
+        transition: none;
+    }
+}
+.row-books > .book {
+    content-visibility: visible; /* few cards; and the sideways scroll needs their sizes */
+}
+.discover-empty {
+    color: var(--text-muted);
+    text-align: center;
+}
+
+/* The rows, in the user's order (pinned shelves and tags among them). */
+.home-rows,
+.tag-list {
+    display: flex;
+    flex-direction: column;
+    gap: var(--gap-xlarge);
+}
+.tag-rows[hidden] {
+    display: none;
+}
+/* A row's icon, before its title: its page (or a tag's pin). */
+.row-head h2 {
+    display: flex;
+    align-items: center;
+    gap: var(--gap-small);
+    min-width: 0;
+}
+.row-icon {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    flex: none;
+    width: 32px;
+    height: 32px;
+    margin-left: -6px;
+    padding: 0;
+    background: none;
+    border: 1px solid transparent;
+    border-radius: var(--radius-medium);
+    color: var(--text-secondary) !important;
+    cursor: pointer;
+}
+.row-icon[hidden] {
+    display: none;
+}
+span.row-icon {
+    cursor: default;
+}
+a.row-icon:hover,
+button.row-icon:hover {
+    color: var(--text-primary) !important;
+    background: var(--bg-surface);
+    border-color: var(--border-light);
+}
+.row-icon[aria-pressed="true"] {
+    color: var(--accent, var(--text-primary)) !important;
+}
+.row-x {
+    min-width: 32px;
+    justify-content: center;
+    padding: 0;
+}
+.row-title-link {
+    color: inherit !important;
+    text-decoration: none;
+    overflow: hidden;
+    text-overflow: ellipsis;
+}
+.row-title-link:hover {
+    text-decoration: underline;
+}
+.row-tools {
+    align-items: center;
+}
+/* Turned off in the layout: gone, except while editing. */
+.row-off {
+    display: none !important;
+}
+.edit-only,
+.edit-only[hidden] {
+    display: none !important;
+}
+.hidden-tags {
+    margin: 0;
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: var(--gap-small);
+    color: var(--text-muted);
+}
+
+/* The top bar's Edit (home page, lists and shelves): a pen, a check while editing. */
+.edit-toggle .edit-done,
+.edit-toggle[aria-pressed="true"] .edit-pen {
+    display: none;
+}
+.edit-toggle[aria-pressed="true"] .edit-done {
+    display: block;
+}
+.edit-toggle[aria-pressed="true"] {
+    background: var(--bg-elevated);
+    border-color: var(--border-medium);
+}
+
+/* Editing: each row shrinks to its title, with the handles and its switch. */
+.home-editing .row-off {
+    display: block !important;
+    opacity: 0.5;
+}
+.home-editing .edit-only {
+    display: flex !important;
+}
+.home-editing .hidden-tags[hidden] {
+    display: none !important;
+}
+.home-rows.reordering {
+    gap: var(--gap-medium);
+}
+.home-rows.reordering > .home-row[hidden]:not(.row-na) {
+    display: block;
+}
+.home-rows.reordering .row-books,
+.home-rows.reordering .row-hint,
+.home-rows.reordering .tag-list,
+.home-rows.reordering .row-tools > :not(.row-x),
+.home-rows.reordering .row-all {
+    display: none;
+}
+.home-rows.reordering > .home-row {
+    padding: var(--gap-small) var(--gap-medium);
+    border: 1px solid var(--border-light);
+    border-radius: var(--radius-large);
+    background: var(--bg-surface);
+}
+.home-rows.reordering .row-head {
+    justify-content: flex-start;
+    align-items: center;
+    flex-wrap: wrap;
+    margin: 0;
+}
+.home-rows.reordering .row-head h2 {
+    flex: 1;
+}
+.home-rows.reordering .hidden-tags {
+    padding: var(--gap-small) 0 var(--gap-small) var(--gap-medium);
+}
+.row-toggle {
+    display: inline-flex;
+    align-items: center;
+    gap: var(--gap-small);
+    font-size: var(--font-size-small);
+    color: var(--text-secondary);
+    cursor: pointer;
+}
+.row-toggle input {
+    width: 18px;
+    height: 18px;
+    margin: 0;
+    cursor: pointer;
+}
+@media (max-width: 600px) {
+    /* The switch alone (it's labelled): the row's title needs the room. */
+    .row-toggle span {
+        display: none;
+    }
+    .hidden-tags .row-btn {
+        padding: 0 var(--gap-medium);
+    }
+}
+.greeting .row-toggle {
+    align-self: flex-start;
+}
+/* The greeting turned off: its name, quote and sign-in line go; the reading
+   stats summary stays unless it's off (or empty) too. While editing, the
+   greeting's parts are dimmed, as a row turned off is, and its switches stay. */
+body:not(.home-editing) .greeting-off > .greeting-head,
+body:not(.home-editing) .greeting-off .greeting-quote,
+body:not(.home-editing) .greeting-off .intro-account {
+    display: none !important;
+}
+/* A rule of its own: a browser without :has drops just this one. */
+body:not(.home-editing) .greeting-off:not(:has(.greeting-stats-slot:not([hidden]):not(.row-off))) {
+    display: none !important;
+}
+.home-editing .greeting-off .greeting-hello,
+.home-editing .greeting-off .greeting-quote,
+.home-editing .greeting-off .intro-account {
+    opacity: 0.5;
+}
+.home-editing .greeting .greeting-head {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: var(--gap-small) var(--gap-large);
+}
+/* The greeting's switches together at the end: Show (the greeting) and
+   Reading stats (the summary beside the quote), each with its words, as
+   two bare switches side by side couldn't be told apart. */
+.home-editing .greeting .greeting-head .row-toggle:first-of-type {
+    margin-left: auto;
+}
+.home-editing .greeting .row-toggle span {
+    display: inline;
+}
+
+/* Drag to reorder (web/reorder.ts). */
+.reorder {
+    display: inline-flex;
+    align-items: center;
+    gap: 2px;
+    flex: none;
+}
+.reorder-grip {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    width: 28px;
+    height: 32px;
+    color: var(--text-muted);
+    cursor: grab;
+    touch-action: none;
+}
+.reorder-btn {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    width: 32px;
+    height: 32px;
+    padding: 0;
+    background: none;
+    border: 1px solid transparent;
+    border-radius: var(--radius-small);
+    color: var(--text-primary);
+    cursor: pointer;
+}
+.reorder-btn:hover:not(:disabled) {
+    border-color: var(--border-medium);
+}
+.reorder-btn:disabled {
+    opacity: 0.3;
+    cursor: default;
+}
+.reordering .dragging {
+    opacity: 0.7;
+    outline: 2px dashed var(--border-medium);
+}
+.reordering .dragging .reorder-grip {
+    cursor: grabbing;
+}
+@media (pointer: coarse) {
+    .reorder-grip,
+    .reorder-btn {
+        width: var(--touch-target);
+        height: var(--touch-target);
+    }
+}
+
+/* Arranging a list's books (web/list-edit.ts): the grid becomes a list. */
+.list-editing #books,
+.list-editing #status,
+.list-editing #scroll-badge,
+.list-editing .page-pager {
+    display: none !important;
+}
+.arrange {
+    max-width: 760px;
+    margin: var(--topbar-total) auto 0;
+    padding: var(--gap-medium);
+}
+.arrange-hint {
+    margin: 0 0 var(--gap-small);
+    color: var(--text-secondary);
+}
+.arrange-status {
+    min-height: 1.4em;
+    margin: 0 0 var(--gap-small);
+    font-size: var(--font-size-small);
+    color: var(--text-muted);
+}
+.arrange-status.error {
+    color: #e08a8a;
+}
+.arrange-list {
+    display: flex;
+    flex-direction: column;
+    gap: var(--gap-small);
+    margin: 0;
+    padding: 0;
+    list-style: none;
+}
+.arrange-item {
+    display: flex;
+    align-items: center;
+    gap: var(--gap-medium);
+    padding: var(--gap-small) var(--gap-medium);
+    border: 1px solid var(--border-light);
+    border-radius: var(--radius-large);
+    background: var(--bg-surface);
+}
+/* The grip first, as on the home page; the buttons after the title. */
+.arrange-controls,
+.arrange-controls .reorder {
+    display: contents;
+}
+.arrange-controls .reorder-grip {
+    order: -1;
+}
+.arrange-controls .reorder-btn {
+    order: 1;
+}
+.arrange-cover {
+    flex: none;
+    width: 36px;
+    height: 54px;
+    object-fit: cover;
+    border-radius: var(--radius-small);
+    background: var(--bg-elevated);
+}
+.arrange-text {
+    display: flex;
+    flex: 1;
+    flex-direction: column;
+    min-width: 0;
+}
+.arrange-title,
+.arrange-author {
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+.arrange-title {
+    font-weight: 600;
+}
+.arrange-author {
+    font-size: var(--font-size-small);
+    color: var(--text-secondary);
+}
+.arrange-item .reorder-btn:first-of-type {
+    margin-left: auto;
+}
+/* A whole series in the list (shelf_series.go). */
+.arrange-series {
+    font-weight: 600;
+    letter-spacing: 0.04em;
+    text-transform: uppercase;
+    color: var(--accent, #c8a96e);
+}
+.arrange-item.is-series .arrange-cover {
+    box-shadow: 3px -3px 0 -1px var(--bg-elevated), 3px -3px 0 0 var(--accent-dim, #7a6340);
+}
+@media (max-width: 600px) {
+    /* The buttons on a line of their own: the title needs the room. */
+    .arrange-item {
+        flex-wrap: wrap;
+        row-gap: 0;
+    }
+    .arrange-text {
+        flex-basis: calc(100% - 120px);
+    }
+    .arrange-item .reorder-btn:first-of-type {
+        margin-left: calc(28px + 36px + 2 * var(--gap-medium));
+    }
+}
+
+@media (max-width: 900px) {
+    .discover {
+        --row-cols: 4;
+        --row-gap: 6px;
+    }
+}
+@media (max-width: 600px) {
+    .discover {
+        /* A little of the next card shows: there's more to the side. */
+        --row-cols: 2.4;
+    }
+}

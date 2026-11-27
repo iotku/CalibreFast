@@ -1,0 +1,60 @@
+/* ============================================
+   Notifications (notifications.go, notifications.html)
+   ============================================ */
+
+.notifications-head {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 1em;
+}
+.notification-list {
+    list-style: none;
+    margin: 0;
+    padding: 0;
+}
+.notification {
+    display: flex;
+    align-items: flex-start;
+    gap: 0.75em;
+    padding: 0.75em 0;
+    border-top: 1px solid rgba(255, 255, 255, 0.08);
+}
+.notification.is-new {
+    border-left: 3px solid var(--accent, #c8a96e);
+    padding-left: 0.75em;
+}
+.notification-text {
+    flex: 1;
+    min-width: 0;
+    overflow-wrap: anywhere;
+}
+/* A saved book that arrived: its cover, then "Saved book added:" over the book. */
+.notification-cover {
+    flex: none;
+    width: 48px;
+    height: 68px;
+    object-fit: cover;
+    border-radius: var(--radius-small);
+    background: var(--bg-surface);
+}
+.notification-head {
+    display: block;
+    font-weight: 600;
+}
+.notification-sub {
+    display: block;
+    margin-top: 0.15em;
+    font-size: 0.9em;
+    color: var(--text-secondary);
+}
+.notification-when {
+    display: block;
+    margin-top: 0.25em;
+    font-size: 0.85em;
+    color: var(--text-muted);
+}
+/* Save in a placeholder's popup, where a book's own controls would be. */
+.ph-save-row {
+    margin-top: 0.75em;
+}

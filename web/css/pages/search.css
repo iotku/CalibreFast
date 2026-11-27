@@ -1,0 +1,71 @@
+/* ============================================
+   Page-Specific - Search
+   ============================================ */
+.search-intro {
+    max-width: var(--content-max);
+    margin: var(--topbar-total) auto 0;
+    font-size: 0.9rem;
+}
+
+.search-intro + #books {
+    margin-top: 0.75rem;
+}
+
+.search-intro p {
+    margin: 0.25rem 0;
+}
+
+.search-links {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: baseline;
+    gap: 0.4rem 0.35rem;
+    margin: 0.4rem 0;
+}
+
+.search-links-label {
+    min-width: 4.5rem;
+    margin-right: 0.15rem;
+}
+
+.search-links a,
+.search-links-more {
+    color: var(--text-primary);
+    padding: 0.15rem 0.6rem;
+    border-radius: 999px;
+    background: var(--bg-secondary);
+    text-decoration: none;
+    line-height: 1.4;
+    max-width: 100%;
+    overflow-wrap: anywhere;
+}
+
+.search-links-more {
+    border: 1px solid var(--text-muted);
+    background: transparent;
+    font: inherit;
+    cursor: pointer;
+}
+
+.search-links [hidden] {
+    display: none;
+}
+
+.search-links-cut {
+    color: var(--text-muted);
+}
+
+.search-links a:hover,
+.search-links a:focus-visible,
+.search-links-more:hover {
+    text-decoration: underline;
+}
+
+.search-links-label,
+.search-hint {
+    color: var(--text-muted);
+}
+
+.search-hint code {
+    font-size: 0.85em;
+}
