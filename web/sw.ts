@@ -50,6 +50,8 @@ interface InstallEvent extends ExtendableEvent {
 }
 interface ExtendableMessageEvent extends ExtendableEvent {
     data: unknown;
+    /** The sending client's origin. */
+    origin: string;
 }
 interface SWScope {
     CF_ASSETS?: string[];
@@ -156,6 +158,9 @@ sw.addEventListener("activate", (e) => {
 });
 
 sw.addEventListener("message", (e) => {
+    // Only this site's own pages may ask. Browsers already deliver a worker
+    // only its own origin's messages; this says so and doesn't rely on it.
+    if (e.origin !== location.origin) return;
     const msg = e.data as { type?: string; uuid?: string; format?: string } | null;
     if (msg?.type === "keep" && msg.uuid) {
         const path = msg.format === "pdf" ? "/read-pdf" : "/read";
