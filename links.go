@@ -181,7 +181,7 @@ func adminCreateLink(w http.ResponseWriter, r *http.Request) {
 	if target != nil {
 		log.Printf("admin %s created a sign-in link for %s (expires in %s)", logsafe.Text(admin.Username), logsafe.Text(target.Username), logsafe.Text(life))
 	} else {
-		log.Printf("admin %s created an invite link (admin=%v, expires in %s)", logsafe.Text(admin.Username), req.Admin, logsafe.Text(life))
+		log.Printf("admin %s created an invite link (admin=%s, expires in %s)", logsafe.Text(admin.Username), logsafe.Text(req.Admin), logsafe.Text(life))
 	}
 	writeJSON(w, http.StatusCreated, map[string]any{
 		"url":        baseURL(r) + "/l/" + token,
