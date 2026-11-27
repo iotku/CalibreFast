@@ -47,9 +47,26 @@ const SUBSET_MAX = 500;
 let subset: string[] | null = null;
 const tableUrl = (): string => (subset ? `${SOURCE.table}?${new URLSearchParams({ ids: subset.join(",") })}` : SOURCE.table);
 
-type ColKey = "title" | "authors" | "series" | "publisher" | "pubdate" | "languages" | "tags" | "formats" | "added" | "library";
+type ColKey =
+    | "title"
+    | "authors"
+    | "series"
+    | "series_index"
+    | "publisher"
+    | "pubdate"
+    | "languages"
+    | "tags"
+    | "formats"
+    | "added"
+    | "rating"
+    | "identifiers"
+    | "modified"
+    | "size"
+    | "cover"
+    | "id"
+    | "library";
 /** The bulk edit field a column's cells edit. */
-type EditField = "title" | "authors" | "series" | "publisher" | "date" | "tags" | "languages";
+type EditField = "title" | "authors" | "series" | "series_index" | "publisher" | "date" | "tags" | "languages" | "rating" | "identifiers";
 
 interface Column {
     key: ColKey;
@@ -59,6 +76,12 @@ interface Column {
     edit?: EditField;
     /** Its text, for searching and sorting. */
     text(b: TableBook): string;
+    /** What the cell shows, when not its text. */
+    display?(b: TableBook): string;
+    /** Sorts by this number rather than by the text. */
+    num?(b: TableBook): number;
+    /** Hidden until picked in the Columns menu. */
+    hidden?: boolean;
     items?(b: TableBook): string[];
     /** Empty, or the value a book gets when nothing was known ("Unknown", "und"): its checkbox filter. */
     blank(b: TableBook): boolean;
@@ -69,7 +92,12 @@ const unknown = (s: string): boolean => !s.trim() || s.trim().toLowerCase() === 
 const COLUMNS: Column[] = [
     { key: "title", label: "Title", edit: "title", text: (b) => b.title, blank: (b) => unknown(b.title) },
     { key: "authors", label: "Authors", edit: "authors", text: (b) => b.authors, blank: (b) => b.authors.split("&").every(unknown) },
-    { key: "series", label: "Series", edit: "series", text: (b) => (b.series ? `${b.series} [${b.series_index}]` : ""), blank: (b) => !b.series.trim() },
+    // The name and the book's number apart, so "=Dune" (as the box suggests) finds every book in it.
+    { key: "series", label: "Series", edit: "series", text: (b) => b.series, blank: (b) => !b.series.trim() },
+    {
+        key: "series_index", label: "#", edit: "series_index", text: (b) => (b.series ? String(b.series_index) : ""), num: (b) => (b.series ? b.series_index : -1),
+        blank: (b) => !b.series.trim(),
+    },
     { key: "publisher", label: "Publisher", edit: "publisher", text: (b) => b.publisher, blank: (b) => unknown(b.publisher) },
     // "" is Calibre's "no date" (year 101) too: tableDate in bulk_edit.go.
     { key: "pubdate", label: "Published", edit: "date", text: (b) => b.pubdate, blank: (b) => !b.pubdate },
@@ -80,7 +108,20 @@ const COLUMNS: Column[] = [
     { key: "tags", label: "Tags", list: true, edit: "tags", text: (b) => b.tags.join(", "), items: (b) => b.tags, blank: (b) => b.tags.length === 0 },
     { key: "formats", label: "Formats", list: true, text: (b) => b.formats.join(", "), items: (b) => b.formats, blank: (b) => b.formats.length === 0 },
     { key: "added", label: QUEUE ? "Queued" : "Added", text: (b) => b.added, blank: (b) => !b.added },
+    // Calibre's other fields, shown from the Columns menu.
+    {
+        key: "rating", label: "Rating", edit: "rating", hidden: true, text: (b) => (b.rating ? String(b.rating / 2) : ""), display: (b) => stars(b.rating),
+        num: (b) => b.rating, blank: (b) => !b.rating,
+    },
+    {
+        key: "identifiers", label: "Identifiers", list: true, edit: "identifiers", hidden: true, text: (b) => (b.identifiers ?? []).join(", "),
+        items: (b) => b.identifiers ?? [], blank: (b) => !b.identifiers?.length,
+    },
+    { key: "modified", label: "Modified", hidden: true, text: (b) => b.modified ?? "", blank: (b) => !b.modified },
+    { key: "size", label: "Size", hidden: true, text: (b) => (b.size ? fileSize(b.size) : ""), num: (b) => b.size ?? 0, blank: (b) => !b.size },
+    { key: "cover", label: "Cover", hidden: true, text: (b) => (b.has_cover ? "yes" : ""), display: (b) => (b.has_cover ? "Yes" : "No"), blank: (b) => !b.has_cover },
 ];
+if (!QUEUE) COLUMNS.push({ key: "id", label: "Book id", hidden: true, text: (b) => String(b.id), num: (b) => b.id, blank: () => false });
 if (QUEUE) {
     // Go: tableBook.Library, the queue's duplicate check. Its tick box: new books.
     COLUMNS.push({ key: "library", label: "Library", text: (b) => b.library ?? "", blank: (b) => b.library === "new" });
@@ -96,18 +137,45 @@ const GRID: { key: "actions" | "check" | ColKey; def: string; min: number }[] = 
     { key: "check", def: "34px", min: 34 },
     { key: "title", def: "minmax(220px, 2.2fr)", min: 220 },
     { key: "authors", def: "minmax(150px, 1.4fr)", min: 150 },
-    { key: "series", def: "140px", min: 140 },
+    { key: "series", def: "140px", min: 120 },
+    { key: "series_index", def: "52px", min: 44 },
     { key: "publisher", def: "150px", min: 150 },
     { key: "pubdate", def: "112px", min: 112 },
     { key: "languages", def: "170px", min: 170 },
     { key: "tags", def: "minmax(180px, 2fr)", min: 180 },
     { key: "formats", def: "110px", min: 110 },
     { key: "added", def: "96px", min: 96 },
+    { key: "rating", def: "96px", min: 88 },
+    { key: "identifiers", def: "minmax(180px, 1.4fr)", min: 160 },
+    { key: "modified", def: "136px", min: 128 },
+    { key: "size", def: "88px", min: 72 },
+    { key: "cover", def: "72px", min: 64 },
 ];
+if (!QUEUE) GRID.push({ key: "id", def: "80px", min: 64 });
 if (QUEUE) GRID.push({ key: "library", def: "104px", min: 96 });
 const COL_MIN = 56;
 const COL_MAX = 2000;
 const COL_WIDTHS_KEY = QUEUE ? "cf-queue-col-widths" : "cf-bulk-col-widths";
+/** The columns shown or hidden here, where that differs from the usual (Column.hidden). */
+const COL_SHOWN_KEY = QUEUE ? "cf-queue-col-shown" : "cf-bulk-col-shown";
+
+/** A rating (half-stars) as stars: "★★★½"; "" for none. */
+function stars(rating: number): string {
+    if (!rating) return "";
+    return "★".repeat(Math.floor(rating / 2)) + (rating % 2 ? "½" : "");
+}
+
+/** Bytes as a size: "840 KB", "1.2 MB". */
+function fileSize(bytes: number): string {
+    const units = ["B", "KB", "MB", "GB", "TB"];
+    let v = bytes;
+    let u = 0;
+    while (v >= 1000 && u < units.length - 1) {
+        v /= 1024;
+        u++;
+    }
+    return `${u === 0 || v >= 100 ? Math.round(v) : v.toFixed(1)} ${units[u]}`;
+}
 
 /** What the Formats filter matches for files only in a book's folder, not in metadata.db. */
 const FOLDER_ONLY = "folder only";
@@ -345,6 +413,65 @@ try {
     /* no storage: the usual widths */
 }
 
+/** Columns shown (true) or hidden (false) where that differs from the usual; Title is always shown. */
+const colShown: Partial<Record<ColKey, boolean>> = {};
+try {
+    const saved = JSON.parse(localStorage.getItem(COL_SHOWN_KEY) ?? "{}") as unknown;
+    if (saved && typeof saved === "object") {
+        for (const c of COLUMNS) {
+            const v = (saved as Record<string, unknown>)[c.key];
+            if (typeof v === "boolean" && v === !!c.hidden) colShown[c.key] = v;
+        }
+    }
+} catch {
+    /* no storage: the usual columns */
+}
+const isShown = (c: Column): boolean => c.key === "title" || (colShown[c.key] ?? !c.hidden);
+/** The columns drawn, in order. */
+const shownColumns = (): Column[] => COLUMNS.filter(isShown);
+
+function saveColShown(): void {
+    try {
+        if (Object.keys(colShown).length) localStorage.setItem(COL_SHOWN_KEY, JSON.stringify(colShown));
+        else localStorage.removeItem(COL_SHOWN_KEY);
+    } catch {
+        /* this page's columns only */
+    }
+}
+
+/**
+ * Show or hide a column. A hidden column's filter and blank box are
+ * cleared (a filter nobody can see shouldn't hide books), and sorting by it
+ * goes back to Title.
+ */
+function setColumnShown(c: Column, on: boolean): void {
+    if (c.key === "title") return;
+    if (on === !c.hidden) delete colShown[c.key];
+    else colShown[c.key] = on;
+    saveColShown();
+    if (!on) {
+        delete filters[c.key];
+        blankOnly.delete(c.key);
+        if (sortKey === c.key) [sortKey, sortDesc] = ["title", false];
+        if (selectedCell?.col === c.key) deselectCell();
+    }
+    buildHead();
+    applyColWidths();
+    refresh();
+}
+
+/** The Columns menu: a tick box per column. */
+function buildColumnsMenu(): void {
+    const box = byId("lt-columns-list");
+    box.replaceChildren(
+        ...COLUMNS.map((c) => {
+            const input = el("input", { type: "checkbox", checked: isShown(c), disabled: c.key === "title" });
+            input.addEventListener("change", () => setColumnShown(c, input.checked));
+            return el("label", { className: "lt-columns-item" }, input, ` ${c.label}`);
+        }),
+    );
+}
+
 function saveColWidths(): void {
     try {
         if (Object.keys(colWidths).length) localStorage.setItem(COL_WIDTHS_KEY, JSON.stringify(colWidths));
@@ -356,8 +483,10 @@ function saveColWidths(): void {
 
 /** The grid's columns, with any widths set here; the table is at least as wide as they need. */
 function applyColWidths(): void {
-    table.style.setProperty("--lt-cols", GRID.map((g) => (colWidths[g.key] ? `${colWidths[g.key]}px` : g.def)).join(" "));
-    table.style.minWidth = `${GRID.reduce((t, g) => t + (colWidths[g.key] ?? g.min), 0)}px`;
+    const shownKeys = new Set<string>(shownColumns().map((c) => c.key));
+    const grid = GRID.filter((g) => g.key === "actions" || g.key === "check" || shownKeys.has(g.key));
+    table.style.setProperty("--lt-cols", grid.map((g) => (colWidths[g.key] ? `${colWidths[g.key]}px` : g.def)).join(" "));
+    table.style.minWidth = `${grid.reduce((t, g) => t + (colWidths[g.key] ?? g.min), 0)}px`;
 }
 
 /** The handle on the right edge of a column's name. */
@@ -420,7 +549,11 @@ function resizeHandle(c: Column): HTMLElement {
 function buildHead(): void {
     const titles = el("div", { className: "lt-row lt-head-row", role: "row" }, el("span", { className: "lt-cell lt-check" }, allBox));
     const boxes = el("div", { className: "lt-row lt-filter-row", role: "row" }, el("span", { className: "lt-cell lt-check" }));
-    for (const c of COLUMNS) {
+    sortButtons.clear();
+    filterInputs.clear();
+    blankBoxes.clear();
+    datalists.clear();
+    for (const c of shownColumns()) {
         const btn = el("button", { type: "button", className: "lt-sort", title: `Sort by ${c.label.toLowerCase()}` }, c.label);
         btn.addEventListener("click", () => {
             if (sortKey === c.key) sortDesc = !sortDesc;
@@ -453,7 +586,8 @@ function buildHead(): void {
             spellcheck: false,
             value: filters[c.key] ?? "",
         });
-        if (c.list || c.key === "publisher" || c.key === "series") {
+        // Suggestions: the values books share (identifiers hardly ever do).
+        if ((c.list && c.key !== "identifiers") || c.key === "publisher" || c.key === "series") {
             const list = el("datalist", { id: `lt-values-${c.key}` });
             datalists.set(c.key, list);
             input.setAttribute("list", list.id);
@@ -470,16 +604,17 @@ function buildHead(): void {
     titles.prepend(el("span", { className: "lt-cell lt-actions", role: "columnheader" }));
     boxes.prepend(el("span", { className: "lt-cell lt-actions" }));
     head.replaceChildren(titles, boxes);
-
-    allBox.addEventListener("change", () => {
-        const on = allBox.checked;
-        for (const r of shown) {
-            if (on) selected.add(r.b.uuid);
-            else selected.delete(r.b.uuid);
-        }
-        selectionChanged();
-    });
+    if (complete && rows.length) fillDatalists();
 }
+
+allBox.addEventListener("change", () => {
+    const on = allBox.checked;
+    for (const r of shown) {
+        if (on) selected.add(r.b.uuid);
+        else selected.delete(r.b.uuid);
+    }
+    selectionChanged();
+});
 
 /** The values a list column's box suggests: "=value", with how many books have it. */
 function fillDatalists(): void {
@@ -487,7 +622,7 @@ function fillDatalists(): void {
         const col = COLUMNS.find((c) => c.key === key)!;
         const counts = new Map<string, number>();
         for (const r of rows) {
-            const values = col.items ? col.items(r.b) : key === "series" ? [r.b.series] : [col.text(r.b)];
+            const values = col.items ? col.items(r.b) : [col.text(r.b)];
             for (const v of values) if (v) counts.set(v, (counts.get(v) ?? 0) + 1);
         }
         const sorted = [...counts].sort((a, b) => b[1] - a[1] || a[0].localeCompare(b[0])).slice(0, 2000);
@@ -545,14 +680,15 @@ function sortedRows(): Row[] {
         if (!m) cache.ranks.set(key, (m = rankValues(key)));
         return m;
     };
-    const keyRanks = ranksOf(sortKey);
+    const num = COLUMNS.find((c) => c.key === sortKey)?.num;
+    const keyRanks = num ? null : ranksOf(sortKey);
     const titleRanks = ranksOf("title");
     const n = rows.length;
     const key = new Float64Array(n);
     const title = new Float64Array(n);
     const empty = new Uint8Array(n);
     rows.forEach((r, i) => {
-        key[i] = keyRanks.get(r.hay[sortKey])!;
+        key[i] = num ? num(r.b) : keyRanks!.get(r.hay[sortKey])!;
         title[i] = titleRanks.get(r.hay.title)!;
         empty[i] = r.hay[sortKey] ? 0 : 1;
     });
@@ -635,6 +771,7 @@ function applyFilters(): void {
         });
     }
     shownSet = new Set(shown.map((r) => r.b.uuid));
+    shownIndex = new Map(shown.map((r, i) => [r.b.uuid, i]));
     updatePinned();
 }
 
@@ -644,6 +781,8 @@ function applyFilters(): void {
  */
 let pinned: Row[] = [];
 let shownSet = new Set<string>();
+/** Each shown book's row number in shown. */
+let shownIndex = new Map<string, number>();
 /** The rows above the shown ones: the heading and the pinned rows (none if nothing's pinned). */
 const pinOffset = (): number => (pinned.length ? pinned.length + 1 : 0);
 
@@ -752,6 +891,7 @@ function refresh(): void {
     saveView();
     draw(true);
     selectionChanged();
+    updateBar();
 }
 
 let drawn = { from: -1, to: -1 };
@@ -919,7 +1059,7 @@ function rowElement(r: Row, i: number, pin = false): HTMLElement {
 
     const box = el("input", { type: "checkbox", checked: on, ariaLabel: `Select “${b.title}”` });
     row.append(el("span", { className: "lt-cell lt-check" }, box));
-    for (const c of COLUMNS) {
+    for (const c of shownColumns()) {
         const cell = el("span", { className: `lt-cell lt-col-${c.key}`, role: "gridcell" });
         cell.dataset["col"] = c.key;
         if (c.items) {
@@ -945,9 +1085,9 @@ function rowElement(r: Row, i: number, pin = false): HTMLElement {
                 ? `${values.join(", ")}: in the book's folder, but metadata.db lists no files for this book, so Calibre doesn't show them (CalibreFast reads the folder). Filter Formats by “folder” to find these books.`
                 : values.join(", ");
         } else {
-            const text = c.text(b);
+            const text = c.display ? c.display(b) : c.text(b);
             cell.textContent = text;
-            cell.title = text;
+            cell.title = c.key === "rating" ? ratingLabel(String(b.rating)) : c.key === "size" && b.size ? `${b.size.toLocaleString()} bytes` : text;
             if (c.key === "library") {
                 cell.title = LIBRARY_TITLES[text] ?? text;
                 if (text === "checking") cell.classList.add("lt-lib-checking");
@@ -956,6 +1096,7 @@ function rowElement(r: Row, i: number, pin = false): HTMLElement {
         }
         if (c.edit) cell.classList.add("lt-editable");
         if (selectedCell?.uuid === b.uuid && selectedCell.col === c.key) cell.classList.add("lt-cell-selected");
+        if (!pin && active?.uuid === b.uuid && active.col === c.key) cell.classList.add("lt-cell-active");
         row.append(cell);
     }
     const actions = el("span", { className: "lt-cell lt-actions" });
@@ -1140,14 +1281,227 @@ body.addEventListener("click", (e) => {
         toggle(uuid, !selected.has(uuid), false);
         return;
     }
-    const key = target.closest<HTMLElement>("[data-col]")?.dataset["col"];
+    // A click makes the cell the active one (the edit bar shows it); a
+    // double-click, F2 or typing edits it (dblclick, below).
+    const key = target.closest<HTMLElement>("[data-col]")?.dataset["col"] as ColKey | undefined;
+    if (!key || row.classList.contains("lt-row-pinned")) return;
+    if (!target.closest(".lt-expanded")) closeExpanded();
+    setActive(uuid, key, false);
+    focusGrid();
+});
+
+// A double-click edits the cell, or the tag or language clicked.
+body.addEventListener("dblclick", (e) => {
+    const target = e.target as HTMLElement;
+    if (editing?.area.contains(target) || target.closest("input, a, button, .lt-actions, .lt-check")) return;
+    const uuid = target.closest<HTMLElement>(".lt-row")?.dataset["uuid"];
+    const key = target.closest<HTMLElement>("[data-col]")?.dataset["col"] as ColKey | undefined;
     const col = COLUMNS.find((c) => c.key === key);
-    if (!col?.edit) return;
+    if (!uuid || !col?.edit) return;
+    window.getSelection()?.removeAllRanges(); // the word the double-click picked
     const ch = target.closest<HTMLElement>(".lt-chip:not(.lt-chip-removed)");
-    // A tag in the "+N" panel is edited there (editAt keeps it open).
     const inPanel = ch !== null && expanded !== null && expanded.contains(ch);
     if (!inPanel) closeExpanded();
     void editAt(uuid, col.key, ch?.dataset["value"], inPanel);
+});
+
+// ---------------------------------------------------------------------------
+// The active cell, as in a spreadsheet: arrows, Tab and Enter move it;
+// F2, a double-click or typing edits it; the edit bar shows (and edits) it
+// ---------------------------------------------------------------------------
+
+let active: { uuid: string; col: ColKey } | null = null;
+const editBar = byId("lt-editbar-input", HTMLInputElement);
+const editBarLabel = byId("lt-editbar-label");
+/** The edit bar has the focus, with what it showed when it got it. */
+let barEditing: { uuid: string; col: ColKey; before: string } | null = null;
+
+scroller.tabIndex = 0;
+const focusGrid = (): void => scroller.focus({ preventScroll: true });
+
+/** The active cell's element, if its row is drawn (not a pinned copy). */
+function activeCell(): HTMLElement | null {
+    if (!active) return null;
+    const row = [...body.querySelectorAll<HTMLElement>(".lt-row:not(.lt-row-pinned)")].find((x) => x.dataset["uuid"] === active!.uuid);
+    return row?.querySelector<HTMLElement>(`.lt-cell[data-col="${active.col}"]`) ?? null;
+}
+
+/** Make this cell the active one; scroll: bring it into sight first. */
+function setActive(uuid: string, col: ColKey, scroll = true): void {
+    active = { uuid, col };
+    if (scroll) scrollToActive();
+    for (const c of body.querySelectorAll(".lt-cell-active")) c.classList.remove("lt-cell-active");
+    const cell = activeCell();
+    cell?.classList.add("lt-cell-active");
+    if (scroll) cell?.scrollIntoView({ block: "nearest", inline: "nearest" });
+    updateBar();
+}
+
+/** Scroll the active cell's row into sight, under the sticky head, and draw it. */
+function scrollToActive(): void {
+    const i = active ? shownIndex.get(active.uuid) : undefined;
+    if (i === undefined) return;
+    const y = body.offsetTop + (i + pinOffset()) * ROW_H;
+    const headH = head.offsetHeight;
+    if (y < scroller.scrollTop + headH) scroller.scrollTop = y - headH;
+    else if (y + ROW_H > scroller.scrollTop + scroller.clientHeight) scroller.scrollTop = y + ROW_H - scroller.clientHeight;
+    draw();
+}
+
+/**
+ * Move the active cell dr rows and dc columns, stopping at the edges; wrap:
+ * past the last column is the next row's first (Tab). With none active, the
+ * first cell.
+ */
+function moveActive(dr: number, dc: number, wrap = false): void {
+    const cols = shownColumns();
+    if (!shown.length || !cols.length) return;
+    const at = active ? shownIndex.get(active.uuid) : undefined;
+    let j = active ? cols.findIndex((c) => c.key === active!.col) : -1;
+    if (at === undefined || j < 0) {
+        setActive(shown[0]!.b.uuid, cols[Math.max(j, 0)]!.key);
+        return;
+    }
+    let i = at + dr;
+    j += dc;
+    if (wrap && j >= cols.length && i < shown.length - 1) [i, j] = [i + 1, 0];
+    if (wrap && j < 0 && i > 0) [i, j] = [i - 1, cols.length - 1];
+    i = Math.min(Math.max(i, 0), shown.length - 1);
+    j = Math.min(Math.max(j, 0), cols.length - 1);
+    setActive(shown[i]!.b.uuid, cols[j]!.key);
+}
+
+/** The active cell's book and column, if it's still shown. */
+function activeTarget(): { b: TableBook; col: Column } | null {
+    const i = active ? shownIndex.get(active.uuid) : undefined;
+    const col = COLUMNS.find((c) => c.key === active?.col);
+    if (i === undefined || !col || !isShown(col)) return null;
+    return { b: shown[i]!.b, col };
+}
+
+/** Whether this book's cell can be edited now (a number needs a series). */
+const canEdit = (b: TableBook, col: Column): boolean => !!col.edit && !(col.edit === "series_index" && !b.series);
+
+/** The edit bar: the active cell's name and value, editable where the cell is. */
+function updateBar(): void {
+    if (barEditing) return; // what's being typed stays
+    const t = activeTarget();
+    if (!t) {
+        editBarLabel.textContent = "";
+        editBar.value = "";
+        editBar.disabled = true;
+        editBar.placeholder = "Click a cell, or use the arrow keys";
+        return;
+    }
+    const { b, col } = t;
+    editBarLabel.textContent = `${fieldName(col)} · ${shortText(b.title)}`;
+    editBarLabel.title = `${fieldName(col)} of “${b.title}”`;
+    editBar.disabled = false;
+    editBar.readOnly = !canEdit(b, col);
+    editBar.placeholder = editBar.readOnly ? "" : "empty";
+    editBar.value = col.edit ? cellValue(b, col.edit) : col.display ? col.display(b) : col.text(b);
+    editBar.title = editBar.readOnly ? `${col.label} can't be edited here` : "Enter saves and moves down, Tab saves and moves right, Esc goes back";
+}
+
+editBar.addEventListener("focus", () => {
+    if (editing) void editing.finish(true);
+    const t = activeTarget();
+    barEditing = t && canEdit(t.b, t.col) ? { uuid: t.b.uuid, col: t.col.key, before: editBar.value } : null;
+});
+
+/** Save what the edit bar holds (if it changed) and stop editing there. */
+function finishBar(save: boolean): void {
+    const was = barEditing;
+    barEditing = null;
+    if (!was) return;
+    const r = rows.find((x) => x.b.uuid === was.uuid);
+    const col = COLUMNS.find((c) => c.key === was.col);
+    if (!save || !r || !col) {
+        updateBar();
+        return;
+    }
+    void saveCell(r.b, col, was.before, editBar.value);
+}
+
+editBar.addEventListener("keydown", (e) => {
+    if ((e.key === "Enter" || e.key === "Tab") && !e.isComposing) {
+        e.preventDefault();
+        finishBar(true);
+        if (e.key === "Enter") moveActive(e.shiftKey ? -1 : 1, 0);
+        else moveActive(0, e.shiftKey ? -1 : 1, true);
+        focusGrid();
+    } else if (e.key === "Escape") {
+        e.preventDefault();
+        e.stopPropagation();
+        finishBar(false);
+        focusGrid();
+    }
+});
+editBar.addEventListener("blur", () => finishBar(true));
+
+/** Edit the active cell in place; typed: what was typed to start it (replacing the value). */
+function editActive(typed?: string): void {
+    const t = activeTarget();
+    if (!t) return;
+    if (!t.col.edit) {
+        say(`${t.col.label} can't be edited here.`, "error");
+        return;
+    }
+    scrollToActive();
+    const cell = activeCell();
+    if (!cell || !startEdit(cell)) return;
+    if (typed !== undefined && editing && editing.input.type !== "date") {
+        editing.input.value = typed;
+        const end = typed.length;
+        if (editing.input.type === "text") editing.input.setSelectionRange(end, end);
+        editing.input.dispatchEvent(new Event("input"));
+    }
+}
+
+scroller.addEventListener("keydown", (e) => {
+    // Only the table's own keys: not a filter box's, a tick box's or a link's.
+    if (e.target !== scroller || editing || modalOpen() || e.altKey) return;
+    const page = Math.max(1, Math.floor((scroller.clientHeight - head.offsetHeight) / ROW_H) - 1);
+    const ctrl = e.ctrlKey || e.metaKey;
+    const cols = shownColumns().length;
+    const moves: Record<string, () => void> = {
+        ArrowUp: () => moveActive(ctrl ? -shown.length : -1, 0),
+        ArrowDown: () => moveActive(ctrl ? shown.length : 1, 0),
+        ArrowLeft: () => moveActive(0, ctrl ? -cols : -1),
+        ArrowRight: () => moveActive(0, ctrl ? cols : 1),
+        PageUp: () => moveActive(-page, 0),
+        PageDown: () => moveActive(page, 0),
+        Home: () => moveActive(ctrl ? -shown.length : 0, -cols),
+        End: () => moveActive(ctrl ? shown.length : 0, cols),
+        Enter: () => moveActive(e.shiftKey ? -1 : 1, 0),
+        Tab: () => moveActive(0, e.shiftKey ? -1 : 1, true),
+    };
+    const move = moves[e.key];
+    if (move && !(e.key === "Tab" && !active)) {
+        e.preventDefault();
+        move();
+        return;
+    }
+    if (ctrl || !active) return;
+    if (e.key === "F2") {
+        e.preventDefault();
+        editActive();
+    } else if (e.key === "Delete" || e.key === "Backspace") {
+        // Opens the cell empty: Enter saves that (Esc doesn't).
+        e.preventDefault();
+        editActive("");
+    } else if (e.key === " ") {
+        e.preventDefault();
+        toggle(active.uuid, !selected.has(active.uuid), e.shiftKey);
+    } else if (e.key === "ContextMenu" || (e.key === "F10" && e.shiftKey)) {
+        e.preventDefault();
+        scrollToActive();
+        const cell = activeCell();
+        if (cell) menuAt(cell);
+    } else if (e.key.length === 1) {
+        e.preventDefault();
+        editActive(e.key);
+    }
 });
 
 /** A Ctrl-click under way: on a Mac that's a right-click (contextmenu, no click), but here it ticks the row. */
@@ -1375,18 +1729,16 @@ function selectCell(uuid: string, key: ColKey): void {
     const items: MenuItem[] = [];
     // A list's values have their own menus (click one); | separates alternatives in a filter.
     if (!col.list && !blank && !text.includes("|")) {
-        // A series: every book in it, whatever its number.
-        const value = col.key === "series" ? b.series : text;
-        const exact = col.key === "series" ? value : `=${value}`;
-        items.push([`Only “${shortText(value)}”`, () => setFilter(key, exact)]);
-        items.push([`Hide “${shortText(value)}”`, () => setFilter(key, col.key === "series" ? `!${value}` : `!${exact}`)]);
+        items.push([`Only “${shortText(text)}”`, () => setFilter(key, `=${text}`)]);
+        items.push([`Hide “${shortText(text)}”`, () => setFilter(key, `!=${text}`)]);
     }
     if (blank) {
         items.push([
             `Only books with no ${col.label.toLowerCase()}`,
             () => {
                 blankOnly.add(key);
-                blankBoxes.get(key)!.checked = true;
+                const box = blankBoxes.get(key);
+                if (box) box.checked = true;
                 refresh();
             },
         ]);
@@ -1890,7 +2242,9 @@ function cellValue(b: TableBook, field: EditField): string {
         case "authors":
             return b.authors;
         case "series":
-            return b.series ? `${b.series} [${b.series_index}]` : "";
+            return b.series;
+        case "series_index":
+            return b.series ? String(b.series_index) : "";
         case "publisher":
             return b.publisher;
         case "date":
@@ -1899,7 +2253,19 @@ function cellValue(b: TableBook, field: EditField): string {
             return b.tags.join(", ");
         case "languages":
             return b.languages.join(", ");
+        case "rating":
+            return b.rating ? String(b.rating / 2) : "";
+        case "identifiers":
+            return (b.identifiers ?? []).join(", ");
     }
+}
+
+/** The edit that sets field to value, as typed in its cell. */
+function fieldEdit(field: EditField, value: string): BulkEdit {
+    if (field === "series") return seriesEdit(value);
+    // Typed in stars ("4.5"), kept in half-stars ("9").
+    if (field === "rating") return { rating: value.trim() ? String(Math.round(Number(value) * 2)) : "" };
+    return { [field]: value };
 }
 
 /** "Dune [2]" (or "Dune #2") as a series and its number; "Dune" leaves the number alone. */
@@ -1941,13 +2307,19 @@ async function editAt(uuid: string, key: ColKey, value?: string, inPanel = false
 /** Enter saves, Esc cancels, and leaving the box saves, as in a spreadsheet (a suggestion click comes back to it). */
 function wireEditKeys(input: HTMLInputElement, finish: (save: boolean) => Promise<void>): void {
     input.addEventListener("keydown", (ev) => {
-        if (ev.key === "Enter" && !ev.defaultPrevented) {
+        // A suggestion list takes Enter and Tab first (picking one): suggest.ts.
+        if ((ev.key === "Enter" || ev.key === "Tab") && !ev.defaultPrevented && !ev.isComposing) {
             ev.preventDefault();
             void finish(true);
+            // Then on to the next cell, as in a spreadsheet: Enter down, Tab right (Shift: back).
+            if (ev.key === "Enter") moveActive(ev.shiftKey ? -1 : 1, 0);
+            else moveActive(0, ev.shiftKey ? -1 : 1, true);
+            focusGrid();
         } else if (ev.key === "Escape") {
             ev.preventDefault();
             ev.stopPropagation();
             void finish(false);
+            focusGrid();
         }
     });
     input.addEventListener("blur", () => {
@@ -2008,9 +2380,14 @@ const quoted = (v: string): string => (v.trim() ? `“${shortText(v.trim())}”`
 
 /** What a cell edit changed, for the status line: Authors changed from “A” to “B” on “Title”. */
 /** A column's field, in a message. */
-const fieldName = (col: Column): string => (col.key === "pubdate" ? "Published date" : col.label);
+const fieldName = (col: Column): string => (col.key === "pubdate" ? "Published date" : col.key === "series_index" ? "Series number" : col.label);
 
 function changeText(col: Column, before: string, after: string, title: string): string {
+    if (col.key === "rating") {
+        // Typed in stars ("3.5"): said in words ("3½ stars").
+        const words = (v: string): string => (v.trim() ? ratingLabel(String(Math.round(Number(v) * 2))) : "");
+        [before, after] = [words(before), words(after)];
+    }
     const what = fieldName(col);
     const on = col.key === "title" ? "" : ` on “${shortText(title)}”`;
     if (!before.trim()) return `${what} set to ${quoted(after)}${on}.`;
@@ -2036,8 +2413,10 @@ function savedWithUndo(res: BulkResult, was: TableBook, field: EditField, what: 
     offerUndo(text, async () => {
         const value = cellValue(was, field);
         say("Undoing…");
+        // A series edit may have set the number too ("Dune [2]"): both go back.
+        const edit = field === "series" && was.series ? { series: was.series, series_index: String(was.series_index) } : fieldEdit(field, value);
         try {
-            const back = await sendEdit([was.uuid], field === "series" ? seriesEdit(value) : { [field]: value });
+            const back = await sendEdit([was.uuid], edit);
             say(back.failed.length ? resultText(back) : value.trim() ? `Undone: ${what} back to ${quoted(value)}.` : `Undone: ${what} empty again.`, back.failed.length ? "error" : "ok");
         } catch (err) {
             say(`Couldn't undo: ${errorMessage(err)}`, "error");
@@ -2053,8 +2432,19 @@ function startEdit(cell: HTMLElement, item?: string): boolean {
     const r = rows.find((x) => x.b.uuid === uuid);
     if (!uuid || !col?.edit || !r || editing) return false;
     const field = col.edit;
+    if (field === "series_index" && !r.b.series) {
+        say("Give the book a series first: a number is its place in one.", "error");
+        return false;
+    }
     const before = cellValue(r.b, field);
-    const input = el("input", { type: field === "date" ? "date" : "text", className: "lt-cell-input", value: before, ariaLabel: col.label });
+    const input = el("input", { type: field === "date" ? "date" : field === "rating" ? "number" : "text", className: "lt-cell-input", value: before, ariaLabel: col.label });
+    if (field === "rating") {
+        Object.assign(input, { min: "0", max: "5", step: "0.5", title: "Stars, 0 to 5 in halves; empty for none" });
+    }
+    if (field === "identifiers") {
+        input.placeholder = "isbn:9780441172719, goodreads:234225";
+        input.title = "Each as type:value, separated by commas. These replace the book's identifiers; empty removes them.";
+    }
     // In the cell first: a suggestion list goes in a box around it.
     cell.replaceChildren(input);
     if (field === "tags") attachSuggest(input, { category: "tag", multi: true });
@@ -2063,42 +2453,71 @@ function startEdit(cell: HTMLElement, item?: string): boolean {
     if (field === "publisher") attachSuggest(input, { category: "publisher" });
     if (field === "series") {
         attachSuggest(input, { category: "series" });
-        input.placeholder = "Series [number]";
-        input.title = "The series, and the book's number in it in brackets: Dune [2]. Without a number the book keeps its own; empty: no series.";
+        input.placeholder = "Series";
+        input.title = "The series. The book keeps its number (# beside it); Dune [2] sets both. Empty: no series.";
+    }
+    if (field === "series_index") {
+        Object.assign(input, { inputMode: "decimal", title: "The book's number in its series: 2, 2.5" });
     }
     cell.classList.add("lt-editing");
     input.focus();
     // That tag or language picked out ("a, b, c" is how cellValue joins them): typing replaces it.
-    const items = field === "tags" ? r.b.tags : field === "languages" ? r.b.languages : [];
+    const items = field === "tags" ? r.b.tags : field === "languages" ? r.b.languages : field === "identifiers" ? (r.b.identifiers ?? []) : [];
     const at = item === undefined ? -1 : items.indexOf(item);
     if (at >= 0) {
         const start = items.slice(0, at).reduce((t, v) => t + v.length + 2, 0);
         input.setSelectionRange(start, start + item!.length);
     } else input.select();
 
+    // The edit bar shows what's typed.
+    input.addEventListener("input", () => {
+        if (!barEditing) editBar.value = input.value;
+    });
+
     let done = false;
     const finish = async (save: boolean): Promise<void> => {
         if (done) return;
         done = true;
         editing = null;
-        const value = input.value.trim();
-        if (!save || value === before.trim() || (field === "title" && !value)) {
+        if (!save) {
             draw(true);
+            updateBar(); // not what was typed
             return;
         }
-        input.disabled = true;
-        try {
-            const res = await sendEdit([uuid], field === "series" ? seriesEdit(value) : { [field]: value });
-            const after = res.books[0] ? cellValue(res.books[0], field) : value;
-            savedWithUndo(res, r.b, field, fieldName(col), changeText(col, before, after, r.b.title));
-        } catch (err) {
-            say(`Couldn't save: ${errorMessage(err)}`, "error");
-        }
-        refresh();
+        if (input.value.trim() !== before.trim()) input.disabled = true;
+        await saveCell(r.b, col, before, input.value);
     };
     editing = { cell, area: cell, input, finish };
     wireEditKeys(input, finish);
     return true;
+}
+
+/**
+ * Save what was typed for a book's cell (in the cell or the edit bar), with
+ * Undo; nothing if it's what was there (or an empty title).
+ */
+async function saveCell(b: TableBook, col: Column, before: string, typed: string): Promise<void> {
+    const field = col.edit;
+    const value = typed.trim();
+    if (!field || value === before.trim() || (field === "title" && !value)) {
+        draw(true);
+        updateBar();
+        return;
+    }
+    if (field === "rating" && value && !(Number(value) >= 0 && Number(value) <= 5)) {
+        say(`A rating is 0 to 5 stars, not “${shortText(value)}”.`, "error");
+        draw(true);
+        updateBar();
+        return;
+    }
+    try {
+        const res = await sendEdit([b.uuid], fieldEdit(field, value));
+        const after = res.books[0] ? cellValue(res.books[0], field) : value;
+        savedWithUndo(res, b, field, fieldName(col), changeText(col, before, after, b.title));
+    } catch (err) {
+        say(`Couldn't save: ${errorMessage(err)}`, "error");
+    }
+    refresh();
 }
 
 // The dialog.
@@ -2366,8 +2785,10 @@ onlySelectedBox.addEventListener("change", () => {
 byId("lt-clear").addEventListener("click", () => {
     for (const c of COLUMNS) {
         delete filters[c.key];
-        filterInputs.get(c.key)!.value = "";
-        blankBoxes.get(c.key)!.checked = false;
+        const input = filterInputs.get(c.key);
+        if (input) input.value = "";
+        const box = blankBoxes.get(c.key);
+        if (box) box.checked = false;
     }
     blankOnly.clear();
     search = searchInput.value = "";
@@ -2424,6 +2845,8 @@ function loadView(): void {
         const f = q.get(`f.${c.key}`);
         if (f) filters[c.key] = f;
         if (q.get(`blank.${c.key}`)) blankOnly.add(c.key);
+        // A link that filters or sorts by a hidden column shows it (for now: not saved).
+        if ((f || q.get(`blank.${c.key}`) || sortKey === c.key) && !isShown(c)) colShown[c.key] = true;
     }
     if (q.get("selected")) {
         // From the grid's "Edit in table".
@@ -2441,8 +2864,9 @@ function loadView(): void {
 }
 
 async function start(): Promise<void> {
+    loadView(); // first: a link may show a hidden column
     applyColWidths();
-    loadView();
+    buildColumnsMenu();
     buildHead();
     try {
         await loadTable(loadLanguageCodes());
@@ -2685,8 +3109,11 @@ function showUnlisted(): void {
     unlistedText.textContent = `${plural(k, "book")} with files metadata.db doesn't list`;
 }
 byId("lt-unlisted-show").addEventListener("click", () => {
-    const input = filterInputs.get("formats")!;
-    input.value = filters.formats = FOLDER_ONLY;
+    const formats = COLUMNS.find((c) => c.key === "formats")!;
+    filters.formats = FOLDER_ONLY;
+    if (!isShown(formats)) setColumnShown(formats, true);
+    const input = filterInputs.get("formats");
+    if (input) input.value = FOLDER_ONLY;
     refresh();
 });
 byId("lt-unlisted-fix").addEventListener("click", async (e) => {

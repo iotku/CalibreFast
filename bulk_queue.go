@@ -124,7 +124,11 @@ func init() { bulkQueue.changed = sync.NewCond(&bulkQueue.mu) }
 func predictRow(b tableBook, e *bulkEdit) (tableBook, bool) {
 	m := OPFMetadata{
 		Title: b.Title, Creators: splitAuthors(b.Authors), Publisher: b.Publisher, Series: b.Series,
-		Subjects: slices.Clone(b.Tags), Languages: slices.Clone(b.Languages),
+		Subjects: slices.Clone(b.Tags), Languages: slices.Clone(b.Languages), Rating: b.Rating,
+	}
+	for _, id := range b.Identifiers {
+		typ, val, _ := strings.Cut(id, ":")
+		m.Identifiers = append(m.Identifiers, opfIdentifier{Scheme: typ, Value: val})
 	}
 	if b.Series != "" {
 		m.SeriesIndex = strconv.FormatFloat(b.SeriesIndex, 'f', -1, 64)
@@ -142,6 +146,25 @@ func predictRow(b tableBook, e *bulkEdit) (tableBook, bool) {
 	}
 	out.Tags = slices.Clone(m.Subjects)
 	out.Languages = slices.DeleteFunc(slices.Clone(m.Languages), func(l string) bool { return l == opf.UndefinedLanguage })
+	out.Rating = m.Rating
+	if e.Identifiers != nil {
+		// As metadata.db will keep them (updateBookInCalibreDB): one per type, by type.
+		out.Identifiers, out.ISBN = []string{}, ""
+		seen := map[string]bool{}
+		_, edited := opf.SplitLibraryIdentifiers(m.Identifiers)
+		for _, id := range edited {
+			typ, val := parseIdentifier(id)
+			if typ == "" || val == "" || seen[typ] {
+				continue
+			}
+			seen[typ] = true
+			out.Identifiers = append(out.Identifiers, typ+":"+val)
+			if typ == "isbn" && out.ISBN == "" {
+				out.ISBN = val
+			}
+		}
+		slices.Sort(out.Identifiers)
+	}
 	before, _ := json.Marshal(b)
 	after, _ := json.Marshal(out)
 	return out, string(before) != string(after)

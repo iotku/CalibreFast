@@ -369,3 +369,48 @@ func TestBulkEditSplitTags(t *testing.T) {
 		t.Error("a split counts as an edit")
 	}
 }
+
+// Identifiers: the book's become those typed (one per type, as metadata.db
+// keeps them); the library's own stay; a bad one is refused up front.
+func TestBulkEditIdentifiers(t *testing.T) {
+	db := setupRecycleLibrary(t)
+	a := addOPFTestBook(t, db, "Alpha", []string{"Ann"}, nil, nil)
+	if _, err := db.Exec(`INSERT INTO identifiers (book, type, val) VALUES (?, 'calibre', '42')`, a.id); err != nil {
+		t.Fatal(err)
+	}
+	ids := "goodreads:234225, isbn:978-0-441-17271-9"
+	res, err := queueBulkEdit([]string{a.uuid}, &bulkEdit{Identifiers: &ids}, &User{Username: "admin", IsAdmin: true})
+	if err != nil {
+		t.Fatal(err)
+	}
+	want := []string{"goodreads:234225", "isbn:9780441172719"}
+	if len(res.Books) != 1 || !slices.Equal(res.Books[0].Identifiers, want) || res.Books[0].ISBN != "9780441172719" {
+		t.Errorf("foreseen row: %+v", res.Books)
+	}
+	waitBulkEdits()
+	if got := tableRow(t, db, a.uuid).Identifiers; !slices.Equal(got, want) {
+		t.Errorf("written: %v, want %v", got, want)
+	}
+	if n := count(t, db, `SELECT COUNT(*) FROM identifiers WHERE book = `+itoa(a.id)+` AND type = 'calibre'`); n != 1 {
+		t.Errorf("the library's own identifier: %d rows", n)
+	}
+
+	none := ""
+	bulkEditBooks([]string{a.uuid}, &bulkEdit{Identifiers: &none})
+	if got := tableRow(t, db, a.uuid).Identifiers; len(got) != 0 {
+		t.Errorf("cleared: %v", got)
+	}
+
+	for _, bad := range []string{"goodreads", "uuid:x", "calibre:5", ":5"} {
+		req := bulkEditRequest{UUIDs: []string{a.uuid}, Edit: bulkEdit{Identifiers: &bad}}
+		if err := req.validate(); err == nil {
+			t.Errorf("%q: accepted", bad)
+		}
+	}
+	for _, good := range []string{"", "isbn:1", "9780441172719", "url:https://example.com/a"} {
+		req := bulkEditRequest{UUIDs: []string{a.uuid}, Edit: bulkEdit{Identifiers: &good}}
+		if err := req.validate(); err != nil {
+			t.Errorf("%q: %v", good, err)
+		}
+	}
+}
