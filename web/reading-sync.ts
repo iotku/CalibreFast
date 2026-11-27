@@ -13,7 +13,7 @@
  *     deletions are queued until the server confirms them.
  */
 
-import { api, random } from "./dom.js";
+import { api, randomHex } from "./dom.js";
 import { lastKnownUser, localKey, type Owner } from "./local-keys.js";
 import { noteLocalReading } from "./local-reading.js";
 import { noteReadingHere } from "./offline-books.js";
@@ -83,7 +83,7 @@ const LS = {
 };
 
 const newId = (): string =>
-    (crypto.randomUUID?.() ?? `${Date.now().toString(36)}-${random().toString(36).slice(2)}`).slice(0, 64);
+    (crypto.randomUUID?.() ?? `${Date.now().toString(36)}-${randomHex()}`).slice(0, 64);
 
 /** The server answered that nobody is signed in (the session ended). */
 const signedOut = (e: unknown): boolean => (e as { status?: number } | null)?.status === 401;

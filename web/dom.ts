@@ -154,10 +154,14 @@ export function safeUrl(url: string | null | undefined): string {
 }
 
 /**
- * A random number in [0, 1), like Math.random but from crypto.getRandomValues.
- * Nothing here needs unguessable numbers (shuffles, picks, fallback ids), but
- * code scanning can't tell, and it costs nothing.
+ * A random number in [0, 1) for shuffles and picks, which needn't be
+ * unguessable. Ids use randomHex.
  */
 export function random(): number {
-    return crypto.getRandomValues(new Uint32Array(1))[0]! / 2 ** 32;
+    return Math.random();
+}
+
+/** `bytes` random bytes from crypto.getRandomValues, as hex: an id's random part. */
+export function randomHex(bytes = 8): string {
+    return Array.from(crypto.getRandomValues(new Uint8Array(bytes)), (b) => b.toString(16).padStart(2, "0")).join("");
 }
