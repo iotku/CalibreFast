@@ -1,0 +1,231 @@
+/* ============================================
+   Design tokens: the only place a color is written out.
+
+   Two layers:
+   - the palette (--palette-*): raw values, named for what they are. Only
+     this file uses them.
+   - semantic tokens (--bg-*, --text-*, --border-*, --accent*, --danger*, …):
+     named for what they're for. Every other stylesheet uses only these, so a
+     theme is just another set of values for them.
+
+   The theme is the dark one below. A light theme is a [data-theme="light"]
+   block that gives the semantic tokens other values (see the stub at the
+   end); nothing else has to change. TestNoRawColorsOutsideTokens keeps
+   colors out of the other files.
+
+   Imported by every entry stylesheet (style.css, auth.css, book-edit.css,
+   library-edit.css, …); it names no classes, so the signed-out pages can
+   import it too.
+   ============================================ */
+:root {
+    /* ---- Palette ---- */
+    --palette-black: #000;
+    --palette-white: #fff;
+    --palette-gray-950: #111;
+    --palette-gray-900: #1b1b1b;
+    --palette-gray-850: #222;
+    --palette-gray-800: #252525;
+    --palette-gray-750: #2c2c2c;
+    --palette-gray-700: #333;
+    --palette-gray-400: #888;
+    --palette-gray-350: #9a9a9a;
+    --palette-gray-300: #aaa;
+    --palette-gray-200: #bbb;
+    --palette-gray-100: #eee;
+    --palette-gold-200: #e8cf9a;
+    --palette-gold-300: #d8be8a;
+    --palette-gold-500: #c8a96e;
+    --palette-gold-800: #7a6340;
+    --palette-red-200: #f0b3b3;
+    --palette-red-300: #e59999;
+    --palette-red-500: #c44;
+    --palette-red-400: #ba7a7a;
+    --palette-red-800: #8f2a2a;
+    --palette-green-200: #b9dcbb;
+    --palette-green-300: #8fc493;
+    --palette-green-500: #5a8a5e;
+    --palette-amber-400: #e0b35a;
+    --palette-blue-400: #6aa7e8;
+    --palette-purple-400: #b08fd8;
+    --palette-green-400: #5fbf7f;
+
+    /* ---- Layout & spacing ---- */
+    --topbar-height: 42px;
+    --topbar-padding: 6px;
+    --topbar-total: calc(var(--topbar-height) + var(--topbar-padding) * 2);
+    /* The system alerts' strip at the top of the page (system-alerts.ts sets
+       these): its height, and how much of it is still on screen, which is 0
+       once it has scrolled away. Content starts under the whole strip (html's
+       padding); the fixed bar sits under what's left of it on screen. */
+    --system-alerts-height: 0px;
+    --system-alerts-shown: 0px;
+    /* Where the bar ends on screen: fixed things hanging under it use this. */
+    --topbar-bottom: calc(var(--topbar-total) + var(--system-alerts-shown));
+    --page-padding: clamp(12px, 1.5vw, 32px);
+    /* How wide a page's content gets on a wide screen: the book grids,
+       Discover and the aggregate pages share it, so they line up. */
+    --content-max: 1600px;
+    --gap-small: 4px;
+    --gap-medium: 8px;
+    --gap-large: 12px;
+    --gap-xlarge: 24px;
+
+    /* ---- Typography ---- */
+    --font-family: sans-serif;
+    /* The metadata editor's and upload page's type (book-edit.css, upload.css). */
+    --font-sans: "IBM Plex Sans", -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+    --font-mono: "IBM Plex Mono", monospace;
+    --font-serif: "Playfair Display", Georgia, serif;
+    --font-size-small: 0.8rem;
+    --font-size-normal: 1rem;
+    --font-size-large: 1.1rem;
+    --font-size-ui: 16px;
+    --font-size-tiny: 13px;
+
+    /* ---- Motion ---- */
+    --transition-fast: 0.15s ease;
+    --transition-normal: 0.25s ease;
+
+    /* ---- Shape ---- */
+    --radius-small: 4px;
+    --radius-medium: 8px;
+    --radius-large: 12px;
+    --radius-round: 999px;
+
+    /* ---- Interactive elements ---- */
+    --touch-target: 44px;
+    --input-padding: 0 12px;
+
+    /* Breakpoints (custom properties don't work in @media, so these are
+       for reference): use only these widths.
+       480px  phone, 640px  small tablet / large phone,
+       900px  tablet, 1200px  small desktop. */
+}
+
+/* ---- Semantic tokens: the dark theme (the default) ---- */
+:root,
+[data-theme="dark"] {
+    color-scheme: dark;
+
+    /* Backgrounds, darkest to lightest */
+    --bg-primary: var(--palette-gray-950);
+    --bg-secondary: var(--palette-gray-900);
+    --bg-surface: var(--palette-gray-850);
+    --bg-elevated: var(--palette-gray-800);
+    --bg-skeleton: var(--palette-gray-750);
+    --bg-strong: var(--palette-gray-700);
+    --bg-topbar: rgba(20, 20, 20, 0.85);
+    --bg-modal: rgba(11, 11, 11, 0.75);
+    --bg-modal-overlay: rgba(0, 0, 0, 0.6);
+    /* Controls floating over covers (hover buttons, badges). */
+    --bg-glass: rgba(30, 30, 30, 0.65);
+    --bg-glass-strong: rgba(60, 60, 60, 0.9);
+
+    /* Text */
+    --text-primary: var(--palette-gray-100);
+    --text-secondary: var(--palette-gray-200);
+    --text-muted: var(--palette-gray-400);
+    --text-link: var(--palette-gray-300);
+    /* Brighter than primary: hover on a muted control. */
+    --text-strong: var(--palette-white);
+    /* On a gold button or badge. */
+    --text-on-accent: #121212;
+    /* On a cover, a colored badge or a dark scrim: stays white in any theme. */
+    --text-on-color: var(--palette-white);
+
+    /* Foreground tints: the text color at low opacity, for hover fills and
+       rules that work on any background. */
+    --tint: var(--palette-white);
+    --tint-faint: color-mix(in srgb, var(--tint) 4%, transparent);
+    --tint-soft: color-mix(in srgb, var(--tint) 8%, transparent);
+    --tint-medium: color-mix(in srgb, var(--tint) 12%, transparent);
+
+    /* Shadows and scrims: black at some opacity, in any theme. */
+    --scrim: var(--palette-black);
+    --scrim-20: color-mix(in srgb, var(--scrim) 20%, transparent);
+    --scrim-45: color-mix(in srgb, var(--scrim) 45%, transparent);
+    --scrim-60: color-mix(in srgb, var(--scrim) 60%, transparent);
+    --scrim-80: color-mix(in srgb, var(--scrim) 80%, transparent);
+
+    /* Borders */
+    --border-subtle: rgba(255, 255, 255, 0.08);
+    --border-light: rgba(255, 255, 255, 0.1);
+    --border-medium: rgba(255, 255, 255, 0.15);
+    --border-strong: rgba(255, 255, 255, 0.35);
+
+    /* Accent (gold) */
+    --accent: var(--palette-gold-500);
+    --accent-hover: var(--palette-gold-300);
+    --accent-light: var(--palette-gold-200);
+    --accent-dim: var(--palette-gold-800);
+    --accent-faint: color-mix(in srgb, var(--accent) 5%, transparent);
+    --accent-soft: color-mix(in srgb, var(--accent) 12%, transparent);
+    --accent-line: color-mix(in srgb, var(--accent) 40%, transparent);
+
+    /* Danger (delete, errors) */
+    --danger: var(--palette-red-500);
+    --danger-text: var(--palette-red-300);
+    --danger-light: var(--palette-red-200);
+    --danger-muted: var(--palette-red-400);
+    --danger-strong: var(--palette-red-800);
+    --danger-soft: color-mix(in srgb, var(--danger-muted) 15%, transparent);
+    --danger-line: color-mix(in srgb, var(--danger-muted) 40%, transparent);
+
+    /* Success */
+    --success: var(--palette-green-500);
+    --success-text: var(--palette-green-300);
+    --success-light: var(--palette-green-200);
+    --success-soft: color-mix(in srgb, var(--success) 15%, transparent);
+    --success-line: color-mix(in srgb, var(--success) 40%, transparent);
+
+    /* Warning */
+    --warning: var(--palette-amber-400);
+
+    /* Reading status on the cards (reading.ts). Hues far apart
+       (blue / gold / green), and each also differs in shape, so they don't
+       rely on color alone: saved is a dashed ring, reading a solid
+       ring with a partial bar, finished a solid ring with a full bar,
+       paused a double ring, dropped a dotted one; paused, finished and
+       dropped also get a badge on the cover. */
+    --status-wanted: var(--palette-blue-400);
+    --status-reading: var(--palette-gold-500);
+    --status-finished: var(--palette-green-400);
+    --status-paused: var(--palette-purple-400);
+    --status-dropped: var(--palette-gray-350);
+    /* Reading stats heatmap (stats.ts): none, then more and more pages read. */
+    --heat-0: var(--palette-gray-750);
+    --heat-1: #1e4a2c;
+    --heat-2: #2a7240;
+    --heat-3: #3f9d5a;
+    --heat-4: #6fd08c;
+
+    /* Storage bars' other segments (preferences.css, admin-server.css). */
+    --chart-other: #a58bd6;
+    --chart-muted: #777;
+
+    /* Book formats on the upload page (upload.css). */
+    --format-pdf: #8a4a4a;
+    --format-mobi: #4a6e8a;
+    --format-azw3: #6e5a8a;
+    --format-djvu: #8a784a;
+    --format-other: #505050;
+
+    --shadow-small: 0 2px 8px rgba(0, 0, 0, 0.35);
+    --shadow-medium: 0 6px 18px rgba(0, 0, 0, 0.45);
+    --shadow-large: 0 2px 6px rgba(0, 0, 0, 0.35);
+}
+
+/* A light theme gives the semantic tokens above other values, e.g.:
+
+[data-theme="light"] {
+    color-scheme: light;
+    --bg-primary: #fafafa;
+    --text-primary: #1b1b1b;
+    --tint: #000;
+    --border-subtle: rgba(0, 0, 0, 0.08);
+    …
+}
+
+and is turned on by setting data-theme on <html> (or, to follow the system,
+the same values in @media (prefers-color-scheme: light) for
+:root:not([data-theme="dark"])). */

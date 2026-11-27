@@ -1,0 +1,202 @@
+/* ============================================
+   Component - Book Detail Page
+   ============================================ */
+body.book-standalone {
+    padding-top: calc(var(--topbar-total) + 1.5rem);
+}
+
+.book-page {
+    display: grid;
+    grid-template-columns: 280px minmax(0, 1fr);
+    /* Header row hugs its content; when the cover is taller than the text,
+       the slack goes below the info instead of between buttons and info. */
+    grid-template-rows: auto auto 1fr;
+    grid-template-areas:
+        "cover header"
+        "cover info"
+        "admin info";
+    column-gap: 2.5rem;
+    row-gap: 1.25rem;
+    max-width: 1080px;
+    margin: auto;
+    padding: 2rem;
+    box-sizing: border-box;
+    align-items: start;
+}
+
+.book-header {
+    grid-area: header;
+    min-width: 0;
+}
+
+/* Left column: cover with the read/download actions underneath */
+.book-page-side {
+    grid-area: cover;
+    width: 280px;
+    min-width: 0;
+    /* a column, so the per-user controls can sit on both sides of the
+       cover and buttons (order, below) */
+    display: flex;
+    flex-direction: column;
+}
+
+.book-page-cover {
+    width: 100%;
+}
+
+.book-page-cover img {
+    width: 100%;
+    max-width: 280px;
+    height: auto;
+    border-radius: var(--radius-large);
+    box-shadow: var(--shadow-medium);
+    display: block;
+}
+
+/* Thumbnail and full cover share one grid cell; the full one fades in on top. */
+.cover-stack {
+    display: grid;
+}
+
+.cover-stack > img {
+    grid-area: 1 / 1;
+    /* cover.jpg's shape, not the thumbnail's (rounded when it was made):
+       the cover keeps its height as the thumbnail, then the full cover, loads */
+    aspect-ratio: var(--cover-ratio, auto);
+}
+
+/* Placeholder cover, as on the book's library card (colour, title, author):
+   shown while no image in the stack has loaded, so when there's no cover,
+   while it loads, or when it fails. */
+.cover-stack > .cover-placeholder {
+    grid-area: 1 / 1;
+    display: flex;
+    flex-direction: column;
+    justify-content: flex-end;
+    box-sizing: border-box;
+    width: 100%;
+    max-width: 280px;
+    aspect-ratio: var(--cover-ratio, 2 / 3); /* the cover's own shape when known (book.html) */
+    padding: 18px;
+    overflow: hidden;
+    border-radius: var(--radius-large);
+    box-shadow: var(--shadow-medium);
+    color: var(--text-on-color);
+    overflow-wrap: anywhere;
+    background:
+        linear-gradient(
+            to top,
+            color-mix(in srgb, var(--scrim) 92%, transparent) 0%,
+            var(--scrim-60) 35%,
+            var(--scrim-20) 65%,
+            transparent 100%
+        ),
+        hsl(var(--cover-hue) 55% 35%);
+}
+
+.cover-stack:has(> img.loaded) > .cover-placeholder {
+    display: none;
+}
+
+/* Room for the "Read" hint at the bottom of the cover link. */
+.cover-link .cover-placeholder {
+    padding-bottom: 52px;
+}
+
+.cover-placeholder-title {
+    display: -webkit-box;
+    -webkit-box-orient: vertical;
+    -webkit-line-clamp: 5;
+    overflow: hidden;
+    margin-bottom: 8px;
+    font-size: var(--font-size-large);
+    font-weight: 600;
+    line-height: 1.2;
+}
+
+.cover-placeholder-author {
+    color: color-mix(in srgb, var(--tint) 80%, transparent);
+    font-size: var(--font-size-small);
+}
+
+.book-page-cover img.cover-full {
+    box-shadow: none;
+    opacity: 0;
+    transition: opacity 0.4s ease;
+}
+
+.book-page-cover img.cover-full.loaded {
+    opacity: 1;
+}
+
+@media (prefers-reduced-motion: reduce) {
+    .book-page-cover img.cover-full {
+        transition: none;
+    }
+}
+
+.cover-link {
+    display: block;
+    position: relative;
+    border-radius: var(--radius-large);
+    overflow: hidden;
+    cursor: pointer;
+    text-decoration: none;
+    box-shadow: var(--shadow-medium);
+    transition: transform var(--transition-fast), box-shadow var(--transition-fast);
+}
+
+.cover-link:hover {
+    transform: translateY(-2px);
+    box-shadow: 0 8px 24px var(--scrim-45);
+}
+
+.cover-link img {
+    display: block;
+    width: 100%;
+    height: auto;
+    border-radius: var(--radius-large);
+}
+
+.cover-read-hint {
+    position: absolute;
+    bottom: 12px;
+    left: 50%;
+    transform: translateX(-50%) translateY(4px);
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    padding: 6px 14px;
+    background: var(--bg-topbar);
+    backdrop-filter: blur(8px);
+    -webkit-backdrop-filter: blur(8px);
+    color: var(--accent);
+    border: 1px solid var(--accent-line);
+    border-radius: var(--radius-round);
+    font-size: 0.75rem;
+    font-weight: 600;
+    letter-spacing: 0.05em;
+    text-transform: uppercase;
+    opacity: 0;
+    transition: opacity var(--transition-fast), transform var(--transition-fast);
+    pointer-events: none;
+}
+
+.cover-link:hover .cover-read-hint {
+    opacity: 1;
+    transform: translateX(-50%) translateY(0);
+}
+
+/* No hover on touch screens: no hint over the cover either (it couldn't be
+   moved off the cover to see it whole); the Read buttons are below. */
+@media (hover: none) {
+    .cover-link .cover-read-hint {
+        display: none;
+    }
+}
+
+.book-page-info {
+    grid-area: info;
+    flex: 1;
+    min-width: 0;
+}

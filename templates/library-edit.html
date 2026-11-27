@@ -113,7 +113,7 @@
 </div>
 
 <!-- Changes to every selected book -->
-<dialog id="bulk-dialog" class="lt-dialog" aria-labelledby="bulk-title">
+<dialog id="bulk-dialog" class="dialog lt-dialog" aria-labelledby="bulk-title">
     <form id="bulk-form" method="dialog">
         <h2 id="bulk-title">Edit books</h2>
         <fieldset class="lt-fieldset">
@@ -141,7 +141,7 @@
         </fieldset>
         <p id="bulk-summary" class="lt-hint" aria-live="polite"></p>
         <p id="bulk-error" class="auth-error" role="alert" hidden></p>
-        <div class="lt-dialog-actions">
+        <div class="dialog-actions">
             <button type="button" id="bulk-cancel" class="btn-action">Cancel</button>
             <button type="submit" id="bulk-apply" class="btn-action btn-primary-action">Apply</button>
         </div>
@@ -149,25 +149,25 @@
 </dialog>
 
 <!-- Split the selected books' tags on a separator ("Split tags…") -->
-<dialog id="split-dialog" class="lt-dialog lt-dialog-small" aria-labelledby="split-title">
+<dialog id="split-dialog" class="dialog lt-dialog lt-dialog-small" aria-labelledby="split-title">
     <form id="split-form" method="dialog">
         <h2 id="split-title">Split tags</h2>
         <p id="split-hint" class="lt-hint">Each tag holding the separator becomes the tags it lists. Parts a book already has are left out. Undo puts the tags back.</p>
         <label class="lt-field">Separator <input id="split-sep" autocomplete="off" spellcheck="false" maxlength="10" value=";"></label>
         <p id="split-summary" class="lt-hint lt-split-summary" aria-live="polite"></p>
-        <div class="lt-dialog-actions">
+        <div class="dialog-actions">
             <button type="button" id="split-cancel" class="btn-action">Cancel</button>
             <button type="submit" id="split-apply" class="btn-action btn-primary-action">Split</button>
         </div>
     </form>
 </dialog>
 
-<dialog id="failures-dialog" class="lt-dialog" aria-labelledby="failures-title">
+<dialog id="failures-dialog" class="dialog lt-dialog" aria-labelledby="failures-title">
     <form method="dialog">
         <h2 id="failures-title">Edits not saved</h2>
         <p class="lt-hint">These books weren't changed, so nothing in them was written over. A book changed elsewhere (in Calibre, say) after the edit was made is left as it is: make the edit again if it's still wanted.</p>
         <ul id="failures-list" class="lt-failures-list"></ul>
-        <div class="lt-dialog-actions">
+        <div class="dialog-actions">
             <button type="button" id="failures-select" class="btn-action">Select these books</button>
             <button type="button" id="failures-dismiss" class="btn-action">Dismiss</button>
             <button type="submit" class="btn-action btn-primary-action">Close</button>

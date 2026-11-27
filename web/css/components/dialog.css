@@ -1,0 +1,39 @@
+/* Dialogs (<dialog> opened with showModal): shelf edit and pick
+   (shelf-edit.ts, shelf-picker.ts), deleting books or files
+   (delete-books.ts, book-files.ts), unstarring (aggregate-fav.ts), and the
+   editors' (book-edit.css .compare-dialog, library-edit.css .lt-dialog),
+   which change only their size and surface. */
+.dialog {
+    width: min(520px, calc(100vw - 32px));
+    max-height: calc(100vh - 32px);
+    padding: 1.25rem 1.5rem;
+    background: var(--bg-surface);
+    color: var(--text-primary);
+    border: 1px solid var(--border-medium);
+    border-radius: var(--radius-medium);
+    box-shadow: var(--shadow-medium);
+}
+
+.dialog::backdrop {
+    background: var(--bg-modal-overlay);
+}
+
+.dialog h2 {
+    margin: 0 0 0.75rem;
+    font-size: 1.15rem;
+    overflow-wrap: anywhere;
+}
+
+/* Something that can't be undone easily (delete, unstar). */
+.dialog--danger {
+    border-color: var(--danger);
+}
+
+/* Cancel / confirm, at the end. */
+.dialog-actions {
+    display: flex;
+    flex-wrap: wrap;
+    justify-content: flex-end;
+    gap: 8px;
+    margin-top: 0.75rem;
+}

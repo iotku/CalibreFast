@@ -1,0 +1,266 @@
+/* ============================================
+   Offline page (templates/offline.html)
+   ============================================ */
+
+/* The service worker shows it for any page when the server can't be
+   reached: the Reading list's cards, as in the library (.book), with the
+   books not kept on this device as placeholders. */
+.offline-main {
+    max-width: var(--content-max);
+    margin: var(--topbar-total) auto 0;
+    padding-top: 0.75rem;
+}
+
+.offline-bar .tb-title {
+    display: block;
+}
+
+.offline-status {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 0.5rem 0.75rem;
+    margin: 0 0 1rem;
+    padding: 0.6rem 0.85rem;
+    border: 1px solid var(--border-medium);
+    border-radius: var(--radius-medium);
+    background: var(--bg-elevated);
+    font-size: var(--font-size-small);
+    color: var(--text-secondary);
+}
+
+.offline-status > span:nth-child(2) {
+    flex: 1 1 14rem;
+}
+
+.offline-dot {
+    width: 8px;
+    height: 8px;
+    border-radius: 50%;
+    background: var(--status-reading);
+    flex: none;
+}
+
+.offline-heading {
+    margin: 1.25rem 0 0.6rem;
+    font-size: 1rem;
+    font-weight: 600;
+    color: var(--text-secondary);
+}
+
+.offline-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(150px, 1fr));
+    gap: 10px;
+}
+
+@media (max-width: 600px) {
+    .offline-grid {
+        grid-template-columns: repeat(2, 1fr);
+    }
+}
+
+.offline-grid .book-link {
+    display: block;
+}
+
+/* Not kept here: opens a popup that waits for the connection (offline.ts). */
+.book.offline-unavailable {
+    opacity: 0.5;
+    filter: grayscale(0.6);
+}
+
+/* A list's books not kept here, folded away (offline.ts). */
+.offline-more {
+    margin-top: 0.75rem;
+}
+
+.offline-more > summary {
+    cursor: pointer;
+    width: fit-content;
+    padding: 0.35rem 0.75rem;
+    border-radius: var(--radius-medium);
+    background: var(--bg-elevated);
+    color: var(--text-secondary);
+    font-size: var(--font-size-small);
+}
+
+.offline-more > summary:hover {
+    color: var(--text-primary);
+}
+
+.offline-more[open] > summary {
+    margin-bottom: 0.6rem;
+}
+
+.offline-badge {
+    position: absolute;
+    inset: 0.5rem 0.5rem auto auto;
+    z-index: 3;
+    padding: 2px 8px;
+    border-radius: 999px;
+    background: var(--scrim-80);
+    color: var(--text-on-color);
+    font-size: 11px;
+}
+
+.offline-none {
+    margin-top: 1.5rem;
+}
+
+/* ── Import queue (templates/imports.html, web/imports.ts) ── */
+.import-list {
+    list-style: none;
+    margin: 1rem 0 0;
+    padding: 0;
+}
+
+.import-row {
+    display: flex;
+    align-items: center;
+    gap: 14px;
+    padding: 12px 0;
+    border-top: 1px solid var(--border-subtle);
+}
+
+.import-cover-link {
+    flex-shrink: 0;
+    text-decoration: none;
+}
+
+.import-cover {
+    display: block;
+    width: 52px;
+    height: 76px;
+    object-fit: cover;
+    background: var(--bg-primary);
+    border: 1px solid var(--border-light);
+    border-radius: var(--radius-small);
+}
+
+.import-cover-none {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 0.65rem;
+    letter-spacing: 0.08em;
+    text-transform: uppercase;
+    color: var(--text-muted);
+}
+
+.import-info {
+    flex: 1;
+    min-width: 0;
+}
+
+.import-title {
+    display: block;
+    font-size: 1rem;
+    color: var(--text-primary);
+    text-decoration: none;
+    overflow-wrap: anywhere;
+}
+
+.import-title:hover {
+    text-decoration: underline;
+}
+
+.import-authors {
+    margin: 2px 0 4px;
+    font-size: 0.9rem;
+    color: var(--text-secondary);
+}
+
+.import-files {
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+}
+
+.import-duplicate {
+    margin-top: 6px;
+    padding: 4px 8px;
+    font-size: 0.85rem;
+    color: var(--accent-light);
+    background: var(--accent-soft);
+    border: 1px solid var(--accent-line);
+    border-radius: var(--radius-small);
+}
+
+.import-duplicate.import-duplicate-same {
+    color: var(--danger-light);
+    background: var(--danger-soft);
+    border-color: var(--danger-line);
+}
+
+.import-duplicate a,
+.import-info .duplicate-note a {
+    color: inherit;
+}
+
+.import-progress {
+    margin: 12px 0;
+}
+
+.import-progress progress {
+    width: 100%;
+    height: 10px;
+    accent-color: var(--accent);
+}
+
+.import-progress-row {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 12px;
+    margin-top: 6px;
+    font-size: 0.85rem;
+}
+
+.import-progress-row span {
+    min-width: 0;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+.import-info .duplicate-note {
+    margin-top: 6px;
+    font-size: 0.85rem;
+    color: var(--accent-light);
+}
+
+.import-actions {
+    display: flex;
+    flex-shrink: 0;
+    gap: 8px;
+}
+
+@media (max-width: 560px) {
+    .import-row {
+        flex-wrap: wrap;
+    }
+
+    .import-actions {
+        width: 100%;
+        justify-content: flex-end;
+    }
+}
+
+/* ── Removing books (web/delete-books.ts, web/select-books.ts) and the
+      Recycling Bin (templates/recycle-bin.html, web/recycle-bin.ts) ── */
+.btn-action.btn-danger,
+.btn-action-remove:hover {
+    background: var(--danger-strong);
+    border-color: var(--danger);
+    color: var(--text-strong);
+}
+
+.btn-action.btn-danger:hover:not(:disabled) {
+    background: var(--danger-strong);
+}
+
+.btn-action:disabled {
+    opacity: 0.45;
+    cursor: not-allowed;
+}

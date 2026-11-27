@@ -1,0 +1,65 @@
+/* Authors followed on Hardcover (account.html, internal/hardcoversync/follows.go) */
+#hardcover-follows {
+    margin: 1.25rem 0 0.5rem;
+    font-size: 1rem;
+}
+
+.follow-confirm {
+    list-style: none;
+    margin: 0.5rem 0 1rem;
+    padding: 0;
+    display: flex;
+    flex-direction: column;
+    gap: 0.6rem;
+}
+
+.follow-confirm li {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 0.4rem;
+}
+
+.follow-confirm form,
+.follow-list form {
+    display: inline;
+}
+
+.follow-list {
+    margin: 0.5rem 0 0;
+    padding-left: 1.2rem;
+}
+
+.follow-list .link-button {
+    padding: 0;
+    color: var(--text-muted);
+    text-decoration: underline;
+    background: none;
+    border: none;
+    cursor: pointer;
+    font: inherit;
+}
+
+/* Taking the star off an author followed on Hardcover (aggregate-fav.ts) */
+.unstar-dialog h2 {
+    font-size: 1.1rem;
+}
+
+.unstar-hardcover {
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+    font-weight: 600;
+}
+
+.unstar-dialog .auth-muted {
+    margin: 0.4rem 0 1rem;
+}
+
+.follow-settings {
+    display: flex;
+    flex-direction: column;
+    align-items: flex-start;
+    gap: 0.5rem;
+    margin: 1rem 0 0.5rem;
+}

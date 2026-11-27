@@ -140,7 +140,7 @@
 }
 
 .lt-status.error {
-    color: #e59999;
+    color: var(--danger-text);
 }
 
 .lt-saving {
@@ -247,15 +247,15 @@
 }
 
 .lt-rows .lt-row:hover {
-    background: rgba(255, 255, 255, 0.035);
+    background: var(--tint-faint);
 }
 
 .lt-rows .lt-row[aria-selected="true"] {
-    background: rgba(200, 169, 110, 0.12);
+    background: var(--accent-soft);
 }
 
 .lt-row.lt-group-odd {
-    background: rgba(255, 255, 255, 0.025);
+    background: var(--tint-faint);
 }
 
 .lt-row.lt-group-start {
@@ -353,7 +353,7 @@
 }
 
 .lt-col-library.lt-lib-dup {
-    color: #e59999;
+    color: var(--danger-text);
 }
 
 .lt-editable {
@@ -467,7 +467,7 @@
     padding: 1px 7px;
     border: 1px solid var(--border-medium);
     border-radius: var(--radius-round);
-    background: rgba(255, 255, 255, 0.04);
+    background: var(--tint-faint);
     color: var(--text-secondary);
     font: inherit;
     font-size: 0.75rem;
@@ -522,26 +522,18 @@
     color: var(--text-muted);
 }
 
-/* ── The dialog ── */
+/* ── The dialog (.dialog, dialog.css: wider and lighter here) ── */
 
 .lt-dialog {
     width: min(620px, calc(100vw - 32px));
     max-height: calc(100dvh - 48px);
     padding: 18px 20px;
     background: var(--bg-elevated);
-    color: var(--text-primary);
-    border: 1px solid var(--border-medium);
     border-radius: var(--radius-large);
-    box-shadow: var(--shadow-medium);
-}
-
-.lt-dialog::backdrop {
-    background: var(--bg-modal-overlay);
 }
 
 .lt-dialog h2 {
-    margin: 0 0 10px;
-    font-size: 1.15rem;
+    margin-bottom: 10px;
 }
 
 .lt-fieldset {
@@ -583,9 +575,9 @@
 
 .lt-chip-count[aria-pressed="true"] {
     text-decoration: line-through;
-    border-color: #ba7a7a;
-    color: #e59999;
-    background: rgba(186, 122, 122, 0.15);
+    border-color: var(--danger-muted);
+    color: var(--danger-text);
+    background: var(--danger-soft);
 }
 
 .lt-field {
@@ -615,12 +607,6 @@
     color: var(--text-primary);
     font: inherit;
     min-width: 0;
-}
-
-.lt-dialog-actions {
-    display: flex;
-    justify-content: flex-end;
-    gap: 8px;
 }
 
 .btn-primary-action {
@@ -678,7 +664,7 @@
 
 .suggest-list li[aria-selected="true"],
 .suggest-list li:hover {
-    background: rgba(200, 169, 110, 0.14);
+    background: var(--accent-soft);
 }
 
 .suggest-sub {
@@ -730,7 +716,7 @@
 }
 
 .lt-failures {
-    color: #e59999;
+    color: var(--danger-text);
 }
 
 .lt-failures-list {
@@ -754,7 +740,7 @@
 }
 
 .lt-failures-list .lt-failure-error {
-    color: #e59999;
+    color: var(--danger-text);
 }
 
 .lt-failures-list .lt-failure-meta {
@@ -979,19 +965,19 @@ body:has(.lt-resizing) {
 
 .lt-chip-x:hover,
 .lt-chip-x:focus-visible {
-    color: #e59999;
+    color: var(--danger-text);
 }
 
 /* Removed with its ✕: struck through, with Undo */
 .lt-chip.lt-chip-removed {
     border-style: dashed;
-    border-color: #ba7a7a;
-    background: rgba(186, 122, 122, 0.12);
+    border-color: var(--danger-muted);
+    background: var(--danger-soft);
 }
 
 .lt-chip-removed .lt-chip-label {
     text-decoration: line-through;
-    color: #e59999;
+    color: var(--danger-text);
     cursor: default;
 }
 
@@ -1022,7 +1008,7 @@ body:has(.lt-resizing) {
 
 .lt-action.lt-undo:hover,
 .lt-action.lt-undo:focus-visible {
-    background: rgba(200, 169, 110, 0.14);
+    background: var(--accent-soft);
     color: var(--status-reading);
 }
 
@@ -1113,7 +1099,7 @@ body:has(.lt-resizing) {
 
 .lt-menu-item:hover,
 .lt-menu-item:focus-visible {
-    background: rgba(200, 169, 110, 0.14);
+    background: var(--accent-soft);
 }
 
 /* Merge… and Remove… aren't offered for the import queue (imports_edit.go) */

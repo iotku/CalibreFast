@@ -1,0 +1,74 @@
+/* The offer under the top bar to add this device's reading (web/nav.ts) */
+.guest-offer {
+    position: fixed;
+    top: var(--topbar-bottom);
+    left: 50%;
+    transform: translateX(-50%);
+    z-index: 50;
+    width: min(760px, calc(100% - 2 * var(--page-padding)));
+    margin-top: var(--gap-medium);
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: var(--gap-medium);
+    padding: var(--gap-medium) var(--gap-large);
+    background: var(--bg-elevated);
+    border: 1px solid var(--border-medium);
+    border-radius: var(--radius-large);
+    box-shadow: var(--shadow-medium);
+}
+.guest-offer > span {
+    flex: 1 1 260px;
+}
+/* System alerts (web/system-alerts.ts): a strip at the very top of the
+   page, above the top bar. html's padding makes room for it, so it covers
+   nothing; it scrolls away with the page, the bar following it up, and then
+   the page is as it would be without it. Critical ones first (e.g. no
+   lasting way to sign in), with no ×; the rest can be dismissed. */
+.system-alerts {
+    position: absolute; /* from the top of the page, not the window */
+    inset: 0 0 auto;
+    z-index: 1100;
+    display: flex;
+    flex-direction: column;
+    font-family: var(--font-family);
+    font-size: 0.9rem;
+}
+.system-alerts:empty {
+    display: none;
+}
+.system-alert {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: var(--gap-small) var(--gap-medium);
+    padding: 6px var(--page-padding);
+    background: var(--bg-elevated);
+    color: var(--text-primary);
+    border-bottom: 1px solid var(--border-medium);
+}
+.system-alert.is-critical {
+    background: color-mix(in srgb, var(--danger) 20%, var(--bg-primary));
+    border-bottom-color: var(--danger-text);
+}
+.system-alert-text {
+    flex: 1 1 260px;
+}
+.system-alert .btn-standard {
+    padding: 4px 10px;
+}
+.system-alert-dismiss {
+    flex: none;
+    display: inline-flex;
+    padding: 4px;
+    background: none;
+    border: none;
+    border-radius: var(--radius-small);
+    color: var(--text-secondary);
+    cursor: pointer;
+}
+.system-alert-dismiss:hover,
+.system-alert-dismiss:focus-visible {
+    color: var(--text-primary);
+    background: var(--bg-surface);
+}

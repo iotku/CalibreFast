@@ -1,6 +1,16 @@
 /* The placeholder book editor (templates/placeholder.html): the metadata
    editor's tag chips, library suggestions and date picker (book-edit.css),
-   in the site's own colours. */
+   in the site's own colours: chip-editor.css, with what differs here. */
+
+@import "./css/components/chip-editor.css";
+
+/* No monospace here. */
+.suggest-sub,
+.chip-btn,
+.chip-add-btn,
+.chip-tool-btn {
+    font-family: inherit;
+}
 
 .placeholder-page .ph-field {
     display: flex;
@@ -21,7 +31,6 @@
     border-radius: var(--radius-small);
     box-sizing: border-box;
     width: 100%;
-    color-scheme: dark;
     cursor: pointer;
 }
 
@@ -36,11 +45,6 @@
 }
 
 /* Library autocomplete (web/suggest.ts) */
-.suggest-wrap {
-    position: relative;
-    min-width: 0;
-}
-
 .suggest-wrap > input {
     width: 100%;
     box-sizing: border-box;
@@ -66,21 +70,9 @@
     color: var(--text-primary);
 }
 
-.suggest-list[hidden] {
-    display: none;
-}
-
-.suggest-list li {
-    padding: 6px 10px;
-    font-size: 0.9rem;
-    border-radius: 4px;
-    cursor: pointer;
-    overflow-wrap: anywhere;
-}
-
 .suggest-list li[aria-selected="true"],
 .suggest-list li:hover {
-    background: rgba(200, 169, 110, 0.14);
+    background: var(--accent-soft);
 }
 
 .suggest-sub {
@@ -99,16 +91,6 @@
     font-size: var(--font-size-ui);
 }
 
-.chip-entry {
-    display: flex;
-    align-items: stretch;
-    gap: 6px;
-}
-
-.chip-entry .suggest-wrap {
-    flex: 1;
-}
-
 .chip-entry input.chip-text {
     width: 100%;
     height: 36px;
@@ -122,16 +104,16 @@
     flex-shrink: 0;
     padding: 0 14px;
     font-size: 0.75rem;
-    color: var(--accent, #c8a96e);
-    background: rgba(200, 169, 110, 0.1);
-    border: 1px solid rgba(200, 169, 110, 0.45);
+    color: var(--accent);
+    background: var(--accent-soft);
+    border: 1px solid var(--accent-line);
     border-radius: 6px;
     cursor: pointer;
 }
 
 .chip-add-btn:hover,
 .chip-tool-btn:hover {
-    background: rgba(200, 169, 110, 0.18);
+    background: color-mix(in srgb, var(--accent) 18%, transparent);
 }
 
 .chip-list {
@@ -142,10 +124,6 @@
     margin-top: 8px;
 }
 
-.chip-list[hidden] {
-    display: none;
-}
-
 .chip {
     display: inline-flex;
     align-items: center;
@@ -154,50 +132,15 @@
     box-sizing: border-box;
     padding: 3px 3px 3px 10px;
     font-size: 0.85rem;
-    background: rgba(255, 255, 255, 0.05);
+    background: var(--tint-faint);
     border: 1px solid var(--border-medium);
     border-radius: 14px;
 }
 
-.chip-label {
-    min-width: 0;
-    overflow-wrap: anywhere;
-}
-
-.chip:not(.removed) {
-    cursor: text;
-}
-
 .chip:not(.removed):not(.editing):hover,
 .chip:not(.removed):focus-visible {
-    background: rgba(255, 255, 255, 0.09);
+    background: var(--tint-soft);
     outline: none;
-}
-
-.chip.editing {
-    flex: 1 1 100%;
-    border-color: var(--accent, #c8a96e);
-    border-radius: 10px;
-}
-
-.chip-edit {
-    flex: 1;
-    min-width: 0;
-    padding: 2px;
-    font: inherit;
-    line-height: 1.35;
-    color: var(--text-primary);
-    background: transparent;
-    border: none;
-    outline: none;
-    resize: none;
-    overflow: hidden;
-    overflow-wrap: anywhere;
-}
-
-.chip.removed .chip-label {
-    text-decoration: line-through;
-    opacity: 0.45;
 }
 
 .chip-btn {
@@ -213,26 +156,8 @@
     flex-shrink: 0;
 }
 
-.chip-btn:hover {
-    color: var(--text-primary);
-    background: rgba(255, 255, 255, 0.08);
-}
-
-.chip-btn.chip-split {
-    color: var(--accent, #c8a96e);
-}
-
-.chip-tools {
-    display: flex;
-    justify-content: flex-end;
-}
-
 .chip-tool-btn {
     margin-top: 6px;
     padding: 4px 10px;
     border-style: dashed;
-}
-
-.chip-tool-btn[hidden] {
-    display: none;
 }

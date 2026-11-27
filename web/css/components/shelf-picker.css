@@ -1,0 +1,53 @@
+/* Add to shelf (web/shelf-picker.ts). */
+.shelf-pick-list {
+    max-height: 45vh;
+    overflow: auto;
+    margin: 0 0 0.75rem;
+    padding: 0;
+    list-style: none;
+}
+
+.shelf-pick {
+    display: flex;
+    justify-content: space-between;
+    align-items: baseline;
+    gap: 1rem;
+    width: 100%;
+    padding: 0.55rem 0.6rem;
+    font: inherit;
+    text-align: left;
+    color: var(--text-primary);
+    background: none;
+    border: 0;
+    border-bottom: 1px solid var(--border-light);
+    cursor: pointer;
+}
+
+.shelf-pick:hover:not(:disabled),
+.shelf-pick:focus-visible {
+    background: var(--bg-primary);
+}
+
+.shelf-pick .shelf-name {
+    overflow-wrap: anywhere;
+}
+
+.shelf-pick .shelf-count {
+    flex: none;
+}
+
+.shelf-pick-create {
+    display: flex;
+    gap: 0.5rem;
+}
+
+.shelf-pick-create input {
+    flex: 1;
+    min-width: 0;
+    padding: 0.4rem 0.5rem;
+    font: inherit;
+    color: var(--text-primary);
+    background: var(--bg-primary);
+    border: 1px solid var(--border-medium);
+    border-radius: var(--radius-small);
+}

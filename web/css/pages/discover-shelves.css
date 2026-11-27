@@ -1,0 +1,50 @@
+/* Discover: More shelves (web/discover.ts showMoreShelves). */
+.row-shelves {
+    display: grid;
+    grid-auto-flow: column;
+    grid-auto-columns: minmax(200px, 240px);
+    gap: var(--row-gap, 12px);
+    overflow-x: auto;
+    overscroll-behavior-x: contain;
+    scrollbar-width: thin;
+    scrollbar-color: var(--border-medium) transparent;
+    padding-bottom: 10px;
+}
+
+.home-shelf-card {
+    display: flex;
+    flex-direction: column;
+    gap: 0.3rem;
+    min-width: 0;
+    padding: 0.5rem;
+    color: inherit;
+    text-decoration: none;
+    background: var(--bg-secondary);
+    border: 1px solid var(--border-light);
+    border-radius: var(--radius-medium);
+}
+
+.home-shelf-card:hover .shelf-name,
+.home-shelf-card:focus-visible .shelf-name {
+    text-decoration: underline;
+}
+
+.home-shelf-card .shelf-mosaic {
+    background: var(--bg-primary);
+}
+
+.home-shelf-card .shelf-name {
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+.home-shelf-card .shelf-count {
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+body.list-editing .grid-select-btn {
+    visibility: hidden;
+}

@@ -1,30 +1,14 @@
 /* The metadata editor (templates/book-edit.html), for library books and
-   ones waiting in the import queue. */
+   ones waiting in the import queue. Loaded after style.css, whose tokens
+   (web/css/tokens.css) it uses. */
 
-:root {
-    --bg: #0f0f0e;
-    --surface: #181816;
-    --surface-hover: #222220;
-    --border: #2a2a27;
-    --accent: #c8a96e;
-    --accent-dim: #7a6340;
-    --accent-hover: #dfc07d;
-    --text: #e8e4dc;
-    --muted: #8a857c;
-    --success: #5a8a5e;
-    --success-bg: rgba(90, 138, 94, 0.18);
-    --error: #ba7a7a;
-    --error-bg: rgba(186, 122, 122, 0.18);
-    --radius: 8px;
-    --mono: "IBM Plex Mono", monospace;
-    --sans: "IBM Plex Sans", -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
-    --serif: "Playfair Display", Georgia, serif;
-}
+@import "./css/components/chip-editor.css";
+
 
 body {
-    background: var(--bg);
-    color: var(--text);
-    font-family: var(--sans);
+    background: var(--bg-primary);
+    color: var(--text-primary);
+    font-family: var(--font-sans);
     font-weight: 300;
     min-height: 100vh;
     margin: 0;
@@ -43,9 +27,9 @@ body {
     display: flex;
     gap: 1.5rem;
     align-items: center;
-    background: var(--surface);
-    border: 1px solid var(--border);
-    border-radius: var(--radius);
+    background: var(--bg-secondary);
+    border: 1px solid var(--border-light);
+    border-radius: var(--radius-medium);
     padding: 1.25rem 1.5rem;
     margin-bottom: 2rem;
 }
@@ -65,10 +49,10 @@ body {
     right: 0;
     bottom: 0;
     padding: 2px 0;
-    font-family: var(--mono);
+    font-family: var(--font-mono);
     font-size: 0.65rem;
-    color: var(--text);
-    background: rgba(0, 0, 0, 0.65);
+    color: var(--text-primary);
+    background: var(--scrim-60);
     border-radius: 0 0 4px 4px;
     opacity: 0;
     transition: opacity 0.15s ease;
@@ -107,13 +91,13 @@ body {
 }
 
 .cover-tool {
-    font-family: var(--mono);
+    font-family: var(--font-mono);
     font-size: 0.72rem;
     letter-spacing: 0.04em;
     padding: 7px 12px;
-    color: var(--text);
-    background: rgba(255, 255, 255, 0.04);
-    border: 1px solid var(--border);
+    color: var(--text-primary);
+    background: var(--tint-faint);
+    border: 1px solid var(--border-light);
     border-radius: 6px;
     cursor: pointer;
 }
@@ -128,18 +112,18 @@ body {
 
 .cover-tool-revert {
     margin-left: auto;
-    color: #e59999;
-    border-color: rgba(186, 122, 122, 0.45);
+    color: var(--danger-text);
+    border-color: var(--danger-line);
 }
 
 .cover-status {
     margin: 12px 0;
     font-size: 0.8rem;
-    color: var(--muted);
+    color: var(--text-muted);
 }
 
 .cover-status.error {
-    color: #e59999;
+    color: var(--danger-text);
 }
 
 /* The choices beside the large view. --cover-h is the room a
@@ -155,8 +139,8 @@ body {
 /* One or two choices, large */
 .cover-view {
     padding: 12px;
-    background: rgba(0, 0, 0, 0.25);
-    border: 1px solid var(--border);
+    background: var(--scrim-20);
+    border: 1px solid var(--border-light);
     border-radius: 8px;
 }
 
@@ -196,8 +180,8 @@ body {
     max-height: var(--cover-h);
     overflow: auto;
     scrollbar-width: thin;
-    scrollbar-color: var(--border) transparent;
-    background: #111;
+    scrollbar-color: var(--border-light) transparent;
+    background: var(--bg-primary);
     border-radius: 6px;
 }
 
@@ -219,18 +203,18 @@ body {
 
 .cover-view-item figcaption {
     font-size: 0.8rem;
-    color: var(--muted);
+    color: var(--text-muted);
     text-align: center;
 }
 
 .cover-view-item figcaption strong {
-    color: var(--text);
+    color: var(--text-primary);
     font-weight: 500;
 }
 
 .cover-view-note {
     font-size: 0.75rem;
-    color: #7aba7e;
+    color: var(--success-text);
 }
 
 /* Every choice */
@@ -244,7 +228,7 @@ body {
     max-height: calc(var(--cover-h) + 150px);
     overflow-y: auto;
     scrollbar-width: thin;
-    scrollbar-color: var(--border) transparent;
+    scrollbar-color: var(--border-light) transparent;
 }
 
 .cover-card {
@@ -255,15 +239,15 @@ body {
     padding: 6px;
     font: inherit;
     text-align: left;
-    color: var(--text);
-    background: rgba(255, 255, 255, 0.03);
-    border: 1px solid var(--border);
+    color: var(--text-primary);
+    background: var(--tint-faint);
+    border: 1px solid var(--border-light);
     border-radius: 8px;
     cursor: pointer;
 }
 
 .cover-card:hover {
-    border-color: var(--accent-dim, #7a6340);
+    border-color: var(--accent-dim);
 }
 
 .cover-card[aria-pressed="true"] {
@@ -275,7 +259,7 @@ body {
     width: 100%;
     height: 150px;
     object-fit: contain;
-    background: #111;
+    background: var(--bg-primary);
     border-radius: 4px;
     margin-bottom: 4px;
 }
@@ -285,9 +269,9 @@ body {
 }
 
 .cover-card-size {
-    font-family: var(--mono);
+    font-family: var(--font-mono);
     font-size: 0.68rem;
-    color: var(--muted);
+    color: var(--text-muted);
 }
 
 /* Narrow: the choices are a strip above the large view */
@@ -319,9 +303,9 @@ body {
     margin-bottom: 1.5rem;
     padding: 10px 14px;
     font-size: 0.85rem;
-    background: var(--surface);
-    border: 1px solid var(--border);
-    border-radius: var(--radius);
+    background: var(--bg-secondary);
+    border: 1px solid var(--border-light);
+    border-radius: var(--radius-medium);
 }
 
 .lookup-head {
@@ -340,11 +324,11 @@ body {
 
 .lookup-status {
     margin: 0;
-    color: var(--muted);
+    color: var(--text-muted);
 }
 
 .lookup-status.error {
-    color: #e59999;
+    color: var(--danger-text);
 }
 
 /* The seconds left while a lookup waits for a source's rate limit
@@ -381,7 +365,7 @@ body {
 .lookup-bar .lookup-isbn {
     width: 150px;
     padding: 5px 8px;
-    font-family: var(--mono);
+    font-family: var(--font-mono);
     font-size: 0.8rem;
 }
 
@@ -389,7 +373,7 @@ body {
     list-style: none;
     margin: 10px 0 0;
     padding: 0;
-    border-top: 1px solid var(--border);
+    border-top: 1px solid var(--border-light);
 }
 
 .lookup-results[hidden] {
@@ -401,7 +385,7 @@ body {
     align-items: center;
     gap: 6px 12px;
     padding: 8px 0;
-    border-bottom: 1px solid rgba(255, 255, 255, 0.05);
+    border-bottom: 1px solid var(--border-subtle);
 }
 
 .lookup-result:last-child {
@@ -433,21 +417,21 @@ body {
 }
 
 .lookup-result-by {
-    color: var(--muted);
+    color: var(--text-muted);
 }
 
 .lookup-result-meta {
     display: block;
     margin-top: 2px;
-    font-family: var(--mono);
+    font-family: var(--font-mono);
     font-size: 0.72rem;
-    color: var(--muted);
+    color: var(--text-muted);
 }
 
 .lookup-result-label {
-    font-family: var(--mono);
+    font-family: var(--font-mono);
     font-size: 0.72rem;
-    color: var(--muted);
+    color: var(--text-muted);
     white-space: nowrap;
 }
 
@@ -486,10 +470,10 @@ a.lookup-result-label:hover {
     height: 104px;
     border-radius: 4px;
     object-fit: cover;
-    background: #222;
-    border: 1px solid rgba(255, 255, 255, 0.08);
+    background: var(--bg-surface);
+    border: 1px solid var(--border-subtle);
     flex-shrink: 0;
-    box-shadow: 0 4px 12px rgba(0, 0, 0, 0.4);
+    box-shadow: 0 4px 12px var(--scrim-45);
 }
 
 .book-banner-info {
@@ -498,9 +482,9 @@ a.lookup-result-label:hover {
 }
 
 .book-banner-title {
-    font-family: var(--serif);
+    font-family: var(--font-serif);
     font-size: 1.4rem;
-    color: var(--text);
+    color: var(--text-primary);
     margin: 0 0 0.4rem 0;
     line-height: 1.25;
     white-space: nowrap;
@@ -510,7 +494,7 @@ a.lookup-result-label:hover {
 
 .book-banner-author {
     margin: -0.2rem 0 0.4rem 0;
-    color: var(--muted);
+    color: var(--text-muted);
     white-space: nowrap;
     overflow: hidden;
     text-overflow: ellipsis;
@@ -556,16 +540,16 @@ a.lookup-result-label:hover {
 }
 
 .star-rating .star-full {
-    color: var(--accent, #c8a96e);
+    color: var(--accent);
 }
 
 .star-rating .star-empty {
-    color: var(--muted);
+    color: var(--text-muted);
     opacity: 0.45;
 }
 
 .star-rating .star-half {
-    background: linear-gradient(90deg, var(--accent, #c8a96e) 50%, color-mix(in srgb, var(--muted) 45%, transparent) 50%);
+    background: linear-gradient(90deg, var(--accent) 50%, color-mix(in srgb, var(--text-muted) 45%, transparent) 50%);
     -webkit-background-clip: text;
     background-clip: text;
     color: transparent;
@@ -583,9 +567,9 @@ a.lookup-result-label:hover {
     display: flex;
     align-items: center;
     gap: 10px;
-    font-family: var(--mono);
+    font-family: var(--font-mono);
     font-size: 0.72rem;
-    color: var(--muted);
+    color: var(--text-muted);
 }
 
 /* A waiting book's files (import queue) */
@@ -596,20 +580,20 @@ a.lookup-result-label:hover {
 
 .btn-discard {
     margin-left: auto;
-    color: #e59999;
-    border-color: rgba(186, 122, 122, 0.45);
+    color: var(--danger-text);
+    border-color: var(--danger-line);
 }
 
 .btn-discard:hover {
-    color: #f0b3b3;
-    border-color: #ba7a7a;
-    background: var(--error-bg);
+    color: var(--danger-light);
+    border-color: var(--danger-muted);
+    background: var(--danger-soft);
 }
 
 .uuid-badge {
     padding: 2px 6px;
-    background: rgba(255, 255, 255, 0.04);
-    border: 1px solid var(--border);
+    background: var(--tint-faint);
+    border: 1px solid var(--border-light);
     border-radius: 4px;
     font-size: 0.68rem;
     letter-spacing: 0.04em;
@@ -617,7 +601,7 @@ a.lookup-result-label:hover {
 
 .banner-hint {
     font-size: 0.75rem;
-    color: var(--muted);
+    color: var(--text-muted);
     margin-top: 0.5rem;
     line-height: 1.4;
 }
@@ -656,9 +640,9 @@ a.lookup-result-label:hover {
     /* fieldsets default to min-content width; let long values wrap */
     min-width: 0;
     min-inline-size: 0;
-    background: var(--surface);
-    border: 1px solid var(--border);
-    border-radius: var(--radius);
+    background: var(--bg-secondary);
+    border: 1px solid var(--border-light);
+    border-radius: var(--radius-medium);
     padding: 1rem 1.2rem;
     margin: 0;
     display: flex;
@@ -687,27 +671,27 @@ a.lookup-result-label:hover {
     display: inline-flex;
     align-items: center;
     gap: 5px;
-    background: var(--surface);
-    color: var(--muted);
-    border: 1px solid var(--border);
-    border-radius: var(--radius);
-    font-family: var(--mono);
+    background: var(--bg-secondary);
+    color: var(--text-muted);
+    border: 1px solid var(--border-light);
+    border-radius: var(--radius-medium);
+    font-family: var(--font-mono);
     font-size: 0.72rem;
     cursor: pointer;
 }
 
 .swap-btn:hover,
 .swap-btn:focus-visible {
-    color: var(--text);
+    color: var(--text-primary);
     border-color: var(--accent);
 }
 
             .meta-field:focus-within {
-    border-color: rgba(200, 169, 110, 0.4);
+    border-color: var(--accent-line);
 }
 
 .meta-field legend {
-    font-family: var(--mono);
+    font-family: var(--font-mono);
     font-size: 0.72rem;
     font-weight: 500;
     letter-spacing: 0.1em;
@@ -719,11 +703,11 @@ a.lookup-result-label:hover {
 }
 
 .meta-input {
-    background: #111;
-    border: 1px solid #333;
+    background: var(--bg-primary);
+    border: 1px solid var(--border-medium);
     border-radius: 6px;
-    color: var(--text);
-    font-family: var(--sans);
+    color: var(--text-primary);
+    font-family: var(--font-sans);
     font-size: 0.95rem;
     padding: 10px 12px;
     box-sizing: border-box;
@@ -734,12 +718,12 @@ a.lookup-result-label:hover {
 .meta-input:focus {
     outline: none;
     border-color: var(--accent);
-    box-shadow: 0 0 0 2px rgba(200, 169, 110, 0.15);
-    background: #141414;
+    box-shadow: 0 0 0 2px var(--accent-soft);
+    background: var(--bg-primary);
 }
 
 textarea.meta-input {
-    font-family: var(--sans);
+    font-family: var(--font-sans);
     line-height: 1.5;
     min-height: 130px;
     resize: vertical;
@@ -747,7 +731,6 @@ textarea.meta-input {
 }
 
 input[type="date"].meta-input {
-    color-scheme: dark;
     cursor: pointer;
 }
 
@@ -781,11 +764,11 @@ input[type="date"].meta-input::-webkit-calendar-picker-indicator:hover {
 }
 
 .meta-source-btn {
-    background: rgba(255, 255, 255, 0.04);
-    border: 1px solid rgba(255, 255, 255, 0.12);
+    background: var(--tint-faint);
+    border: 1px solid var(--border-light);
     border-radius: 4px;
-    color: var(--muted);
-    font-family: var(--mono);
+    color: var(--text-muted);
+    font-family: var(--font-mono);
     font-size: 0.7rem;
     padding: 3px 8px;
     cursor: pointer;
@@ -797,14 +780,14 @@ input[type="date"].meta-input::-webkit-calendar-picker-indicator:hover {
 
 .meta-source-btn:hover {
     border-color: var(--accent);
-    color: var(--text);
+    color: var(--text-primary);
     transform: translateY(-1px);
 }
 
 .meta-source-btn.meta-source-match {
-    background: var(--success-bg);
-    border-color: rgba(90, 138, 94, 0.5);
-    color: #7aba7e;
+    background: var(--success-soft);
+    border-color: color-mix(in srgb, var(--success) 50%, transparent);
+    color: var(--success-text);
 }
 
 .meta-source-btn.meta-source-match::before {
@@ -814,8 +797,8 @@ input[type="date"].meta-input::-webkit-calendar-picker-indicator:hover {
 }
 
 .meta-source-btn.meta-source-diff {
-    background: rgba(200, 169, 110, 0.12);
-    border-color: rgba(200, 169, 110, 0.4);
+    background: var(--accent-soft);
+    border-color: var(--accent-line);
     color: var(--accent-hover);
 }
 
@@ -829,180 +812,13 @@ input[type="date"].meta-input::-webkit-calendar-picker-indicator:hover {
     border-style: dashed;
 }
 
-/* ── Chip inputs (tags, languages) ── */
-.chip-input {
-    background: var(--surface);
-    border: 1px solid var(--border);
-    border-radius: 6px;
-    padding: 6px;
-}
-
-.chip-list {
-    display: flex;
-    flex-wrap: wrap;
-    gap: 6px;
-    align-items: center;
-}
-
-.chip {
-    display: inline-flex;
-    align-items: center;
-    gap: 2px;
-    max-width: 100%;
-    box-sizing: border-box;
-    padding: 3px 3px 3px 10px;
-    font-size: 0.85rem;
-    background: rgba(255, 255, 255, 0.05);
-    border: 1px solid var(--border);
-    border-radius: 14px; /* stays tidy when long text wraps */
-}
-
-.chip-label {
-    min-width: 0;
-    overflow-wrap: anywhere;
-}
-
-.chip:not(.removed) {
-    cursor: text;
-}
-
-.chip:not(.removed):not(.editing):hover,
-.chip:not(.removed):focus-visible {
-    background: rgba(255, 255, 255, 0.09);
-    outline: none;
-}
-
-/* While editing, the chip takes the full row and the text wraps */
-.chip.editing {
-    flex: 1 1 100%;
-    border-color: var(--accent);
-    border-radius: 10px;
-}
-
-.chip-edit {
-    flex: 1;
-    min-width: 0;
-    padding: 2px;
-    font: inherit;
-    line-height: 1.35;
-    color: var(--text);
-    background: transparent;
-    border: none;
-    outline: none;
-    resize: none;
-    overflow: hidden;
-    overflow-wrap: anywhere;
-}
-
-.chip.removed .chip-label {
-    text-decoration: line-through;
-    opacity: 0.45;
-}
-
-.chip-btn {
-    min-width: 30px;
-    height: 28px;
-    padding: 0 6px;
-    font-size: 0.72rem;
-    font-family: var(--mono);
-    color: var(--muted);
-    background: transparent;
-    border: none;
-    border-radius: 999px;
-    cursor: pointer;
-    flex-shrink: 0;
-}
-
-.chip-btn:hover {
-    color: var(--text);
-    background: rgba(255, 255, 255, 0.08);
-}
-
-.chip-btn.chip-split {
-    color: var(--accent);
-}
-
-/* Entry row sits above the chips so new chips never move it */
-.chip-entry {
-    display: flex;
-    align-items: stretch; /* Add button matches the text box height */
-    gap: 6px;
-}
-
-/* beats the global input[type="text"] height from style.css */
-.chip-entry input.chip-text {
-    height: 36px;
-}
-
-.chip-text {
-    flex: 1;
-    min-width: 0;
-    height: 34px;
-    padding: 0 10px;
-    font: inherit;
-    color: var(--text);
-    background: rgba(255, 255, 255, 0.03);
-    border: 1px solid var(--border);
-    border-radius: 6px;
-    outline: none;
-}
-
-.chip-text:focus {
-    border-color: var(--accent);
-}
-
-.chip-add-btn {
-    flex-shrink: 0;
-    height: auto;
-    padding: 0 14px;
-    font-family: var(--mono);
-    font-size: 0.75rem;
-    color: var(--accent);
-    background: rgba(200, 169, 110, 0.1);
-    border: 1px solid var(--accent-dim);
-    border-radius: 6px;
-    cursor: pointer;
-}
-
-.chip-add-btn:hover {
-    background: rgba(200, 169, 110, 0.18);
-}
-
-.chip-list {
-    margin-top: 8px;
-}
-
-.chip-list[hidden] {
-    display: none;
-}
-
-.chip-tools {
-    display: flex;
-    justify-content: flex-end;
-}
-
-.chip-tool-btn {
-    margin-top: 6px;
-    padding: 4px 10px;
-    font-family: var(--mono);
-    font-size: 0.72rem;
-    color: var(--accent);
-    background: rgba(200, 169, 110, 0.1);
-    border: 1px dashed var(--accent-dim);
-    border-radius: 6px;
-    cursor: pointer;
-}
-
-.chip-tool-btn[hidden] {
-    display: none;
-}
 
 /* Per-field changes, opened from that field's "edited" button */
 .field-diff {
     margin-top: 10px;
     padding: 8px 10px;
-    background: rgba(255, 255, 255, 0.03);
-    border: 1px dashed var(--border);
+    background: var(--tint-faint);
+    border: 1px dashed var(--border-light);
     border-radius: 6px;
 }
 
@@ -1015,68 +831,11 @@ input[type="date"].meta-input::-webkit-calendar-picker-indicator:hover {
     margin: 0;
 }
 
-/* Library autocomplete (authors, publisher, tags, languages) */
-.suggest-wrap {
-    position: relative;
-    min-width: 0;
-}
-
-.chip-entry .suggest-wrap {
-    flex: 1;
-}
-
-.chip-entry .suggest-wrap .chip-text {
-    width: 100%;
-    box-sizing: border-box;
-}
-
-.suggest-list {
-    position: absolute;
-    top: calc(100% + 2px);
-    left: 0;
-    right: 0;
-    z-index: 20;
-    max-height: 260px;
-    overflow-y: auto;
-    margin: 0;
-    padding: 4px;
-    box-sizing: border-box;
-    list-style: none;
-    background: var(--surface-hover);
-    border: 1px solid var(--border);
-    border-radius: 6px;
-    box-shadow: 0 10px 24px rgba(0, 0, 0, 0.5);
-}
-
-.suggest-list[hidden] {
-    display: none;
-}
-
-.suggest-list li {
-    padding: 6px 10px;
-    font-size: 0.9rem;
-    border-radius: 4px;
-    cursor: pointer;
-    overflow-wrap: anywhere;
-}
-
-.suggest-list li[aria-selected="true"],
-.suggest-list li:hover {
-    background: rgba(200, 169, 110, 0.14);
-}
-
-.suggest-sub {
-    margin-left: 6px;
-    font-family: var(--mono);
-    font-size: 0.75rem;
-    color: var(--muted);
-}
-
 /* ── Description: formatted preview / raw HTML ── */
 .desc-editor {
-    border: 1px solid #333;
+    border: 1px solid var(--border-medium);
     border-radius: 6px;
-    background: #111;
+    background: var(--bg-primary);
     overflow: hidden;
 }
 
@@ -1091,8 +850,8 @@ input[type="date"].meta-input::-webkit-calendar-picker-indicator:hover {
     justify-content: space-between;
     gap: 6px;
     padding: 6px;
-    border-bottom: 1px solid #2a2a2a;
-    background: rgba(255, 255, 255, 0.02);
+    border-bottom: 1px solid var(--border-light);
+    background: var(--tint-faint);
 }
 
 .desc-tabs,
@@ -1106,9 +865,9 @@ input[type="date"].meta-input::-webkit-calendar-picker-indicator:hover {
 .desc-tool {
     height: 28px;
     padding: 0 10px;
-    font-family: var(--mono);
+    font-family: var(--font-mono);
     font-size: 0.72rem;
-    color: var(--muted);
+    color: var(--text-muted);
     background: transparent;
     border: 1px solid transparent;
     border-radius: 4px;
@@ -1117,8 +876,8 @@ input[type="date"].meta-input::-webkit-calendar-picker-indicator:hover {
 
 .desc-tool:hover:not(:disabled),
 .desc-tab:hover {
-    color: var(--text);
-    background: rgba(255, 255, 255, 0.06);
+    color: var(--text-primary);
+    background: var(--tint-faint);
 }
 
 .desc-tool:disabled {
@@ -1129,7 +888,7 @@ input[type="date"].meta-input::-webkit-calendar-picker-indicator:hover {
 .desc-tab[aria-selected="true"] {
     color: var(--accent);
     border-color: var(--accent-dim);
-    background: rgba(200, 169, 110, 0.1);
+    background: var(--accent-soft);
 }
 
 .desc-tool[data-cmd="bold"] { font-weight: 700; }
@@ -1142,10 +901,10 @@ input[type="date"].meta-input::-webkit-calendar-picker-indicator:hover {
     overflow-y: auto;
     resize: vertical;
     padding: 12px 14px;
-    font-family: var(--sans);
+    font-family: var(--font-sans);
     font-size: 0.95rem;
     line-height: 1.6;
-    color: var(--text);
+    color: var(--text-primary);
     outline: none;
     overflow-wrap: anywhere;
 }
@@ -1157,7 +916,7 @@ input[type="date"].meta-input::-webkit-calendar-picker-indicator:hover {
 
 .desc-preview:empty::before {
     content: attr(data-placeholder);
-    color: var(--muted);
+    color: var(--text-muted);
 }
 
 .desc-preview > :first-child { margin-top: 0; }
@@ -1166,7 +925,7 @@ input[type="date"].meta-input::-webkit-calendar-picker-indicator:hover {
 .desc-preview img { max-width: 100%; height: auto; }
 .desc-preview table { border-collapse: collapse; }
 .desc-preview td,
-.desc-preview th { border: 1px solid #333; padding: 4px 8px; }
+.desc-preview th { border: 1px solid var(--border-medium); padding: 4px 8px; }
 
 .desc-editor .desc-source {
     display: block;
@@ -1174,7 +933,7 @@ input[type="date"].meta-input::-webkit-calendar-picker-indicator:hover {
     border: none;
     border-radius: 0;
     box-shadow: none;
-    font-family: var(--mono);
+    font-family: var(--font-mono);
     font-size: 0.82rem;
     line-height: 1.5;
     resize: vertical;
@@ -1185,20 +944,15 @@ input[type="date"].meta-input::-webkit-calendar-picker-indicator:hover {
     display: none;
 }
 
-/* ── Compare dialog ── */
+/* ── Compare dialog (.dialog, dialog.css: wider, with its own header and footer) ── */
 .compare-dialog {
     width: min(760px, calc(100vw - 32px));
     max-height: 85vh;
     padding: 0;
-    color: var(--text);
-    background: var(--surface);
-    border: 1px solid var(--border);
+    background: var(--bg-secondary);
+    border-color: var(--border-light);
     border-radius: 10px;
-    box-shadow: 0 20px 50px rgba(0, 0, 0, 0.6);
-}
-
-.compare-dialog::backdrop {
-    background: rgba(0, 0, 0, 0.6);
+    box-shadow: 0 20px 50px var(--scrim-60);
 }
 
 .compare-header {
@@ -1209,8 +963,8 @@ input[type="date"].meta-input::-webkit-calendar-picker-indicator:hover {
     justify-content: space-between;
     gap: 12px;
     padding: 14px 18px;
-    background: var(--surface);
-    border-bottom: 1px solid var(--border);
+    background: var(--bg-secondary);
+    border-bottom: 1px solid var(--border-light);
 }
 
 .compare-footer {
@@ -1222,8 +976,8 @@ input[type="date"].meta-input::-webkit-calendar-picker-indicator:hover {
     flex-wrap: wrap;
     gap: 10px;
     padding: 12px 18px;
-    background: var(--surface);
-    border-top: 1px solid var(--border);
+    background: var(--bg-secondary);
+    border-top: 1px solid var(--border-light);
 }
 
 .compare-footer[hidden] {
@@ -1233,7 +987,7 @@ input[type="date"].meta-input::-webkit-calendar-picker-indicator:hover {
 .compare-footer span {
     margin-right: auto;
     font-size: 0.85rem;
-    color: var(--muted);
+    color: var(--text-muted);
 }
 
 /* Matches the book modal's close button */
@@ -1244,17 +998,17 @@ input[type="date"].meta-input::-webkit-calendar-picker-indicator:hover {
     align-items: center;
     justify-content: center;
     font-size: 1.2rem;
-    color: var(--text);
-    background: rgba(30, 30, 30, 0.65);
-    border: 1px solid rgba(255, 255, 255, 0.1);
+    color: var(--text-primary);
+    background: var(--bg-glass);
+    border: 1px solid var(--border-light);
     border-radius: 50%;
     cursor: pointer;
     transition: background 0.15s ease, color 0.15s ease;
 }
 
 .compare-close:hover {
-    background: rgba(60, 60, 60, 0.9);
-    color: #fff;
+    background: var(--bg-glass-strong);
+    color: var(--text-strong);
 }
 
 .compare-header h2 {
@@ -1269,12 +1023,12 @@ input[type="date"].meta-input::-webkit-calendar-picker-indicator:hover {
 
 .compare-row {
     padding: 12px 0;
-    border-bottom: 1px solid var(--border);
+    border-bottom: 1px solid var(--border-light);
 }
 
 .compare-field {
     margin: 0 0 8px;
-    font-family: var(--mono);
+    font-family: var(--font-mono);
     font-size: 0.75rem;
     letter-spacing: 0.08em;
     text-transform: uppercase;
@@ -1289,7 +1043,7 @@ input[type="date"].meta-input::-webkit-calendar-picker-indicator:hover {
 
 .compare-label {
     font-size: 0.75rem;
-    color: var(--muted);
+    color: var(--text-muted);
 }
 
 .compare-before,
@@ -1302,13 +1056,13 @@ input[type="date"].meta-input::-webkit-calendar-picker-indicator:hover {
 }
 
 .compare-before {
-    color: #d79a9a;
+    color: var(--danger-text);
     text-decoration: line-through;
-    text-decoration-color: rgba(215, 154, 154, 0.5);
+    text-decoration-color: color-mix(in srgb, var(--danger-text) 50%, transparent);
 }
 
 .compare-after {
-    color: #8fc493;
+    color: var(--success-text);
 }
 
 .compare-items {
@@ -1325,8 +1079,8 @@ input[type="date"].meta-input::-webkit-calendar-picker-indicator:hover {
 }
 
 .compare-chip.added {
-    color: #8fc493;
-    border-color: rgba(90, 138, 94, 0.6);
+    color: var(--success-text);
+    border-color: color-mix(in srgb, var(--success) 60%, transparent);
 }
 
 .compare-chip.added::before {
@@ -1334,15 +1088,15 @@ input[type="date"].meta-input::-webkit-calendar-picker-indicator:hover {
 }
 
 .compare-chip.removed {
-    color: #d79a9a;
-    border-color: rgba(186, 122, 122, 0.5);
+    color: var(--danger-text);
+    border-color: color-mix(in srgb, var(--danger-muted) 50%, transparent);
     text-decoration: line-through;
 }
 
 .compare-note,
 .compare-empty {
     font-size: 0.85rem;
-    color: var(--muted);
+    color: var(--text-muted);
 }
 
 /* ── Identifiers ── */
@@ -1363,13 +1117,13 @@ input[type="date"].meta-input::-webkit-calendar-picker-indicator:hover {
     width: 96px;
     flex-shrink: 0;
     box-sizing: border-box;
-    font-family: var(--mono);
+    font-family: var(--font-mono);
     font-size: 0.78rem;
     font-weight: 500;
     letter-spacing: 0.08em;
     color: var(--accent);
-    background: rgba(255, 255, 255, 0.04);
-    border: 1px solid var(--border);
+    background: var(--tint-faint);
+    border: 1px solid var(--border-light);
     border-radius: 6px;
     padding: 10px 12px;
     display: flex;
@@ -1380,7 +1134,7 @@ input[type="date"].meta-input::-webkit-calendar-picker-indicator:hover {
 .custom-identifier-row .identifier-type-input {
     width: 96px;
     flex-shrink: 0;
-    font-family: var(--mono);
+    font-family: var(--font-mono);
     font-size: 0.85rem;
 }
 
@@ -1391,7 +1145,7 @@ input[type="date"].meta-input::-webkit-calendar-picker-indicator:hover {
 .btn-remove-id {
     background: transparent;
     border: 1px solid transparent;
-    color: var(--muted);
+    color: var(--text-muted);
     font-size: 1.25rem;
     line-height: 1;
     cursor: pointer;
@@ -1402,9 +1156,9 @@ input[type="date"].meta-input::-webkit-calendar-picker-indicator:hover {
 }
 
 .btn-remove-id:hover {
-    color: var(--error);
-    background: var(--error-bg);
-    border-color: rgba(186, 122, 122, 0.3);
+    color: var(--danger-muted);
+    background: var(--danger-soft);
+    border-color: color-mix(in srgb, var(--danger-muted) 30%, transparent);
 }
 
 /* Soft-removed: parked at the bottom until changes are applied */
@@ -1417,27 +1171,27 @@ input[type="date"].meta-input::-webkit-calendar-picker-indicator:hover {
 .custom-identifier-row:not(.removed) + .custom-identifier-row.removed {
     margin-top: 8px;
     padding-top: 12px;
-    border-top: 1px dashed var(--border);
+    border-top: 1px dashed var(--border-light);
 }
 
 .btn-remove-id.btn-undo-id {
-    font-family: var(--mono);
+    font-family: var(--font-mono);
     font-size: 0.75rem;
     letter-spacing: 0.04em;
     color: var(--accent);
-    border-color: var(--border);
+    border-color: var(--border-light);
 }
 
 .btn-remove-id.btn-undo-id:hover {
     color: var(--accent);
-    background: rgba(200, 169, 110, 0.12);
+    background: var(--accent-soft);
     border-color: var(--accent);
 }
 
 .field-note {
     margin: 6px 0 0;
     font-size: 0.8rem;
-    color: var(--muted);
+    color: var(--text-muted);
 }
 
 .split-note:not([hidden]) {
@@ -1450,7 +1204,7 @@ input[type="date"].meta-input::-webkit-calendar-picker-indicator:hover {
 .date-raw-note {
     margin: 6px 0 0;
     font-size: 0.8rem;
-    color: var(--muted);
+    color: var(--text-muted);
 }
 
 .identifiers-bottom-row {
@@ -1463,12 +1217,12 @@ input[type="date"].meta-input::-webkit-calendar-picker-indicator:hover {
 }
 
 .btn-add-id {
-    font-family: var(--mono);
+    font-family: var(--font-mono);
     font-size: 0.75rem;
     letter-spacing: 0.04em;
     padding: 6px 12px;
-    background: rgba(255, 255, 255, 0.04);
-    border: 1px dashed var(--border);
+    background: var(--tint-faint);
+    border: 1px dashed var(--border-light);
     color: var(--accent);
     border-radius: 6px;
     cursor: pointer;
@@ -1479,7 +1233,7 @@ input[type="date"].meta-input::-webkit-calendar-picker-indicator:hover {
 }
 
 .btn-add-id:hover:not(:disabled) {
-    background: rgba(200, 169, 110, 0.12);
+    background: var(--accent-soft);
     border-color: var(--accent);
     color: var(--accent-hover);
 }
@@ -1520,13 +1274,13 @@ input[type="date"].meta-input::-webkit-calendar-picker-indicator:hover {
 .isbn-panel {
     margin-top: 12px;
     padding-top: 10px;
-    border-top: 1px solid var(--border);
+    border-top: 1px solid var(--border-light);
 }
 
 .isbn-status {
     margin: 10px 0 0;
     font-size: 0.8rem;
-    color: var(--muted);
+    color: var(--text-muted);
 }
 
 .isbn-panel-head {
@@ -1542,7 +1296,7 @@ input[type="date"].meta-input::-webkit-calendar-picker-indicator:hover {
 }
 
 .isbn-status.error {
-    color: #e59999;
+    color: var(--danger-text);
 }
 
 .isbn-candidates {
@@ -1564,26 +1318,26 @@ input[type="date"].meta-input::-webkit-calendar-picker-indicator:hover {
 
 .isbn-candidate + .isbn-candidate {
     padding-top: 6px;
-    border-top: 1px solid var(--border);
+    border-top: 1px solid var(--border-light);
 }
 
 .isbn-value {
-    font-family: var(--mono);
+    font-family: var(--font-mono);
     font-size: 0.85rem;
-    color: var(--text);
+    color: var(--text-primary);
 }
 
 .isbn-label {
-    font-family: var(--mono);
+    font-family: var(--font-mono);
     font-size: 0.7rem;
     padding: 1px 6px;
-    border: 1px solid var(--border);
+    border: 1px solid var(--border-light);
     border-radius: 4px;
     color: var(--accent);
 }
 
 .isbn-where {
-    color: var(--muted);
+    color: var(--text-muted);
     min-width: 0;
     overflow-wrap: anywhere;
 }
@@ -1595,7 +1349,7 @@ input[type="date"].meta-input::-webkit-calendar-picker-indicator:hover {
 }
 
 .isbn-in-use {
-    color: #7aba7e;
+    color: var(--success-text);
     font-size: 0.75rem;
 }
 
@@ -1608,9 +1362,9 @@ input[type="date"].meta-input::-webkit-calendar-picker-indicator:hover {
     z-index: 5;
     margin-top: 2rem;
     padding: 1rem 0 calc(1rem + env(safe-area-inset-bottom, 0px));
-    background: var(--bg);
-    border-top: 1px solid var(--border);
-    box-shadow: 0 -12px 24px -12px rgba(0, 0, 0, 0.6);
+    background: var(--bg-primary);
+    border-top: 1px solid var(--border-light);
+    box-shadow: 0 -12px 24px -12px var(--scrim-60);
     display: flex;
     align-items: center;
     justify-content: space-between;
@@ -1625,15 +1379,15 @@ input[type="date"].meta-input::-webkit-calendar-picker-indicator:hover {
 }
 
 .btn-primary {
-    font-family: var(--mono);
+    font-family: var(--font-mono);
     font-size: 0.8rem;
     font-weight: 500;
     letter-spacing: 0.08em;
     text-transform: uppercase;
     background: var(--accent);
-    color: var(--bg);
+    color: var(--bg-primary);
     border: none;
-    border-radius: var(--radius);
+    border-radius: var(--radius-medium);
     padding: 12px 28px;
     cursor: pointer;
     transition: all 0.15s ease;
@@ -1644,7 +1398,7 @@ input[type="date"].meta-input::-webkit-calendar-picker-indicator:hover {
 
 .btn-primary:hover:not(:disabled) {
     background: var(--accent-hover);
-    box-shadow: 0 4px 12px rgba(200, 169, 110, 0.25);
+    box-shadow: 0 4px 12px color-mix(in srgb, var(--accent) 25%, transparent);
 }
 
 .btn-primary:disabled {
@@ -1653,13 +1407,13 @@ input[type="date"].meta-input::-webkit-calendar-picker-indicator:hover {
 }
 
 .btn-secondary {
-    font-family: var(--mono);
+    font-family: var(--font-mono);
     font-size: 0.8rem;
     letter-spacing: 0.05em;
     background: transparent;
-    color: var(--muted);
-    border: 1px solid var(--border);
-    border-radius: var(--radius);
+    color: var(--text-muted);
+    border: 1px solid var(--border-light);
+    border-radius: var(--radius-medium);
     padding: 11px 20px;
     cursor: pointer;
     text-decoration: none;
@@ -1667,20 +1421,20 @@ input[type="date"].meta-input::-webkit-calendar-picker-indicator:hover {
 }
 
 .btn-secondary:hover {
-    border-color: #666;
-    color: var(--text);
-    background: var(--surface);
+    border-color: var(--border-strong);
+    color: var(--text-primary);
+    background: var(--bg-secondary);
 }
 
 /* ── Status Banner ── */
 .edit-status {
-    font-family: var(--mono);
+    font-family: var(--font-mono);
     font-size: 0.78rem;
     display: none;
     align-items: center;
     gap: 8px;
     padding: 10px 14px;
-    border-radius: var(--radius);
+    border-radius: var(--radius-medium);
     width: 100%;
     box-sizing: border-box;
 }
@@ -1712,23 +1466,23 @@ input[type="date"].meta-input::-webkit-calendar-picker-indicator:hover {
 
 .edit-status.pending {
     display: flex;
-    background: rgba(200, 169, 110, 0.1);
-    border: 1px solid rgba(200, 169, 110, 0.3);
+    background: var(--accent-soft);
+    border: 1px solid color-mix(in srgb, var(--accent) 30%, transparent);
     color: var(--accent);
 }
 
 .edit-status.success {
     display: flex;
-    background: var(--success-bg);
-    border: 1px solid rgba(90, 138, 94, 0.4);
-    color: #8ada8e;
+    background: var(--success-soft);
+    border: 1px solid var(--success-line);
+    color: var(--success-text);
 }
 
 .edit-status.error {
     display: flex;
-    background: var(--error-bg);
-    border: 1px solid rgba(186, 122, 122, 0.4);
-    color: #e59999;
+    background: var(--danger-soft);
+    border: 1px solid var(--danger-line);
+    color: var(--danger-text);
 }
 
 .added-note {
@@ -1739,17 +1493,17 @@ input[type="date"].meta-input::-webkit-calendar-picker-indicator:hover {
 .duplicate-note {
     margin-bottom: 1rem;
     padding: 10px 14px;
-    border-radius: var(--radius);
-    background: rgba(200, 169, 110, 0.1);
-    border: 1px solid rgba(200, 169, 110, 0.4);
-    color: #e8cf9a;
+    border-radius: var(--radius-medium);
+    background: var(--accent-soft);
+    border: 1px solid var(--accent-line);
+    color: var(--accent-light);
     font-size: 0.9rem;
 }
 
 .duplicate-note.same-file {
-    background: var(--error-bg);
-    border-color: rgba(186, 122, 122, 0.4);
-    color: #e59999;
+    background: var(--danger-soft);
+    border-color: var(--danger-line);
+    color: var(--danger-text);
 }
 
 .duplicate-note p {
@@ -1767,7 +1521,7 @@ input[type="date"].meta-input::-webkit-calendar-picker-indicator:hover {
 
 .duplicate-why {
     margin-left: 6px;
-    font-family: var(--mono);
+    font-family: var(--font-mono);
     font-size: 0.72rem;
     opacity: 0.8;
 }
@@ -1788,9 +1542,9 @@ input[type="date"].meta-input::-webkit-calendar-picker-indicator:hover {
 .merge-panel {
     margin-bottom: 1.25rem;
     padding: 12px 14px;
-    border: 1px solid var(--border);
-    border-radius: var(--radius);
-    background: var(--surface);
+    border: 1px solid var(--border-light);
+    border-radius: var(--radius-medium);
+    background: var(--bg-secondary);
 }
 
 .merge-books {
@@ -1807,14 +1561,14 @@ input[type="date"].meta-input::-webkit-calendar-picker-indicator:hover {
     display: flex;
     gap: 10px;
     padding: 8px;
-    border: 1px solid var(--border);
-    border-radius: var(--radius);
+    border: 1px solid var(--border-light);
+    border-radius: var(--radius-medium);
     min-width: 0;
 }
 
 .merge-book.kept {
     border-color: var(--accent-dim);
-    background: rgba(200, 169, 110, 0.06);
+    background: var(--accent-faint);
 }
 
 .merge-letter {
@@ -1827,8 +1581,8 @@ input[type="date"].meta-input::-webkit-calendar-picker-indicator:hover {
     place-items: center;
     border-radius: 50%;
     background: var(--accent);
-    color: #111;
-    font: 600 0.75rem var(--mono);
+    color: var(--text-on-accent);
+    font: 600 0.75rem var(--font-mono);
 }
 
 .merge-cover-pick {
@@ -1863,8 +1617,8 @@ input[type="date"].meta-input::-webkit-calendar-picker-indicator:hover {
 .merge-nocover {
     display: grid;
     place-items: center;
-    background: rgba(255, 255, 255, 0.04);
-    color: var(--muted);
+    background: var(--tint-faint);
+    color: var(--text-muted);
     font-size: 0.65rem;
     text-align: center;
 }
@@ -1882,13 +1636,13 @@ input[type="date"].meta-input::-webkit-calendar-picker-indicator:hover {
 }
 
 .merge-book-title {
-    color: var(--text);
+    color: var(--text-primary);
     font-weight: 500;
     overflow-wrap: anywhere;
 }
 
 .merge-book-authors {
-    color: var(--muted);
+    color: var(--text-muted);
     overflow-wrap: anywhere;
 }
 
@@ -1910,7 +1664,7 @@ input[type="date"].meta-input::-webkit-calendar-picker-indicator:hover {
     color: var(--accent);
     text-decoration: none;
     padding-left: 6px;
-    border-left: 1px solid var(--border);
+    border-left: 1px solid var(--border-light);
 }
 
 .merge-file a:hover {
@@ -1920,7 +1674,7 @@ input[type="date"].meta-input::-webkit-calendar-picker-indicator:hover {
 .merge-keep {
     margin-top: auto;
     font-size: 0.78rem;
-    color: var(--muted);
+    color: var(--text-muted);
     cursor: pointer;
 }
 
@@ -1934,10 +1688,10 @@ input[type="date"].meta-input::-webkit-calendar-picker-indicator:hover {
 
 .merge-heading {
     margin: 0 0 6px;
-    font: 500 0.8rem var(--sans);
+    font: 500 0.8rem var(--font-sans);
     letter-spacing: 0.06em;
     text-transform: uppercase;
-    color: var(--muted);
+    color: var(--text-muted);
 }
 
 .merge-formats {
@@ -1963,7 +1717,7 @@ input[type="date"].meta-input::-webkit-calendar-picker-indicator:hover {
 
 .merge-format-name {
     min-width: 3.5em;
-    font: 500 0.75rem var(--mono);
+    font: 500 0.75rem var(--font-mono);
     text-transform: uppercase;
 }
 
@@ -1991,7 +1745,7 @@ input[type="date"].meta-input::-webkit-calendar-picker-indicator:hover {
 
 .merge-same,
 .merge-differ {
-    font: 0.72rem var(--mono);
+    font: 0.72rem var(--font-mono);
     color: var(--success);
 }
 
@@ -2001,7 +1755,7 @@ input[type="date"].meta-input::-webkit-calendar-picker-indicator:hover {
 
 .merge-download {
     padding: 1px 7px;
-    border: 1px solid var(--border);
+    border: 1px solid var(--border-light);
     border-radius: 4px;
     color: var(--accent);
     font-size: 0.75rem;
@@ -2103,7 +1857,7 @@ input[type="date"].meta-input::-webkit-calendar-picker-indicator:hover {
     align-items: center;
     gap: 6px;
     cursor: pointer;
-    color: var(--muted);
+    color: var(--text-muted);
     font-size: 0.75rem;
 }
 
@@ -2136,13 +1890,13 @@ input[type="date"].meta-input::-webkit-calendar-picker-indicator:hover {
     width: min(26rem, calc(100% - 24px));
     box-sizing: border-box;
     padding: 10px 14px;
-    background: var(--surface);
-    border: 1px solid var(--border);
+    background: var(--bg-secondary);
+    border: 1px solid var(--border-light);
     border-radius: 8px;
-    box-shadow: 0 12px 30px rgba(0, 0, 0, 0.5);
+    box-shadow: 0 12px 30px var(--scrim-45);
     font-size: 0.8rem;
     line-height: 1.5;
-    color: var(--text);
+    color: var(--text-primary);
 }
 
 .info-tip-body p {
@@ -2196,7 +1950,7 @@ input[type="date"].meta-input::-webkit-calendar-picker-indicator:hover {
     text-align: left;
     margin-top: 6px;
     box-shadow: none;
-    color: var(--muted);
+    color: var(--text-muted);
 }
 
 /* The library's commonest languages, one click each (web/metadata.ts) */
@@ -2214,7 +1968,7 @@ input[type="date"].meta-input::-webkit-calendar-picker-indicator:hover {
 
 .common-languages-label {
     font-size: 0.75rem;
-    color: var(--muted);
+    color: var(--text-muted);
 }
 
 /* Adding a book that may already be in the library: side by side (metadata.ts) */
@@ -2225,12 +1979,12 @@ input[type="date"].meta-input::-webkit-calendar-picker-indicator:hover {
 .dup-compare + .dup-compare {
     margin-top: 18px;
     padding-top: 12px;
-    border-top: 1px solid var(--border);
+    border-top: 1px solid var(--border-light);
 }
 
 .dup-why {
     margin: 8px 0;
-    color: var(--muted);
+    color: var(--text-muted);
     font-size: 0.85rem;
 }
 
@@ -2246,30 +2000,30 @@ input[type="date"].meta-input::-webkit-calendar-picker-indicator:hover {
     padding: 6px 8px;
     text-align: left;
     vertical-align: top;
-    border-bottom: 1px solid var(--border);
+    border-bottom: 1px solid var(--border-light);
     overflow-wrap: anywhere;
 }
 
 .dup-table thead th {
-    font-family: var(--mono);
+    font-family: var(--font-mono);
     font-size: 0.72rem;
     letter-spacing: 0.08em;
     text-transform: uppercase;
-    color: var(--muted);
+    color: var(--text-muted);
 }
 
 .dup-table thead th a {
-    color: var(--accent, #c8a96e);
+    color: var(--accent);
 }
 
 .dup-table tbody th {
     width: 7.5rem;
     font-weight: 500;
-    color: var(--muted);
+    color: var(--text-muted);
 }
 
 .dup-table tr.dup-differ td {
-    background: rgba(200, 169, 110, 0.1);
+    background: var(--accent-soft);
 }
 
 .dup-cover {
@@ -2279,7 +2033,7 @@ input[type="date"].meta-input::-webkit-calendar-picker-indicator:hover {
 }
 
 .dup-nocover {
-    color: var(--muted);
+    color: var(--text-muted);
     font-size: 0.8rem;
 }
 
@@ -2291,22 +2045,22 @@ input[type="date"].meta-input::-webkit-calendar-picker-indicator:hover {
 
 /* Add to library can't work: the library has one of the book's files (metadata.ts) */
 .btn-primary.btn-blocked {
-    background: #b55a5a;
-    color: #fff;
+    background: var(--danger-muted);
+    color: var(--text-on-color);
 }
 
 .btn-primary.btn-blocked:hover:not(:disabled) {
-    background: #c56a6a;
+    background: var(--danger-muted);
 }
 
 .duplicate-intro {
     margin: 12px 18px 0;
     padding: 10px 12px;
     font-size: 0.9rem;
-    color: #e59999;
-    background: var(--error-bg);
-    border: 1px solid rgba(186, 122, 122, 0.4);
-    border-radius: var(--radius);
+    color: var(--danger-text);
+    background: var(--danger-soft);
+    border: 1px solid var(--danger-line);
+    border-radius: var(--radius-medium);
 }
 
 .duplicate-intro[hidden],

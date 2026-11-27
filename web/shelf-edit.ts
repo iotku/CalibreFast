@@ -53,9 +53,9 @@ export function editShelf(shelf: ShelfInfo): Promise<ShelfEditResult> {
         const del = el("button", { type: "button", className: "btn-action btn-danger shelf-edit-delete" }, "Delete shelf…");
         const cancel = el("button", { type: "button", className: "btn-action" }, "Cancel");
         const save = el("button", { type: "submit", className: "btn-action btn-action-read" }, "Save");
-        const actions = el("div", { className: "delete-actions shelf-edit-actions" }, del, el("span", { className: "shelf-edit-spacer" }), cancel, save);
+        const actions = el("div", { className: "dialog-actions shelf-edit-actions" }, del, el("span", { className: "shelf-edit-spacer" }), cancel, save);
         const form = el("form", { method: "dialog" }, title, ...fields, status, actions);
-        const dialog = el("dialog", { className: "shelf-edit-dialog" }, form);
+        const dialog = el("dialog", { className: "dialog" }, form);
         dialog.setAttribute("aria-labelledby", "shelf-edit-title");
         closeOnBackdropClick(dialog);
 

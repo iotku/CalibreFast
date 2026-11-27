@@ -110,8 +110,8 @@ function confirmUnstar(name: string, ticked: boolean): Promise<{ unfollow: boole
         const note = el("p", { className: "auth-muted" }, "You follow this author on Hardcover. Untick to keep following them there.");
         const cancel = el("button", { type: "button", className: "btn-action" }, "Cancel");
         const go = el("button", { type: "submit", className: "btn-action btn-action-read" }, "Remove");
-        const form = el("form", { method: "dialog" }, title, label, note, el("div", { className: "delete-actions" }, cancel, go));
-        const dialog = el("dialog", { className: "delete-dialog unstar-dialog" }, form);
+        const form = el("form", { method: "dialog" }, title, label, note, el("div", { className: "dialog-actions" }, cancel, go));
+        const dialog = el("dialog", { className: "dialog dialog--danger unstar-dialog" }, form);
         dialog.setAttribute("aria-labelledby", "unstar-title");
         let answer: { unfollow: boolean } | null = null;
         cancel.addEventListener("click", () => dialog.close());

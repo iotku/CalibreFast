@@ -1,0 +1,108 @@
+/* Shelf collaborators (web/shelf-edit.ts, templates/shelves.html). */
+.shelf-people-box {
+    margin: 0 0 0.75rem;
+    padding: 0.6rem 0.8rem 0.4rem;
+    border: 1px solid var(--border-light);
+    border-radius: var(--radius-small);
+}
+
+.shelf-people-box legend {
+    padding: 0 0.3rem;
+    font-size: 0.9rem;
+}
+
+.shelf-people-box > p {
+    margin: 0 0 0.5rem;
+    font-size: 0.85rem;
+}
+
+.shelf-people {
+    margin: 0 0 0.5rem;
+    padding: 0;
+    list-style: none;
+}
+
+.shelf-people li {
+    display: flex;
+    align-items: center;
+    gap: 0.6rem;
+    padding: 0.3rem 0;
+    border-bottom: 1px solid var(--border-light);
+}
+
+.shelf-people .shelf-people-name {
+    font-weight: 600;
+    overflow-wrap: anywhere;
+}
+
+.shelf-people li .btn-action,
+.shelf-people li .btn-standard {
+    margin-left: auto;
+}
+
+.shelf-people-invite {
+    display: flex;
+    gap: 0.5rem;
+}
+
+.shelf-people-invite input {
+    flex: 1;
+    min-width: 0;
+    padding: 0.4rem 0.5rem;
+    font: inherit;
+    color: var(--text-primary);
+    background: var(--bg-primary);
+    border: 1px solid var(--border-medium);
+    border-radius: var(--radius-small);
+}
+
+.shelf-people-note,
+.shelf-people-status {
+    margin: 0.4rem 0 0;
+    font-size: 0.85rem;
+}
+
+.shelf-people-status:empty,
+.shelf-people-note[hidden] {
+    display: none;
+}
+
+.shelf-invite-list {
+    margin: 0;
+    padding: 0;
+    list-style: none;
+}
+
+.shelf-invite {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    justify-content: space-between;
+    gap: 0.5rem 1rem;
+    padding: 0.6rem 0;
+    border-bottom: 1px solid var(--border-light);
+}
+
+.shelf-invite-text {
+    overflow-wrap: anywhere;
+}
+
+.invite-suspect td {
+    background: color-mix(in srgb, var(--danger) 12%, transparent);
+}
+
+/* /admin/shelf-invites */
+.invite-log h2 {
+    margin: 1.5rem 0 0.5rem;
+    font-size: 1.05rem;
+}
+
+/* /shelves#invites, from the notification: clear of the top bar. */
+#invites {
+    scroll-margin-top: calc(var(--topbar-total) + 1rem);
+}
+
+.shelf-people-invite input {
+    height: 36px;
+    box-sizing: border-box;
+}

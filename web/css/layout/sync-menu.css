@@ -1,0 +1,291 @@
+/* The top bar's sync button (web/nav.ts): a ring shows a download's
+   progress, a dot that something waits (unsent changes, paused books); a
+   bell with a count (.tb-badge) while notifications are unseen. */
+.tb-sync-btn {
+    position: relative;
+}
+.tb-sync-ring {
+    position: absolute;
+    inset: 3px;
+    width: calc(100% - 6px);
+    height: calc(100% - 6px);
+    transform: rotate(-90deg);
+    pointer-events: none;
+}
+.tb-sync-ring circle {
+    fill: none;
+    stroke: var(--status-reading);
+    stroke-width: 2.5;
+    stroke-linecap: round;
+    transition: stroke-dasharray var(--transition-normal);
+}
+.tb-sync-btn:not(.is-busy) .tb-sync-ring {
+    display: none;
+}
+.tb-sync-btn.is-busy > svg:first-child {
+    color: var(--status-reading);
+}
+/* How the downloads just finished went, for a moment (nav.ts SYNC_LINGER_MS). */
+.tb-sync-result {
+    position: absolute;
+    right: -3px;
+    bottom: -2px;
+    width: 14px;
+    height: 14px;
+    display: grid;
+    place-items: center;
+    border-radius: 50%;
+    color: var(--text-on-color);
+    background: var(--status-finished);
+    box-shadow: 0 0 0 2px var(--bg-primary);
+    pointer-events: none;
+}
+.tb-sync-result[data-outcome="failed"] {
+    background: var(--danger-text);
+}
+.tb-sync-result svg {
+    width: 10px;
+    height: 10px;
+    stroke-width: 3;
+}
+.tb-sync-btn.has-note::after {
+    content: "";
+    position: absolute;
+    top: 6px;
+    right: 6px;
+    width: 7px;
+    height: 7px;
+    border-radius: 50%;
+    background: var(--status-reading);
+}
+.tb-sync-panel {
+    width: min(300px, calc(100vw - 32px));
+}
+.tb-sync-line {
+    margin: 4px 8px 8px;
+    font-size: 0.85rem;
+    line-height: 1.4;
+    color: var(--text-secondary);
+}
+/* Its top lines: a check when synced, a clock while something waits. */
+.tb-sync-state {
+    display: flex;
+    gap: 8px;
+    align-items: flex-start;
+}
+.tb-sync-mark {
+    flex: none;
+    width: 16px;
+    height: 16px;
+    margin-top: 1px;
+    color: var(--text-muted);
+}
+.tb-sync-state.is-done .tb-sync-mark {
+    color: var(--status-finished);
+}
+.tb-sync-state {
+    align-items: center;
+    margin-bottom: 2px;
+}
+.tb-sync-label {
+    color: var(--text-primary);
+}
+.tb-sync-status {
+    color: var(--text-muted);
+}
+.tb-menu-list button.tb-sync-info-btn {
+    margin-left: auto;
+    display: inline-flex;
+    padding: 2px;
+    color: var(--text-muted);
+}
+.tb-menu-list button.tb-sync-info-btn[aria-expanded="true"] {
+    color: var(--text-primary);
+}
+.tb-sync-info-btn svg {
+    width: 15px;
+    height: 15px;
+}
+.tb-sync-info {
+    margin: 0 8px 8px 32px;
+    font-size: 0.8rem;
+    line-height: 1.4;
+    color: var(--text-secondary);
+}
+.tb-sync-info[hidden] {
+    display: none;
+}
+/* Then the notifications not dismissed yet (up to 5) and a link to all. */
+.tb-notices {
+    list-style: none;
+    margin: 0 0 2px;
+    padding: 0;
+    display: flex;
+    flex-direction: column;
+    gap: 2px;
+}
+.tb-notices[hidden] {
+    display: none;
+}
+.tb-notice {
+    display: flex;
+    gap: 6px;
+    align-items: flex-start;
+    padding: 6px 4px 6px 10px;
+    border-radius: var(--radius-small);
+}
+.tb-notice.is-new {
+    background: var(--bg-surface);
+}
+/* The system alerts in force, pinned above the notifications (nav.ts). */
+.tb-notice.is-pinned {
+    flex-wrap: wrap;
+    align-items: center;
+    padding-right: 10px;
+    background: var(--bg-surface);
+    font-size: 0.85rem;
+    color: var(--text-primary);
+    white-space: normal;
+}
+.tb-notice.is-pinned.is-critical {
+    box-shadow: inset 3px 0 0 var(--danger-text);
+}
+.tb-notice.is-pinned .system-alert-text {
+    flex: 1 1 100%;
+}
+.tb-menu-list .tb-notice.is-pinned a {
+    padding: 0;
+    color: var(--text-link);
+    text-decoration: underline;
+}
+.tb-notice-text {
+    flex: 1;
+    min-width: 0;
+    display: flex;
+    flex-direction: column;
+    gap: 2px;
+}
+.tb-menu-list a.tb-notice-title,
+.tb-notice-title {
+    padding: 0;
+    font-size: 0.9rem;
+    font-weight: 600;
+    color: var(--text-primary);
+    white-space: normal;
+    overflow-wrap: anywhere;
+}
+.tb-menu-list a.tb-notice-title:hover {
+    background: none;
+    text-decoration: underline;
+}
+.tb-notice-note {
+    font-size: 0.78rem;
+    color: var(--text-secondary);
+}
+/* The installed app's one-time offer of system notifications (nav.ts, push.ts). */
+.tb-push-offer {
+    padding: 8px 12px;
+    white-space: normal;
+}
+.tb-push-ask {
+    margin: 0 0 4px;
+    font-size: 0.9rem;
+    font-weight: 600;
+    color: var(--text-primary);
+}
+.tb-push-note {
+    margin: 0 0 8px;
+    font-size: 0.78rem;
+    color: var(--text-secondary);
+}
+.tb-push-note:empty {
+    display: none;
+}
+.tb-push-actions {
+    display: flex;
+    gap: 8px;
+    margin-bottom: 4px;
+}
+.tb-menu-list .tb-push-actions button {
+    width: auto;
+    height: auto;
+    justify-content: center;
+    padding: 6px 12px;
+    border: 1px solid var(--border-medium);
+}
+.tb-menu-list .tb-push-actions .btn-primary,
+.tb-menu-list .tb-push-actions .btn-primary:hover {
+    background: var(--accent);
+    color: var(--text-on-accent);
+    border-color: var(--accent);
+}
+.tb-menu-list button.tb-notice-dismiss {
+    flex: none;
+    display: inline-flex;
+    padding: 4px;
+}
+.tb-notice-dismiss svg {
+    width: 14px;
+    height: 14px;
+}
+.tb-sync-book {
+    display: flex;
+    gap: 10px;
+    align-items: flex-start;
+    margin: 0 8px 8px;
+}
+.tb-sync-book[hidden],
+.tb-sync-next[hidden] {
+    display: none;
+}
+.tb-sync-cover {
+    flex: none;
+    width: 40px;
+    height: 56px;
+    object-fit: cover;
+    border-radius: var(--radius-small);
+    background: var(--bg-surface);
+}
+.tb-sync-book-text {
+    flex: 1;
+    min-width: 0;
+    display: flex;
+    flex-direction: column;
+    gap: 3px;
+}
+.tb-sync-title {
+    font-weight: 600;
+    font-size: 0.9rem;
+    overflow-wrap: anywhere;
+}
+.tb-sync-authors,
+.tb-sync-detail {
+    font-size: 0.78rem;
+    color: var(--text-secondary);
+    overflow-wrap: anywhere;
+}
+.tb-sync-bar {
+    display: block;
+    height: 6px;
+    margin-top: 3px;
+    overflow: hidden;
+    border-radius: var(--radius-round);
+    background: var(--bg-surface);
+}
+.tb-sync-fill {
+    display: block;
+    height: 100%;
+    background: var(--status-reading);
+    transition: width var(--transition-normal);
+}
+.tb-sync-bar.is-unknown .tb-sync-fill {
+    width: 30% !important;
+    animation: tb-sync-slide 1.2s ease-in-out infinite;
+}
+@keyframes tb-sync-slide {
+    from { transform: translateX(-100%); }
+    to { transform: translateX(340%); }
+}
+@media (prefers-reduced-motion: reduce) {
+    .tb-sync-bar.is-unknown .tb-sync-fill { animation: none; }
+}

@@ -1,0 +1,31 @@
+/* ============================================
+   Base Styles
+   ============================================ */
+body {
+    margin: 0;
+    padding: var(--page-padding);
+    font-family: var(--font-family);
+    background: var(--bg-primary);
+    color: var(--text-primary);
+}
+
+/* Opening the book modal hides the page scrollbar (body.no-scroll). If the
+   page had one, modal.ts sets .keep-gutter so its space stays reserved and
+   the content doesn't shift; pages that don't scroll get no empty strip. */
+/* Room for the system alerts' strip, which sits above everything at the top
+   of the page and scrolls away with it (system-alerts.ts). */
+html {
+    padding-top: var(--system-alerts-height);
+}
+
+html.keep-gutter {
+    scrollbar-gutter: stable;
+}
+
+body.no-scroll {
+    overflow: hidden;
+}
+
+h1 {
+    margin-bottom: var(--gap-xlarge);
+}

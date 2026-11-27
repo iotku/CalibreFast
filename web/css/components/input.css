@@ -1,0 +1,71 @@
+/* ============================================
+   Component Classes - Inputs
+   ============================================ */
+input[type="search"],
+input[type="text"],
+input[type="password"],
+input[type="number"],
+.input-search,
+.input-page {
+    height: var(--touch-target);
+    font-size: var(--font-size-ui);
+    padding: var(--input-padding);
+    border: 1px solid var(--border-medium);
+    background: var(--bg-surface);
+    color: var(--text-primary);
+    font-family: var(--font-family);
+    border-radius: var(--radius-small);
+}
+
+.input-search {
+    width: 300px;
+}
+
+/* A box with a ✕ that empties it (clearable.ts), shown only while there's
+   something to clear; the browser's own search ✕ is hidden. */
+.clearable {
+    position: relative;
+    display: flex;
+    align-items: center;
+    min-width: 0;
+}
+
+.clearable input {
+    padding-right: 30px;
+}
+
+.clearable input::-webkit-search-cancel-button {
+    -webkit-appearance: none;
+    appearance: none;
+}
+
+.clear-x {
+    position: absolute;
+    right: 5px;
+    width: 26px;
+    height: 26px;
+    padding: 0;
+    border: 0;
+    border-radius: 50%;
+    background: transparent;
+    color: var(--text-muted);
+    font-size: 0.75rem;
+    line-height: 1;
+    cursor: pointer;
+}
+
+.clear-x:hover,
+.clear-x:focus-visible {
+    color: var(--text-primary);
+    background: var(--tint-soft);
+}
+
+/* Nothing to clear: no ✕ (clearable.ts gives every box a placeholder) */
+.clearable input:placeholder-shown + .clear-x {
+    display: none;
+}
+
+.input-page {
+    width: 56px;
+    text-align: center;
+}

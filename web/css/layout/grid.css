@@ -1,0 +1,131 @@
+/* ============================================
+   Layout - Books Grid
+   ============================================ */
+#books {
+    display: grid;
+    grid-template-columns: repeat(6, 1fr);
+    gap: 10px;
+    max-width: var(--content-max);
+    margin: var(--topbar-total) auto 0;
+}
+
+/* A page's name (Latest, Authors, an author, a series, a shelf, …),
+   above its description, held under the top bar as the page scrolls. app-htmx.ts
+   counts it in the header's height. Lined up with the grid's left edge,
+   as the description below it is. */
+.page-head {
+    position: sticky;
+    top: var(--topbar-total);
+    z-index: 900; /* under the bar's menus and the Manage sidebar */
+    margin: var(--topbar-total) calc(-1 * var(--page-padding)) 0;
+    padding: 0.5rem var(--page-padding);
+    background: var(--bg-primary);
+    border-bottom: 1px solid var(--border-subtle);
+}
+
+.page-head-row {
+    max-width: var(--content-max); /* the grid's: lined up with its left edge */
+    margin: 0 auto;
+    display: flex;
+    align-items: center;
+    gap: 1rem;
+    min-height: 36px;
+}
+
+/* Which page of the grid, and a jump to another (app-htmx.ts). */
+.page-pager {
+    display: flex;
+    align-items: center;
+    gap: 4px;
+    flex: none;
+    margin-left: auto;
+    font-size: 0.9rem;
+    color: var(--text-secondary);
+}
+
+.page-pager[hidden] {
+    display: none;
+}
+
+.page-pager .input-page {
+    width: 52px;
+    height: 32px;
+    padding: 0 4px;
+}
+
+.page-head .page-pager .tb-icon {
+    width: 32px;
+    height: 32px;
+    min-width: 32px;
+    cursor: pointer;
+}
+
+.page-pager .tb-icon:disabled {
+    opacity: 0.35;
+    cursor: default;
+}
+
+.page-head h1 {
+    flex: 1;
+    min-width: 0;
+    margin: 0;
+    font-size: 1.35rem;
+    font-weight: 600;
+    line-height: 1.3;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+}
+
+.page-head-sub {
+    font-size: 0.65em;
+    font-weight: 400;
+    color: var(--text-muted);
+    font-family: var(--font-mono);
+}
+
+.page-head ~ .agg-header-wrap > .agg-header {
+    margin-top: 1rem;
+}
+
+.page-head ~ .grid-sort {
+    margin-top: 0.5rem;
+}
+
+.page-head ~ #books {
+    margin-top: 0.75rem;
+}
+
+.page-head ~ .search-intro {
+    margin-top: 0.75rem;
+}
+
+.page-head ~ #aggregate-page {
+    padding-top: 1rem;
+}
+
+/* The rows outside the rendered window (web/app-htmx.ts): painted as empty
+   cards, so a scroll that outruns the DOM shows the grid, not a blank.
+   app-htmx.ts sets the pattern (one row of cards) from the layout. */
+#books > .grid-spacer {
+    grid-column: 1 / -1;
+    background: var(--bg-secondary);
+    mask: var(--skeleton-row) 0 0 / var(--skeleton-size) repeat-y;
+}
+
+/* The top spacer ends on a row of cards: line the pattern up from there,
+   where it meets the real ones. */
+#books > .grid-spacer:first-child {
+    mask-position: 0 calc(100% + var(--skeleton-gap));
+}
+
+/* A book whose page hasn't arrived yet */
+.book.skeleton {
+    box-shadow: none;
+    cursor: default;
+}
+
+/* A slot the page came back without (it changed since the count) */
+.book.missing {
+    visibility: hidden;
+}

@@ -1,0 +1,636 @@
+/* ============================================
+   Site top bar (templates/topbar.html, web/nav.ts)
+   One slim row on every page except the readers:
+   ☰ · brand · browse links · title · search · page tools · ★ · 📖 · user menu
+   ============================================ */
+
+/* Higher specificity than the :root overrides above, at every width. */
+:root:has(.site-bar) {
+    --topbar-height: 52px;
+    --topbar-padding: 0px;
+    --topbar-total: 52px;
+}
+
+.site-bar {
+    /* The same on every page, whatever font the page itself uses */
+    font-family: var(--font-family);
+    font-weight: 400;
+    height: var(--topbar-total);
+    padding: 0 var(--page-padding);
+    gap: 10px;
+    justify-content: flex-start;
+    flex-wrap: nowrap;
+}
+
+.site-bar > * {
+    flex-shrink: 0;
+}
+
+.tb-brand {
+    font-weight: 700;
+    font-size: 1.05rem;
+    color: var(--text-primary);
+    text-decoration: none;
+    white-space: nowrap;
+}
+
+.tb-nav {
+    display: flex;
+    align-items: center;
+    gap: 2px;
+}
+
+.tb-nav a,
+.tb-menu-list a,
+.tb-menu-list button {
+    padding: 7px 10px;
+    border-radius: var(--radius-small);
+    color: var(--text-secondary);
+    text-decoration: none;
+    font-size: 0.92rem;
+    white-space: nowrap;
+}
+
+.tb-nav a:hover,
+.tb-menu-list a:hover,
+.tb-menu-list button:hover {
+    color: var(--text-primary);
+    background: var(--bg-elevated);
+}
+
+.tb-nav a[aria-current="page"],
+.tb-menu-list a[aria-current="page"] {
+    color: var(--text-primary);
+    background: var(--bg-surface);
+}
+
+/* Active section: a straight underline drawn just below the link, separate
+   from its rounded background. */
+.tb-nav a {
+    position: relative;
+}
+
+.tb-nav a[aria-current="page"]::after {
+    content: "";
+    position: absolute;
+    left: 10px;
+    right: 10px;
+    bottom: -5px;
+    height: 2px;
+    background: var(--text-primary);
+}
+
+.tb-nav .tb-home {
+    display: none; /* only in the narrow-screen menu */
+}
+
+.tb-title {
+    flex: 0 1 auto; /* the only part that shrinks (ellipsis) when space runs out */
+    min-width: 0;
+    margin: 0 0 0 4px;
+    font-size: 1rem;
+    font-weight: 600;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+}
+
+.tb-title-nav {
+    display: none; /* repeats the highlighted nav item; shown when the nav is in ☰ */
+}
+
+.tb-title-sub {
+    font-size: 0.8em;
+    font-weight: 400;
+    color: var(--text-muted);
+    font-family: var(--font-mono);
+}
+
+/* Starts at its minimum and only grows into leftover space, so the page
+   title keeps priority. */
+.tb-search {
+    display: flex;
+    align-items: center;
+    margin-left: auto;
+    flex: 1 0 150px;
+    max-width: 300px;
+}
+
+.site-bar .tb-search input {
+    width: 100%;
+    height: 36px;
+}
+
+.tb-search {
+    position: relative; /* for its suggestions (.tb-suggest) */
+}
+
+.tb-search .clearable {
+    flex: 1;
+}
+
+/* Suggestions while typing (search-suggest.ts): a .tb-menu-list hung under
+   the box, wider than it, from its right edge. */
+.tb-menu-list.tb-suggest {
+    left: auto;
+    right: 0;
+    width: max(100%, 380px);
+    max-width: calc(100vw - 16px);
+    box-sizing: border-box;
+    z-index: 3;
+}
+
+.tb-suggest-group {
+    display: flex;
+    flex-direction: column;
+}
+
+.tb-suggest-group + .tb-suggest-group {
+    margin-top: 4px;
+    padding-top: 4px;
+    border-top: 1px solid var(--border-medium);
+}
+
+.tb-suggest-head {
+    padding: 4px 10px 2px;
+    color: var(--text-muted);
+    font-size: 0.75rem;
+    text-transform: uppercase;
+    letter-spacing: 0.04em;
+}
+
+.tb-menu-list.tb-suggest a {
+    display: flex;
+    align-items: baseline;
+    gap: 8px;
+    white-space: normal;
+}
+
+.tb-suggest-main {
+    flex: 1;
+    min-width: 0;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+    color: var(--text-primary);
+}
+
+.tb-suggest-sub {
+    flex: 0 1 auto;
+    min-width: 0;
+    max-width: 45%;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+    color: var(--text-muted);
+    font-size: 0.82rem;
+}
+
+.tb-menu-list.tb-suggest a[aria-selected="true"] {
+    color: var(--text-primary);
+    background: var(--tint-soft);
+    outline: 1px solid var(--border-medium);
+}
+
+.tb-menu-list.tb-suggest .tb-suggest-all {
+    color: var(--text-secondary);
+}
+
+.tb-tools,
+.tb-user {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+}
+
+.tb-tools:not(:has(*)) {
+    display: none;
+}
+
+/* Pages without the library search (NoSearch: the metadata editor, the
+   bulk editor): the search box isn't there to push the tools and user
+   menu to the right, so the title does. */
+.site-bar:not(:has(.tb-search)) .tb-title {
+    margin-right: auto;
+}
+
+.tb-user {
+    justify-content: flex-end;
+}
+
+.tb-user .throbber {
+    height: 36px;
+    gap: 4px;
+}
+
+.tb-user .throbber-dot {
+    width: 6px;
+    height: 6px;
+}
+
+.site-bar .tb-icon,
+.page-pager .tb-icon {
+    width: 36px;
+    height: 36px;
+    min-width: 36px;
+    padding: 0;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    border: 1px solid transparent;
+    border-radius: var(--radius-small);
+    background: transparent;
+    color: var(--text-secondary);
+    font-size: 1.2rem;
+    text-decoration: none;
+}
+
+.site-bar .tb-icon:hover,
+.page-pager .tb-icon:hover:not(:disabled),
+.site-bar .tb-icon[aria-current="page"],
+.site-bar .tb-icon[aria-expanded="true"] {
+    color: var(--text-primary);
+    background: var(--bg-elevated);
+    border-color: var(--border-medium);
+}
+
+/* A count on a bar icon: books waiting in the import queue (web/nav.ts) */
+.site-bar .tb-has-badge {
+    position: relative;
+}
+
+.tb-badge {
+    position: absolute;
+    top: -3px;
+    right: -5px;
+    min-width: 16px;
+    height: 16px;
+    padding: 0 4px;
+    box-sizing: border-box;
+    font-size: 10px;
+    font-weight: 600;
+    line-height: 16px;
+    text-align: center;
+    color: var(--text-on-accent);
+    background: var(--accent);
+    border-radius: var(--radius-round);
+}
+
+.site-bar .tb-btn {
+    height: 34px;
+    padding: 0 12px;
+    display: inline-flex;
+    align-items: center;
+    border: 1px solid var(--border-medium);
+    border-radius: var(--radius-small);
+    background: var(--bg-surface);
+    color: var(--text-primary);
+    font-size: 0.9rem;
+    text-decoration: none;
+    white-space: nowrap;
+}
+
+.site-bar .tb-btn:hover {
+    background: var(--bg-elevated);
+}
+
+/* Narrow-screen-only controls */
+.tb-menu-btn,
+.tb-search-btn,
+.tb-search-close {
+    display: none !important;
+}
+
+/* User menu */
+.tb-menu {
+    position: relative;
+}
+
+.site-bar .tb-user-btn {
+    height: 36px;
+    padding: 0 8px 0 4px;
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    border: 1px solid transparent;
+    border-radius: var(--radius-round);
+    background: transparent;
+    color: var(--text-primary);
+    font-size: 0.9rem;
+}
+
+.site-bar .tb-user-btn:hover,
+.site-bar .tb-user-btn[aria-expanded="true"] {
+    background: var(--bg-elevated);
+    border-color: var(--border-medium);
+}
+
+.tb-avatar {
+    width: 28px;
+    height: 28px;
+    border-radius: 50%;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    background: var(--bg-surface);
+    border: 1px solid var(--border-medium);
+    font-weight: 700;
+    font-size: 0.85rem;
+    text-transform: uppercase;
+}
+
+.tb-user-name {
+    max-width: 12ch;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+.tb-menu-list {
+    position: absolute;
+    top: calc(100% + 8px);
+    right: 0;
+    min-width: 190px;
+    display: flex;
+    flex-direction: column;
+    padding: 6px;
+    background: var(--bg-elevated);
+    border: 1px solid var(--border-medium);
+    border-radius: var(--radius-medium);
+    box-shadow: var(--shadow-medium);
+}
+
+.tb-menu-list[hidden] {
+    display: none;
+}
+
+/* Both dropdowns (user menu, ☰ menu) hang off the fixed bar: on a short
+   screen (a phone on its side) they'd run past the bottom, and a swipe on
+   them would scroll the page behind. Cap them at the room left under the
+   bar and let them scroll on their own. */
+.tb-menu-list,
+.site-bar.nav-open .tb-nav {
+    max-height: calc(100dvh - var(--topbar-bottom) - 20px - env(safe-area-inset-bottom, 0px));
+    overflow-y: auto;
+    overscroll-behavior: contain;
+}
+
+.tb-menu-list form {
+    display: contents;
+}
+
+.tb-menu-list button {
+    border: 0;
+    background: none;
+    text-align: left;
+    font: inherit;
+    font-size: 0.92rem;
+    cursor: pointer;
+}
+
+/* Dropdown panels are --bg-elevated already: hover/current need a lighter tint. */
+.tb-menu-list a:hover,
+.tb-menu-list button:hover,
+.tb-menu-list a[aria-current="page"] {
+    background: var(--tint-soft);
+}
+
+.tb-menu-list hr {
+    width: 100%;
+    margin: 4px 0;
+    border: 0;
+    border-top: 1px solid var(--border-medium);
+}
+
+/* ≤ 1000px: browse links move into the ☰ menu */
+@media (max-width: 1000px) {
+    .tb-menu-btn {
+        display: inline-flex !important;
+    }
+
+    .tb-nav {
+        display: none;
+        position: absolute;
+        top: calc(100% + 4px);
+        left: var(--page-padding);
+        flex-direction: column; /* as wide as its longest item */
+        align-items: stretch;
+        gap: 2px;
+        padding: 6px;
+        background: var(--bg-elevated);
+        border: 1px solid var(--border-medium);
+        border-radius: var(--radius-medium);
+        box-shadow: var(--shadow-medium);
+    }
+
+    .site-bar.nav-open .tb-nav {
+        display: flex;
+    }
+
+    /* Menu items: 44px touch targets; the active one underlines its word
+       (straight, inside the item, clear of the next entry). */
+    .tb-nav a {
+        padding: 14px;
+        line-height: 16px;
+    }
+
+    .tb-nav a[aria-current="page"]::after {
+        display: none;
+    }
+
+    .tb-nav a:hover,
+    .tb-nav a[aria-current="page"] {
+        background: var(--tint-soft);
+    }
+
+    .tb-nav a[aria-current="page"] {
+        text-decoration: underline;
+        text-decoration-thickness: 2px;
+        text-underline-offset: 6px;
+    }
+
+    .tb-nav .tb-home {
+        display: block;
+    }
+
+    .tb-title-nav {
+        display: block;
+    }
+}
+
+/* The same, when a crowded bar needs it (nav.ts: tb-tighter). */
+.site-bar.tb-tighter .tb-menu-btn {
+    display: inline-flex !important;
+}
+
+.site-bar.tb-tighter .tb-nav {
+    display: none;
+    position: absolute;
+    top: calc(100% + 4px);
+    left: var(--page-padding);
+    flex-direction: column; /* as wide as its longest item */
+    align-items: stretch;
+    gap: 2px;
+    padding: 6px;
+    background: var(--bg-elevated);
+    border: 1px solid var(--border-medium);
+    border-radius: var(--radius-medium);
+    box-shadow: var(--shadow-medium);
+}
+
+.site-bar.tb-tighter.nav-open .tb-nav {
+    display: flex;
+}
+
+.site-bar.tb-tighter .tb-nav a {
+    padding: 14px;
+    line-height: 16px;
+}
+
+.site-bar.tb-tighter .tb-nav a[aria-current="page"]::after {
+    display: none;
+}
+
+.site-bar.tb-tighter .tb-nav a:hover,
+.site-bar.tb-tighter .tb-nav a[aria-current="page"] {
+    background: var(--tint-soft);
+}
+
+.site-bar.tb-tighter .tb-nav a[aria-current="page"] {
+    text-decoration: underline;
+    text-decoration-thickness: 2px;
+    text-underline-offset: 6px;
+}
+
+.site-bar.tb-tighter .tb-nav .tb-home {
+    display: block;
+}
+
+.site-bar.tb-tighter .tb-title-nav {
+    display: block;
+}
+
+/* ≤ 640px: search becomes an icon; saved/favorites/reading live in the user menu */
+@media (max-width: 640px) {
+    .site-bar {
+        gap: 6px;
+        padding: 0 8px;
+    }
+
+    .site-bar:has(.tb-title) .tb-brand {
+        display: none; /* the ☰ menu has a link home */
+    }
+
+    .tb-title {
+        flex: 1 1 auto;
+    }
+
+    .tb-search {
+        display: none;
+    }
+
+    .tb-search-btn {
+        display: inline-flex !important;
+        margin-left: auto;
+    }
+
+    .site-bar.search-open .tb-search {
+        display: flex;
+        position: absolute;
+        inset: 0;
+        max-width: none;
+        z-index: 2;
+        gap: 6px;
+        padding: 0 8px;
+        margin: 0;
+        background: var(--bg-secondary);
+    }
+
+    .site-bar.search-open .tb-search-close {
+        display: inline-flex !important;
+    }
+
+    /* Its suggestions: the whole screen under the bar (as with tb-tightest, below) */
+    .site-bar.search-open .tb-menu-list.tb-suggest {
+        top: 100%;
+        left: 0;
+        right: 0;
+        width: auto;
+        max-width: none;
+        height: calc(100dvh - var(--topbar-bottom));
+        max-height: none;
+        border-radius: 0;
+        border-width: 1px 0 0;
+        box-shadow: none;
+        padding: 6px max(6px, env(safe-area-inset-right, 0px)) max(6px, env(safe-area-inset-bottom, 0px)) max(6px, env(safe-area-inset-left, 0px));
+    }
+
+    .tb-shortcut,
+    .tb-user-name {
+        display: none !important;
+    }
+
+
+    .page-pager .input-page {
+        width: 44px;
+    }
+
+    .site-bar .btn-group-toggle .tb-label {
+        display: none;
+    }
+}
+
+
+/* A bar with more in it than fits (nav.ts adds these, a step at a time, to
+   keep the user menu on screen). tb-tight: as on a phone, the shortcuts
+   (all in the user menu too) and the user name go;
+   tb-tighter: the browse links go into the ☰ menu (above); tb-tightest:
+   the search box becomes its icon. */
+.site-bar.tb-tight .tb-shortcut,
+.site-bar.tb-tight .tb-user-name {
+    display: none !important;
+}
+
+.site-bar.tb-tightest .tb-search {
+    display: none;
+}
+
+.site-bar.tb-tightest .tb-search-btn {
+    display: inline-flex !important;
+    margin-left: auto;
+}
+
+.site-bar.tb-tightest.search-open .tb-search {
+    display: flex;
+    position: absolute;
+    inset: 0;
+    max-width: none;
+    z-index: 2;
+    gap: 6px;
+    padding: 0 8px;
+    margin: 0;
+    background: var(--bg-secondary);
+}
+
+.site-bar.tb-tightest.search-open .tb-search-close {
+    display: inline-flex !important;
+}
+
+/* The search box over the bar (a phone, or tb-tightest): its suggestions
+   take the whole screen under the bar. Absolute from the box, which then
+   covers the bar exactly, rather than fixed: the bar's backdrop-filter
+   makes it the containing block of anything fixed inside it. (Phones: in
+   the ≤ 640px block below.) */
+.site-bar.tb-tightest.search-open .tb-menu-list.tb-suggest {
+    top: 100%;
+    left: 0;
+    right: 0;
+    width: auto;
+    max-width: none;
+    height: calc(100dvh - var(--topbar-bottom));
+    max-height: none;
+    border-radius: 0;
+    border-width: 1px 0 0;
+    box-shadow: none;
+    padding: 6px max(6px, env(safe-area-inset-right, 0px)) max(6px, env(safe-area-inset-bottom, 0px)) max(6px, env(safe-area-inset-left, 0px));
+}
