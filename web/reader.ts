@@ -128,8 +128,14 @@ try {
     throw err;
 }
 
-/** Keep the whole file in this browser, with the book's title for the offline page. */
-async function keepCopy(buf: Uint8Array, lastModified: string, locations?: string): Promise<void> {
+/** Page numbers generated for the file being read, to keep with it. */
+let pageLocations: string | undefined;
+
+/**
+ * Keep the whole file in this browser, with the book's title for the offline
+ * page. sameFile: it is the file being read, so its page numbers go with it.
+ */
+async function keepCopy(buf: Uint8Array, lastModified: string, sameFile: boolean): Promise<void> {
     // The book's own choice (offline-control.ts), then the device's (prefs.ts, retention.ts).
     if (!keeps || !shouldKeep(uuid, buf.length)) return;
     await book.ready;
@@ -143,7 +149,9 @@ async function keepCopy(buf: Uint8Array, lastModified: string, locations?: strin
         size: buf.length,
         title: meta?.title || document.title,
         authors: meta?.creator ?? "",
-        locations,
+        // Read now, not when called: generated while this waited, they would
+        // otherwise be lost (updateBook below finds no copy to add them to).
+        locations: sameFile ? pageLocations : undefined,
         lastOpened: Date.now(),
         statusSeen: cached?.statusSeen,
         savedAt: cached?.savedAt,
@@ -164,8 +172,9 @@ function fetchRest(): void {
     wholeDone = downloadBook((_, f) => syncButton?.downloading(f))
         .then(async ({ buf, lastModified }) => {
             // The file changed since the first page was read: keep the new one for next time only.
-            if (lastModified === src.lastModified) src.useBuffer(buf);
-            await keepCopy(buf, lastModified);
+            const same = lastModified === src.lastModified;
+            if (same) src.useBuffer(buf);
+            await keepCopy(buf, lastModified, same);
         })
         .catch((err: unknown) => console.warn("downloading the rest of the book failed:", err))
         .finally(() => syncButton?.downloading(false));
@@ -182,7 +191,7 @@ if (cached) {
             const lm = res.headers.get("last-modified") ?? "";
             if (!res.ok || !lm || lm === cached?.lastModified) return;
             const { buf, lastModified } = await downloadBook();
-            await keepCopy(buf, lastModified);
+            await keepCopy(buf, lastModified, false);
             chrome.toast("A newer copy of this book was downloaded. Reopen it to see it.");
         })
         .catch(() => {}); // offline
@@ -193,7 +202,7 @@ if (!cached && source?.whole) {
     // Downloaded whole (small book, or no Range support): keep it.
     syncButton?.downloading(null);
     void source.complete
-        .then((buf) => keepCopy(buf, source?.lastModified ?? ""))
+        .then((buf) => keepCopy(buf, source?.lastModified ?? "", true))
         .catch(() => {})
         .finally(() => syncButton?.downloading(false));
 }
@@ -986,9 +995,12 @@ void book.ready
             return;
         }
         await wholeDone;
+        // epub.js rests 100 ms after each chapter, seconds in all for a long
+        // book; the queue already yields a frame between chapters.
+        book.locations.pause = 0;
         await book.locations.generate(CHARS_PER_PAGE);
-        const saved = book.locations.save();
-        if (keeps) void updateBook(uuid, "epub", { locations: saved }).catch(() => {});
+        pageLocations = book.locations.save();
+        if (keeps) void updateBook(uuid, "epub", { locations: pageLocations }).catch(() => {});
     })
     .then(() => {
         locationsReady = true;

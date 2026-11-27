@@ -109,6 +109,8 @@ declare namespace EpubJS {
         spine: Spine;
         navigation: { toc: NavItem[] };
         locations: {
+            /** Milliseconds generate() waits after each chapter (epub.js: 100). */
+            pause: number;
             generate(chars: number): Promise<string[]>;
             /** The generated locations, to store and load() later. */
             save(): string;
