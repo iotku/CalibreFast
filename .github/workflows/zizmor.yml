@@ -1,0 +1,29 @@
+# Static analysis of the workflows themselves: template injection, overly
+# broad permissions, credentials left in checkouts, unpinned actions.
+# Findings go to code scanning.
+name: zizmor
+
+on:
+  push:
+    branches: [ "master" ]
+    paths: [ ".github/**" ]
+  pull_request:
+    branches: [ "master" ]
+    paths: [ ".github/**" ]
+
+permissions: {}
+
+jobs:
+  zizmor:
+    runs-on: ubuntu-latest
+    permissions:
+      security-events: write
+      contents: read
+      actions: read
+    steps:
+    - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      with:
+        persist-credentials: false
+
+    - name: Run zizmor
+      uses: zizmorcore/zizmor-action@1b4550e929643b8b26a62303c6bd64814271a4f1 # v0.9.2
