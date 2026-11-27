@@ -84,6 +84,11 @@ func catalogTableBooks(c *catalog) ([]tableBook, []int32) {
 			PubDate:   tableDate(cb.PubDate), Added: tableDate(cb.Timestamp),
 			Tags: make([]string, 0, len(cb.TagIDs)), Languages: make([]string, 0, len(cb.LangIDs)),
 			HasCover: cb.HasCover, path: cb.Path,
+			Rating: int(cb.Rating), Identifiers: slices.Clone(cb.Identifiers), Size: cb.Size,
+			LastModified: tableModified(cb.LastModified),
+		}
+		if b.Identifiers == nil {
+			b.Identifiers = []string{}
 		}
 		if cb.Series == 0 {
 			b.Series = ""
@@ -116,9 +121,16 @@ func catalogTableBooks(c *catalog) ([]tableBook, []int32) {
 
 // tableSortKeys: the columns ?sort= may name (web/library-edit.ts COLUMNS).
 var tableSortKeys = map[string]func(b *tableBook) string{
-	"title":     func(b *tableBook) string { return b.Title },
-	"authors":   func(b *tableBook) string { return b.Authors },
-	"series":    func(b *tableBook) string { return b.Series },
+	"title":   func(b *tableBook) string { return b.Title },
+	"authors": func(b *tableBook) string { return b.Authors },
+	"series":  func(b *tableBook) string { return b.Series },
+	// Its number, as text that sorts as the number does; none without a series.
+	"series_index": func(b *tableBook) string {
+		if b.Series == "" {
+			return ""
+		}
+		return fmt.Sprintf("%016.4f", b.SeriesIndex)
+	},
 	"publisher": func(b *tableBook) string { return b.Publisher },
 	"pubdate":   func(b *tableBook) string { return b.PubDate },
 	"languages": func(b *tableBook) string { return strings.Join(b.Languages, ", ") },

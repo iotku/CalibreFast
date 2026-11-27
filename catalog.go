@@ -40,7 +40,11 @@ type catalogBook struct {
 	Publisher int32    // 0 if none
 	LangIDs   []int32
 	ISBNs     []string // identifiers of type isbn, digits (and X) only (search.go)
-	Rating    uint8    // 0–10 half-stars, 0 if none (rating.go)
+	// Identifiers: every identifier but the library's own (calibre, uuid),
+	// "type:value" as metadata.db keeps them, by type (the bulk editor).
+	Identifiers []string
+	Size        int64 // the book's files' sizes as metadata.db lists them, in bytes (the bulk editor)
+	Rating      uint8 // 0–10 half-stars, 0 if none (rating.go)
 }
 
 type catalog struct {
@@ -290,19 +294,42 @@ func loadCatalogBooks(db queryer, uuids []string, names *catalog) ([]catalogBook
 	if err != nil {
 		return nil, err
 	}
-	isbnWhere := ` WHERE lower(l.type) = 'isbn'`
+	idWhere := ` WHERE lower(l.type) NOT IN ('calibre', 'uuid')`
 	if where != "" {
-		isbnWhere = where + ` AND lower(l.type) = 'isbn'`
+		idWhere = where + ` AND lower(l.type) NOT IN ('calibre', 'uuid')`
 	}
-	err = scanLinks(db, `SELECT l.book, 0, l.val FROM identifiers l`+isbnWhere, args,
-		func(book int64, _ int32, val string) {
-			if i, ok := at[book]; ok {
+	err = scanLinks(db, `SELECT l.book, 0, l.type || ':' || l.val FROM identifiers l`+idWhere+` ORDER BY l.type, l.id`, args,
+		func(book int64, _ int32, id string) {
+			i, ok := at[book]
+			if !ok {
+				return
+			}
+			books[i].Identifiers = append(books[i].Identifiers, id)
+			if typ, val, _ := strings.Cut(id, ":"); strings.EqualFold(typ, "isbn") {
 				if n := normalizeISBN(val); n != "" && !slices.Contains(books[i].ISBNs, n) {
 					books[i].ISBNs = append(books[i].ISBNs, n)
 				}
 			}
 		})
 	if err != nil {
+		return nil, err
+	}
+	sizes, err := db.Query(`SELECT l.book, COALESCE(SUM(l.uncompressed_size), 0) FROM data l`+where+` GROUP BY l.book`, args...)
+	if err != nil {
+		return nil, err
+	}
+	for sizes.Next() {
+		var book, size int64
+		if err := sizes.Scan(&book, &size); err != nil {
+			sizes.Close()
+			return nil, err
+		}
+		if i, ok := at[book]; ok {
+			books[i].Size = size
+		}
+	}
+	sizes.Close()
+	if err := sizes.Err(); err != nil {
 		return nil, err
 	}
 	for i := range books {

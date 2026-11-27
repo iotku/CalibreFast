@@ -63,8 +63,8 @@ func TestCatalogTableRowsMatchDB(t *testing.T) {
 	a := addOPFTestBook(t, db, "Alpha", []string{"Ann", "Bo"}, []string{"t1", "t2"}, []string{"eng", "fra"})
 	addOPFTestBook(t, db, "Beta", []string{"Ashton, Hugh"}, nil, nil)
 	c := addOPFTestBook(t, db, "Gamma", []string{"Cy"}, []string{"t2"}, nil)
-	series, index := "Saga", "2.5"
-	if res := bulkEditBooks([]string{a.uuid}, &bulkEdit{Series: &series, SeriesIndex: &index}); res.Changed != 1 {
+	series, index, rating, ids := "Saga", "2.5", "7", "isbn:9780441172719, goodreads:234225"
+	if res := bulkEditBooks([]string{a.uuid}, &bulkEdit{Series: &series, SeriesIndex: &index, Rating: &rating, Identifiers: &ids}); res.Changed != 1 {
 		t.Fatalf("series: %+v", res)
 	}
 	if _, err := db.Exec(`DELETE FROM data WHERE book = ?`, c.id); err != nil {
@@ -103,7 +103,8 @@ func TestCatalogTableRowsMatchDB(t *testing.T) {
 	if r := byUUID[c.uuid]; !r.FormatsFromFolder || !slices.Equal(r.Formats, []string{"epub"}) {
 		t.Errorf("unlisted book: %+v", r)
 	}
-	if r := byUUID[a.uuid]; r.Series != "Saga" || r.SeriesIndex != 2.5 || !slices.Equal(r.Languages, []string{"eng", "fra"}) {
+	if r := byUUID[a.uuid]; r.Series != "Saga" || r.SeriesIndex != 2.5 || !slices.Equal(r.Languages, []string{"eng", "fra"}) ||
+		r.Rating != 7 || !slices.Equal(r.Identifiers, []string{"goodreads:234225", "isbn:9780441172719"}) || r.Size != 5 || len(r.LastModified) != 16 {
 		t.Errorf("Alpha: %+v", r)
 	}
 }

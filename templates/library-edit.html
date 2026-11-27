@@ -60,6 +60,11 @@
             <span id="lt-failures-text"></span>
             <button type="button" id="lt-failures-show" class="lt-action">Details</button>
         </span>
+        <!-- Which columns the table shows (web/library-edit.ts, buildColumnsMenu) -->
+        <details class="lt-help lt-columns">
+            <summary>Columns</summary>
+            <div class="lt-help-body lt-columns-body" id="lt-columns-list" role="group" aria-label="Columns shown"></div>
+        </details>
         <details class="lt-help">
             <summary>Filter tips</summary>
             <div class="lt-help-body">
@@ -74,13 +79,18 @@
                     <li>a dashed format is a file in the book's folder that metadata.db doesn't list (Calibre won't show it); <code>folder</code> in Formats finds them</li>
                     <li>the tick box beside a column's name: only books with nothing there, or the default a book gets when nothing was known (author or title <code>Unknown</code>, language <code>und</code>)</li>
                 </ul>
-                <p>Click a title, author, series, publisher, date, tags or languages to edit it there; click a tag or language to edit just that one (empty removes it). Enter saves, Esc cancels; a series' number goes in brackets: <code>Dune [2]</code>. Right-click a cell, tag, language or format for its options (on a touch screen, long-press it): show only books with that, hide them, edit, copy, split a tag; for authors written “Last, First” or “A; B”, put the first name first or split them (as the metadata editor's Split does), for that book or every selected one. <strong>+N</strong> shows the ones that don't fit. Ctrl-click (⌘-click on a Mac) ticks a row, Shift-click a range; on a touch screen a tap ticks the row. A tag's ✕ removes it from that book at once; Undo brings it back.</p>
-                <p>Drag the edge of a column's name to resize it; double-click the edge for its usual width.</p>
+                <p>As in a spreadsheet: click a cell (or move with the arrow keys, Tab, Enter, Page Up/Down, Home/End) and the bar above the table shows it; edit it there, or in the cell with a double-click, F2 or by typing. Double-click a tag or language to edit just that one (empty removes it). While editing, Enter saves and moves down, Tab saves and moves right (Shift goes back), Esc cancels. Space ticks the active row; the menu key (or Shift+F10) opens its cell's menu. A book's number in its series has its own column (<strong>#</strong>); typing <code>Dune [2]</code> in Series sets both. Right-click a cell, tag, language or format for its options (on a touch screen, long-press it): show only books with that, hide them, edit, copy, split a tag; for authors written “Last, First” or “A; B”, put the first name first or split them (as the metadata editor's Split does), for that book or every selected one. <strong>+N</strong> shows the ones that don't fit. Ctrl-click (⌘-click on a Mac) ticks a row, Shift-click a range; on a touch screen a tap ticks the row. A tag's ✕ removes it from that book at once; Undo brings it back.</p>
+                <p>Drag the edge of a column's name to resize it; double-click the edge for its usual width. <strong>Columns</strong> picks which columns show, among them Calibre's rating, identifiers (each as <code>type:value</code>, like <code>isbn:9780441172719</code>), last modified date, file size, cover and book id; a hidden column's filter is cleared.</p>
             </div>
         </details>
     </div>
 
-    <div id="lt-scroll" class="lt-scroll">
+    <!-- The active cell's value, as a spreadsheet's formula bar (web/library-edit.ts, updateBar) -->
+    <div class="lt-editbar">
+        <label class="lt-editbar-label" id="lt-editbar-label" for="lt-editbar-input"></label>
+        <input id="lt-editbar-input" class="lt-editbar-input" type="text" autocomplete="off" spellcheck="false" disabled placeholder="Click a cell, or use the arrow keys">
+    </div>
+    <div id="lt-scroll" class="lt-scroll" aria-label="Books: arrow keys move between cells; F2 or typing edits">
         <div class="lt-table" id="lt-table" role="grid" aria-rowcount="0">
             <div class="lt-head" id="lt-head" role="rowgroup"></div>
             <div class="lt-rows" id="lt-rows" role="rowgroup"></div>
